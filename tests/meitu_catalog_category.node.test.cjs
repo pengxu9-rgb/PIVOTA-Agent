@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { _internals: { inferCatalogMirrorCategory } } = require('../scripts/sync-external-seeds-to-catalog.cjs');
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
-const { resolveBackfillCurrency, deriveSourceBackedCategoryFromProductText } =
+const { resolveBackfillCurrency, deriveSourceBackedCategoryFromProductText, resolveBackfillCategory } =
   require('../scripts/backfill-external-product-seeds-catalog.js');
 
 function row(title) {
@@ -90,4 +90,14 @@ test('backfill labels only the source-verified merchant line as lip gloss', () =
   assert.notEqual(deriveSourceBackedCategoryFromProductText(product, {
     ...reviewed, seed_data: { product_family: 'set_or_collection' },
   })?.category, 'Lip Gloss');
+});
+
+test('reviewed merchant Lip Gloss outranks only generic extracted Serum', () => {
+  const representativeProduct = { title: 'LIP-PRESSION Metal Serum Gloss' };
+  const reviewed = { domain: 'jsmbeauty.sg', external_product_id: 'jungsaemmool:615e47aee567b863' };
+  const input = { representativeProduct, row: reviewed, existingCategory: '', identityRepairBackfill: false };
+  assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Serum' }).nextCategory, 'Lip Gloss');
+  assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Hair Serum' }).nextCategory, 'Hair Serum');
+  assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Serum', row: { ...reviewed, domain: 'other.example' } }).nextCategory, 'Serum');
+  assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Serum', representativeProduct: { title: 'LIP-PRESSION Metal Serum Gloss Set' } }).nextCategory, 'Serum');
 });

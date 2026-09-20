@@ -4955,9 +4955,10 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
       representativeProduct?.productType ||
       representativeProduct?.type,
   );
-  const sourceDerivedCategory = extractedCategory ? null : deriveSourceBackedCategoryFromProductText(representativeProduct, row);
   const existingCategory = normalizeNonEmptyString(seedData.category || snapshot.category);
-  const nextCategory = extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory);
+  const { nextCategory, sourceDerivedCategory } = resolveBackfillCategory({
+    extractedCategory, existingCategory, identityRepairBackfill, representativeProduct, row,
+  });
   const shopifyProductJsonMetadata =
     representativeProduct?.shopify_product_json_metadata_v1 &&
     typeof representativeProduct.shopify_product_json_metadata_v1 === 'object'
@@ -6335,6 +6336,25 @@ function shopifyHandlesMatch(leftHandle, rightHandle, ...referenceValues) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveBackfillCategory({ extractedCategory, existingCategory, identityRepairBackfill, representativeProduct, row }) {
+  const genericSerum = normalizeNonEmptyString(extractedCategory).toLowerCase() === 'serum';
+  const inferred = (!extractedCategory || genericSerum)
+    ? deriveSourceBackedCategoryFromProductText(representativeProduct, row)
+    : null;
+  // The direct merchant PDP calls this exact product Lip Gloss. The extractor
+  // currently emits only "Serum" from its title. Preserve every other explicit
+  // extractor category, and only replace that generic label for the reviewed row.
+  const sourceDerivedCategory = extractedCategory
+    ? (genericSerum && inferred?.source_kind === 'reviewed_merchant_product_type' ? inferred : null)
+    : inferred;
+  return {
+    nextCategory: sourceDerivedCategory?.source_kind === 'reviewed_merchant_product_type'
+      ? sourceDerivedCategory.category
+      : extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory),
+    sourceDerivedCategory,
+  };
 }
 
 function deriveSourceBackedCategoryFromProductText(representativeProduct, row = {}) {
@@ -7780,6 +7800,7 @@ module.exports = {
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,
   deriveSourceBackedCategoryFromProductText,
+  resolveBackfillCategory,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
   buildVariantSeedRows,
