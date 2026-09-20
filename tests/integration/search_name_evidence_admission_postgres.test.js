@@ -29,8 +29,8 @@ suite('name-evidence admission with real PostgreSQL', () => {
     // Materialise exactly the columns the production statement references, with the flag ON so
     // the name-evidence arm's columns are included.
     process.env[FLAG] = 'on';
-    await fetchCanonicalChainRows({ query: 'Metal Serum Gloss', categoryPathPrefix: 'beauty/skincare/treat/', categoryMode: 'category_browse',
-      includeSkuOffers: true, marketId: 'US', searchQualityContract: buildSearchQualityContract({ rawQuery: 'Metal Serum Gloss' }),
+    await fetchCanonicalChainRows({ query: 'Silver Serum Gloss', categoryPathPrefix: 'beauty/skincare/treat/', categoryMode: 'category_browse',
+      includeSkuOffers: true, marketId: 'US', searchQualityContract: buildSearchQualityContract({ rawQuery: 'Silver Serum Gloss' }),
       deps: { query: async (text) => { sql = text; return { rows: [] }; } } });
     delete process.env[FLAG];
     const tables = {};
@@ -52,7 +52,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
     await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
     const items = [
       // The reported shape: a lip gloss labelled only beauty/makeup, whose name says "Serum".
-      ['jsm_gloss', 'LIP-PRESSION Metal Serum Gloss', 'JUNGSAEMMOOL', 'beauty/makeup', 'makeup'],
+      ['jsm_gloss', 'LIP-PRESSION Silver Serum Gloss', 'JUNGSAEMMOOL', 'beauty/makeup', 'makeup'],
       // Accent- and middle-dot-folded spellings carry the same identity tokens.
       ['folded_accent', 'MÉTAL SERUM GLOSS Sheer', 'Other', 'beauty/makeup', 'makeup'],
       ['folded_dots', 'M·E·T·A·L Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
@@ -105,7 +105,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
     ];
     for (const [id, title, brand, category, type, updatedAt = 'now()'] of items) {
       const sig = `sig_${Buffer.from(id).toString('hex').padEnd(32, '0').slice(0, 32)}`;
-      const payload = id === 'eyeliner' ? { description: 'Pairs with LIP-PRESSION Metal Serum Gloss' } : {};
+      const payload = id === 'eyeliner' ? { description: 'Pairs with LIP-PRESSION Silver Serum Gloss' } : {};
       await db.query(`INSERT INTO catalog_products(product_key,merchant_id,platform,source_product_id,title,brand,product_type,
        category_path,content_key,pivota_signature_id,pivota_canonical_url,canonical_url,image_url,product_payload,updated_at)
        VALUES ($1,'retailer','shopify',$1,$2,$3,$4,$5,$1,$6,$7,$8,$9,$10,${updatedAt})`,
@@ -146,7 +146,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
 
   test('flag OFF: the named product is not served -- the reported defect, reproduced', async () => {
     boot(null);
-    const res = await search('Metal Serum Gloss');
+    const res = await search('Silver Serum Gloss');
     expect(res.status).toBe(200);
     expect(keys(res)).not.toContain('jsm_gloss');
     expect(sqlCalls.at(-1).sql).not.toContain('name_evidence_carriers');
@@ -156,7 +156,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
 
   test('flag ON: recalled past the category rows at the prod LIMIT, served, marked, and counted', async () => {
     boot('on');
-    const res = await search('Metal Serum Gloss');
+    const res = await search('Silver Serum Gloss');
     expect(res.status).toBe(200);
     expect(keys(res)).toContain('jsm_gloss');
     const rows = await recalled();
@@ -175,7 +175,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
   for (const tokenRank of ['false', 'true']) {
     test(`flag ON: folded spellings are SERVED, not only admitted (token relevance rank ${tokenRank})`, async () => {
       boot('on', { PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED: tokenRank });
-      const res = await search('Metal Serum Gloss');
+      const res = await search('Silver Serum Gloss');
       expect(res.status).toBe(200);
       const served = keys(res);
       expect(served.slice(0, 3).sort()).toEqual(['folded_accent', 'folded_dots', 'jsm_gloss']);

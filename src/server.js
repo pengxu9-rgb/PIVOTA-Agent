@@ -21395,7 +21395,10 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (!text) return false;
   const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
   if (prefix.startsWith('beauty/makeup/lip')) {
-    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
+    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text)
+      || /\bmetal\s+serum\s+gloss\b/i.test([
+        product.title, product.name, product.product_type,
+      ].filter(Boolean).join(' '));
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
