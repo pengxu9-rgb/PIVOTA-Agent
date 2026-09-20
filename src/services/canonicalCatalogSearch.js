@@ -60,6 +60,7 @@
 
 const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
@@ -1532,15 +1533,22 @@ async function fetchCanonicalChainRows(args = {}) {
   // Price presence is part of the serving contract on BOTH branches: shopping
   // ingesters reject price-null items. Either way this surfaces ONE
   // representative offer via a LATERAL — amount, currency and availability MUST
-  // come from the same offer row (never mixed across rows), cheapest in-market
-  // first, and currency is never defaulted: an offer without a currency is not
-  // price-quotable. The branches differ only in whether the sku columns ride
-  // along, not in how the price is chosen.
+  // come from the same offer row (never mixed across rows), in-market first,
+  // then known-unavailable last, then cheapest. Currency is never defaulted:
+  // an offer without a currency is not price-quotable. The branches differ
+  // only in whether the sku columns ride along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
+  // Match #2240: unknown availability shares the sellable tier. This is a
+  // ranking preference, not an exclusion rule. The inStockOnly hard filter
+  // below deliberately has broader coverage: it strips punctuation, excludes
+  // "oos" and "false", and checks inventory_quantity. That filter keeps its
+  // existing behavior; a legacy spelling can pass this ranking tier but still
+  // fail an explicit inStockOnly request.
+  const bestOfferAvailabilityOrder = `${OFFER_AVAILABILITY_TIER_SQL},`;
   // The MAIN shopping route elects an offer scope. Require a matching live
   // offer BEFORE the candidate LIMIT, then select from that identical set in
   // the lateral. Filtering only the chosen cheapest offer afterward loses a
@@ -1701,9 +1709,9 @@ async function fetchCanonicalChainRows(args = {}) {
   //     a request for N products returned fewer than N distinct ones.
   //
   // Collapsing to a LATERAL fixes all three at the source and makes the price
-  // contract identical on both branches: the row carries the cheapest
-  // in-market PRICED offer, with amount, currency and availability from that
-  // ONE offer row. Safe to collapse because nothing downstream groups these
+  // contract identical on both branches: the row carries the best in-market
+  // PRICED offer by availability tier and price, with amount, currency and
+  // availability from that ONE offer row. Safe to collapse because nothing downstream groups these
   // rows back into variants — of the sku/offer columns only `sku_image_url` is
   // read by the mapper, and it now describes the variant actually being priced.
   //
@@ -1747,6 +1755,7 @@ async function fetchCanonicalChainRows(args = {}) {
         AND o.currency IS NOT NULL
         ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
       LIMIT 1
@@ -1761,6 +1770,7 @@ async function fetchCanonicalChainRows(args = {}) {
         AND o.currency IS NOT NULL
         ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
       LIMIT 1
