@@ -23720,6 +23720,11 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     if (buyerMarket) search.market = buyerMarket;
   }
 
+  const offerCurrency = normalizeFindProductsMultiPriceCurrencyParam(
+    firstQueryParamValue(query.currency),
+  );
+  if (offerCurrency) search.currency = offerCurrency;
+
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
@@ -42453,7 +42458,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         publicBeautySearch.priceCurrency,
         publicBeautySearch.currency_code,
       );
-      if (publicBeautyBuyerCurrency || publicBeautyBudget || publicBeautyOfferCurrency) {
+      const namedPublicBeautyMarket = firstNonEmptyString(publicBeautySearch.market, metadata.market);
+      if (
+        (!namedPublicBeautyMarket || isBuyerMarketEnabled()) &&
+        (publicBeautyBuyerCurrency || publicBeautyBudget || publicBeautyOfferCurrency)
+      ) {
         if (String(publicBeautySearch.category || '').trim()) {
           return res.status(422).json({
             status: 'error',
@@ -42470,10 +42479,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           return res.status(200).json(indexed);
         } catch (err) {
           logger.warn({ err: err?.message || String(err) }, 'constrained beauty search primary failed');
-          return res.status(503).json({
+          const windowExceeded = err?.code === 'PRIMARY_SEARCH_WINDOW_EXCEEDED';
+          return res.status(windowExceeded ? 400 : 503).json({
             status: 'failed',
             products: [],
-            error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED' },
+            error: { code: windowExceeded ? 'PRIMARY_SEARCH_WINDOW_EXCEEDED' : 'BEAUTY_PRIMARY_RECALL_FAILED' },
           });
         }
       }
@@ -42505,6 +42515,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !isSearchQualityContractSafeEmptyResponse(bridgeResponse) &&
           !publicBeautyStrictDecision.enabled &&
           publicBeautyQueryText &&
+          !String(publicBeautySearch.category || '').trim() &&
           !publicBeautySearch.merchant_id &&
           !(Array.isArray(publicBeautySearch.merchant_ids) && publicBeautySearch.merchant_ids.length)
         ) {
