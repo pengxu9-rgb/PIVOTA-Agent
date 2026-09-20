@@ -184,7 +184,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     metadata: {
       ...(response.metadata || {}),
       live_merchant_price: {
-        attempted: attempted > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
+        attempted: eligible.size > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
       },

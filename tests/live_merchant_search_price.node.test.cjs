@@ -31,8 +31,11 @@ test('overlays exact merchant price, retains stored offer on disagreement or fai
   assert.equal(live.products[0].price_source, 'merchant_live');
   assert.equal(live.metadata.live_merchant_price.drift_count, 1);
   assert.equal(original.products[0].price, 28.2);
-  await overlayLiveMerchantSearchPrices(original, { fetchImpl });
+  const cached = await overlayLiveMerchantSearchPrices(original, { fetchImpl });
   assert.equal(calls, 1);
+  assert.equal(cached.metadata.live_merchant_price.attempted, true);
+  assert.equal(cached.metadata.live_merchant_price.fetch_attempt_count, 0);
+  assert.equal(cached.metadata.live_merchant_price.cache_hit_count, 1);
   const wrongCurrency = await overlayLiveMerchantSearchPrices({ products: [{ ...card, currency: 'USD' }] }, { fetchImpl });
   assert.equal(wrongCurrency.products[0].price, 28.2);
   assert.equal(wrongCurrency.products[0].price_source, 'catalog_offer');
