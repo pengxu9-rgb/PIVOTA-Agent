@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { _internals: { inferCatalogMirrorCategory } } = require('../scripts/sync-external-seeds-to-catalog.cjs');
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
+const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { resolveBackfillCurrency, deriveSourceBackedCategoryFromProductText, resolveBackfillCategory } =
   require('../scripts/backfill-external-product-seeds-catalog.js');
 
@@ -100,4 +101,16 @@ test('reviewed merchant Lip Gloss outranks only generic extracted Serum', () => 
   assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Hair Serum' }).nextCategory, 'Hair Serum');
   assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Serum', row: { ...reviewed, domain: 'other.example' } }).nextCategory, 'Serum');
   assert.equal(resolveBackfillCategory({ ...input, extractedCategory: 'Serum', representativeProduct: { title: 'LIP-PRESSION Metal Serum Gloss Set' } }).nextCategory, 'Serum');
+});
+
+test('reviewed Lip Gloss survives title-first recall document classification', () => {
+  const targetRow = row('LIP-PRESSION Metal Serum Gloss');
+  const seedData = {
+    title: targetRow.title,
+    category: 'Lip Gloss',
+    source_derived_category_v1: { category: 'Lip Gloss', source_kind: 'reviewed_merchant_product_type' },
+  };
+  assert.equal(buildExternalSeedRecallDoc({ row: targetRow, seedData, snapshot: { category: 'Lip Gloss' } }).category, 'Lip Gloss');
+  assert.notEqual(buildExternalSeedRecallDoc({ row: { ...targetRow, domain: 'other.example' }, seedData, snapshot: {} }).category, 'Lip Gloss');
+  assert.notEqual(buildExternalSeedRecallDoc({ row: targetRow, seedData: { ...seedData, category: 'Hair Serum' }, snapshot: {} }).category, 'Lip Gloss');
 });
