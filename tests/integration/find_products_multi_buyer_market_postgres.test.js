@@ -233,6 +233,22 @@ suite('buyer market (Stage 0a) over both lanes, real PostgreSQL', () => {
     }
   });
 
+  test.each([
+    ['USD', 'lip gloss under USD 25'],
+    ['EUR', 'lip gloss under EUR 25'],
+    ['GBP', 'lip gloss under GBP 25'],
+  ])('flag on, SG buyer retains the explicit %s prose budget in both SQL lanes', async (currency, queryText) => {
+    const out = await serve('on', queryText, { market: 'SG' });
+    bothLanesRan(out);
+    // SGD remains the offer unit; a budget in another unit is converted only
+    // when a known FX rate exists. It must not be relabelled as SGD 25.
+    for (const lane of ['seed', 'canonical']) {
+      const statements = out.calls.filter((c) => c.lane === lane);
+      expect(statements.some((c) => c.params.includes('SGD'))).toBe(true);
+      expect(statements.some((c) => c.params.some((p, i) => p === currency && c.params[i + 1] === 25))).toBe(true);
+    }
+  });
+
   test('flag on, market JP with a budget: JPY has FX rates, so only the recall scope keeps USD out', async () => {
     // With an FX rate the budget expands into USD/EUR/... ranges; unscoped, USD rows reach the
     // budget filter, which prefers USD whenever present -- and the page would come back empty.

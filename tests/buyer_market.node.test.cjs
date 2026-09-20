@@ -10,8 +10,9 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const { resolveBuyerMarketScope, isEnabled, FLAG } = require(path.join(ROOT, 'src/services/buyerMarket'));
+const { resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled, FLAG } = require(path.join(ROOT, 'src/services/buyerMarket'));
 const { marketsForRequest } = require(path.join(ROOT, 'src/services/servedMarkets'));
+const { extractIntentRuleBased } = require(path.join(ROOT, 'src/findProductsMulti/intent'));
 
 const ON = { [FLAG]: 'on' };
 
@@ -65,6 +66,27 @@ test('flag on, but nothing the door can price: unchanged (no new answer invented
       JSON.stringify(requested),
     );
   }
+});
+
+test('a buyer market never relabels a currency explicitly written in the budget', () => {
+  for (const [query, currency] of [
+    ['lip gloss under USD 25', 'USD'],
+    ['lip gloss under EUR 25', 'EUR'],
+    ['lip gloss under GBP 25', 'GBP'],
+    ['lip gloss under SGD 25', 'SGD'],
+    ['lip gloss under S$25', 'SGD'],
+    ['lip gloss under $25', 'USD'],
+  ]) {
+    const parsed = extractIntentRuleBased(query, [], []).hard_constraints.price;
+    assert.equal(parsed.currency, currency, query);
+    assert.equal(resolveBuyerBudgetConstraint({
+      constraint: parsed, buyerCurrency: 'SGD', queryCurrency: parsed.currency,
+    }).currency, currency, query);
+  }
+  const unstated = extractIntentRuleBased('lip gloss under 25', [], []).hard_constraints.price;
+  assert.equal(resolveBuyerBudgetConstraint({ constraint: unstated, buyerCurrency: 'SGD' }).currency, 'SGD');
+  assert.equal(resolveBuyerBudgetConstraint({ constraint: unstated, buyerCurrency: 'SGD', callerCurrency: 'EUR' }).currency, 'EUR');
+  assert.equal(resolveBuyerBudgetConstraint({ constraint: unstated, buyerCurrency: null }), unstated);
 });
 
 test('REST boundary: `market` reaches search.market only under the flag', () => {

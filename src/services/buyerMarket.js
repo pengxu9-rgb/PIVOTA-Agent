@@ -73,8 +73,22 @@ function resolveBuyerMarketScope(requested, env = process.env) {
   return { markets, buyerMarket: named[0], buyerCurrency };
 }
 
+// A budget's unit and the currency of the offers shown to a buyer are separate
+// choices. The rule-based parser reports a currency only when the query itself
+// names one (including a bare '$', which it has long treated as USD). The intent
+// resolver can stamp USD on an unqualified budget, so its currency alone cannot
+// establish that the shopper asked for dollars.
+function resolveBuyerBudgetConstraint({ constraint, buyerCurrency, callerCurrency, queryCurrency }) {
+  if (!constraint || !buyerCurrency) return constraint;
+  return {
+    ...constraint,
+    currency: queryCurrency || callerCurrency || buyerCurrency,
+  };
+}
+
 module.exports = {
   FLAG,
   isEnabled,
   resolveBuyerMarketScope,
+  resolveBuyerBudgetConstraint,
 };

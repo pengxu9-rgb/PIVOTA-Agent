@@ -9,7 +9,9 @@ require('dotenv').config();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
-const { resolveBuyerMarketScope, isEnabled: isBuyerMarketEnabled } = require('./services/buyerMarket');
+const {
+  resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
+} = require('./services/buyerMarket');
 
 const express = require('express');
 const axios = require('axios');
@@ -36,6 +38,7 @@ const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
+const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -13541,6 +13544,11 @@ function buildDiscoveryPayloadFromPublicBeautySearch(
     metadata?.debug === true ||
     String(search?.debug || metadata?.debug || '').trim().toLowerCase() === 'true';
   const brandNames = uniqueStrings(options?.brandNames || []);
+  const category = String(search?.category || '').trim();
+  const scope = {
+    ...(brandNames.length > 0 ? { brand_names: brandNames } : {}),
+    ...(category ? { categories: [category] } : {}),
+  };
   return {
     discoveryPayload: {
       surface: 'browse_products',
@@ -13548,7 +13556,7 @@ function buildDiscoveryPayloadFromPublicBeautySearch(
       limit,
       debug,
       query: { text: String(queryText || search?.query || search?.q || '').trim() },
-      ...(brandNames.length > 0 ? { scope: { brand_names: brandNames } } : {}),
+      ...(Object.keys(scope).length > 0 ? { scope } : {}),
       context: {
         auth_state: 'anonymous',
         locale,
@@ -13687,6 +13695,16 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
     },
     { limit, offset },
   );
+}
+
+function maybeOverlayLiveSearchPrice(response, search = {}) {
+  if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
+  if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
+  // A live price rising above a fixed ceiling would violate the already-applied budget
+  // gate. Defer those queries until the live-price gate can be evaluated on the new value.
+  if (search.max_price != null || search.price_max != null || search.min_price != null || search.price_min != null ||
+      /\b(?:under|below|less than|budget)\s*(?:[A-Z]{3}|S\$|\$)?\s*\d/i.test(String(search.query || ''))) return response;
+  return overlayLiveMerchantSearchPrices(response);
 }
 
 function buildPublicBeautyUnifiedSearchDedupeKey(product) {
@@ -17871,6 +17889,7 @@ function buildCanonicalChainMainlineProduct(row) {
     // the card has no key that reaches the competing offer.
     ...(firstNonEmptyString(row.content_key) ? { content_key: firstNonEmptyString(row.content_key) } : {}),
     source_product_id: sourceProductId || undefined,
+    ...(firstNonEmptyString(row.source_variant_id) ? { source_variant_id: firstNonEmptyString(row.source_variant_id) } : {}),
     canonical_product_ref: canonicalProductRef,
     pdp_open: {
       path: 'internal',
@@ -22548,26 +22567,28 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalStartedAt = Date.now();
   const callerOfferCurrency = firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
   const resolvedBudgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
-  // A named buyer who states no currency is budgeting in their OWN money. The resolver cannot say
-  // so: it stamps USD on every unstated budget (getProductPriceCurrency's '' fallback normalises to
-  // 'USD'), so an SG buyer's "under 25" became US$25 and every SGD row without an FX rate was
-  // dropped. So the test is the CALLER's currency fields, not the budget's currency. "$" in query
-  // text is read the same way: for an SG buyer it is S$. A copy -- the resolver may hand back
-  // intent state.
-  const budgetConstraint = resolvedBudgetConstraint && buyerCurrency && !callerOfferCurrency
-    ? { ...resolvedBudgetConstraint, currency: buyerCurrency }
-    : resolvedBudgetConstraint;
-  // The caller's explicit currency wins; the buyer's market fills in only when there is none.
-  // A budget keeps its own ranges (denominated in the buyer's currency above when the caller
-  // stated none, so "under 30" for an SG buyer is S$30), and the buyer's currency scopes BOTH
-  // recall -- so off-currency rows cannot consume the candidate cut -- and the page, via the
-  // post-filter below: a named buyer is never shown a price in another currency. With no buyer
-  // currency every expression here reduces to the pre-Stage-0a one.
+  // The intent resolver can stamp USD on an unstated budget. Re-read the raw query
+  // only to learn whether the shopper actually named a unit: "under USD 25" must
+  // remain USD 25 for an SG buyer, while "under 25" is S$25. A bare "$25" keeps
+  // the parser's established USD meaning. Budget units do not change the offer
+  // currency: an SG buyer still sees SGD offers, with FX applied only if known.
+  const queryBudgetCurrency = buyerCurrency && resolvedBudgetConstraint
+    ? extractIntentRuleBased(String(queryText || '').trim(), [], [])?.hard_constraints?.price?.currency
+    : null;
+  const budgetConstraint = resolveBuyerBudgetConstraint({
+    constraint: resolvedBudgetConstraint,
+    buyerCurrency,
+    callerCurrency: callerOfferCurrency,
+    queryCurrency: queryBudgetCurrency,
+  });
+  // A structured currency controls the served offer currency; otherwise the
+  // named buyer's currency scopes both recall lanes and the final page.
   const explicitOfferCurrency = budgetConstraint
     ? null
     : (buyerCurrency && !callerOfferCurrency ? buyerCurrency : callerOfferCurrency);
-  const servedOfferCurrency = explicitOfferCurrency
-    || (budgetConstraint && buyerCurrency && !callerOfferCurrency ? buyerCurrency : null);
+  const servedOfferCurrency = buyerCurrency
+    ? (callerOfferCurrency || buyerCurrency)
+    : explicitOfferCurrency;
   const primaryOfferScope = { currency: servedOfferCurrency || explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
@@ -22829,7 +22850,7 @@ async function searchBeautyExternalSeedProductsMainline({
     };
   }
 
-  return {
+  return maybeOverlayLiveSearchPrice({
     status: 'success',
     success: true,
     products: pagedProducts,
@@ -23002,7 +23023,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  };
+  }, search);
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -23699,6 +23720,11 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     if (buyerMarket) search.market = buyerMarket;
   }
 
+  const offerCurrency = normalizeFindProductsMultiPriceCurrencyParam(
+    firstQueryParamValue(query.currency),
+  );
+  if (offerCurrency) search.currency = offerCurrency;
+
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
@@ -23763,10 +23789,9 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
     const normalizedOffset = Math.max(0, Math.floor(offset));
+    search.offset = normalizedOffset;
     if (search.limit) {
       search.page = Math.floor(normalizedOffset / search.limit) + 1;
-    } else {
-      search.offset = normalizedOffset;
     }
   }
 
@@ -42419,6 +42444,49 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         })
       )
     ) {
+      const { buyerCurrency: publicBeautyBuyerCurrency } = resolveBuyerMarketScope(
+        publicBeautySearch.market || metadata.market,
+      );
+      const publicBeautyBudget = resolveBeautyMainlineBudgetConstraint({
+        search: publicBeautySearch,
+        intent: effectiveIntent,
+        queryText: publicBeautyQueryText,
+      });
+      const publicBeautyOfferCurrency = firstNonEmptyString(
+        publicBeautySearch.currency,
+        publicBeautySearch.price_currency,
+        publicBeautySearch.priceCurrency,
+        publicBeautySearch.currency_code,
+      );
+      const namedPublicBeautyMarket = firstNonEmptyString(publicBeautySearch.market, metadata.market);
+      if (
+        (!namedPublicBeautyMarket || isBuyerMarketEnabled()) &&
+        (publicBeautyBuyerCurrency || publicBeautyBudget || publicBeautyOfferCurrency)
+      ) {
+        if (String(publicBeautySearch.category || '').trim()) {
+          return res.status(422).json({
+            status: 'error',
+            error: { code: 'BEAUTY_CATEGORY_WITH_PRICE_SCOPE_UNSUPPORTED' },
+          });
+        }
+        try {
+          const indexed = await searchBeautyExternalSeedProductsMainline({
+            search: { ...publicBeautySearch, query: publicBeautyQueryText },
+            metadata,
+            intent: effectiveIntent,
+          });
+          if (!indexed) throw new Error('beauty_primary_recall_unavailable');
+          return res.status(200).json(indexed);
+        } catch (err) {
+          logger.warn({ err: err?.message || String(err) }, 'constrained beauty search primary failed');
+          const windowExceeded = err?.code === 'PRIMARY_SEARCH_WINDOW_EXCEEDED';
+          return res.status(windowExceeded ? 400 : 503).json({
+            status: 'failed',
+            products: [],
+            error: { code: windowExceeded ? 'PRIMARY_SEARCH_WINDOW_EXCEEDED' : 'BEAUTY_PRIMARY_RECALL_FAILED' },
+          });
+        }
+      }
       const bridgeStartedAtMs = Date.now();
       const { discoveryPayload, page, limit, offset } =
         buildDiscoveryPayloadFromPublicBeautySearch(
@@ -42438,6 +42506,60 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           limit,
           offset,
         });
+        // A zero-row discovery result can be underfill rather than lack of inventory. Keep the
+        // second read inside this gateway, with the same request market and search filters.
+        // This is opt-in until replay verifies the extra latency and serving eligibility.
+        if (
+          parseBooleanEnv(process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH, false) &&
+          bridgeResponse.products.length === 0 &&
+          !isSearchQualityContractSafeEmptyResponse(bridgeResponse) &&
+          !publicBeautyStrictDecision.enabled &&
+          publicBeautyQueryText &&
+          !String(publicBeautySearch.category || '').trim() &&
+          !publicBeautySearch.merchant_id &&
+          !(Array.isArray(publicBeautySearch.merchant_ids) && publicBeautySearch.merchant_ids.length)
+        ) {
+          try {
+            const indexed = await searchBeautyExternalSeedProductsMainline({
+              search: { ...publicBeautySearch, query: publicBeautyQueryText, limit, page, offset },
+              metadata,
+              intent: effectiveIntent,
+            });
+            if (Array.isArray(indexed?.products) && indexed.products.length > 0) {
+              const indexedMetadata = indexed.metadata || {};
+              return res.status(200).json({
+                ...indexed,
+                metadata: {
+                  ...indexedMetadata,
+                  discovery_fallthrough: {
+                    attempted: true,
+                    adopted: true,
+                    reason: 'discovery_zero_rows',
+                    discovery_primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
+                  },
+                  route_health: {
+                    ...(indexedMetadata.route_health || {}),
+                    primary_path_used: 'beauty_discovery_mainline',
+                    fallback_triggered: true,
+                    fallback_reason: 'discovery_zero_rows',
+                    fallback_adopted: true,
+                    final_returned_count: indexed.products.length,
+                  },
+                },
+              });
+            }
+            bridgeResponse.metadata = {
+              ...(bridgeResponse.metadata || {}),
+              discovery_fallthrough: { attempted: true, adopted: false, reason: indexed ? 'indexed_zero_rows' : 'indexed_unavailable' },
+            };
+          } catch (fallbackError) {
+            logger.warn({ err: fallbackError?.message || String(fallbackError) }, 'beauty discovery zero-row fallthrough failed');
+            bridgeResponse.metadata = {
+              ...(bridgeResponse.metadata || {}),
+              discovery_fallthrough: { attempted: true, adopted: false, reason: 'indexed_error' },
+            };
+          }
+        }
         bridgeResponse.metadata = {
           ...(bridgeResponse.metadata || {}),
           service_version: completeServiceVersionMetadata(
@@ -42454,7 +42576,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
           },
         };
-        return res.status(200).json(bridgeResponse);
+        return res.status(200).json(await maybeOverlayLiveSearchPrice(bridgeResponse, publicBeautySearch));
       } catch (err) {
         logger.warn(
           {

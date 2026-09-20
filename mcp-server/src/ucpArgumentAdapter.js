@@ -831,7 +831,7 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   get_intel: Object.freeze([]),
   search_catalog: Object.freeze([
     "catalog.filters.categories[]",
-    "catalog.context.address_country", "catalog.context.address_region", "catalog.context.postal_code",
+    "catalog.context.address_region", "catalog.context.postal_code",
     "catalog.context.language", "catalog.context.intent",
     "catalog.signals.dev.ucp.buyer_ip", "catalog.signals.dev.ucp.user_agent",
   ]),
@@ -1166,7 +1166,8 @@ const SEARCH_CATALOG_DESCRIPTION = [
   "`catalog.pagination.cursor` (send back the `pagination.cursor` from the previous response, unchanged, to",
   "fetch the next page); `catalog.filters.price.min` / `.max` (integers in MINOR units of",
   "`catalog.context.currency`, default USD cents; `min` must not exceed `max`); `catalog.filters.available`",
-  "(true = in-stock only, the default); `catalog.context.currency` (ISO 4217).",
+  "(true = in-stock only, the default); `catalog.context.currency` (ISO 4217) and",
+  "`catalog.context.address_country` (buyer market, ISO 3166-1 alpha-2).",
   "Accepted and NOT read: `filters.categories` (Pivota filters on its own category vocabulary, which a",
   "platform's labels would not match — filter client-side; a `messages` warning says so in the response),",
   "the other `context` members, and `signals`.",
@@ -1203,6 +1204,21 @@ function readSearchCurrency(context, code) {
   // Blank -> ABSENT, the same rule `catalog.query` follows: the schema types it as a string and a blank
   // string is a string, so a door that refused it would be stricter than what it advertises.
   return nonEmpty(currency) ? currency.trim() : undefined;
+}
+
+function readSearchCountry(context, code) {
+  if (!isPlainObject(context)) return undefined;
+  const country = own(context, "address_country");
+  if (country === undefined) return undefined;
+  if (typeof country !== "string") {
+    throw ucpRefusal(code, "ucp_country_string_required",
+      "`catalog.context.address_country` must be a country code string when supplied.", { rejected_field: "catalog.context.address_country" });
+  }
+  const trimmed = country.trim();
+  if (!trimmed) return undefined;
+  // The UCP schema accepts any string. Let the buyer-market resolver decide whether a code is
+  // supported, while keeping schema-valid calls executable (including future territories).
+  return trimmed;
 }
 
 /**
@@ -1425,9 +1441,9 @@ const SPECS = Object.freeze({
             context: {
               type: "object",
               additionalProperties: true,
-              description: "Buyer context. `currency` is read (ISO 4217; also sets the minor unit of filters.price). Other members are accepted and NOT read.",
+              description: "Buyer context. `address_country` selects the buyer market; `currency` selects offer currency and the minor unit of filters.price. Other members are accepted and NOT read.",
               properties: {
-                address_country: { type: "string", description: "Accepted and NOT read." },
+                address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read." },
                 address_region: { type: "string", description: "Accepted and NOT read." },
                 postal_code: { type: "string", description: "Accepted and NOT read." },
                 language: { type: "string", description: "Accepted and NOT read." },
@@ -1488,6 +1504,8 @@ const SPECS = Object.freeze({
       // code falls back to exponent 2 in minorUnitExponent, exactly as it does for the kernel's own amounts.
       const currency = readSearchCurrency(own(catalog, "context"), code);
       if (currency !== undefined) native.currency = currency;
+      const country = readSearchCountry(own(catalog, "context"), code);
+      if (country !== undefined) native.market = country;
       Object.assign(native, mapSearchPagination(own(catalog, "pagination"), code));
       Object.assign(native, mapSearchFilters(own(catalog, "filters"), currency, code));
       return native;

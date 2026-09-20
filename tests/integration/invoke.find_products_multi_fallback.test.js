@@ -24,6 +24,8 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+      PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH: process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH,
+      FIND_PRODUCTS_BUYER_MARKET: process.env.FIND_PRODUCTS_BUYER_MARKET,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
@@ -410,6 +412,140 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         bridged_operation: 'get_discovery_feed',
       }),
     );
+  });
+
+  test.each([['off', false], ['on', true]])('zero-row discovery fallthrough %s keeps the empty response when indexed recall is unavailable', async (flag, attempted) => {
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = flag;
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [], total: 0, metadata: {} })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough?.attempted === true).toBe(attempted);
+    if (attempted) expect(resp.body.metadata.discovery_fallthrough.reason).toBe('indexed_unavailable');
+  });
+
+  test('market and budget constraints do not serve an unscoped discovery page when indexed recall is unavailable', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [
+          { product_id: 'usd', title: 'Lip balm USD', price: 12, currency: 'USD' },
+          { product_id: 'expensive', title: 'Lip balm SGD high', price: 40, currency: 'SGD' },
+          { product_id: 'eligible', title: 'Lip balm SGD', price: 20, currency: 'SGD' },
+        ],
+        total: 3,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty', max_price: 25, price_currency: 'SGD' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('a named market with its buyer-market flag off keeps the existing discovery route', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [{ product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' }],
+        total: 1,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['usd']);
+    expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+  });
+
+  test('a named market and budget also keep the discovery route while buyer-market is off', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [{ product_id: 'existing', title: 'Lip balm', price: 20, currency: 'USD' }],
+        total: 1,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty', max_price: 25 } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['existing']);
+    expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+  });
+
+  test('REST GET forwards an explicit offer currency into constrained recall', async () => {
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [{ product_id: 'usd', currency: 'USD' }], total: 1 })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).get('/agent/v1/products/search')
+      .query({ query: 'lip balm', catalog_surface: 'beauty', currency: 'EUR' });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('REST GET forwards the named market and price ceiling into constrained recall', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [{ product_id: 'usd', currency: 'USD' }], total: 1 })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).get('/agent/v1/products/search')
+      .query({ query: 'lip balm', catalog_surface: 'beauty', market: 'SG', max_price: 25, price_currency: 'SGD' });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('explicit category does not fall through to category-blind indexed recall', async () => {
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [], total: 0, metadata: {} })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'MAC', category: 'makeup', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough?.attempted).not.toBe(true);
   });
 
   test.each([
