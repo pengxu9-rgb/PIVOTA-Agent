@@ -13694,6 +13694,7 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
 
 function maybeOverlayLiveSearchPrice(response, search = {}) {
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
+  if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
   // A live price rising above a fixed ceiling would violate the already-applied budget
   // gate. Defer those queries until the live-price gate can be evaluated on the new value.
   if (search.max_price != null || search.price_max != null || search.min_price != null || search.price_min != null ||
