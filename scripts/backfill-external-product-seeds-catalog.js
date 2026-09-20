@@ -208,6 +208,16 @@ function extractCurrentPricingCurrency(value) {
 }
 
 function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, row, seedData, snapshot }) {
+  // A legacy seed can live in the US partition while its direct merchant PDP
+  // is priced in SGD. When every extracted variant agrees with the seed's
+  // stored currency, that source-backed currency outranks the partition's
+  // default. This does not change a US/USD row or trust mixed-currency data.
+  const storedCurrency = normalizeCurrencyCode(row?.price_currency);
+  const sourceCurrencies = new Set((Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [])
+    .map((variant) => normalizeCurrencyCode(variant?.currency)).filter(Boolean));
+  if (storedCurrency && sourceCurrencies.size === 1 && sourceCurrencies.has(storedCurrency)) {
+    return storedCurrency;
+  }
   return (
     extractCurrentPricingCurrency(seedData?.pricing) ||
     extractCurrentPricingCurrency(snapshot?.pricing) ||
@@ -4930,7 +4940,7 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
       representativeProduct?.productType ||
       representativeProduct?.type,
   );
-  const sourceDerivedCategory = extractedCategory ? null : deriveSourceBackedCategoryFromProductText(representativeProduct);
+  const sourceDerivedCategory = extractedCategory ? null : deriveSourceBackedCategoryFromProductText(representativeProduct, row);
   const existingCategory = normalizeNonEmptyString(seedData.category || snapshot.category);
   const nextCategory = extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory);
   const shopifyProductJsonMetadata =
@@ -6312,7 +6322,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function deriveSourceBackedCategoryFromProductText(representativeProduct) {
+function deriveSourceBackedCategoryFromProductText(representativeProduct, row = {}) {
   if (!representativeProduct || typeof representativeProduct !== 'object') return null;
   const title = normalizeNonEmptyString(representativeProduct?.title);
   if (!title) return null;
@@ -6334,6 +6344,20 @@ function deriveSourceBackedCategoryFromProductText(representativeProduct) {
   const titleLower = title.toLowerCase();
   const textLower = text.toLowerCase();
   if (/\b(?:e-?gift\s+card|gift\s+card|mystery|surprise|value)\b|\$\s*\d/i.test(title)) return null;
+
+  // Verified on the merchant's direct Shopify PDP: this line's product_type
+  // is Lip Gloss. The extractor omits product_type, so title-only inference
+  // otherwise mistakes its texture word "Serum" for a skincare category.
+  if (normalizeNonEmptyString(row?.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+      && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
+      && !/\b(?:set|kit|bundle|duo|trio)\b/i.test(title)) {
+    return {
+      category: 'Lip Gloss',
+      source_kind: 'reviewed_merchant_product_type',
+      source_title: title,
+      source_fields: ['title'],
+    };
+  }
 
   let category = '';
   if (/\bdry['’]?n\s+shape\b.*\btower\b|\btower\b.*\bdry['’]?n\s+shape\b/i.test(title)) {
@@ -7722,6 +7746,7 @@ module.exports = {
   readTargetUrlOverridesFile,
   resolveTargetUrlOverride,
   buildExtractRequestBody,
+  resolveBackfillCurrency,
   extractSeed,
   extractSeedCommerceFacts,
   resolveCatalogExtractTimeoutMs,
