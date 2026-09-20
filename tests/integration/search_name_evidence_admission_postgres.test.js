@@ -54,11 +54,11 @@ suite('name-evidence admission with real PostgreSQL', () => {
       // The reported shape: a lip gloss labelled only beauty/makeup, whose name says "Serum".
       ['jsm_gloss', 'LIP-PRESSION Silver Serum Gloss', 'JUNGSAEMMOOL', 'beauty/makeup', 'makeup'],
       // Accent- and middle-dot-folded spellings carry the same identity tokens.
-      ['folded_accent', 'MÉTAL SERUM GLOSS Sheer', 'Other', 'beauty/makeup', 'makeup'],
-      ['folded_dots', 'M·E·T·A·L Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
-      // WHOLE WORDS: carries "metal" only as a substring of "metallic" -- passes the LIKE prefilter,
+      ['folded_accent', 'SÍLVER SERUM GLOSS Sheer', 'Other', 'beauty/makeup', 'makeup'],
+      ['folded_dots', 'S·I·L·V·E·R Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
+      // WHOLE WORDS: carries "silver" only as a substring of "silverish" -- passes the LIKE prefilter,
       // must fail the regex. Review of #2230: an any-token regex survived every test.
-      ['metallic', 'Metallic Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
+      ['metallic', 'Silverish Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
       // Shares every query word only in its DESCRIPTION -- never own-name evidence.
       ['eyeliner', 'Precision Eyeliner', 'Other', 'beauty/makeup', 'Eyeliner'],
       // THE THRESHOLD. 10 rows carry "violet cloud serum" (a name); 11 carry "velvet cloud serum"
@@ -169,7 +169,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
   });
 
   // Review of #2230 v3: the folded spellings were admitted and waived but NOT served -- the ranker's
-  // lexical arms compared unfolded text, so "MÉTAL SERUM GLOSS Sheer" scored below "Barrier Repair
+  // lexical arms compared unfolded text, so "SÍLVER SERUM GLOSS Sheer" scored below "Barrier Repair
   // Serum 000" and the 12-row page was jsm_gloss + serums. Pinned on the served page, with the
   // token-relevance tiering both off and on (it is secret-configured in prod).
   for (const tokenRank of ['false', 'true']) {
