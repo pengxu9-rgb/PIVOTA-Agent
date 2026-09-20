@@ -124,11 +124,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // ever asserted "the walk found the function". Pinning the number means adding or removing
   // an exit is a deliberate edit here — which is the point, since every one of them is a place
   // a response leaves. Update it when you change the route, and look at what you changed.
-  // The discovery zero-row indexed adoption adds one response exit through the same JSON wrapper.
+  // Constrained beauty recall adds three exits: unsupported category, indexed success,
+  // and an explicit primary failure. All still pass through the response JSON wrapper.
   assert.equal(
     exits.length,
-    100,
-    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
+    103,
+    `expected 103 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
