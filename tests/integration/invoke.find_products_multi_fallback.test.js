@@ -433,7 +433,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     if (attempted) expect(resp.body.metadata.discovery_fallthrough.reason).toBe('indexed_unavailable');
   });
 
-  test('a nonempty discovery page still honors the named buyer currency and price ceiling', async () => {
+  test('market and budget constraints do not serve an unscoped discovery page when indexed recall is unavailable', async () => {
     process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
     jest.doMock('../../src/services/discoveryFeed', () => {
       const actual = jest.requireActual('../../src/services/discoveryFeed');
@@ -454,14 +454,13 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       metadata: { source: 'search', catalog_surface: 'beauty' },
     });
     jest.dontMock('../../src/services/discoveryFeed');
-    expect(resp.status).toBe(200);
-    expect(resp.body.products.map((product) => product.product_id)).toEqual(['eligible']);
-    expect(resp.body.total).toBe(1);
+    expect(resp.status).toBe(503);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
   });
 
-  test('off-currency discovery rows can trigger the indexed fallthrough', async () => {
-    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
-    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = 'on';
+  test('a named market with its buyer-market flag off keeps the existing discovery route', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
     jest.doMock('../../src/services/discoveryFeed', () => {
       const actual = jest.requireActual('../../src/services/discoveryFeed');
       return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
@@ -478,10 +477,8 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     });
     jest.dontMock('../../src/services/discoveryFeed');
     expect(resp.status).toBe(200);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.discovery_fallthrough).toEqual(
-      expect.objectContaining({ attempted: true, adopted: false }),
-    );
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['usd']);
+    expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
   });
 
   test.each([
