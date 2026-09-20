@@ -16510,7 +16510,7 @@ function explicitBeautyLipFormTerms(queryText = '') {
   const query = normalizeSearchTextForMatch(queryText);
   if (/\blip\s*oils?\b/.test(query)) return ['lip oil', 'lip-oil'];
   if (/\blip\s*tints?\b/.test(query)) return ['lip tint', 'lip-tint', 'lip stain'];
-  if (/\blip\s*gloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss'];
+  if (/\blip\s*gloss(?:es)?\b|\bmetal\s+serum\s+gloss\b/.test(query)) return ['lip gloss', 'lipgloss'];
   if (/\blip\s*balms?\b/.test(query)) return ['lip balm', 'lipbalm'];
   return [];
 }
@@ -16528,9 +16528,16 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
     seen.add(normalized);
     terms.push(normalized);
   };
-  for (const family of families) {
-    const familyTerms = BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY[family] || [];
-    familyTerms.forEach(push);
+  // The reviewed Metal Serum Gloss is a lip product despite "serum" in its
+  // name. Once query understanding resolves that name to lip makeup, do not
+  // spend the external-seed category budget on skincare serum candidates.
+  const metalSerumGlossLipQuery = categoryPathPrefix.startsWith('beauty/makeup/lip/')
+    && /\bmetal\s+serum\s+gloss\b/i.test(rawQuery);
+  if (!metalSerumGlossLipQuery) {
+    for (const family of families) {
+      const familyTerms = BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY[family] || [];
+      familyTerms.forEach(push);
+    }
   }
   if (terms.length === 0 && categoryPathPrefix) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
@@ -21388,7 +21395,10 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (!text) return false;
   const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
   if (prefix.startsWith('beauty/makeup/lip')) {
-    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
+    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text)
+      || /\bmetal\s+serum\s+gloss\b/i.test([
+        product.title, product.name, product.product_type,
+      ].filter(Boolean).join(' '));
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);

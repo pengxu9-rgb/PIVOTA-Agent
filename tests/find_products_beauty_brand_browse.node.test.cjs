@@ -632,6 +632,32 @@ test('KNOWN GAP: a family word inside a makeup query still wins over the categor
   );
 });
 
+test('Metal Serum Gloss sends external-seed recall to lip gloss, not skincare serum', () => {
+  const terms = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('metal serum gloss core drop'),
+  );
+  assert.deepStrictEqual(terms, ['lip gloss', 'lipgloss']);
+});
+
+test('shallow Meitu catalog row passes lip category until the targeted sync repairs it', () => {
+  const contract = buildSearchQualityContract({ rawQuery: 'lip gloss', market: 'SG' });
+  const target = canonicalFentyProduct('meitu_gloss', 'LIP-PRESSION Metal Serum Gloss', {
+    brand: 'JUNGSAEMMOOL',
+    product_type: 'makeup',
+    category_path: 'beauty/makeup',
+    catalog_category_path: 'beauty/makeup',
+  });
+  const unrelated = canonicalFentyProduct('meitu_eyeliner', 'Precision Eyeliner', {
+    brand: 'JUNGSAEMMOOL',
+    product_type: 'makeup',
+    category_path: 'beauty/makeup',
+    catalog_category_path: 'beauty/makeup',
+    description: 'Pairs with Metal Serum Gloss',
+  });
+  assert.equal(getSearchQualityContractHardConstraintResult(target, contract, 'lip gloss').eligible, true);
+  assert.equal(getSearchQualityContractHardConstraintResult(unrelated, contract, 'lip gloss').eligible, false);
+});
+
 test('the skincare, lip and fragrance lanes are unchanged', () => {
   const acne = buildBeautyExternalSeedCategoryTerms(
     inferBeautyMainlineIntent('acne treatment for clogged pores'),

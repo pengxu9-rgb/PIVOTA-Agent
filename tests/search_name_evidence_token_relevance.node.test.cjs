@@ -7,7 +7,7 @@
 //
 // With the arm on, a row's token tier decides the sort before its score does: a row that carries
 // no query token sorts below every row that carries one. An admitted row whose name needs the
-// identity fold ("MÉTAL SERUM GLOSS") must therefore be read folded HERE too, or it is admitted,
+// identity fold ("SÍLVER SERUM GLOSS") must therefore be read folded HERE too, or it is admitted,
 // waived, and then sorted underneath the category rows it was admitted past.
 
 process.env.NODE_ENV = 'test';
@@ -22,7 +22,7 @@ const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUn
 
 const { scoreBeautyExternalSeedProduct, inferBeautyMainlineIntent } = app._debug;
 
-const q = 'Metal Serum Gloss';
+const q = 'Silver Serum Gloss';
 const BASE = {
   product_id: 'p', brand: 'Other', product_type: 'makeup', category: 'makeup',
   category_path: ['beauty', 'makeup'], catalog_category_path: 'beauty/makeup', price: 28.8,
@@ -42,10 +42,10 @@ function score(product) {
 }
 
 test('token relevance ON: an admitted row scores and tiers the same in any spelling the SQL fold admits', () => {
-  const plain = score({ ...BASE, title: 'LIP-PRESSION Metal Serum Gloss' });
+  const plain = score({ ...BASE, title: 'LIP-PRESSION Silver Serum Gloss' });
   assert.equal(plain.token_tier, 1, 'premise: the arm is on and the plain spelling is tier 1');
   assert.ok(plain.token_relevance.count > 0, 'premise: the plain spelling matches tokens');
-  for (const title of ['MÉTAL SERUM GLOSS Sheer', 'M·E·T·A·L Serum Gloss']) {
+  for (const title of ['SÍLVER SERUM GLOSS Sheer', 'S·I·L·V·E·R Serum Gloss']) {
     const folded = score({ ...BASE, product_id: title, title });
     assert.equal(folded.token_tier, 1, title);
     assert.equal(folded.token_relevance.count, plain.token_relevance.count, title);
