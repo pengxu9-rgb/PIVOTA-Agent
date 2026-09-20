@@ -4434,6 +4434,192 @@
      "product_id": "sig_fac2759c2a23b4d79e78ea26f5ea96b0"
     }
    ]
+  },
+  {
+   "at": "2026-09-20T09:33:36.383Z",
+   "reason": "Meitu Metal Serum Gloss is a lip gloss; remove 15 unrelated skincare rows from each of three exact-name query results",
+   "removals": [
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    }
+   ]
   }
  ],
  "eligible": {
@@ -4447,61 +4633,21 @@
    "acceptance_jsm_lip_pression_metal_serum_gloss"
   ],
   "SG|LIP-PRESSION Metal Serum Gloss": [
-   "sig_0eeaf5531b5d030db7200103c6b4dd99",
-   "sig_1a393588f1027838a40061dfdc9780f6",
-   "sig_21e31e2bc4cb763ab5571478c054f9fd",
-   "sig_27e4c24d94c4782860cc61b6aacd8b16",
-   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
-   "sig_55e587e4488533b62e38d9129c1cdbfb",
-   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
-   "sig_7497d08a068dfcff5b85cee968938df3",
-   "sig_828494096e7479ef8766122935cad578",
-   "sig_9f36092e036ab8b51851aff88d2770b7",
-   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
-   "sig_af30012522e81d9958ffbb12dc4db929",
-   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
-   "sig_d497a03becbc747648bc2e1aa3dc78a6",
-   "sig_dceeaeecb573b4e85896241a0874f7da"
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_969e5c3f22bae18ed48877c672d76cd6"
   ],
   "SG|JUNG SAEM MOOL LIP-PRESSION Metal Serum Gloss": [
    "acceptance_jsm_lip_pression_metal_serum_gloss"
   ],
-  "SG|Metal Serum Gloss": [
-   "sig_0eeaf5531b5d030db7200103c6b4dd99",
-   "sig_1a393588f1027838a40061dfdc9780f6",
-   "sig_21e31e2bc4cb763ab5571478c054f9fd",
-   "sig_27e4c24d94c4782860cc61b6aacd8b16",
-   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
-   "sig_55e587e4488533b62e38d9129c1cdbfb",
-   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
-   "sig_7497d08a068dfcff5b85cee968938df3",
-   "sig_828494096e7479ef8766122935cad578",
-   "sig_9f36092e036ab8b51851aff88d2770b7",
-   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
-   "sig_af30012522e81d9958ffbb12dc4db929",
-   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
-   "sig_d497a03becbc747648bc2e1aa3dc78a6",
-   "sig_dceeaeecb573b4e85896241a0874f7da"
+  "SG|Metal Serum Gloss": [],
+  "SG|metal serum gloss core drop": [],
+  "SG|jung saem mool lip gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
   ],
-  "SG|metal serum gloss core drop": [
-   "sig_0eeaf5531b5d030db7200103c6b4dd99",
-   "sig_1a393588f1027838a40061dfdc9780f6",
-   "sig_21e31e2bc4cb763ab5571478c054f9fd",
-   "sig_27e4c24d94c4782860cc61b6aacd8b16",
-   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
-   "sig_55e587e4488533b62e38d9129c1cdbfb",
-   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
-   "sig_7497d08a068dfcff5b85cee968938df3",
-   "sig_828494096e7479ef8766122935cad578",
-   "sig_9f36092e036ab8b51851aff88d2770b7",
-   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
-   "sig_af30012522e81d9958ffbb12dc4db929",
-   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
-   "sig_d497a03becbc747648bc2e1aa3dc78a6",
-   "sig_dceeaeecb573b4e85896241a0874f7da"
-  ],
-  "SG|jung saem mool lip gloss": [],
   "SG|lip gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
    "sig_057e0cb7eef677d6b618bb61dd5f7e33",
    "sig_0a82e5235340b31ec9e9e013b652e011",
    "sig_0bb06c0b588b111f2bd72170a408caf5",
@@ -4556,6 +4702,7 @@
    "sig_fb21a0b6e0b1a37f3ed3d28352751813"
   ],
   "SG|唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
    "sig_057e0cb7eef677d6b618bb61dd5f7e33",
    "sig_0a82e5235340b31ec9e9e013b652e011",
    "sig_0bb06c0b588b111f2bd72170a408caf5",
@@ -4610,6 +4757,7 @@
    "sig_fb21a0b6e0b1a37f3ed3d28352751813"
   ],
   "SG|染色唇漆唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
    "sig_057e0cb7eef677d6b618bb61dd5f7e33",
    "sig_0a82e5235340b31ec9e9e013b652e011",
    "sig_0bb06c0b588b111f2bd72170a408caf5",
@@ -4663,7 +4811,9 @@
    "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
    "sig_fb21a0b6e0b1a37f3ed3d28352751813"
   ],
-  "SG|JUNG SAEM MOOL 唇彩": [],
+  "SG|JUNG SAEM MOOL 唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
   "SG|serum": [
    "sig_0eeaf5531b5d030db7200103c6b4dd99",
    "sig_1a393588f1027838a40061dfdc9780f6",
@@ -5046,6 +5196,7 @@
    "sig_cec0c63fa0d7eebbe8487c63c83a436f"
   ],
   "SG|Vitamin Nourishing Lip Balm": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
    "sig_057e0cb7eef677d6b618bb61dd5f7e33",
    "sig_0a82e5235340b31ec9e9e013b652e011",
    "sig_0bb06c0b588b111f2bd72170a408caf5",
@@ -5100,6 +5251,7 @@
    "sig_fb21a0b6e0b1a37f3ed3d28352751813"
   ],
   "SG|Joli Rouge": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
    "sig_057e0cb7eef677d6b618bb61dd5f7e33",
    "sig_0a82e5235340b31ec9e9e013b652e011",
    "sig_0bb06c0b588b111f2bd72170a408caf5",
