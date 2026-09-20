@@ -35,7 +35,7 @@ test('market_requested is capped: free text cannot bloat every line or become an
 test('observeBoundMarket records exactly what the door hands it, and never throws', () => {
   const store = {};
   mt.observeBoundMarket(store, { search: { market: 'SG' }, metadata: {}, markets: ['SG'] });
-  assert.deepEqual(store, { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'] });
+  assert.deepEqual(store, { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null });
   // A copy, so a later mutation of the door's array cannot rewrite history.
   const markets = ['US'];
   const store2 = {};
@@ -47,11 +47,24 @@ test('observeBoundMarket records exactly what the door hands it, and never throw
   assert.doesNotThrow(() => mt.observeBoundMarket(undefined, {}));
 });
 
+test('Stage 0a: the buyer currency the door scoped by is recorded beside what it bound, and reaches the record', () => {
+  const store = {};
+  mt.observeBoundMarket(store, { search: { market: 'SG' }, metadata: {}, markets: ['US', 'SG'], buyerCurrency: 'SGD' });
+  assert.equal(store.market_buyer_currency, 'SGD');
+  assert.deepEqual(store.market_bound, ['US', 'SG']);
+  const record = mt.buildMarketTelemetry({ operation: 'find_products_multi', observation: store, body: { products: [] }, stages: [] });
+  assert.equal(record.market_buyer_currency, 'SGD');
+  // Absent (flag off, or a market it could not price) is null, never a guessed currency.
+  const off = {};
+  mt.observeBoundMarket(off, { search: { market: 'SG' }, metadata: {}, markets: ['SG'] });
+  assert.equal(off.market_buyer_currency, null);
+});
+
 test('an unbound request reads a FLAT payload the way the early lane does, and claims no binding', () => {
   // Review of #2239 case B/C: `{query, market}` with no `search` object was counted as
   // `defaulted`. The early lane reads the payload itself when `search` is not a plain object.
   assert.deepEqual(mt.describeUnboundRequest({ query: 'x', market: 'SG' }, {}),
-    { market_observed: false, market_requested: 'SG', market_source: 'explicit_search', market_bound: null });
+    { market_observed: false, market_requested: 'SG', market_source: 'explicit_search', market_bound: null, market_buyer_currency: null });
   assert.deepEqual(mt.describeUnboundRequest({ search: { market: 'SG' } }, {}).market_requested, 'SG');
   // A non-object `search` falls back to the payload, as the lane does.
   assert.equal(mt.describeUnboundRequest({ search: 'oops', market: 'JP' }, {}).market_requested, 'JP');
@@ -132,7 +145,7 @@ test('the record is emitted for find_products_multi ONLY, and its keys are all n
     stages: [{ lane: 'early_indexed' }],
   });
   assert.deepEqual(record, {
-    market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'],
+    market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null,
     served_currencies: ['SGD'], served_currency_mismatch: false, served_price_sources: { canonical_chain: 1 },
     lane: 'early_indexed',
   });

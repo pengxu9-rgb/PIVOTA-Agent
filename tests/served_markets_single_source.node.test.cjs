@@ -282,8 +282,16 @@ test('every lane takes its markets from laneMarkets, not by re-deriving from the
     'element however the deployment is configured.');
   assert.ok(!/const markets = \[market\]/.test(src),
     'a lane rebuilds `markets` from the already-collapsed scalar.');
-  assert.ok(/const markets = marketsForRequest\(search\.market \|\| metadata\.market\)/.test(src),
+  // Stage 0a routes the mainline's resolution through buyerMarket.js, whose unchanged path IS
+  // marketsForRequest and whose buyer path is the served LIST (plus the named partition) --
+  // both pinned below, and at runtime by tests/buyer_market.node.test.cjs.
+  assert.ok(/const \{ markets, buyerCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\)/.test(src),
     'the beauty mainline no longer resolves a LIST before handing it down.');
+  const buyer = fs.readFileSync(path.join(ROOT, 'src/services/buyerMarket.js'), 'utf8');
+  assert.ok(/markets: marketsForRequest\(requested, env\)/.test(buyer),
+    'buyerMarket.js no longer falls back to marketsForRequest for an unpriced or silent request.');
+  assert.ok(/const served = servedMarkets\(env\);/.test(buyer) && !/servedMarkets\(env\)\[0\]/.test(buyer),
+    'buyerMarket.js no longer binds the served LIST for a buyer market.');
 });
 
 test('an empty market list is refused, not silently bound', () => {
