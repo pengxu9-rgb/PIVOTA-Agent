@@ -111,3 +111,26 @@ test('REST boundary: `market` reaches search.market only under the flag', () => 
     if (prior === undefined) delete process.env[FLAG]; else process.env[FLAG] = prior;
   }
 });
+
+test('live search price never overlays an already budget-filtered result for parsed prose or structured bounds', async () => {
+  const prior = process.env.SERVE_LIVE_MERCHANT_PRICE;
+  const { maybeOverlayLiveSearchPrice } = require(path.join(ROOT, 'src/server'))._debug;
+  const response = { products: [], metadata: { query_source: 'beauty_external_seed_mainline' } };
+  try {
+    process.env.SERVE_LIVE_MERCHANT_PRICE = 'on';
+    for (const query of [
+      'lip gloss at most SGD 29', 'lip gloss up to 29', 'lip gloss 29元以下',
+      'lip gloss <=29', 'lip gloss under 29', 'lip gloss from 20 to 29',
+    ]) {
+      const result = await maybeOverlayLiveSearchPrice(response, { query });
+      assert.strictEqual(result.metadata.live_merchant_price.skipped_reason, 'budget_constraint', query);
+      assert.strictEqual(result.metadata.live_merchant_price.attempted, false, query);
+    }
+    const structured = await maybeOverlayLiveSearchPrice(response, { query: 'lip gloss', min_price: 20, max_price: 29 });
+    assert.strictEqual(structured.metadata.live_merchant_price.skipped_reason, 'budget_constraint');
+    assert.strictEqual(await maybeOverlayLiveSearchPrice(response, { query: 'lip gloss' }), response);
+  } finally {
+    if (prior === undefined) delete process.env.SERVE_LIVE_MERCHANT_PRICE;
+    else process.env.SERVE_LIVE_MERCHANT_PRICE = prior;
+  }
+});

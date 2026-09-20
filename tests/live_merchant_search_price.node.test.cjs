@@ -36,11 +36,13 @@ test('overlays exact merchant price, retains stored offer on disagreement or fai
   const wrongCurrency = await overlayLiveMerchantSearchPrices({ products: [{ ...card, currency: 'USD' }] }, { fetchImpl });
   assert.equal(wrongCurrency.products[0].price, 28.2);
   assert.equal(wrongCurrency.products[0].price_source, 'catalog_offer');
+  assert.equal(wrongCurrency.metadata.live_merchant_price.failure_reasons.currency_mismatch, 1);
   const unavailable = await overlayLiveMerchantSearchPrices({ products: [{ ...card, destination_url: 'https://another-shop.sg/products/foo' }] }, {
     fetchImpl: async () => { throw new Error('unavailable'); },
   });
   assert.equal(unavailable.products[0].price, 28.2);
   assert.equal(unavailable.products[0].price_source, 'catalog_offer');
+  assert.equal(unavailable.metadata.live_merchant_price.failure_reasons.network_error, 1);
 });
 
 test('limits one storefront to four concurrent reads on a served page', async () => {
@@ -59,4 +61,69 @@ test('limits one storefront to four concurrent reads on a served page', async ()
     },
   });
   assert.equal(peak, 4);
+});
+
+test('sends merchant-compatible headers and reports an HTTP refusal without claiming a live price', async () => {
+  const product = { ...card, destination_url: 'https://header-shop.sg/products/unique' };
+  let request;
+  const live = await overlayLiveMerchantSearchPrices({ products: [product] }, {
+    fetchImpl: async (url, init) => {
+      request = { url, init };
+      return { ok: true, json: async () => body };
+    },
+  });
+  assert.equal(request.url, 'https://header-shop.sg/products/unique.json');
+  assert.match(request.init.headers['User-Agent'], /PivotaCatalog\/1\.0/);
+  assert.equal(request.init.headers.Accept, 'application/json');
+  assert.equal(request.init.redirect, 'error');
+  assert.equal(live.products[0].price, 30);
+  assert.equal(live.metadata.live_merchant_price.fetch_attempt_count, 1);
+
+  const denied = await overlayLiveMerchantSearchPrices({ products: [{ ...product, destination_url: 'https://denied-shop.sg/products/unique' }] }, {
+    fetchImpl: async () => ({ ok: false, status: 403 }),
+  });
+  assert.equal(denied.products[0].price, 28.2);
+  assert.equal(denied.products[0].price_source, 'catalog_offer');
+  assert.equal(denied.metadata.live_merchant_price.verified_count, 0);
+  assert.equal(denied.metadata.live_merchant_price.failure_reasons.http_403, 1);
+});
+
+test('deduplicates simultaneous product JSON reads for distinct variants', async () => {
+  let calls = 0;
+  const variants = [
+    { ...card, source_variant_id: '50856826536257', destination_url: 'https://dedupe-shop.sg/products/unique' },
+    { ...card, source_variant_id: '50865870831937', destination_url: 'https://dedupe-shop.sg/products/unique' },
+  ];
+  const result = await overlayLiveMerchantSearchPrices({ products: variants }, {
+    fetchImpl: async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { ok: true, json: async () => body };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.products.map((p) => p.price), [30, 30]);
+  assert.equal(result.metadata.live_merchant_price.fetch_attempt_count, 1);
+  assert.equal(result.metadata.live_merchant_price.verified_count, 2);
+});
+
+test('twenty slow same-host reads respect one page deadline', async () => {
+  const products = Array.from({ length: 20 }, (_, i) => ({
+    ...card, destination_url: `https://slow-shop.sg/products/unique-${i}`,
+  }));
+  let calls = 0;
+  const started = Date.now();
+  const result = await overlayLiveMerchantSearchPrices({ products }, {
+    timeoutMs: 1000,
+    pageDeadlineMs: 35,
+    fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => {
+      calls += 1;
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }),
+  });
+  assert.ok(Date.now() - started < 500);
+  assert.equal(calls, 4);
+  assert.equal(result.metadata.live_merchant_price.deadline_exceeded, true);
+  assert.equal(result.metadata.live_merchant_price.failure_reasons.deadline_exceeded, 20);
+  assert.ok(result.products.every((p) => p.price === 28.2 && p.price_source === 'catalog_offer'));
 });

@@ -13697,13 +13697,24 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
   );
 }
 
-function maybeOverlayLiveSearchPrice(response, search = {}) {
+function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null } = {}) {
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
   if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
-  // A live price rising above a fixed ceiling would violate the already-applied budget
-  // gate. Defer those queries until the live-price gate can be evaluated on the new value.
-  if (search.max_price != null || search.price_max != null || search.min_price != null || search.price_min != null ||
-      /\b(?:under|below|less than|budget)\s*(?:[A-Z]{3}|S\$|\$)?\s*\d/i.test(String(search.query || ''))) return response;
+  // The mainline has already applied this constraint to stored prices. Repricing now
+  // could return an offer outside the buyer's bound. Use the same resolved intent as
+  // recall, including ranges and non-English phrases, instead of a prose regex.
+  const resolvedBudget = budgetConstraint || resolveBeautyMainlineBudgetConstraint({
+    search, intent, queryText: extractSearchQueryText(search),
+  });
+  if (resolvedBudget && (resolvedBudget.min != null || resolvedBudget.max != null)) {
+    return {
+      ...response,
+      metadata: {
+        ...(response.metadata || {}),
+        live_merchant_price: { attempted: false, skipped_reason: 'budget_constraint' },
+      },
+    };
+  }
   return overlayLiveMerchantSearchPrices(response);
 }
 
@@ -23023,7 +23034,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  }, search);
+  }, search, { intent, budgetConstraint });
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -42576,7 +42587,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
           },
         };
-        return res.status(200).json(await maybeOverlayLiveSearchPrice(bridgeResponse, publicBeautySearch));
+        return res.status(200).json(await maybeOverlayLiveSearchPrice(
+          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget },
+        ));
       } catch (err) {
         logger.warn(
           {
@@ -54532,6 +54545,8 @@ module.exports._debug = {
   stripBeautyTitleAnnotationSuffix,
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
+  maybeOverlayLiveSearchPrice,
+  resolveBeautyMainlineBudgetConstraint,
   queryBeautyExternalSeedRowsFast,
   countNonCanonicalChainProducts,
   // Exported for tests only. The seller carried onto a built row is the thing worth
