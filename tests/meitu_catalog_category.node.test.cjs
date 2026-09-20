@@ -55,40 +55,24 @@ test('ordinary skincare serum stays in the skincare tree', () => {
 
 test('backfill preserves source-confirmed SGD on a US-partition seed', () => {
   const variant = { price: '30.00', currency: 'SGD' };
-  assert.equal(resolveBackfillCurrency({
+  const exact = {
     selectedSnapshotVariant: variant,
     effectiveSnapshotVariants: [variant, { ...variant }],
     hasExtractedVariants: true,
-    row: { market: 'US', price_currency: 'SGD' },
+    row: { market: 'US', price_currency: 'SGD', external_product_id: 'jungsaemmool:615e47aee567b863' },
     seedData: {}, snapshot: {},
-  }), 'SGD');
+  };
+  assert.equal(resolveBackfillCurrency(exact), 'SGD');
+  for (const change of [
+    { hasExtractedVariants: false },
+    { effectiveSnapshotVariants: [variant, { currency: 'USD' }] },
+    { effectiveSnapshotVariants: [variant, { price: '20.00' }] },
+    { seedData: { pricing: { current: { currency: 'USD' } } } },
+  ]) {
+    assert.throws(() => resolveBackfillCurrency({ ...exact, ...change }), /reviewed_meitu_source_currency_conflict/);
+  }
   assert.equal(resolveBackfillCurrency({
-    selectedSnapshotVariant: variant,
-    effectiveSnapshotVariants: [variant, { currency: 'USD' }],
-    hasExtractedVariants: true,
-    row: { market: 'US', price_currency: 'SGD' },
-    seedData: {}, snapshot: {},
-  }), 'USD');
-  assert.equal(resolveBackfillCurrency({
-    selectedSnapshotVariant: variant,
-    effectiveSnapshotVariants: [variant],
-    hasExtractedVariants: false,
-    row: { market: 'US', price_currency: 'SGD' },
-    seedData: {}, snapshot: {},
-  }), 'USD');
-  assert.equal(resolveBackfillCurrency({
-    selectedSnapshotVariant: variant,
-    effectiveSnapshotVariants: [variant, { price: '20.00' }],
-    hasExtractedVariants: true,
-    row: { market: 'US', price_currency: 'SGD' },
-    seedData: {}, snapshot: {},
-  }), 'USD');
-  assert.equal(resolveBackfillCurrency({
-    selectedSnapshotVariant: variant,
-    effectiveSnapshotVariants: [variant],
-    hasExtractedVariants: true,
-    row: { market: 'US', price_currency: 'SGD' },
-    seedData: { pricing: { current: { currency: 'USD' } } }, snapshot: {},
+    ...exact, row: { market: 'US', price_currency: 'SGD', external_product_id: 'another:product' },
   }), 'USD');
 });
 

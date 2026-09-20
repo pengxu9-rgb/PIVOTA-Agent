@@ -208,20 +208,23 @@ function extractCurrentPricingCurrency(value) {
 }
 
 function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, hasExtractedVariants = false, row, seedData, snapshot }) {
-  // A legacy seed can live in the US partition while its direct merchant PDP
-  // is priced in SGD. When every extracted variant agrees with the seed's
-  // stored currency, that source-backed currency outranks the partition's
-  // default. This does not change a US/USD row or trust mixed-currency data.
-  const storedCurrency = normalizeCurrencyCode(row?.price_currency);
-  const variants = Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [];
-  const declaredCurrencies = [
-    extractCurrentPricingCurrency(seedData?.pricing),
-    extractCurrentPricingCurrency(snapshot?.pricing),
-  ].filter(Boolean);
-  if (hasExtractedVariants && storedCurrency && variants.length > 0
-      && variants.every((variant) => normalizeCurrencyCode(variant?.currency) === storedCurrency)
-      && declaredCurrencies.every((currency) => currency === storedCurrency)) {
-    return storedCurrency;
+  // This reviewed direct PDP is SGD even though its legacy seed lives in the
+  // US partition. Require fresh, unanimous source currency and no conflicting
+  // stored pricing. Failing the backfill is safer than relabeling SGD 30 as
+  // USD 30. Leave unrelated seeds on their existing resolution policy.
+  if (normalizeNonEmptyString(row?.external_product_id) === 'jungsaemmool:615e47aee567b863') {
+    const storedCurrency = normalizeCurrencyCode(row?.price_currency);
+    const variants = Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [];
+    const declaredCurrencies = [
+      extractCurrentPricingCurrency(seedData?.pricing),
+      extractCurrentPricingCurrency(snapshot?.pricing),
+    ].filter(Boolean);
+    if (!hasExtractedVariants || storedCurrency !== 'SGD' || variants.length === 0
+        || !variants.every((variant) => normalizeCurrencyCode(variant?.currency) === 'SGD')
+        || declaredCurrencies.some((currency) => currency !== 'SGD')) {
+      throw new Error('reviewed_meitu_source_currency_conflict');
+    }
+    return 'SGD';
   }
   return (
     extractCurrentPricingCurrency(seedData?.pricing) ||
