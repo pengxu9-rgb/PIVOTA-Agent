@@ -3399,7 +3399,7 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
   return products[0];
 }
 
-function mapSnapshotVariants(product, response, existingSeedData) {
+function mapSnapshotVariants(product, response, existingSeedData, { allowSeedFallback = true } = {}) {
   const responseVariants = Array.isArray(response?.variants) ? response.variants : [];
   const productDetailSections = normalizeDetailsSections(product?.details_sections || product?.pdp_details_sections);
   const normalizeBooleanLike = (value) => (
@@ -3523,7 +3523,7 @@ function mapSnapshotVariants(product, response, existingSeedData) {
       ...sanitizeSeedVariantDisplayFields(variant),
     }));
   }
-  return normalizeSeedVariants(existingSeedData, null);
+  return allowSeedFallback ? normalizeSeedVariants(existingSeedData, null) : [];
 }
 
 function variantLooksHiddenOrQuarantined(variant = {}) {
@@ -4005,7 +4005,10 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
   const existingRawSnapshotVariants = Array.isArray(snapshot.variants) ? cloneJsonValue(snapshot.variants) : [];
   const existingSeedVariants = normalizeSeedVariants(seedData, row);
   const existingSnapshotVariants = normalizeSeedVariants(snapshot, row);
-  const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
+  const freshSnapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData, { allowSeedFallback: false });
+  const snapshotVariants = freshSnapshotVariants.length > 0
+    ? freshSnapshotVariants
+    : normalizeSeedVariants(seedData, null);
   const effectiveSnapshotVariants =
     preserveCommerce ? existingSeedVariants : fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
   const selectedSnapshotVariant = pickVariantByHints(effectiveSnapshotVariants, [
@@ -4808,7 +4811,9 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
     selectedSnapshotVariant,
     effectiveSnapshotVariants,
     hasExtractedVariants: !preserveCommerce && Array.isArray(representativeProduct?.variants)
-      && representativeProduct.variants.length > 0,
+      && representativeProduct.variants.length > 0
+      && freshSnapshotVariants.length === representativeProduct.variants.length
+      && freshSnapshotVariants.every((variant) => (parsePrice(variant.price) || 0) > 0),
     row,
     seedData,
     snapshot,
