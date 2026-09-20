@@ -272,12 +272,10 @@ function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
 }
 
 function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title = '', textCandidates = [] } = {}) {
-  const reviewedCategory = seedData.source_derived_category_v1;
   if (String(row.external_product_id || '').trim() === 'jungsaemmool:615e47aee567b863'
       && String(row.domain || '').trim().toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
-      && reviewedCategory?.source_kind === 'reviewed_merchant_product_type'
-      && reviewedCategory?.category === 'Lip Gloss'
       && normalizeRecallLeafCategory(seedData.category) === 'Lip Gloss'
+      && normalizeRecallLeafCategory(snapshot.category) === 'Lip Gloss'
       && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
       && !/[+&]|\band\b|\b(?:set|kit|bundle|duo|trio)\b/i.test(title)) {
     return 'Lip Gloss';

@@ -108,9 +108,9 @@ test('reviewed Lip Gloss survives title-first recall document classification', (
   const seedData = {
     title: targetRow.title,
     category: 'Lip Gloss',
-    source_derived_category_v1: { category: 'Lip Gloss', source_kind: 'reviewed_merchant_product_type' },
   };
   assert.equal(buildExternalSeedRecallDoc({ row: targetRow, seedData, snapshot: { category: 'Lip Gloss' } }).category, 'Lip Gloss');
-  assert.notEqual(buildExternalSeedRecallDoc({ row: { ...targetRow, domain: 'other.example' }, seedData, snapshot: {} }).category, 'Lip Gloss');
-  assert.notEqual(buildExternalSeedRecallDoc({ row: targetRow, seedData: { ...seedData, category: 'Hair Serum' }, snapshot: {} }).category, 'Lip Gloss');
+  assert.notEqual(buildExternalSeedRecallDoc({ row: { ...targetRow, domain: 'other.example' }, seedData, snapshot: { category: 'Lip Gloss' } }).category, 'Lip Gloss');
+  assert.notEqual(buildExternalSeedRecallDoc({ row: targetRow, seedData: { ...seedData, category: 'Hair Serum' }, snapshot: { category: 'Lip Gloss' } }).category, 'Lip Gloss');
+  assert.notEqual(buildExternalSeedRecallDoc({ row: targetRow, seedData, snapshot: {} }).category, 'Lip Gloss');
 });
