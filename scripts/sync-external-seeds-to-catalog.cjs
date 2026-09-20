@@ -706,8 +706,11 @@ function inferCatalogMirrorCategory(row) {
   // The reviewed jsmbeauty.sg line is a lip gloss despite "Serum" in its
   // title. Only fill missing or shallow source classification; a precise
   // merchant category and bundle classification above retain precedence.
-  if (asString(row.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
-      && /\blip[-\s]*pression\b.*\bgloss\b/.test(titleOnlyCategoryText(row))) {
+  const reviewedTitle = titleOnlyCategoryText(row);
+  if (asString(row.external_product_id) === 'jungsaemmool:615e47aee567b863'
+      && asString(row.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+      && /\blip[-\s]*pression\b.*\bgloss\b/.test(reviewedTitle)
+      && !/[+&]|\band\b/.test(asString(row.title).toLowerCase())) {
     return { productType: 'Lip Gloss', category: 'Lip Gloss', categoryPath: 'beauty/makeup/lip/gloss' };
   }
 

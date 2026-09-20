@@ -207,15 +207,20 @@ function extractCurrentPricingCurrency(value) {
   );
 }
 
-function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, row, seedData, snapshot }) {
+function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, hasExtractedVariants = false, row, seedData, snapshot }) {
   // A legacy seed can live in the US partition while its direct merchant PDP
   // is priced in SGD. When every extracted variant agrees with the seed's
   // stored currency, that source-backed currency outranks the partition's
   // default. This does not change a US/USD row or trust mixed-currency data.
   const storedCurrency = normalizeCurrencyCode(row?.price_currency);
-  const sourceCurrencies = new Set((Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [])
-    .map((variant) => normalizeCurrencyCode(variant?.currency)).filter(Boolean));
-  if (storedCurrency && sourceCurrencies.size === 1 && sourceCurrencies.has(storedCurrency)) {
+  const variants = Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [];
+  const declaredCurrencies = [
+    extractCurrentPricingCurrency(seedData?.pricing),
+    extractCurrentPricingCurrency(snapshot?.pricing),
+  ].filter(Boolean);
+  if (hasExtractedVariants && storedCurrency && variants.length > 0
+      && variants.every((variant) => normalizeCurrencyCode(variant?.currency) === storedCurrency)
+      && declaredCurrencies.every((currency) => currency === storedCurrency)) {
     return storedCurrency;
   }
   return (
@@ -4799,6 +4804,8 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
   const currency = resolveBackfillCurrency({
     selectedSnapshotVariant,
     effectiveSnapshotVariants,
+    hasExtractedVariants: !preserveCommerce && Array.isArray(representativeProduct?.variants)
+      && representativeProduct.variants.length > 0,
     row,
     seedData,
     snapshot,
@@ -6348,9 +6355,18 @@ function deriveSourceBackedCategoryFromProductText(representativeProduct, row = 
   // Verified on the merchant's direct Shopify PDP: this line's product_type
   // is Lip Gloss. The extractor omits product_type, so title-only inference
   // otherwise mistakes its texture word "Serum" for a skincare category.
-  if (normalizeNonEmptyString(row?.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+  const priorSeedData = ensureJsonObject(row?.seed_data);
+  const priorSnapshot = ensureJsonObject(priorSeedData.snapshot);
+  const priorKind = [priorSeedData.product_kind, priorSeedData.product_family,
+    priorSnapshot.product_kind, priorSnapshot.product_family].map(normalizeNonEmptyString).join(' ');
+  const priorBundle = /\b(?:bundle|set|set_or_collection|collection)\b/i.test(priorKind)
+    || (Array.isArray(priorSeedData.bundle_components) && priorSeedData.bundle_components.length > 0)
+    || (Array.isArray(priorSnapshot.bundle_components) && priorSnapshot.bundle_components.length > 0);
+  if (normalizeNonEmptyString(row?.external_product_id) === 'jungsaemmool:615e47aee567b863'
+      && normalizeNonEmptyString(row?.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
       && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
-      && !/\b(?:set|kit|bundle|duo|trio)\b/i.test(title)) {
+      && !/[+&]|\band\b|\b(?:set|kit|bundle|duo|trio)\b/i.test(title)
+      && !priorBundle) {
     return {
       category: 'Lip Gloss',
       source_kind: 'reviewed_merchant_product_type',

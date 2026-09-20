@@ -8,7 +8,8 @@ const { resolveBackfillCurrency, deriveSourceBackedCategoryFromProductText } =
   require('../scripts/backfill-external-product-seeds-catalog.js');
 
 function row(title) {
-  return { title, domain: 'jsmbeauty.sg', seed_data: {}, status: 'active' };
+  return { title, external_product_id: 'jungsaemmool:615e47aee567b863',
+    domain: 'jsmbeauty.sg', seed_data: {}, status: 'active' };
 }
 
 test('merchant lip-pression serum gloss is indexed as lip gloss', () => {
@@ -25,6 +26,10 @@ test('a bundle mentioning the same gloss remains a set', () => {
 test('another merchant and an explicit category are not overridden', () => {
   assert.notEqual(
     inferCatalogMirrorCategory({ ...row('LIP-PRESSION Metal Serum Gloss'), domain: 'other.example' }).categoryPath,
+    'beauty/makeup/lip/gloss',
+  );
+  assert.notEqual(
+    inferCatalogMirrorCategory({ ...row('LIP-PRESSION Metal Serum Gloss'), external_product_id: 'another:product' }).categoryPath,
     'beauty/makeup/lip/gloss',
   );
   assert.equal(
@@ -53,22 +58,52 @@ test('backfill preserves source-confirmed SGD on a US-partition seed', () => {
   assert.equal(resolveBackfillCurrency({
     selectedSnapshotVariant: variant,
     effectiveSnapshotVariants: [variant, { ...variant }],
+    hasExtractedVariants: true,
     row: { market: 'US', price_currency: 'SGD' },
     seedData: {}, snapshot: {},
   }), 'SGD');
   assert.equal(resolveBackfillCurrency({
     selectedSnapshotVariant: variant,
     effectiveSnapshotVariants: [variant, { currency: 'USD' }],
+    hasExtractedVariants: true,
     row: { market: 'US', price_currency: 'SGD' },
     seedData: {}, snapshot: {},
+  }), 'USD');
+  assert.equal(resolveBackfillCurrency({
+    selectedSnapshotVariant: variant,
+    effectiveSnapshotVariants: [variant],
+    hasExtractedVariants: false,
+    row: { market: 'US', price_currency: 'SGD' },
+    seedData: {}, snapshot: {},
+  }), 'USD');
+  assert.equal(resolveBackfillCurrency({
+    selectedSnapshotVariant: variant,
+    effectiveSnapshotVariants: [variant, { price: '20.00' }],
+    hasExtractedVariants: true,
+    row: { market: 'US', price_currency: 'SGD' },
+    seedData: {}, snapshot: {},
+  }), 'USD');
+  assert.equal(resolveBackfillCurrency({
+    selectedSnapshotVariant: variant,
+    effectiveSnapshotVariants: [variant],
+    hasExtractedVariants: true,
+    row: { market: 'US', price_currency: 'SGD' },
+    seedData: { pricing: { current: { currency: 'USD' } } }, snapshot: {},
   }), 'USD');
 });
 
 test('backfill labels only the source-verified merchant line as lip gloss', () => {
   const product = { title: 'LIP-PRESSION Metal Serum Gloss' };
-  assert.equal(deriveSourceBackedCategoryFromProductText(product, { domain: 'jsmbeauty.sg' })?.category, 'Lip Gloss');
-  assert.notEqual(deriveSourceBackedCategoryFromProductText(product, { domain: 'other.example' })?.category, 'Lip Gloss');
+  const reviewed = { domain: 'jsmbeauty.sg', external_product_id: 'jungsaemmool:615e47aee567b863' };
+  assert.equal(deriveSourceBackedCategoryFromProductText(product, reviewed)?.category, 'Lip Gloss');
+  assert.notEqual(deriveSourceBackedCategoryFromProductText(product, { ...reviewed, domain: 'other.example' })?.category, 'Lip Gloss');
   assert.notEqual(deriveSourceBackedCategoryFromProductText(
-    { title: 'LIP-PRESSION Metal Serum Gloss Set' }, { domain: 'jsmbeauty.sg' },
+    { title: 'LIP-PRESSION Metal Serum Gloss Set' }, reviewed,
   )?.category, 'Lip Gloss');
+  assert.notEqual(deriveSourceBackedCategoryFromProductText(
+    { title: 'Artist Cushion Blush + LIP-PRESSION Metal Serum Gloss' }, reviewed,
+  )?.category, 'Lip Gloss');
+  assert.notEqual(deriveSourceBackedCategoryFromProductText(product, {
+    ...reviewed, seed_data: { product_family: 'set_or_collection' },
+  })?.category, 'Lip Gloss');
 });
