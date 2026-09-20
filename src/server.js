@@ -9,6 +9,7 @@ require('dotenv').config();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
+const { resolveBuyerMarketScope, isEnabled: isBuyerMarketEnabled } = require('./services/buyerMarket');
 
 const express = require('express');
 const axios = require('axios');
@@ -22379,9 +22380,17 @@ async function searchBeautyExternalSeedProductsMainline({
   // re-ran `marketsForRequest('US')` = ['US'] — so the door bound one market no matter what the
   // env said, while every constant, default and test looked correct. `markets` is what the SQL
   // binds; `market` is the ONE NAME for telemetry, the KR bridge and card stamping.
-  const markets = marketsForRequest(search.market || metadata.market);
+  //
+  // Stage 0a (FIND_PRODUCTS_BUYER_MARKET): a named market the door can price is the BUYER's
+  // market, not a partition -- the lanes bind the served partitions and `buyerCurrency` scopes
+  // the offers below. `market` therefore stays a LANE market: canonical's `marketId` filters
+  // on it, and the buyer's code there would bind the empty partition. Flag off, or a market it
+  // cannot price: exactly `marketsForRequest(...)`, as before.
+  const { markets, buyerCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
-  marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), { search, metadata, markets });
+  marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
+    search, metadata, markets, buyerCurrency,
+  });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
@@ -22537,9 +22546,29 @@ async function searchBeautyExternalSeedProductsMainline({
   );
   const canonicalLimit = 200;
   const canonicalStartedAt = Date.now();
-  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
-  const explicitOfferCurrency = budgetConstraint ? null : firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
-  const primaryOfferScope = { currency: explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
+  const callerOfferCurrency = firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
+  const resolvedBudgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
+  // A named buyer who states no currency is budgeting in their OWN money. The resolver cannot say
+  // so: it stamps USD on every unstated budget (getProductPriceCurrency's '' fallback normalises to
+  // 'USD'), so an SG buyer's "under 25" became US$25 and every SGD row without an FX rate was
+  // dropped. So the test is the CALLER's currency fields, not the budget's currency. "$" in query
+  // text is read the same way: for an SG buyer it is S$. A copy -- the resolver may hand back
+  // intent state.
+  const budgetConstraint = resolvedBudgetConstraint && buyerCurrency && !callerOfferCurrency
+    ? { ...resolvedBudgetConstraint, currency: buyerCurrency }
+    : resolvedBudgetConstraint;
+  // The caller's explicit currency wins; the buyer's market fills in only when there is none.
+  // A budget keeps its own ranges (denominated in the buyer's currency above when the caller
+  // stated none, so "under 30" for an SG buyer is S$30), and the buyer's currency scopes BOTH
+  // recall -- so off-currency rows cannot consume the candidate cut -- and the page, via the
+  // post-filter below: a named buyer is never shown a price in another currency. With no buyer
+  // currency every expression here reduces to the pre-Stage-0a one.
+  const explicitOfferCurrency = budgetConstraint
+    ? null
+    : (buyerCurrency && !callerOfferCurrency ? buyerCurrency : callerOfferCurrency);
+  const servedOfferCurrency = explicitOfferCurrency
+    || (budgetConstraint && buyerCurrency && !callerOfferCurrency ? buyerCurrency : null);
+  const primaryOfferScope = { currency: servedOfferCurrency || explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22583,7 +22612,12 @@ async function searchBeautyExternalSeedProductsMainline({
     // Round Lab (market=KR) products were leaking into US users'
     // canonical_chain results despite the external-seed-direct path
     // already filtering correctly.
-    marketId: market,
+    //
+    // Stage 0a: under a buyer currency the partition comparison is bypassed and the offer
+    // currency conjunct (offerScope.currency, below) does the scoping instead -- the design's
+    // rank-v2 bypass. Keeping it would bind one partition's `recall_market`, which is exactly
+    // the partition-vs-buyer confusion this flag removes. No buyer currency: unchanged.
+    marketId: buyerCurrency ? null : market,
     markets,
     // Phase 7d backfill (pivota-backend #399 + #401, 2026-05-09)
     // populated the catalog_skus + catalog_offers chain for all 3,936
@@ -22732,8 +22766,8 @@ async function searchBeautyExternalSeedProductsMainline({
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
   const budgetEligibleProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
-  const rankedProducts = explicitOfferCurrency
-    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === explicitOfferCurrency.trim().toUpperCase())
+  const rankedProducts = servedOfferCurrency
+    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === servedOfferCurrency.trim().toUpperCase())
     : budgetEligibleProducts;
   const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
@@ -23654,6 +23688,16 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
 
   const catalogSurface = String(firstQueryParamValue(query.catalog_surface || query.catalogSurface) || '').trim();
   if (catalogSurface) search.catalog_surface = catalogSurface;
+
+  // The buyer's market, as the caller sent it. This builder never copied it, so `GET
+  // /agent/v1/products/search?market=SG` silently served the default partition -- the REST
+  // door ignored a field its own invoke door honours. Forwarded verbatim (the door parses it)
+  // and ONLY under Stage 0a: without the flag, a named SG binds the empty partition, and
+  // plumbing it would turn today's mixed page into zero.
+  if (isBuyerMarketEnabled()) {
+    const buyerMarket = String(firstQueryParamValue(query.market) || '').trim();
+    if (buyerMarket) search.market = buyerMarket;
+  }
 
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
