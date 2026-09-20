@@ -125,15 +125,15 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
-      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "status": "pass",
       "live": {
         "top_n": 5,
         "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "reason": "Isolated gateway-00303-zag passed on 2026-09-20; stable gateway revision has not received this fix",
+        "tracked_by": "promote PIVOTA-Agent #2246 to the stable gateway and rerun live acceptance"
       }
+    ,
+      "fixed_by": "PIVOTA-Agent #2246"
     },
     {
       "id": "meitu_variant_name",
@@ -147,15 +147,15 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
-      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "status": "pass",
       "live": {
         "top_n": 5,
         "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "reason": "Isolated gateway-00303-zag passed on 2026-09-20; stable gateway revision has not received this fix",
+        "tracked_by": "promote PIVOTA-Agent #2246 to the stable gateway and rerun live acceptance"
       }
+    ,
+      "fixed_by": "PIVOTA-Agent #2246"
     },
     {
       "id": "meitu_brand_category",

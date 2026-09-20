@@ -19736,9 +19736,15 @@ function inferBeautyMainlineIntent(queryText = '') {
   ) {
     families.add('moisturizer');
   }
+  // "Metal Serum Gloss" is a reviewed lip-gloss name. Treating its embedded
+  // "serum" as a skincare family removes the product after lip-category recall.
+  const namedMetalSerumGloss = /\bmetal\s+serum\s+gloss\b/i.test(raw);
+  const serumIntentText = namedMetalSerumGloss
+    ? raw.replace(/\bmetal\s+serum\s+gloss\b/ig, ' ')
+    : raw;
   if (
-    /\b(serum|essence|ampoule|vitamin\s*c|ascorbic|azelaic|niacinamide|tranexamic|brighten|brightening|anti[-\s]?aging|peptide)\b/i.test(raw) ||
-    /精华|精華|提亮|淡斑|抗老|胜肽|煙酰胺|烟酰胺|壬二酸|传明酸|傳明酸/.test(raw)
+    /\b(serum|essence|ampoule|vitamin\s*c|ascorbic|azelaic|niacinamide|tranexamic|brighten|brightening|anti[-\s]?aging|peptide)\b/i.test(serumIntentText) ||
+    /精华|精華|提亮|淡斑|抗老|胜肽|煙酰胺|烟酰胺|壬二酸|传明酸|傳明酸/.test(serumIntentText)
   ) {
     families.add('serum');
   }
@@ -20569,7 +20575,11 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     beautyProductIsLipCareSurface(product) &&
     !beautyQueryRequestsLipCare(queryText) &&
     (
-      /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|oily|dry|acne|pregnan\w*|ttc|brighten|brightening|moisturi[sz]er|serum|barrier|repair|daily\s+sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|油皮|干皮|乾皮|痘|孕|提亮|保湿|保濕|屏障|修护|修護/.test(normalizedQuery) ||
+      // The reviewed lip-gloss name contains "serum"; only the name itself is
+      // exempt. A separate face/skin/serum request still rejects lip products.
+      /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|oily|dry|acne|pregnan\w*|ttc|brighten|brightening|moisturi[sz]er|serum|barrier|repair|daily\s+sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|油皮|干皮|乾皮|痘|孕|提亮|保湿|保濕|屏障|修护|修護/.test(
+        normalizedQuery.replace(/\bmetal\s+serum\s+gloss\b/g, ' '),
+      ) ||
       profile.families.length > 1
     )
   ) {

@@ -17,6 +17,7 @@ const {
   filterSearchServingEligibleProducts,
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
+  isBeautyProductContraindicatedForQuery,
   resolveBeautyBrandBrowseQuery,
   scoreBeautyExternalSeedProduct,
 } = app._debug;
@@ -637,6 +638,38 @@ test('Metal Serum Gloss sends external-seed recall to lip gloss, not skincare se
     inferBeautyMainlineIntent('metal serum gloss core drop'),
   );
   assert.deepStrictEqual(terms, ['lip gloss', 'lipgloss']);
+});
+
+test('Metal Serum Gloss name and shade do not trigger the skincare serum rank gate', () => {
+  for (const query of ['Metal Serum Gloss', 'metal serum gloss core drop', 'LIP-PRESSION Metal Serum Gloss']) {
+    const intent = inferBeautyMainlineIntent(query);
+    assert.equal(intent.beautyLike, true);
+    assert.deepStrictEqual(intent.families, []);
+    assert.deepStrictEqual(buildBeautyExternalSeedCategoryTerms(intent), ['lip gloss', 'lipgloss']);
+  }
+  assert.deepStrictEqual(inferBeautyMainlineIntent('hyaluronic serum').families, ['serum']);
+  assert.deepStrictEqual(inferBeautyMainlineIntent('Metal Serum Gloss with niacinamide serum').families, ['serum']);
+});
+
+test('a canonical lip gloss survives short-name scoring while separate skincare intent rejects it', () => {
+  const product = canonicalFentyProduct('meitu_gloss', 'LIP-PRESSION Metal Serum Gloss', {
+    brand: 'JUNGSAEMMOOL', category: 'Lip Gloss', product_type: 'Lip Gloss',
+    category_path: 'beauty/makeup/lip/gloss', catalog_category_path: 'beauty/makeup/lip/gloss',
+    currency: 'SGD', price: 30,
+  });
+  for (const query of ['Metal Serum Gloss', 'metal serum gloss core drop']) {
+    const intent = inferBeautyMainlineIntent(query);
+    assert.equal(isBeautyProductContraindicatedForQuery(product, query, intent), false, query);
+    const scored = scoreBeautyExternalSeedProduct({
+      product, queryText: query, intent, normalizedQuery: query.toLowerCase(),
+      queryTokens: query.toLowerCase().split(/\s+/),
+      searchQualityContract: buildSearchQualityContract({ rawQuery: query, market: 'SG' }),
+    });
+    assert.equal(scored.relevant, true, query);
+  }
+  for (const query of ['face serum', 'Metal Serum Gloss for face serum']) {
+    assert.equal(isBeautyProductContraindicatedForQuery(product, query, inferBeautyMainlineIntent(query)), true, query);
+  }
 });
 
 test('shallow Meitu catalog row passes lip category until the targeted sync repairs it', () => {
