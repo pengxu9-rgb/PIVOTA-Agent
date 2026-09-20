@@ -632,6 +632,13 @@ test('KNOWN GAP: a family word inside a makeup query still wins over the categor
   );
 });
 
+test('Metal Serum Gloss sends external-seed recall to lip gloss, not skincare serum', () => {
+  const terms = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('metal serum gloss core drop'),
+  );
+  assert.deepStrictEqual(terms, ['lip gloss', 'lipgloss']);
+});
+
 test('the skincare, lip and fragrance lanes are unchanged', () => {
   const acne = buildBeautyExternalSeedCategoryTerms(
     inferBeautyMainlineIntent('acne treatment for clogged pores'),

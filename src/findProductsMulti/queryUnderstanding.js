@@ -44,7 +44,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|metal\s+serum\s+gloss)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
