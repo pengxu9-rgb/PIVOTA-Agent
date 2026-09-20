@@ -25,6 +25,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       DATABASE_URL: process.env.DATABASE_URL,
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH: process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH,
+      FIND_PRODUCTS_BUYER_MARKET: process.env.FIND_PRODUCTS_BUYER_MARKET,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
@@ -430,6 +431,57 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata.discovery_fallthrough?.attempted === true).toBe(attempted);
     if (attempted) expect(resp.body.metadata.discovery_fallthrough.reason).toBe('indexed_unavailable');
+  });
+
+  test('a nonempty discovery page still honors the named buyer currency and price ceiling', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [
+          { product_id: 'usd', title: 'Lip balm USD', price: 12, currency: 'USD' },
+          { product_id: 'expensive', title: 'Lip balm SGD high', price: 40, currency: 'SGD' },
+          { product_id: 'eligible', title: 'Lip balm SGD', price: 20, currency: 'SGD' },
+        ],
+        total: 3,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty', max_price: 25, price_currency: 'SGD' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['eligible']);
+    expect(resp.body.total).toBe(1);
+  });
+
+  test('off-currency discovery rows can trigger the indexed fallthrough', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [{ product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' }],
+        total: 1,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough).toEqual(
+      expect.objectContaining({ attempted: true, adopted: false }),
+    );
   });
 
   test.each([

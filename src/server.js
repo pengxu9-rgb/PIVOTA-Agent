@@ -13575,6 +13575,57 @@ function countDiscoveryProviderReturns(metadata = {}, providerName = '') {
     .reduce((sum, entry) => sum + (Number(entry?.returned || 0) || 0), 0);
 }
 
+function filterPublicBeautyDiscoveryBridgeProducts(discoveryResponse, search = {}, metadata = {}, intent = null) {
+  const products = Array.isArray(discoveryResponse?.products) ? discoveryResponse.products : [];
+  const { buyerCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  const callerCurrency = firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
+  const offerCurrency = String(callerCurrency || buyerCurrency || '').trim().toUpperCase();
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const category = String(search.category || '').trim().toLowerCase();
+  const queryText = String(search.query || search.q || '').trim();
+  const rawBudget = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
+  const queryBudgetCurrency = buyerCurrency && rawBudget
+    ? extractIntentRuleBased(queryText, [], [])?.hard_constraints?.price?.currency
+    : null;
+  const budget = resolveBuyerBudgetConstraint({
+    constraint: rawBudget,
+    buyerCurrency,
+    callerCurrency,
+    queryCurrency: queryBudgetCurrency,
+  });
+  let filtered = products.filter((product) => {
+    if (!isProductSellable(product, { inStockOnly })) return false;
+    if (inStockOnly && product?.in_stock === false) return false;
+    if (offerCurrency && getProductPriceCurrency(product, '').toUpperCase() !== offerCurrency) return false;
+    if (category) {
+      const labels = [product?.category, product?.product_type, product?.category_path]
+        .filter(Boolean).map((value) => String(value).toLowerCase());
+      if (!labels.some((value) => value.includes(category))) return false;
+    }
+    return true;
+  });
+  if (budget) filtered = filterFindProductsMultiDirectProductsByBudget(budget, filtered).products;
+  return {
+    ...discoveryResponse,
+    products: filtered,
+    total: filtered.length === products.length ? discoveryResponse?.total : filtered.length,
+    metadata: {
+      ...(discoveryResponse?.metadata || {}),
+      discovery_bridge_constraint_filtered_count:
+        (Number(discoveryResponse?.metadata?.discovery_bridge_constraint_filtered_count) || 0) +
+        products.length - filtered.length,
+      ...(
+        filtered.length !== products.length
+          ? { route_health: {
+              ...(discoveryResponse?.metadata?.route_health || {}),
+              final_returned_count: filtered.length,
+            } }
+          : {}
+      ),
+    },
+  };
+}
+
 function buildFindProductsMultiDiscoveryBridgeResponse({
   discoveryResponse = null,
   search = null,
@@ -23779,10 +23830,9 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
     const normalizedOffset = Math.max(0, Math.floor(offset));
+    search.offset = normalizedOffset;
     if (search.limit) {
       search.page = Math.floor(normalizedOffset / search.limit) + 1;
-    } else {
-      search.offset = normalizedOffset;
     }
   }
 
@@ -42444,7 +42494,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { brandNames: publicBrandScopeNames },
         );
       try {
-        const discoveryResponse = await getDiscoveryFeed(discoveryPayload);
+        const discoveryResponse = filterPublicBeautyDiscoveryBridgeProducts(
+          await getDiscoveryFeed(discoveryPayload),
+          publicBeautySearch,
+          metadata,
+          effectiveIntent,
+        );
         const bridgeResponse = buildFindProductsMultiDiscoveryBridgeResponse({
           discoveryResponse,
           search: publicBeautySearch,
@@ -42523,7 +42578,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
           },
         };
-        return res.status(200).json(await maybeOverlayLiveSearchPrice(bridgeResponse, publicBeautySearch));
+        const pricedBridgeResponse = await maybeOverlayLiveSearchPrice(bridgeResponse, publicBeautySearch);
+        const constrainedResponse = filterPublicBeautyDiscoveryBridgeProducts(
+          pricedBridgeResponse,
+          publicBeautySearch,
+          metadata,
+          effectiveIntent,
+        );
+        return res.status(200).json(constrainedResponse);
       } catch (err) {
         logger.warn(
           {
