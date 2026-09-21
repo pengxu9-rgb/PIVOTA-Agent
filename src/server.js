@@ -2619,6 +2619,7 @@ function buildSearchProductsV2Body({
     merchant_ids: !merchantId && merchantIds.length > 0 ? merchantIds : undefined,
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
+    market: firstNonEmptyString(search?.market, metadata?.market),
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
     catalog_entity_mode: firstNonEmptyString(
