@@ -196,6 +196,56 @@ describe('product search proxy route — mainline contract', () => {
     );
   });
 
+  test('public queryless browse reaches unified v2 recall without a beauty surface or legacy GET bridge', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    let capturedBody = null;
+    const upstreamV2 = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            { product_id: 'browse_1', merchant_id: 'external_seed', title: 'Singapore Browse Product', in_stock: true },
+          ],
+          total: 1,
+          metadata: { query_source: 'agent_products_search' },
+        };
+      });
+    const { legacyV1, legacyV2Get } = armLegacyGetBridges();
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        market: 'SG',
+        search_all_merchants: 'true',
+        allow_external_seed: 'false',
+        external_seed_strategy: 'legacy',
+        limit: 20,
+        offset: 0,
+        in_stock_only: 'false',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamV2.isDone()).toBe(true);
+    expect(legacyV1.isDone()).toBe(false);
+    expect(legacyV2Get.isDone()).toBe(false);
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        market: 'SG',
+        search_all_merchants: true,
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      }),
+    );
+    expect(capturedBody).not.toHaveProperty('query');
+    expect(capturedBody).not.toHaveProperty('catalog_surface');
+    expect(capturedBody).not.toHaveProperty('commerce_surface');
+  });
+
   // Descends from quarantined L703 "v2 primary contract mismatch does not fall back
   // to legacy public search bridge". A 422 contract mismatch on the v2 transport
   // must NOT bridge to the legacy GET route — it returns strict_empty. Pins the
