@@ -18,6 +18,7 @@ const {
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
   isBeautyProductContraindicatedForQuery,
+  rankAndServeBeautyRecallProducts,
   resolveBeautyBrandBrowseQuery,
   scoreBeautyExternalSeedProduct,
 } = app._debug;
@@ -205,6 +206,56 @@ test('beauty brand browse scoring prioritizes core makeup over promo sets and of
 
   assert.ok(score(lipstick) > score(mysterySet) + 40);
   assert.ok(score(lipstick) > score(hair) + 30);
+});
+
+test('pure brand browse puts a precisely typed product on the first page ahead of generic buckets', () => {
+  // Thirty distinct, equally healthy brand rows carry only the broad makeup
+  // bucket. They fill page one when the target's precise category is ignored.
+  const genericTitles = [
+    'Amber', 'Aqua', 'Balance', 'Barrier', 'Bloom', 'Bright', 'Calm', 'Clear',
+    'Comfort', 'Daily', 'Dew', 'Elastic', 'Essential', 'Fresh', 'Glow', 'Hydra',
+    'Luminous', 'Mild', 'Nourish', 'Pure', 'Radiant', 'Renew', 'Repair', 'Restore',
+    'Revive', 'Silky', 'Smooth', 'Soft', 'Soothing', 'Vital',
+  ].map((name) => `BeginS by JUNGSAEMMOOL ${name} Serum`);
+  const generic = genericTitles.map((title, index) => solidBrandGloss({
+    id: `ext_jsm_generic_${index}`,
+    product_id: `ext_jsm_generic_${index}`,
+    title,
+    category: 'makeup',
+    product_type: 'makeup',
+    category_path: ['beauty', 'makeup'],
+    catalog_category_path: 'beauty/makeup',
+    destination_url: `https://jsmbeauty.sg/products/generic-${index}`,
+  }));
+  const gloss = solidBrandGloss({
+    category_path: ['beauty', 'makeup', 'lip', 'gloss'],
+    catalog_category_path: 'beauty/makeup/lip/gloss',
+  });
+  for (const queryText of ['JUNG SAEM MOOL', 'JUNGSAEMMOOL']) {
+    const beautyIntent = inferBeautyMainlineIntent(queryText);
+    assert.equal(beautyIntent.brandBrowse.brand_only, true);
+    const rank = (target) => {
+      const ranked = rankAndServeBeautyRecallProducts({
+        recallProducts: [...generic, target],
+        queryText,
+        beautyIntent,
+        normalizedQuery: queryText.toLowerCase(),
+        queryTokens: queryText.toLowerCase().split(/\s+/),
+        safeLimit: 40,
+      });
+      return ranked.servingEligibilityGate.products.findIndex((product) =>
+        product.destination_url === gloss.destination_url) + 1;
+    };
+    const shallowRank = rank(solidBrandGloss({
+      category: 'makeup',
+      product_type: 'makeup',
+      category_path: ['beauty', 'makeup'],
+      catalog_category_path: 'beauty/makeup',
+    }));
+    assert.ok(shallowRank > 20, `${queryText}: broad category rank ${shallowRank}`);
+    const preciseRank = rank(gloss);
+    assert.ok(preciseRank > 0 && preciseRank <= 20, `${queryText}: exact gloss rank ${preciseRank}`);
+  }
 });
 
 test('beauty brand browse display dedupe collapses shade variants by product line', () => {
@@ -852,39 +903,13 @@ test('a brand+category query admits the solid-spelled brand too', () => {
   assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
 });
 
-test('KNOWN GAP: a solid-spelled brand still resolves brand_only=false', () => {
-  // NOT fixed here — recorded so the residual is visible rather than surprising.
-  //
-  // `resolveBeautyBrandBrowseQuery` matches 'jungsaemmool' against the alias 'jung saem mool'
-  // through the compact-run path, but then computes the remainder as
-  // queryTokens - aliasTokens - brandTokens. The consumed token 'jungsaemmool' is in neither
-  // token set, so it survives as a remainder and brand_only comes back false.
-  //
-  // This remainder defect is the REASON the identity short-circuit fails, not a
-  // side-effect of it: the lexicon ALREADY carries the solid alias
-  // ('jung_saem_mool': ['jung saem mool', 'jungsaemmool']), so the carve-out would have
-  // answered this with no gate change at all if brand_only were computed correctly.
-  //
-  // Nor is it specific to this brand. A census over the beauty lexicon found 28
-  // same-brand spellings across 12 keys in the same shape — lordandberry,
-  // nyxcosmetics, romnd, jomalone, yslbeauty, tower28beauty, patmcgrath and
-  // firstaidbeauty among them — all resolving brand_only=false. The compacted
-  // equality arm admits them; this predicate still mis-describes them.
-  //
-  // With the gate fixed the REMAINING consequences are ranking-only (the brand-browse
-  // minimum row count and the category-priority score read brand_only). The real fix is
-  // in brandLexicon.js — a token consumed by the compact-run path is not a remainder
-  // — and it touches every multi-token alias, so it needs its own measured
-  // no-change invariant.
+test('a compact brand alias consumes the whole query but preserves product-word remainders', () => {
   const identity = resolveBeautyBrandBrowseQuery('jungsaemmool');
   assert.equal(identity.matched, true);
   assert.equal(identity.brand_key, 'jung_saem_mool');
-  assert.equal(
-    identity.brand_only,
-    false,
-    'brand_only is now true — the lexicon remainder is fixed, delete this test',
-  );
-
-  // Control: the spaced spelling, which the remainder logic handles correctly today.
+  assert.equal(identity.brand_only, true);
   assert.equal(resolveBeautyBrandBrowseQuery('jung saem mool').brand_only, true);
+  assert.equal(resolveBeautyBrandBrowseQuery('firstaidbeauty').brand_only, true);
+  assert.equal(resolveBeautyBrandBrowseQuery('jungsaemmool lip gloss').brand_only, false);
+  assert.equal(resolveBeautyBrandBrowseQuery('firstaidbeauty serum').brand_only, false);
 });

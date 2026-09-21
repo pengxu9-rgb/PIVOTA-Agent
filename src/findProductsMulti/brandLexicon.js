@@ -415,6 +415,11 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   const meaningfulRemainder = remainingTokens.filter(
     (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
   );
+  // A compact alias such as "jungsaemmool" consumes the whole query even when
+  // the matched canonical alias is spaced ("jung saem mool"). The token-set
+  // subtraction above cannot see that match and otherwise invents a remainder.
+  const exactCompactedAlias =
+    normalizedQuery.replace(/\s+/g, '') === best.alias.replace(/\s+/g, '');
 
   return {
     matched: true,
@@ -423,7 +428,7 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
     brand: best.brand,
     alias: best.alias,
     explicit_category: explicitCategory,
-    brand_only: meaningfulRemainder.length === 0,
+    brand_only: exactCompactedAlias || meaningfulRemainder.length === 0,
     detection_mode: 'static_beauty',
     contract: 'brand_browse',
   };

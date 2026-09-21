@@ -21633,6 +21633,15 @@ function scoreBeautyBrandBrowseCategoryPriority(product = {}, intent = null, can
   if (isSet) score -= 34;
   if (isAccessory) score -= 30;
   if (isLimitedOrPromo) score -= 44;
+  // A specific leaf path carries more category evidence than a generic
+  // "beauty/makeup" bucket. For pure brand browse this keeps precisely typed
+  // products visible before title sorting fills the page with generic rows.
+  // Query-specific searches continue to use their own category and name scores.
+  const categoryPathDepth = String(firstSearchProductCategoryPath(product) || '')
+    .split('/')
+    .filter(Boolean).length;
+  if (categoryPathDepth >= 4) score += 18;
+  else if (categoryPathDepth >= 3) score += 9;
   return score;
 }
 
