@@ -12,6 +12,7 @@ test('sends only structured merchant checkout and SKU cart results', () => {
       checkout: { status: 'security_challenged_pre_address', challenge_stage: 'pre_address', page_text: 'discarded' },
       steps: [
         { step: 'storefront_access', status: 'passed', reason: 'storefront_loaded', page_text: 'discarded' },
+        { step: 'add_to_cart', status: 'failed', reason: 'cart_item_not_observed', page_text: 'discarded' },
         { step: 'checkout', status: 'blocked', reason: 'challenge', raw_url: 'discarded' },
       ],
     },
@@ -23,6 +24,7 @@ test('sends only structured merchant checkout and SKU cart results', () => {
     checkout: { status: 'security_challenged_pre_address', challenge_stage: 'pre_address' },
     steps: [
       { step: 'storefront_access', status: 'passed', reason: 'storefront_loaded' },
+      { step: 'add_to_cart', status: 'failed', reason: 'cart_item_not_observed' },
       { step: 'checkout', status: 'blocked', reason: 'challenge' },
     ],
   });
