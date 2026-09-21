@@ -12204,6 +12204,10 @@ function projectSearchTransportProduct(product, stats = null) {
     'in_stock',
     'availability',
     'inventory_quantity',
+    'buyable',
+    'checkout_ready',
+    'commerce_verification',
+    'external_referral_status',
     'image_url',
     'canonical_url',
     'destination_url',
@@ -12372,6 +12376,15 @@ function materializeCanonicalSearchProductPrice(product) {
   return product;
 }
 
+function isExternalOfferLiveVerificationRequired(product) {
+  return (
+    isPlainObject(product) &&
+    isExternalSeedProduct(product) &&
+    isPlainObject(product.commerce_verification) &&
+    product.commerce_verification.required === true
+  );
+}
+
 function isShoppingAgentFindProductsMultiRequest(req, operation) {
   if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
   const metadata = req?.body?.metadata;
@@ -12392,7 +12405,19 @@ function enforceFindProductsMultiPriceContract(responseBody) {
   if (!container) return responseBody;
 
   const input = container.products;
-  const priced = input.map(materializeCanonicalSearchProductPrice).filter(Boolean);
+  let verificationRequiredUnpricedKept = 0;
+  const priced = [];
+  for (const product of input) {
+    const materialized = materializeCanonicalSearchProductPrice(product);
+    if (materialized) {
+      priced.push(materialized);
+      continue;
+    }
+    if (isExternalOfferLiveVerificationRequired(product)) {
+      verificationRequiredUnpricedKept += 1;
+      priced.push(product);
+    }
+  }
   const dropped = input.length - priced.length;
   container.products = priced;
   if (Array.isArray(responseBody.products)) responseBody.products = priced;
@@ -12403,6 +12428,9 @@ function enforceFindProductsMultiPriceContract(responseBody) {
   metadata.price_contract = {
     canonical_price_or_offer_required: true,
     dropped_unpriced: dropped,
+    ...(verificationRequiredUnpricedKept > 0
+      ? { verification_required_unpriced_kept: verificationRequiredUnpricedKept }
+      : {}),
   };
   responseBody.metadata = metadata;
   responseBody.page_size = priced.length;
@@ -13302,8 +13330,8 @@ function decideGenericSkincareCachePreference({
 
   return {
     evaluated: true,
-    decision: 'replace_with_cache',
-    reason: 'generic_skincare_internal_preferred',
+    decision: 'keep_upstream',
+    reason: 'source_neutral_upstream_preserved',
     beauty_bucket: effectiveBeautyBucket || null,
     cache_internal_count: cacheInternalProducts.length,
     upstream_external_only: upstreamExternalOnly,
@@ -48577,6 +48605,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
+            !publicBeautyUnifiedSearch &&
             hasPetHarnessSearchSignal(cacheQueryText) &&
             internalProductsAfterAnchor.length >= 3;
           const isFragranceQuery = hasFragranceSearchSignal(cacheQueryText);
@@ -48621,7 +48650,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ambiguityScorePre <= 0.45
                 );
               const canApplyExternalFillGate =
-                SEARCH_EXTERNAL_HARD_RULE_PRUNE ? true : !externalFillGateWouldBlock;
+                publicBeautyUnifiedSearch ||
+                (SEARCH_EXTERNAL_HARD_RULE_PRUNE ? true : !externalFillGateWouldBlock);
               if (shouldSkipExternalSupplementForPetHarness) {
                 supplementMeta = {
                   attempted: false,

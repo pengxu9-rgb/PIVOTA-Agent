@@ -2297,7 +2297,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(mergedLipBalm.offers).toHaveLength(2);
   });
 
-  test('serum cache preference helper replaces external-only upstream with internal skincare cache', async () => {
+  test('serum cache preference helper preserves external-only upstream under source-neutral recall', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -2316,8 +2316,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(decision).toEqual(
       expect.objectContaining({
         evaluated: true,
-        decision: 'replace_with_cache',
-        reason: 'generic_skincare_internal_preferred',
+        decision: 'keep_upstream',
+        reason: 'source_neutral_upstream_preserved',
       }),
     );
   });
