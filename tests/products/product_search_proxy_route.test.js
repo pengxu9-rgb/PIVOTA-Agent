@@ -208,7 +208,23 @@ describe('product search proxy route — mainline contract', () => {
           status: 'success',
           success: true,
           products: [
-            { product_id: 'browse_1', merchant_id: 'external_seed', title: 'Singapore Browse Product', in_stock: true },
+            {
+              product_id: 'browse_1',
+              canonical_title: 'Singapore Browse Product',
+              canonical_category: 'beauty',
+              variants: [{ variant_id: 'browse_variant_1', variant_attributes: {} }],
+              offers: [{
+                offer_id: 'offer::external_seed::browse_variant_1',
+                merchant_id: 'external_seed',
+                variant_id: 'browse_variant_1',
+                price: '30.00',
+                currency: 'SGD',
+                availability: { in_stock: true },
+                source_type: 'external_seed',
+                capability_flags: ['catalog_search'],
+              }],
+              provenance: { merchant_id: 'external_seed', source_type: 'external_seed' },
+            },
           ],
           total: 1,
           metadata: { query_source: 'agent_products_search' },
@@ -244,6 +260,15 @@ describe('product search proxy route — mainline contract', () => {
     expect(capturedBody).not.toHaveProperty('query');
     expect(capturedBody).not.toHaveProperty('catalog_surface');
     expect(capturedBody).not.toHaveProperty('commerce_surface');
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({
+      product_id: 'browse_1',
+      title: 'Singapore Browse Product',
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      price: '30.00',
+      currency: 'SGD',
+    }));
   });
 
   // Descends from quarantined L703 "v2 primary contract mismatch does not fall back
