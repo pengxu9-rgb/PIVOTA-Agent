@@ -53239,6 +53239,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const isCanonicalSigAuthoritativeResponse =
         canonicalSigEntityMode && querySource === 'pivot_catalog_sig_multi';
       const skipPolicyForLookupSoftFallback =
+        !policyQueryText ||
         isCanonicalSigAuthoritativeResponse ||
         isErrorSoftFallbackSource ||
         (isResolverLookupSource && isLookupPolicyQuery) ||
