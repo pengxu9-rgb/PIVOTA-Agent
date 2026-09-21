@@ -12377,11 +12377,9 @@ function materializeCanonicalSearchProductPrice(product) {
 }
 
 function isExternalOfferLiveVerificationRequired(product) {
-  if (!isPlainObject(product)) return false;
-  const source = String(product.source || product.source_kind || '').trim().toLowerCase();
-  const merchantId = String(product.merchant_id || '').trim().toLowerCase();
   return (
-    (source === 'external_seed' || source === 'external_product_seeds' || merchantId === 'external_seed') &&
+    isPlainObject(product) &&
+    isExternalSeedProduct(product) &&
     isPlainObject(product.commerce_verification) &&
     product.commerce_verification.required === true
   );
