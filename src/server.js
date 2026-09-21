@@ -12204,6 +12204,10 @@ function projectSearchTransportProduct(product, stats = null) {
     'in_stock',
     'availability',
     'inventory_quantity',
+    'buyable',
+    'checkout_ready',
+    'commerce_verification',
+    'external_referral_status',
     'image_url',
     'canonical_url',
     'destination_url',
@@ -12372,6 +12376,17 @@ function materializeCanonicalSearchProductPrice(product) {
   return product;
 }
 
+function isExternalOfferLiveVerificationRequired(product) {
+  if (!isPlainObject(product)) return false;
+  const source = String(product.source || product.source_kind || '').trim().toLowerCase();
+  const merchantId = String(product.merchant_id || '').trim().toLowerCase();
+  return (
+    (source === 'external_seed' || source === 'external_product_seeds' || merchantId === 'external_seed') &&
+    isPlainObject(product.commerce_verification) &&
+    product.commerce_verification.required === true
+  );
+}
+
 function isShoppingAgentFindProductsMultiRequest(req, operation) {
   if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
   const metadata = req?.body?.metadata;
@@ -12392,7 +12407,19 @@ function enforceFindProductsMultiPriceContract(responseBody) {
   if (!container) return responseBody;
 
   const input = container.products;
-  const priced = input.map(materializeCanonicalSearchProductPrice).filter(Boolean);
+  let verificationRequiredUnpricedKept = 0;
+  const priced = [];
+  for (const product of input) {
+    const materialized = materializeCanonicalSearchProductPrice(product);
+    if (materialized) {
+      priced.push(materialized);
+      continue;
+    }
+    if (isExternalOfferLiveVerificationRequired(product)) {
+      verificationRequiredUnpricedKept += 1;
+      priced.push(product);
+    }
+  }
   const dropped = input.length - priced.length;
   container.products = priced;
   if (Array.isArray(responseBody.products)) responseBody.products = priced;
@@ -12403,6 +12430,7 @@ function enforceFindProductsMultiPriceContract(responseBody) {
   metadata.price_contract = {
     canonical_price_or_offer_required: true,
     dropped_unpriced: dropped,
+    verification_required_unpriced_kept: verificationRequiredUnpricedKept,
   };
   responseBody.metadata = metadata;
   responseBody.page_size = priced.length;

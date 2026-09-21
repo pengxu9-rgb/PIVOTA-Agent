@@ -271,6 +271,75 @@ describe('product search proxy route — mainline contract', () => {
     }));
   });
 
+  test('public recall keeps an external referral card that requires a live quote without inventing commerce facts', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    const upstreamV2 = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'external_unverified_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'External Product Requiring Live Quote',
+            destination_url: 'https://merchant.example/products/unverified-1',
+            availability: 'unknown',
+            buyable: false,
+            checkout_ready: false,
+            commerce_verification: {
+              required: true,
+              status: 'live_quote_required',
+              reasons: ['price_currency_mismatch', 'zero_variants'],
+              price_trusted: false,
+              availability_trusted: false,
+            },
+            external_referral_status: {
+              status: 'blocked',
+              gating_policy_version: 'external_referral_v1',
+              blocker_anomaly_types: ['price_currency_mismatch', 'zero_variants'],
+              review_anomaly_types: [],
+            },
+            variants: [],
+          },
+        ],
+        total: 1,
+        metadata: { query_source: 'agent_products_search' },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({ market: 'SG', search_all_merchants: 'true', limit: 20, offset: 0 });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamV2.isDone()).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({
+      product_id: 'external_unverified_1',
+      source: 'external_seed',
+      buyable: false,
+      checkout_ready: false,
+      availability: 'unknown',
+      commerce_verification: expect.objectContaining({
+        required: true,
+        status: 'live_quote_required',
+      }),
+    }));
+    expect(resp.body.products[0]).not.toHaveProperty('price');
+    expect(resp.body.products[0]).not.toHaveProperty('currency');
+    const priceContractBody = app._debug.enforceFindProductsMultiPriceContract(
+      JSON.parse(JSON.stringify(resp.body)),
+    );
+    expect(priceContractBody.products).toHaveLength(1);
+    expect(priceContractBody.metadata?.price_contract).toEqual(expect.objectContaining({
+      dropped_unpriced: 0,
+      verification_required_unpriced_kept: 1,
+    }));
+  });
+
   // Descends from quarantined L703 "v2 primary contract mismatch does not fall back
   // to legacy public search bridge". A 422 contract mismatch on the v2 transport
   // must NOT bridge to the legacy GET route — it returns strict_empty. Pins the
