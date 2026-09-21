@@ -2,12 +2,23 @@
 
 const {
   classifyCheckoutPage,
+  dismissBlockingDialogs,
+  fillSyntheticAddress,
   httpsUrl,
   journeySteps,
   platformFromGenerator,
   sanitizeSearchQuery,
   validatePublicBrowserUrl,
 } = require('../src/services/commerceStorefrontAudit');
+
+function visibleLocator(overrides = {}) {
+  return {
+    count: jest.fn(async () => 1),
+    isVisible: jest.fn(async () => true),
+    first() { return this; },
+    ...overrides,
+  };
+}
 
 test('recognizes Cafe24 pre-address security challenge without retaining its URL', () => {
   expect(classifyCheckoutPage({
@@ -48,4 +59,59 @@ test('builds a complete six-step journey without retaining page content', () => 
     { step: 'shipping_address', status: 'not_run', reason: 'not_attempted' },
     { step: 'checkout', status: 'not_run', reason: 'not_attempted' },
   ]);
+});
+
+test('dismisses a blocking marketing dialog before storefront search', async () => {
+  const close = visibleLocator({ click: jest.fn(async () => {}) });
+  const dialog = visibleLocator({
+    nth() { return this; },
+    getByRole: jest.fn(() => close),
+    locator: jest.fn(() => visibleLocator({ count: jest.fn(async () => 0) })),
+  });
+  dialog.count = jest.fn(async () => 1);
+  const page = {
+    getByRole: jest.fn(() => dialog),
+    waitForTimeout: jest.fn(async () => {}),
+  };
+
+  await dismissBlockingDialogs(page);
+
+  expect(close.click).toHaveBeenCalledWith({ timeout: 1500 });
+});
+
+test('selects country before filling the rebuilt checkout address form', async () => {
+  const events = [];
+  let countrySelected = false;
+  const absent = () => visibleLocator({ count: jest.fn(async () => 0) });
+  const fillable = (name) => visibleLocator({
+    fill: jest.fn(async () => {
+      if (name === 'address' && !countrySelected) throw new Error('stale address form');
+      events.push(name);
+    }),
+  });
+  const country = visibleLocator({
+    selectOption: jest.fn(async () => { countrySelected = true; events.push('country'); }),
+  });
+  const state = visibleLocator({ selectOption: jest.fn(async () => { events.push('state'); }) });
+  const locators = new Map([
+    ['select[name*="country" i]', country],
+    ['select[name*="zone" i]', state],
+    ['input[type="email"]', fillable('email')],
+    ['input[name*="first" i]', fillable('first')],
+    ['input[name*="last" i]', fillable('last')],
+    ['input[name*="address1" i]', fillable('address')],
+    ['input[name*="city" i]', fillable('city')],
+    ['input[name*="zip" i]', fillable('postal')],
+  ]);
+  const page = {
+    locator: jest.fn((selector) => locators.get(selector) || absent()),
+    waitForTimeout: jest.fn(async () => {}),
+  };
+
+  await expect(fillSyntheticAddress(page)).resolves.toEqual({
+    status: 'passed', reason: 'address_fields_filled',
+  });
+  expect(events[0]).toBe('country');
+  expect(events.indexOf('address')).toBeGreaterThan(events.indexOf('country'));
+  expect(events).toContain('state');
 });
