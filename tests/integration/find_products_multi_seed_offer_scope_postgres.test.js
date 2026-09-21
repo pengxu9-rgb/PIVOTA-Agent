@@ -116,6 +116,7 @@ suite('primary seed offer scope with real PostgreSQL and no rescue lanes', () =>
   test.each([null, 'unknown'])('explicit stock rejects seed rows without affirmative evidence: %s',async(availability)=>{
     await db.query('BEGIN');
     try {
+      await db.query("UPDATE external_product_seeds SET availability='out_of_stock' WHERE id LIKE 'MAC_%'");
       await db.query("UPDATE external_product_seeds SET price_currency='USD',availability=$1 WHERE id='MAC_220'",[availability]);
       const res=await invoke('MAC lipstick',{in_stock_only:true});
       expect(res.status).toBe(200);expect(res.body.products).toEqual([]);

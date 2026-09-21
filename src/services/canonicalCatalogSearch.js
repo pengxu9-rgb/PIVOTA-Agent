@@ -1567,9 +1567,9 @@ async function fetchCanonicalChainRows(args = {}) {
     if (offerScope.inStockOnly === true) {
       const normalizedAvailability = "regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g')";
       offerScopeClauses.push(`(CASE
-        WHEN ${normalizedAvailability} IN ('instock', 'available', 'true') THEN TRUE
         WHEN ${normalizedAvailability} IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false', 'discontinued') THEN FALSE
         WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0
+        WHEN ${normalizedAvailability} IN ('instock', 'available', 'true') THEN TRUE
         ELSE NULL
       END) IS TRUE`);
     }

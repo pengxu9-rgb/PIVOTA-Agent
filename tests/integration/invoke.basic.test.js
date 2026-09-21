@@ -17,8 +17,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
         return (
           q &&
           q.query === 'shoes' &&
-          // Defaults added by the gateway.
-          q.in_stock_only === 'true' &&
+          // Omitted stock is inclusive discovery; only explicit true is strict.
+          !Object.prototype.hasOwnProperty.call(q, 'in_stock_only') &&
           q.limit === '20' &&
           q.offset === '0'
         );
