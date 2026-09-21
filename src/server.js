@@ -12430,7 +12430,9 @@ function enforceFindProductsMultiPriceContract(responseBody) {
   metadata.price_contract = {
     canonical_price_or_offer_required: true,
     dropped_unpriced: dropped,
-    verification_required_unpriced_kept: verificationRequiredUnpricedKept,
+    ...(verificationRequiredUnpricedKept > 0
+      ? { verification_required_unpriced_kept: verificationRequiredUnpricedKept }
+      : {}),
   };
   responseBody.metadata = metadata;
   responseBody.page_size = priced.length;
