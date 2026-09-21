@@ -115,3 +115,25 @@ test('selects country before filling the rebuilt checkout address form', async (
   expect(events.indexOf('address')).toBeGreaterThan(events.indexOf('country'));
   expect(events).toContain('state');
 });
+
+test('does not report address readiness when a visible field rejects input', async () => {
+  const absent = () => visibleLocator({ count: jest.fn(async () => 0) });
+  const ok = visibleLocator({ fill: jest.fn(async () => {}) });
+  const rejectedAddress = visibleLocator({ fill: jest.fn(async () => { throw new Error('detached'); }) });
+  const locators = new Map([
+    ['input[type="email"]', ok],
+    ['input[name*="first" i]', ok],
+    ['input[name*="last" i]', ok],
+    ['input[name*="address1" i]', rejectedAddress],
+    ['input[name*="city" i]', ok],
+    ['input[name*="zip" i]', ok],
+  ]);
+  const page = {
+    locator: jest.fn((selector) => locators.get(selector) || absent()),
+    waitForTimeout: jest.fn(async () => {}),
+  };
+
+  await expect(fillSyntheticAddress(page)).resolves.toEqual({
+    status: 'not_supported', reason: 'address_form_unavailable',
+  });
+});

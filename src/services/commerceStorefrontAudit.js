@@ -165,8 +165,12 @@ async function fillSyntheticAddress(page) {
   const fill = async (selectors, value) => {
     const locator = await firstVisible(...selectors.map((selector) => page.locator(selector)));
     if (!locator) return false;
-    await locator.fill(value, { timeout: 2500 }).catch(() => {});
-    return true;
+    try {
+      await locator.fill(value, { timeout: 2500 });
+      return true;
+    } catch {
+      return false;
+    }
   };
   // Checkout frameworks often rebuild the address form after country changes.
   // Select the country first, then locate and fill the current controls.
