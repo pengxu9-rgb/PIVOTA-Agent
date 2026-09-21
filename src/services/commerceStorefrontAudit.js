@@ -20,7 +20,8 @@ const STEP_STATUSES = new Set(['passed', 'failed', 'blocked', 'not_supported', '
 const STEP_REASONS = new Set([
   'storefront_loaded', 'search_result_found', 'search_unavailable',
   'search_no_result', 'pdp_confirmed', 'pdp_unconfirmed', 'cart_item_added',
-  'cart_control_unavailable', 'checkout_reached', 'checkout_route_missing',
+  'cart_control_unavailable', 'required_selection_unresolved',
+  'checkout_reached', 'checkout_route_missing',
   'address_fields_filled', 'address_form_unavailable', 'challenge',
   'login_required', 'network', 'timeout', 'not_attempted',
 ]);
@@ -65,6 +66,24 @@ function platformFromGenerator(value) {
   if (generator.includes('woocommerce')) return { platform: 'woocommerce', checkout_provider: 'unknown' };
   if (generator.includes('bigcommerce')) return { platform: 'bigcommerce', checkout_provider: 'unknown' };
   if (generator.includes('magento')) return { platform: 'magento', checkout_provider: 'unknown' };
+  return null;
+}
+
+async function detectStorefrontPlatform(page) {
+  const generator = await page.locator('meta[name="generator"]').first().getAttribute('content').catch(() => null);
+  const declared = platformFromGenerator(generator);
+  if (declared) return declared;
+
+  // Many custom Cafe24 themes omit the generator meta tag. Their commerce
+  // controls and assets still expose stable Cafe24/ECHOSTING markers.
+  const cafe24Markers = page.locator([
+    '[onclick*="/exec/front/order/basket/"]',
+    'script[src*="cafe24"]', 'link[href*="cafe24"]',
+    'script[src*="echosting"]', 'link[href*="echosting"]',
+  ].join(','));
+  if (await cafe24Markers.count().catch(() => 0)) {
+    return { platform: 'cafe24', checkout_provider: 'cafe24' };
+  }
   return null;
 }
 
@@ -119,7 +138,7 @@ async function dismissBlockingDialogs(page) {
   }
 }
 
-async function searchFromStorefront(page, { startUrl, query }) {
+async function searchFromStorefront(page, { startUrl, query, platform }) {
   if (!query) return { status: 'not_supported', reason: 'search_unavailable' };
   const home = new URL('/', startUrl).toString();
   await page.goto(home, { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -129,12 +148,15 @@ async function searchFromStorefront(page, { startUrl, query }) {
     page.locator('input[type="search"]'),
     page.locator('input[name*="search" i]'),
     page.locator('input[placeholder*="search" i]'),
+    page.locator('input[name="keyword"]'),
+    page.locator('input[placeholder*="검색"]'),
   );
   if (!search) {
     const opener = await firstVisible(
       page.getByRole('button', { name: /^search$/i }),
       page.getByRole('link', { name: /^search$/i }),
       page.locator('[aria-label="Search"]'),
+      page.locator('.jsSearchBtn'),
     );
     if (opener) {
       await opener.click({ timeout: 3000 }).catch(() => {});
@@ -144,12 +166,21 @@ async function searchFromStorefront(page, { startUrl, query }) {
         page.locator('input[type="search"]'),
         page.locator('input[name*="search" i]'),
         page.locator('input[placeholder*="search" i]'),
+        page.locator('input[name="keyword"]'),
+        page.locator('input[placeholder*="검색"]'),
       );
     }
   }
-  if (!search) return { status: 'not_supported', reason: 'search_unavailable' };
-  await search.fill(query, { timeout: 3000 });
-  await search.press('Enter', { timeout: 3000 });
+  if (!search && platform?.platform === 'cafe24') {
+    const searchUrl = new URL('/product/search.html', startUrl);
+    searchUrl.searchParams.set('keyword', query);
+    await page.goto(searchUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 20000 });
+  } else if (!search) {
+    return { status: 'not_supported', reason: 'search_unavailable' };
+  } else {
+    await search.fill(query, { timeout: 3000 });
+    await search.press('Enter', { timeout: 3000 });
+  }
   await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(500);
   const targetPath = new URL(startUrl).pathname.replace(/\/$/, '');
@@ -159,6 +190,48 @@ async function searchFromStorefront(page, { startUrl, query }) {
   return found
     ? { status: 'passed', reason: 'search_result_found' }
     : { status: 'failed', reason: 'search_no_result' };
+}
+
+async function selectRequiredProductOption(page, platform) {
+  if (platform?.platform !== 'cafe24') return;
+  const radioLabel = await firstVisible(
+    page.locator('[product_option_area] label'),
+    page.locator('label:has(input[type="radio"][name*="product_option"])'),
+  );
+  if (radioLabel) {
+    await radioLabel.click({ timeout: 3000 });
+    await page.waitForTimeout(250);
+    return;
+  }
+  const radio = await firstVisible(
+    page.locator('[product_option_area] input[type="radio"]'),
+    page.locator('input[type="radio"][name*="product_option"]'),
+  );
+  if (radio) {
+    await radio.click({ timeout: 3000 });
+    await page.waitForTimeout(250);
+    return;
+  }
+  // Some Cafe24 skins render the semantic option inputs at zero size while a
+  // styled clone owns the visible affordance. Dispatching the real input click
+  // is the stable platform action and runs Cafe24's own option-selection code.
+  const hiddenRadio = page.locator('[product_option_area] input[type="radio"], input[type="radio"][name*="product_option"]').first();
+  if (await hiddenRadio.count().catch(() => 0)) {
+    await hiddenRadio.evaluate((element) => element.click()).catch(() => {});
+    await page.waitForTimeout(250);
+    return;
+  }
+  const select = await firstVisible(
+    page.locator('select[ec-dev-class*="ProductOption"]'),
+    page.locator('select[name*="product_option"]'),
+  );
+  if (!select) return;
+  const values = await select.locator('option').evaluateAll((options) => options
+    .map((option) => option.value)
+    .filter((value) => value && value !== '*' && value !== '**'))
+    .catch(() => []);
+  if (values[0]) await select.selectOption(values[0]).catch(() => {});
+  await page.waitForTimeout(250);
 }
 
 async function fillSyntheticAddress(page) {
@@ -226,10 +299,15 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
         return route.continue();
       });
       const page = await context.newPage();
+      let requiredSelectionDialog = false;
+      page.on('dialog', async (dialog) => {
+        const message = String(dialog.message() || '');
+        requiredSelectionDialog ||= /required|option|select|필수|옵션|선택/i.test(message);
+        await dialog.dismiss().catch(() => {});
+      });
       await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       steps.storefront_access = { status: 'passed', reason: 'storefront_loaded' };
-      const generator = await page.locator('meta[name="generator"]').first().getAttribute('content').catch(() => null);
-      const platform = platformFromGenerator(generator);
+      const platform = await detectStorefrontPlatform(page);
       const initial = classifyCheckoutPage({ url: page.url(), text: await shortPageText(page) });
       if (initial.status === 'security_challenged_pre_address' || initial.status === 'login_required') {
         const reason = initial.status === 'login_required' ? 'login_required' : 'challenge';
@@ -239,12 +317,15 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
       }
 
       const query = await productTitle(page);
-      steps.product_search = await searchFromStorefront(page, { startUrl, query }).catch(() => ({ status: 'failed', reason: 'search_no_result' }));
+      steps.product_search = await searchFromStorefront(page, { startUrl, query, platform }).catch(() => ({ status: 'failed', reason: 'search_no_result' }));
       await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       const addToCart = await firstVisible(
         page.getByRole('button', { name: /add to (cart|bag)/i }),
         page.locator('button[name="add"]'),
         page.locator('[data-add-to-cart]'),
+        page.locator('#actionCart'),
+        page.locator('.actionCart'),
+        page.locator('[onclick*="/exec/front/order/basket/"]'),
       );
       const hasProductIdentity = Boolean(await productTitle(page));
       steps.product_detail = hasProductIdentity && addToCart
@@ -256,18 +337,45 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
         steps.checkout = { status: 'failed', reason: 'checkout_route_missing' };
         return output({ verification_status: 'succeeded', observed_at: now().toISOString(), ...(platform ? { platform } : {}), checkout: { status: 'unavailable' }, cart: { status: 'unavailable' } });
       }
+      await selectRequiredProductOption(page, platform);
       await addToCart.click({ timeout: 5000 });
       await page.waitForTimeout(700);
+      if (platform?.platform === 'cafe24') {
+        await page.goto(new URL('/order/basket.html', startUrl).toString(), {
+          waitUntil: 'domcontentloaded', timeout: 20000,
+        });
+        const targetPath = new URL(startUrl).pathname.replace(/\/$/, '');
+        const cartHasTarget = await page.locator('a[href]').evaluateAll((nodes, path) => nodes.some((node) => {
+          try { return new URL(node.href).pathname.replace(/\/$/, '') === path; } catch { return false; }
+        }), targetPath).catch(() => false);
+        if (!cartHasTarget) {
+          steps.add_to_cart = {
+            status: 'failed',
+            reason: requiredSelectionDialog ? 'required_selection_unresolved' : 'cart_control_unavailable',
+          };
+          steps.shipping_address = { status: 'not_run', reason: 'not_attempted' };
+          steps.checkout = { status: 'failed', reason: 'checkout_route_missing' };
+          return output({
+            verification_status: 'succeeded', observed_at: now().toISOString(),
+            platform, checkout: { status: 'unavailable' }, cart: { status: 'selection_required' },
+          });
+        }
+      }
       steps.add_to_cart = { status: 'passed', reason: 'cart_item_added' };
 
       let checkoutControl = await firstVisible(
         page.getByRole('button', { name: /^(checkout|check out|checkout all)$/i }),
         page.getByRole('link', { name: /^(checkout|check out|checkout all)$/i }),
+        page.getByRole('button', { name: /^(주문하기|전체상품주문|구매하기)$/ }),
+        page.getByRole('link', { name: /^(주문하기|전체상품주문|구매하기)$/ }),
+        page.locator('a[href*="/order/orderform.html"]'),
+        page.locator('[onclick*="orderAll"]'),
       );
       if (!checkoutControl) {
         const cartControl = await firstVisible(
           page.getByRole('link', { name: /^(cart|bag|view cart|view bag)$/i }),
           page.locator('a[href*="/cart"]'),
+          page.locator('a[href*="/order/basket.html"]'),
         );
         if (cartControl) {
           await cartControl.click({ timeout: 5000 }).catch(() => {});
@@ -275,6 +383,10 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
           checkoutControl = await firstVisible(
             page.getByRole('button', { name: /^(checkout|check out|checkout all)$/i }),
             page.getByRole('link', { name: /^(checkout|check out|checkout all)$/i }),
+            page.getByRole('button', { name: /^(주문하기|전체상품주문|구매하기)$/ }),
+            page.getByRole('link', { name: /^(주문하기|전체상품주문|구매하기)$/ }),
+            page.locator('a[href*="/order/orderform.html"]'),
+            page.locator('[onclick*="orderAll"]'),
           );
         }
       }
@@ -318,6 +430,6 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
 module.exports = {
   CART_STATUSES, CHECKOUT_STATUSES, STEP_REASONS, STEP_STATUSES,
   classifyCheckoutPage, createCommerceStorefrontAudit, dismissBlockingDialogs,
-  fillSyntheticAddress, httpsUrl, journeySteps,
+  detectStorefrontPlatform, fillSyntheticAddress, httpsUrl, journeySteps,
   platformFromGenerator, sanitizeSearchQuery, validatePublicBrowserUrl,
 };
