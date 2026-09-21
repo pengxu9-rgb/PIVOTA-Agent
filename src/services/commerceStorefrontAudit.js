@@ -20,7 +20,8 @@ const STEP_STATUSES = new Set(['passed', 'failed', 'blocked', 'not_supported', '
 const STEP_REASONS = new Set([
   'storefront_loaded', 'search_result_found', 'search_unavailable',
   'search_no_result', 'pdp_confirmed', 'pdp_unconfirmed', 'cart_item_added',
-  'cart_control_unavailable', 'required_selection_unresolved',
+  'cart_control_unavailable', 'cart_item_not_observed',
+  'required_selection_unresolved',
   'checkout_reached', 'checkout_route_missing',
   'address_fields_filled', 'address_form_unavailable', 'challenge',
   'login_required', 'network', 'timeout', 'not_attempted',
@@ -351,13 +352,15 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
         if (!cartHasTarget) {
           steps.add_to_cart = {
             status: 'failed',
-            reason: requiredSelectionDialog ? 'required_selection_unresolved' : 'cart_control_unavailable',
+            reason: requiredSelectionDialog ? 'required_selection_unresolved' : 'cart_item_not_observed',
           };
           steps.shipping_address = { status: 'not_run', reason: 'not_attempted' };
           steps.checkout = { status: 'failed', reason: 'checkout_route_missing' };
           return output({
             verification_status: 'succeeded', observed_at: now().toISOString(),
-            platform, checkout: { status: 'unavailable' }, cart: { status: 'selection_required' },
+            platform,
+            checkout: { status: 'unavailable' },
+            cart: { status: requiredSelectionDialog ? 'selection_required' : 'unknown' },
           });
         }
       }
