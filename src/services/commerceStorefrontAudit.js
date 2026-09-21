@@ -95,9 +95,10 @@ async function shortPageText(page) {
 }
 
 async function productTitle(page) {
-  const h1 = await page.locator('h1').first().innerText({ timeout: 1000 }).catch(() => '');
-  const og = await page.locator('meta[property="og:title"]').first().getAttribute('content').catch(() => '');
-  const title = await page.title().catch(() => '');
+  let h1 = ''; let og = ''; let title = '';
+  try { h1 = await page.locator('h1').first().innerText({ timeout: 1000 }); } catch {}
+  try { og = await page.locator('meta[property="og:title"]').first().getAttribute('content'); } catch {}
+  try { title = typeof page.title === 'function' ? await page.title() : ''; } catch {}
   return sanitizeSearchQuery(h1 || og || title);
 }
 
