@@ -45,6 +45,7 @@ test("projected search product exposes only the allowlisted keys", () => {
   const projected = projectSearchCatalog(liveSearchRaw, { limit: 5 });
   const allowed = new Set([
     "product_id", "brand", "title", "category", "price", "availability",
+    "commerce_verification",
     "image_url", "key_actives", "pivota_url",
   ]);
   for (const p of projected.products) {
@@ -60,6 +61,56 @@ test("projected search product exposes only the allowlisted keys", () => {
     }
     assert.ok(["in_stock", "out_of_stock", "unknown"].includes(p.availability));
   }
+});
+
+test("unpriced discovery rows preserve their safe commerce verification state", () => {
+  const projected = projectSearchCatalog({
+    products: [{
+      product_id: "sig_live_quote",
+      title: "Live Quote Lip Gloss",
+      availability: "unknown",
+      buyable: false,
+      checkout_ready: false,
+      commerce_verification: {
+        required: true,
+        status: "live_quote_required",
+        price_trusted: false,
+        availability_trusted: false,
+        reasons: ["internal_reason_must_not_leak"],
+      },
+    }],
+  }, { limit: 1 }).products[0];
+
+  assert.equal(projected.price, undefined);
+  assert.equal(projected.availability, "unknown");
+  assert.deepEqual(projected.commerce_verification, {
+    required: true,
+    status: "live_quote_required",
+    price_trusted: false,
+    availability_trusted: false,
+  });
+  assert.equal(JSON.stringify(projected).includes("internal_reason_must_not_leak"), false);
+});
+
+test("verification-required discovery rows suppress contradictory stale commerce facts", () => {
+  const projected = projectSearchCatalog({
+    products: [{
+      product_id: "sig_stale_quote",
+      title: "Stale Quote Lip Gloss",
+      price: 30,
+      currency: "SGD",
+      availability: "in_stock",
+      in_stock: true,
+      commerce_verification: {
+        required: true,
+        status: "live_quote_required",
+        price_trusted: false,
+        availability_trusted: false,
+      },
+    }],
+  }, { limit: 1 }).products[0];
+  assert.equal(projected.price, undefined);
+  assert.equal(projected.availability, "unknown");
 });
 
 test("search honors the requested limit and hard-caps at MAX_SEARCH_RESULTS", () => {

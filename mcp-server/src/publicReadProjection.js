@@ -194,19 +194,36 @@ function ingredientsOf(p) {
   return strList(src, 60, 80);
 }
 
+function commerceVerificationOf(p) {
+  const verification = isObj(p.commerce_verification) ? p.commerce_verification : null;
+  if (!verification) return null;
+  return compact({
+    required: typeof verification.required === "boolean" ? verification.required : null,
+    status: clamp(verification.status, 80),
+    price_trusted: typeof verification.price_trusted === "boolean" ? verification.price_trusted : null,
+    availability_trusted:
+      typeof verification.availability_trusted === "boolean" ? verification.availability_trusted : null,
+  });
+}
+
 // ---- product summary (search rows + get_product base) ----------------------------------------------------
 
 function productSummary(p, base) {
   if (!isObj(p)) return null;
   // No identifying content at all → not a real product row (drop from search, signals not-found for detail).
   if (!publicProductId(p) && !str(p.title) && !str(p.brand)) return null;
+  const commerceVerification = commerceVerificationOf(p);
+  const verificationRequired = commerceVerification?.required === true;
+  const priceTrusted = commerceVerification?.price_trusted !== false;
+  const availabilityTrusted = commerceVerification?.availability_trusted !== false;
   return compact({
     product_id: publicProductId(p),
     brand: clamp(p.brand, 120),
     title: clamp(p.title, 200),
     category: clamp(p.category || p.product_type, 80),
-    price: priceOf(p),
-    availability: availabilityOf(p),
+    price: verificationRequired || !priceTrusted ? null : priceOf(p),
+    availability: verificationRequired || !availabilityTrusted ? 'unknown' : availabilityOf(p),
+    commerce_verification: commerceVerification,
     image_url: imagesOf(p)[0] || null,
     key_actives: activesOf(p),
     pivota_url: pdpUrl(p, base),

@@ -100,16 +100,25 @@ suite('primary seed offer scope with real PostgreSQL and no rescue lanes', () =>
     expect(wrong.rows).toEqual([]);
   });
 
-  test.each(['in_stock',null])('explicit unavailable seed variants cannot consume the cut; eligible stock=%s',async(availability)=>{
+  test('explicit unavailable seed variants cannot consume the cut; known in-stock survives',async()=>{
     await db.query('BEGIN');
     try {
       await db.query("UPDATE external_product_seeds SET price_currency='USD',availability=(ARRAY['soldout','sold_out','sold out','unavailable','false','out_of_stock','oos'])[1+(substring(id FROM '[0-9]+$')::int % 7)] WHERE id LIKE 'MAC_%'");
-      await db.query("UPDATE external_product_seeds SET availability=$1 WHERE id='MAC_220'",[availability]);
+      await db.query("UPDATE external_product_seeds SET availability='in_stock' WHERE id='MAC_220'");
       const res=await invoke('MAC lipstick',{in_stock_only:true});
       expect(res.status).toBe(200);expect(res.body.status).toBe('success');
       expect(res.body.products).toHaveLength(1);
       expect(res.body.products[0].source_product_id).toBe('MAC_220');
       expect(res.body.products[0].currency).toBe('USD');
+    } finally {await db.query('ROLLBACK');}
+  });
+
+  test.each([null, 'unknown'])('explicit stock rejects seed rows without affirmative evidence: %s',async(availability)=>{
+    await db.query('BEGIN');
+    try {
+      await db.query("UPDATE external_product_seeds SET price_currency='USD',availability=$1 WHERE id='MAC_220'",[availability]);
+      const res=await invoke('MAC lipstick',{in_stock_only:true});
+      expect(res.status).toBe(200);expect(res.body.products).toEqual([]);
     } finally {await db.query('ROLLBACK');}
   });
 

@@ -2593,12 +2593,15 @@ function buildSearchProductsV2Body({
   gatewayRequestId = null,
   defaultSearchAllMerchants = false,
 } = {}) {
-  const page = Math.max(1, Number(search?.page || 1) || 1);
   const limit = Math.min(
     Math.max(1, Number(search?.page_size || search?.limit || 20) || 20),
     SEARCH_LIMIT_MAX,
   );
-  const offset = (page - 1) * limit;
+  const requestedOffset = Number(search?.offset);
+  const hasExplicitOffset = Number.isFinite(requestedOffset) && requestedOffset >= 0;
+  const requestedPage = Math.max(1, Number(search?.page || 1) || 1);
+  const offset = hasExplicitOffset ? Math.floor(requestedOffset) : (requestedPage - 1) * limit;
+  const page = hasExplicitOffset ? Math.floor(offset / limit) + 1 : requestedPage;
   const merchantId = firstNonEmptyString(search?.merchant_id, search?.merchantId);
   const merchantIdsRaw = Array.isArray(search?.merchant_ids)
     ? search.merchant_ids
@@ -2638,7 +2641,7 @@ function buildSearchProductsV2Body({
     // offset or discard a budget because it ignores max_price.
     price_min: search?.price_min ?? search?.min_price,
     price_max: search?.price_max ?? search?.max_price,
-    in_stock_only: search?.in_stock_only !== false,
+    in_stock_only: parseQueryBoolean(search?.in_stock_only ?? search?.inStockOnly),
     limit,
     page,
     offset,
@@ -3121,7 +3124,7 @@ ${selectColumns}
         if (!productMatchesStrictIngredientPrefetch(product, {
           ingredientIntents,
           categoryIntents,
-          inStockOnly: search?.in_stock_only !== false,
+          inStockOnly: parseQueryBoolean(search?.in_stock_only ?? search?.inStockOnly) === true,
         })) {
           continue;
         }
@@ -19601,7 +19604,7 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
       ? Math.floor(Number(search.offset))
       : (safePage - 1) * safeLimit,
   );
-  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
   // servedMarkets(), not primaryMarket(). These lanes take no request override, so the
   // deployment's list is the entire answer here and taking its head discards the rest.
   const markets = servedMarkets();
@@ -22593,7 +22596,7 @@ async function searchBeautyExternalSeedProductsMainline({
     return null;
   }
 
-  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
   // Rank the same bounded candidate window on every page. Increasing recall
   // depth with the page number can rerank old candidates into later pages.
@@ -23831,15 +23834,23 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   if (queryStepStrength) search.query_step_strength = queryStepStrength;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
-  if (limit !== undefined) search.limit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)));
+  const effectiveLimit = limit !== undefined
+    ? Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)))
+    : 20;
+  if (limit !== undefined) search.limit = effectiveLimit;
+
+  const requestedPage = parseQueryNumber(query.page);
+  if (requestedPage !== undefined) {
+    search.page = Math.max(1, Math.floor(requestedPage));
+  }
 
   const offset = parseQueryNumber(query.offset);
   if (offset !== undefined) {
     const normalizedOffset = Math.max(0, Math.floor(offset));
     search.offset = normalizedOffset;
-    if (search.limit) {
-      search.page = Math.floor(normalizedOffset / search.limit) + 1;
-    }
+    search.page = Math.floor(normalizedOffset / effectiveLimit) + 1;
+  } else if (search.page) {
+    search.offset = (search.page - 1) * effectiveLimit;
   }
 
   const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
@@ -24004,7 +24015,7 @@ async function fetchExternalSeedSupplementFromBackend({
   const localBrandDirectResponse = await searchExternalSeedBrandCandidatesLocally({
     queryText,
     neededCount: requestedCount,
-    inStockOnly: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+    inStockOnly: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) === true,
   });
   if (localBrandDirectResponse && Array.isArray(localBrandDirectResponse.products)) {
     const directProducts = localBrandDirectResponse.products.filter((product) =>
@@ -24148,7 +24159,9 @@ async function fetchExternalSeedSupplementFromBackend({
       ...(query.category ? { category: query.category } : {}),
       ...(query.min_price != null ? { min_price: query.min_price } : {}),
       ...(query.max_price != null ? { max_price: query.max_price } : {}),
-      in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+      ...(parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== undefined
+        ? { in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) }
+        : {}),
       limit,
       offset: 0,
       allow_external_seed: true,
@@ -47912,7 +47925,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
-      const inStockOnly = search.in_stock_only !== false;
+      const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
 
       const isCreatorUi = isCreatorUiSource(source);
       const isCanonicalCreatorAgentSource = normalizeAgentSource(source) === 'creator-agent';
@@ -49710,7 +49723,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const search = effectivePayload.search || effectivePayload || {};
 	      const queryText = String(search.query || '').trim();
 	      const merchantId = String(search.merchant_id || search.merchantId || '').trim();
-	      const inStockOnly = search.in_stock_only !== false;
+	      const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
 	      const isBrowse = queryText.length === 0;
 
 	      if (isBrowse && merchantId) {
@@ -49819,7 +49832,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(search.external_seed_strategy
             ? { external_seed_strategy: search.external_seed_strategy }
             : {}),
-          in_stock_only: search.in_stock_only !== false,
+          ...(parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== undefined
+            ? { in_stock_only: parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) }
+            : {}),
           limit,
           offset,
         };
@@ -49856,9 +49871,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       case 'find_products_multi': {
         // Cross-merchant search via Agent Search endpoint.
         const search = effectivePayload.search || effectivePayload || {};
-        const page = Math.max(1, Number(search.page || 1) || 1);
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
-        const offset = (page - 1) * limit;
+        const requestedOffset = Number(search.offset);
+        const hasExplicitOffset = Number.isFinite(requestedOffset) && requestedOffset >= 0;
+        const requestedPage = Math.max(1, Number(search.page || 1) || 1);
+        const offset = hasExplicitOffset ? Math.floor(requestedOffset) : (requestedPage - 1) * limit;
+        const page = hasExplicitOffset ? Math.floor(offset / limit) + 1 : requestedPage;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
         const merchantIdsRaw = search.merchant_ids || search.merchantIds;
@@ -49916,7 +49934,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(search.external_seed_strategy
             ? { external_seed_strategy: search.external_seed_strategy }
             : {}),
-          in_stock_only: search.in_stock_only !== false,
+          ...(parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== undefined
+            ? { in_stock_only: parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) }
+            : {}),
           limit,
           offset,
         };
@@ -50880,7 +50900,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(secondaryQueryParams?.external_seed_strategy
             ? { external_seed_strategy: secondaryQueryParams.external_seed_strategy }
             : {}),
-          in_stock_only: secondaryQueryParams?.in_stock_only !== false,
+          ...(parseQueryBoolean(secondaryQueryParams?.in_stock_only) !== undefined
+            ? { in_stock_only: parseQueryBoolean(secondaryQueryParams?.in_stock_only) }
+            : {}),
         };
         return {
           method: 'POST',
@@ -53310,7 +53332,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const search = effectivePayload.search || effectivePayload || {};
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
-          const inStockOnly = search.in_stock_only !== false;
+          const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
           const fromCache = await searchCreatorSellableFromCache(creatorId, fallbackQuery, page, limit, {
             intent: effectiveIntent,
             inStockOnly,
@@ -54487,6 +54509,7 @@ module.exports._debug = {
   classifyInvokeSearchRail,
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
+  buildSearchProductsV2Body,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

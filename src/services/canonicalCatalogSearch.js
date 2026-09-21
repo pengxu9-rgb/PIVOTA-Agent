@@ -1542,12 +1542,9 @@ async function fetchCanonicalChainRows(args = {}) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
-  // Match #2240: unknown availability shares the sellable tier. This is a
-  // ranking preference, not an exclusion rule. The inStockOnly hard filter
-  // below deliberately has broader coverage: it strips punctuation, excludes
-  // "oos" and "false", and checks inventory_quantity. That filter keeps its
-  // existing behavior; a legacy spelling can pass this ranking tier but still
-  // fail an explicit inStockOnly request.
+  // Match #2240: unknown availability shares the sellable ranking tier. An
+  // explicit inStockOnly filter below is stricter: it requires positive stock
+  // evidence and never treats an unknown/null signal as an affirmative match.
   const bestOfferAvailabilityOrder = `${OFFER_AVAILABILITY_TIER_SQL},`;
   // The MAIN shopping route elects an offer scope. Require a matching live
   // offer BEFORE the candidate LIMIT, then select from that identical set in
@@ -1568,8 +1565,13 @@ async function fetchCanonicalChainRows(args = {}) {
       offerScopeClauses.push(`(nullif(upper(trim(coalesce(o.market, ''))), '') IS NULL OR upper(trim(o.market)) = ANY(${bind}::text[]))`);
     }
     if (offerScope.inStockOnly === true) {
-      offerScopeClauses.push("regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g') NOT IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false')");
-      offerScopeClauses.push('(o.inventory_quantity IS NULL OR o.inventory_quantity > 0)');
+      const normalizedAvailability = "regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g')";
+      offerScopeClauses.push(`(CASE
+        WHEN ${normalizedAvailability} IN ('instock', 'available', 'true') THEN TRUE
+        WHEN ${normalizedAvailability} IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false', 'discontinued') THEN FALSE
+        WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0
+        ELSE NULL
+      END) IS TRUE`);
     }
     if (offerScope.currency) {
       offerScopeClauses.push(`upper(trim(o.currency)) = ${bindOfferValue(String(offerScope.currency).trim().toUpperCase())}`);
