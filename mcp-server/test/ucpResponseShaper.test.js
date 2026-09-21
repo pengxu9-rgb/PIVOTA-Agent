@@ -334,6 +334,38 @@ describe('messages', () => {
     const out = shape({ products: [ROW], total: 1 }, { query: 'q' });
     assert.equal(Object.prototype.hasOwnProperty.call(out, 'messages'), false);
   });
+
+  test('unpriced live-quote referrals are reported as deferred instead of a generic missing-price drop', () => {
+    const row = {
+      ...ROW,
+      price: undefined,
+      currency: undefined,
+      availability: 'unknown',
+      commerce_verification: { required: true, status: 'live_quote_required' },
+    };
+    const out = shape({ products: [row], total: 1 }, { query: 'lip gloss' });
+    assert.deepEqual(out.products, []);
+    assert.equal(out.messages.length, 1);
+    assert.equal(out.messages[0].code, 'products.deferred_live_quote_required');
+    assert.match(out.messages[0].content, /current price and availability require live merchant verification/);
+    assert.equal(out.messages.some((message) => message.code === 'products.omitted_no_price'), false);
+  });
+
+  test('verification-required rows never publish stale price or stock fields', () => {
+    const row = {
+      ...ROW,
+      price: 30,
+      currency: 'SGD',
+      availability: 'in_stock',
+      in_stock: true,
+      commerce_verification: { required: true, status: 'live_quote_required' },
+    };
+    assert.deepEqual(shapeUcpProduct(row), { product: undefined, dropped: 'live_quote_required' });
+    const out = shape({ products: [row], total: 1 }, { query: 'lip gloss' });
+    assert.deepEqual(out.products, []);
+    assert.equal(out.messages[0].code, 'products.deferred_live_quote_required');
+    assert.match(out.messages[0].content, /after merchant verification completes/);
+  });
 });
 
 // ---- 4b. get_product -> catalog_lookup get_product_response ----------------------------------------------------

@@ -30,6 +30,21 @@ function makeMockQuery(rows = []) {
 }
 
 describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
+  test('explicit stock scope requires affirmative offer evidence', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick',
+      includeSkuOffers: true,
+      offerScope: { markets: ['SG'], inStockOnly: true, currency: 'SGD' },
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toContain("IN ('instock', 'available', 'true')");
+    expect(sql).toContain('WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0');
+    expect(sql).toContain('END) IS TRUE');
+    expect(sql).not.toContain('o.inventory_quantity IS NULL OR o.inventory_quantity > 0');
+  });
+
   test('returns [] for empty query without hitting the DB', async () => {
     const query = makeMockQuery([{ product_key: 'should not appear' }]);
     const out = await fetchCanonicalChainRows({ query: '   ', deps: { query } });

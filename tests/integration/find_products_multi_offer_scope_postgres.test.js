@@ -85,8 +85,9 @@ suite('primary offer constraints execute before the candidate cut', () => {
   test('inStockOnly=false retains the deliberate unfiltered availability behavior',async()=>{
     const rows=await recall('sibling',scope({inStockOnly:false}));expect(rows[0].offer_id).toBe('cheap_soldout');
   });
-  test('unknown stock and legacy unmarked market are not invented or rejected',async()=>{
-    const rows=await recall('unknown',scope({}));expect(rows).toHaveLength(1);
+  test('explicit stock rejects unknown evidence; unconstrained discovery retains it',async()=>{
+    expect(await recall('unknown',scope({}))).toEqual([]);
+    const rows=await recall('unknown',scope({inStockOnly:false}));expect(rows).toHaveLength(1);
     expect(rows[0].availability).toBeNull();expect(rows[0].inventory_quantity).toBeNull();
   });
   test('FX bounds exactly reuse final policy and unsupported conversion cannot win cheaply',async()=>{

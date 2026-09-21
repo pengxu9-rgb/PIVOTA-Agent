@@ -112,7 +112,7 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
   });
   test('exact oily-hair title keeps stock and explicit currency gates before final ranking', async()=>{
     const search = ()=>request(app).post('/agent/shop/v1/invoke').send({operation:'find_products_multi',
-      payload:{search:{query:"A'PIEU Oily Hair Dry Powder",domain:'beauty',market:'US',currency:'USD',limit:10}},
+      payload:{search:{query:"A'PIEU Oily Hair Dry Powder",domain:'beauty',market:'US',currency:'USD',in_stock_only:true,limit:10}},
       metadata:{source:'public_api',market:'US'}});
     const valid=await search();
     expect(valid.body.status).toBe('success');expect(valid.body.products).toHaveLength(1);

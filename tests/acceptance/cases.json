@@ -23,9 +23,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 17
       },
       "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
@@ -44,9 +44,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       },
       "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
@@ -65,9 +65,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 17
       },
       "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
@@ -87,9 +87,9 @@
       "status": "pass",
       "live": {
         "top_n": 5,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       }
     },
     {
@@ -107,9 +107,9 @@
       "status": "pass",
       "live": {
         "top_n": 5,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       },
       "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
@@ -128,11 +128,10 @@
       "status": "pass",
       "live": {
         "top_n": 5,
-        "status": "known_fail",
-        "reason": "Isolated gateway-00303-zag passed on 2026-09-20; stable gateway revision has not received this fix",
-        "tracked_by": "promote PIVOTA-Agent #2246 to the stable gateway and rerun live acceptance"
-      }
-    ,
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
+      },
       "fixed_by": "PIVOTA-Agent #2246"
     },
     {
@@ -150,11 +149,10 @@
       "status": "pass",
       "live": {
         "top_n": 5,
-        "status": "known_fail",
-        "reason": "Isolated gateway-00303-zag passed on 2026-09-20; stable gateway revision has not received this fix",
-        "tracked_by": "promote PIVOTA-Agent #2246 to the stable gateway and rerun live acceptance"
-      }
-    ,
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
+      },
       "fixed_by": "PIVOTA-Agent #2246"
     },
     {
@@ -172,9 +170,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       }
     },
     {
@@ -192,9 +190,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       }
     },
     {
@@ -212,9 +210,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 2
       }
     },
     {
@@ -232,9 +230,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 2
       }
     },
     {
@@ -252,9 +250,9 @@
       "status": "pass",
       "live": {
         "top_n": 20,
-        "status": "known_fail",
-        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
-        "tracked_by": "live run after the next gateway deploy"
+        "status": "pass",
+        "verified_by": "gateway-00320-nol production replay 2026-09-21",
+        "observed_target_rank": 1
       }
     },
     {

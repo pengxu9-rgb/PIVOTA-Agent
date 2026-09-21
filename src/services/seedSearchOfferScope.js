@@ -16,7 +16,7 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   const clauses = [`${nativePrice} > 0`];
   if (inStockOnly) {
     const availability = "coalesce(nullif(trim(availability), ''), nullif(trim(seed_data->>'availability'), ''), nullif(trim(seed_data#>>'{snapshot,availability}'), ''), '')";
-    clauses.push(`regexp_replace(lower(${availability}), '[^a-z0-9]', '', 'g') NOT IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false')`);
+    clauses.push(`regexp_replace(lower(${availability}), '[^a-z0-9]', '', 'g') IN ('instock', 'available', 'true')`);
   }
   if (brand) {
     // Match buildBeautyExternalSeedMainlineProduct's own-brand precedence.
