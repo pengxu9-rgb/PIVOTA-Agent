@@ -223,7 +223,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -333,7 +333,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -1239,8 +1239,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1409,8 +1409,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1546,7 +1546,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,

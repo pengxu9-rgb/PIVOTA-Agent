@@ -1205,7 +1205,8 @@ async function defaultSearchProducts({ query }) {
           limit: SEARCH_LIMIT,
           offset: 0,
           source: 'aurora-bff',
-          allow_external_seed: false,
+          allow_external_seed: true,
+          external_seed_strategy: 'unified_relevance',
           fast_mode: true,
         },
       });

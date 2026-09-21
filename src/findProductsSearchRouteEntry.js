@@ -133,7 +133,6 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       ).trim().toLowerCase(),
     );
     const defaultPublicSearchExternalSeed =
-      !explicitStrictCatalogSurfaceRequested &&
       shouldDefaultBeautyMainlineExternalSeed(
         rawSearch,
         publicBeautyMainlineBypass.semanticContract,
@@ -186,7 +185,9 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           : {}),
         catalog_surface: 'agent_api',
         commerce_surface: 'agent_api',
-        allow_external_seed: false,
+        // A strict commerce surface constrains the request, not the catalog source.
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
       };
       payload.metadata = {
         ...routeMetadata,

@@ -1151,12 +1151,10 @@ const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(12, v));
 })();
-const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
-  const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
+// External offers are part of the catalog recall universe. Preserve the
+// legacy symbol for call-site compatibility without allowing an environment
+// switch to remove an otherwise eligible source.
+const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = true;
 const AURORA_DISCOVERY_CARD_IN_LIST_ENABLED = (() => {
   const raw = String(process.env.AURORA_DISCOVERY_CARD_IN_LIST_ENABLED || 'true')
     .trim()
