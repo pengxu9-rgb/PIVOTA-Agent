@@ -313,9 +313,6 @@ function shouldAttemptSemanticOwnerCoverageSupplement({
 } = {}) {
   if (operation !== 'find_products_multi') return false;
   if (!semanticOwnerControlled || !semanticOwnerAdoptedByValidHit) return false;
-  if (parseBooleanQueryValue(queryParams?.allow_external_seed ?? queryParams?.allowExternalSeed) !== true) {
-    return false;
-  }
   const targetStepFamily = String(semanticOwnerTargetStepFamily || '').trim().toLowerCase();
   if (!['sunscreen', 'treatment', 'serum'].includes(targetStepFamily)) return false;
   const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];

@@ -9670,9 +9670,9 @@ function readOfferCurrency(offer) {
 
 function offerIsInternalCheckoutCandidate(offer) {
   const route = String(offer?.purchase_route || offer?.purchaseRoute || '').trim().toLowerCase();
-  if (route === 'internal_checkout') return true;
-  const merchantId = String(offer?.merchant_id || offer?.merchantId || '').trim();
-  return Boolean(merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID);
+  // Observed external sellers have real merchant ids. A merchant id alone is
+  // never evidence that Pivota owns a checkout session for this offer.
+  return route === 'internal_checkout';
 }
 
 function offerHasAvailableInventory(offer) {
@@ -15401,15 +15401,16 @@ function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operati
     payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
       ? { ...payload.search }
       : {};
-  if (!shouldForcePublicBeautyUnifiedExternalSeedContract(search, metadata)) {
+  if (!String(search.query || search.q || '').trim()) {
     return rawPayload;
   }
   search.allow_external_seed = true;
   search.external_seed_strategy = 'unified_relevance';
-  if (!firstNonEmptyString(search.catalog_surface, search.catalogSurface)) {
+  const beautySearch = shouldForcePublicBeautyUnifiedExternalSeedContract(search, metadata);
+  if (beautySearch && !firstNonEmptyString(search.catalog_surface, search.catalogSurface)) {
     search.catalog_surface = 'beauty';
   }
-  if (!firstNonEmptyString(search.commerce_surface, search.commerceSurface)) {
+  if (beautySearch && !firstNonEmptyString(search.commerce_surface, search.commerceSurface)) {
     search.commerce_surface = 'beauty';
   }
   payload.search = search;
@@ -15422,32 +15423,9 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       ? { ...queryParams }
       : {};
   if (!isCatalogGuardSource(source)) return params;
-  const isAurora = isAuroraSource(source);
-  const explicitAllowExternalSeed = parseQueryBoolean(
-    params.allow_external_seed ?? params.allowExternalSeed,
-  );
   const explicitFastMode = parseQueryBoolean(params.fast_mode ?? params.fastMode);
-  const explicitExternalSeedStrategy = firstQueryParamValue(
-    params.external_seed_strategy ?? params.externalSeedStrategy,
-  );
-  const allowExternalSeed =
-    explicitAllowExternalSeed !== undefined
-      ? explicitAllowExternalSeed
-      : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
-  const normalizedExternalSeedStrategy = normalizeExternalSeedStrategy(
-    explicitExternalSeedStrategy ||
-      (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first'),
-    isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first',
-  );
-  const creatorBeautySource =
-    isCreatorInvokeSource(source) &&
-    hasBeautyInvokeHint({ catalog_surface: params.catalog_surface, catalogSurface: params.catalogSurface });
-  const externalSeedStrategy =
-    isShoppingSource(source) || isAurora || creatorBeautySource
-      ? normalizedExternalSeedStrategy
-      : normalizedExternalSeedStrategy === 'unified_relevance'
-        ? 'supplement_internal_first'
-        : normalizedExternalSeedStrategy;
+  const allowExternalSeed = true;
+  const externalSeedStrategy = 'unified_relevance';
   return {
     ...params,
     allow_external_seed: allowExternalSeed,

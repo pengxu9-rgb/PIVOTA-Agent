@@ -56,7 +56,7 @@ test('direct route source does not switch discovery owner to strict shop lane', 
   );
 });
 
-test('direct route explicit strict catalog surface uses strict shop lane', () => {
+test('strict shop lane keeps external offers eligible', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
     query: {
@@ -69,7 +69,8 @@ test('direct route explicit strict catalog surface uses strict shop lane', () =>
 
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.forceDirectInvokeMainPath, true);
-  assert.equal(routePlan.payload.search.allow_external_seed, false);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
   assert.equal(routePlan.payload.metadata.catalog_surface, 'agent_api');
   assert.equal(routePlan.payload.metadata.primary_lane, 'shop_invoke_strict');
   assert.equal(routePlan.payload.metadata.primary_retrieval_contract, 'shop_invoke_strict');

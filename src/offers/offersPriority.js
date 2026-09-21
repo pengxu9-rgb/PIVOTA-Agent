@@ -191,18 +191,10 @@ function scoreCommerceFactsCompleteness(offer) {
 }
 
 function scoreOfferForPriority(offer) {
-  if (!offer || typeof offer !== 'object') return 99;
-  if (isInternalOffer(offer)) return 0;
-  if (isExternalOffer(offer)) return 1;
-  if (readGenericUrl(offer)) return 2;
-  return 50;
+  return offer && typeof offer === 'object' ? 0 : 99;
 }
 
 function compareOffersForPresentation(a, b) {
-  const aInternal = isInternalOffer(a) ? 1 : 0;
-  const bInternal = isInternalOffer(b) ? 1 : 0;
-  if (aInternal !== bInternal) return bInternal - aInternal;
-
   const aInStock = offerHasAvailableInventory(a) ? 1 : 0;
   const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
   if (aInStock !== bInStock) return bInStock - aInStock;

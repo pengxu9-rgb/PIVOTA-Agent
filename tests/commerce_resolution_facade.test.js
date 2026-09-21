@@ -2238,6 +2238,8 @@ describe('Commerce resolution facade', () => {
           offset: 0,
           search_all_merchants: true,
           catalog_surface: 'beauty',
+          allow_external_seed: true,
+          external_seed_strategy: 'unified_relevance',
         },
         headers: expect.objectContaining({
           Authorization: 'Bearer checkout-token',
