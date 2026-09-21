@@ -102,10 +102,28 @@ async function productTitle(page) {
   return sanitizeSearchQuery(h1 || og || title);
 }
 
+async function dismissBlockingDialogs(page) {
+  const dialogs = page.getByRole('dialog');
+  const count = await dialogs.count().catch(() => 0);
+  for (let index = 0; index < Math.min(count, 4); index += 1) {
+    const dialog = dialogs.nth(index);
+    if (!(await visible(dialog))) continue;
+    const close = await firstVisible(
+      dialog.getByRole('button', { name: /^(close|close dialog|no thanks|not now)$/i }),
+      dialog.locator('[aria-label*="close" i]'),
+    );
+    if (close) {
+      await close.click({ timeout: 1500 }).catch(() => {});
+      await page.waitForTimeout(150);
+    }
+  }
+}
+
 async function searchFromStorefront(page, { startUrl, query }) {
   if (!query) return { status: 'not_supported', reason: 'search_unavailable' };
   const home = new URL('/', startUrl).toString();
   await page.goto(home, { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await dismissBlockingDialogs(page);
   let search = await firstVisible(
     page.getByRole('searchbox'),
     page.locator('input[type="search"]'),
@@ -150,6 +168,15 @@ async function fillSyntheticAddress(page) {
     await locator.fill(value, { timeout: 2500 }).catch(() => {});
     return true;
   };
+  // Checkout frameworks often rebuild the address form after country changes.
+  // Select the country first, then locate and fill the current controls.
+  const country = await firstVisible(
+    page.locator('select[name*="country" i]'), page.locator('select[autocomplete="country"]'),
+  );
+  if (country) {
+    await country.selectOption({ label: 'United States' }).catch(() => country.selectOption('US').catch(() => {}));
+    await page.waitForTimeout(500);
+  }
   const filled = {
     email: await fill(['input[type="email"]', 'input[name*="email" i]'], 'store-readiness-probe@pivota.cc'),
     first: await fill(['input[name*="first" i]', 'input[autocomplete="given-name"]'], 'Pivota'),
@@ -158,10 +185,11 @@ async function fillSyntheticAddress(page) {
     city: await fill(['input[name*="city" i]', 'input[autocomplete="address-level2"]'], 'Beverly Hills'),
     postal: await fill(['input[name*="zip" i]', 'input[name*="postal" i]', 'input[autocomplete="postal-code"]'], '90210'),
   };
-  const country = await firstVisible(
-    page.locator('select[name*="country" i]'), page.locator('select[autocomplete="country"]'),
+  const state = await firstVisible(
+    page.locator('select[name*="zone" i]'), page.locator('select[name*="state" i]'),
+    page.locator('select[autocomplete="address-level1"]'),
   );
-  if (country) await country.selectOption({ label: 'United States' }).catch(() => country.selectOption('US').catch(() => {}));
+  if (state) await state.selectOption({ label: 'California' }).catch(() => state.selectOption('CA').catch(() => {}));
   if (!filled.address || !filled.city || !filled.postal) {
     return { status: 'not_supported', reason: 'address_form_unavailable' };
   }
@@ -253,6 +281,11 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
       }
       await checkoutControl.click({ timeout: 5000 });
       await page.waitForTimeout(1000);
+      // Some Shopify themes leave their checkout form submission on /cart.
+      // The canonical guest checkout route is a safe, same-origin fallback.
+      if (platform?.platform === 'shopify' && /\/cart\/?(?:[?#].*)?$/.test(new URL(page.url()).pathname)) {
+        await page.goto(new URL('/checkout', startUrl).toString(), { waitUntil: 'domcontentloaded', timeout: 20000 });
+      }
       const checkout = classifyCheckoutPage({ url: page.url(), text: await shortPageText(page) });
       if (checkout.status === 'guest_route_detected') {
         steps.checkout = { status: 'passed', reason: 'checkout_reached' };
@@ -280,6 +313,7 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
 
 module.exports = {
   CART_STATUSES, CHECKOUT_STATUSES, STEP_REASONS, STEP_STATUSES,
-  classifyCheckoutPage, createCommerceStorefrontAudit, httpsUrl, journeySteps,
+  classifyCheckoutPage, createCommerceStorefrontAudit, dismissBlockingDialogs,
+  fillSyntheticAddress, httpsUrl, journeySteps,
   platformFromGenerator, sanitizeSearchQuery, validatePublicBrowserUrl,
 };
