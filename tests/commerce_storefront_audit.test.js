@@ -2,6 +2,7 @@
 
 const {
   classifyCheckoutPage,
+  detectStorefrontPlatform,
   dismissBlockingDialogs,
   fillSyntheticAddress,
   httpsUrl,
@@ -31,6 +32,24 @@ test('recognizes a guest checkout route and supported platform metadata', () => 
   expect(classifyCheckoutPage({ url: 'https://merchant.example/order/orderform.html', text: '' }))
     .toEqual({ status: 'guest_route_detected' });
   expect(platformFromGenerator('Cafe24')).toEqual({ platform: 'cafe24', checkout_provider: 'cafe24' });
+});
+
+test('detects a custom Cafe24 theme without a generator meta tag', async () => {
+  const page = {
+    locator: jest.fn((selector) => {
+      if (selector === 'meta[name="generator"]') {
+        return {
+          first() { return this; },
+          getAttribute: jest.fn(async () => null),
+        };
+      }
+      return { count: jest.fn(async () => 1) };
+    }),
+  };
+
+  await expect(detectStorefrontPlatform(page)).resolves.toEqual({
+    platform: 'cafe24', checkout_provider: 'cafe24',
+  });
 });
 
 test('accepts only non-sensitive canonical storefront targets', () => {
