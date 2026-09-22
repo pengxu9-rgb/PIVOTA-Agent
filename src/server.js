@@ -76,7 +76,8 @@ const {
   parseOfferId,
 } = require('./offers/offerIds');
 const {
-  prioritizeOffersResolveResponse,
+  // `prioritizeOffersResolveResponse` itself is NOT imported: the only caller is the gated wrapper
+  // below, and an ungated alias sitting in scope is how an ungated call site gets written next.
   prioritizeOffersResolveResponseGated,
   annotateOffersWithCommerceMetadata,
   resolveOfferPurchasabilityDecisions,

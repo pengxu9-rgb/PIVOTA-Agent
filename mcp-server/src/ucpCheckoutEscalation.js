@@ -383,8 +383,13 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     ? shouldOfferPurchase
     : (args) => merchantPurchasability.getMerchantPurchasabilityClient().shouldOfferPurchase(args);
   const gateEnabled = merchantPurchasability.isGateEnabled(env);
-  // The door's own window, and how much of it is left when the gate is reached. `clock` is injected
-  // only by tests; production reads the real one.
+  // HOW MUCH WINDOW THERE IS, AND WHOSE IT ACTUALLY IS — stated precisely, because the first cut's
+  // comment claimed more than the code has. `commerceToolSurface.callTool` (line 322) passes NO
+  // `timeoutMs`, so in production `doorBudgetMs` is `DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS` (3000) —
+  // which is `readRows`' PER-CALL ceiling for the product reads, NOT a deadline on this door. There
+  // is no door-wide deadline to clamp to today. So what actually bounds the gate here is
+  // `ESCALATION_GATE_MAX_MS` below; the "what is left" arm only bites when a caller passes a real
+  // `timeoutMs`, and it is written so that it will when one does. `clock` is injected only by tests.
   const gateClock = typeof clock === "function" ? clock : Date.now;
   const doorStartedAt = gateClock();
   const doorBudgetMs = Number.isFinite(timeoutMs) && timeoutMs > 0

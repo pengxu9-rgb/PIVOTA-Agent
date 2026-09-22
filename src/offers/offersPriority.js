@@ -181,8 +181,44 @@ function declinedSetOf(options) {
   return set instanceof Set && set.size > 0 ? set : null;
 }
 
-/** Checkout/cart-shaped paths. A PDP or a category page is NOT one of these and is never stripped. */
-const CHECKOUT_PATH_RE = /^\/(cart|checkouts?|checkout-[^/]*)(\/|$|\?)/i;
+/**
+ * Checkout/cart-shaped paths. A PDP or a category page is NOT one of these and is never stripped.
+ *
+ * ⚠️ THE FIRST CUT ANCHORED AT THE START OF THE PATH AND MISSED THE TWO COMMONEST REAL SHAPES.
+ * Probed declined and surviving verbatim: `https://merchant.com/12345678/checkouts/abcdef` (the
+ * classic Shopify web checkout, shop-id prefixed) and `https://merchant.com/en-gb/cart/12345:1`
+ * (a locale-prefixed permalink). A suppression rule that only recognises the tidy shape suppresses
+ * only the tidy shape. So an OPTIONAL locale segment and an OPTIONAL numeric shop segment, in
+ * either order, precede the checkout segment. `/cart/c/<token>` and `/checkouts/cn/<token>` are
+ * covered by the trailing `(\/|$|\?)`.
+ */
+const LOCALE_SEG = '(?:\\/[a-z]{2}(?:-[a-z]{2})?)?';
+const SHOP_SEG = '(?:\\/\\d+)?';
+const CHECKOUT_PATH_RE = new RegExp(
+  `^${LOCALE_SEG}${SHOP_SEG}${LOCALE_SEG}\\/(cart|checkouts?|checkout-[^/]*)(\\/|$|\\?)`,
+  'i',
+);
+
+/**
+ * Field names that PROMISE a checkout. The byte-equal arm below strips the stamped URL from these
+ * unconditionally — whatever its shape — because a field called `checkout_url` carrying the URL we
+ * were about to publish as `merchant_checkout_url` IS the "buy here" link.
+ */
+const CHECKOUT_NAMED_FIELDS = new Set([
+  'merchant_checkout_url', 'merchantCheckoutUrl',
+  'checkout_url', 'checkoutUrl',
+  'purchase_url', 'purchaseUrl',
+  'internal_checkout_url', 'internalCheckoutUrl',
+  'continue_url', 'continueUrl',
+]);
+
+/** "Buyable here" payloads. A declined merchant carries none of these, whatever they contain. */
+const BUYABLE_SIGNAL_FIELDS = [
+  'internal_checkout', 'internalCheckout',
+  'merchant_checkout_session', 'merchantCheckoutSession',
+  'checkout_session', 'checkoutSession',
+  'merchant_checkout_url', 'merchantCheckoutUrl',
+];
 
 function parseUrlish(value) {
   if (typeof value !== 'string') return null;
@@ -217,52 +253,96 @@ function normalizeUrlForCompare(value) {
  * a browse/referral result. A redirect offer whose only URL is the product page keeps it — the
  * stamped URL is only stripped by the byte-equal arm when it is itself checkout-shaped.
  */
-function isSuppressedCheckoutUrl(value, domain, stampedUrl, stampedIsCheckout) {
+function isSuppressedCheckoutUrl(value, domain, stampedUrl, fieldName) {
   const parsed = parseUrlish(value);
   if (!parsed || hostKeyOf(parsed) !== domain) return false;
+  // ARM 1 — SHAPE. A cart/checkout path on the declined host, in ANY field, at any depth.
   if (CHECKOUT_PATH_RE.test(parsed.pathname)) return true;
-  return stampedIsCheckout && normalizeUrlForCompare(value) === normalizeUrlForCompare(stampedUrl);
+  // ARM 2 — BYTE-EQUAL TO THE STAMPED URL, and UNCONDITIONAL on shape. The first cut gated this on
+  // the stamped URL being checkout-SHAPED, i.e. it switched itself off in exactly the case the
+  // shape arm had already failed to recognise — two guards that fail together are one guard.
+  if (normalizeUrlForCompare(value) !== normalizeUrlForCompare(stampedUrl)) return false;
+  // ...but only out of a field that CLAIMS to be a checkout. A redirect offer whose only URL is the
+  // product page has that URL stamped as its "checkout url"; stripping it from `external_redirect_url`
+  // and `url` too would leave a row with no way to reach the product at all, and browse/referral IS
+  // the fallback this gate exists to fall back TO (docs §8, and the standing constraint that the
+  // OFFER survives). Both probe shapes in the review are checkout-SHAPED, so arm 1 removes them from
+  // every field regardless. ⚠️ Deliberate narrowing of the review instruction — called out in the PR.
+  return CHECKOUT_NAMED_FIELDS.has(fieldName);
 }
 
-/** Deep copy of `node` with every suppressed URL value removed. Bounded depth; no cycles survive. */
-function stripCheckoutUrlsDeep(node, domain, stampedUrl, stampedIsCheckout, depth = 0) {
-  if (depth > 8 || node === null || typeof node !== 'object') return node;
+const MAX_STRIP_DEPTH = 8;
+const DROP = Symbol('drop');
+
+/**
+ * Deep copy of `node` with every suppressed URL value removed.
+ *
+ * ⚠️ TWO THINGS THE FIRST CUT GOT WRONG, BOTH ONLY ON DECLINED ROWS (so neither was visible in a
+ * snapshot of a purchasable one):
+ *
+ *  1. IT REBUILT EVERY OBJECT AS A PLAIN ONE. `Object.entries(new Date())` is `[]`, so a `Date` on
+ *     a declined offer came back as `{}` — and a Buffer, a RegExp or a class instance the same way.
+ *     Anything that is not a plain object or an array is now copied BY REFERENCE: it cannot contain
+ *     a URL-valued own enumerable key we would have stripped, and mangling it is a real data loss.
+ *  2. AT THE DEPTH CAP IT RETURNED THE SUBTREE BY REFERENCE, UNSTRIPPED — i.e. the one place the
+ *     walk gives up was the one place a checkout URL was guaranteed to survive. Past the cap the
+ *     field is DROPPED instead: a suppression that cannot see what it is suppressing must fail
+ *     CLOSED. Eight levels is far past anything an offer row carries, so this is a guard, not a
+ *     behaviour.
+ */
+function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0) {
+  if (node === null || typeof node !== 'object') return node;
+  if (depth > MAX_STRIP_DEPTH) return DROP;
   if (Array.isArray(node)) {
-    return node
-      .filter((v) => !isSuppressedCheckoutUrl(v, domain, stampedUrl, stampedIsCheckout))
-      .map((v) => stripCheckoutUrlsDeep(v, domain, stampedUrl, stampedIsCheckout, depth + 1));
+    const out = [];
+    for (const v of node) {
+      if (typeof v === 'string') {
+        // An array element has no field name of its own; it inherits the array's, which is why the
+        // caller passes it down. Shape-matching applies either way.
+        if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, null)) out.push(v);
+        continue;
+      }
+      const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1);
+      if (stripped !== DROP) out.push(stripped);
+    }
+    return out;
   }
+  // Not a plain object (Date, Buffer, RegExp, a class instance): copied by reference, never rebuilt.
+  const proto = Object.getPrototypeOf(node);
+  if (proto !== Object.prototype && proto !== null) return node;
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (typeof v === 'string') {
-      if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, stampedIsCheckout)) out[k] = v;
+      if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, k)) out[k] = v;
       continue;
     }
-    out[k] = stripCheckoutUrlsDeep(v, domain, stampedUrl, stampedIsCheckout, depth + 1);
+    const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1);
+    if (stripped !== DROP) out[k] = stripped;
   }
   return out;
 }
+
+/**
+ * THE BROWSE / REFERRAL SHAPE, in the repo's OWN vocabulary — surveyed, not invented:
+ *   `purchase_route: 'affiliate_outbound'`  — what `isExternalOffer` reads, what src/server.js:10029
+ *                                             already stamps on a links-out row, and one of the four
+ *                                             tokens `checkoutHandoffResolver.isCurrentPolicyDirect`
+ *                                             treats as NOT direct.
+ *   `commerce_mode: 'links_out'`            — likewise refused by `isCurrentPolicyDirect`, and
+ *                                             mapped to `product_snippet` (not `merchant_listing`)
+ *                                             by `pdpProductIntel.inferStructuredDataMode`.
+ *   `checkout_handoff: 'redirect'`          — likewise.
+ * Nothing new is added to a shared vocabulary: widening one needs its own measured no-change
+ * invariant, and a declined row is precisely the links-out row this repo already describes.
+ */
+const DECLINED_PURCHASE_ROUTE = 'affiliate_outbound';
+const DECLINED_CHECKOUT_HANDOFF = 'redirect';
 
 function enrichOfferCommerceMetadata(offer, options) {
   if (!offer || typeof offer !== 'object' || Array.isArray(offer)) return offer;
 
   const checkoutUrl = readOfferStampedCheckoutUrl(offer);
   const merchantCheckoutSession = readMerchantCheckoutSession(offer);
-
-  // ⚠️ THE MODE MUST NOT DRIFT WHEN THE URLS HAVE ALREADY BEEN SUPPRESSED. `inferCommerceMode`
-  // reads the URL fields, and a declined offer no longer has any — so a LATER pass over an
-  // already-suppressed offer would find none, fall through to the default and relabel a links-out
-  // row `merchant_embedded_checkout` / `embedded`: a claim that Pivota hosts a checkout for a
-  // merchant it has just declined to sell for. An offer that carries a mode from an earlier pass
-  // and has no URL left keeps that mode. This cannot change any un-suppressed offer: one that
-  // still has a URL is re-inferred exactly as before, to exactly the same value.
-  const priorMode = asString(offer.commerce_mode);
-  const priorHandoff = asString(offer.checkout_handoff);
-  const suppressedEarlier = !checkoutUrl && Boolean(priorMode);
-  const commerceMode = suppressedEarlier ? priorMode : inferCommerceMode(offer);
-  const checkoutHandoff = suppressedEarlier
-    ? (priorHandoff || inferCheckoutHandoff(offer))
-    : inferCheckoutHandoff(offer);
 
   // THE SEAM.
   // `declinedDomains` is empty (and this is `false`) on every path where the switch is off, the
@@ -273,42 +353,62 @@ function enrichOfferCommerceMetadata(offer, options) {
   const merchantNotPurchasable = Boolean(checkoutUrl && declined && declined.has(domain));
 
   if (merchantNotPurchasable) {
-    // ⚠️ DELETE, NOT "SKIP". This function runs MORE THAN ONCE over the same offer: the PDP lane
-    // annotates inside `buildOffersFromGroupMembers` and its callers annotate the result again.
-    // A conditional spread can only ADD a key, so `...offer` faithfully re-emitted whatever an
-    // EARLIER, ungated pass had already stamped and the gate was a measured no-op on both serving
-    // lanes. Removing the key explicitly makes the decision hold whichever pass stamped it — and
-    // the suppression is idempotent, so the order of the passes stops mattering.
-    const stampedIsCheckout = Boolean(
-      parseUrlish(checkoutUrl) && CHECKOUT_PATH_RE.test(parseUrlish(checkoutUrl).pathname),
-    );
-    const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl, stampedIsCheckout);
-    delete base.merchant_checkout_url;
+    // ⚠️ A URL IS NOT THE ONLY THING THAT SAYS "BUYABLE HERE".
+    //
+    // The first cut removed the checkout URLs and left every other purchase signal standing.
+    // Probed: a declined `{purchase_route:'internal_checkout', checkout_url:<cart>,
+    // internal_checkout:{continue_url,token}}` was served as `purchase_route:'internal_checkout'`,
+    // `internal_checkout:{token}`, `merchant_checkout_session:{token}`,
+    // `commerce_mode:'merchant_embedded_checkout'`, `checkout_handoff:'embedded'` — so
+    // `isInternalOffer` was still TRUE, `compareOffersForPresentation` could still rank it as an
+    // internal offer and `pickDefaultOfferId` could still make it the page's DEFAULT. The URL was
+    // gone and the offer still said, in five other ways, that Pivota sells this here.
+    //
+    // So a declined merchant loses the whole claim, not one field of it: the payloads, the route,
+    // the mode and the handoff.
+    //
+    // DELETE, NOT "SKIP" — this function runs MORE THAN ONCE over the same offer (the PDP lane
+    // annotates inside `buildOffersFromGroupMembers` and its callers annotate the result again), and
+    // a conditional spread can only ADD a key. Removing explicitly makes the decision hold whichever
+    // pass stamped it, and makes suppression idempotent.
+    const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl);
+    for (const field of BUYABLE_SIGNAL_FIELDS) delete base[field];
+    // Both spellings, so `readPurchaseRoute` cannot find a stale camelCase twin.
+    delete base.purchaseRoute;
+    base.purchase_route = DECLINED_PURCHASE_ROUTE;
+
+    // ⚠️ THE MODE IS COMPUTED **AFTER** THE STRIP, ON THE STRIPPED ROW. Computing it first (what the
+    // first cut did, then froze with a `suppressedEarlier` flag) reads the very signals this branch
+    // has just removed and hands back `merchant_embedded_checkout` for a merchant we have declined.
+    // The stripped row has no internal payload and no checkout URL, so `inferCommerceMode` answers
+    // `links_out` whenever any link survives; its "nothing at all" fallback is
+    // `merchant_embedded_checkout`, which is the one answer a declined row must never carry, so that
+    // case is pinned to the browse shape instead. There is no label to freeze: `purchase_route`
+    // above makes `isExternalOffer` true, so a LATER pass recomputes the same values from the row
+    // itself and suppression stays idempotent.
+    // `base.purchase_route` is set ABOVE, so `isExternalOffer(base)` is true and `inferCommerceMode`
+    // can only answer `links_out` here — including for a row with no link left at all. That is why
+    // there is no "no link" fallback: it would be dead code, and a dead branch reads as a decision
+    // somebody made. The mutant that computes this from the UNSTRIPPED offer is killed.
     return {
       ...base,
-      commerce_mode: commerceMode,
+      commerce_mode: inferCommerceMode(base),
       seller_of_record: 'merchant',
       payment_processor_owner: 'merchant',
       order_system_of_record: 'merchant_store_platform',
-      checkout_handoff: checkoutHandoff,
+      checkout_handoff: DECLINED_CHECKOUT_HANDOFF,
       order_writeback_mode: 'merchant_direct',
-      ...(merchantCheckoutSession
-        ? {
-          merchant_checkout_session: stripCheckoutUrlsDeep(
-            merchantCheckoutSession, domain, checkoutUrl, stampedIsCheckout,
-          ),
-        }
-        : {}),
     };
   }
 
+  const commerceMode = inferCommerceMode(offer);
   return {
     ...offer,
     commerce_mode: commerceMode,
     seller_of_record: 'merchant',
     payment_processor_owner: 'merchant',
     order_system_of_record: 'merchant_store_platform',
-    checkout_handoff: checkoutHandoff,
+    checkout_handoff: inferCheckoutHandoff(offer),
     order_writeback_mode: 'merchant_direct',
     ...(checkoutUrl ? { merchant_checkout_url: checkoutUrl } : {}),
     ...(merchantCheckoutSession ? { merchant_checkout_session: merchantCheckoutSession } : {}),

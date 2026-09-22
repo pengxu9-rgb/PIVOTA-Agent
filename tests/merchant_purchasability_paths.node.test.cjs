@@ -41,6 +41,8 @@ const {
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,
   offersGateBuyerMarket,
+  isInternalOffer,
+  pickDefaultOfferId,
 } = require('../src/offers/offersPriority');
 
 // ---- fixtures ----------------------------------------------------------------------------------------
@@ -796,4 +798,230 @@ test('F1: EVERY annotate call site in src/server.js is gated — including the s
   }
   // And every one of them is fed by a decision resolved for this request.
   assert.equal((src.match(/resolveOfferPurchasabilityDecisions\(/g) || []).length, 3);
+});
+
+// =========================================================================================================
+// REVIEW ROUND 3 — the checkout URL shapes that actually occur, and the signals a URL is not
+// =========================================================================================================
+
+const DECLINE_ALL = async () => ({ offer: false, source: 'gate' });
+
+async function declineOffer(row, domain = 'merchant.com') {
+  const [out] = await annotateOffersWithCommerceMetadataGated([row], {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  });
+  assert.equal(readOfferMerchantDomain(row), domain, 'fixture must be for the declined merchant');
+  return out;
+}
+
+test('N1: every real-world checkout URL shape is suppressed from EVERY field', async () => {
+  // THE DEFECT. `CHECKOUT_PATH_RE` anchored the checkout segment at the START of the path, so the
+  // two commonest shapes on the platform this gate exists for survived verbatim under
+  // `checkout_url`, `external_redirect_url` AND `url` — and the byte-equal fallback was gated on
+  // the shape being recognised, i.e. it switched itself off in exactly that case.
+  const shapes = [
+    ['classic Shopify web checkout (shop-id prefixed)', 'https://merchant.com/12345678/checkouts/abcdef'],
+    ['locale-prefixed cart permalink', 'https://merchant.com/en-gb/cart/12345:1'],
+    ['locale + shop-id', 'https://merchant.com/en-gb/12345678/checkouts/abcdef'],
+    ['cart token permalink', 'https://merchant.com/cart/c/c1-abcdef'],
+    ['checkout cn token', 'https://merchant.com/checkouts/cn/tok123'],
+    ['bare cart', 'https://merchant.com/cart'],
+    ['www + query', 'https://www.merchant.com/cart/1:1?ref=pivota'],
+  ];
+  for (const [name, url] of shapes) {
+    const out = await declineOffer({
+      offer_id: 'x', checkout_url: url, external_redirect_url: url, url, action: { url },
+    });
+    for (const value of deepStrings(out)) {
+      assert.ok(!value.includes('merchant.com'), `${name}: a checkout URL survived — ${value}`);
+    }
+  }
+});
+
+test('N1: the byte-equal arm strips a stamped URL out of a checkout-NAMED field whatever its shape', async () => {
+  // An unusual shape we do not recognise, published as the checkout url: the shape arm cannot fire,
+  // so the byte-equal arm must — and it is no longer gated on the shape arm having fired.
+  const odd = 'https://merchant.com/secure/pay/session-9f2';
+  const out = await declineOffer({ offer_id: 'x', checkout_url: odd, external_redirect_url: odd });
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'checkout_url'), 'a field NAMED checkout must lose it');
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'merchant_checkout_url'));
+  // ⚠️ DELIBERATE NARROWING, FLAGGED IN THE PR: the same value is KEPT in a browse-named field.
+  // Stripping it everywhere would leave a declined redirect offer with no way to reach the product
+  // at all, and browse/referral is what this gate falls back TO.
+  assert.equal(out.external_redirect_url, odd, 'the browse link is the fallback, not collateral');
+});
+
+test('N2: a declined offer carries NO "buyable here" signal — not just no URL', async () => {
+  // THE DEFECT. The first cut removed the URLs and left everything else: the probe below was served
+  // as purchase_route:'internal_checkout', internal_checkout:{token}, merchant_checkout_session:
+  // {token}, commerce_mode:'merchant_embedded_checkout', checkout_handoff:'embedded' — so
+  // `isInternalOffer` was still TRUE and the row could still be picked as the page's default.
+  const cart = 'https://merchant.com/cart/1:1';
+  const out = await declineOffer({
+    offer_id: 'x',
+    merchant_id: 'm1',
+    price: { amount: 10, currency: 'USD' },
+    purchase_route: 'internal_checkout',
+    checkout_url: cart,
+    internal_checkout: { continue_url: cart, token: 'tok_1' },
+  });
+
+  assert.equal(isInternalOffer(out), false, 'the row must not read as an internal (Pivota) checkout');
+  for (const field of ['internal_checkout', 'internalCheckout', 'merchant_checkout_session', 'checkout_session']) {
+    assert.ok(!Object.prototype.hasOwnProperty.call(out, field), `${field} must be gone`);
+  }
+  // The repo's OWN links-out vocabulary — surveyed, not invented.
+  assert.equal(out.purchase_route, 'affiliate_outbound');
+  assert.equal(out.commerce_mode, 'links_out');
+  assert.equal(out.checkout_handoff, 'redirect');
+  // The token is gone with the payload, so nothing about the session leaks either.
+  assert.ok(!deepStrings(out).includes('tok_1'));
+  // AND THE OFFER SURVIVES.
+  assert.equal(out.offer_id, 'x');
+  assert.equal(out.price.amount, 10);
+});
+
+test('N2: a declined offer loses the INTERNAL preference that could make it the default', async () => {
+  const cart = 'https://merchant.com/cart/1:1';
+  const declinedRow = {
+    offer_id: 'declined', merchant_id: 'm1', price: { amount: 10, currency: 'USD' },
+    purchase_route: 'internal_checkout', checkout_url: cart, internal_checkout: { token: 't' },
+    inventory: { in_stock: true },
+  };
+  const purchasableRow = {
+    offer_id: 'ok', merchant_id: 'm2', price: { amount: 10, currency: 'USD' },
+    purchase_route: 'internal_checkout', checkout_url: 'https://good-shop.test/cart/9:1',
+    inventory: { in_stock: true },
+  };
+  const backend = fakeBackend((domain) => (domain === 'merchant.com' ? BROWSE_ONLY : PURCHASE));
+  const env = gateEnv();
+  const annotated = await annotateOffersWithCommerceMetadataGated([declinedRow, purchasableRow], {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+
+  assert.equal(annotated.length, 2, 'both offers are still served');
+  const declinedOut = annotated.find((o) => o.offer_id === 'declined');
+  const keptOut = annotated.find((o) => o.offer_id === 'ok');
+  assert.equal(isInternalOffer(declinedOut), false);
+  assert.equal(isInternalOffer(keptOut), true, 'the purchasable peer is untouched');
+  assert.equal(keptOut.merchant_checkout_url, 'https://good-shop.test/cart/9:1');
+
+  // ⚠️ WHAT THIS DOES AND DOES NOT ASSERT. `src/server.js::compareOffersForDefaultSelection` ranks
+  // `offerIsInternalCheckoutCandidate` FIRST, and that predicate reads `purchase_route ===
+  // 'internal_checkout'` — which this row no longer says. That preference is what the gate removes.
+  assert.notEqual(declinedOut.purchase_route, 'internal_checkout');
+  // It does NOT make the module's own picker rank by purchasability: `compareOffersForPresentation`
+  // deliberately ignores checkout transport (pinned by `prioritizeOffers does not rank by checkout
+  // transport` in tests/offers/offersPriority.test.js), and the brief for this gate says in terms
+  // that this seam is not ranking. So on equal price/stock the order is unchanged...
+  assert.equal(pickDefaultOfferId(annotated), 'declined', 'ordinary price/stock ranking is untouched');
+  // ...and ordinary ranking still works: a cheaper purchasable peer wins on its own merits.
+  const cheaper = { ...keptOut, price: { amount: 9, currency: 'USD' } };
+  assert.equal(pickDefaultOfferId([declinedOut, cheaper]), 'ok');
+});
+
+test('N2: the two consumers the review named still read the declined row as NOT direct', () => {
+  // Neither consumer is exported, so this pins THEIR RULES AT THEIR SOURCE: if either condition is
+  // edited, this fails and somebody re-checks the values above against it rather than assuming.
+  const resolver = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'services', 'checkoutHandoffResolver.js'), 'utf8',
+  );
+  for (const token of ["purchaseRoute === 'affiliate_outbound'", "commerceMode === 'links_out'", "checkoutHandoff === 'redirect'"]) {
+    assert.ok(resolver.includes(token), `isCurrentPolicyDirect no longer refuses on ${token}`);
+  }
+  const intel = fs.readFileSync(path.join(__dirname, '..', 'src', 'pdpProductIntel.js'), 'utf8');
+  assert.ok(
+    intel.includes("asString(offer?.commerce_mode) === 'merchant_embedded_checkout'"),
+    'inferStructuredDataMode no longer keys on merchant_embedded_checkout',
+  );
+  const server = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  assert.ok(
+    server.includes("return route === 'internal_checkout';"),
+    'offerIsInternalCheckoutCandidate no longer keys on the purchase_route we rewrite',
+  );
+});
+
+test('N2: the mode is computed AFTER the strip and is stable across three passes', async () => {
+  const cart = 'https://merchant.com/cart/1:1';
+  const row = {
+    offer_id: 'x', purchase_route: 'internal_checkout', checkout_url: cart,
+    internal_checkout: { token: 't' }, source_url: 'https://merchant.com/products/gloss',
+  };
+  const p1 = await declineOffer(row);
+  const p2 = (await annotateOffersWithCommerceMetadataGated([p1], {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  }))[0];
+  const p3 = (await annotateOffersWithCommerceMetadataGated([p2], {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  }))[0];
+  assert.deepEqual(p3, p2);
+  assert.deepEqual(p2, p1);
+  assert.equal(p3.commerce_mode, 'links_out');
+  assert.equal(p3.checkout_handoff, 'redirect');
+  assert.equal(p3.source_url, 'https://merchant.com/products/gloss', 'the browse link still survives');
+});
+
+test('N3: the deep strip preserves non-plain objects and fails CLOSED past its depth cap', async () => {
+  const cart = 'https://merchant.com/cart/1:1';
+  const when = new Date(0);
+  const deep = { a: { b: { c: { d: { e: { f: { g: { h: { i: { url: cart } } } } } } } } } };
+  const out = await declineOffer({ offer_id: 'x', url: cart, seen_at: when, buf: Buffer.from('hi'), deep });
+
+  // 1. A Date came back as `{}` before: `Object.entries(new Date())` is empty, and the walk rebuilt
+  //    every object as a plain one.
+  assert.ok(out.seen_at instanceof Date, 'a Date must not be rebuilt as a plain object');
+  assert.equal(out.seen_at.toISOString(), '1970-01-01T00:00:00.000Z');
+  assert.ok(Buffer.isBuffer(out.buf), 'a Buffer must survive as a Buffer');
+  assert.equal(out.buf.toString(), 'hi');
+
+  // 2. Past the cap the subtree used to be returned BY REFERENCE, UNSTRIPPED — the one place the
+  //    walk gave up was the one place a checkout URL was guaranteed to survive.
+  assert.ok(!deepStrings(out).some((v) => v.includes('merchant.com')), 'nothing may survive past the cap');
+});
+
+test('N2a: the mode is computed on the STRIPPED row — a surviving browse link makes it links_out', async () => {
+  // THE DISTINCTION THIS PINS. The unstripped row is internal (`purchase_route:'internal_checkout'`
+  // plus a checkout URL) and would infer `merchant_embedded_checkout`; the stripped row is a
+  // links-out row with a product page. Computing before the strip reads the signals the strip just
+  // removed, and hands a declined merchant an embedded-checkout label.
+  const out = await declineOffer({
+    offer_id: 'x',
+    purchase_route: 'internal_checkout',
+    checkout_url: 'https://merchant.com/cart/1:1',
+    internal_checkout: { token: 't' },
+    url: 'https://merchant.com/products/gloss',
+  });
+  assert.equal(out.commerce_mode, 'links_out');
+  assert.equal(out.url, 'https://merchant.com/products/gloss', 'the browse link is what remains');
+  assert.equal(isInternalOffer(out), false);
+});
+
+test('N2e: a declined row with NO link left is still links_out, never merchant_embedded_checkout', async () => {
+  const out = await declineOffer({
+    offer_id: 'x',
+    purchase_route: 'internal_checkout',
+    checkout_url: 'https://merchant.com/cart/1:1',
+    internal_checkout: { token: 't' },
+  });
+  // `inferCommerceMode`'s own "nothing at all" fallback is `merchant_embedded_checkout`; the
+  // rewritten `purchase_route` is what keeps a declined row out of it.
+  assert.equal(out.commerce_mode, 'links_out');
+  assert.equal(out.checkout_handoff, 'redirect');
+});
+
+test('R1: the explicit delete catches a stamp an earlier pass wrote from a DIFFERENT url', async () => {
+  // WHY THE DELETE IS NOT REDUNDANT WITH THE SWEEP. The sweep removes the stamped URL and anything
+  // cart-shaped. A `merchant_checkout_url` written by an EARLIER pass, when the row's only link was
+  // its product page, is neither: it is PDP-shaped and it is not byte-equal to the URL this pass
+  // would stamp. Only the explicit delete takes it, and without it the offer keeps saying
+  // "check out here" for a merchant we have declined.
+  const out = await declineOffer({
+    offer_id: 'x',
+    merchant_checkout_url: 'https://merchant.com/products/gloss',
+    checkout_url: 'https://merchant.com/cart/1:1',
+  });
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(out, 'merchant_checkout_url'),
+    'a stale stamp from an earlier pass must be deleted outright',
+  );
 });

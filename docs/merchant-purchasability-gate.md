@@ -8,7 +8,9 @@
 `tests/merchant_purchasability_gate.node.test.cjs` and
 `tests/merchant_purchasability_paths.node.test.cjs` (the pins).
 
-**All three purchase-offering paths are now gated — across FOUR annotate call sites on path 3.**
+**All three purchase-offering paths are now gated.** Path 3 has four annotate call sites: three in
+`src/server.js` and a fourth inside `offersPriority.js` itself (`summarizeOfferCommerceMetadata`,
+which `prioritizeOffersResolveResponse` calls).
 One switch, one `shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
 
 This rail ships **dark**, behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` (default OFF). With the
@@ -395,7 +397,9 @@ previous behaviour). The first cut passed no budget at all and ran on the client
 
 ### Path 3 — the offer stamp: four call sites, a delete, and a real deadline
 
-**There are FOUR annotate call sites, not two, and the one that matters is the innermost.**
+**There are four annotate call sites, not two — three in `src/server.js` and one inside
+`offersPriority.js` itself (`summarizeOfferCommerceMetadata`) — and the one that matters is the
+innermost server-side pass.**
 `buildOffersFromGroupMembers` (`src/server.js:11066`) annotates first, and **both** downstream sites
 — `buildProductIntelOffersDataForContext` and the PDP offers module — re-annotate *that* output.
 A conditional spread can only ADD a key, so `...offer` faithfully re-emitted whatever the first,
@@ -415,10 +419,25 @@ matching a `/cart`-or-`/checkout`-shaped path on that host, or the exact URL tha
 stamped when that URL is itself checkout-shaped). **PDP and browse links stay** — a redirect offer
 whose only URL is the product page keeps it, because that link *is* the fallback.
 
-`commerce_mode` / `checkout_handoff` are **preserved across a re-annotate** of an already-suppressed
-offer. `inferCommerceMode` reads the URL fields the suppression just removed, so a later pass would
-otherwise fall through to the default and relabel a links-out row `merchant_embedded_checkout` —
-claiming Pivota hosts a checkout for a merchant it has just declined to sell for.
+**A URL is not the only thing that says "buyable here".** A declined merchant loses the whole claim:
+`internal_checkout`, `merchant_checkout_session` and `checkout_session` are removed,
+`purchase_route` becomes `affiliate_outbound`, `checkout_handoff` becomes `redirect`, and
+`commerce_mode` is computed **after** the strip (`links_out`). All three are the repo's existing
+links-out vocabulary — `isCurrentPolicyDirect` refuses each of them, `inferStructuredDataMode` maps
+the mode to `product_snippet`, and `offerIsInternalCheckoutCandidate` (which `src/server.js`
+`compareOffersForDefaultSelection` ranks on) reads the route, so a declined offer can no longer be
+promoted to `default_offer_id`. Computing the mode BEFORE the strip — what the first cut did, then
+froze with a flag — reads the very signals the strip removes and answers
+`merchant_embedded_checkout` for a merchant we have just declined to sell for. There is no label to
+freeze now: `purchase_route` makes the row externally-routed, so a later pass recomputes the same
+values and suppression stays idempotent.
+
+**The URL matcher recognises the shapes that actually occur.** Anchoring a cart/checkout path at the
+start of the path missed `https://merchant.com/12345678/checkouts/abcdef` (classic Shopify, shop-id
+prefixed) and `https://merchant.com/en-gb/cart/12345:1` (locale-prefixed), both of which survived
+verbatim. An optional locale segment and an optional numeric shop segment are allowed, and the
+byte-equal-to-the-stamped-URL arm is no longer gated on the shape being recognised — it switched
+itself off in exactly the case the shape arm had already missed.
 
 **The batch is bounded four ways**, all asserted:
 
