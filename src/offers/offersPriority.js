@@ -1,3 +1,64 @@
+'use strict';
+
+/*
+ * offersPriority.js — offer presentation order AND the per-offer commerce stamp.
+ *
+ * ---- THE MERCHANT-PURCHASABILITY GATE, PATH 3 OF 3 ---------------------------------------
+ *
+ * `enrichOfferCommerceMetadata` stamps `merchant_checkout_url` — a direct "check out
+ * here" link — onto EVERY served offer, one layer earlier than the warm handoff and
+ * without passing through it at all. A handoff URL is still a recommendation: a page
+ * that sends a shopper to a checkout which cannot take their card wastes the same trip
+ * whether we call it a purchase, a handoff or a link (docs/merchant-purchasability-gate.md
+ * §8, the flowerbeauty.com incident).
+ *
+ * So the same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`, default OFF) and the same
+ * `shouldOfferPurchase` — the SAME process singleton and therefore the same bounded cache
+ * the warm-handoff seam uses — decide whether that URL is stamped. When the backend is
+ * enforcing and says `browse_only` for this merchant × market, the URL is NOT STAMPED.
+ * The OFFER SURVIVES: browse/referral is exactly what is left, and dropping the row would
+ * delete a result the shopper asked for to avoid a link they did not.
+ *
+ * ⚠️ THE DECISION IS TAKEN BEFORE THE URL IS BUILT, NOT AFTER. `resolveOfferPurchasability
+ * Decisions` runs first and hands `annotateOffersWithCommerceMetadata` a set of declined
+ * domains; `enrichOfferCommerceMetadata` then never constructs the `merchant_checkout_url`
+ * key at all. Building it and stripping it afterwards would be one refactor away from
+ * leaking it, and it is in the mutant sweep.
+ *
+ * ⚠️ THIS IS A BATCH, AND A BATCH IS WHY THE DOC CALLED IT A FOLLOW-UP. A page of offers
+ * spans MANY merchants while the client is a per-merchant read, so three bounds apply and
+ * all three are asserted:
+ *   1. DEDUPE — N offers for the same merchant × market are ONE question (a `Set` of
+ *      distinct domains here, plus the client's own ≤5-minute cache behind it).
+ *   2. CONCURRENCY — at most `GATE_CONCURRENCY` reads in flight, so a page of 40 merchants
+ *      is not 40 simultaneous sockets.
+ *   3. A TOTAL WALL-CLOCK BUDGET — the per-call ceiling must NOT multiply by ceil(M/C).
+ *      `GATE_BATCH_BUDGET_MS` bounds the WHOLE batch; each read is clamped to what is left,
+ *      and below the client's own `MIN_GATE_BUDGET_MS` floor the remaining merchants are
+ *      not asked at all and keep the previous behaviour. Same shape as the warm-handoff
+ *      seam's budget clamp, for the same reason: fail-open in name is a cold page in fact
+ *      if the gate eats the request.
+ *
+ * With the switch OFF nothing is asked, no domain is even parsed, and every function here
+ * is byte-identical to before this change — pinned by snapshot, not asserted.
+ */
+
+const {
+  MIN_GATE_BUDGET_MS,
+  isGateEnabled,
+  getMerchantPurchasabilityClient,
+} = require('../services/merchantPurchasabilityClient');
+
+/** At most this many purchasability reads in flight for one page of offers. */
+const GATE_CONCURRENCY = 4;
+
+/**
+ * HARD WALL-CLOCK CEILING for the WHOLE batch, not per merchant. Without it a page across
+ * M merchants costs ceil(M / GATE_CONCURRENCY) × the client's per-call timeout — the client's
+ * 1.5 s becoming 15 s on a 40-merchant page against a slow-but-not-dead backend.
+ */
+const GATE_BATCH_BUDGET_MS = 1200;
+
 function asString(value) {
   if (typeof value !== 'string') return '';
   return value.trim();
@@ -90,16 +151,52 @@ function inferCheckoutHandoff(offer) {
   return inferCommerceMode(offer) === 'merchant_embedded_checkout' ? 'embedded' : 'redirect';
 }
 
-function enrichOfferCommerceMetadata(offer) {
+/**
+ * The ONE spelling of "the URL this offer would be stamped with". The gate must ask about
+ * exactly the host the shopper would be sent to, so the decision and the stamp read the
+ * same expression — a second, drifting copy is how a gate ends up asking about a merchant
+ * other than the one in the link.
+ */
+function readOfferStampedCheckoutUrl(offer) {
+  return (
+    readCheckoutUrl(offer) ||
+    readAffiliateUrl(offer) ||
+    readGenericUrl(offer)
+  );
+}
+
+/** Registrable-ish host of that URL, normalised the way the gate client normalises a domain. */
+function readOfferMerchantDomain(offer) {
+  const url = readOfferStampedCheckoutUrl(offer);
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+function declinedSetOf(options) {
+  const set = options && options.declinedDomains;
+  return set instanceof Set && set.size > 0 ? set : null;
+}
+
+function enrichOfferCommerceMetadata(offer, options) {
   if (!offer || typeof offer !== 'object' || Array.isArray(offer)) return offer;
 
   const commerceMode = inferCommerceMode(offer);
   const checkoutHandoff = inferCheckoutHandoff(offer);
-  const checkoutUrl =
-    readCheckoutUrl(offer) ||
-    readAffiliateUrl(offer) ||
-    readGenericUrl(offer);
+  const checkoutUrl = readOfferStampedCheckoutUrl(offer);
   const merchantCheckoutSession = readMerchantCheckoutSession(offer);
+
+  // THE SEAM. The gate decides whether the key EXISTS; it never edits one that was written.
+  // `declinedDomains` is empty (and this is `false`) on every path where the switch is off,
+  // the backend is not enforcing, the read failed, or no market was carried — i.e. the
+  // previous behaviour, byte for byte.
+  const declined = declinedSetOf(options);
+  const merchantNotPurchasable = Boolean(
+    checkoutUrl && declined && declined.has(readOfferMerchantDomain(offer)),
+  );
 
   return {
     ...offer,
@@ -109,18 +206,103 @@ function enrichOfferCommerceMetadata(offer) {
     order_system_of_record: 'merchant_store_platform',
     checkout_handoff: checkoutHandoff,
     order_writeback_mode: 'merchant_direct',
-    ...(checkoutUrl ? { merchant_checkout_url: checkoutUrl } : {}),
+    ...(checkoutUrl && !merchantNotPurchasable ? { merchant_checkout_url: checkoutUrl } : {}),
     ...(merchantCheckoutSession ? { merchant_checkout_session: merchantCheckoutSession } : {}),
   };
 }
 
-function annotateOffersWithCommerceMetadata(offers) {
+function annotateOffersWithCommerceMetadata(offers, options) {
   const arr = Array.isArray(offers) ? offers : [];
-  return arr.map((offer) => enrichOfferCommerceMetadata(offer));
+  return arr.map((offer) => enrichOfferCommerceMetadata(offer, options));
 }
 
-function summarizeOfferCommerceMetadata(offers) {
-  const arr = annotateOffersWithCommerceMetadata(offers);
+/**
+ * Ask the merchant-purchasability gate about every DISTINCT merchant on this page of
+ * offers, and answer with the set of domains whose `merchant_checkout_url` must not be
+ * stamped for this market.
+ *
+ * FAILS OPEN, ALWAYS: the empty set is the previous behaviour, and it is what every
+ * failure, every non-enforcing backend, every missing market and the switch-off path all
+ * return. Nothing here throws into the serving path.
+ *
+ * @param {Array} offers
+ * @param {{ market?: string, env?: object, budgetMs?: number, now?: Function,
+ *           shouldOfferPurchase?: Function, concurrency?: number }} [options]
+ * @returns {Promise<Set<string>>}
+ */
+async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
+  const declined = new Set();
+  const env = options.env || process.env;
+
+  // THE SWITCH, READ FIRST AND HERE. Off means nothing is asked — not "asked and ignored".
+  // A page of offers is the latency-sensitive surface in this repo; paying for a read whose
+  // answer is discarded is the defect, so the flag is checked before a single domain is
+  // parsed. A test with the switch off asserts the injected gate is called ZERO times.
+  if (!isGateEnabled(env)) return declined;
+
+  const arr = Array.isArray(offers) ? offers : [];
+  if (arr.length === 0) return declined;
+
+  // DEDUPE FIRST: N offers for one merchant × market are ONE question.
+  const domains = [...new Set(arr.map((offer) => readOfferMerchantDomain(offer)).filter(Boolean))];
+  if (domains.length === 0) return declined;
+
+  const gate = typeof options.shouldOfferPurchase === 'function'
+    ? options.shouldOfferPurchase
+    : (args) => getMerchantPurchasabilityClient().shouldOfferPurchase(args);
+  const now = typeof options.now === 'function' ? options.now : Date.now;
+  const startedAt = now();
+  const totalBudgetMs = Number.isFinite(options.budgetMs) && options.budgetMs > 0
+    ? Math.min(options.budgetMs, GATE_BATCH_BUDGET_MS)
+    : GATE_BATCH_BUDGET_MS;
+  const concurrency = Math.max(
+    1,
+    Math.min(
+      Number.isFinite(options.concurrency) && options.concurrency > 0 ? options.concurrency : GATE_CONCURRENCY,
+      domains.length,
+    ),
+  );
+
+  let cursor = 0;
+  async function worker() {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= domains.length) return;
+      // THE BATCH BUDGET FLOOR. What is LEFT of the page's budget, not the client's own
+      // ceiling — otherwise the ceiling multiplies by ceil(M / concurrency). Below the
+      // client's floor there is no useful question left to ask, so the remaining merchants
+      // keep the previous behaviour rather than each paying a doomed timeout.
+      const remainingMs = totalBudgetMs - (now() - startedAt);
+      if (remainingMs < MIN_GATE_BUDGET_MS) return;
+      let decision = null;
+      try {
+        decision = await gate({
+          domain: domains[index],
+          market: options.market,
+          budgetMs: remainingMs,
+        });
+      } catch {
+        decision = null; // fail open: the client does not throw, and a future one must not either
+      }
+      // STRICTLY `=== false`. A loose compare would take `undefined`/`''`/`0` from a
+      // malformed or future answer as a refusal, which is fail-CLOSED by accident.
+      if (decision && decision.offer === false) declined.add(domains[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return declined;
+}
+
+/** `annotateOffersWithCommerceMetadata`, with the gate consulted first. */
+async function annotateOffersWithCommerceMetadataGated(offers, options = {}) {
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(offers, options);
+  return annotateOffersWithCommerceMetadata(offers, { declinedDomains });
+}
+
+function summarizeOfferCommerceMetadata(offers, options) {
+  const arr = annotateOffersWithCommerceMetadata(offers, options);
   const modes = Array.from(
     new Set(arr.map((offer) => asString(offer?.commerce_mode)).filter(Boolean)),
   );
@@ -227,13 +409,23 @@ function pickDefaultOfferId(offers) {
   return prioritized[0]?.offer_id || null;
 }
 
-function prioritizeOffersResolveResponse(upstreamData) {
+function readResolveResponseOffers(upstreamData) {
+  const data = upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData) ? upstreamData : null;
+  if (!data) return [];
+  if (Array.isArray(data.offers)) return data.offers;
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data) && Array.isArray(data.data.offers)) {
+    return data.data.offers;
+  }
+  return [];
+}
+
+function prioritizeOffersResolveResponse(upstreamData, options) {
   const data = upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData) ? upstreamData : null;
   if (!data) return upstreamData;
 
   if (Array.isArray(data.offers)) {
     const prioritized = prioritizeOffers(data.offers);
-    const summary = summarizeOfferCommerceMetadata(prioritized);
+    const summary = summarizeOfferCommerceMetadata(prioritized, options);
     return {
       ...data,
       offers: summary.offers,
@@ -251,7 +443,7 @@ function prioritizeOffersResolveResponse(upstreamData) {
 
   if (data.data && typeof data.data === 'object' && !Array.isArray(data.data) && Array.isArray(data.data.offers)) {
     const prioritized = prioritizeOffers(data.data.offers);
-    const summary = summarizeOfferCommerceMetadata(prioritized);
+    const summary = summarizeOfferCommerceMetadata(prioritized, options);
     return {
       ...data,
       data: {
@@ -273,7 +465,22 @@ function prioritizeOffersResolveResponse(upstreamData) {
   return upstreamData;
 }
 
+/** `prioritizeOffersResolveResponse`, with the gate consulted first. Same bounds, same fail-open. */
+async function prioritizeOffersResolveResponseGated(upstreamData, options = {}) {
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(
+    readResolveResponseOffers(upstreamData),
+    options,
+  );
+  return prioritizeOffersResolveResponse(upstreamData, { declinedDomains });
+}
+
 module.exports = {
+  GATE_BATCH_BUDGET_MS,
+  GATE_CONCURRENCY,
+  readOfferMerchantDomain,
+  resolveOfferPurchasabilityDecisions,
+  annotateOffersWithCommerceMetadataGated,
+  prioritizeOffersResolveResponseGated,
   annotateOffersWithCommerceMetadata,
   enrichOfferCommerceMetadata,
   compareOffersForPresentation,

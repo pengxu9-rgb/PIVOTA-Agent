@@ -77,7 +77,9 @@ const {
 } = require('./offers/offerIds');
 const {
   prioritizeOffersResolveResponse,
+  prioritizeOffersResolveResponseGated,
   annotateOffersWithCommerceMetadata,
+  resolveOfferPurchasabilityDecisions,
   prioritizeOffers,
   isInternalOffer,
   pickDefaultOfferId,
@@ -10656,6 +10658,30 @@ async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = 
     );
     return { members: list, filteredCount: 0 };
   }
+}
+
+/**
+ * THE BUYER MARKET FOR THE MERCHANT-PURCHASABILITY GATE ON THE OFFERS PATH.
+ *
+ * CALLER-SUPPLIED ONLY, in this door's existing two spellings — the same pair this file already reads on the
+ * discovery lane (`resolveBuyerMarketScope(search.market || metadata.market)`) and the same rule
+ * `checkoutHandoffResolver.requestBuyerMarket` applies on the warm-handoff lane.
+ *
+ * ⚠️ THERE IS DELIBERATELY NO FALLBACK. `servedMarkets.primaryMarket()` answers the DEPLOYMENT's market
+ * ('US' by default) for a request that named none, and the purchasability fact is keyed on the BUYER's
+ * market: a positive fact from another vantage is evidence for a human, never permission for the door.
+ * A request with no market is a question the gate cannot ask, so the offers keep today's exact shape and
+ * the client logs `merchant_purchasability_unkeyable`. A mutant that substitutes 'US' is in the sweep.
+ */
+function offersGateBuyerMarket(payload, metadata) {
+  const search = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.search : null;
+  return (
+    firstNonEmptyString(
+      search && typeof search === 'object' ? search.market : null,
+      payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.market : null,
+      metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata.market : null,
+    ) || undefined
+  );
 }
 
 async function buildOffersFromGroupMembers(args) {
@@ -38741,6 +38767,9 @@ async function buildProductIntelOffersDataForContext({
   productGroupId,
   checkoutToken,
   limit = 10,
+  // The request's buyer market, threaded for the merchant-purchasability gate below. Undefined =
+  // the gate cannot ask and this lane keeps today's exact shape.
+  buyerMarket,
 }) {
   if (!context?.canonicalProductRef || !context?.product) return null;
   let offersData =
@@ -38807,11 +38836,13 @@ async function buildProductIntelOffersDataForContext({
 
   if (!offersData) return null;
 
+  // MERCHANT-PURCHASABILITY GATE (path 3 of 3). Fails open, bounded, and a no-op with the switch off.
+  const intelOffers = Array.isArray(offersData.offers) ? offersData.offers : [];
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(intelOffers, { market: buyerMarket });
+
   return {
     ...offersData,
-    offers: annotateOffersWithCommerceMetadata(
-      Array.isArray(offersData.offers) ? offersData.offers : [],
-    ),
+    offers: annotateOffersWithCommerceMetadata(intelOffers, { declinedDomains }),
   };
 }
 
@@ -45900,6 +45931,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           modules[0].data.pdp_payload = canonicalPayload;
           modules[0].data.canonical_scope = offersCanonicalScope || modules[0].data.canonical_scope || null;
           modules[0].data.product_group_id = offersProductGroupId || modules[0].data.product_group_id || null;
+          // MERCHANT-PURCHASABILITY GATE (path 3 of 3), resolved BEFORE the stamp below builds any URL.
+          const pdpOffersDeclinedDomains = await resolveOfferPurchasabilityDecisions(
+            Array.isArray(offersData.offers) ? offersData.offers : [],
+            { market: offersGateBuyerMarket(payload, metadata) },
+          );
           offersData = {
             ...offersData,
             product_group_id: offersProductGroupId || offersData.product_group_id || null,
@@ -45908,6 +45944,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             content_review_state: contentReviewState,
             offers: annotateOffersWithCommerceMetadata(
               Array.isArray(offersData.offers) ? offersData.offers : [],
+              { declinedDomains: pdpOffersDeclinedDomains },
             ).map((offer) => ({
               ...offer,
               product_group_id: offersProductGroupId || offer.product_group_id,
@@ -46456,6 +46493,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         productGroupId,
         checkoutToken,
         limit: payload?.offers?.limit || 10,
+        buyerMarket: offersGateBuyerMarket(payload, metadata),
       });
       const productIntel = await buildProductIntelTopLevelModuleData({
         product: context.product,
@@ -46577,6 +46615,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             productGroupId: fallbackProductGroupId,
             checkoutToken,
             limit: payload?.offers?.limit || 10,
+            buyerMarket: offersGateBuyerMarket(payload, metadata),
           });
 
           const coverageIntel = await buildCoverageProductIntelData({
@@ -52761,7 +52800,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (operation === 'offers.resolve') {
-      upstreamData = prioritizeOffersResolveResponse(upstreamData);
+      // MERCHANT-PURCHASABILITY GATE (path 3 of 3). `…Gated` is `prioritizeOffersResolveResponse` with the
+      // gate consulted first; with the switch off it asks nothing and the response is byte-identical.
+      upstreamData = await prioritizeOffersResolveResponseGated(upstreamData, {
+        market: offersGateBuyerMarket(payload, metadata),
+      });
     }
 
     if (operation === 'get_product_detail') {

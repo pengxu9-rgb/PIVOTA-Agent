@@ -1,9 +1,15 @@
 # The merchant-purchasability gate (gateway side)
 
 `src/services/merchantPurchasabilityClient.js` (the client and the rule),
-`src/services/ucpWarmHandoff.js` (the seam), `src/services/checkoutHandoffResolver.js` and
-`src/services/ucpWarmHandoffInternalRoute.js` (the two callers that supply the market),
-`tests/merchant_purchasability_gate.node.test.cjs` (the pins).
+`src/services/ucpWarmHandoff.js` (seam 1), `src/services/checkoutHandoffResolver.js` and
+`src/services/ucpWarmHandoffInternalRoute.js` (the two callers that supply that lane's market),
+`mcp-server/src/ucpCheckoutEscalation.js` (seam 2), `src/offers/offersPriority.js` (seam 3, plus
+`src/server.js` for the three call sites that supply its market),
+`tests/merchant_purchasability_gate.node.test.cjs` and
+`tests/merchant_purchasability_paths.node.test.cjs` (the pins).
+
+**All three purchase-offering paths are now gated.** One switch, one
+`shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
 
 This rail ships **dark**, behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` (default OFF). With the
 switch off nothing is asked of the backend and the warm-handoff lane is byte-identical to before
@@ -347,30 +353,64 @@ manual `deploy_gateway.sh` run, and even then it is inert until step 7 of §6.
 
 ## 8. What is gated, and what is NOT
 
-Gated: the **warm-handoff** path for observed merchants — on the resolver lane today, and on the
-click lane as soon as the backend sends `market` (§2).
+Gated: **all three** of this gateway's purchase-offering paths for observed merchants. All three run
+behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` and through the same `shouldOfferPurchase`, so there is
+one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
-### Still offering a purchase, and NOT yet gated — follow-ups, not exemptions
+| # | path | what it offers | market source | fallback when `offer === false` |
+|---|---|---|---|---|
+| 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — still absent from the backend payload, §2) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
+| 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
+| 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market \|\| payload.market \|\| metadata.market` at the three `src/server.js` call sites (`offersGateBuyerMarket`) | the key is **never stamped**. The OFFER SURVIVES with `commerce_mode`, `checkout_handoff` and everything else unchanged — browse/referral is what is left |
 
-These are the ones to be honest about. **A handoff URL is still a recommendation.** The whole
-argument of the incident is that the gateway kept telling shoppers "buy this here" on the
-strength of evidence that was never about paying; a page that sends a shopper to a checkout that
-cannot take their card wastes the same trip whether we call it a purchase, a handoff or a link.
-So these are follow-ups with an owner, not paths that are fine as they are.
+Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
+reason: the only difference a declined merchant produces is a URL that is not there.
 
-* **`mcp-server/src/ucpCheckoutEscalation.js:211-277`** — `buildEscalationCheckout` answers
-  `status: "requires_escalation"` with the observed merchant's storefront as `continue_url`.
-  `payment_handlers: {}` says Pivota collects no instrument, which is true and is not the point:
-  the shopper is still being sent to flowerbeauty's PayPal-only checkout. Not gated here because
-  no market reaches that module (`QUOTE_KEYS` has no market field, `mapQuote` drops
-  `checkout.context`) and it is a pure synchronous predicate. Mitigating, not excusing:
-  `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` is **off by default**, so this path is dark today.
-* **`src/offers/offersPriority.js:93-120`** — `enrichOfferCommerceMetadata` stamps
-  `merchant_checkout_url`, `checkout_handoff` and `merchant_checkout_session` onto **every**
-  served offer. That is a direct "check out here" link per offer, published one layer earlier
-  than the warm handoff and without passing through it at all. Not gated here because this runs
-  as a per-request batch over many merchants while this client is a per-merchant read — doing it
-  properly needs a batched fact read, which is its own change.
+### Path 2 — the escalation door, and the claim this PR had to correct
+
+The previous revision of this document said the escalation module could not be gated because "no
+market reaches that module (`QUOTE_KEYS` has no market field and `mapQuote` drops
+`checkout.context`)". **That is true of `params` and false of the module.**
+`commerceToolSurface.callTool` hands `tryEscalateUcpCheckout` BOTH `params` (post-allowlist — the
+quote really does carry no market) **and `ucpArgs`, the raw UCP wire body**, which carries
+`checkout.context.address_country` — the field this repo's own UCP tool descriptions call "buyer
+market, ISO 3166-1 alpha-2". So the request's own market was one argument away the whole time.
+
+`quote.shipping_address.country` is also in scope and is **deliberately not read**: it is a field of
+a buyer's postal address, and no buyer data may key the ops query or appear in a log. `checkout.context`
+is a destination HINT that is forwarded into nothing, which is why it is safe to key on.
+
+The seam is the two lines where `continueUrl` is resolved, **before `buildEscalationCheckout` is
+called at all** — the URL is never built into a response that is then edited. The `get_checkout_session`
+branch is gated identically and is **inert in practice**: the UCP `get_checkout` body carries no
+`checkout.context`, so that lane is always `unkeyable`. It is gated anyway so the asymmetry is not a
+hole somebody re-opens when that body gains a market.
+
+`AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` is still off by default, so this path remains dark either way.
+
+### Path 3 — the offer stamp, and the batch bound that made it a follow-up
+
+The previous revision deferred this path because "this runs as a per-request batch over many merchants
+while this client is a per-merchant read". That is the real constraint, and it is met with three
+bounds rather than a batched backend route — all three asserted in the suite:
+
+1. **Dedupe.** N offers for one merchant × market are ONE question: distinct domains only, plus the
+   client's own ≤5-minute cache behind that.
+2. **Concurrency.** At most `GATE_CONCURRENCY` (4) reads in flight for a page.
+3. **A total wall-clock budget.** `GATE_BATCH_BUDGET_MS` (1200 ms) bounds the WHOLE batch, not each
+   read — otherwise the client's per-call ceiling multiplies by `ceil(M / 4)`. Each read is clamped to
+   what is left, and below the client's `MIN_GATE_BUDGET_MS` (300 ms) floor the remaining merchants
+   are not asked at all and keep the previous behaviour. Same shape as §3's clamp on the click lane.
+
+The decision is taken **before** the stamp: `resolveOfferPurchasabilityDecisions` runs first and
+`enrichOfferCommerceMetadata` then never constructs the key. Building the URL and deleting it
+afterwards is one refactor away from leaking it, and that mutant is in the sweep.
+
+**The three `src/server.js` call sites** that supply the market are the offers-module site and the
+`offers.resolve` site inside `handleInvokeRequest`, and `buildProductIntelOffersDataForContext`
+(threaded from its two callers). `offersGateBuyerMarket` reads only caller-supplied spellings and
+**never** `servedMarkets.primaryMarket()`; a request with no market keeps today's exact shape and is
+logged `merchant_purchasability_unkeyable`.
 
 ### Not gated, and genuinely out of scope
 
@@ -380,8 +420,6 @@ So these are follow-ups with an owner, not paths that are fine as they are.
 * **The native-MCP `create_checkout_session` door.** No merchant domain and no market reach it;
   gating it needs the merchant identity threaded first.
 * **The Reap rail.** Gated in the backend, behind `MERCHANT_PURCHASABILITY_ENFORCE`.
-
----
 
 ## 9. Observability
 
@@ -409,6 +447,14 @@ So these are follow-ups with an owner, not paths that are fine as they are.
 > which a `token:` field added to a log would pass; a separate test captures every log call
 > across the whole success/failure matrix and asserts no `Authorization`, bearer, JWT-shaped or
 > `token`-named value appears.
+
+**Paths 2 and 3 add no event of their own.** Everything they produce is the client's own table above —
+`merchant_purchasability_browse_only` when a merchant is declined, `merchant_purchasability_unkeyable`
+when a request carries no market (the normal state of the escalation `get_checkout` lane and of any
+offers request without one), `merchant_purchasability_read_failed` when the gate fails open. A
+declined offer is observable as a served offer with no `merchant_checkout_url`; a declined escalation
+is observable as a cart that took the kernel path. Adding a per-path event would have meant a second
+vocabulary for one decision.
 
 The declined handoff is also counted on the existing warm-handoff outcome metric as
 `outcome=fallback, reason=merchant_not_purchasable`. That label is **module-local** and
