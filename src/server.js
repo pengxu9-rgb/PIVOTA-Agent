@@ -76,8 +76,12 @@ const {
   parseOfferId,
 } = require('./offers/offerIds');
 const {
-  prioritizeOffersResolveResponse,
+  // `prioritizeOffersResolveResponse` itself is NOT imported: the only caller is the gated wrapper
+  // below, and an ungated alias sitting in scope is how an ungated call site gets written next.
+  prioritizeOffersResolveResponseGated,
   annotateOffersWithCommerceMetadata,
+  resolveOfferPurchasabilityDecisions,
+  offersGateBuyerMarket,
   prioritizeOffers,
   isInternalOffer,
   pickDefaultOfferId,
@@ -10669,6 +10673,9 @@ async function buildOffersFromGroupMembers(args) {
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
   const preferredProductId = args?.preferredProductId ? String(args.preferredProductId).trim() : null;
   const debug = args?.debug === true;
+  // The request's buyer market, for the merchant-purchasability gate below. Undefined = the gate
+  // cannot ask and this lane keeps today's exact shape (logged `merchant_purchasability_unkeyable`).
+  const buyerMarket = args?.buyerMarket;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
@@ -11052,7 +11059,18 @@ async function buildOffersFromGroupMembers(args) {
   } = collapseSameInternalMerchantOffers(dedupedOffers);
 
   const sortStartedAt = Date.now();
-  const annotatedOffers = annotateOffersWithCommerceMetadata(merchantCollapsedOffers);
+  // MERCHANT-PURCHASABILITY GATE. THIS IS THE STAMPING PASS: the two call sites downstream
+  // (buildProductIntelOffersDataForContext and the PDP offers module) re-annotate THIS output, so
+  // gating only those two left the key this pass wrote in place and the gate was a no-op on both
+  // serving lanes. Gated here as well — and the suppression deletes rather than skips, so the
+  // order of the passes cannot resurrect a withheld checkout URL.
+  const groupOffersDeclinedDomains = await resolveOfferPurchasabilityDecisions(
+    merchantCollapsedOffers,
+    { market: buyerMarket },
+  );
+  const annotatedOffers = annotateOffersWithCommerceMetadata(merchantCollapsedOffers, {
+    declinedDomains: groupOffersDeclinedDomains,
+  });
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
   const sortedByTotal = [...annotatedOffers].sort((a, b) => {
     const aTotal = computeOfferTotal(a);
@@ -38741,6 +38759,9 @@ async function buildProductIntelOffersDataForContext({
   productGroupId,
   checkoutToken,
   limit = 10,
+  // The request's buyer market, threaded for the merchant-purchasability gate below. Undefined =
+  // the gate cannot ask and this lane keeps today's exact shape.
+  buyerMarket,
 }) {
   if (!context?.canonicalProductRef || !context?.product) return null;
   let offersData =
@@ -38750,6 +38771,7 @@ async function buildProductIntelOffersDataForContext({
           members: context.groupMembers,
           checkoutToken,
           limit,
+          buyerMarket,
           preferredMerchantId: context.canonicalProductRef.merchant_id || null,
           preferredProductId: context.canonicalProductRef.product_id || null,
         }).catch(() => null)
@@ -38807,11 +38829,13 @@ async function buildProductIntelOffersDataForContext({
 
   if (!offersData) return null;
 
+  // MERCHANT-PURCHASABILITY GATE (path 3 of 3). Fails open, bounded, and a no-op with the switch off.
+  const intelOffers = Array.isArray(offersData.offers) ? offersData.offers : [];
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(intelOffers, { market: buyerMarket });
+
   return {
     ...offersData,
-    offers: annotateOffersWithCommerceMetadata(
-      Array.isArray(offersData.offers) ? offersData.offers : [],
-    ),
+    offers: annotateOffersWithCommerceMetadata(intelOffers, { declinedDomains }),
   };
 }
 
@@ -45630,6 +45654,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               checkoutToken,
               bypassCache,
               limit: payload?.offers?.limit || 10,
+              buyerMarket: offersGateBuyerMarket(payload, metadata),
               preferredMerchantId: requestedMerchantId || null,
               preferredProductId: selectedCommerceProductIdForPdp || null,
               debug,
@@ -45789,6 +45814,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     checkoutToken,
                     bypassCache,
                     limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
+                    buyerMarket: offersGateBuyerMarket(payload, metadata),
                     preferredMerchantId: requestedMerchantId || null,
                     preferredProductId: selectedCommerceProductIdForPdp || null,
                     debug,
@@ -45900,6 +45926,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           modules[0].data.pdp_payload = canonicalPayload;
           modules[0].data.canonical_scope = offersCanonicalScope || modules[0].data.canonical_scope || null;
           modules[0].data.product_group_id = offersProductGroupId || modules[0].data.product_group_id || null;
+          // MERCHANT-PURCHASABILITY GATE (path 3 of 3), resolved BEFORE the stamp below builds any URL.
+          const pdpOffersDeclinedDomains = await resolveOfferPurchasabilityDecisions(
+            Array.isArray(offersData.offers) ? offersData.offers : [],
+            { market: offersGateBuyerMarket(payload, metadata) },
+          );
           offersData = {
             ...offersData,
             product_group_id: offersProductGroupId || offersData.product_group_id || null,
@@ -45908,6 +45939,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             content_review_state: contentReviewState,
             offers: annotateOffersWithCommerceMetadata(
               Array.isArray(offersData.offers) ? offersData.offers : [],
+              { declinedDomains: pdpOffersDeclinedDomains },
             ).map((offer) => ({
               ...offer,
               product_group_id: offersProductGroupId || offer.product_group_id,
@@ -46456,6 +46488,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         productGroupId,
         checkoutToken,
         limit: payload?.offers?.limit || 10,
+        buyerMarket: offersGateBuyerMarket(payload, metadata),
       });
       const productIntel = await buildProductIntelTopLevelModuleData({
         product: context.product,
@@ -46577,6 +46610,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             productGroupId: fallbackProductGroupId,
             checkoutToken,
             limit: payload?.offers?.limit || 10,
+            buyerMarket: offersGateBuyerMarket(payload, metadata),
           });
 
           const coverageIntel = await buildCoverageProductIntelData({
@@ -52761,7 +52795,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (operation === 'offers.resolve') {
-      upstreamData = prioritizeOffersResolveResponse(upstreamData);
+      // MERCHANT-PURCHASABILITY GATE (path 3 of 3). `…Gated` is `prioritizeOffersResolveResponse` with the
+      // gate consulted first; with the switch off it asks nothing and the response is byte-identical.
+      upstreamData = await prioritizeOffersResolveResponseGated(upstreamData, {
+        market: offersGateBuyerMarket(payload, metadata),
+      });
     }
 
     if (operation === 'get_product_detail') {

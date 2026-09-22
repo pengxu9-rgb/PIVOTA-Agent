@@ -497,9 +497,50 @@ function createMerchantPurchasabilityClient(deps = {}) {
     if (cached !== undefined) return cached;
 
     const origin = baseUrl();
+
+    // ⚠️ THE DEADLINE STARTS HERE, NOT AFTER THE CREDENTIAL. Review of the first cut: the timer was
+    // created AFTER `await resolveCredential()`, so the metadata server's own 1 s ceiling sat
+    // OUTSIDE both this module's `timeoutMs` and the caller's `budgetMs` — a caller that handed us
+    // 300 ms could still wait 1300 ms. A budget with a step outside it is not a budget. The
+    // controller is now armed first and the credential is resolved INSIDE its window.
+    const callTimeoutMs = Number.isFinite(budgetMs) && budgetMs > 0
+      ? Math.min(timeoutMs, Math.floor(budgetMs))
+      : timeoutMs;
+    const controller = new AbortController();
+    // ⚠️ THIS TIMER IS DELIBERATELY **NOT** `unref()`d, AND THAT IS NOT AN OVERSIGHT.
+    // It is the ONLY thing that can settle the promise this function returns when the backend
+    // hangs: the read is awaiting a fetch that resolves on nothing but this abort. An unref'd
+    // timer does not hold the event loop open, so with nothing else ref'd node drains the loop
+    // and EXITS with that promise still pending — which under `node --test
+    // --test-isolation=process` (what CI runs) is reported as `cancelledByParent` /
+    // "Promise resolution is still pending but the event loop has already resolved", and takes
+    // every later test in the file with it. Measured: 46 cancelled on `780bc075`.
+    // The timer is bounded (<= MAX_TIMEOUT_MS) and cleared in the `finally` below, so holding the
+    // loop for its duration is exactly as long as the caller is waiting anyway — not a leak.
+    // Same rule, same reasoning, already written down in
+    // `src/services/merchantVariantSource.js` ("The timer is deliberately NOT `unref()`d").
+    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
+    try {
+      return await readFactWithin(key, origin, domain, market, controller);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** The body of `fetchFact`, running entirely inside the caller's deadline. */
+  async function readFactWithin(key, origin, domain, market, controller) {
     let authorization = null;
     try {
-      authorization = await resolveCredential();
+      // RACED AGAINST THE DEADLINE. `resolveCredential` takes no signal of its own (the metadata
+      // client owns its 1 s ceiling), so an abort resolves this to `null` and the read becomes the
+      // ordinary "unconfigured" previous behaviour instead of blowing the budget.
+      authorization = await Promise.race([
+        resolveCredential(),
+        new Promise((resolve) => {
+          if (controller.signal.aborted) { resolve(null); return; }
+          controller.signal.addEventListener('abort', () => resolve(null), { once: true });
+        }),
+      ]);
     } catch {
       // Belt and braces: `resolveCredential` is written not to throw, and if it ever does the
       // answer is still the previous behaviour rather than an exception on the checkout path.
@@ -532,18 +573,12 @@ function createMerchantPurchasabilityClient(deps = {}) {
       return null;
     }
 
-    // THE CALLER'S REMAINING WINDOW, not just this module's own ceiling. Reviewed
-    // against the live numbers: the click lane runs on a 2000 ms total budget
-    // (`UCP_WARM_HANDOFF_CLICK_BUDGET_MS`) inside the backend's 2.5 s `wait_for`, and
-    // an unclamped gate spending its own 1500 ms default first leaves the cart it is
-    // gating unable to finish. A gate that turns fail-open into a cold redirect
-    // catalogue-wide has failed open in name only. Same shape as `buildPreview`'s
-    // `previewRemainingMs` in ucpWarmHandoff.js, and for the same reason.
-    const callTimeoutMs = Number.isFinite(budgetMs) && budgetMs > 0
-      ? Math.min(timeoutMs, Math.floor(budgetMs))
-      : timeoutMs;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
+    // THE CALLER'S REMAINING WINDOW is applied by `fetchFact` above, which arms the deadline
+    // BEFORE the credential step. The click lane runs on a 2000 ms total budget
+    // (`UCP_WARM_HANDOFF_CLICK_BUDGET_MS`) inside the backend's 2.5 s `wait_for`, and an
+    // unclamped gate spending its own 1500 ms default first leaves the cart it is gating unable
+    // to finish. A gate that turns fail-open into a cold redirect catalogue-wide has failed open
+    // in name only. Same shape as `buildPreview`'s `previewRemainingMs` in ucpWarmHandoff.js.
     let fact = null;
     let failure = null;
     try {
@@ -574,13 +609,12 @@ function createMerchantPurchasabilityClient(deps = {}) {
       // in the OUTCOME — every one of them is the previous behaviour — only in
       // the log, so an operator can tell a slow backend from a broken one.
       failure = controller.signal.aborted ? 'timeout' : `threw_${(error && error.name) || 'Error'}`;
-    } finally {
-      clearTimeout(timer);
     }
+    // The timer itself is cleared by `fetchFact`'s own `finally`, which owns it.
 
     if (failure) {
       noteOnce('warn', 'merchant_purchasability_read_failed', `${key}\u0000${failure}`, {
-        domain, market, failure, timeout_ms: callTimeoutMs,
+        domain, market, failure,
         detail: 'failing OPEN to the previous behaviour; the backend already fails closed and two '
           + 'fail-closed layers turn a blip into an outage.',
       });

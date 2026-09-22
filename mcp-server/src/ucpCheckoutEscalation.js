@@ -84,6 +84,12 @@ import {
   VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
+// The merchant-purchasability gate — PATH 2 OF 3. CommonJS on purpose: this is the SAME module the
+// warm-handoff seam uses, so the process has ONE client, ONE bounded cache and ONE switch. A second
+// copy here would be a second cache with its own TTL, i.e. two different answers for one merchant.
+// (Node resolves `src/services/*` against the repo-root package.json, which declares no `type`, so the
+// default interop import is the module's `module.exports` object.)
+import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -194,6 +200,83 @@ function hostOf(url) {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return null; }
 }
 
+// ---- THE MERCHANT-PURCHASABILITY GATE (path 2 of 3) --------------------------------------------------------
+//
+// WHAT THIS PATH OFFERS. `buildEscalationCheckout` answers `status: "requires_escalation"` with the observed
+// merchant's storefront as `continue_url`, and the UCP spec obliges the platform to USE that URL.
+// `payment_handlers: {}` says Pivota collects no instrument, which is true and is not the point: the shopper
+// is still being sent to a checkout that may take no card at all. flowerbeauty.com, 2026-09-22: readable by
+// machines, PayPal-only at the till, and USD 8.00 against our indexed USD 14.95. A handoff URL is still a
+// recommendation (docs/merchant-purchasability-gate.md §8).
+//
+// WHAT THE GATE DOES HERE. When the switch is on AND the backend is enforcing AND it says `browse_only` for
+// this merchant × market, this module does NOT answer with the storefront checkout. It returns `null` — which
+// is EXACTLY what it already returns for a row that is not eligible for a continue_url (`escalating === 0`,
+// the contracted/kernel-path case). Nothing new is invented: the caller falls through to the kernel path it
+// would have taken for any non-escalating cart, and an observed seed row is refused there today for want of
+// variant identity. The URL is never built into a response that is then edited; the decision is taken before
+// `buildEscalationCheckout` is called at all.
+//
+// ⚠️ THE DOC SAID NO MARKET REACHES THIS MODULE. That is true of `params` and FALSE of `ucpArgs`.
+// `commerceToolSurface.callTool` hands this function BOTH: `params` (post-allowlist — `QUOTE_KEYS` really has
+// no market, and `mapQuote` really does drop `checkout.context`) and `ucpArgs`, the RAW UCP wire body, which
+// carries `checkout.context.address_country` — the field this repo's own UCP tool descriptions call "buyer
+// market, ISO 3166-1 alpha-2" (ucpArgumentAdapter.js). So the request's own market IS reachable, without any
+// new plumbing and without a default.
+//
+// ⚠️ AND IT IS THE ONLY MARKET TAKEN. `quote.shipping_address.country` is also in scope and is deliberately
+// NOT read: it is a field of a BUYER'S POSTAL ADDRESS, and no buyer data may reach the ops query or the logs.
+// `checkout.context` is a destination HINT that is forwarded into nothing (ucpArgumentAdapter §"context IS NOT
+// FORWARDED"), which is why it is safe to key on. A cart with no `address_country` is a question the gate
+// cannot ask: it keeps the previous behaviour and the client logs `merchant_purchasability_unkeyable`, the
+// same rule the warm-handoff seam follows. `servedMarkets.primaryMarket()` — the deployment's market — is NOT
+// an acceptable substitute and is in the mutant sweep.
+
+/** The buyer market this UCP checkout request carries, or null. Never a default, never buyer address data. */
+export function escalationBuyerMarket(ucpArgs) {
+  const context = own(own(ucpArgs, "checkout"), "context");
+  const raw = str(own(context, "address_country"));
+  if (!raw || !/^[A-Za-z]{2}$/.test(raw)) return null;
+  return raw.toUpperCase();
+}
+
+/**
+ * `true` when this door may still answer with `continueUrl`. FAILS OPEN by construction: the client never
+ * throws and never refuses on a failure, `offer: false` is reachable only from a 200 + enforcing + browse_only,
+ * and the `=== false` compare is strict so a malformed future answer cannot refuse by accident.
+ */
+const ESCALATION_GATE_MAX_MS = 800;
+
+async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled, budgetMs) {
+  // THE SWITCH, READ HERE TOO. The client checks it as well, but a door on the checkout critical path
+  // should not pay for a call whose answer is "disabled" — and this makes "the switch is ignored on THIS
+  // path" a mutant that a test can kill without touching the client every other lane shares.
+  if (!gateEnabled) return true;
+  // The DOMAIN is the storefront host, never the full continue_url: the ops query carries a merchant domain
+  // and a two-letter market and nothing else. A path or query string from the storefront URL would be a
+  // third value on the wire, and it is in the mutant sweep.
+  // AND IT FAILS OPEN ON A THROW TOO. The client does not throw — but this door sits on the checkout
+  // critical path, and a gate that turns its own bug into a refused checkout is the second fail-closed
+  // layer rule 4 exists to forbid. A throwing gate is in the mutant sweep.
+  let decision = null;
+  try {
+    decision = await gate({
+      domain: hostOf(continueUrl),
+      market: market || undefined,
+      // ⚠️ BOUNDED BY WHAT IS LEFT OF THE DOOR'S OWN WINDOW. The first cut passed nothing, so this
+      // BLOCKING read on the checkout critical path ran on the client's 1500 ms default while the
+      // door it sits in had already spent part of its `timeoutMs` reading rows — an unbudgeted
+      // addition to a synchronous checkout call. Same clamp as the warm-handoff seam: what is left,
+      // capped again by this door's own ceiling, and below the client's floor the gate is SKIPPED
+      // (`source: 'skipped_budget'`, previous behaviour) rather than attempted and timed out.
+      budgetMs: Math.min(Math.max(0, budgetMs), ESCALATION_GATE_MAX_MS),
+    });
+  } catch {
+    return true;
+  }
+  return !(decision && decision.offer === false);
+}
+
 // ---- response ----------------------------------------------------------------------------------------------
 
 function priceOf(row) {
@@ -291,9 +374,30 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
+  // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
+  // injects its own `shouldOfferPurchase` so nothing here ever reaches a network or the shared cache.
+  const gate = typeof shouldOfferPurchase === "function"
+    ? shouldOfferPurchase
+    : (args) => merchantPurchasability.getMerchantPurchasabilityClient().shouldOfferPurchase(args);
+  const gateEnabled = merchantPurchasability.isGateEnabled(env);
+  // HOW MUCH WINDOW THERE IS, AND WHOSE IT ACTUALLY IS — stated precisely, because the first cut's
+  // comment claimed more than the code has. `commerceToolSurface.callTool` (line 322) passes NO
+  // `timeoutMs`, so in production `doorBudgetMs` is `DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS` (3000) —
+  // which is `readRows`' PER-CALL ceiling for the product reads, NOT a deadline on this door. There
+  // is no door-wide deadline to clamp to today. So what actually bounds the gate here is
+  // `ESCALATION_GATE_MAX_MS` below; the "what is left" arm only bites when a caller passes a real
+  // `timeoutMs`, and it is written so that it will when one does. `clock` is injected only by tests.
+  const gateClock = typeof clock === "function" ? clock : Date.now;
+  const doorStartedAt = gateClock();
+  const doorBudgetMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS;
+  const gateBudgetMs = () => doorBudgetMs - (gateClock() - doorStartedAt);
+  // The REQUEST's market, from the raw UCP body. Null is a question the gate cannot ask.
+  const buyerMarket = escalationBuyerMarket(ucpArgs);
 
   if (opId === "create_checkout_session") {
     const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
@@ -327,6 +431,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     }
     const normalized = items.map((it) => ({ product_id: it.product_id, quantity: it.quantity }));
     const continueUrl = targets.get(normalized[0].product_id);
+    // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
+    // function already gives for every row that is not eligible for a continue_url. See the note above
+    // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
+    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
@@ -356,6 +464,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       // lost its destination). There is no session to recover: say so rather than fabricate one.
       throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
     }
+    // The same seam on the re-read. Inert in practice and deliberately kept symmetrical: the UCP `get_checkout`
+    // wire body carries no `checkout.context`, so this lane is always `unkeyable` and always keeps the previous
+    // behaviour — an asymmetry here would be the hole somebody re-opens when that body gains a market.
+    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
   }
 
