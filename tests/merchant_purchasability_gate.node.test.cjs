@@ -638,3 +638,330 @@ test('buildFactUrl encodes and never accepts a third parameter', () => {
   // A trailing slash on the base must not double up.
   assert.equal(new URL(buildFactUrl('https://b.example///', 'x.com', 'US')).pathname, '/ops/merchant-purchasability');
 });
+
+// ---- 12. THE PROD SHAPE: the logger must actually be wired -------------------------------------------------
+//
+// Review of the first cut found BOTH production construction sites reaching the client with no
+// logger — a ternary whose grouping discarded it — so the `error`-level misordered-arming alarm,
+// the one signal an operator has that the two backend dials are armed in the wrong order, was
+// written to `null` and emitted nowhere. Every test in this file passed, because every test in
+// this file injected its own logger.
+//
+// So this constructs the service EXACTLY as production does (no `env`, no `purchasability`, no
+// injected transport) and asserts the alarm reaches the SHARED MODULE LOGGER. The transport is
+// still faked: `global.fetch` is the default `fetchImpl`, so stubbing it keeps the suite offline.
+
+const {
+  resetMerchantPurchasabilityClientForTest,
+  isIsolatingDeps,
+  createTtlCache,
+  MIN_GATE_BUDGET_MS,
+} = require('../src/services/merchantPurchasabilityClient');
+const sharedLogger = require('../src/logger');
+
+/** Run `fn` with process.env, global.fetch and the shared logger's sinks captured. */
+async function withProdEnvironment(body, fn) {
+  const savedFetch = global.fetch;
+  const savedEnv = {};
+  for (const k of [GATE_FLAG_ENV, BASE_URL_ENV, OPS_TOKEN_ENV]) savedEnv[k] = process.env[k];
+  const savedSinks = { warn: sharedLogger.warn, info: sharedLogger.info, error: sharedLogger.error };
+
+  const lines = [];
+  const calls = [];
+  process.env[GATE_FLAG_ENV] = '1';
+  process.env[BASE_URL_ENV] = BASE;
+  process.env[OPS_TOKEN_ENV] = TOKEN;
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, status: 200, json: async () => body };
+  };
+  for (const level of ['warn', 'info', 'error']) {
+    sharedLogger[level] = (detail) => { lines.push({ level, ...detail }); };
+  }
+  resetMerchantPurchasabilityClientForTest();
+  try {
+    return await fn({ lines, calls });
+  } finally {
+    global.fetch = savedFetch;
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+    Object.assign(sharedLogger, savedSinks);
+    resetMerchantPurchasabilityClientForTest();
+  }
+}
+
+test('PROD SHAPE (no env, no options, logger null): the misordered-arming alarm REACHES a log', async () => {
+  // `logger: deps.logger || null` is literally what ucpWarmHandoffInternalRoute passes.
+  await withProdEnvironment({ tier: 'browse_only', enforced: true, sweep_enabled: false }, async ({ lines, calls }) => {
+    const m = fakeMerchantClient();
+    const service = createWarmHandoffService({
+      totalBudgetMs: 2000,
+      clientOptions: { timeoutMs: 1500 },
+      logger: null,
+      metrics: {},
+      client: m.client,
+    });
+    const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+
+    assert.equal(handoff, null, 'enforced browse_only still declines');
+    assert.equal(calls.length, 1, 'the backend was read through the default global fetch');
+    const alarm = lines.find((l) => l.event === 'merchant_purchasability_misordered_arming');
+    assert.ok(alarm, `no alarm reached the shared logger; saw: ${JSON.stringify(lines.map((l) => l.event))}`);
+    assert.equal(alarm.level, 'error');
+    assert.equal(alarm.sweep_enabled, false);
+  });
+});
+
+test('PROD SHAPE via the resolver lane (logger supplied): the alarm reaches THAT logger', async () => {
+  await withProdEnvironment({ tier: 'browse_only', enforced: true, sweep_enabled: false }, async () => {
+    const logger = fakeLogger();
+    const m = fakeMerchantClient();
+    const service = createWarmHandoffService({ logger, metrics: {}, client: m.client });
+    await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+    assert.equal(logger.lines.some((l) => l.event === 'merchant_purchasability_misordered_arming'), true);
+  });
+});
+
+test('a logger-only dep configures the shared singleton; anything that changes the ANSWER forks', () => {
+  assert.equal(isIsolatingDeps(undefined), false);
+  assert.equal(isIsolatingDeps({}), false);
+  assert.equal(isIsolatingDeps({ logger: fakeLogger() }), false);
+  for (const k of ['env', 'fetchImpl', 'now', 'ttlMs', 'negativeTtlMs', 'timeoutMs', 'cacheMaxEntries', 'baseUrl', 'token']) {
+    assert.equal(isIsolatingDeps({ [k]: 1 }), true, k);
+  }
+});
+
+// ---- 13. THE CLICK LANE IS INERT UNTIL THE BACKEND SENDS A MARKET -------------------------------------------
+//
+// The only caller of the internal click route (pivota-backend
+// `services/outbound_warm_handoff.py`) posts {brand_domain, product_url, product_handle?,
+// attribution?} — no market. That is the lane the flowerbeauty incident travelled, so until the
+// backend adds `market` the gate cannot fire there at all. This pins the WARN so a mis-deployed
+// backend is visible in a log rather than silently un-gated.
+
+test('CLICK LANE: a body with no market logs `unkeyable` at WARN, once per interval', async () => {
+  const backend = fakeBackend(FACT_BROWSE_ONLY);
+  const logger = fakeLogger();
+  const { service } = warmService({ env: gateEnv(), backend, logger });
+
+  for (let i = 0; i < 3; i += 1) {
+    // exactly the shape the route builds today from that payload: no `market` key at all
+    const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, quantity: 1 });
+    assert.deepEqual(handoff, PINNED_HANDOFF, 'inert, not refusing — the gate must not fail closed here');
+  }
+  assert.equal(backend.calls.length, 0, 'nothing is asked without a market');
+
+  const unkeyable = logger.lines.filter((l) => l.event === 'merchant_purchasability_unkeyable');
+  assert.equal(unkeyable.length, 1, 'once per interval, not once per click');
+  assert.equal(unkeyable[0].level, 'warn', 'a permanently inert gate must not hide at info level');
+  assert.equal(unkeyable[0].has_market, false);
+  assert.equal(unkeyable[0].has_domain, true);
+});
+
+test('CLICK LANE: the route forwards `body.market` when the backend does send it', async () => {
+  const { createUcpWarmHandoffInternalHandler } = require('../src/services/ucpWarmHandoffInternalRoute');
+  const seen = [];
+  const env = {
+    UCP_WARM_HANDOFF_INTERNAL_ROUTE_ENABLED: '1',
+    UCP_WARM_HANDOFF_ENABLED: '1',
+    UCP_WARM_HANDOFF_INTERNAL_KEY: 'click-key',
+    UCP_WARM_HANDOFF_REQUIRE_AVAILABLE: '0',
+  };
+  const handler = createUcpWarmHandoffInternalHandler({
+    env,
+    metrics: {},
+    service: {
+      async resolveWarmHandoff(args) {
+        seen.push(args);
+        return { disposition: 'warm_handoff', continue_url: 'https://x.example/cart/c/1', cart_id: 'c1' };
+      },
+    },
+  });
+
+  const post = (body) => handler({ headers: { 'x-internal-key': 'click-key' }, body });
+  await post({ brand_domain: MERCHANT, variant_gid: VARIANT, market: 'SG' });
+  await post({ brand_domain: MERCHANT, variant_gid: VARIANT }); // today's backend payload
+
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].market, 'SG', 'a market on the body reaches the gate');
+  assert.equal('market' in seen[1], false, 'and its absence is an absence, not a substituted default');
+});
+
+// ---- 14. THE GATE MUST NOT EAT THE CALLER'S BUDGET ----------------------------------------------------------
+
+test('BUDGET: the gate is clamped to what is LEFT, so the cart below still gets built', async () => {
+  // A backend that hangs. Without the clamp the gate would burn its own 1500ms ceiling out of a
+  // 1200ms remaining budget and the handoff would cold-redirect for every merchant at once.
+  const backend = fakeBackend(null, { hang: true });
+  let clock = 5_000_000;
+  const m = fakeMerchantClient();
+  const env = gateEnv();
+  const service = createWarmHandoffService({
+    client: m.client,
+    metrics: {},
+    env,
+    now: () => clock,
+    totalBudgetMs: 1200,
+    purchasability: { env, fetchImpl: backend.fetchImpl, timeoutMs: 1500 },
+  });
+
+  // The fake clock does not advance, so the abort must come from the CLAMPED real timer.
+  const started = Date.now();
+  const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+  const elapsed = Date.now() - started;
+
+  assert.deepEqual(handoff, PINNED_HANDOFF, 'fail open — and the cart still got built');
+  assert.equal(m.calls.createCart.length, 1);
+  assert.ok(elapsed < 1400, `the gate must not outlive the 1200ms budget; took ${elapsed}ms`);
+});
+
+test('BUDGET: below the floor the gate is SKIPPED outright (previous behaviour)', async () => {
+  const backend = fakeBackend(FACT_BROWSE_ONLY);
+  const logger = fakeLogger();
+  let clock = 5_000_000;
+  const env = gateEnv();
+  const m = fakeMerchantClient();
+  const service = createWarmHandoffService({
+    client: m.client,
+    metrics: {},
+    env,
+    logger,
+    // Budget already all but spent by the time resolveWarmHandoff is entered.
+    totalBudgetMs: 100,
+    now: () => clock,
+    purchasability: { env, fetchImpl: backend.fetchImpl, logger, now: () => clock },
+  });
+
+  const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+  assert.deepEqual(handoff, PINNED_HANDOFF, 'skipping is the PREVIOUS behaviour, never a refusal');
+  assert.equal(backend.calls.length, 0, 'no read is attempted below the floor');
+  const skipped = logger.lines.find((l) => l.event === 'merchant_purchasability_skipped_budget');
+  assert.ok(skipped);
+  assert.equal(skipped.floor_ms, MIN_GATE_BUDGET_MS);
+});
+
+test('BUDGET: a comfortable budget still consults the gate', async () => {
+  const backend = fakeBackend(FACT_BROWSE_ONLY);
+  let clock = 5_000_000;
+  const env = gateEnv();
+  const m = fakeMerchantClient();
+  const service = createWarmHandoffService({
+    client: m.client, metrics: {}, env, totalBudgetMs: 9000, now: () => clock,
+    purchasability: { env, fetchImpl: backend.fetchImpl, now: () => clock },
+  });
+  assert.equal(
+    await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' }),
+    null,
+  );
+  assert.equal(backend.calls.length, 1);
+});
+
+// ---- 15. NO CREDENTIAL IN ANY LOG ---------------------------------------------------------------------------
+//
+// The URL test greps the WIRE. It says nothing about the logs, and a `token: bearer` field added to
+// the read-failure log passed every test in the first cut. Logs are shipped, indexed and read by
+// more people than the wire is, so the credential must not be in them either.
+
+test('NO LOG LINE, ON ANY PATH, CARRIES THE CREDENTIAL', async () => {
+  const SECRET = 'eyJhbGciOiJIUzI1NiJ9.SUPERSECRETJWTPAYLOAD.c2lnbmF0dXJl';
+  const paths = [
+    ['ok/purchase', fakeBackend(FACT_PURCHASE)],
+    ['ok/browse_only', fakeBackend(FACT_BROWSE_ONLY)],
+    ['not enforced', fakeBackend(FACT_NOT_ENFORCED)],
+    ['misordered', fakeBackend({ tier: 'browse_only', enforced: true, sweep_enabled: false })],
+    ['500', fakeBackend(null, { ok: false, status: 500 })],
+    ['malformed', fakeBackend({ tier: 'nope', enforced: true })],
+    ['throw', fakeBackend(null, { throws: new Error('ECONNREFUSED') })],
+  ];
+
+  const all = [];
+  for (const [label, backend] of paths) {
+    const logger = fakeLogger();
+    const client = createMerchantPurchasabilityClient({
+      env: { [GATE_FLAG_ENV]: '1', [BASE_URL_ENV]: BASE, [OPS_TOKEN_ENV]: SECRET },
+      fetchImpl: backend.fetchImpl,
+      logger,
+    });
+    await client.shouldOfferPurchase({ domain: MERCHANT, market: 'US' });
+    // and the unconfigured / unkeyable / budget paths
+    await client.shouldOfferPurchase({ domain: MERCHANT });
+    await client.shouldOfferPurchase({ domain: MERCHANT, market: 'US', budgetMs: 10 });
+    for (const line of logger.lines) all.push({ label, line });
+  }
+  assert.ok(all.length >= paths.length, 'the matrix must actually produce logs');
+
+  for (const { label, line } of all) {
+    const rendered = JSON.stringify(line);
+    assert.equal(rendered.includes(SECRET), false, `${label}/${line.event} logged the credential: ${rendered}`);
+    assert.equal(/eyJ[A-Za-z0-9_-]{6,}/.test(rendered), false, `${label}/${line.event} logged a JWT-shaped string: ${rendered}`);
+    for (const forbidden of ['authorization', 'bearer', 'token', 'jwt', 'credential', 'secret']) {
+      assert.equal(
+        rendered.toLowerCase().includes(forbidden), false,
+        `${label}/${line.event} logged a "${forbidden}" field: ${rendered}`,
+      );
+    }
+  }
+});
+
+// ---- 16. a TTL of zero means DO NOT CACHE, never "cache forever" ---------------------------------------------
+
+test('createTtlCache: a non-positive or non-finite TTL does not store an immortal entry', () => {
+  let clock = 1000;
+  const cache = createTtlCache({ maxEntries: 10, now: () => clock });
+  for (const ttl of [0, -1, NaN, Infinity, undefined, null]) {
+    cache.clear();
+    cache.set('k', 'v', ttl);
+    assert.equal(cache.get('k'), undefined, `ttl=${String(ttl)} must not be cached`);
+    assert.equal(cache.size, 0, `ttl=${String(ttl)} must not occupy the cache`);
+  }
+  cache.set('k', 'v', 50);
+  assert.equal(cache.get('k'), 'v');
+  clock += 51;
+  assert.equal(cache.get('k'), undefined);
+});
+
+// ---- 17. the shared cache must actually be SHARED ------------------------------------------------------------
+//
+// `isIsolatingDeps` can be correct while the function that calls it is not. A mutant that forks a
+// fresh client for ANY deps object — the shape the first cut shipped — leaves `isIsolatingDeps`
+// untouched and every assertion about it passing, while each construction site quietly gets its
+// own cache: the 5-minute bound becomes decorative and each lane re-reads the backend separately.
+// So this asserts the OBSERVABLE consequence, on the client objects themselves.
+
+test('getMerchantPurchasabilityClient: a logger-only dep returns the SHARED singleton', () => {
+  resetMerchantPurchasabilityClientForTest();
+  try {
+    const { getMerchantPurchasabilityClient } = require('../src/services/merchantPurchasabilityClient');
+    const a = getMerchantPurchasabilityClient();
+    const b = getMerchantPurchasabilityClient({ logger: fakeLogger() });
+    const c = getMerchantPurchasabilityClient({ logger: null });
+    assert.equal(a, b, 'a logger must not fork a second cache');
+    assert.equal(b, c, 'nor must an explicitly null one');
+    assert.equal(a._cache, b._cache, 'and the cache object itself must be the same one');
+
+    // Anything that changes the ANSWER forks, so a test can never write into the shared cache.
+    const isolated = getMerchantPurchasabilityClient({ env: gateEnv() });
+    assert.notEqual(isolated, a);
+    assert.notEqual(isolated._cache, a._cache);
+    assert.notEqual(getMerchantPurchasabilityClient({ fetchImpl: async () => ({}) }), a);
+    assert.notEqual(getMerchantPurchasabilityClient({ now: () => 0 }), a);
+  } finally {
+    resetMerchantPurchasabilityClientForTest();
+  }
+});
+
+test('the shared singleton really does serve one cache across construction sites', async () => {
+  await withProdEnvironment(FACT_PURCHASE, async ({ calls }) => {
+    const a = fakeMerchantClient();
+    const b = fakeMerchantClient();
+    // Two independently-constructed services, exactly as the two prod lanes build them.
+    const one = createWarmHandoffService({ client: a.client, metrics: {}, logger: null });
+    const two = createWarmHandoffService({ client: b.client, metrics: {}, logger: null });
+
+    await one.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+    await two.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+
+    assert.equal(calls.length, 1, 'the second lane must hit the FIRST lane cached fact, not re-read');
+  });
+});

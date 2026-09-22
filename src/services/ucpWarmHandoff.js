@@ -23,7 +23,10 @@
  */
 
 const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
-const { getMerchantPurchasabilityClient } = require('./merchantPurchasabilityClient');
+const {
+  getMerchantPurchasabilityClient,
+  createMerchantPurchasabilityClient,
+} = require('./merchantPurchasabilityClient');
 const defaultWarmHandoffMetrics = require('../observability/ucpWarmHandoffMetrics');
 // Shared with ucpOrderWebhookReceiver: undici hides the real network reason on `.cause`. See that module.
 const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
@@ -190,14 +193,38 @@ function createWarmHandoffService(deps = {}) {
   // test can drive the REAL decision path with a stubbed transport rather than only stubbing the decision.
   // Supplying either it or `deps.env` opts out of the process singleton — a test must not write into a cache
   // the next test reads.
+  // ⚠️ THE PRECEDENCE HERE WAS A LIVE DEFECT. The first cut read
+  // `getMerchantPurchasabilityClient(opts || isPlainObject(deps.env) ? {...} : undefined)`,
+  // which groups as `(opts || isPlainObject(env)) ? {...} : undefined` — so on the PROD
+  // shape, where neither is supplied, it passed `undefined` and the singleton was built
+  // with no logger at all. Both production construction sites reach here that way
+  // (`checkoutHandoffResolver.js` and `ucpWarmHandoffInternalRoute.js`, the latter passing
+  // `logger: deps.logger || null`), so every event in the client — including the
+  // `error`-level misordered-arming alarm — was written to nothing. Reproduced against
+  // `{tier:'browse_only', enforced:true, sweep_enabled:false}`: no alarm fired.
+  //
+  // Written as statements rather than a nested ternary, because the whole bug was a
+  // ternary that read correctly and grouped differently.
   const purchasabilityOptions = isPlainObject(deps.purchasability) ? deps.purchasability : null;
-  const purchasabilityClient = typeof deps.shouldOfferPurchase === 'function'
-    ? null
-    : getMerchantPurchasabilityClient(
-      purchasabilityOptions || isPlainObject(deps.env)
-        ? { env: isPlainObject(deps.env) ? deps.env : process.env, logger, ...(purchasabilityOptions || {}) }
-        : undefined,
-    );
+  const purchasabilityIsolated = Boolean(purchasabilityOptions) || isPlainObject(deps.env);
+  let purchasabilityClient = null;
+  if (typeof deps.shouldOfferPurchase !== 'function') {
+    if (purchasabilityIsolated) {
+      // A test (or any caller with its own env/transport/clock) gets its OWN client, so it
+      // can never write into the cache the rest of the process reads.
+      purchasabilityClient = createMerchantPurchasabilityClient({
+        env: isPlainObject(deps.env) ? deps.env : process.env,
+        logger,
+        ...(purchasabilityOptions || {}),
+      });
+    } else {
+      // THE PROD SHAPE. One shared, bounded cache for the process — and a logger when this
+      // service has one. When it does not (the click lane passes null), the key is omitted
+      // ENTIRELY so the client falls back to its own module-logger default rather than
+      // being handed an explicit `null`, which it honours as "stay silent".
+      purchasabilityClient = getMerchantPurchasabilityClient(logger ? { logger } : undefined);
+    }
+  }
   const shouldOfferPurchaseFn = typeof deps.shouldOfferPurchase === 'function'
     ? deps.shouldOfferPurchase
     : (args) => purchasabilityClient.shouldOfferPurchase(args);
@@ -322,7 +349,18 @@ function createWarmHandoffService(deps = {}) {
     // backend already fails closed, and a second fail-closed layer turns one backend blip into a
     // catalogue-wide outage. `offer: false` is reachable only from `source: 'gate'`, i.e. the backend
     // answered 200 AND is enforcing AND said browse_only.
-    const gateDecision = await shouldOfferPurchaseFn({ domain: brandLabel, market: params.market });
+    //
+    // BOUNDED BY WHAT IS LEFT OF THE CALLER'S BUDGET, not by the client's own ceiling.
+    // Measured: the click lane runs on a 2000 ms total budget inside the backend's 2.5 s
+    // `wait_for`, while the client's default per-call ceiling is 1500 ms and its hard cap
+    // 2000 ms. Unclamped, a slow-but-not-dead backend would spend the ENTIRE click budget
+    // here and the cart below would never be built — fail-open in name, cold redirect in
+    // fact, for every merchant at once. Below the client's floor the gate is skipped
+    // outright. Same shape as `buildPreview`'s `previewRemainingMs` further down.
+    const gateBudgetMs = totalBudgetMs - (now() - startedAt);
+    const gateDecision = await shouldOfferPurchaseFn({
+      domain: brandLabel, market: params.market, budgetMs: gateBudgetMs,
+    });
     if (gateDecision && gateDecision.offer === false) {
       note('warn', 'ucp_warm_handoff_merchant_not_purchasable', {
         origin, brand_domain: brandLabel, market: params.market || null, source: gateDecision.source,

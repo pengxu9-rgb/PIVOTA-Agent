@@ -45,9 +45,10 @@ it is produced here, by the in-chat priced preview in `ucpWarmHandoff.buildPrevi
 **`src/services/ucpWarmHandoff.js`, in `resolveWarmHandoff`, immediately after `brandLabel` is
 computed and BEFORE endpoint discovery.**
 
-That function is the gateway's purchase affordance for an observed (crawled, uncontracted)
-merchant: it builds a cart on the merchant's own checkout and — with
-`UCP_INCHAT_PREVIEW_ENABLED` on — prices it in chat. Its two callers already treat a `null`
+That function is **one of** the gateway's purchase-offering paths for an observed (crawled,
+uncontracted) merchant — the one the flowerbeauty incident travelled: it builds a cart on the
+merchant's own checkout and, with `UCP_INCHAT_PREVIEW_ENABLED` on, prices it in chat. It is not
+the only one; §8 lists the others and why they are follow-ups rather than "not a purchase". Its two callers already treat a `null`
 return as "cold-redirect the shopper to the product page instead", which is exactly the
 browse/referral behaviour the gate needs to fall back to:
 
@@ -73,8 +74,29 @@ The gate keys on the **request's** buyer market and never on a default.
 * `checkoutHandoffResolver.requestBuyerMarket(input)` reads `metadata.market || payload.market` —
   this door's existing spelling (`src/server.js` reads `search.market || metadata.market` on the
   discovery lane, and the invoke handler threads `metadata` into the resolver verbatim).
-* `ucpWarmHandoffInternalRoute` reads an optional `body.market`. Additive: a caller that sends
-  none is exactly today's request.
+* `ucpWarmHandoffInternalRoute` reads an optional `body.market`.
+
+> 🚨 **THE CLICK LANE IS INERT UNTIL THE BACKEND SENDS `market`, AND THAT IS THE LANE THE
+> INCIDENT TRAVELLED.** The route's only caller is pivota-backend
+> `services/outbound_warm_handoff.py`, which posts
+> `{brand_domain, product_url, product_handle?, attribution?}` — **no market**. Every request on
+> that lane therefore lands in `merchant_purchasability_unkeyable` and keeps the previous
+> behaviour, however the dials are set.
+>
+> **`market` (ISO 3166-1 alpha-2) is a REQUIRED addition to that backend payload** before this
+> gate protects the click lane. The gateway side of the contract is already in place and is
+> pinned by a test; the backend change is tracked separately. Until it ships, the gate is armed
+> only on the resolver lane, and the `unkeyable` line is emitted at **WARN** (once per 5 min per
+> merchant) precisely so a mis-deployed or un-updated backend is visible in a log rather than
+> silently un-gated.
+
+**`metadata.market` is CALLER-SUPPLIED, and the door does not derive one.** Nothing in this lane
+resolves a market from the request itself: the PDP resolve is market-free, `resolveBuyerMarketScope`
+is a search-lane function on the other side of the executor, and no geo/IP inference happens
+anywhere here. So **an agent that omits `market` opts out of the gate** — it keeps today's
+behaviour and is logged, not refused. That is a deliberate consequence of never substituting a
+default, and giving the door its own market resolution is a **separate follow-up**, not something
+this PR does.
 
 > ⚠️ **`servedMarkets.primaryMarket()` is NOT an acceptable fallback here.** It returns the
 > DEPLOYMENT's market (`'US'` by default) for a request that named none, and the fact is keyed on
@@ -92,10 +114,19 @@ The gate keys on the **request's** buyer market and never on a default.
 |---|---|---|
 | `MERCHANT_PURCHASABILITY_GATE_ENABLED` | **unset = OFF** | **THE GATEWAY KILL SWITCH.** Truthy allowlist `1 / true / yes / on / enabled`, case- and space-insensitive, read per call. Off: nothing is asked of the backend and the lane is byte-identical. Armed independently of the backend dial, and the first thing to flip back on a rollback |
 | `PIVOTA_OPS_ADMIN_TOKEN` | **unset** | An admin / super_admin **Bearer JWT** for the backend's ops routes. Read from the environment, never minted here. Unset is not an error: the gate keeps the previous behaviour and logs `merchant_purchasability_not_configured` once |
-| `PIVOTA_API_BASE` | `http://localhost:8080` | Existing. The backend origin the ops read is issued against |
+| `PIVOTA_API_BASE` | **unset in prod ⇒ no read** | Existing variable (`src/server.js` defaults it to `http://localhost:8080` for ITS own use; this client does no such thing — an unset base is treated as unconfigured, logged once, previous behaviour). The backend origin the ops read is issued against |
 
-Not dials, on purpose: the **2 s** per-call ceiling and the **5-minute** cache ceiling. Both are
-`Math.min`, so a caller (or a future config read) can shorten them and can never widen them.
+Not dials, on purpose: the **2 s** per-call ceiling, the **5-minute** cache ceiling and the
+**300 ms** budget floor. The first two are `Math.min`, so a caller (or a future config read) can
+shorten them and can never widen them.
+
+**The gate is also clamped to the CALLER's remaining budget.** The click lane runs on a 2000 ms
+total budget (`UCP_WARM_HANDOFF_CLICK_BUDGET_MS`) inside the backend's 2.5 s `asyncio.wait_for`.
+Unclamped, a slow-but-not-dead backend would spend that whole budget in the gate and the cart it
+is gating would never be built — fail-open in name, cold redirect in fact, for every merchant at
+once. So `resolveWarmHandoff` passes `budgetMs = totalBudgetMs - elapsed`, the read is capped at
+`min(timeoutMs, budgetMs)`, and below `MIN_GATE_BUDGET_MS` (300 ms) the gate is skipped entirely
+(`source: 'skipped_budget'`, previous behaviour).
 
 ---
 
@@ -124,6 +155,29 @@ no credential logic beyond reading that string.
 **Ops action before arming:** issue an admin / super_admin JWT from the backend and set
 `PIVOTA_OPS_ADMIN_TOKEN` on the gateway service. The token is not rotated by this code; a
 rotation is an env change and a redeploy.
+
+### ⚠️ AUTH FOLLOW-UP — a standing admin JWT in env is the weakest part of this design
+
+Say it plainly, because it will not announce itself:
+
+* **It is over-scoped.** An `admin` / `super_admin` JWT is a role, not a capability for one
+  read-only route. A gateway that only ever needs `GET /ops/merchant-purchasability` is holding
+  a credential that opens every admin route the backend has.
+* **It expires silently, and the failure is invisible.** When the JWT lapses the backend answers
+  **401**, which this client — correctly, per the fail-open rule — treats as "no fact" and keeps
+  the previous behaviour. So an expired token does not break anything loudly; it **disarms the
+  gate permanently** while every dial still reads "on". The only evidence is
+  `merchant_purchasability_read_failed` with `failure: status_401`, once per 5 minutes.
+  **Alert on that line specifically**, and treat a sustained `status_401` as "the gate is off".
+
+**The safest fix is not a longer-lived token — it is no token.** This service already mints a
+Google-issued OIDC **identity token** for Cloud Run service-to-service calls
+(`src/services/cloudRunIdentityToken.js`, used by the store-audit workers). Having the backend
+accept that identity on this one route — audience-scoped to the backend, rotated by the metadata
+server, never stored in env, scoped to exactly one endpoint rather than a role — removes the
+standing credential, the expiry cliff and the over-scoping in one move. That is a **backend
+change plus a small swap of the `token` dep here**, and it is the recommended next step before
+this gate is relied upon.
 
 ---
 
@@ -176,8 +230,11 @@ are **not negotiable**; step 7 is this repo's.
    purchasable must read `"tier": "purchase"`. Do not skip this.
 6. **`MERCHANT_PURCHASABILITY_ENFORCE=1`** on the backend. Only now does a missing fact refuse.
 7. **`MERCHANT_PURCHASABILITY_GATE_ENABLED=1`** on the gateway, with `PIVOTA_OPS_ADMIN_TOKEN`
-   already set. Watch for `merchant_purchasability_browse_only` (the gate declining a merchant)
-   and `merchant_purchasability_read_failed` (the gate failing open).
+   already set. Watch for `merchant_purchasability_browse_only` (the gate declining a merchant),
+   `merchant_purchasability_read_failed` (the gate failing open) and
+   `merchant_purchasability_unkeyable` (a caller sending no market — on the click lane that is
+   expected until the backend payload change of §2 ships, and it means the gate is inert there).
+   All of these reach the shared structured logger on the production construction path.
 
 > **Arming these in the other order is the outage.** With `ENFORCE` on and no facts gathered,
 > every merchant reads `browse_only`.
@@ -231,18 +288,38 @@ manual `deploy_gateway.sh` run, and even then it is inert until step 7 of §6.
 
 ## 8. What is gated, and what is NOT
 
-Gated: the **warm-handoff** purchase affordance for observed merchants, on both its lanes.
+Gated: the **warm-handoff** path for observed merchants — on the resolver lane today, and on the
+click lane as soon as the backend sends `market` (§2).
 
-Not gated by this PR, and each for a reason:
+### Still offering a purchase, and NOT yet gated — follow-ups, not exemptions
+
+These are the ones to be honest about. **A handoff URL is still a recommendation.** The whole
+argument of the incident is that the gateway kept telling shoppers "buy this here" on the
+strength of evidence that was never about paying; a page that sends a shopper to a checkout that
+cannot take their card wastes the same trip whether we call it a purchase, a handoff or a link.
+So these are follow-ups with an owner, not paths that are fine as they are.
+
+* **`mcp-server/src/ucpCheckoutEscalation.js:211-277`** — `buildEscalationCheckout` answers
+  `status: "requires_escalation"` with the observed merchant's storefront as `continue_url`.
+  `payment_handlers: {}` says Pivota collects no instrument, which is true and is not the point:
+  the shopper is still being sent to flowerbeauty's PayPal-only checkout. Not gated here because
+  no market reaches that module (`QUOTE_KEYS` has no market field, `mapQuote` drops
+  `checkout.context`) and it is a pure synchronous predicate. Mitigating, not excusing:
+  `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` is **off by default**, so this path is dark today.
+* **`src/offers/offersPriority.js:93-120`** — `enrichOfferCommerceMetadata` stamps
+  `merchant_checkout_url`, `checkout_handoff` and `merchant_checkout_session` onto **every**
+  served offer. That is a direct "check out here" link per offer, published one layer earlier
+  than the warm handoff and without passing through it at all. Not gated here because this runs
+  as a per-request batch over many merchants while this client is a per-merchant read — doing it
+  properly needs a batched fact read, which is its own change.
+
+### Not gated, and genuinely out of scope
 
 * **The contracted-merchant kernel path.** Those merchants transact through Pivota's own PSP
-  rail; the backend's fact population is the union of the two Reap allowlists at merchant grain,
-  which is the observed cohort, so a fact about a contracted merchant would not exist to read.
-* **The UCP escalation checkout** (`mcp-server/src/ucpCheckoutEscalation.js`). It already answers
-  `status: "requires_escalation"` with `payment_handlers: {}` — it is a handoff, not a purchase
-  Pivota offers, so there is nothing to withdraw.
+  rail; the backend's fact population is the union of the two Reap allowlists at merchant grain —
+  the observed cohort — so a fact about a contracted merchant would not exist to read.
 * **The native-MCP `create_checkout_session` door.** No merchant domain and no market reach it;
-  gating it needs the merchant identity threaded first, which is a separate change.
+  gating it needs the merchant identity threaded first.
 * **The Reap rail.** Gated in the backend, behind `MERCHANT_PURCHASABILITY_ENFORCE`.
 
 ---
@@ -257,7 +334,21 @@ Not gated by this PR, and each for a reason:
 | `merchant_purchasability_not_enforced` | info | backend reports `enforced: false`. Once per 5 min per merchant |
 | `merchant_purchasability_misordered_arming` | **error** | `sweep_enabled: false` with `enforced: true`. The one to alert on |
 | `merchant_purchasability_not_configured` | warn | the switch is on but the base URL or the token is missing. Once |
-| `merchant_purchasability_unkeyable` | info | the request carried no usable domain or market, so nothing was asked |
+| `merchant_purchasability_unkeyable` | **warn** | the request carried no usable domain or market, so nothing was asked. **This is what a mis-deployed caller looks like** — see §2 on the click lane. Once per 5 min per merchant |
+| `merchant_purchasability_skipped_budget` | info | too little of the caller's wall-clock budget was left to ask (< 300 ms). Previous behaviour |
+
+> **These events reach a log on the production shape, and that had to be fixed to be true.** The
+> first cut discarded the logger on the path both production construction sites take
+> (`checkoutHandoffResolver.js` and `ucpWarmHandoffInternalRoute.js`, the latter passing
+> `logger: deps.logger || null`), so the client was built with `logger: null` and none of the
+> table above was emitted anywhere — including the `error`-level alarm. The client now defaults
+> to the shared module logger when no `logger` key is supplied, and a test constructs it exactly
+> as both prod sites do and asserts the alarm fires.
+>
+> **No log line on any path carries the credential.** The outbound-URL test greps the wire only,
+> which a `token:` field added to a log would pass; a separate test captures every log call
+> across the whole success/failure matrix and asserts no `Authorization`, bearer, JWT-shaped or
+> `token`-named value appears.
 
 The declined handoff is also counted on the existing warm-handoff outcome metric as
 `outcome=fallback, reason=merchant_not_purchasable`. That label is **module-local** and
