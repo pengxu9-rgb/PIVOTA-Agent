@@ -17916,6 +17916,21 @@ function buildCanonicalChainMainlineProduct(row) {
     // collapse below cannot tell a second SELLER from a second PRODUCT — and an agent holding
     // the card has no key that reaches the competing offer.
     ...(firstNonEmptyString(row.content_key) ? { content_key: firstNonEmptyString(row.content_key) } : {}),
+    // The canonical SQL serves the product's BEST-OFFER listing, which may be a sibling of the listing
+    // recall ranked (canonicalCatalogSearch.js, skuOfferJoinSql). Only then does the card say which listing
+    // earned the position — so lane merges can dedupe that listing's other appearances, and a card served
+    // from its own listing stays byte-identical.
+    ...(firstNonEmptyString(row.recalled_product_key) &&
+    firstNonEmptyString(row.recalled_product_key) !== firstNonEmptyString(row.product_key)
+      ? {
+          recalled_listing: {
+            product_key: firstNonEmptyString(row.recalled_product_key),
+            ...(firstNonEmptyString(row.recalled_source_product_id)
+              ? { source_product_id: firstNonEmptyString(row.recalled_source_product_id) }
+              : {}),
+          },
+        }
+      : {}),
     source_product_id: sourceProductId || undefined,
     ...(firstNonEmptyString(row.source_variant_id) ? { source_variant_id: firstNonEmptyString(row.source_variant_id) } : {}),
     canonical_product_ref: canonicalProductRef,
@@ -17996,14 +18011,23 @@ function buildFashionMetaFromCanonicalRow(row) {
 
 function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonicalProducts = []) {
   const canonicalList = Array.isArray(canonicalProducts) ? canonicalProducts.filter(Boolean) : [];
+  // A canonical card served from a SIBLING listing (recalled_listing) still covers the listing recall
+  // ranked: a seed row for that listing is the same product, and letting it through would add a
+  // second card for one content_key.
   const canonicalProductKeys = new Set(
     canonicalList
-      .map((product) => firstNonEmptyString(product.catalog_product_key, product.product_key))
+      .flatMap((product) => [
+        firstNonEmptyString(product.catalog_product_key, product.product_key),
+        firstNonEmptyString(product.recalled_listing?.product_key),
+      ])
       .filter(Boolean),
   );
   const canonicalSourceProductIds = new Set(
     canonicalList
-      .map((product) => firstNonEmptyString(product.source_product_id, product.platform_product_id))
+      .flatMap((product) => [
+        firstNonEmptyString(product.source_product_id, product.platform_product_id),
+        firstNonEmptyString(product.recalled_listing?.source_product_id),
+      ])
       .filter(Boolean),
   );
   let canonicalDedupeCount = 0;

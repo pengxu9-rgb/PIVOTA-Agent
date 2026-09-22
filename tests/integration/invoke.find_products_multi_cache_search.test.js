@@ -1603,7 +1603,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).toMatch(/tool = \$2/i);
     expect(observedSql.join('\n')).toMatch(/seed_data->'derived'->'recall'->>'category'/i);
     expect(observedSql.join('\n')).toMatch(/seed_data->>'product_type'/i);
-    expect(observedSql.join('\n')).not.toMatch(/row_number\(\) OVER/i);
+    // The seed lane must not window over external_product_seeds. The canonical SQL's one window
+    // (candidate_slots) runs over the already-cut candidate rows only, so it is excluded here.
+    expect(observedSql.filter((sql) => !sql.includes('candidate_slots AS')).join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(observedSql.join('\n')).not.toMatch(/CASE\s+WHEN\s+tool/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
@@ -1703,7 +1705,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).toMatch(/tool = \$2/i);
     expect(observedParams.some((params) => params[1] === 'shopping_agents')).toBe(true);
     expect(observedParams.some((params) => params[1] === '')).toBe(false);
-    expect(observedSql.join('\n')).not.toMatch(/row_number\(\) OVER/i);
+    // The seed lane must not window over external_product_seeds. The canonical SQL's one window
+    // (candidate_slots) runs over the already-cut candidate rows only, so it is excluded here.
+    expect(observedSql.filter((sql) => !sql.includes('candidate_slots AS')).join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
@@ -1816,7 +1820,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
     const sqlText = observedSql.join('\n');
     expect(sqlText).toMatch(/UNION ALL/i);
-    expect(sqlText).not.toMatch(/row_number\(\) OVER/i);
+    // Seed-lane SQL only: the canonical candidate_slots window is over the cut candidate rows.
+    expect(observedSql.filter((sql) => !sql.includes('candidate_slots AS')).join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(sqlText).not.toMatch(/tool = ANY/i);
     expect(sqlText).not.toMatch(/FROM products_cache/i);
     expect(observedParams.some((params) => params.includes('sunscreen') && params.includes('moisturizer'))).toBe(true);

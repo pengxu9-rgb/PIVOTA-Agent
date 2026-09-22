@@ -286,9 +286,11 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   // step5_test_rig_retirement / demo_retired_2026_07 / source_currency_or_channel_defect. The row mapper
   // reads price straight off the joined row, so such a row winning the ordering priced a result off
   // retired test-rig, retired demo, or currency-defective data.
-  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch.
+  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch. It
+  // picks the best offer of ONE listing (listing_offer); the served-listing
+  // LATERAL around it compares listings of the product on the same key.
   const skuOfferLateralOf = (sql) => {
-    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) best_sku_offer ON TRUE/);
+    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) listing_offer ON TRUE/);
     expect(m).not.toBeNull();
     return m[1];
   };
@@ -322,10 +324,16 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
     expect(sql).toMatch(/LEFT JOIN LATERAL \(/);
-    expect(sql).toMatch(/\) best_sku_offer ON TRUE/);
+    expect(sql).toMatch(/\) listing_offer ON TRUE/);
+    // The served-listing LATERAL is an inner join, which is only safe because
+    // its pool ALWAYS contains the recalled row itself (the product_key arm is
+    // an OR, not a conjunct): it chooses among listings, it never removes one.
+    const served = sql.slice(sql.indexOf(') listing_offer ON TRUE'), sql.indexOf(') served ON TRUE'));
+    expect(served).toMatch(/WHERE p\.product_key = c\.product_key\s+OR \(/);
     // Nothing after the LATERAL may re-filter on the offer/sku aliases: an outer
     // `WHERE o.currency IS NOT NULL` would INNER-join just as effectively.
-    const afterLateral = sql.slice(sql.indexOf(') best_sku_offer ON TRUE'));
+    const afterLateral = sql.slice(sql.indexOf(') served ON TRUE'));
+    expect(sql.indexOf(') served ON TRUE')).toBeGreaterThan(0);
     expect(afterLateral).not.toMatch(/\bWHERE\b/);
   });
 
@@ -617,11 +625,11 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const lateral = skuOfferLateralOf(sql);
     expect(lateral).toMatch(/FROM catalog_skus s/);
     expect(lateral).toMatch(/JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
-    expect(lateral).toMatch(/WHERE s\.product_key = c\.product_key/);
-    // The columns callers actually read off the row.
-    expect(sql).toMatch(/best_sku_offer\.sku_image_url/);
-    expect(sql).toMatch(/best_sku_offer\.currency/);
-    expect(sql).toMatch(/best_sku_offer\.merchant_effective_price/);
+    expect(lateral).toMatch(/WHERE s\.product_key = p\.product_key/);
+    // The columns callers actually read off the row — all from the ONE served listing.
+    expect(sql).toMatch(/served\.sku_image_url/);
+    expect(sql).toMatch(/served\.currency/);
+    expect(sql).toMatch(/served\.merchant_effective_price/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {
