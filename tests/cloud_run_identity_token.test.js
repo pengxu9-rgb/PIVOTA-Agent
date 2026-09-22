@@ -48,3 +48,38 @@ test('an explicit audience wins over the named env var', () => {
     delete process.env.CLOUD_RUN_ID_TOKEN_TEST_AUDIENCE;
   }
 });
+
+// A NON-OK metadata response must yield `null`, never its body. Before this test nothing measured
+// the `response.ok` check: dropping it left every suite green (mutation sweep, 2026-09-22), and the
+// consequence is that a metadata-server error page would be sent as an `Authorization: Bearer`
+// value by the four store-audit callers — which then reads as an auth failure at the receiving end
+// rather than a metadata failure here. Each case builds its own provider because this provider
+// caches its first in-flight promise forever (deliberate for its batch callers).
+describe('a non-OK metadata response is a null token, not a bearer value', () => {
+  test.each([
+    [500, 'some error page'],
+    [403, '<html>Forbidden</html>'],
+  ])('HTTP %i: the body is NOT surfaced as the token', async (status, body) => {
+    const text = jest.fn(async () => body);
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status, text });
+    const provider = createCloudRunIdTokenProvider({ audience: 'https://web-abc-uw.a.run.app', fetchImpl });
+    await expect(provider.getToken()).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // The pinned invariant is the null; the body being read or not is an implementation detail.
+    // But if it WAS read, its value must not have escaped: `null`, not `body`, is what we got.
+    expect(await provider.getToken()).not.toBe(body);
+  });
+
+  test('an OK response whose body is only whitespace is a null token, not an empty bearer', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '  \n\t ' });
+    const provider = createCloudRunIdTokenProvider({ audience: 'https://web-abc-uw.a.run.app', fetchImpl });
+    await expect(provider.getToken()).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('an OK response is still trimmed to the token, so the trim is not what nulls the error page', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '\n jwt-token \n' });
+    const provider = createCloudRunIdTokenProvider({ audience: 'https://web-abc-uw.a.run.app', fetchImpl });
+    await expect(provider.getToken()).resolves.toBe('jwt-token');
+  });
+});
