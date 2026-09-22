@@ -19,6 +19,8 @@
 // Discovered by `scripts/run_node_test_suites.cjs` (glob over tests/**/*.node.test.cjs), which is what
 // the `node-tests` job of .github/workflows/pr-full-jest.yml runs.
 
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -38,6 +40,7 @@ const {
   prioritizeOffersResolveResponseGated,
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,
+  offersGateBuyerMarket,
 } = require('../src/offers/offersPriority');
 
 // ---- fixtures ----------------------------------------------------------------------------------------
@@ -172,7 +175,7 @@ function ucpCreateArgs({ market = MARKET } = {}) {
   };
 }
 
-async function runEscalation({ env, ucpArgs, shouldOfferPurchase }) {
+async function runEscalation({ env, ucpArgs, shouldOfferPurchase, timeoutMs, clock }) {
   const { tryEscalateUcpCheckout } = await escalation();
   return tryEscalateUcpCheckout({
     op: { id: 'create_checkout_session', capability: 'checkout' },
@@ -182,6 +185,8 @@ async function runEscalation({ env, ucpArgs, shouldOfferPurchase }) {
     ucpArgs,
     env,
     now: 1_700_000_000_000,
+    ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
+    ...(clock ? { clock } : {}),
     ...(shouldOfferPurchase ? { shouldOfferPurchase } : {}),
   });
 }
@@ -536,4 +541,259 @@ test('path3/offers: a gate that THROWS fails open — unchanged', async () => {
     shouldOfferPurchase: async () => { throw new Error('gate exploded'); },
   });
   assert.deepEqual(gated, annotateOffersWithCommerceMetadata(offers));
+});
+
+// =========================================================================================================
+// REVIEW ROUND 2 — the five findings against 57de7979, each with the defect it reproduces
+// =========================================================================================================
+
+const CART_URL = `https://${MERCHANT}/cart/1:1`;
+
+/** Every string anywhere in a value, however deeply nested. */
+function deepStrings(node, out = []) {
+  if (typeof node === 'string') out.push(node);
+  else if (node && typeof node === 'object') for (const v of Object.values(node)) deepStrings(v, out);
+  return out;
+}
+
+test('F1: a SECOND annotate pass over an ALREADY-STAMPED offer still withholds the URL (delete, not skip)', async () => {
+  // THE DEFECT. `buildOffersFromGroupMembers` annotates first and BOTH downstream sites re-annotate
+  // its output. A conditional spread can only ADD a key, so `...offer` re-emitted the URL the first,
+  // ungated pass had written and the gate was a measured no-op on both serving lanes.
+  const ungated = annotateOffersWithCommerceMetadata([offer('o1', MERCHANT, { url: CART_URL })]);
+  assert.equal(ungated[0].merchant_checkout_url, CART_URL, 'pass 1 stamps it (this is the stamping pass)');
+
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const gated = await annotateOffersWithCommerceMetadataGated(ungated, {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(gated[0], 'merchant_checkout_url'),
+    'pass 2 must DELETE what pass 1 stamped, not merely decline to add it',
+  );
+  assert.equal(gated[0].offer_id, 'o1', 'the offer still survives');
+});
+
+test('F1: suppression is idempotent and order-independent across three passes', async () => {
+  const env = gateEnv();
+  const gate = async () => ({ offer: false, source: 'gate' });
+  const p1 = annotateOffersWithCommerceMetadata([offer('o1', MERCHANT, { url: CART_URL })]);
+  const p2 = await annotateOffersWithCommerceMetadataGated(p1, { env, market: MARKET, shouldOfferPurchase: gate });
+  const p3 = await annotateOffersWithCommerceMetadataGated(p2, { env, market: MARKET, shouldOfferPurchase: gate });
+  assert.deepEqual(p3, p2);
+  assert.ok(!deepStrings(p3).includes(CART_URL));
+});
+
+test('F2: a declined offer carries the cart URL in NO field anywhere — and keeps its PDP link', async () => {
+  // THE DEFECT. The same storefront cart URL is served under several spellings (`offerDedupeKey` in
+  // src/server.js reads five). Withholding one key while three aliases still carry it withholds nothing.
+  const declinedOffer = {
+    offer_id: 'o1',
+    merchant_id: 'merch_obs_flower',
+    price: { amount: 14.95, currency: 'USD' },
+    url: CART_URL,
+    external_redirect_url: `https://www.${MERCHANT}/cart/1:1?ref=pivota`,
+    checkout_url: CART_URL,
+    action: { label: 'Buy', url: CART_URL },
+    links: [`https://${MERCHANT}/checkouts/abc`, `https://${MERCHANT}/products/gloss`],
+    merchant_checkout_session: { continue_url: CART_URL, id: 'sess_1' },
+    source_url: `https://${MERCHANT}/products/gloss`,
+  };
+
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const [gated] = await annotateOffersWithCommerceMetadataGated([declinedOffer], {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+
+  // DEEP WALK: no field anywhere in the served offer may carry that merchant's checkout URL.
+  for (const value of deepStrings(gated)) {
+    assert.ok(
+      !/\/(cart|checkouts?)\b/i.test(value) || !value.includes(MERCHANT),
+      `a checkout URL survived suppression: ${value}`,
+    );
+  }
+  // BROWSE / REFERRAL STAYS — that is what the offer is now.
+  assert.equal(gated.source_url, `https://${MERCHANT}/products/gloss`);
+  assert.ok(gated.links.includes(`https://${MERCHANT}/products/gloss`));
+  assert.equal(gated.offer_id, 'o1');
+  assert.equal(gated.price.amount, 14.95);
+  // A PURCHASABLE merchant is untouched by any of this.
+  const [kept] = await annotateOffersWithCommerceMetadataGated([declinedOffer], {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend: fakeBackend(PURCHASE), logger: fakeLogger() }),
+  });
+  assert.equal(kept.merchant_checkout_url, CART_URL);
+  assert.equal(kept.action.url, CART_URL);
+});
+
+test('F2: a declined REDIRECT offer whose only URL is a product page keeps that page', async () => {
+  const pdp = `https://${MERCHANT}/products/gloss`;
+  const [gated] = await annotateOffersWithCommerceMetadataGated(
+    [{ offer_id: 'o1', external_redirect_url: pdp }],
+    { env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }) },
+  );
+  assert.ok(!Object.prototype.hasOwnProperty.call(gated, 'merchant_checkout_url'), 'no "check out here"');
+  assert.equal(gated.external_redirect_url, pdp, 'the browse link is the fallback, not collateral');
+});
+
+test('F1: the DELETE is load-bearing even where the alias sweep cannot reach — a PDP-shaped stamp', async () => {
+  // WHY THIS CASE EXISTS. The alias sweep removes CHECKOUT-shaped URLs; a product page is kept on
+  // purpose. So when an earlier pass stamped `merchant_checkout_url` with a PDP URL (a redirect
+  // offer), the sweep will NOT take it away — only the explicit delete does. Without that delete
+  // the gate silently keeps saying "check out here" for a merchant it has declined.
+  const pdp = `https://${MERCHANT}/products/gloss`;
+  const stamped = annotateOffersWithCommerceMetadata([{ offer_id: 'o1', external_redirect_url: pdp }]);
+  assert.equal(stamped[0].merchant_checkout_url, pdp, 'pass 1 stamps the PDP URL as the checkout url');
+
+  const [gated] = await annotateOffersWithCommerceMetadataGated(stamped, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }),
+  });
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(gated, 'merchant_checkout_url'),
+    'the stamp from the earlier pass must be DELETED, not merely not-re-added',
+  );
+  assert.equal(gated.external_redirect_url, pdp, 'and the browse link still survives');
+});
+
+test('F3: path 2 clamps the gate to what is LEFT of the door\'s own window, and skips below the floor', async () => {
+  // THE DEFECT. The first cut passed no `budgetMs`, so a BLOCKING read on the checkout critical path
+  // ran on the client's 1500 ms default inside a door that had already spent part of its timeoutMs.
+  const seen = [];
+  const spy = async (args) => { seen.push(args.budgetMs); return { offer: true, source: 'gate' }; };
+  await runEscalation({
+    env: { ...gateEnv(), [ESCALATION_FLAG]: '1' },
+    ucpArgs: ucpCreateArgs(),
+    shouldOfferPurchase: spy,
+    timeoutMs: 1000,
+  });
+  assert.equal(seen.length, 1);
+  assert.ok(Number.isFinite(seen[0]), 'a budget must be passed at all');
+  assert.ok(seen[0] <= 800, `the door's own ceiling must cap it, got ${seen[0]}`);
+
+  // Below the client's floor the REAL client skips without reading anything.
+  const clock = fakeClock();
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+  const out = await runEscalation({
+    env,
+    ucpArgs: ucpCreateArgs(),
+    shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+    timeoutMs: 200,
+    clock: clock.now,
+  });
+  assert.equal(out.continue_url, MERCHANT_URL, 'below the floor: previous behaviour');
+  assert.equal(backend.calls.length, 0, 'below the floor: nothing is read');
+});
+
+test('F4: the offers batch has a REAL deadline — one hanging read cannot stall the page', async () => {
+  // THE DEFECT. A budget checked only BETWEEN reads bounds how many reads START, not how long the
+  // batch TAKES: 12 merchants where one read hangs was measured at 5003 ms for a 1200 ms "budget".
+  const slowHost = 'slow-shop.test';
+  // BOUNDED, so a regression is a FAILING test and never a hanging one: a never-resolving read would
+  // deadlock the runner (and the mutant sweep) instead of reporting the defect. 3 s is far past the
+  // 400 ms deadline under test and far under any CI timeout.
+  let releaseHang = null;
+  const hang = new Promise((resolve) => {
+    releaseHang = resolve;
+    const t = setTimeout(resolve, 3000);
+    if (typeof t.unref === 'function') t.unref();
+  });
+  const asked = [];
+  const gate = async ({ domain }) => {
+    asked.push(domain);
+    // The slow merchant answers `browse_only` LATE: if a post-deadline result were applied, it
+    // would be visible in the returned set.
+    if (domain === slowHost) { await hang; return { offer: false, source: 'gate' }; }
+    return { offer: false, source: 'gate' };
+  };
+
+  const offers = [
+    offer('slow', slowHost),
+    ...Array.from({ length: 11 }, (_, i) => offer(`o${i}`, `shop${i}.test`)),
+    ...Array.from({ length: 20 }, (_, i) => offer(`slowish${i}`, `late${i}.test`)),
+  ];
+
+  const startedAt = Date.now();
+  const declined = await resolveOfferPurchasabilityDecisions(offers, {
+    // ABOVE the client's 300 ms floor on purpose: this test is about the DEADLINE, not the floor.
+    env: gateEnv(), market: MARKET, budgetMs: 400, shouldOfferPurchase: gate,
+  });
+  const elapsed = Date.now() - startedAt;
+  releaseHang();
+
+  assert.ok(elapsed < 1000, `the batch must return on its deadline, took ${elapsed}ms`);
+  assert.ok(!declined.has(slowHost), 'a read that lands after the deadline is discarded');
+  // AND NOTHING LANDS LATE. The slow merchant answers `browse_only` after the deadline; the page
+  // has already been answered, so that verdict must not appear in the set the page was built from.
+  const sizeAtDeadline = declined.size;
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(declined.size, sizeAtDeadline, 'the returned set is a snapshot, not a live handle');
+  assert.ok(!declined.has(slowHost));
+  // The merchants that DID answer inside the deadline are still honoured.
+  assert.ok(declined.size >= 11, 'every answer that arrived inside the deadline is still honoured');
+});
+
+test('F5: offersGateBuyerMarket reads only caller-supplied markets and NEVER defaults', () => {
+  // THE DEFECT. This helper lived in src/server.js with zero coverage, and the mutant that defaults
+  // it to 'US' survived the entire suite — the one substitution the gate must never make.
+  assert.equal(offersGateBuyerMarket({ search: { market: 'us' } }, {}), 'us');
+  assert.equal(offersGateBuyerMarket({ market: 'SG' }, {}), 'SG');
+  assert.equal(offersGateBuyerMarket({}, { market: 'GB' }), 'GB');
+  assert.equal(offersGateBuyerMarket({ search: { market: 'JP' } }, { market: 'GB' }), 'JP', 'search wins');
+  assert.equal(offersGateBuyerMarket({}, {}), undefined, 'no market is a question the gate cannot ask');
+  assert.equal(offersGateBuyerMarket(null, null), undefined);
+  assert.equal(offersGateBuyerMarket({ search: { market: '   ' } }, {}), undefined);
+  // And a market it cannot use must not become one the gate asks about.
+  assert.equal(offersGateBuyerMarket(undefined, undefined), undefined);
+});
+
+test('F4b: the credential step runs INSIDE the caller\'s deadline, not before it', async () => {
+  // THE DEFECT. `fetchFact` awaited `resolveCredential()` BEFORE arming the AbortController, so the
+  // metadata server's own 1 s ceiling sat outside both budgets: a 300 ms caller could wait 1300 ms.
+  let released = null;
+  const hang = new Promise((resolve) => {
+    released = resolve;
+    const t = setTimeout(resolve, 3000); // bounded: a regression must FAIL, never hang the runner
+    if (typeof t.unref === 'function') t.unref();
+  });
+  const client = createMerchantPurchasabilityClient({
+    env: { ...gateEnv(), PIVOTA_OPS_OIDC_AUDIENCE: 'https://api.pivota.cc' },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => BROWSE_ONLY }),
+    // The metadata server never answers.
+    metadataFetchImpl: async () => { await hang; return { ok: false, status: 500 }; },
+    logger: fakeLogger(),
+  });
+
+  const startedAt = Date.now();
+  const decision = await client.shouldOfferPurchase({ domain: MERCHANT, market: MARKET, budgetMs: 320 });
+  const elapsed = Date.now() - startedAt;
+  released();
+
+  assert.equal(decision.offer, true, 'a credential that never arrives fails OPEN');
+  assert.ok(elapsed < 1200, `the credential step must sit inside the deadline, took ${elapsed}ms`);
+});
+
+test('F1: EVERY annotate call site in src/server.js is gated — including the stamping pass', () => {
+  // A UNIT TEST CANNOT SEE THIS. The defect was not in offersPriority.js at all: it was a FOURTH
+  // call site (`buildOffersFromGroupMembers`) that the two gated ones re-annotate, so the gate was
+  // provably applied and provably had no effect on either serving lane. The invariant is therefore
+  // structural — every call site passes a decision — and it is checked the way the defect was found.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const sites = [];
+  const re = /annotateOffersWithCommerceMetadata\(/g;
+  for (let m = re.exec(src); m; m = re.exec(src)) {
+    // The option object may be on a later line; a call site is short, so a bounded window is enough.
+    sites.push({ index: m.index, window: src.slice(m.index, m.index + 400) });
+  }
+  assert.equal(sites.length, 3, 'a new annotate call site must be gated and counted here');
+  for (const site of sites) {
+    assert.ok(
+      site.window.includes('declinedDomains'),
+      `an UNGATED annotate call site at offset ${site.index}: ${site.window.split('\n')[0]}`,
+    );
+  }
+  // And every one of them is fed by a decision resolved for this request.
+  assert.equal((src.match(/resolveOfferPurchasabilityDecisions\(/g) || []).length, 3);
 });

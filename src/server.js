@@ -80,6 +80,7 @@ const {
   prioritizeOffersResolveResponseGated,
   annotateOffersWithCommerceMetadata,
   resolveOfferPurchasabilityDecisions,
+  offersGateBuyerMarket,
   prioritizeOffers,
   isInternalOffer,
   pickDefaultOfferId,
@@ -10660,30 +10661,6 @@ async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = 
   }
 }
 
-/**
- * THE BUYER MARKET FOR THE MERCHANT-PURCHASABILITY GATE ON THE OFFERS PATH.
- *
- * CALLER-SUPPLIED ONLY, in this door's existing two spellings — the same pair this file already reads on the
- * discovery lane (`resolveBuyerMarketScope(search.market || metadata.market)`) and the same rule
- * `checkoutHandoffResolver.requestBuyerMarket` applies on the warm-handoff lane.
- *
- * ⚠️ THERE IS DELIBERATELY NO FALLBACK. `servedMarkets.primaryMarket()` answers the DEPLOYMENT's market
- * ('US' by default) for a request that named none, and the purchasability fact is keyed on the BUYER's
- * market: a positive fact from another vantage is evidence for a human, never permission for the door.
- * A request with no market is a question the gate cannot ask, so the offers keep today's exact shape and
- * the client logs `merchant_purchasability_unkeyable`. A mutant that substitutes 'US' is in the sweep.
- */
-function offersGateBuyerMarket(payload, metadata) {
-  const search = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.search : null;
-  return (
-    firstNonEmptyString(
-      search && typeof search === 'object' ? search.market : null,
-      payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.market : null,
-      metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata.market : null,
-    ) || undefined
-  );
-}
-
 async function buildOffersFromGroupMembers(args) {
   const totalStartedAt = Date.now();
   const timings = {};
@@ -10695,6 +10672,9 @@ async function buildOffersFromGroupMembers(args) {
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
   const preferredProductId = args?.preferredProductId ? String(args.preferredProductId).trim() : null;
   const debug = args?.debug === true;
+  // The request's buyer market, for the merchant-purchasability gate below. Undefined = the gate
+  // cannot ask and this lane keeps today's exact shape (logged `merchant_purchasability_unkeyable`).
+  const buyerMarket = args?.buyerMarket;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
@@ -11078,7 +11058,18 @@ async function buildOffersFromGroupMembers(args) {
   } = collapseSameInternalMerchantOffers(dedupedOffers);
 
   const sortStartedAt = Date.now();
-  const annotatedOffers = annotateOffersWithCommerceMetadata(merchantCollapsedOffers);
+  // MERCHANT-PURCHASABILITY GATE. THIS IS THE STAMPING PASS: the two call sites downstream
+  // (buildProductIntelOffersDataForContext and the PDP offers module) re-annotate THIS output, so
+  // gating only those two left the key this pass wrote in place and the gate was a no-op on both
+  // serving lanes. Gated here as well — and the suppression deletes rather than skips, so the
+  // order of the passes cannot resurrect a withheld checkout URL.
+  const groupOffersDeclinedDomains = await resolveOfferPurchasabilityDecisions(
+    merchantCollapsedOffers,
+    { market: buyerMarket },
+  );
+  const annotatedOffers = annotateOffersWithCommerceMetadata(merchantCollapsedOffers, {
+    declinedDomains: groupOffersDeclinedDomains,
+  });
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
   const sortedByTotal = [...annotatedOffers].sort((a, b) => {
     const aTotal = computeOfferTotal(a);
@@ -38779,6 +38770,7 @@ async function buildProductIntelOffersDataForContext({
           members: context.groupMembers,
           checkoutToken,
           limit,
+          buyerMarket,
           preferredMerchantId: context.canonicalProductRef.merchant_id || null,
           preferredProductId: context.canonicalProductRef.product_id || null,
         }).catch(() => null)
@@ -45661,6 +45653,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               checkoutToken,
               bypassCache,
               limit: payload?.offers?.limit || 10,
+              buyerMarket: offersGateBuyerMarket(payload, metadata),
               preferredMerchantId: requestedMerchantId || null,
               preferredProductId: selectedCommerceProductIdForPdp || null,
               debug,
@@ -45820,6 +45813,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     checkoutToken,
                     bypassCache,
                     limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
+                    buyerMarket: offersGateBuyerMarket(payload, metadata),
                     preferredMerchantId: requestedMerchantId || null,
                     preferredProductId: selectedCommerceProductIdForPdp || null,
                     debug,

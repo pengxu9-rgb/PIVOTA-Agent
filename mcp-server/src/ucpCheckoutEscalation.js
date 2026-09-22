@@ -245,7 +245,9 @@ export function escalationBuyerMarket(ucpArgs) {
  * throws and never refuses on a failure, `offer: false` is reachable only from a 200 + enforcing + browse_only,
  * and the `=== false` compare is strict so a malformed future answer cannot refuse by accident.
  */
-async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled) {
+const ESCALATION_GATE_MAX_MS = 800;
+
+async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled, budgetMs) {
   // THE SWITCH, READ HERE TOO. The client checks it as well, but a door on the checkout critical path
   // should not pay for a call whose answer is "disabled" — and this makes "the switch is ignored on THIS
   // path" a mutant that a test can kill without touching the client every other lane shares.
@@ -258,7 +260,17 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   // layer rule 4 exists to forbid. A throwing gate is in the mutant sweep.
   let decision = null;
   try {
-    decision = await gate({ domain: hostOf(continueUrl), market: market || undefined });
+    decision = await gate({
+      domain: hostOf(continueUrl),
+      market: market || undefined,
+      // ⚠️ BOUNDED BY WHAT IS LEFT OF THE DOOR'S OWN WINDOW. The first cut passed nothing, so this
+      // BLOCKING read on the checkout critical path ran on the client's 1500 ms default while the
+      // door it sits in had already spent part of its `timeoutMs` reading rows — an unbudgeted
+      // addition to a synchronous checkout call. Same clamp as the warm-handoff seam: what is left,
+      // capped again by this door's own ceiling, and below the client's floor the gate is SKIPPED
+      // (`source: 'skipped_budget'`, previous behaviour) rather than attempted and timed out.
+      budgetMs: Math.min(Math.max(0, budgetMs), ESCALATION_GATE_MAX_MS),
+    });
   } catch {
     return true;
   }
@@ -362,7 +374,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -371,6 +383,14 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     ? shouldOfferPurchase
     : (args) => merchantPurchasability.getMerchantPurchasabilityClient().shouldOfferPurchase(args);
   const gateEnabled = merchantPurchasability.isGateEnabled(env);
+  // The door's own window, and how much of it is left when the gate is reached. `clock` is injected
+  // only by tests; production reads the real one.
+  const gateClock = typeof clock === "function" ? clock : Date.now;
+  const doorStartedAt = gateClock();
+  const doorBudgetMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS;
+  const gateBudgetMs = () => doorBudgetMs - (gateClock() - doorStartedAt);
   // The REQUEST's market, from the raw UCP body. Null is a question the gate cannot ask.
   const buyerMarket = escalationBuyerMarket(ucpArgs);
 
@@ -409,7 +429,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
     // function already gives for every row that is not eligible for a continue_url. See the note above
     // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
-    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled))) return null;
+    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
@@ -442,7 +462,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // The same seam on the re-read. Inert in practice and deliberately kept symmetrical: the UCP `get_checkout`
     // wire body carries no `checkout.context`, so this lane is always `unkeyable` and always keeps the previous
     // behaviour — an asymmetry here would be the hole somebody re-opens when that body gains a market.
-    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled))) return null;
+    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
   }
 

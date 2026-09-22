@@ -8,8 +8,8 @@
 `tests/merchant_purchasability_gate.node.test.cjs` and
 `tests/merchant_purchasability_paths.node.test.cjs` (the pins).
 
-**All three purchase-offering paths are now gated.** One switch, one
-`shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
+**All three purchase-offering paths are now gated — across FOUR annotate call sites on path 3.**
+One switch, one `shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
 
 This rail ships **dark**, behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` (default OFF). With the
 switch off nothing is asked of the backend and the warm-handoff lane is byte-identical to before
@@ -361,7 +361,7 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 |---|---|---|---|---|
 | 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — still absent from the backend payload, §2) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
-| 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market \|\| payload.market \|\| metadata.market` at the three `src/server.js` call sites (`offersGateBuyerMarket`) | the key is **never stamped**. The OFFER SURVIVES with `commerce_mode`, `checkout_handoff` and everything else unchanged — browse/referral is what is left |
+| 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market \|\| payload.market \|\| metadata.market` (`offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with `commerce_mode`, `checkout_handoff`, its price and its PDP/browse links unchanged |
 
 Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
 reason: the only difference a declined merchant produces is a URL that is not there.
@@ -386,31 +386,56 @@ branch is gated identically and is **inert in practice**: the UCP `get_checkout`
 `checkout.context`, so that lane is always `unkeyable`. It is gated anyway so the asymmetry is not a
 hole somebody re-opens when that body gains a market.
 
+**The gate is budgeted here too.** It is a BLOCKING read on the checkout critical path, so it is
+clamped to what is left of the door's own `timeoutMs`, capped again at `ESCALATION_GATE_MAX_MS`
+(800 ms), and below the client's 300 ms floor it is skipped outright (`source: 'skipped_budget'`,
+previous behaviour). The first cut passed no budget at all and ran on the client's 1500 ms default.
+
 `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` is still off by default, so this path remains dark either way.
 
-### Path 3 — the offer stamp, and the batch bound that made it a follow-up
+### Path 3 — the offer stamp: four call sites, a delete, and a real deadline
 
-The previous revision deferred this path because "this runs as a per-request batch over many merchants
-while this client is a per-merchant read". That is the real constraint, and it is met with three
-bounds rather than a batched backend route — all three asserted in the suite:
+**There are FOUR annotate call sites, not two, and the one that matters is the innermost.**
+`buildOffersFromGroupMembers` (`src/server.js:11066`) annotates first, and **both** downstream sites
+— `buildProductIntelOffersDataForContext` and the PDP offers module — re-annotate *that* output.
+A conditional spread can only ADD a key, so `...offer` faithfully re-emitted whatever the first,
+ungated pass had stamped: gating only the outer two was a **measured no-op on both serving lanes**.
+All four are now gated, and:
 
-1. **Dedupe.** N offers for one merchant × market are ONE question: distinct domains only, plus the
-   client's own ≤5-minute cache behind that.
-2. **Concurrency.** At most `GATE_CONCURRENCY` (4) reads in flight for a page.
-3. **A total wall-clock budget.** `GATE_BATCH_BUDGET_MS` (1200 ms) bounds the WHOLE batch, not each
-   read — otherwise the client's per-call ceiling multiplies by `ceil(M / 4)`. Each read is clamped to
-   what is left, and below the client's `MIN_GATE_BUDGET_MS` (300 ms) floor the remaining merchants
-   are not asked at all and keep the previous behaviour. Same shape as §3's clamp on the click lane.
+> **The suppression DELETES the key, it does not decline to add it.** That is what makes the
+> decision hold whichever pass stamped it, and it makes suppression idempotent, so the order of the
+> passes stops mattering.
 
-The decision is taken **before** the stamp: `resolveOfferPurchasabilityDecisions` runs first and
-`enrichOfferCommerceMetadata` then never constructs the key. Building the URL and deleting it
-afterwards is one refactor away from leaking it, and that mutant is in the sweep.
+**And withholding one key is not withholding the checkout.** The same storefront cart URL is served
+under `external_redirect_url`, `url`, `action.url`, `checkout_url` and inside
+`merchant_checkout_session` — `offerDedupeKey` reads five spellings for exactly that reason. For a
+declined merchant, **every field anywhere in the offer** whose value is that merchant's *checkout*
+URL is removed (compared as `offerDedupeKey` compares: host, no query/fragment, no trailing slash;
+matching a `/cart`-or-`/checkout`-shaped path on that host, or the exact URL that would have been
+stamped when that URL is itself checkout-shaped). **PDP and browse links stay** — a redirect offer
+whose only URL is the product page keeps it, because that link *is* the fallback.
 
-**The three `src/server.js` call sites** that supply the market are the offers-module site and the
-`offers.resolve` site inside `handleInvokeRequest`, and `buildProductIntelOffersDataForContext`
-(threaded from its two callers). `offersGateBuyerMarket` reads only caller-supplied spellings and
-**never** `servedMarkets.primaryMarket()`; a request with no market keeps today's exact shape and is
-logged `merchant_purchasability_unkeyable`.
+`commerce_mode` / `checkout_handoff` are **preserved across a re-annotate** of an already-suppressed
+offer. `inferCommerceMode` reads the URL fields the suppression just removed, so a later pass would
+otherwise fall through to the default and relabel a links-out row `merchant_embedded_checkout` —
+claiming Pivota hosts a checkout for a merchant it has just declined to sell for.
+
+**The batch is bounded four ways**, all asserted:
+
+1. **Dedupe.** N offers for one merchant × market are ONE question, plus the client's ≤5-minute cache.
+2. **Concurrency.** At most `GATE_CONCURRENCY` (4) reads in flight.
+3. **A start-gate floor.** Each read is clamped to what is left of `GATE_BATCH_BUDGET_MS` (1200 ms);
+   below the client's `MIN_GATE_BUDGET_MS` (300 ms) the rest of the page is not asked at all.
+4. **A REAL DEADLINE.** A budget checked only *between* reads bounds how many reads are STARTED, not
+   how long the batch TAKES — measured on the first cut at **5003 ms for a "1200 ms budget"** with 12
+   merchants and one 5 s read. The whole batch now races a timer; a result that lands after it is
+   **discarded** and that merchant keeps the previous behaviour.
+
+**And the client's credential step now runs INSIDE the caller's deadline.** `fetchFact` used to
+`await resolveCredential()` *before* arming its `AbortController`, so the metadata server's own 1 s
+ceiling sat outside both `timeoutMs` and `budgetMs`: a caller handing the gate 300 ms could still
+wait 1300 ms. The controller is armed first and the credential wait is raced against it. This
+tightens the warm-handoff lane too, and is pinned by its own test.
 
 ### Not gated, and genuinely out of scope
 

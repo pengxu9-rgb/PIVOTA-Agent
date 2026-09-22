@@ -181,22 +181,126 @@ function declinedSetOf(options) {
   return set instanceof Set && set.size > 0 ? set : null;
 }
 
+/** Checkout/cart-shaped paths. A PDP or a category page is NOT one of these and is never stripped. */
+const CHECKOUT_PATH_RE = /^\/(cart|checkouts?|checkout-[^/]*)(\/|$|\?)/i;
+
+function parseUrlish(value) {
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (!s || !/^https?:\/\//i.test(s)) return null;
+  try { return new URL(s); } catch { return null; }
+}
+
+function hostKeyOf(parsed) {
+  return parsed ? parsed.hostname.toLowerCase().replace(/^www\./, '') : null;
+}
+
+/** Same normalisation `offerDedupeKey` uses in src/server.js: case, query/fragment, trailing slash. */
+function normalizeUrlForCompare(value) {
+  return String(value || '').trim().toLowerCase().replace(/[?#].*$/, '').replace(/\/+$/, '');
+}
+
+/**
+ * ⚠️ SUPPRESSING `merchant_checkout_url` ALONE IS NOT SUPPRESSING THE CHECKOUT.
+ *
+ * Review of the first cut: the SAME storefront cart URL is served on an offer under
+ * `external_redirect_url`, `url`, `action.url` and anywhere else a producer put it —
+ * `offerDedupeKey` (src/server.js) reads five spellings for exactly that reason. Withholding one
+ * key while three aliases still carry `https://merchant/cart/1:1` withholds nothing.
+ *
+ * So for a DECLINED merchant every field anywhere in the offer whose value is that merchant's
+ * CHECKOUT url is removed — compared the way `offerDedupeKey` compares (host, no query/fragment,
+ * no trailing slash), matching either the exact URL that would have been stamped or any
+ * cart/checkout-shaped path on that host.
+ *
+ * ⚠️ AND PDP / BROWSE LINKS STAY. That is the entire point of the fallback: the offer survives as
+ * a browse/referral result. A redirect offer whose only URL is the product page keeps it — the
+ * stamped URL is only stripped by the byte-equal arm when it is itself checkout-shaped.
+ */
+function isSuppressedCheckoutUrl(value, domain, stampedUrl, stampedIsCheckout) {
+  const parsed = parseUrlish(value);
+  if (!parsed || hostKeyOf(parsed) !== domain) return false;
+  if (CHECKOUT_PATH_RE.test(parsed.pathname)) return true;
+  return stampedIsCheckout && normalizeUrlForCompare(value) === normalizeUrlForCompare(stampedUrl);
+}
+
+/** Deep copy of `node` with every suppressed URL value removed. Bounded depth; no cycles survive. */
+function stripCheckoutUrlsDeep(node, domain, stampedUrl, stampedIsCheckout, depth = 0) {
+  if (depth > 8 || node === null || typeof node !== 'object') return node;
+  if (Array.isArray(node)) {
+    return node
+      .filter((v) => !isSuppressedCheckoutUrl(v, domain, stampedUrl, stampedIsCheckout))
+      .map((v) => stripCheckoutUrlsDeep(v, domain, stampedUrl, stampedIsCheckout, depth + 1));
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (typeof v === 'string') {
+      if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, stampedIsCheckout)) out[k] = v;
+      continue;
+    }
+    out[k] = stripCheckoutUrlsDeep(v, domain, stampedUrl, stampedIsCheckout, depth + 1);
+  }
+  return out;
+}
+
 function enrichOfferCommerceMetadata(offer, options) {
   if (!offer || typeof offer !== 'object' || Array.isArray(offer)) return offer;
 
-  const commerceMode = inferCommerceMode(offer);
-  const checkoutHandoff = inferCheckoutHandoff(offer);
   const checkoutUrl = readOfferStampedCheckoutUrl(offer);
   const merchantCheckoutSession = readMerchantCheckoutSession(offer);
 
-  // THE SEAM. The gate decides whether the key EXISTS; it never edits one that was written.
-  // `declinedDomains` is empty (and this is `false`) on every path where the switch is off,
-  // the backend is not enforcing, the read failed, or no market was carried — i.e. the
-  // previous behaviour, byte for byte.
+  // ⚠️ THE MODE MUST NOT DRIFT WHEN THE URLS HAVE ALREADY BEEN SUPPRESSED. `inferCommerceMode`
+  // reads the URL fields, and a declined offer no longer has any — so a LATER pass over an
+  // already-suppressed offer would find none, fall through to the default and relabel a links-out
+  // row `merchant_embedded_checkout` / `embedded`: a claim that Pivota hosts a checkout for a
+  // merchant it has just declined to sell for. An offer that carries a mode from an earlier pass
+  // and has no URL left keeps that mode. This cannot change any un-suppressed offer: one that
+  // still has a URL is re-inferred exactly as before, to exactly the same value.
+  const priorMode = asString(offer.commerce_mode);
+  const priorHandoff = asString(offer.checkout_handoff);
+  const suppressedEarlier = !checkoutUrl && Boolean(priorMode);
+  const commerceMode = suppressedEarlier ? priorMode : inferCommerceMode(offer);
+  const checkoutHandoff = suppressedEarlier
+    ? (priorHandoff || inferCheckoutHandoff(offer))
+    : inferCheckoutHandoff(offer);
+
+  // THE SEAM.
+  // `declinedDomains` is empty (and this is `false`) on every path where the switch is off, the
+  // backend is not enforcing, the read failed, or no market was carried — i.e. the previous
+  // behaviour, byte for byte.
   const declined = declinedSetOf(options);
-  const merchantNotPurchasable = Boolean(
-    checkoutUrl && declined && declined.has(readOfferMerchantDomain(offer)),
-  );
+  const domain = readOfferMerchantDomain(offer);
+  const merchantNotPurchasable = Boolean(checkoutUrl && declined && declined.has(domain));
+
+  if (merchantNotPurchasable) {
+    // ⚠️ DELETE, NOT "SKIP". This function runs MORE THAN ONCE over the same offer: the PDP lane
+    // annotates inside `buildOffersFromGroupMembers` and its callers annotate the result again.
+    // A conditional spread can only ADD a key, so `...offer` faithfully re-emitted whatever an
+    // EARLIER, ungated pass had already stamped and the gate was a measured no-op on both serving
+    // lanes. Removing the key explicitly makes the decision hold whichever pass stamped it — and
+    // the suppression is idempotent, so the order of the passes stops mattering.
+    const stampedIsCheckout = Boolean(
+      parseUrlish(checkoutUrl) && CHECKOUT_PATH_RE.test(parseUrlish(checkoutUrl).pathname),
+    );
+    const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl, stampedIsCheckout);
+    delete base.merchant_checkout_url;
+    return {
+      ...base,
+      commerce_mode: commerceMode,
+      seller_of_record: 'merchant',
+      payment_processor_owner: 'merchant',
+      order_system_of_record: 'merchant_store_platform',
+      checkout_handoff: checkoutHandoff,
+      order_writeback_mode: 'merchant_direct',
+      ...(merchantCheckoutSession
+        ? {
+          merchant_checkout_session: stripCheckoutUrlsDeep(
+            merchantCheckoutSession, domain, checkoutUrl, stampedIsCheckout,
+          ),
+        }
+        : {}),
+    };
+  }
 
   return {
     ...offer,
@@ -206,7 +310,7 @@ function enrichOfferCommerceMetadata(offer, options) {
     order_system_of_record: 'merchant_store_platform',
     checkout_handoff: checkoutHandoff,
     order_writeback_mode: 'merchant_direct',
-    ...(checkoutUrl && !merchantNotPurchasable ? { merchant_checkout_url: checkoutUrl } : {}),
+    ...(checkoutUrl ? { merchant_checkout_url: checkoutUrl } : {}),
     ...(merchantCheckoutSession ? { merchant_checkout_session: merchantCheckoutSession } : {}),
   };
 }
@@ -263,6 +367,20 @@ async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
     ),
   );
 
+  // ⚠️ A BUDGET THAT IS ONLY CHECKED BETWEEN READS IS ADVISORY, NOT A BOUND. Measured on the first
+  // cut: 12 merchants where ONE read takes 5 s — the loop checks the clock, starts that read, and
+  // the page waits 5003 ms for a 1200 ms "budget". The clock check bounds how many reads are
+  // STARTED; only a deadline bounds how long the batch TAKES. So the whole batch races a timer, and
+  // a read that lands after it is DISCARDED — its merchant keeps the previous behaviour, which is
+  // what every other non-answer here resolves to.
+  //
+  // NOTE ON WHAT IS **NOT** HERE. An `if (abandoned) return;` at the head of this loop would be
+  // UNREACHABLE: `MIN_GATE_BUDGET_MS` (300 ms) is greater than zero and the deadline is set to the
+  // same `remainingTotalMs` the loop measures against, so every worker exits on the FLOOR before
+  // the timer can ever fire. An unreachable guard reads as protection that does not exist, so it is
+  // not written. The flag below is different: a worker can be INSIDE an `await` when the deadline
+  // fires, and that is the result this guard (and the defensive copy at the end) drops.
+  let abandoned = false;
   let cursor = 0;
   async function worker() {
     for (;;) {
@@ -287,12 +405,52 @@ async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
       }
       // STRICTLY `=== false`. A loose compare would take `undefined`/`''`/`0` from a
       // malformed or future answer as a refusal, which is fail-CLOSED by accident.
-      if (decision && decision.offer === false) declined.add(domains[index]);
+      // A result that arrives after the deadline is DROPPED, not applied to a page already served.
+      if (!abandoned && decision && decision.offer === false) declined.add(domains[index]);
     }
   }
 
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return declined;
+  const workers = Promise.all(Array.from({ length: concurrency }, () => worker()));
+  const remainingTotalMs = Math.max(0, totalBudgetMs - (now() - startedAt));
+  let deadlineTimer = null;
+  const deadline = new Promise((resolve) => {
+    deadlineTimer = setTimeout(() => { abandoned = true; resolve(); }, remainingTotalMs);
+    // Never hold the process open for the gate on a page that has already been answered.
+    if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
+  });
+  try {
+    await Promise.race([workers, deadline]);
+  } finally {
+    abandoned = true;
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+  }
+  // A COPY: the workers may still be unwinding, and a page must be answered from what was decided
+  // BEFORE the deadline, never from a set something else is still writing to.
+  return new Set(declined);
+}
+
+/**
+ * THE BUYER MARKET FOR THE OFFERS PATH, in this door's existing spellings.
+ *
+ * Lives here, with the seam it keys, rather than in `src/server.js`: the first cut put it there and
+ * it had ZERO coverage — the mutant that defaults it to `'US'` survived the whole suite, which is
+ * precisely the substitution the gate must never make. It is a pure function of two request objects,
+ * so it belongs where a test can reach it.
+ *
+ * ⚠️ CALLER-SUPPLIED ONLY. `servedMarkets.primaryMarket()` answers the DEPLOYMENT's market ('US' by
+ * default) and the fact is keyed on the BUYER's; a positive fact from another vantage is evidence
+ * for a human, never permission for the door. No market => `undefined` => the gate cannot ask =>
+ * today's exact behaviour, logged `merchant_purchasability_unkeyable`.
+ */
+function offersGateBuyerMarket(payload, metadata) {
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const p = obj(payload);
+  const search = p ? obj(p.search) : null;
+  for (const candidate of [search && search.market, p && p.market, obj(metadata) && metadata.market]) {
+    const text = asString(candidate);
+    if (text) return text;
+  }
+  return undefined;
 }
 
 /** `annotateOffersWithCommerceMetadata`, with the gate consulted first. */
@@ -476,6 +634,7 @@ async function prioritizeOffersResolveResponseGated(upstreamData, options = {}) 
 
 module.exports = {
   GATE_BATCH_BUDGET_MS,
+  offersGateBuyerMarket,
   GATE_CONCURRENCY,
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,
