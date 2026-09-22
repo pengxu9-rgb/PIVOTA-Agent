@@ -113,7 +113,8 @@ this PR does.
 | variable | default | what it does |
 |---|---|---|
 | `MERCHANT_PURCHASABILITY_GATE_ENABLED` | **unset = OFF** | **THE GATEWAY KILL SWITCH.** Truthy allowlist `1 / true / yes / on / enabled`, case- and space-insensitive, read per call. Off: nothing is asked of the backend and the lane is byte-identical. Armed independently of the backend dial, and the first thing to flip back on a rollback |
-| `PIVOTA_OPS_ADMIN_TOKEN` | **unset** | An admin / super_admin **Bearer JWT** for the backend's ops routes. Read from the environment, never minted here. Unset is not an error: the gate keeps the previous behaviour and logs `merchant_purchasability_not_configured` once |
+| `PIVOTA_OPS_OIDC_AUDIENCE` | **unset = OFF** | **THE PRODUCTION AUTH RAIL.** The audience for this service's Google Cloud Run identity token. Set it and the client asks the metadata server for an identity token and sends that instead of the static JWT. **Recommended value: the backend's canonical https origin, `https://api.pivota.cc`** — a bare origin, no path, no port, no trailing path segment. It must equal the backend's `OPS_GATEWAY_OIDC_AUDIENCE` byte for byte |
+| `PIVOTA_OPS_ADMIN_TOKEN` | **unset** | An admin / super_admin **Bearer JWT** for the backend's ops routes. Read from the environment, never minted here. **Since the OIDC follow-up this is a DEV FALLBACK, not the production rail**: it is used only when no identity token could be obtained (no metadata server — i.e. local dev — or the audience env is unset). Unset is not an error: the gate keeps the previous behaviour and logs `merchant_purchasability_not_configured` once |
 | `PIVOTA_API_BASE` | **unset in prod ⇒ no read** | Existing variable (`src/server.js` defaults it to `http://localhost:8080` for ITS own use; this client does no such thing — an unset base is treated as unconfigured, logged once, previous behaviour). The backend origin the ops read is issued against |
 
 Not dials, on purpose: the **2 s** per-call ceiling, the **5-minute** cache ceiling and the
@@ -130,54 +131,93 @@ once. So `resolveWarmHandoff` passes `budgetMs = totalBudgetMs - elapsed`, the r
 
 ---
 
-## 4. Auth — the one place this repo contradicted the contract
+## 4. Auth — a Google identity token, with the standing JWT demoted to a dev fallback
 
-The backend runbook says to reuse "the same ops credential the gateway already uses for its
-store-audit reads". **Surveyed against this repo on 2026-09-22, no such caller exists.**
+### 4.1 What the client sends, in order
 
-* The gateway calls **no** backend `/ops/...` route at all. This is the first one.
-* There is no admin JWT anywhere: no `ADMIN_JWT`-shaped env var in `src`, `env.example`,
-  `.env.example`, `infra/`, `config/` or `.github/`; `jsonwebtoken` is not a dependency; every
-  `jose` use is **verification**, not signing.
-* The gateway's one admin rail is `src/server.js::fetchBackendAdmin`, which sends
-  `X-ADMIN-KEY: ADMIN_API_KEY` to `/agent/internal/*`. The runbook names that header explicitly
-  as the thing that will **401** on these routes, because they depend on `require_admin` and
-  deliberately not on `require_admin_or_key`. A gateway reaching for it "will look like a routing
-  problem".
-* `src/services/cloudRunIdentityToken.js` is a Google OIDC ID token for Cloud Run's own IAM
-  invoker check. It carries no Pivota role and no backend route accepts it.
+1. **`PIVOTA_OPS_OIDC_AUDIENCE` is set** → ask the Cloud Run metadata server for an identity
+   token for that audience and send it as `Authorization: Bearer <id token>`.
+   `GET http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=<aud>&format=full`
+   with `Metadata-Flavor: Google`, a **1 s** ceiling, cached and refreshed **5 minutes before
+   `exp`**. Concurrent reads collapse into one metadata call.
+2. **No identity token came back** (no metadata server — local dev — a timeout, a non-200, an
+   empty body) → fall back to `PIVOTA_OPS_ADMIN_TOKEN` if it is set, and log
+   `merchant_purchasability_identity_unavailable` once per 5 minutes. On a deployed revision
+   that line means an **arming mistake**, not local dev: a wrong audience, or the service
+   account missing its role.
+3. **Neither** → the existing "not configured" behaviour: `merchant_purchasability_not_configured`
+   once, previous behaviour, nothing refused.
 
-So the credential is **read from the environment and never minted**: `PIVOTA_OPS_ADMIN_TOKEN`
-travels as `Authorization: Bearer <token>`. If this repo ever grows a real ops-JWT caller, point
-`createMerchantPurchasabilityClient({ token })` at it and delete the env read — the client holds
-no credential logic beyond reading that string.
+**Every step of that chain is inside the fail-open rule.** A token failure must never make the
+gate refuse a purchase — the backend already fails closed, and a second fail-closed layer turns
+one blip into a catalogue-wide outage. This is asserted, not promised: a browse_only fact waiting
+behind an unreachable metadata server still resolves to `offer: true`.
 
-**Ops action before arming:** issue an admin / super_admin JWT from the backend and set
-`PIVOTA_OPS_ADMIN_TOKEN` on the gateway service. The token is not rotated by this code; a
-rotation is an env change and a redeploy.
+The implementation reuses the repo's **existing owner** of Google identity tokens,
+`src/services/cloudRunIdentityToken.js`, rather than growing a second metadata client. It adds
+`createRefreshingCloudRunIdTokenProvider` there and leaves `createCloudRunIdTokenProvider`
+byte-identical for its four existing store-audit callers — that one caches its in-flight promise
+**forever**, which is survivable for a restarted batch worker and is not survivable for a serving
+process that would then 401 an hour after boot.
 
-### ⚠️ AUTH FOLLOW-UP — a standing admin JWT in env is the weakest part of this design
+### 4.2 ⚠️ THE AUDIENCE MUST MATCH THE BACKEND BYTE FOR BYTE
+
+The backend compares `aud` to `OPS_GATEWAY_OIDC_AUDIENCE` with `!=` — a **string** compare, not a
+URL compare. `https://api.pivota.cc/` is a different audience from `https://api.pivota.cc`, and
+`http://` is a different audience again. A mismatch is a 401, a 401 **fails open**, and failing
+open is silent: the gate disarms and every dial still reads "on".
+
+Two things reduce the blast radius, and neither replaces getting it right:
+
+* `cloudRunAudience()` **refuses** anything that is not a bare https origin (no path, no port, no
+  query, no credentials) and normalises a single trailing slash to the origin, so what goes on
+  the wire is the canonical spelling.
+* A refused audience **disables the rail** rather than sending a token nobody will accept — it
+  falls back to step 2 above and logs.
+
+### 4.3 Why the standing admin JWT was demoted
 
 Say it plainly, because it will not announce itself:
 
-* **It is over-scoped.** An `admin` / `super_admin` JWT is a role, not a capability for one
-  read-only route. A gateway that only ever needs `GET /ops/merchant-purchasability` is holding
+* **It was over-scoped.** An `admin` / `super_admin` JWT is a role, not a capability for one
+  read-only route. A gateway that only ever needs `GET /ops/merchant-purchasability` was holding
   a credential that opens every admin route the backend has.
-* **It expires silently, and the failure is invisible.** When the JWT lapses the backend answers
+* **It expired silently, and the failure was invisible.** When the JWT lapses the backend answers
   **401**, which this client — correctly, per the fail-open rule — treats as "no fact" and keeps
-  the previous behaviour. So an expired token does not break anything loudly; it **disarms the
-  gate permanently** while every dial still reads "on". The only evidence is
+  the previous behaviour. So an expired token did not break anything loudly; it **disarmed the
+  gate permanently** while every dial still read "on". The only evidence is
   `merchant_purchasability_read_failed` with `failure: status_401`, once per 5 minutes.
-  **Alert on that line specifically**, and treat a sustained `status_401` as "the gate is off".
+  **Alert on that line specifically**, and treat a sustained `status_401` as "the gate is off" —
+  this is still true of the identity rail, for a wrong audience or a missing IAM binding.
 
-**The safest fix is not a longer-lived token — it is no token.** This service already mints a
-Google-issued OIDC **identity token** for Cloud Run service-to-service calls
-(`src/services/cloudRunIdentityToken.js`, used by the store-audit workers). Having the backend
-accept that identity on this one route — audience-scoped to the backend, rotated by the metadata
-server, never stored in env, scoped to exactly one endpoint rather than a role — removes the
-standing credential, the expiry cliff and the over-scoping in one move. That is a **backend
-change plus a small swap of the `token` dep here**, and it is the recommended next step before
-this gate is relied upon.
+The identity token removes all three: audience-scoped rather than role-scoped, rotated hourly by
+the metadata server, never stored in an env var, accepted by exactly one backend route.
+
+### 4.4 The backend side of the contract
+
+`pivota-backend` `utils/gateway_oidc_auth.py::require_admin_or_gateway_identity`, used on
+`GET /ops/merchant-purchasability` **and no other route**. It runs `require_admin` first and
+unchanged, then — and only when **both** of its envs are set — verifies the bearer as a Google ID
+token requiring all of: RS256 against Google's certs, `iss ∈ {accounts.google.com,
+https://accounts.google.com}`, `aud == OPS_GATEWAY_OIDC_AUDIENCE`, `email_verified === true`,
+`email ∈ OPS_GATEWAY_SERVICE_ACCOUNTS`, and `exp`/`iat` within a 10 s skew. Any failure is the
+**same 401 body** a bad admin JWT gets, so nothing about this path is discoverable from a
+response.
+
+**`X-ADMIN-KEY` is still refused**, here and on every other ops route. Nothing about this change
+widens `require_admin_or_key` to anything.
+
+**The backend's app-level check is the only guarantee**, because prod `web` is deployed
+`--allow-unauthenticated`: Cloud Run IAM does not stand in front of this route.
+
+### 4.5 Ops actions
+
+| where | variable | value |
+|---|---|---|
+| backend `web` | `OPS_GATEWAY_OIDC_AUDIENCE` | `https://api.pivota.cc` |
+| backend `web` | `OPS_GATEWAY_SERVICE_ACCOUNTS` | the gateway's runtime SA — `sa-gateway@pivota-prod.iam.gserviceaccount.com` per `pivota-backend infra/gcp/deploy_gateway.sh` (`--service-account "sa-gateway@$PROJECT.iam.gserviceaccount.com"`, `PROJECT=pivota-prod`). Confirm against the live revision with `gcloud run services describe gateway --project pivota-prod --region us-west1 --format='value(spec.template.spec.serviceAccountName)'` |
+| gateway | `PIVOTA_OPS_OIDC_AUDIENCE` | the **same string**, `https://api.pivota.cc` |
+| gateway | `PIVOTA_OPS_ADMIN_TOKEN` | keep only as a dev fallback; it may be unset in prod once the rail is confirmed |
 
 ---
 
@@ -229,8 +269,14 @@ are **not negotiable**; step 7 is this repo's.
    `GET /ops/merchant-purchasability?domain=…&market=…`. Every merchant you expect to be
    purchasable must read `"tier": "purchase"`. Do not skip this.
 6. **`MERCHANT_PURCHASABILITY_ENFORCE=1`** on the backend. Only now does a missing fact refuse.
-7. **`MERCHANT_PURCHASABILITY_GATE_ENABLED=1`** on the gateway, with `PIVOTA_OPS_ADMIN_TOKEN`
-   already set. Watch for `merchant_purchasability_browse_only` (the gate declining a merchant),
+7. **AUTH, BACKEND FIRST.** Set `OPS_GATEWAY_OIDC_AUDIENCE=https://api.pivota.cc` **and**
+   `OPS_GATEWAY_SERVICE_ACCOUNTS=sa-gateway@pivota-prod.iam.gserviceaccount.com` on the backend
+   `web` service. Both, or neither: the backend treats either one alone as DISABLED. Nothing
+   changes for any existing caller — `require_admin` still runs first and unchanged.
+8. **THEN the gateway audience.** Set `PIVOTA_OPS_OIDC_AUDIENCE` to the **same string**. Keep
+   `PIVOTA_OPS_ADMIN_TOKEN` set through the switch-over as the fallback; unset it afterwards once
+   the identity rail is confirmed.
+9. **`MERCHANT_PURCHASABILITY_GATE_ENABLED=1`** on the gateway. Watch for `merchant_purchasability_browse_only` (the gate declining a merchant),
    `merchant_purchasability_read_failed` (the gate failing open) and
    `merchant_purchasability_unkeyable` (a caller sending no market — on the click lane that is
    expected until the backend payload change of §2 ships, and it means the gate is inert there).
@@ -238,6 +284,19 @@ are **not negotiable**; step 7 is this repo's.
 
 > **Arming these in the other order is the outage.** With `ENFORCE` on and no facts gathered,
 > every merchant reads `browse_only`.
+>
+> **Steps 7 and 8 are ordered, and the order is backend-then-gateway.** Setting the gateway
+> audience first means the gateway sends an identity token to a backend that does not yet accept
+> one: every read 401s, and because the gate FAILS OPEN that is completely silent — the gate is
+> disarmed and every dial reads "on". Backend first means the worst case is a backend that
+> accepts a token nobody is sending yet, which changes nothing. **The two audience strings must
+> match byte for byte** (§4.2); this is the single most likely arming mistake and it has no
+> symptom other than `merchant_purchasability_read_failed / status_401`.
+>
+> Steps 7–8 are also safe to do **before** step 6, and before step 9: while
+> `PIVOTA_OPS_ADMIN_TOKEN` is still set, the rail switch-over is observable (the backend's
+> `utils.gateway_oidc_auth` debug line names the accepted service account) with nothing riding
+> on it.
 >
 > Arming step 7 before step 6 is **safe but inert**: `enforced: false` keeps the previous
 > behaviour and logs `merchant_purchasability_not_enforced` once per merchant per 5 minutes.
@@ -333,7 +392,8 @@ So these are follow-ups with an owner, not paths that are fine as they are.
 | `merchant_purchasability_read_failed` | warn | non-200 / timeout / throw / malformed. **Once per 5 min per (domain, market, failure)**. Failing OPEN |
 | `merchant_purchasability_not_enforced` | info | backend reports `enforced: false`. Once per 5 min per merchant |
 | `merchant_purchasability_misordered_arming` | **error** | `sweep_enabled: false` with `enforced: true`. The one to alert on |
-| `merchant_purchasability_not_configured` | warn | the switch is on but the base URL or the token is missing. Once |
+| `merchant_purchasability_not_configured` | warn | the switch is on but the base URL or **every** credential rail is missing. Once |
+| `merchant_purchasability_identity_unavailable` | warn | `PIVOTA_OPS_OIDC_AUDIENCE` is set but the metadata server did not answer with an identity. **On a deployed revision this is an arming mistake** (wrong audience, or the SA lacks its role); off GCP it is local dev. Falling back to the static JWT. Once per 5 min |
 | `merchant_purchasability_unkeyable` | **warn** | the request carried no usable domain or market, so nothing was asked. **This is what a mis-deployed caller looks like** — see §2 on the click lane. Once per 5 min per merchant |
 | `merchant_purchasability_skipped_budget` | info | too little of the caller's wall-clock budget was left to ask (< 300 ms). Previous behaviour |
 

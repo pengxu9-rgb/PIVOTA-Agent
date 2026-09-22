@@ -50,13 +50,43 @@
  * (Bearer JWT, role admin/super_admin) and deliberately NOT on
  * `require_admin_or_key`.
  *
- * So the credential is READ FROM THE ENVIRONMENT and never minted here:
+ * So the credential was READ FROM THE ENVIRONMENT and never minted here:
  * `PIVOTA_OPS_ADMIN_TOKEN` holds an admin/super_admin JWT issued by the backend,
  * and it travels as `Authorization: Bearer <token>`. Unconfigured is not an error
  * and not a refusal — `shouldOfferPurchase` answers `source: 'failed'`, i.e. the
  * previous behaviour, which is what rule 4 requires of every other failure too.
- * This module holds no credential logic beyond reading that string; if this repo
- * ever grows a real ops-JWT caller, point `token` at it and delete the env read.
+ *
+ * ---- AND WHY THAT STANDING JWT IS NO LONGER THE PRIMARY CREDENTIAL ------------
+ *
+ * A standing admin JWT in an env var expires on a calendar date, and BECAUSE OF
+ * RULE 4 it expires SILENTLY: the backend starts answering 401, every failure here
+ * resolves to the previous behaviour, and the gate is DISARMED while every dial on
+ * both sides still reads "on". `merchant_purchasability_read_failed` is logged once
+ * per five minutes and nothing else happens. A gate that disarms itself on a date
+ * nobody has written down is not a gate.
+ *
+ * This service already runs on Cloud Run with its own service account, and
+ * `cloudRunIdentityToken.js` already knows how to ask the metadata server for a
+ * Google-signed OIDC identity token for a named audience — that is the EXISTING
+ * OWNER of this problem in this repo (four store-audit callers use it), so this
+ * module reuses it rather than growing a second metadata client. The backend
+ * verifies such a token against Google's certificates and an allow-list of service
+ * accounts (pivota-backend `utils/gateway_oidc_auth.py`).
+ *
+ * The chain, in order, and every step of it inside rule 4's fail-open semantics:
+ *
+ *   1. `PIVOTA_OPS_OIDC_AUDIENCE` is set  -> ask the metadata server. This is the
+ *      preferred rail whenever the audience env is set, whatever else is present.
+ *   2. no identity token came back (local dev, no metadata server, a timeout)
+ *      -> use `PIVOTA_OPS_ADMIN_TOKEN` if it is set. A DEV FALLBACK, not a rail.
+ *   3. neither -> the existing "not configured" behaviour: log once, previous
+ *      behaviour, nothing refused.
+ *
+ * ⚠️ THE AUDIENCE MUST MATCH THE BACKEND'S `OPS_GATEWAY_OIDC_AUDIENCE` BYTE FOR
+ * BYTE. An audience is a string compare on the backend, not a URL compare, so a
+ * trailing slash or an `http://` is a DIFFERENT audience and every read 401s —
+ * which, again, fails open and is therefore silent. See
+ * docs/merchant-purchasability-gate.md.
  *
  * ---- PII -----------------------------------------------------------------------
  *
@@ -67,13 +97,28 @@
  * that stays true until somebody adds a third argument.
  */
 
+const { createRefreshingCloudRunIdTokenProvider } = require('./cloudRunIdentityToken');
+
 const OPS_PATH = '/ops/merchant-purchasability';
 
 /** The gateway-side kill switch. Default OFF: this ships dark and arms independently of the backend dial. */
 const GATE_FLAG_ENV = 'MERCHANT_PURCHASABILITY_GATE_ENABLED';
 
-/** Env carrying an admin/super_admin Bearer JWT for the backend's ops routes. Read, never minted. */
+/**
+ * Env carrying an admin/super_admin Bearer JWT for the backend's ops routes. Read, never minted.
+ * SINCE THE OIDC FOLLOW-UP THIS IS A DEV FALLBACK, not the production rail: it is consulted only
+ * when no Google identity token could be obtained.
+ */
 const OPS_TOKEN_ENV = 'PIVOTA_OPS_ADMIN_TOKEN';
+
+/**
+ * Env carrying the AUDIENCE for the gateway's Google identity token. Setting it switches this
+ * client onto the OIDC rail. It must equal the backend's `OPS_GATEWAY_OIDC_AUDIENCE` exactly;
+ * the recommended value is the backend's canonical https origin (`https://api.pivota.cc`).
+ *
+ * Unset = the pre-OIDC behaviour, unchanged, including every log line.
+ */
+const OIDC_AUDIENCE_ENV = 'PIVOTA_OPS_OIDC_AUDIENCE';
 
 /** Backend origin. Same variable the rest of the gateway uses for the backend. */
 const BASE_URL_ENV = 'PIVOTA_API_BASE';
@@ -292,7 +337,10 @@ function createTtlCache({ maxEntries = DEFAULT_CACHE_MAX_ENTRIES, now = () => Da
  * @param {{
  *   env?: object,
  *   baseUrl?: string,
- *   token?: string,
+ *   token?: string,              // static admin JWT; the DEV FALLBACK rail
+ *   oidcAudience?: string,       // overrides PIVOTA_OPS_OIDC_AUDIENCE
+ *   idTokenProvider?: { getToken: () => Promise<string|null> },
+ *   metadataFetchImpl?: Function,// transport for the METADATA server only, never the backend
  *   fetchImpl?: Function,
  *   logger?: { warn?: Function, info?: Function, error?: Function },
  *   timeoutMs?: number,          // capped at MAX_TIMEOUT_MS
@@ -355,8 +403,67 @@ function createMerchantPurchasabilityClient(deps = {}) {
     return String(deps.baseUrl || (env && env[BASE_URL_ENV]) || '').trim();
   }
 
-  function token() {
+  /** The DEV FALLBACK: a static admin JWT from the environment (or injected for a test). */
+  function staticToken() {
     return String(deps.token || (env && env[OPS_TOKEN_ENV]) || '').trim();
+  }
+
+  /** The configured audience, if any. Its PRESENCE is what switches the rail. */
+  function oidcAudience() {
+    return String(deps.oidcAudience || (env && env[OIDC_AUDIENCE_ENV]) || '').trim();
+  }
+
+  // Built once per client, lazily — so a process that never arms the audience never constructs
+  // a metadata client, and a test can inject one.
+  let identityProviderInstance;
+  function identityProvider() {
+    if (identityProviderInstance === undefined) {
+      if (deps.idTokenProvider && typeof deps.idTokenProvider.getToken === 'function') {
+        identityProviderInstance = deps.idTokenProvider;
+      } else {
+        identityProviderInstance = createRefreshingCloudRunIdTokenProvider({
+          audience: oidcAudience(),
+          // The METADATA transport, deliberately separate from `fetchImpl`: `fetchImpl` is the
+          // BACKEND transport, and a test that stubs the backend must not thereby find itself
+          // stubbing the metadata server too (nor the reverse in production, where a proxy or a
+          // retry wrapper on one has no business wrapping the other).
+          fetchImpl: typeof deps.metadataFetchImpl === 'function' ? deps.metadataFetchImpl : global.fetch,
+          now,
+        });
+      }
+    }
+    return identityProviderInstance;
+  }
+
+  /**
+   * The credential for one read, as `{ value, rail }`, or `null` for "not configured".
+   *
+   * NEVER THROWS. Every failure is a step down the chain, and the bottom of the chain is the
+   * previous behaviour — because rule 4 is not suspended for auth. A gate that REFUSED a
+   * purchase because it could not authenticate itself would be the fail-closed second layer
+   * this whole module exists to avoid.
+   */
+  async function resolveCredential() {
+    const audience = oidcAudience();
+    if (audience) {
+      let identity = null;
+      try {
+        identity = await identityProvider().getToken();
+      } catch {
+        identity = null;
+      }
+      if (identity) return { value: identity, rail: 'gateway_identity' };
+      noteOnce('warn', 'merchant_purchasability_identity_unavailable', 'global', {
+        audience,
+        has_static_fallback: Boolean(staticToken()),
+        detail: 'the audience is configured but the Cloud Run metadata server did not answer with '
+          + 'an identity. On a deployed revision that is an ARMING MISTAKE (a wrong audience, or '
+          + 'the service account lacking the role); off GCP it is simply local dev. Falling back.',
+      });
+    }
+    const fallback = staticToken();
+    if (fallback) return { value: fallback, rail: 'static_admin_jwt' };
+    return null;
   }
 
   /**
@@ -390,14 +497,26 @@ function createMerchantPurchasabilityClient(deps = {}) {
     if (cached !== undefined) return cached;
 
     const origin = baseUrl();
-    const bearer = token();
-    if (!origin || !bearer || typeof fetchImpl !== 'function') {
+    let authorization = null;
+    try {
+      authorization = await resolveCredential();
+    } catch {
+      // Belt and braces: `resolveCredential` is written not to throw, and if it ever does the
+      // answer is still the previous behaviour rather than an exception on the checkout path.
+      authorization = null;
+    }
+    if (!origin || !authorization || typeof fetchImpl !== 'function') {
       // Unconfigured is not an outage and not a refusal. Said once so an operator
       // who armed the switch without the credential finds out from a log rather
       // than from the gate silently never firing.
+      //
+      // BOOLEANS AND A RAIL NAME ONLY. Note there is no field whose NAME contains "token"
+      // either: a leak test greps every emitted line for that word, and a field named for a
+      // credential is one refactor away from carrying one.
       noteOnce('warn', 'merchant_purchasability_not_configured', 'global', {
         has_base_url: Boolean(origin),
-        has_token: Boolean(bearer),
+        has_authorization: Boolean(authorization),
+        oidc_configured: Boolean(oidcAudience()),
         has_fetch: typeof fetchImpl === 'function',
         detail: `${GATE_FLAG_ENV} is on but the ops read is unconfigured; keeping the previous behaviour.`,
       });
@@ -433,10 +552,13 @@ function createMerchantPurchasabilityClient(deps = {}) {
         redirect: 'error',
         headers: {
           accept: 'application/json',
-          // Bearer, NOT X-ADMIN-KEY: these ops routes depend on `require_admin`
-          // and deliberately not on `require_admin_or_key`, so the header rail
-          // this repo uses elsewhere would 401 and look like a routing problem.
-          authorization: `Bearer ${bearer}`,
+          // Bearer, NOT X-ADMIN-KEY: this ops route depends on
+          // `require_admin_or_gateway_identity` and deliberately not on
+          // `require_admin_or_key`, so the header rail this repo uses elsewhere
+          // would 401 and look like a routing problem. Both rails — the Google
+          // identity token and the static admin JWT — travel in this same header;
+          // the backend tells them apart itself.
+          authorization: `Bearer ${authorization.value}`,
         },
         signal: controller.signal,
       });
@@ -565,6 +687,10 @@ function createMerchantPurchasabilityClient(deps = {}) {
 let singleton = null;
 const ISOLATING_KEYS = Object.freeze([
   'env', 'fetchImpl', 'now', 'ttlMs', 'negativeTtlMs', 'timeoutMs', 'cacheMaxEntries', 'baseUrl', 'token',
+  // The OIDC rail's three. All of them change the ANSWER (which credential is sent, and to a
+  // stubbed metadata server or the real one), so all of them must fork rather than configure the
+  // process singleton — same rule as `token` above, for the same reason.
+  'oidcAudience', 'idTokenProvider', 'metadataFetchImpl',
 ]);
 
 function isIsolatingDeps(deps) {
@@ -598,6 +724,7 @@ module.exports = {
   resetMerchantPurchasabilityClientForTest,
   GATE_FLAG_ENV,
   OPS_TOKEN_ENV,
+  OIDC_AUDIENCE_ENV,
   BASE_URL_ENV,
   OPS_PATH,
   MAX_TIMEOUT_MS,
