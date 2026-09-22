@@ -589,6 +589,21 @@ function buildWarmHandoffOutput({ input = {}, descriptor = {}, product = null, o
   return output;
 }
 
+// THE REQUEST'S OWN BUYER MARKET, or nothing. `metadata.market || payload.market` is this door's existing
+// spelling — `src/server.js` reads `search.market || metadata.market` on the discovery lane — and the invoke
+// handler threads `metadata` into this resolver verbatim.
+//
+// ⚠️ THERE IS DELIBERATELY NO FALLBACK. `servedMarkets.primaryMarket()` would hand back the DEPLOYMENT's
+// market ('US' by default) for a request that named none, and the purchasability fact is keyed on the BUYER's
+// market: a positive fact gathered from another vantage is evidence for a human, never permission for the
+// door (backend runbook §6 — judydoll.com resets TCP from one of our egresses while answering through
+// another). A request with no market is a question the gate cannot ask, so it keeps the previous behaviour.
+function requestBuyerMarket(input = {}) {
+  const metadata = isPlainObject(input.metadata) ? input.metadata : {};
+  const payload = isPlainObject(input.payload) ? input.payload : {};
+  return firstNonEmptyString(metadata.market, payload.market) || undefined;
+}
+
 // Flag-gated (UCP_WARM_HANDOFF_ENABLED, DEFAULT OFF) attempt to upgrade a cold redirect into a warm handoff:
 // a pre-built cart on the brand's own Shopify checkout. Returns an execution-facing warm_handoff output on
 // success, or null so the caller keeps today's exact behavior. With the flag OFF this is an immediate no-op,
@@ -602,7 +617,9 @@ async function maybeResolveWarmHandoff({ input = {}, descriptor = {}, product = 
   if (!brandDomain || !variantGid) return null;
   let handoff;
   try {
-    handoff = await service.resolveWarmHandoff({ brandDomain, variantGid, quantity: 1 });
+    handoff = await service.resolveWarmHandoff({
+      brandDomain, variantGid, quantity: 1, market: requestBuyerMarket(input),
+    });
   } catch {
     return null;
   }

@@ -383,6 +383,11 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
         brandDomain,
         variantGid,
         quantity,
+        // The CALLER'S buyer market, for the merchant-purchasability gate only. Optional and additive: a
+        // caller that sends none is exactly today's request, and the gate then keeps the previous
+        // behaviour rather than substituting this deployment's own market. Never echoed in the response,
+        // never sent anywhere but the (domain, market) ops read.
+        ...(firstNonEmptyString(body.market) ? { market: firstNonEmptyString(body.market) } : {}),
         ...(isPlainObject(body.attribution) ? { attribution: body.attribution } : {}),
       });
     } catch {
