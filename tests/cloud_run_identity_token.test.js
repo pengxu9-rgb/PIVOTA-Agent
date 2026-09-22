@@ -57,17 +57,18 @@ test('an explicit audience wins over the named env var', () => {
 // caches its first in-flight promise forever (deliberate for its batch callers).
 describe('a non-OK metadata response is a null token, not a bearer value', () => {
   test.each([
-    [500, 'some error page'],
-    [403, '<html>Forbidden</html>'],
-  ])('HTTP %i: the body is NOT surfaced as the token', async (status, body) => {
-    const text = jest.fn(async () => body);
-    const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status, text });
+    ['500, ok:false', { ok: false, status: 500 }, 'some error page'],
+    ['403, ok:false', { ok: false, status: 403 }, '<html>Forbidden</html>'],
+    // `ok` ABSENT is not `ok`. A real Response always carries a boolean, but a wrapped or stubbed
+    // fetchImpl may not, and only a truthy `ok` may turn a body into a bearer value.
+    ['ok absent', { status: 200 }, 'body-without-ok'],
+  ])('%s: the body is NOT surfaced as the token', async (_label, shape, body) => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ...shape, text: async () => body });
     const provider = createCloudRunIdTokenProvider({ audience: 'https://web-abc-uw.a.run.app', fetchImpl });
     await expect(provider.getToken()).resolves.toBeNull();
+    // The null is cached like a token would be: a second ask does not re-fetch.
+    await expect(provider.getToken()).resolves.toBeNull();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    // The pinned invariant is the null; the body being read or not is an implementation detail.
-    // But if it WAS read, its value must not have escaped: `null`, not `body`, is what we got.
-    expect(await provider.getToken()).not.toBe(body);
   });
 
   test('an OK response whose body is only whitespace is a null token, not an empty bearer', async () => {
