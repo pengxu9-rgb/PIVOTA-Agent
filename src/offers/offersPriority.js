@@ -514,9 +514,12 @@ async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
   const remainingTotalMs = Math.max(0, totalBudgetMs - (now() - startedAt));
   let deadlineTimer = null;
   const deadline = new Promise((resolve) => {
+    // ⚠️ NOT `unref()`d — see the identical note in merchantPurchasabilityClient.fetchFact. When
+    // every read hangs, this timer is the ONLY thing that can settle the race below, so an unref'd
+    // one lets node drain the loop and exit with the batch promise still pending. It is bounded by
+    // `remainingTotalMs` and cleared in the `finally`, so it holds the loop only while the caller
+    // is waiting on it regardless.
     deadlineTimer = setTimeout(() => { abandoned = true; resolve(); }, remainingTotalMs);
-    // Never hold the process open for the gate on a page that has already been answered.
-    if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
   });
   try {
     await Promise.race([workers, deadline]);

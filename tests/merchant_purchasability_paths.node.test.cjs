@@ -1025,3 +1025,28 @@ test('R1: the explicit delete catches a stamp an earlier pass wrote from a DIFFE
     'a stale stamp from an earlier pass must be deleted outright',
   );
 });
+
+test('QUIET LOOP: the offers batch still settles when its deadline is the ONLY thing on the loop', () => {
+  // The batch's sibling of the guard in tests/merchant_purchasability_gate.node.test.cjs: with every
+  // read hanging, `Promise.race([workers, deadline])` is settled by the deadline timer and nothing
+  // else. Unref that timer and the page's promise never settles — silently, and only off this machine.
+  const { spawnSync } = require('node:child_process');
+  const modulePath = JSON.stringify(path.join(__dirname, '..', 'src', 'offers', 'offersPriority.js'));
+  const result = spawnSync(process.execPath, ['-e', `
+    const { resolveOfferPurchasabilityDecisions } = require(${modulePath});
+    let settled = false;
+    resolveOfferPurchasabilityDecisions(
+      [{ offer_id: 'a', url: 'https://a.test/cart/1' }, { offer_id: 'b', url: 'https://b.test/cart/1' }],
+      {
+        env: { MERCHANT_PURCHASABILITY_GATE_ENABLED: '1' },
+        market: 'US',
+        budgetMs: 400,
+        shouldOfferPurchase: () => new Promise(() => {}), // hangs forever
+      },
+    ).then((declined) => { settled = true; console.log('SETTLED:' + declined.size); });
+    process.on('exit', () => { if (!settled) console.log('PENDING_AT_EXIT'); });
+  `], { encoding: 'utf8', timeout: 20_000, cwd: path.join(__dirname, '..') });
+  const out = `${result.stdout || ''}${result.stderr || ''}`;
+  assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the batch still pending — an unref'd deadline:\n${out}`);
+  assert.ok(out.includes('SETTLED:0'), `expected the batch to fail open on its deadline, got:\n${out}`);
+});

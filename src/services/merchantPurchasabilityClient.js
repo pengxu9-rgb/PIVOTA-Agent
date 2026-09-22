@@ -507,8 +507,19 @@ function createMerchantPurchasabilityClient(deps = {}) {
       ? Math.min(timeoutMs, Math.floor(budgetMs))
       : timeoutMs;
     const controller = new AbortController();
+    // ⚠️ THIS TIMER IS DELIBERATELY **NOT** `unref()`d, AND THAT IS NOT AN OVERSIGHT.
+    // It is the ONLY thing that can settle the promise this function returns when the backend
+    // hangs: the read is awaiting a fetch that resolves on nothing but this abort. An unref'd
+    // timer does not hold the event loop open, so with nothing else ref'd node drains the loop
+    // and EXITS with that promise still pending — which under `node --test
+    // --test-isolation=process` (what CI runs) is reported as `cancelledByParent` /
+    // "Promise resolution is still pending but the event loop has already resolved", and takes
+    // every later test in the file with it. Measured: 46 cancelled on `780bc075`.
+    // The timer is bounded (<= MAX_TIMEOUT_MS) and cleared in the `finally` below, so holding the
+    // loop for its duration is exactly as long as the caller is waiting anyway — not a leak.
+    // Same rule, same reasoning, already written down in
+    // `src/services/merchantVariantSource.js` ("The timer is deliberately NOT `unref()`d").
     const timer = setTimeout(() => controller.abort(), callTimeoutMs);
-    if (typeof timer.unref === 'function') timer.unref();
     try {
       return await readFactWithin(key, origin, domain, market, controller);
     } finally {

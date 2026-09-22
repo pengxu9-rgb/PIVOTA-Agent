@@ -965,3 +965,51 @@ test('the shared singleton really does serve one cache across construction sites
     assert.equal(calls.length, 1, 'the second lane must hit the FIRST lane cached fact, not re-read');
   });
 });
+
+// ---- THE QUIET-EVENT-LOOP GUARD ------------------------------------------------------------------------
+//
+// WHAT THIS CATCHES, AND WHY A NORMAL TEST CANNOT. Every await in this file is settled, on the
+// hanging-backend paths, ONLY by the abort timer inside `fetchFact`. If that timer is ever
+// `unref()`d, node drains the loop and EXITS with the promise still pending — and the failure does
+// not look like a failing assertion. Under `node --test --test-isolation=process`, which is what CI
+// runs, it is reported as `cancelledByParent` / "Promise resolution is still pending but the event
+// loop has already resolved", and it cancels EVERY LATER TEST IN THE FILE (measured: `# fail 0,
+// cancelled 46`). It passed locally because other handles happened to keep the loop alive — which
+// is exactly why the guard has to run the case in a CHILD with nothing else on its loop.
+//
+// The same defect, with the same symptom, is already written down in
+// `src/services/merchantVariantSource.js`. This is its second visit.
+
+const { spawnSync } = require('node:child_process');
+const nodePath = require('node:path');
+
+function runOnAQuietLoop(source) {
+  const result = spawnSync(process.execPath, ['-e', source], {
+    encoding: 'utf8',
+    timeout: 20_000,
+    cwd: nodePath.join(__dirname, '..'),
+  });
+  return `${result.stdout || ''}${result.stderr || ''}`;
+}
+
+test('QUIET LOOP: a hanging read still settles when the abort timer is the ONLY thing on the loop', () => {
+  const clientPath = JSON.stringify(nodePath.join(__dirname, '..', 'src', 'services', 'merchantPurchasabilityClient.js'));
+  const out = runOnAQuietLoop(`
+    const { createMerchantPurchasabilityClient } = require(${clientPath});
+    const client = createMerchantPurchasabilityClient({
+      env: { MERCHANT_PURCHASABILITY_GATE_ENABLED: '1', PIVOTA_API_BASE: 'https://b.example', PIVOTA_OPS_ADMIN_TOKEN: 't' },
+      timeoutMs: 20,
+      logger: { warn() {}, info() {}, error() {} },
+      // Settles on the abort and on NOTHING else.
+      fetchImpl: (url, options) => new Promise((_r, rej) => {
+        options.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+      }),
+    });
+    let settled = false;
+    client.shouldOfferPurchase({ domain: 'flowerbeauty.com', market: 'US' })
+      .then((d) => { settled = true; console.log('SETTLED:' + d.offer + ':' + d.source); });
+    process.on('exit', () => { if (!settled) console.log('PENDING_AT_EXIT'); });
+  `);
+  assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the read still pending — an unref'd timer:\n${out}`);
+  assert.ok(out.includes('SETTLED:true:failed'), `expected a fail-open settlement, got:\n${out}`);
+});
