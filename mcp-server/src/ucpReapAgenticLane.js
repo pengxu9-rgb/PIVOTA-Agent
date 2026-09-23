@@ -31,9 +31,10 @@
 //   2. REAP — this module, for a caller the rail can serve (agent API key + buyer user token) and a non-native
 //      row that is eligible (see `createReapCheckout`).
 //   3. STOREFRONT ESCALATION — ucpCheckoutEscalation.js, unchanged, when this lane returns null: not eligible,
-//      skipped by the purchasability gate, or REFUSED by the backend on eligibility (404/409). Only a 400 for a
-//      FIXABLE REQUEST (`consent_required`, `invalid_request`, `invalid_address`) is surfaced instead — the rail
-//      has then proven itself armed and the row eligible, so "send the consent / the buyer details" is true.
+//      skipped by the purchasability gate, or REFUSED by the backend for ANY reason. The lane never refuses a
+//      create: a 400 is not proof of eligibility (the backend checks consent and address before the merchant),
+//      so a short buyer block only adds one informational message (`reap.available_with_consent`) to the
+//      storefront answer.
 //   4. The kernel path's existing answer, when escalation is off or declines — for an observed row that is the
 //      intake refusal it gives today. (There is no separate "referral" lane in this door; the buyer's other
 //      route is the offer link discovery already served.)
@@ -49,13 +50,14 @@
 // distinguishable from both the kernel's session ids and the escalation lane's stateless `esc_` ids.
 //   purchase_id  the backend's id, EXACTLY `rp_` + 24 lowercase hex (db/reap_agentic_ledger.py). It is the
 //                only thing ever sent back to the backend, and it is validated before it is.
-//   snapshot     base64url JSON {v:1, i:<catalog product_key>, q:<quantity>, c:<currency>, u:<unit price,
-//                minor>} — the line as it stood at creation, so a `get_checkout` whose backend read FAILS can
+//   snapshot     base64url JSON {v:1, i:<the caller's item id>, k:<catalog product_key>, q:<quantity>,
+//                c:<currency>, u:<unit price, minor>} — the line as it stood at creation, so a `get_checkout` whose backend read FAILS can
 //                still answer a spec-conformant `incomplete` checkout (line items, currency, totals are required
 //                members) instead of a terminal state — and SAYS it is doing so (`reap.view_unavailable`). NO buyer
-//                data. The id travels through the caller, so the snapshot is NOT TRUSTED: on a successful read
-//                every displayed field comes from the backend's view, and the snapshot is used only to check
-//                that the view is for this purchase. It is never sent anywhere.
+//                data. The id travels through the caller, so the snapshot is NOT TRUSTED for anything displayed
+//                except the caller's own item id, which `line_items[0].item.id` echoes: on a successful read
+//                every other displayed field comes from the backend's view, and `k` is the hidden check that
+//                the view is of this purchase's product. It is never sent anywhere.
 // Anything that does not decode EXACTLY (prefix, id shape, snapshot shape, <= 512 chars) is not one of ours
 // and falls through to the kernel path — which answers it as any unknown checkout id, BYTE-FOR-BYTE, because
 // it is that path's own answer. A well-formed id belonging to ANOTHER buyer gets 404 from the backend (the
@@ -84,13 +86,13 @@
 //
 // `REAP_AGENTIC_LANE_ENABLED` (default OFF, read per call). Off — or no client injected — every entry point
 // returns null before reading anything, and every TOOL RESPONSE is byte-identical to the door without this
-// module. (`tools/list` is not: the UCP `buyer` schema carries the optional `consent_version` member and the
-// create_checkout description mentions the Reap route, whatever the switch says.)
+// module EXCEPT that the argument adapter refuses a malformed `consent_version` (`ucp_consent_version_invalid`)
+// whatever the switch says. (`tools/list` is not byte-identical: the UCP `buyer` schema carries the optional
+// `consent_version` member and the create_checkout description mentions the Reap route.)
 
 import { createHash } from "node:crypto";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import {
-  intakeRefusal,
   isRestatedProductId,
   normalizeEmail,
   variantIdsFromProductRead,
@@ -126,8 +128,8 @@ export const REAP_HOSTED_URL_SUFFIXES = Object.freeze(["prava.space", "reap.glob
 export const REAP_CONSENT_MAX_CHARS = 32;
 
 const PURCHASE_ID_RE = /^rp_[0-9a-f]{24}$/;
-const SNAPSHOT_RE = /^[A-Za-z0-9_-]{1,400}$/;
-const MAX_ID_CHARS = 512;
+const SNAPSHOT_RE = /^[A-Za-z0-9_-]{1,1000}$/;
+const MAX_ID_CHARS = 1100;
 const MAX_PRODUCT_KEY_CHARS = 256;
 const CURRENCY_RE = /^[A-Z]{3}$/;
 const REASON_RE = /^[a-z0-9_:.-]{1,64}$/;
@@ -169,14 +171,14 @@ export function reapAgenticLaneEnabled(env = process.env) {
 
 // ---- id ----------------------------------------------------------------------------------------------------
 
-export function encodeReapCheckoutId({ purchaseId, productKey, quantity, currency, unitMinor }) {
+export function encodeReapCheckoutId({ purchaseId, productId, productKey, quantity, currency, unitMinor }) {
   if (!PURCHASE_ID_RE.test(String(purchaseId || ""))) throw new Error("encodeReapCheckoutId: not a backend purchase id");
-  const snapshot = Buffer.from(JSON.stringify({ v: 1, i: productKey, q: quantity, c: currency, u: unitMinor }), "utf8")
+  const snapshot = Buffer.from(JSON.stringify({ v: 1, i: productId, k: productKey, q: quantity, c: currency, u: unitMinor }), "utf8")
     .toString("base64url");
   return `${REAP_CHECKOUT_ID_PREFIX}${purchaseId}.${snapshot}`;
 }
 
-/** `{ purchaseId, productKey, quantity, currency, unitMinor }` for one of ours, else null. Never throws. */
+/** `{ purchaseId, productId, productKey, quantity, currency, unitMinor }` for one of ours, else null. Never throws. */
 export function decodeReapCheckoutId(id) {
   if (typeof id !== "string" || id.length > MAX_ID_CHARS || !id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return null;
   const body = id.slice(REAP_CHECKOUT_ID_PREFIX.length);
@@ -192,15 +194,18 @@ export function decodeReapCheckoutId(id) {
     return null;
   }
   if (!isPlainObject(snap) || snap.v !== 1) return null;
-  const productKey = typeof snap.i === "string" ? snap.i : "";
-  if (!productKey || productKey !== productKey.trim() || productKey.length > MAX_PRODUCT_KEY_CHARS || /[\u0000-\u001f\u007f]/.test(productKey)) return null;
+  const productId = typeof snap.i === "string" ? snap.i : "";
+  const productKey = typeof snap.k === "string" ? snap.k : "";
+  for (const v of [productId, productKey]) {
+    if (!v || v !== v.trim() || v.length > MAX_PRODUCT_KEY_CHARS || /[\u0000-\u001f\u007f]/.test(v)) return null;
+  }
   if (!Number.isSafeInteger(snap.q) || snap.q < 1 || snap.q > REAP_MAX_QUANTITY) return null;
   if (typeof snap.c !== "string" || !CURRENCY_RE.test(snap.c)) return null;
   if (safeMinor(snap.u) === null) return null;
   // Canonical form only: a re-encoding of the same values with extra members or another key order is not an
   // id this door minted.
-  if (encodeReapCheckoutId({ purchaseId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u }) !== id) return null;
-  return { purchaseId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u };
+  if (encodeReapCheckoutId({ purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u }) !== id) return null;
+  return { purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u };
 }
 
 export function isReapCheckoutId(id) {
@@ -256,8 +261,8 @@ const REAP_REQUIRED_DESTINATION_FIELDS = Object.freeze(["first_name", "last_name
 /**
  * The shipping address in the REAP CLIENT'S field names (`firstName`, `lastName`, `phone`, `addressLine1`,
  * `city`, `country` required; `addressLine2`, `region`, `postalCode` optional), from the one UCP destination —
- * WHATEVER OF IT ARRIVED. Completeness is the backend's decision (`invalid_address` / `invalid_request`), which
- * the lane surfaces as `reap_buyer_details_required`; nothing is invented to fill a gap. The phone falls back to
+ * WHATEVER OF IT ARRIVED. Completeness is the backend's decision (`invalid_address` / `invalid_request`); the
+ * lane never refuses on it (see `REAP_AVAILABLE_WITH_CONSENT_MESSAGE`), and nothing is invented to fill a gap. The phone falls back to
  * `checkout.buyer.phone_number`. `undefined` when there is no destination at all.
  */
 export function reapShippingAddress(ucpArgs) {
@@ -465,7 +470,7 @@ function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, f
  * and telling the agent otherwise would invite a second purchase.
  */
 export function buildDegradedReapCheckout({ id, snapshot, now = Date.now(), env = process.env }) {
-  const lt = lineItemsAndTotals({ itemId: snapshot.productKey, title: null, unitMinor: snapshot.unitMinor, quantity: snapshot.quantity, degraded: true });
+  const lt = lineItemsAndTotals({ itemId: snapshot.productId, title: null, unitMinor: snapshot.unitMinor, quantity: snapshot.quantity, degraded: true });
   return buildUcpCheckoutEnvelope({
     id,
     status: "incomplete",
@@ -505,8 +510,13 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
   const currency = typeof totals.currency === "string" && CURRENCY_RE.test(totals.currency) ? totals.currency : null;
   const unitMinor = safeMinor(totals.our_price_minor);
   const quantity = own(view, "quantity");
-  const itemId = str(own(view, "product_key"));
-  if (!currency || unitMinor === null || !itemId || itemId.length > MAX_PRODUCT_KEY_CHARS
+  // THE ITEM ID ECHOES THE CALLER'S — the id `create_checkout` was sent and will accept again, exactly as the
+  // escalation lane echoes it. Our catalog `product_key` is never published (it names an internal merchant id);
+  // it is the HIDDEN cross-check that the backend's view is of the product this checkout was opened for, and a
+  // mismatch is a failed read.
+  const itemId = snapshot.productId;
+  if (str(own(view, "product_key")) !== snapshot.productKey) return null;
+  if (!currency || unitMinor === null || !itemId
     || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > REAP_MAX_QUANTITY) return null;
   const productName = str(own(view, "product_name"));
   const variantTitle = str(own(view, "variant_title"));
@@ -605,20 +615,38 @@ function attestedOrBodyEmail(attested, bodyValue) {
   return normalizeEmail(bodyValue) || null;
 }
 
-// The backend's FIXABLE-REQUEST answers on POST — the rail answered, so it is armed and the merchant/row passed
-// everything before the body check. These, and only these, are surfaced to the agent.
-const CONSENT_REFUSAL_CODES = new Set(["consent_required"]);
-const BUYER_DETAIL_REFUSAL_CODES = new Set(["invalid_request", "invalid_address"]);
+// A 400 on POST proves NOTHING about eligibility: the backend checks consent and the address BEFORE it checks
+// the merchant, so a non-eligible row answers `consent_required` too. The door therefore never refuses on these.
+// It falls through to the storefront answer exactly as it would have, and — only for the two answers that mean
+// "the buyer block is short" — attaches ONE informational message so the buyer agent can learn what the Reap route
+// would need. The message is CONSTANT (fixed text, fixed field paths): no backend text and no request value can
+// reach it.
+const CONSENT_HINT_CODES = new Set(["consent_required"]);
+const BUYER_DETAIL_HINT_CODES = new Set(["invalid_request", "invalid_address"]);
+export const REAP_AVAILABLE_WITH_CONSENT_MESSAGE = Object.freeze({
+  type: "info",
+  code: "reap.available_with_consent",
+  path: "$",
+  content: [
+    "This item may also be purchasable through Pivota's payment partner Reap, where the buyer adds a card and",
+    "approves the total on Reap's own pages. To be offered that route, send create_checkout again with",
+    "`checkout.buyer.consent_version` (the version tag of the Pivota terms the buyer accepted) and a destination",
+    "carrying `checkout.fulfillment.methods[0].destinations[0].last_name` and",
+    "`checkout.fulfillment.methods[0].destinations[0].phone_number`. Until then, this checkout completes on the",
+    "seller's storefront as described here.",
+  ].join(" "),
+  content_type: "plain",
+});
 
 /**
  * Called by commerceToolSurface.callTool on the UCP dialect for the checkout operations, AFTER argument
  * translation + the allowlist + the identity check, and BEFORE the storefront escalation lane. Returns a UCP
  * checkout to answer with, or null to fall through to the next lane untouched.
  *
- * Throws only NAMED refusals, and only when the rail itself has proven them true: on create,
- * `reap_consent_required` / `reap_buyer_details_required` after the BACKEND answered 400 for an eligible row
- * (never on the door's own judgement — with the rail dark, or for a caller the rail cannot serve, the door
- * answers exactly as it did before this lane); and the update/complete refusals on a `reap_` id.
+ * Never refuses a create: every create either opens a purchase or returns null. When the backend's 400 says the
+ * buyer block was short (`consent_required`, or `invalid_request`/`invalid_address` with a buyer field actually
+ * missing), the lane pushes `REAP_AVAILABLE_WITH_CONSENT_MESSAGE` onto `hints` and returns null; the door
+ * attaches it to the storefront escalation answer. Throws only the update/complete refusals on a `reap_` id.
  */
 export async function tryReapAgenticCheckout({
   op,
@@ -634,13 +662,14 @@ export async function tryReapAgenticCheckout({
   timeoutMs,
   shouldOfferPurchase,
   clock,
+  hints,
 }) {
   if (!reapAgenticLaneEnabled(env)) return null;
   if (!client || typeof client.startPurchase !== "function" || typeof client.getPurchase !== "function") return null;
   const opId = op && op.id;
 
   if (opId === "create_checkout_session") {
-    return createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock });
+    return createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock, hints });
   }
 
   const sessionId = str(own(params, "session_id"));
@@ -648,6 +677,12 @@ export async function tryReapAgenticCheckout({
   if (!decoded) return null; // not one of ours: the kernel path answers it (unknown id included)
 
   if (opId === "get_checkout_session") {
+    // A caller the rail cannot serve gets TODAY's answer: the lane is skipped (no backend call, nothing rewritten),
+    // exactly as on create. It is neither "unknown id" by the lane's hand nor an `incomplete` it cannot back.
+    if (typeof client.hasCallerCredentials === "function" && !client.hasCallerCredentials()) {
+      emitOnce(log, "info", { op: opId, outcome: "skipped", code: "no_caller_credentials" }, "no_caller_credentials_get");
+      return null;
+    }
     const res = await client.getPurchase(decoded.purchaseId);
     if (res && res.kind === "accepted") {
       const out = mapReapPurchaseToCheckout({
@@ -692,7 +727,7 @@ export async function tryReapAgenticCheckout({
   return null;
 }
 
-async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock }) {
+async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock, hints }) {
   const skip = (code) => { emit(log, "info", { op: "create_checkout_session", outcome: "skipped", code }); return null; };
   const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
   const items = Array.isArray(quote.items) ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)) : [];
@@ -783,34 +818,16 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   const res = await client.startPurchase(body);
 
   if (res && res.kind === "refused" && res.http_status === 400) {
-    // The rail is ARMED (a dark rail answers 404 before it reads a body) and the request reached the body
-    // check, so these refusals are TRUE statements to the buyer's agent — and the only way it can learn what to
-    // ask its user for. Surfaced by name, with field names only.
-    if (CONSENT_REFUSAL_CODES.has(res.code)) {
-      emit(log, "info", { op: "create_checkout_session", outcome: "refused", code: res.code });
-      throw intakeRefusal("QUOTE_REQUIRED", "reap_consent_required", [
-        "This item can be bought through Pivota's payment partner (Reap), which needs the buyer's consent first.",
-        "Show the buyer Pivota's terms for this purchase, then resend create_checkout with",
-        "`checkout.buyer.consent_version` set to the version tag of the terms they accepted (at most",
-        `${REAP_CONSENT_MAX_CHARS} characters, e.g. "reap-agentic-v1").`,
-      ].join(" "), { required_fields: ["checkout.buyer.consent_version"], max_length: REAP_CONSENT_MAX_CHARS });
-    }
-    if (BUYER_DETAIL_REFUSAL_CODES.has(res.code)) {
-      emit(log, "info", { op: "create_checkout_session", outcome: "refused", code: res.code });
-      const missing = reapMissingBuyerFields(ucpArgs, email);
-      throw intakeRefusal("QUOTE_REQUIRED", "reap_buyer_details_required", [
-        "This item can be bought through Pivota's payment partner (Reap), which needs the buyer's full delivery",
-        "details: an email, and ONE shipping destination with first name, last name, phone number, street address,",
-        "city and country. Resend create_checkout with them.",
-      ].join(" "), {
-        required_fields: missing.length ? missing : ["checkout.buyer.email", ...REAP_REQUIRED_DESTINATION_FIELDS.map((f) => `${DEST_PATH}.${f}`)],
-      });
-    }
+    const short = CONSENT_HINT_CODES.has(res.code)
+      || (BUYER_DETAIL_HINT_CODES.has(res.code) && reapMissingBuyerFields(ucpArgs, email).length > 0);
+    if (short && Array.isArray(hints)) hints.push(REAP_AVAILABLE_WITH_CONSENT_MESSAGE);
+    emit(log, "info", { op: "create_checkout_session", outcome: short ? "refused_hinted" : "refused", code: res.code });
+    return null;
   }
 
   if (!res || res.kind !== "accepted") {
     // REFUSED for any other reason (404 not_available_on_this_rail, 409 merchant_not_eligible / row_not_found /
-    // idempotency_conflict, 401, 400 currency_unsupported, …) or UNAVAILABLE: fall through to the next lane so
+    // idempotency_conflict, 401, …) or UNAVAILABLE: fall through to the next lane so
     // the buyer still gets an answer. On a timeout the purchase MAY exist; it then sits at `resolving` with no
     // card on it and expires on the backend's own clock, and a retry with the same idempotency-key replays it
     // rather than opening a second one.
@@ -822,7 +839,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     return null;
   }
 
-  const snapshot = { purchaseId: res.purchase.id, productKey, quantity, currency: price.currency, unitMinor: price.amount };
+  const snapshot = { purchaseId: res.purchase.id, productId, productKey, quantity, currency: price.currency, unitMinor: price.amount };
   const id = encodeReapCheckoutId(snapshot);
   emit(log, "info", { op: "create_checkout_session", outcome: "opened", code: "accepted" });
   // The 202 carries no line; the view is completed from OUR OWN server-side read of the row (never from the

@@ -349,13 +349,16 @@ market source — before it opens a purchase. Its own arming, continuing the ord
 13. **Minds sends `checkout.buyer.consent_version`** — BEFORE the switch. The door accepts and
     ignores it while the switch is off, so this is safe to ship first.
 14. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway. Only now does an eligible UCP
-    `create_checkout` open a Reap purchase; until then every tool response is byte-identical.
+    `create_checkout` open a Reap purchase; until then every tool response is byte-identical except
+    the adapter's `ucp_consent_version_invalid` refusal of a malformed `consent_version`.
 
 Backend before gateway: the gateway switch in front of a dark rail is harmless (every POST answers
 404 `not_available_on_this_rail` and the door falls through), but it transacts nothing; backend first
 means the first eligible create transacts the moment the switch flips. Consent before the switch:
-once the rail is armed and the switch is on, an eligible create without consent is refused
-`reap_consent_required` — true, but a refusal where the buyer got a storefront link before.
+with the switch on and no consent, the lane never refuses — the buyer gets the storefront answer plus a
+`reap.available_with_consent` message — so a Minds that has not shipped consent silently never uses
+the Reap route. The backend must also carry `fix/reap-merchant-domain-canonical` (#2258) before step 14:
+the gateway sends merchant hosts as observed (`www.` kept).
 **Rolling back**: unset `REAP_AGENTIC_LANE_ENABLED` first; it is the narrowest switch and touches
 nothing on the backend.
 

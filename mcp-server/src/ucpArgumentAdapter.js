@@ -292,8 +292,9 @@ const BUYER_SCHEMA = {
       description:
         "Optional. The version tag of the Pivota terms the buyer accepted for a purchase fulfilled through the"
         + " Reap payment partner (at most 32 characters, e.g. \"reap-agentic-v1\"), forwarded verbatim. Needed"
-        + " only when the checkout is fulfilled through Reap: such a checkout is refused with reason"
-        + " `reap_consent_required` until it is sent. Show the buyer the terms before sending it.",
+        + " only for the Reap route: without it that route is not offered (the checkout completes on the"
+        + " seller's storefront, with an info message `reap.available_with_consent`). Show the buyer the"
+        + " terms before sending it.",
     },
   },
 };

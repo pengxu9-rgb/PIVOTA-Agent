@@ -332,13 +332,20 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     and inert without an injected backend client. Its answer carries no kernel state, so it takes the
       //     result half of this door here — the SAME money filter (step 5) and the SAME dialect shaper (step 7)
       //     as a kernel result — instead of the executor.
+      const reapHints = [];
       const reap = await tryReapAgenticCheckout({
         op, params, ctx, executor: reads, ucpArgs: toolArgs, attested,
-        client: reapAgentic && reapAgentic.client, log: logger,
+        client: reapAgentic && reapAgentic.client, log: logger, hints: reapHints,
       });
       if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
-      if (escalated) return escalated;
+      // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
+      // storefront answer only. With no hint the escalation answer is returned as the very same object.
+      if (escalated) {
+        return reapHints.length
+          ? { ...escalated, messages: [...(Array.isArray(escalated.messages) ? escalated.messages : []), ...reapHints] }
+          : escalated;
+      }
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which

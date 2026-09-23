@@ -32,7 +32,7 @@ import { UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonic
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const NOW = Date.UTC(2026, 8, 23, 12, 0, 0);
 const PID = "rp_283fba3ce85c4e59bb331e54";
-const SNAP = Object.freeze({ purchaseId: PID, productKey: "prod::m_brand::shopify::1001", quantity: 1, currency: "USD", unitMinor: 4250 });
+const SNAP = Object.freeze({ purchaseId: PID, productId: "sig_reap_a", productKey: "prod::m_brand::shopify::1001", quantity: 1, currency: "USD", unitMinor: 4250 });
 const STATUS_ENUM = ["incomplete", "requires_escalation", "ready_for_complete", "complete_in_progress", "completed", "canceled"];
 // pivota-backend docs/reap_agentic_routes.md "States the door will see" — all nine.
 const BACKEND_STATES = ["resolving", "needs_enrollment", "quoting", "awaiting_approval", "processing", "completed", "refused", "failed", "expired"];
@@ -79,13 +79,15 @@ describe("checkout id", () => {
       null, 42, "", "reap_", "reap_../x", `reap_${"a".repeat(300)}`, `reap_${PID}`, `reap_${PID}.`, `reap_${PID}.${snap}=`,
       `esc_${PID}.${snap}`, `reap_rp_${"g".repeat(24)}.${snap}`, `reap_${PID}x.${snap}`, `reap_${PID}.${snap}.${snap}`,
       `reap_${PID}.${"A".repeat(600)}`,
-      j({ i: "a", q: 1, c: "USD", u: 1 }), j({ v: 1, i: "a", q: 0, c: "USD", u: 1 }), j({ v: 1, i: "a", q: 11, c: "USD", u: 1 }),
-      j({ v: 1, i: "a", q: 1, c: "US", u: 1 }), j({ v: 1, i: "a", q: 1, c: "USD", u: 1.5 }), j({ v: 1, i: " a", q: 1, c: "USD", u: 1 }),
-      j({ v: 1, i: "a\u0000", q: 1, c: "USD", u: 1 }), j({ v: 1, q: 1, c: "USD", u: 1, i: "a" }), j({ v: 1, i: "a", q: 1, c: "USD", u: 1, x: 1 }),
-      j({ v: 1, i: "a", q: 1, c: "USD", u: 1e13 }),
+      j({ i: "a", k: "k", q: 1, c: "USD", u: 1 }), j({ v: 1, i: "a", k: "k", q: 0, c: "USD", u: 1 }), j({ v: 1, i: "a", k: "k", q: 11, c: "USD", u: 1 }),
+      j({ v: 1, i: "a", k: "k", q: 1, c: "US", u: 1 }), j({ v: 1, i: "a", k: "k", q: 1, c: "USD", u: 1.5 }), j({ v: 1, i: " a", k: "k", q: 1, c: "USD", u: 1 }),
+      j({ v: 1, i: "a\u0000", k: "k", q: 1, c: "USD", u: 1 }), j({ v: 1, k: "k", q: 1, c: "USD", u: 1, i: "a" }), j({ v: 1, i: "a", k: "k", q: 1, c: "USD", u: 1, x: 1 }),
+      j({ v: 1, i: "a", k: "k", q: 1, c: "USD", u: 1e13 }), j({ v: 1, i: "a", q: 1, c: "USD", u: 1 }),
+      j({ v: 1, i: "a", k: "", q: 1, c: "USD", u: 1 }), j({ v: 1, k: "k", q: 1, c: "USD", u: 1 }), j({ v: 1, i: "a", k: "k ", q: 1, c: "USD", u: 1 }),
     ]) {
       assert.equal(decodeReapCheckoutId(bad), null, String(bad).slice(0, 80));
     }
+    assert.ok(decodeReapCheckoutId(j({ v: 1, i: "a", k: "k", q: 1, c: "USD", u: 1 })), "control: the builder itself makes a valid id");
   });
 
   test("encode refuses a value that is not a backend purchase id", () => {
@@ -117,7 +119,8 @@ describe("status table", () => {
     const out = buildDegradedReapCheckout({ id, snapshot: decodeReapCheckoutId(id), now: NOW, env: {} });
     assert.equal(out.status, "incomplete");
     assert.ok(out.messages.some((m) => m.code === "reap.view_unavailable" && /recorded in this checkout id/.test(m.content)));
-    assert.equal(out.line_items[0].item.id, SNAP.productKey);
+    assert.equal(out.line_items[0].item.id, SNAP.productId, "the caller's id, never the product_key");
+    assert.equal(JSON.stringify(out).includes(SNAP.productKey), false);
     for (const k of ["ucp", "id", "line_items", "status", "currency", "totals", "links"]) assert.ok(Object.hasOwn(out, k), k);
     assert.equal(out.totals.find((t) => t.type === "total").amount, 12750);
     assert.equal(Object.hasOwn(out, "continue_url"), false);
@@ -126,22 +129,27 @@ describe("status table", () => {
 
 describe("a successful read is the ONLY source of what is displayed", () => {
   const VIEW = {
-    id: PID, state: "processing", product_key: "prod::m_other::shopify::2002", product_name: "Backend Name", quantity: 2,
+    id: PID, state: "processing", product_key: "prod::m_brand::shopify::1001", product_name: "Backend Name", quantity: 2,
     totals: { currency: "CAD", our_price_minor: 999, quoted_total_minor: 2222, final_total_minor: null },
     order_reference: "ord_should_not_leak", poll_after_seconds: 45,
   };
-  test("item id, title, quantity, currency, unit price and totals all come from the view, never the snapshot", () => {
+  test("item id echoes the CALLER's id; title, quantity, currency, unit price and totals come from the view, never the snapshot", () => {
     const id = encodeReapCheckoutId(SNAP);
     const out = mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: VIEW, now: NOW, env: {} });
     assert.equal(out.currency, "CAD");
     assert.deepEqual(out.line_items, [{
       id: "li_1",
-      item: { id: "prod::m_other::shopify::2002", title: "Backend Name", price: 999 },
+      item: { id: "sig_reap_a", title: "Backend Name", price: 999 },
       quantity: 2,
       totals: [{ type: "subtotal", amount: 1998 }, { type: "total", amount: 1998 }],
     }]);
     assert.deepEqual(out.totals.map((t) => [t.type, t.amount]), [["subtotal", 1998], ["total", 2222]]);
     assert.equal(JSON.stringify(out).includes("ord_should_not_leak"), false, "an order reference is only published on completed");
+    assert.equal(JSON.stringify(out).includes("prod::"), false, "the product_key (an internal merchant id) is never published");
+  });
+  test("the product_key is a HIDDEN cross-check: a view of another product is a failed read", () => {
+    const id = encodeReapCheckoutId(SNAP);
+    assert.equal(mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: { ...VIEW, product_key: "prod::m_other::shopify::2002" }, now: NOW, env: {} }), null);
   });
   test("a view missing any displayed field is NOT filled from the snapshot — it is not the documented shape", () => {
     const id = encodeReapCheckoutId(SNAP);

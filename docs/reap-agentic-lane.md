@@ -11,10 +11,11 @@ door, and the contract for the buyer agent (Minds).
 **It ships dark.** `REAP_AGENTIC_LANE_ENABLED` is unset by default and the backend rail
 (`REAP_AGENTIC_ENABLED`) is off in production. With the gateway switch off, every UCP **tool
 response** is byte-identical to the door without this lane and no backend call is made (pinned by
-snapshot). **`tools/list` is not byte-identical, whatever the switch says:** the `create_checkout` /
-`update_checkout` `buyer` schema carries the optional `consent_version` member (`maxLength: 32`,
-enforced by the argument adapter — a longer or non-string value is refused
-`ucp_consent_version_invalid`), and the `create_checkout` description mentions the Reap route.
+snapshot) — **EXCEPT** that a malformed `checkout.buyer.consent_version` (not a string, or longer than
+32 characters) is refused `ucp_consent_version_invalid` at the argument adapter, whatever the switch
+says. **`tools/list` is not byte-identical either:** the `create_checkout` / `update_checkout` `buyer`
+schema carries the optional `consent_version` member (`maxLength: 32`), and the `create_checkout`
+description mentions the Reap route.
 
 ---
 
@@ -77,18 +78,21 @@ All of these, otherwise the lane is skipped silently (logged with a code) and th
   consults it**: same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`), same singleton client, same
   fail-open rule, same market source (`checkout.context.address_country`), same budget clamp;
 - then the lane **POSTs, with whatever consent and buyer details the call carried** (attested email
-  wins over the body's). The door never refuses on its own judgement: only the rail knows whether
-  it is armed and whether this merchant is eligible, and it answers those before it looks at the
-  buyer block.
+  wins over the body's). **The lane never refuses a create.** A backend 400 proves nothing about
+  eligibility — the backend checks consent and the address BEFORE it checks the merchant, so a
+  non-eligible row answers `consent_required` too — so the only thing a short buyer block can earn is
+  one informational message on today's answer.
 
 What the backend answers decides:
 
 | backend answer | the door |
 |---|---|
 | `202` | `incomplete` checkout, id `reap_…` |
-| `400 consent_required` | **refused** `QUOTE_REQUIRED` / `reap_consent_required` — the rail is armed and the row eligible, so "send the consent" is true |
-| `400 invalid_request` / `400 invalid_address` | **refused** `QUOTE_REQUIRED` / `reap_buyer_details_required`, `detail.required_fields` naming the missing UCP fields |
-| `404 not_available_on_this_rail`, `409` (eligibility, `row_*`, `idempotency_conflict`), `401`, any other `400` (`currency_unsupported`), `5xx`, timeout | fall through silently (code logged) |
+| `400 consent_required`, or `400 invalid_request` / `invalid_address` **with a buyer field actually missing** (email, or destination first/last name, phone, street, city, country) | fall through to today's storefront answer, byte for byte, **plus ONE constant info message** `reap.available_with_consent` naming `checkout.buyer.consent_version` and the destination `last_name` / `phone_number`. With storefront escalation off, the kernel path answers as today and the message has nowhere to ride (code logged) |
+| every other `400` (`invalid_return_url`, `invalid_request` with complete details, malformed ids, catalog defects, `currency_unsupported`), `404 not_available_on_this_rail`, `409` (eligibility, `row_*`, `idempotency_conflict`), `401`, `5xx`, timeout | fall through with NO message (code logged) |
+
+The message is a constant: no backend text and no request value can reach it, and no backend body is
+ever read beyond its `detail.error` code.
 
 The backend is authoritative for everything it checks again (eligibility allowlist per market,
 Shopify, the price from our catalog and the merchant's own offer, the market's currency, the
@@ -204,15 +208,16 @@ Then poll `get_checkout { meta, id }`:
 | where | code / reason | meaning | what to do |
 |---|---|---|---|
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_consent_version_invalid` | `consent_version` is not a string, or longer than 32 characters | fix the value |
-| `create_checkout` | `QUOTE_REQUIRED` / `reap_consent_required` (`detail.required_fields: ["checkout.buyer.consent_version"]`) | the rail is armed, the item is eligible, and the backend found no usable consent tag | show the buyer the terms; resend with the tag |
-| `create_checkout` | `QUOTE_REQUIRED` / `reap_buyer_details_required` (`detail.required_fields`: the missing UCP paths) | the rail needs an email and a destination with first + last name, phone, street, city, country | ask the user; resend |
 | `update_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_update_refused` | a Reap checkout cannot be changed | create a new checkout |
 | `complete_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_complete_refused` | completion is on Reap's page | poll `get_checkout`, open `continue_url` |
 | `get_checkout` | `QUOTE_NOT_FOUND` | unknown id (or another buyer's) | — |
 
-Every other backend refusal on create (`merchant_not_eligible`, `row_not_found`, `row_unpriced`,
-`merchant_not_purchasable`, `not_available_on_this_rail`, `idempotency_conflict`,
-`currency_unsupported`, …) is **not** surfaced: the door falls through to the storefront escalation
+There is **no Reap refusal on create.** A backend refusal of any kind (`consent_required`,
+`merchant_not_eligible`, `row_not_found`, `row_unpriced`, `merchant_not_purchasable`,
+`not_available_on_this_rail`, `idempotency_conflict`, `currency_unsupported`, …) is **not** surfaced as
+an error. When the buyer block was short, the storefront answer carries one `info` message with
+`code: "reap.available_with_consent"` — read it as "resend with `consent_version`, a last name and a
+phone if the user wants the Reap route". Otherwise the door falls through to the storefront escalation
 (or the kernel path) and logs the code.
 
 ## 6. Budgets and failure modes
@@ -240,7 +245,12 @@ http_status}` — codes only.
 Each step is runnable; do them in order. The same order is appended to
 `docs/merchant-purchasability-gate.md` §6 (steps 10–14).
 
-1. **Backend**, on the `web` service (and the poller on the `worker`): `REAP_AGENTIC_ENABLED=1` with
+1. **Backend**, on the `web` service (and the poller on the `worker`). The deployed backend MUST carry
+   `fix/reap-merchant-domain-canonical` (pivota-backend #2258 — canonicalises `lowercase + one leading
+   www.` on both sides of the merchant-domain lookup) BEFORE this lane is switched on: the gateway sends
+   the host as observed (`www.brand.com`), and a backend without #2258 answers `row_not_found` /
+   `merchant_not_eligible` for every such row, silently. Check with
+   `git -C pivota-backend merge-base --is-ancestor <#2258 merge sha> <deployed sha>`. Then `REAP_AGENTIC_ENABLED=1` with
    Reap **production** credentials, and the `reap_agentic_eligibility` merchant rows for the first
    merchants × markets — pivota-backend `docs/runbooks/reap_agentic_purchase.md`, "Before arming"
    (the `INSERT INTO reap_agentic_eligibility …` block there). If the purchasability gate is
@@ -298,8 +308,8 @@ Each step is runnable; do them in order. The same order is appended to
 5. **Minds sends `checkout.buyer.consent_version`** (§5.1) — BEFORE the switch. With the switch off
    the door accepts and ignores it (≤ 32 characters), so this ships on Minds' side with no effect.
    Confirm with one of Minds' `create_checkout` request bodies. (With the switch on and no consent,
-   an eligible create is refused `reap_consent_required` by the armed rail — a true message, but a
-   refusal where the buyer got a storefront link yesterday.)
+   the buyer gets today's storefront answer plus a `reap.available_with_consent` message — never a
+   refusal — so a missing consent costs the Reap route, not the purchase.)
 6. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway (an env change on Cloud Run = a new revision).
 7. **Verify the first purchase** carried consent — the runbook's census:
    `SELECT consent_version, COUNT(*), MAX(consented_at) FROM reap_agentic_purchases GROUP BY 1;`

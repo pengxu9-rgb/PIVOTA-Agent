@@ -314,7 +314,7 @@ async function createReap(env, opts = {}) {
 test('switch OFF: create/get/update/complete are byte-identical to a door without the lane, with 0 backend calls', async (t) => {
   t.mock.method(Date, 'now', () => NOW);
   const m = await mods();
-  const reapId = m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const reapId = m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const calls = [
     ['create_checkout', createArgs()],
     ['get_checkout', { meta: META, id: reapId }],
@@ -366,7 +366,7 @@ test('switch OFF snapshot: the pinned answers for the fixture offer', async (t) 
   assert.match(escalated.id, /^esc_/);
   assert.equal(escalated.messages[0].code, 'checkout.completes_on_seller_storefront');
   // …and a `reap_` id with the switch off is just an unknown id to the kernel.
-  const reapId = m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const reapId = m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const got = await withEnv({ [LANE_FLAG]: undefined }, () => outcome(m, ucp.callTool('get_checkout', { meta: META, id: reapId }, SESSION)));
   assert.equal(JSON.parse(got.err.content[0].text).error.code, 'QUOTE_NOT_FOUND');
   assert.equal(backend.calls.length, 0);
@@ -383,7 +383,9 @@ test('on + eligible: ONE backend POST -> 202 -> checkout {id: reap_…, status: 
   assert.equal(out.status, 'incomplete');
   assertSpecCheckout(out);
   assert.equal(out.currency, 'USD');
-  assert.deepEqual(out.line_items, [{ id: 'li_1', item: { id: 'prod::m_brand::shopify::1001', title: 'Standard Eau de Parfum', price: 4250 }, quantity: 1, totals: [{ type: 'subtotal', amount: 4250 }, { type: 'total', amount: 4250 }] }]);
+  // item.id ECHOES the caller's id (as the storefront lane does); the product_key is never published.
+  assert.deepEqual(out.line_items, [{ id: 'li_1', item: { id: 'sig_reap_a', title: 'Standard Eau de Parfum', price: 4250 }, quantity: 1, totals: [{ type: 'subtotal', amount: 4250 }, { type: 'total', amount: 4250 }] }]);
+  assert.equal(JSON.stringify(out).includes('prod::'), false);
   assert.equal(message(out, 'reap.poll_after_seconds').content, '60', 'the backend cadence is carried');
   assert.ok(message(out, 'reap.resolving'));
 
@@ -443,7 +445,7 @@ test('the lane answer leaves through the REAL money filter: a secret-shaped valu
   const backend = fakeBackend();
   backend.state.get.set(PID, { status: 200, body: view('resolving', { product_name: 'Serum sk_live_abcdefghijklmnop' }) });
   const ctx = await build({ backend });
-  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
   assert.equal(out.line_items[0].item.title, 'Serum [REDACTED_SECRET] — Standard');
 });
@@ -485,7 +487,7 @@ for (const [label, body, status, continueUrl, code] of STATE_TABLE) {
     const backend = fakeBackend();
     backend.state.get.set(PID, { status: 200, body });
     const ctx = await build({ backend });
-    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
     const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
     assert.equal(out.id, id);
     assert.equal(out.status, status);
@@ -505,7 +507,7 @@ test('get_checkout: the completed checkout carries the order reference and the c
   const backend = fakeBackend();
   backend.state.get.set(PID, { status: 200, body: view('completed', { totals: FINAL, order_reference: 'ord_991', poll_after_seconds: null }) });
   const ctx = await build({ backend });
-  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
   assert.equal(message(out, 'reap.order_reference').content, 'ord_991');
   assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['total', 4500]]);
@@ -516,7 +518,7 @@ test('get_checkout: a refused purchase names its reason; an unsafe reason string
   const backend = fakeBackend();
   backend.state.get.set(PID, { status: 200, body: view('refused', { refusal_reason: 'options:sole_label_differs:size' }) });
   const ctx = await build({ backend });
-  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
   assert.match(message(out, 'reap.purchase_refused').content, /Reason: options:sole_label_differs:size\./);
   backend.state.get.set(PID, { status: 200, body: view('refused', { refusal_reason: `buyer ${EMAIL} said no <script>` }) });
@@ -531,7 +533,7 @@ test('get_checkout: a refused purchase names its reason; an unsafe reason string
 
 test('update_checkout / complete_checkout on a reap_ id are REFUSED with a named reason and no backend call', async () => {
   const ctx = await build();
-  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const upd = await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('update_checkout', { meta: META, id, checkout: { line_items: [{ item: { id: 'sig_reap_a' }, quantity: 2 }], buyer: { email: EMAIL } } }, SESSION)));
   const cmp = await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('complete_checkout', { meta: META, id, checkout: { payment: { method: 'ucp_handler', token: 'grant-fixture' } } }, SESSION)));
   keep(upd); keep(cmp);
@@ -559,7 +561,7 @@ test('get_checkout: backend 404 -> exactly the body ANY unknown checkout id gets
   const backend = fakeBackend();
   backend.state.get.delete(PID);
   const ctx = await build({ backend });
-  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const reap404 = await unknownIdBody(ctx, id);
   const plainUnknown = await unknownIdBody(ctx, 'q_never_minted');
   keep(reap404);
@@ -582,7 +584,7 @@ for (const [label, status, code] of [
     const backend = fakeBackend();
     backend.state.get.set(PID, { status, body: code ? houseError(code, status) : 'not json' });
     const ctx = await build({ backend });
-    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
     const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
     assert.equal(out.status, 'incomplete');
     assert.ok(message(out, 'reap.view_unavailable'));
@@ -604,7 +606,7 @@ for (const [label, arrange] of [
     const backend = fakeBackend();
     arrange(backend);
     const ctx = await build({ backend, clientTimeoutMs: 60 });
-    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 2, currency: 'USD', unitMinor: 4250 });
+    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 2, currency: 'USD', unitMinor: 4250 });
     const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
     assert.equal(out.status, 'incomplete');
     assertSpecCheckout(out);
@@ -675,29 +677,95 @@ test('create_checkout: the refusal code is what gets logged — and only the cod
 // 6. consent, native, gate, eligibility
 // =========================================================================================================
 
-test('consent is NEVER refused by the door on its own: with the rail dark, a create without consent escalates exactly as before', async () => {
-  const backend = fakeBackend();
-  backend.state.post = { status: 404, body: houseError('not_available_on_this_rail', 404) };
-  const ctx = await build({ backend });
-  const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
-  assert.equal(out.status, 'requires_escalation');
-  assert.match(out.id, /^esc_/);
-  assert.equal(backend.calls.length, 1, 'the rail was asked — it is the one that knows whether it is armed');
-  assert.equal(Object.hasOwn(backend.calls[0].body.buyer, 'consent_version'), false, 'nothing is invented for an absent consent');
-});
+/** Today's storefront answer for the fixture: the lane OFF, escalation ON — the byte baseline for §6. */
+async function storefrontBaseline(args) {
+  const ctx = await build({ lane: false });
+  return withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', args, SESSION));
+}
+const HINT = 'reap.available_with_consent';
 
-test('backend 400 consent_required (rail armed, row eligible) -> SURFACED as the named refusal reap_consent_required', async () => {
+for (const [label, post, args] of [
+  ['non-eligible merchant, no consent (backend checks consent BEFORE eligibility -> 400 consent_required)', { status: 400, body: houseError('consent_required', 400) }, { consent: ABSENT }],
+  ['eligible merchant, no consent (400 consent_required)', { status: 400, body: houseError('consent_required', 400) }, { consent: ABSENT }],
+  ['no last name (400 invalid_address)', { status: 400, body: houseError('invalid_address', 400) }, { destination: { ...DESTINATION, last_name: undefined } }],
+  ['no phone anywhere (400 invalid_address)', { status: 400, body: houseError('invalid_address', 400) }, { destination: { ...DESTINATION, phone_number: undefined } }],
+  ['no destination at all (400 invalid_request)', { status: 400, body: houseError('invalid_request', 400) }, { destination: null }],
+]) {
+  test(`create_checkout: ${label} -> NEVER a refusal: today's storefront answer, byte for byte, PLUS one constant ${HINT} message`, async (t) => {
+    t.mock.method(Date, 'now', () => NOW);
+    const backend = fakeBackend();
+    backend.state.post = post;
+    const ctx = await build({ backend });
+    const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs(args), SESSION)));
+    const baseline = await storefrontBaseline(createArgs(args));
+    assert.equal(backend.calls.length, 1, 'the rail was asked');
+    assert.equal(out.status, 'requires_escalation');
+    const hinted = out.messages.filter((msg) => msg.code === HINT);
+    assert.equal(hinted.length, 1, 'exactly one hint');
+    assert.deepEqual(hinted[0], ctx.m.lane.REAP_AVAILABLE_WITH_CONSENT_MESSAGE, 'the CONSTANT message, nothing request- or backend-derived');
+    for (const path of ['checkout.buyer.consent_version', 'checkout.fulfillment.methods[0].destinations[0].last_name', 'checkout.fulfillment.methods[0].destinations[0].phone_number']) {
+      assert.ok(hinted[0].content.includes(path), path);
+    }
+    const withoutHint = { ...out, messages: out.messages.filter((msg) => msg.code !== HINT) };
+    assert.equal(JSON.stringify(withoutHint), JSON.stringify(baseline), "everything else is today's answer, byte for byte");
+  });
+}
+
+for (const [label, post, args] of [
+  ['400 invalid_return_url', { status: 400, body: houseError('invalid_return_url', 400) }, {}],
+  ['400 invalid_request with COMPLETE buyer details (a malformed id / a catalog defect, not the buyer)', { status: 400, body: houseError('invalid_request', 400) }, {}],
+  ['400 invalid_address with a complete destination', { status: 400, body: houseError('invalid_address', 400) }, {}],
+  ['400 currency_unsupported', { status: 400, body: houseError('currency_unsupported', 400) }, {}],
+]) {
+  test(`create_checkout: ${label} -> falls through with NO message, logged by code only`, async (t) => {
+    t.mock.method(Date, 'now', () => NOW);
+    const backend = fakeBackend();
+    backend.state.post = post;
+    const logger = fakeLogger();
+    const ctx = await build({ backend, logger });
+    const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs(args), SESSION)));
+    assert.equal(JSON.stringify(out), JSON.stringify(await storefrontBaseline(createArgs(args))), "exactly today's answer");
+    const line = logger.lines.find((l) => l.event === 'reap_agentic_lane' && l.outcome === 'refused');
+    assert.equal(line.code, post.body.detail.error);
+    ALL_LOGS.push(...logger.lines);
+  });
+}
+
+test('escalation OFF: a short buyer block still never refuses — the kernel path answers as today (the hint has nowhere to ride)', async () => {
   const backend = fakeBackend();
   backend.state.post = { status: 400, body: houseError('consent_required', 400) };
   const ctx = await build({ backend });
-  for (const consent of [ABSENT, '', '   ']) {
-    const r = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ consent }), SESSION))));
-    const err = JSON.parse(r.err.content[0].text).error;
-    assert.equal(err.code, 'QUOTE_REQUIRED');
-    assert.equal(err.detail.reason, 'reap_consent_required');
-    assert.deepEqual(err.detail.required_fields, ['checkout.buyer.consent_version']);
+  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
+  assert.deepEqual(out, { session_id: 'q_kernel' });
+});
+
+test('a VALUE-BEARING 400 body (backend message, fields, validation errors, 2 KB) -> no buyer string in any response or log line', async () => {
+  const valueBearing = {
+    status: 'error',
+    error: {
+      code: 'BAD_REQUEST',
+      message: `consent_required for ${EMAIL} at ${STREET}, ${POSTAL}; phone ${PHONE}; ${LAST}`,
+      details: { error: 'consent_required', fields: { email: EMAIL, address: { addressLine1: STREET, addressLine2: SUITE, lastName: LAST } } },
+      validation_errors: Array.from({ length: 12 }, (_, i) => ({ loc: ['buyer', 'shipping_address', i], msg: `bad ${EMAIL} ${PHONE}`, input: STREET })),
+    },
+    detail: { error: 'consent_required', message: `${EMAIL} ${PHONE} ${STREET} ${SUITE} ${LAST} ${POSTAL}`.repeat(8) },
+  };
+  assert.ok(JSON.stringify(valueBearing).length >= 2048, 'the fixture really is 2 KB');
+  for (const escalation of ['1', undefined]) {
+    const backend = fakeBackend();
+    backend.state.post = { status: 400, body: valueBearing };
+    const logger = fakeLogger();
+    const ctx = await build({ backend, logger });
+    const r = await withEnv({ ...ON, [ESCALATION_FLAG]: escalation }, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
+    keep(r);
+    const text = JSON.stringify(r);
+    // The storefront answer echoes the buyer's own email in `buyer.email` today (unchanged); nothing ELSE of
+    // the buyer, and nothing from the backend body, may appear.
+    for (const v of [PHONE, STREET, SUITE, LAST, POSTAL, 'validation_errors', 'BAD_REQUEST']) assert.equal(text.includes(v), false, `"${v}" in the response`);
+    const logText = JSON.stringify(logger.lines);
+    for (const v of [...BUYER_STRINGS, 'validation_errors', 'BAD_REQUEST']) assert.equal(logText.includes(v), false, `"${v}" logged`);
+    ALL_LOGS.push(...logger.lines);
   }
-  assert.equal(backend.calls.length, 3, 'refused AFTER the POST, never before it');
 });
 
 test('consent_version is forwarded VERBATIM — never trimmed, case-folded or filtered', async () => {
@@ -723,27 +791,30 @@ test('the argument adapter ENFORCES the advertised consent schema (string, <= 32
   assert.equal(backend.calls.length, 1);
 });
 
-for (const [label, backendCode, args, expectFields] of [
-  ['no last name (backend invalid_address)', 'invalid_address', { destination: { ...DESTINATION, last_name: undefined } }, ['checkout.fulfillment.methods[0].destinations[0].last_name']],
-  ['no phone anywhere (backend invalid_address)', 'invalid_address', { destination: { ...DESTINATION, phone_number: undefined } }, ['checkout.fulfillment.methods[0].destinations[0].phone_number']],
-  ['no destination at all (backend invalid_request)', 'invalid_request', { destination: null }, ['checkout.fulfillment.methods[0].destinations[0]']],
-]) {
-  test(`create_checkout: ${label} -> POST with what arrived, then SURFACED as reap_buyer_details_required`, async () => {
+test('get_checkout from a caller the rail cannot serve SKIPS the lane: today\'s answer, no backend call, the id handed on untouched', async () => {
+  for (const authHeaders of [() => ({ 'X-API-Key': API_KEY }), () => ({ 'X-API-Key': API_KEY, 'X-Agent-User-JWT': '  ' }), () => ({})]) {
     const backend = fakeBackend();
-    backend.state.post = { status: 400, body: houseError(backendCode, 400) };
-    const ctx = await build({ backend });
-    const r = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs(args), SESSION))));
-    const err = JSON.parse(r.err.content[0].text).error;
-    assert.equal(err.code, 'QUOTE_REQUIRED');
-    assert.equal(err.detail.reason, 'reap_buyer_details_required');
-    assert.deepEqual(err.detail.required_fields, expectFields);
-    assert.equal(backend.calls.length, 1);
-    for (const v of BUYER_STRINGS) assert.equal(JSON.stringify(err).includes(v), false, 'field names only');
-  });
-}
+    const ctx = await build({ backend, authHeaders });
+    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+    const withLane = keep(await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION))));
+    const noLane = await build({ lane: false });
+    const today = await withEnv(ON, () => outcome(noLane.m, noLane.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+    assert.equal(JSON.stringify(withLane), JSON.stringify(today));
+    assert.equal(backend.calls.length, 0);
+    assert.deepEqual(ctx.executor.seen.filter((c) => c.op === 'get_checkout_session').map((c) => c.params.session_id), [id], 'not rewritten — the lane did not act');
+  }
+});
 
 test('a caller the rail cannot serve (no X-Agent-User-JWT, or no API key — e.g. MCP-OAuth) skips the lane silently: 0 backend calls, logged ONCE', async () => {
-  for (const authHeaders of [() => ({ 'X-API-Key': API_KEY }), () => ({ 'X-Agent-User-JWT': USER_JWT }), () => ({})]) {
+  for (const authHeaders of [
+    () => ({ 'X-API-Key': API_KEY }),
+    () => ({ 'X-Agent-User-JWT': USER_JWT }),
+    () => ({}),
+    // PRESENT BUT EMPTY is not a credential either.
+    () => ({ 'X-API-Key': API_KEY, 'X-Agent-User-JWT': '' }),
+    () => ({ 'X-API-Key': API_KEY, 'X-Agent-User-JWT': '   ' }),
+    () => ({ 'X-API-Key': ' \t ', 'X-Agent-User-JWT': USER_JWT }),
+  ]) {
     const backend = fakeBackend();
     const logger = fakeLogger();
     const ctx = await build({ backend, logger, authHeaders });
@@ -846,7 +917,7 @@ test('id tampering: malformed reap_ ids never reach the backend and get the unkn
   const backend = fakeBackend();
   const ctx = await build({ backend });
   const plainUnknown = await unknownIdBody(ctx, 'q_never_minted');
-  const good = m.lane.encodeReapCheckoutId({ purchaseId: PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const good = m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const snap = good.split('.')[1];
   const forged = (o) => `reap_${PID}.${Buffer.from(JSON.stringify(o)).toString('base64url')}`;
   const bad = [
@@ -877,7 +948,7 @@ test('id tampering: malformed reap_ ids never reach the backend and get the unkn
   const upd = await withEnv(ON, () => outcome(m, ctx.ucp.callTool('update_checkout', { meta: META, id: 'reap_../x', checkout: { line_items: [{ item: { id: 'sig_reap_a' }, quantity: 1 }], buyer: { email: EMAIL } } }, SESSION)));
   assert.notEqual(JSON.parse(upd.err.content[0].text).error.code, 'OPERATION_NOT_ALLOWED');
 
-  const others = m.lane.encodeReapCheckoutId({ purchaseId: OTHER_BUYERS_PID, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const others = m.lane.encodeReapCheckoutId({ purchaseId: OTHER_BUYERS_PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const r = await unknownIdBody(ctx, others);
   assert.equal(JSON.stringify(r), JSON.stringify(plainUnknown));
   assert.equal(backend.calls.length, 1);
@@ -963,7 +1034,7 @@ test('deep walk (runs last): no card/PII/purchase_route field in ANY response or
   for (const r of ALL_RESPONSES) {
     // The switch-off / escalation snapshots legitimately echo the buyer email (the storefront lane's
     // `buyer.email` pre-fill, unchanged by this PR); every OTHER buyer field must be absent everywhere.
-    const reapAnswer = JSON.stringify(r).includes('reap_rp_') || JSON.stringify(r).includes('reap.');
+    const reapAnswer = JSON.stringify(r).includes('reap_rp_');
     const text = JSON.stringify(r);
     for (const s of BUYER_STRINGS.filter((x) => x !== EMAIL)) assert.equal(text.includes(s), false, `buyer data "${s}" in a response`);
     if (reapAnswer) assert.equal(text.includes(EMAIL), false, 'a Reap answer never echoes the buyer email');
