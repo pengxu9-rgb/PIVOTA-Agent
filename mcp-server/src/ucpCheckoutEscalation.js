@@ -94,7 +94,7 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 export const ESCALATION_ID_PREFIX = "esc_";
-const ESCALATION_TTL_MS = 6 * 60 * 60 * 1000; // the spec's default TTL
+export const ESCALATION_TTL_MS = 6 * 60 * 60 * 1000; // the spec's default TTL
 const MAX_ESCALATION_ITEMS = 50;
 const TERMS_URL = "https://pivota.cc/terms"; // measured 200, "Terms of Service | Pivota", 2026-08-18
 
@@ -169,6 +169,13 @@ export function isEscalationId(id) {
 // (commerceToolSurface `memoizedProductReads`) and hands the SAME view to the checkout resolver, so a
 // contracted cart that classifies as "kernel path" has its products read ONCE and the resolver reuses them.
 
+// EXPORTED (as `readCheckoutRows`) for the Reap agentic lane (ucpReapAgenticLane.js), which classifies the SAME
+// rows through the SAME per-call memoizing executor view — so a cart the Reap lane declines and this module then
+// escalates is still read ONCE, and both lanes judge the one read.
+export async function readCheckoutRows(items, executor, ctx, opts) {
+  return readRows(items, executor, ctx, opts);
+}
+
 async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS } = {}) {
   const ids = [...new Set(items.map((it) => it.product_id))];
   if (ids.length > MAX_CART_DISTINCT_PRODUCTS) {
@@ -240,17 +247,28 @@ export function escalationBuyerMarket(ucpArgs) {
   return raw.toUpperCase();
 }
 
+export const ESCALATION_GATE_MAX_MS = 800;
+
 /**
  * `true` when this door may still answer with `continueUrl`. FAILS OPEN by construction: the client never
  * throws and never refuses on a failure, `offer: false` is reachable only from a 200 + enforcing + browse_only,
  * and the `=== false` compare is strict so a malformed future answer cannot refuse by accident.
  */
-const ESCALATION_GATE_MAX_MS = 800;
-
 async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled, budgetMs) {
   // THE SWITCH, READ HERE TOO. The client checks it as well, but a door on the checkout critical path
   // should not pay for a call whose answer is "disabled" — and this makes "the switch is ignored on THIS
   // path" a mutant that a test can kill without touching the client every other lane shares.
+  if (!gateEnabled) return true;
+  return mayOfferPurchaseForDomain(hostOf(continueUrl), market, gate, gateEnabled, budgetMs);
+}
+
+/**
+ * The same seam, keyed on a merchant DOMAIN the caller already holds rather than on a storefront URL. It is
+ * what `mayOfferStorefrontCheckout` above delegates to, and it is EXPORTED so the Reap agentic lane
+ * (ucpReapAgenticLane.js) consults the gate exactly as this lane does — same switch, same singleton client,
+ * same fail-open rule, same budget clamp — rather than growing a second copy of the rule.
+ */
+export async function mayOfferPurchaseForDomain(domain, market, gate, gateEnabled, budgetMs) {
   if (!gateEnabled) return true;
   // The DOMAIN is the storefront host, never the full continue_url: the ops query carries a merchant domain
   // and a two-letter market and nothing else. A path or query string from the storefront URL would be a
@@ -261,7 +279,7 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   let decision = null;
   try {
     decision = await gate({
-      domain: hostOf(continueUrl),
+      domain,
       market: market || undefined,
       // ⚠️ BOUNDED BY WHAT IS LEFT OF THE DOOR'S OWN WINDOW. The first cut passed nothing, so this
       // BLOCKING read on the checkout critical path ran on the client's 1500 ms default while the
@@ -325,24 +343,19 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
   });
 
   const host = hostOf(continueUrl);
-  const links = [{ type: "terms_of_service", url: TERMS_URL, title: "Pivota Terms of Service" }];
-  const privacy = str(env && env.PIVOTA_PRIVACY_POLICY_URL);
-  if (privacy && /^https:\/\//.test(privacy)) links.unshift({ type: "privacy_policy", url: privacy, title: "Pivota Privacy Policy" });
-
-  return compact({
-    ucp: { version: UCP_RESPONSE_VERSION, status: "success", payment_handlers: {} },
+  return buildUcpCheckoutEnvelope({
     id,
     status: "requires_escalation",
-    continue_url: continueUrl,
+    continueUrl,
     currency,
-    line_items: lineItems,
+    lineItems,
     totals: [
       { type: "subtotal", amount: subtotal, display_text: "Expected subtotal (catalog's last observed price)" },
       { type: "total", amount: subtotal, display_text: "Expected total before the seller's shipping and tax" },
     ],
-    buyer: buyerEmail ? { email: buyerEmail } : undefined,
-    links,
-    expires_at: new Date(now + ESCALATION_TTL_MS).toISOString(),
+    buyerEmail,
+    expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
+    env,
     messages: [
       {
         type: "info",
@@ -356,6 +369,34 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
         content_type: "plain",
       },
     ],
+  });
+}
+
+/**
+ * THE CHECKOUT OBJECT, shared. Every UCP checkout this door answers WITHOUT the kernel — the storefront
+ * escalation above and the Reap agentic lane (ucpReapAgenticLane.js) — is built here, so the pinned required
+ * members (`ucp`, `id`, `line_items`, `status`, `currency`, `totals`, `links`), the `payment_handlers: {}`
+ * statement (Pivota collects no instrument on either lane) and the legal links are ONE definition. Member order
+ * is the order `buildEscalationCheckout` always emitted, so that lane's bytes do not move. Pure; optional
+ * members that are null/undefined are omitted, never published as null.
+ */
+export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, lineItems, totals, buyerEmail, expiresAt, messages, env = process.env }) {
+  const links = [{ type: "terms_of_service", url: TERMS_URL, title: "Pivota Terms of Service" }];
+  const privacy = str(env && env.PIVOTA_PRIVACY_POLICY_URL);
+  if (privacy && /^https:\/\//.test(privacy)) links.unshift({ type: "privacy_policy", url: privacy, title: "Pivota Privacy Policy" });
+
+  return compact({
+    ucp: { version: UCP_RESPONSE_VERSION, status: "success", payment_handlers: {} },
+    id,
+    status,
+    continue_url: continueUrl,
+    currency,
+    line_items: lineItems,
+    totals,
+    buyer: buyerEmail ? { email: buyerEmail } : undefined,
+    links,
+    expires_at: expiresAt,
+    messages,
   });
 }
 
