@@ -273,7 +273,23 @@ const BUYER_SCHEMA = {
     },
     phone_number: {
       type: "string",
-      description: "Accepted and NOT read: Pivota's canonical quote carries no buyer phone.",
+      description:
+        "Not read into Pivota's canonical quote, which carries no buyer phone. When the checkout is fulfilled"
+        + " through the Reap payment partner, it is the recipient phone used if the destination carries none.",
+    },
+    // A PIVOTA EXTENSION member of the permissive `buyer` object — NOT the spec's buyer-consent extension
+    // (`dev.ucp.shopping.buyer_consent`, a set of privacy booleans Pivota does not advertise). Read only by the
+    // Reap agentic lane (ucpReapAgenticLane.js `reapConsentVersion`), from the raw wire body, and forwarded to
+    // the backend as `buyer.consent_version`, which that rail REQUIRES. It is not a pricing input and never
+    // reaches the canonical quote, so it is listed in UCP_ACCEPTED_BUT_UNMAPPED below.
+    consent_version: {
+      type: "string",
+      maxLength: 32,
+      description:
+        "Optional. The version tag of the Pivota terms the buyer accepted for a purchase fulfilled through the"
+        + " Reap payment partner (1-32 printable ASCII characters, e.g. \"reap-agentic-v1\"). Required only when"
+        + " the checkout is fulfilled through Reap: such a checkout is refused with reason"
+        + " `reap_consent_required` until it is sent. Show the buyer the terms before sending it.",
     },
   },
 };
@@ -793,6 +809,8 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    // Read by the Reap agentic lane from the RAW body, never mapped into the canonical quote (see BUYER_SCHEMA).
+    "checkout.buyer.consent_version",
     "checkout.fulfillment.methods[].type",
     "checkout.fulfillment.methods[].line_item_ids[]",
     "checkout.fulfillment.methods[].selected_destination_id",
@@ -804,6 +822,8 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    // Shared BUYER_SCHEMA; an update never reaches the Reap lane (a `reap_` checkout refuses update_checkout).
+    "checkout.buyer.consent_version",
     "checkout.fulfillment.methods[].id",
     "checkout.fulfillment.methods[].type",
     "checkout.fulfillment.methods[].line_item_ids[]",
@@ -1083,6 +1103,10 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "be placed without it and `complete_checkout` has no field to carry it.",
   "This call NEVER charges: `checkout.payment` is refused, and payment authorization is",
   "presented inline on `complete_checkout`.",
+  "Some items Pivota does not sell directly can be bought through its payment partner Reap: the answer is then an",
+  "`incomplete` checkout whose id starts `reap_`; poll `get_checkout` and send the buyer to its `continue_url` to",
+  "add a card and approve the total. That route needs `checkout.buyer.consent_version`, a destination with a",
+  "phone number and a last name, and completes on Reap's page, never through `complete_checkout`.",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [

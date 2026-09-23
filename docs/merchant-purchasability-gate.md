@@ -329,6 +329,30 @@ re-arming later needs no second wait. Unsetting only the sweep dial while `ENFOR
 the misordered state — facts age out through the TTL and merchants silently become `browse_only`
 one by one. This client logs that pair at `error` level for exactly that reason.
 
+### Then, the Reap agentic lane (WP5) — its own switch, armed after the steps above
+
+The UCP door's Reap lane (`mcp-server/src/ucpReapAgenticLane.js`, `docs/reap-agentic-lane.md`)
+consults this gate exactly as path 2 does — same switch, same client, same fail-open rule, same
+market source — before it opens a purchase. Its own arming, continuing the order above:
+
+10. **Backend**: `REAP_AGENTIC_ENABLED=1` **and** Reap **production** credentials, **and** the
+    `reap_agentic_eligibility` rows for the first merchants × markets (pivota-backend
+    `docs/runbooks/reap_agentic_purchase.md`, "Before arming"). With `ENFORCE` on (step 6) those
+    merchants also need a fresh `purchase` fact, or the backend refuses `merchant_not_purchasable`
+    (which the door treats as a fall-through, not an error).
+11. **Deploy the gateway** — manually, as §7 says: `infra/gcp/deploy_gateway.sh prod <sha>` from the
+    pivota-backend repo, then `npm run deploy:verify:production`. It never deploys on merge.
+12. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway. Only now does an eligible UCP
+    `create_checkout` open a Reap purchase; until then the door is byte-identical.
+
+Either half alone is inert — the backend on with the gateway switch off opens nothing, and the
+gateway switch on in front of a dark rail gets 404 `not_available_on_this_rail` on every POST and
+falls through — so the order is about the FIRST eligible create: backend first means it transacts
+the moment the gateway switch flips, instead of silently falling through while someone wonders why.
+Confirm Minds sends `checkout.buyer.consent_version` before step 12, or every eligible create is
+refused `reap_consent_required`. **Rolling back**: unset `REAP_AGENTIC_LANE_ENABLED`
+first; it is the narrowest switch and touches nothing on the backend.
+
 ---
 
 ## 7. Deploying this — it does NOT happen on merge

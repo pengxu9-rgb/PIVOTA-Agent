@@ -30770,6 +30770,28 @@ function merchantVariantSourcingBrands() {
   return brandAllowlistMatcher(process.env.MERCHANT_VARIANT_SOURCING_BRANDS);
 }
 
+// THE REAP AGENTIC LANE'S BACKEND CLIENT (mcp-server/src/ucpReapAgenticLane.js; docs/reap-agentic-lane.md).
+//
+// NOT A NEW CREDENTIAL. The backend's `/agent/v2/commerce/reap/purchases` authenticates the calling AGENT
+// (`X-API-Key`) and the END USER (`X-Agent-User-JWT`) and scopes every purchase to that pair. Both come from
+// `buildInvokeUpstreamAuthHeaders` — the function every strict money op already sends — reading the SAME
+// per-request INVOKE_AUTH_CONTEXT the UCP door runs its tools/call inside. `allowInternalFallback: false` is
+// load-bearing: the internal key would open the purchase under Pivota's own agent id, for a buyer the calling
+// agent could then never read back. `forwardBuyerRef: false`: the rail names no buyer in any header or body
+// field (the backend resolves the buyer from the JWT), so the extra caller-derived header has no job here.
+//
+// Always constructed; the lane reads REAP_AGENTIC_LANE_ENABLED per call, so the switch is live, not frozen at
+// surface-construction time. `deps.fetchImpl` exists for tests only.
+function buildReapAgenticPurchaseClient(log, deps = {}) {
+  const { createReapAgenticPurchaseClient } = require('./services/reapAgenticPurchaseClient');
+  return createReapAgenticPurchaseClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: deps.fetchImpl,
+    authHeaders: () => buildInvokeUpstreamAuthHeaders({ allowInternalFallback: false, forwardBuyerRef: false }),
+    logger: log,
+  });
+}
+
 // Built once per surface, not per request, so the source's own caches (a short-TTL result cache and an
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
@@ -32259,6 +32281,8 @@ async function getCommerceRemoteMcpAdapter() {
         // Always constructed; the source consults `isMerchantVariantSourcingEnabled()` per call, so the flag
         // is live rather than frozen at surface-construction time.
         sourceMerchantVariants: buildMerchantVariantSource(logger),
+        // THE REAP AGENTIC LANE (UCP dialect only; default OFF via REAP_AGENTIC_LANE_ENABLED, read per call).
+        reapAgentic: { client: buildReapAgenticPurchaseClient(logger) },
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
@@ -54666,6 +54690,10 @@ module.exports._debug = {
     deriveStrictCommerceCtxAsync,
     isAgentCheckoutStrictEnabled,
     buildCheckoutConfirmationActionSignature,
+    // Tests only: the Reap lane's client as production builds it, and a way to run it inside the per-request
+    // auth context the UCP door's tools/call runs in (tests/reap_agentic_lane.node.test.cjs).
+    buildReapAgenticPurchaseClient,
+    runInInvokeAuthContextForTest: (store, fn) => INVOKE_AUTH_CONTEXT.run(store, fn),
   },
 };
 
