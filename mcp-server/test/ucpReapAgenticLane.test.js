@@ -19,6 +19,7 @@ import {
   reapIdempotencyKey,
   reapConsentVersion,
   reapShippingAddress,
+  reapMissingBuyerFields,
   reapMerchantDomain,
   vetHostedUrl,
   mapReapPurchaseToCheckout,
@@ -31,7 +32,7 @@ import { UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonic
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const NOW = Date.UTC(2026, 8, 23, 12, 0, 0);
 const PID = "rp_283fba3ce85c4e59bb331e54";
-const SNAP = Object.freeze({ purchaseId: PID, productId: "sig_reap_a", quantity: 1, currency: "USD", unitMinor: 4250 });
+const SNAP = Object.freeze({ purchaseId: PID, productKey: "prod::m_brand::shopify::1001", quantity: 1, currency: "USD", unitMinor: 4250 });
 const STATUS_ENUM = ["incomplete", "requires_escalation", "ready_for_complete", "complete_in_progress", "completed", "canceled"];
 // pivota-backend docs/reap_agentic_routes.md "States the door will see" — all nine.
 const BACKEND_STATES = ["resolving", "needs_enrollment", "quoting", "awaiting_approval", "processing", "completed", "refused", "failed", "expired"];
@@ -111,27 +112,80 @@ describe("status table", () => {
     assert.equal(mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: null, now: NOW }), null);
   });
 
-  test("the degraded answer is spec-shaped, incomplete, and built from the id alone", () => {
+  test("the degraded answer is spec-shaped, incomplete, built from the id alone — and SAYS so", () => {
     const id = encodeReapCheckoutId({ ...SNAP, quantity: 3 });
     const out = buildDegradedReapCheckout({ id, snapshot: decodeReapCheckoutId(id), now: NOW, env: {} });
     assert.equal(out.status, "incomplete");
+    assert.ok(out.messages.some((m) => m.code === "reap.view_unavailable" && /recorded in this checkout id/.test(m.content)));
+    assert.equal(out.line_items[0].item.id, SNAP.productKey);
     for (const k of ["ucp", "id", "line_items", "status", "currency", "totals", "links"]) assert.ok(Object.hasOwn(out, k), k);
     assert.equal(out.totals.find((t) => t.type === "total").amount, 12750);
     assert.equal(Object.hasOwn(out, "continue_url"), false);
   });
 });
 
+describe("a successful read is the ONLY source of what is displayed", () => {
+  const VIEW = {
+    id: PID, state: "processing", product_key: "prod::m_other::shopify::2002", product_name: "Backend Name", quantity: 2,
+    totals: { currency: "CAD", our_price_minor: 999, quoted_total_minor: 2222, final_total_minor: null },
+    order_reference: "ord_should_not_leak", poll_after_seconds: 45,
+  };
+  test("item id, title, quantity, currency, unit price and totals all come from the view, never the snapshot", () => {
+    const id = encodeReapCheckoutId(SNAP);
+    const out = mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: VIEW, now: NOW, env: {} });
+    assert.equal(out.currency, "CAD");
+    assert.deepEqual(out.line_items, [{
+      id: "li_1",
+      item: { id: "prod::m_other::shopify::2002", title: "Backend Name", price: 999 },
+      quantity: 2,
+      totals: [{ type: "subtotal", amount: 1998 }, { type: "total", amount: 1998 }],
+    }]);
+    assert.deepEqual(out.totals.map((t) => [t.type, t.amount]), [["subtotal", 1998], ["total", 2222]]);
+    assert.equal(JSON.stringify(out).includes("ord_should_not_leak"), false, "an order reference is only published on completed");
+  });
+  test("a view missing any displayed field is NOT filled from the snapshot — it is not the documented shape", () => {
+    const id = encodeReapCheckoutId(SNAP);
+    for (const drop of [
+      (v) => { delete v.product_key; }, (v) => { delete v.quantity; }, (v) => { delete v.totals.currency; },
+      (v) => { delete v.totals.our_price_minor; }, (v) => { delete v.totals; }, (v) => { v.quantity = 0; },
+    ]) {
+      const v = structuredClone(VIEW); drop(v);
+      assert.equal(mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: v, now: NOW, env: {} }), null);
+    }
+  });
+  test("an unknown but well-formed state is `incomplete`, named, and reported once to the caller", () => {
+    const seen = [];
+    const out = mapReapPurchaseToCheckout({ id: encodeReapCheckoutId(SNAP), snapshot: SNAP, view: { ...VIEW, state: "partner_review" }, now: NOW, env: {}, onUnrecognisedState: (s) => seen.push(s) });
+    assert.equal(out.status, "incomplete");
+    assert.ok(out.messages.some((m) => m.code === "reap.state_unrecognised"));
+    assert.ok(out.messages.some((m) => m.code === "reap.poll_after_seconds" && m.content === "45"));
+    assert.deepEqual(seen, ["partner_review"]);
+  });
+  test("terminal reasons: uppercase backend codes are shown lowercased; unsafe ones are not echoed", () => {
+    const id = encodeReapCheckoutId(SNAP);
+    const reason = (r) => mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: { ...VIEW, state: "failed", last_error_code: r }, now: NOW, env: {} })
+      .messages.find((m) => m.code === "reap.purchase_failed").content;
+    assert.match(reason("ENROLLMENT_NOT_ACTIVE"), /Reason: enrollment_not_active\./);
+    assert.match(reason("AGENTIC_QUOTE_EXPIRED"), /Reason: agentic_quote_expired\./);
+    assert.match(reason("options:sole_label_differs:size"), /Reason: options:sole_label_differs:size\./);
+    assert.doesNotMatch(reason("buyer ada@example.test said <no>"), /Reason:/);
+  });
+});
+
 describe("hosted url", () => {
   test("https, an allowlisted host (exact or dot-suffix), default port, unexpired, and intact through the money filter", () => {
     assert.equal(vetHostedUrl("https://pay.prava.space/checkout/chk_1", "2099-01-01T00:00:00+00:00", NOW), "https://pay.prava.space/checkout/chk_1");
-    assert.equal(vetHostedUrl("https://prava.space/x", undefined, NOW), "https://prava.space/x");
-    assert.equal(vetHostedUrl("https://api.reap.global/x", null, NOW), "https://api.reap.global/x");
+    const LATER = "2099-01-01T00:00:00+00:00";
+    assert.equal(vetHostedUrl("https://prava.space/x", LATER, NOW), "https://prava.space/x");
+    assert.equal(vetHostedUrl("https://api.reap.global/x", LATER, NOW), "https://api.reap.global/x");
+    // ONLY with a present, future expiry.
+    for (const exp of [undefined, null, "", 1893456000000]) assert.equal(vetHostedUrl("https://pay.prava.space/x", exp, NOW), null, `expiry ${exp}`);
     for (const bad of [
       "http://pay.prava.space/x", "https://evilprava.space/x", "https://pay.prava.space.evil.example/x",
       "https://user:pw@pay.prava.space/x", "https://pay.prava.space:8443/x", "javascript:alert(1)", "not a url",
       "https://pay.prava.space/x?token=abc", "https://pay.prava.space/x?code=abc", "https://pay.prava.space/a b", "",
     ]) {
-      assert.equal(vetHostedUrl(bad, undefined, NOW), null, bad);
+      assert.equal(vetHostedUrl(bad, "2099-01-01T00:00:00+00:00", NOW), null, bad);
     }
     assert.equal(vetHostedUrl("https://pay.prava.space/x", "2026-09-23T11:59:59+00:00", NOW), null, "expired");
     assert.equal(vetHostedUrl("https://pay.prava.space/x", "garbage", NOW), null, "unparseable expiry");
@@ -147,32 +201,41 @@ describe("wire readers", () => {
   });
   const DEST = { first_name: "Ada", last_name: "Lovelace", phone_number: "+15550100", street_address: "900 Brannan St", address_locality: "San Francisco", postal_code: "94103", address_country: "us" };
 
-  test("consent_version: a 1..32 printable-ASCII string, trimmed; anything else is absent", () => {
-    assert.equal(reapConsentVersion(args({ consent_version: " reap-agentic-v1 " })), "reap-agentic-v1");
-    for (const v of [undefined, null, 7, true, {}, [], "", "  ", "x".repeat(33), "v1\u0007", "v\u00a01", "v\u20281", "版本"]) {
-      assert.equal(reapConsentVersion(args({ consent_version: v })), null, JSON.stringify(v));
+  test("consent_version: any string is returned VERBATIM (the backend owns the validator); a non-string is absent", () => {
+    for (const v of [" Reap-Agentic-V1 ", "v\u00a01", "版本", "", "  "]) {
+      assert.equal(reapConsentVersion(args({ consent_version: v })), v, JSON.stringify(v));
     }
-    assert.equal(reapConsentVersion({}), null);
+    for (const v of [undefined, null, 7, true, {}, []]) assert.equal(reapConsentVersion(args({ consent_version: v })), undefined, JSON.stringify(v));
+    assert.equal(reapConsentVersion({}), undefined);
   });
 
-  test("shipping address: Reap field names; phone falls back to buyer.phone_number; missing surname/phone -> null", () => {
+  test("shipping address: Reap field names, WHATEVER arrived (the backend judges completeness); phone falls back to buyer.phone_number", () => {
     assert.deepEqual(reapShippingAddress(args({}, DEST)), {
-      firstName: "Ada", lastName: "Lovelace", phone: "+15550100", addressLine1: "900 Brannan St", city: "San Francisco", postalCode: "94103", country: "US",
+      firstName: "Ada", lastName: "Lovelace", phone: "+15550100", addressLine1: "900 Brannan St", city: "San Francisco", postalCode: "94103", country: "us",
     });
     assert.equal(reapShippingAddress(args({ phone_number: "+15550199" }, { ...DEST, phone_number: undefined })).phone, "+15550199");
-    assert.equal(reapShippingAddress(args({}, { ...DEST, phone_number: undefined })), null);
-    assert.equal(reapShippingAddress(args({}, { ...DEST, last_name: undefined })), null);
-    assert.equal(reapShippingAddress(args({}, { ...DEST, address_country: "USA" })), null);
-    assert.equal(reapShippingAddress(args({}, undefined)), null);
+    assert.deepEqual(Object.keys(reapShippingAddress(args({}, { ...DEST, phone_number: undefined, last_name: undefined }))).sort(),
+      ["addressLine1", "city", "country", "firstName", "postalCode"]);
+    assert.equal(reapShippingAddress(args({}, undefined)), undefined);
   });
 
-  test("merchant domain: an explicit field first, else the storefront host without www; never a non-hostname", () => {
+  test("missing buyer fields: named by their UCP paths, field names only", () => {
+    const D = "checkout.fulfillment.methods[0].destinations[0]";
+    assert.deepEqual(reapMissingBuyerFields(args({}, DEST), "a@b.test"), []);
+    assert.deepEqual(reapMissingBuyerFields(args({}, { ...DEST, last_name: undefined, phone_number: undefined }), "a@b.test"), [`${D}.last_name`, `${D}.phone_number`]);
+    assert.deepEqual(reapMissingBuyerFields(args({ phone_number: "+1" }, { ...DEST, phone_number: undefined }), null), ["checkout.buyer.email"]);
+    assert.deepEqual(reapMissingBuyerFields(args({}, undefined), "a@b.test"), [D]);
+  });
+
+  test("merchant domain: AS OBSERVED, lowercased only — no `www.` stripped anywhere; never a non-hostname", () => {
     assert.equal(reapMerchantDomain({ source_domain: "Brand.Example" }, "https://www.other.example/p"), "brand.example");
-    assert.equal(reapMerchantDomain({}, "https://www.brand.example/products/x?y=1"), "brand.example");
+    assert.equal(reapMerchantDomain({ source_domain: "www.Brand.com" }, null), "www.brand.com", "explicit field keeps its www.");
+    assert.equal(reapMerchantDomain({}, "https://www.brand.example/products/x?y=1"), "www.brand.example", "the URL host keeps its www.");
+    assert.equal(reapMerchantDomain({}, "https://WWW.Brand.Example/p"), "www.brand.example");
     assert.equal(reapMerchantDomain({ canonical_url: "https://shop.brand.example/p" }, null), "shop.brand.example");
     assert.equal(reapMerchantDomain({ source_domain: "brand.example/../x" }, null), null);
     // Pivota's own hosts are never the merchant: an attribution redirect or the canonical PDP is skipped.
-    assert.equal(reapMerchantDomain({ canonical_url: "https://agent.pivota.cc/products/sig_a", url: "https://www.brand.example/p" }, "https://agent.pivota.cc/r?token=a.b"), "brand.example");
+    assert.equal(reapMerchantDomain({ canonical_url: "https://agent.pivota.cc/products/sig_a", url: "https://www.brand.example/p" }, "https://agent.pivota.cc/r?token=a.b"), "www.brand.example");
     assert.equal(reapMerchantDomain({ destination_url: "https://tracking.example/out" }, null), null, "destination_url is never read");
     assert.equal(reapMerchantDomain({}, null), null);
   });

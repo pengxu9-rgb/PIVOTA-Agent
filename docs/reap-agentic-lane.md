@@ -9,8 +9,12 @@ The backend half is pivota-backend's `docs/reap_agentic_routes.md` (the wire, by
 door, and the contract for the buyer agent (Minds).
 
 **It ships dark.** `REAP_AGENTIC_LANE_ENABLED` is unset by default and the backend rail
-(`REAP_AGENTIC_ENABLED`) is off in production. With the gateway switch off the UCP door is
-byte-identical to the door without this lane and makes no backend call (pinned by snapshot).
+(`REAP_AGENTIC_ENABLED`) is off in production. With the gateway switch off, every UCP **tool
+response** is byte-identical to the door without this lane and no backend call is made (pinned by
+snapshot). **`tools/list` is not byte-identical, whatever the switch says:** the `create_checkout` /
+`update_checkout` `buyer` schema carries the optional `consent_version` member (`maxLength: 32`,
+enforced by the argument adapter — a longer or non-string value is refused
+`ucp_consent_version_invalid`), and the `create_checkout` description mentions the Reap route.
 
 ---
 
@@ -59,23 +63,36 @@ All of these, otherwise the lane is skipped silently (logged with a code) and th
 - the gateway switch `REAP_AGENTIC_LANE_ENABLED` is on;
 - the call is on the **UCP** dialect (`/ucp/mcp`) with a verified buyer + session (the door's
   existing `USER_AUTH_REQUIRED` rule runs first), and the request carries BOTH an agent API key and
-  an `X-Agent-User-JWT` (the backend rail's two credentials — an MCP-OAuth caller has neither, so
-  it never enters the lane);
+  an `X-Agent-User-JWT` (the backend rail's two credentials). A caller without them — an MCP-OAuth
+  caller, or one sending no user token — skips the lane silently (logged once per process as
+  `no_caller_credentials`) and gets exactly today's answer;
 - the cart has **exactly one line**, quantity 1–10;
 - the row is **not native** (§2 step 1), carries our catalog `product_key`, is a **Shopify** row
   (explicit `platform`, else the `prod::<merchant>::shopify::<id>` key), has **at most one real
   variant** (a UCP line item cannot name a variant, and the backend refuses a multi-variant product
   without one), is priced, and has a merchant domain (an explicit field, else the storefront host;
-  never a Pivota host);
+  never a Pivota host — sent **as observed, lowercased only**: no `www.` is stripped, because the
+  backend canonicalises both sides at lookup);
 - the merchant-purchasability gate did not decline it — consulted **exactly as the escalation lane
   consults it**: same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`), same singleton client, same
   fail-open rule, same market source (`checkout.context.address_country`), same budget clamp;
-- then **consent** (§5.1 — the one refusal on create), a buyer email (attested wins), and a
-  complete Reap address (first and last name, phone, street, city, country).
+- then the lane **POSTs, with whatever consent and buyer details the call carried** (attested email
+  wins over the body's). The door never refuses on its own judgement: only the rail knows whether
+  it is armed and whether this merchant is eligible, and it answers those before it looks at the
+  buyer block.
+
+What the backend answers decides:
+
+| backend answer | the door |
+|---|---|
+| `202` | `incomplete` checkout, id `reap_…` |
+| `400 consent_required` | **refused** `QUOTE_REQUIRED` / `reap_consent_required` — the rail is armed and the row eligible, so "send the consent" is true |
+| `400 invalid_request` / `400 invalid_address` | **refused** `QUOTE_REQUIRED` / `reap_buyer_details_required`, `detail.required_fields` naming the missing UCP fields |
+| `404 not_available_on_this_rail`, `409` (eligibility, `row_*`, `idempotency_conflict`), `401`, any other `400` (`currency_unsupported`), `5xx`, timeout | fall through silently (code logged) |
 
 The backend is authoritative for everything it checks again (eligibility allowlist per market,
 Shopify, the price from our catalog and the merchant's own offer, the market's currency, the
-purchasability fact). Its refusal falls through.
+purchasability fact).
 
 ## 4. Status mapping (`get_checkout`)
 
@@ -89,20 +106,33 @@ purchasability fact). Its refusal falls through.
 | `completed` | `completed` | — (order reference in `messages`) |
 | `refused` / `failed` / `expired` | `canceled` | — (named reason in `messages`) |
 
-- A buyer-action state whose page is absent, expired, not on Reap's hosts (`prava.space`,
-  `reap.global`; https; default port; no userinfo), or would not survive the money filter intact is
-  answered `incomplete` with `messages[].code = "reap.hosted_page_not_ready"` — never
-  `requires_escalation` without a link, and **a link is never forwarded for any other state**.
-- Backend **unreachable / 5xx / timeout / malformed** body → `incomplete` with
-  `reap.purchase_state_unavailable` and a retry hint. Never a terminal status on a transport error.
-- Backend **404** (unknown, another buyer's purchase, or the rail dark) → exactly the answer any
-  unknown checkout id gets (`QUOTE_NOT_FOUND`), because the kernel path gives it.
+| a state this door does not know yet | `incomplete` | — (`reap.state_unrecognised`; logged once) |
+
+- A link is forwarded ONLY with a **present, future `hosted_url_expires_at`**, on Reap's hosts
+  (`prava.space`, `reap.global`; https; default port; no userinfo), intact through the money filter.
+  A buyer-action state without one is answered `incomplete` with
+  `messages[].code = "reap.hosted_page_not_ready"` — never `requires_escalation` without a link —
+  and **a link is never forwarded for any other state**.
+- **Only a 404 whose `detail.error` is `purchase_not_found`** (unknown, or another buyer's — the
+  backend answers both alike) is an unknown id: exactly the answer any unknown checkout id gets
+  (`QUOTE_NOT_FOUND`), because the kernel path gives it (it is handed `reap_<purchase id>`, not the
+  line snapshot).
+- **Everything else that is not a 2xx view** — transport error, timeout, 5xx, 401/403/429/400,
+  404 `not_available_on_this_rail` (the dial turned off mid-purchase), a malformed body → `incomplete`
+  with `reap.view_unavailable` and a retry hint. Never terminal and never "unknown": either would
+  invite a re-create, i.e. a second purchase.
 
 Every lane answer is the same UCP checkout object the escalation lane builds
 (`buildUcpCheckoutEnvelope`): `ucp.payment_handlers: {}`, one `li_1` line item, one `subtotal` and one
 `total`, the legal `links`, `expires_at`. Amounts are ISO minor units. The subtotal is at Pivota's
 catalog price; the total is the quoted total once the merchant has priced it and the charged total on
 `completed`.
+
+**Where each displayed field comes from.** On a successful read, EVERY one — `line_items[0].item.id`
+(our catalog `product_key`), title, quantity, currency, unit price, totals — comes from the backend's
+view; a view missing any of them is treated as a failed read. The checkout id's snapshot is used only
+to check the view is for this purchase: the id travels through the caller, so it is not trusted. On a
+failed read the snapshot is the only source, and the answer says so (`reap.view_unavailable`).
 
 ## 5. The contract for Minds
 
@@ -127,9 +157,11 @@ claim (`sid` / `session_id`). The Reap lane needs three things a storefront chec
 }
 ```
 
-1. **`checkout.buyer.consent_version`** — NEW, optional on the wire, **required for this lane**. The
-   version tag of the Pivota terms the buyer accepted for a purchase fulfilled through Reap: 1–32
-   printable ASCII characters. Show the buyer the terms first. There was no consent field on the
+1. **`checkout.buyer.consent_version`** — NEW, optional on the wire, **required by the rail**. The
+   version tag of the Pivota terms the buyer accepted for a purchase fulfilled through Reap: a string
+   of at most 32 characters (the argument adapter refuses anything else as
+   `ucp_consent_version_invalid`), **forwarded verbatim** — the backend's single consent validator
+   judges its content. Show the buyer the terms first. There was no consent field on the
    wire before this; it rides in the UCP `buyer` object (which the spec leaves open), not in a new
    argument. It is **not** the spec's `dev.ucp.shopping.buyer_consent` extension (privacy booleans,
    which Pivota does not advertise). The backend stores it against the purchase for ever.
@@ -171,21 +203,24 @@ Then poll `get_checkout { meta, id }`:
 
 | where | code / reason | meaning | what to do |
 |---|---|---|---|
-| `create_checkout` | `QUOTE_REQUIRED` / `reap_consent_required` (`detail.required_fields: ["checkout.buyer.consent_version"]`) | the item can be bought through Reap, but no usable consent tag was sent | show the buyer the terms; resend with the tag |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_consent_version_invalid` | `consent_version` is not a string, or longer than 32 characters | fix the value |
+| `create_checkout` | `QUOTE_REQUIRED` / `reap_consent_required` (`detail.required_fields: ["checkout.buyer.consent_version"]`) | the rail is armed, the item is eligible, and the backend found no usable consent tag | show the buyer the terms; resend with the tag |
+| `create_checkout` | `QUOTE_REQUIRED` / `reap_buyer_details_required` (`detail.required_fields`: the missing UCP paths) | the rail needs an email and a destination with first + last name, phone, street, city, country | ask the user; resend |
 | `update_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_update_refused` | a Reap checkout cannot be changed | create a new checkout |
 | `complete_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_complete_refused` | completion is on Reap's page | poll `get_checkout`, open `continue_url` |
 | `get_checkout` | `QUOTE_NOT_FOUND` | unknown id (or another buyer's) | — |
 
-Backend refusals on create (`merchant_not_eligible`, `row_not_found`, `row_unpriced`,
-`merchant_not_purchasable`, `not_available_on_this_rail`, `idempotency_conflict`, …) are **not**
-surfaced: the door falls through to the storefront escalation (or the kernel path) and logs the code.
+Every other backend refusal on create (`merchant_not_eligible`, `row_not_found`, `row_unpriced`,
+`merchant_not_purchasable`, `not_available_on_this_rail`, `idempotency_conflict`,
+`currency_unsupported`, …) is **not** surfaced: the door falls through to the storefront escalation
+(or the kernel path) and logs the code.
 
 ## 6. Budgets and failure modes
 
 | call | backend requests | budget | on failure |
 |---|---|---|---|
-| `create_checkout` | one `POST /agent/v2/commerce/reap/purchases` | ≤ 2 s | falls through to the next lane; a timed-out purchase may exist, sits at `resolving` with no card and expires on the backend clock, and a retry with the same idempotency-key replays it |
-| `get_checkout` | one `GET …/purchases/{id}` | ≤ 2 s | `incomplete` + retry hint (5xx, transport, timeout, malformed); unknown id (4xx) |
+| `create_checkout` | one `POST /agent/v2/commerce/reap/purchases` | ≤ 2 s | falls through to the next lane. **On a timeout the purchase may exist**: the backend poller carries it on to `needs_enrollment` (or, for an enrolled buyer, `awaiting_approval`) — a Reap page nobody was shown — and the backend sweep expires it. Nothing is charged: every charge needs the buyer's approval on that page. A retry of `create_checkout` with the same `idempotency-key` replays that purchase (answering its `reap_` checkout) instead of opening a second one |
+| `get_checkout` | one `GET …/purchases/{id}` | ≤ 2 s | unknown id ONLY for 404 `purchase_not_found`; everything else (5xx, transport, timeout, other 4xx, malformed) → `incomplete` + retry hint |
 
 The slow work (resolve + quote, 30–45 s; one quoting step up to ~170 s) is the backend poller's,
 off the request path — the edge resets a response whose first byte is later than ~13 s.
@@ -202,27 +237,73 @@ http_status}` — codes only.
 
 ## 7. Arming order — across both repos
 
-1. **Backend**: `REAP_AGENTIC_ENABLED=1` with Reap **production** credentials configured (the rail
-   answers 404 `not_available_on_this_rail` while either is missing — which this lane already treats
-   as "fall through"), and the `reap_agentic_eligibility` rows for the first merchants × markets
-   (runbook "Before arming" §2). If the purchasability gate is enforcing, those merchants need a
-   fresh positive fact (`docs/merchant-purchasability-gate.md` §6).
-2. **Verify on arming day** that `get_product` for an eligible row serves an `external_redirect_url`
-   (so the door classifies it non-native), a `product_key` of the form
-   `prod::<merchant>::shopify::<id>`, and a single variant — otherwise the lane is never entered for
-   it and the door keeps answering the storefront escalation.
-3. **Check the buyer token reaches the backend.** One `GET /agent/v2/commerce/reap/purchases`
-   with Minds' API key and a real Minds `X-Agent-User-JWT` must answer `200` (an empty list), not
-   `401`: the gateway verifies that token through its own issuer registry, but the rail verifies it
-   again on the backend, and a `401` there makes every create fall through silently.
-4. **Deploy the gateway.** It does **not** deploy on merge:
-   `infra/gcp/deploy_gateway.sh prod <sha>` (run from the pivota-backend repo), then
-   `npm run deploy:verify:production`.
-5. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway (an env change on Cloud Run = a new revision).
-   The UCP door itself must be on (`AGENT_CHECKOUT_STRICT=1`,
-   `AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED=1`).
-6. **Minds** sends `checkout.buyer.consent_version` (§5.1). Until it does, every eligible create is
-   refused `reap_consent_required` — which looks like a broken rail, so confirm it first.
+Each step is runnable; do them in order. The same order is appended to
+`docs/merchant-purchasability-gate.md` §6 (steps 10–14).
+
+1. **Backend**, on the `web` service (and the poller on the `worker`): `REAP_AGENTIC_ENABLED=1` with
+   Reap **production** credentials, and the `reap_agentic_eligibility` merchant rows for the first
+   merchants × markets — pivota-backend `docs/runbooks/reap_agentic_purchase.md`, "Before arming"
+   (the `INSERT INTO reap_agentic_eligibility …` block there). If the purchasability gate is
+   enforcing, those merchants also need a fresh `purchase` fact (`merchant-purchasability-gate.md`
+   §6). Until this step the rail answers 404 `not_available_on_this_rail`, which the lane treats as a
+   fall-through.
+2. **Pick the products to test and check the door will enter the lane for them.**
+   a. List candidate products (run from pivota-backend; the prod DB is VPC-only, so this goes through
+      the one-off job):
+      ```bash
+      bash scripts/ops/run_oneoff_job.sh -c "$(cat <<'PY'
+      import asyncio, os, asyncpg
+      async def main():
+          c = await asyncpg.connect(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://"))
+          rows = await c.fetch("""
+            SELECT e.merchant_domain, e.market_country, p.source_domain, p.product_key, p.pivota_signature_id
+              FROM reap_agentic_eligibility e
+              JOIN catalog_products p
+                ON regexp_replace(lower(p.source_domain), '^www[.]', '') = regexp_replace(e.merchant_domain, '^www[.]', '')
+             WHERE e.enabled AND e.product_key = '' AND p.platform = 'shopify'
+               AND p.suppressed_at IS NULL AND p.pivota_signature_id IS NOT NULL
+             ORDER BY e.merchant_domain LIMIT 20""")
+          for r in rows: print(dict(r))
+      asyncio.run(main())
+      PY
+      )"
+      ```
+   b. For each `pivota_signature_id` (`sig_…`) printed, read it the way the door reads it — the
+      gateway's own unscoped detail lane — with a Pivota test agent key (`ak_live_…`; the same key
+      `scripts/probe_strict_checkout_canary.mjs` reads as `PROBE_KEY`):
+      ```bash
+      curl -sS https://gateway.pivota.cc/agent/shop/v1/invoke \
+        -H "X-API-Key: $PROBE_KEY" -H 'Content-Type: application/json' \
+        -d '{"operation":"get_pdp_v2","payload":{"product_ref":{"product_id":"sig_REPLACE_ME"},"include":["product_overview"]}}' \
+      | jq '.modules[] | select(.type=="canonical") | .data.pdp_payload.product
+            | {product_id, external_redirect_url, purchase_route, product_key, purchase_grain, variants: (.variants | length)}'
+      ```
+      **Pass** = `external_redirect_url` is an `https://` storefront URL, `purchase_route` is not
+      `internal_checkout`, `product_key` is the row's `prod::<merchant>::shopify::<id>`, and
+      `variants` is ≤ 1 (or `purchase_grain` is `product`). **Any fail** = the door never enters the
+      lane for that product and keeps answering the storefront escalation; do not arm for it.
+3. **Check the buyer token reaches the backend.** Minds runs (or hands over one Minds test user JWT
+   for) this call, with Minds' own agent API key:
+   ```bash
+   curl -sS -o /dev/stdout -w '\nHTTP %{http_code}\n' 'https://api.pivota.cc/agent/v2/commerce/reap/purchases?limit=1' \
+     -H "X-API-Key: $MINDS_AGENT_API_KEY" -H "X-Agent-User-JWT: $MINDS_TEST_USER_JWT"
+   ```
+   **Pass** = `HTTP 200` with `{"purchases": [...], "limit": 1}`. `401` means the backend does not
+   accept Minds' user token (the gateway verifies it through its own issuer registry; the rail
+   verifies it again) — every create would fall through silently; fix before continuing. `404
+   not_available_on_this_rail` means step 1 is not done.
+4. **Deploy the gateway.** It does **not** deploy on merge: from the pivota-backend repo,
+   `infra/gcp/deploy_gateway.sh prod <sha>`, then `npm run deploy:verify:production` here. The UCP
+   door itself must be on (`AGENT_CHECKOUT_STRICT=1`, `AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED=1`).
+5. **Minds sends `checkout.buyer.consent_version`** (§5.1) — BEFORE the switch. With the switch off
+   the door accepts and ignores it (≤ 32 characters), so this ships on Minds' side with no effect.
+   Confirm with one of Minds' `create_checkout` request bodies. (With the switch on and no consent,
+   an eligible create is refused `reap_consent_required` by the armed rail — a true message, but a
+   refusal where the buyer got a storefront link yesterday.)
+6. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway (an env change on Cloud Run = a new revision).
+7. **Verify the first purchase** carried consent — the runbook's census:
+   `SELECT consent_version, COUNT(*), MAX(consented_at) FROM reap_agentic_purchases GROUP BY 1;`
+   (via `run_oneoff_job.sh` as in step 2a). A `NULL` group after arming is a defect.
 
 **Rolling back**: unset `REAP_AGENTIC_LANE_ENABLED` first — the door returns to the storefront
 escalation / kernel answers at once. Purchases already open keep progressing on the backend; with the

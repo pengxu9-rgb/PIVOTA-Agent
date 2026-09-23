@@ -17,11 +17,13 @@
  *   accepted        a 2xx whose body carries what the contract says it carries
  *   refused         a 4xx the backend wrote (`detail.error` — the reason code the contract documents),
  *                   including 404 `not_available_on_this_rail` while the backend dial is off
- *   not_found       GET only: a 4xx — the purchase is not this buyer's, does not exist, or the rail is dark.
- *                   The backend answers 404 for another buyer's id ON PURPOSE, so it cannot be probed; the
- *                   door answers it the way it answers any unknown checkout id
- *   unavailable     transport error, timeout, 5xx, or a 2xx body that is not the documented shape.
- *                   NEVER a terminal statement about the purchase: the purchase may exist and be progressing
+ *   not_found       GET only, and ONLY a 404 whose `detail.error` is `purchase_not_found`: the purchase does not
+ *                   exist or is not this buyer's (the backend answers both alike ON PURPOSE, so an id cannot be
+ *                   probed). The door answers it the way it answers any unknown checkout id
+ *   unavailable     transport error, timeout, 5xx, a 2xx body that is not the documented shape, and on GET every
+ *                   OTHER 4xx — 401/403/429/400, and 404 `not_available_on_this_rail` (the dial turned off
+ *                   mid-purchase). NEVER a terminal or "unknown" statement about the purchase: it may exist and
+ *                   be progressing, and "unknown" would invite a re-create, i.e. a second purchase
  *   unauthenticated the caller's request context carried no agent API key or no buyer user token. No request
  *                   is made: the backend would 401 it, and the INTERNAL key is never substituted (see AUTH)
  *
@@ -170,6 +172,11 @@ function createReapAgenticPurchaseClient(deps = {}) {
     }
   }
 
+  /** Does THIS request's context carry both credentials the rail needs? Makes no request. */
+  function hasCallerCredentials() {
+    return requestHeaders() !== null;
+  }
+
   /**
    * Open a purchase. `body` is the backend's request shape, already built by the lane; it is sent as-is and
    * never logged.
@@ -241,17 +248,21 @@ function createReapAgenticPurchaseClient(deps = {}) {
       log('warn', { route: 'get', outcome: KIND.unavailable, code: 'malformed', http_status: out.status });
       return { kind: KIND.unavailable, code: 'malformed' };
     }
+    if (out.status === 404 && reasonCodeOf(out.body) === 'purchase_not_found') {
+      log('info', { route: 'get', outcome: KIND.notFound, code: 'purchase_not_found', http_status: 404 });
+      return { kind: KIND.notFound, code: 'purchase_not_found', http_status: 404 };
+    }
     if (out.status >= 400 && out.status < 500) {
       const code = reasonCodeOf(out.body) || `http_${out.status}`;
-      log('info', { route: 'get', outcome: KIND.notFound, code, http_status: out.status });
-      return { kind: KIND.notFound, code, http_status: out.status };
+      log('warn', { route: 'get', outcome: KIND.unavailable, code, http_status: out.status });
+      return { kind: KIND.unavailable, code, http_status: out.status };
     }
     const code = Number.isFinite(out.status) && out.status >= 500 ? 'http_5xx' : 'http_unexpected';
     log('warn', { route: 'get', outcome: KIND.unavailable, code, http_status: out.status });
     return { kind: KIND.unavailable, code };
   }
 
-  return { startPurchase, getPurchase, timeoutMs };
+  return { startPurchase, getPurchase, hasCallerCredentials, timeoutMs };
 }
 
 module.exports = {

@@ -340,18 +340,24 @@ market source — before it opens a purchase. Its own arming, continuing the ord
     `docs/runbooks/reap_agentic_purchase.md`, "Before arming"). With `ENFORCE` on (step 6) those
     merchants also need a fresh `purchase` fact, or the backend refuses `merchant_not_purchasable`
     (which the door treats as a fall-through, not an error).
-11. **Deploy the gateway** — manually, as §7 says: `infra/gcp/deploy_gateway.sh prod <sha>` from the
+11. **Check the products and the buyer token** — `docs/reap-agentic-lane.md` §7 steps 2 and 3 (the
+    exact commands are there): the eligible rows must read as non-native Shopify single-variant rows
+    through the gateway, and one backend `GET /agent/v2/commerce/reap/purchases` with Minds' key and
+    user JWT must answer 200.
+12. **Deploy the gateway** — manually, as §7 says: `infra/gcp/deploy_gateway.sh prod <sha>` from the
     pivota-backend repo, then `npm run deploy:verify:production`. It never deploys on merge.
-12. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway. Only now does an eligible UCP
-    `create_checkout` open a Reap purchase; until then the door is byte-identical.
+13. **Minds sends `checkout.buyer.consent_version`** — BEFORE the switch. The door accepts and
+    ignores it while the switch is off, so this is safe to ship first.
+14. **`REAP_AGENTIC_LANE_ENABLED=1`** on the gateway. Only now does an eligible UCP
+    `create_checkout` open a Reap purchase; until then every tool response is byte-identical.
 
-Either half alone is inert — the backend on with the gateway switch off opens nothing, and the
-gateway switch on in front of a dark rail gets 404 `not_available_on_this_rail` on every POST and
-falls through — so the order is about the FIRST eligible create: backend first means it transacts
-the moment the gateway switch flips, instead of silently falling through while someone wonders why.
-Confirm Minds sends `checkout.buyer.consent_version` before step 12, or every eligible create is
-refused `reap_consent_required`. **Rolling back**: unset `REAP_AGENTIC_LANE_ENABLED`
-first; it is the narrowest switch and touches nothing on the backend.
+Backend before gateway: the gateway switch in front of a dark rail is harmless (every POST answers
+404 `not_available_on_this_rail` and the door falls through), but it transacts nothing; backend first
+means the first eligible create transacts the moment the switch flips. Consent before the switch:
+once the rail is armed and the switch is on, an eligible create without consent is refused
+`reap_consent_required` — true, but a refusal where the buyer got a storefront link before.
+**Rolling back**: unset `REAP_AGENTIC_LANE_ENABLED` first; it is the narrowest switch and touches
+nothing on the backend.
 
 ---
 

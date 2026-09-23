@@ -257,6 +257,9 @@ const LINE_ITEMS_SCHEMA = {
   description: "Required. The lines to price; the id is NESTED under `item`, per the UCP wire shape.",
 };
 
+/** The backend column is VARCHAR(32); the schema and the mapper both hold the tag to it. */
+const CONSENT_VERSION_MAX_LENGTH = 32;
+
 const BUYER_SCHEMA = {
   type: "object",
   // LIVE-VERIFIED: the merchant declares `buyer` with additionalProperties:true and the members
@@ -284,11 +287,12 @@ const BUYER_SCHEMA = {
     // reaches the canonical quote, so it is listed in UCP_ACCEPTED_BUT_UNMAPPED below.
     consent_version: {
       type: "string",
-      maxLength: 32,
+      maxLength: CONSENT_VERSION_MAX_LENGTH,
+      examples: ["reap-agentic-v1"],
       description:
         "Optional. The version tag of the Pivota terms the buyer accepted for a purchase fulfilled through the"
-        + " Reap payment partner (1-32 printable ASCII characters, e.g. \"reap-agentic-v1\"). Required only when"
-        + " the checkout is fulfilled through Reap: such a checkout is refused with reason"
+        + " Reap payment partner (at most 32 characters, e.g. \"reap-agentic-v1\"), forwarded verbatim. Needed"
+        + " only when the checkout is fulfilled through Reap: such a checkout is refused with reason"
         + " `reap_consent_required` until it is sent. Show the buyer the terms before sending it.",
     },
   },
@@ -1077,6 +1081,18 @@ function mapQuote(checkout, { update } = {}) {
     // No rejectUnknown here: the live schema declares `buyer` with additionalProperties:true, so refusing an
     // unlisted member would be stricter than the spec. Only `email` is READ — `phone_number` and anything
     // else the platform sends are inert, because the canonical quote has nowhere truthful to put them.
+    // `consent_version` (a Pivota extension member, see BUYER_SCHEMA) is NOT mapped into the quote — the Reap
+    // lane reads it from the raw body and forwards it VERBATIM — but its advertised schema is ENFORCED here, like
+    // every other field this door publishes: a string of at most 32 characters (code points, as the backend's
+    // Python `len` counts them). Only the shape is checked; the
+    // content is the backend's single consent validator's to judge, so nothing is trimmed or filtered here.
+    const consent = own(buyer, "consent_version");
+    if (consent !== undefined && (typeof consent !== "string" || [...consent].length > CONSENT_VERSION_MAX_LENGTH)) {
+      throw ucpRefusal(CHECKOUT_REFUSAL_CODE, "ucp_consent_version_invalid", [
+        `\`checkout.buyer.consent_version\` must be a string of at most ${CONSENT_VERSION_MAX_LENGTH} characters: the`,
+        "version tag of the terms the buyer accepted (e.g. \"reap-agentic-v1\").",
+      ].join(" "), { rejected_field: "checkout.buyer.consent_version", max_length: CONSENT_VERSION_MAX_LENGTH });
+    }
     const email = own(buyer, "email");
     // Copied as a CANDIDATE only. buyerIntake `resolveBuyerEmail` reads the attested address first, so this
     // can fill a gap and can never override the verified buyer's own credential.
