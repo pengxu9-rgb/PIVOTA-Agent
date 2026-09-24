@@ -112,6 +112,12 @@ test('no secret configured means no header, never an unsigned one', () => {
   assert.deepEqual(issuingAgentAssertionHeaders({ op: 'offers.resolve', invokeContext: VERIFIED_AGENT, env }), {});
 });
 
+test('a long secret signs rather than silently disabling the header', () => {
+  const env = { ...process.env, ISSUING_AGENT_ASSERTION_SECRET: 'x'.repeat(2048) };
+  const headers = issuingAgentAssertionHeaders({ op: 'offers.resolve', invokeContext: VERIFIED_AGENT, env });
+  assert.equal(verify(headers[ISSUING_AGENT_ASSERTION_HEADER], 'x'.repeat(2048)).sub, 'agent_minds');
+});
+
 test('only allowlisted operations are signed', () => {
   for (const op of ['get_product_detail', 'create_order', 'find_products', '', undefined]) {
     assert.deepEqual(issuingAgentAssertionHeaders({ op, invokeContext: VERIFIED_AGENT }), {}, String(op));

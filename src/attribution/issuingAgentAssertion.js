@@ -22,7 +22,8 @@
 //
 // `op` binds the assertion to one operation and `ts` (unix seconds) to a short window, so a
 // captured header cannot be replayed onto another operation or much later. The backend verifies,
-// maps an OAuth client to its registered agent, and only then trusts the subject.
+// maps an OAuth client to an agent only through its VERIFIED redirect origin (the client_id alone
+// is a random per-install id), and only then trusts the subject.
 //
 // What is NEVER asserted:
 //   - a cached read lane: its results are shared across callers and must stay caller-independent
@@ -44,10 +45,11 @@ const ISSUING_OPS = Object.freeze(new Set(['offers.resolve']));
 
 // Identities that name a service or an operator, never an agent (see adoptInvokeEmergencyAuthFallback
 // and resolveConfiguredInvokeAuthFastPath in src/server.js, and the backend's internal-trusted keys).
+// Defence in depth only: the backend accepts an asserted agent only if it is an ACTIVE, non-service
+// agents row, so a source missing here still cannot credit a service identity.
 const NON_AGENT_AUTH_SOURCES = Object.freeze(new Set([
   'configured_service_key',
   'emergency_fallback',
-  'service_fallback',
   'internal_trusted_key',
 ]));
 
@@ -63,7 +65,9 @@ function b64url(buf) {
 }
 
 function readSecret(env = process.env) {
-  return text(env.ISSUING_AGENT_ASSERTION_SECRET);
+  // No length cap: the backend verifier has none, and a long secret must sign, not silently disable.
+  const s = typeof env.ISSUING_AGENT_ASSERTION_SECRET === 'string' ? env.ISSUING_AGENT_ASSERTION_SECRET.trim() : '';
+  return s;
 }
 
 function excludedAgentIds(env = process.env) {
@@ -132,7 +136,11 @@ function issuingAgentAssertionHeaders({ op, invokeContext, env = process.env, no
   }
 }
 
-/** The OAuth client a verified MCP access token names: RFC 9068 `client_id`, else OIDC `azp`. */
+/**
+ * The OAuth client a verified MCP access token names: RFC 9068 `client_id` (what Pivota's authorization
+ * server stamps), else OIDC `azp`. The backend credits it only through the client's verified redirect
+ * origin, never by this id alone (pivota-backend services/issuing_agent_assertion.py).
+ */
 function oauthClientFromClaims(claims) {
   const c = claims && typeof claims === 'object' ? claims : {};
   return {
