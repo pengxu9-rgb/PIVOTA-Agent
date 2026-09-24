@@ -24,6 +24,10 @@ const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto'
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const { installInvokeEgress } = require('./invokeEgress');
+const {
+  issuingAgentAssertionHeaders,
+  oauthClientFromClaims,
+} = require('./attribution/issuingAgentAssertion');
 const { isExternalSeedRow } = require('./externalSeedIdentity');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
@@ -31306,6 +31310,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         // upstream must not be able to tell callers apart on them. See forwardBuyerRef.
         forwardBuyerRef: !COMMERCE_CACHED_READ_OPS.has(op),
       }),
+      // The agent THIS gateway verified, signed, for the ops whose backend handler issues click ids. The
+      // upstream key above is always the gateway's own, so without this the backend can name no MCP agent.
+      // Empty for every cached read lane: ISSUING_OPS holds no cached op (issuingAgentAssertion.js).
+      ...(COMMERCE_CACHED_READ_OPS.has(op) ? {} : issuingAgentAssertionHeaders({ op, invokeContext })),
       ...headers,
     },
     data: requestBody,
@@ -31693,6 +31701,10 @@ function buildExternalInvokeContext(req) {
     auth_degraded: req?.invokeAuth?.auth_degraded === true,
     auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
     introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
+    // The OAuth client an MCP access token was issued to (mcp_oauth only). Read by the issuing-agent
+    // assertion, never forwarded as a header of its own.
+    oauth_issuer: req?.invokeAuth?.oauth_issuer || null,
+    oauth_client_id: req?.invokeAuth?.oauth_client_id || null,
     agent_user_jwt: firstNonEmptyString(
       req?.header('X-Agent-User-JWT'),
       req?.header('x-agent-user-jwt'),
@@ -32799,6 +32811,9 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
         raw_token: null,
         cache_hit: false,
         introspect_auth_source: null,
+        // Which OAuth client connected (Claude, ChatGPT, ...). The backend maps a REGISTERED client to its
+        // agent for link attribution; an unregistered one stays agent-less (issuingAgentAssertion.js).
+        ...oauthClientFromClaims(mcpOAuthOutcome.claims),
       };
       return runMcp();
     }
@@ -54415,6 +54430,8 @@ module.exports._debug = {
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.
   shouldPreferInternalInvokeUpstreamAuth,
   INVOKE_AUTH_CONTEXT,
+  // Exported so the issuing-agent assertion is asserted on the REAL upstream request (headers as sent).
+  invokeCommerceKernelRawUpstream,
   // Telemetry property: `metadata.route_trace.node_timings_ms` was read by the prod smoke and written
   // by nobody, so the latency column was structurally null and every latency question restarted from
   // Cloud Run logs. These three are exported so the emission is asserted end-to-end -- the collapse
