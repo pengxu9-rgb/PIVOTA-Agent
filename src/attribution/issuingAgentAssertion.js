@@ -22,8 +22,8 @@
 //
 // `op` binds the assertion to one operation and `ts` (unix seconds) to a short window, so a
 // captured header cannot be replayed onto another operation or much later. The backend verifies,
-// maps an OAuth client to an agent only through its VERIFIED redirect origin (the client_id alone
-// is a random per-install id), and only then trusts the subject.
+// credits an OAuth client only if it is a CONFIDENTIAL client Pivota provisioned for a partner (its
+// secret is checked at the token endpoint), and only then trusts the subject.
 //
 // What is NEVER asserted:
 //   - a cached read lane: its results are shared across callers and must stay caller-independent
@@ -138,8 +138,9 @@ function issuingAgentAssertionHeaders({ op, invokeContext, env = process.env, no
 
 /**
  * The OAuth client a verified MCP access token names: RFC 9068 `client_id` (what Pivota's authorization
- * server stamps), else OIDC `azp`. The backend credits it only through the client's verified redirect
- * origin, never by this id alone (pivota-backend services/issuing_agent_assertion.py).
+ * server stamps), else OIDC `azp`. The backend credits it only when it is a confidential client Pivota
+ * provisioned; a public (open-registration) client stays agent-less (pivota-backend
+ * services/issuing_agent_assertion.py).
  */
 function oauthClientFromClaims(claims) {
   const c = claims && typeof claims === 'object' ? claims : {};
