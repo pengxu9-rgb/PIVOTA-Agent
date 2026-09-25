@@ -530,9 +530,13 @@ test('awaiting_approval: expires_at is approval_deadline (the quote TTL), NOT th
   assert.notEqual(out.expires_at, new Date(Date.parse(LATER)).toISOString());
   const deadline = message(out, 'reap.approval_deadline');
   assert.ok(deadline, 'the deadline is a bare message a platform can read without parsing prose');
+  assert.equal(deadline.type, 'info');
   assert.equal(deadline.content, out.expires_at);
   assert.equal(deadline.path, '$.expires_at');
-  assert.match(message(out, 'reap.awaiting_approval').content, /before expires_at/);
+  const text = message(out, 'reap.awaiting_approval').content;
+  assert.match(text, /before expires_at/);
+  assert.doesNotMatch(text, /expires_at — the quote/, 'the prose must not assert the VALUE is the quote expiry: with an older backend it is the page expiry');
+  assert.match(text, /usually the merchant quote/);
   assertSpecCheckout(out);
 });
 
@@ -541,11 +545,42 @@ test('awaiting_approval: a PASSED approval_deadline hides the link even though t
   const out = await getCheckout(view('awaiting_approval', {
     totals: QUOTED, reap_quote_expires_at: EARLIER, approval_deadline: EARLIER, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
   }));
-  assert.equal(out.status, 'incomplete');
+  assert.equal(out.status, 'incomplete', 'not terminal: the backend poller closes the row, this door never invents a canceled');
   assert.equal(out.continue_url, undefined);
-  assert.ok(message(out, 'reap.hosted_page_not_ready'));
+  assert.equal(message(out, 'reap.hosted_page_not_ready'), undefined, '"page not available yet, poll again" would be false in both halves');
+  const passed = message(out, 'reap.approval_deadline_passed');
+  assert.ok(passed);
+  assert.equal(passed.type, 'warning');
+  assert.match(passed.content, /window closed before the buyer approved/);
+  assert.match(passed.content, /create a new checkout/);
+  assert.ok(passed.content.endsWith(`Closed at ${new Date(Date.parse(EARLIER)).toISOString()}.`), passed.content);
+  assert.equal(passed.content.includes(EARLIER), false, 'the raw backend text is never echoed, only the normalised instant');
   assert.equal(message(out, 'reap.approval_deadline'), undefined);
+  assert.ok(message(out, 'reap.poll_after_seconds'), 'still a non-terminal answer');
   assert.equal(JSON.stringify(out).includes('prava.space'), false, 'a link to a page that will not take the approval is not published');
+  assertSpecCheckout(out);
+});
+
+test('awaiting_approval: a missing link with NO deadline, or a live deadline, is still "page not ready" — the passed message needs a passed deadline', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const extra of [
+    { totals: QUOTED },
+    { totals: QUOTED, approval_deadline: SOON },
+    { totals: QUOTED, approval_deadline: EARLIER, hosted_url: 'http://pay.prava.space/checkout/1', hosted_url_expires_at: LATER },
+  ]) {
+    const out = await getCheckout(view('awaiting_approval', extra));
+    assert.equal(out.status, 'incomplete');
+    if (extra.approval_deadline === EARLIER) {
+      assert.ok(message(out, 'reap.approval_deadline_passed'), 'a passed deadline beside an unvouched link is still a passed deadline');
+    } else {
+      assert.ok(message(out, 'reap.hosted_page_not_ready'), JSON.stringify(extra));
+      assert.equal(message(out, 'reap.approval_deadline_passed'), undefined);
+    }
+  }
+  // needs_enrollment never carries an approval deadline, so it never says one passed.
+  const out = await getCheckout(view('needs_enrollment', { approval_deadline: EARLIER }));
+  assert.ok(message(out, 'reap.hosted_page_not_ready'));
+  assert.equal(message(out, 'reap.approval_deadline_passed'), undefined);
 });
 
 test('awaiting_approval: a backend that does not send approval_deadline falls back to hosted_url_expires_at', async (t) => {
@@ -590,8 +625,14 @@ test('failed with approval_window_lapsed: canceled, the reason named, and the bu
   const failed = message(out, 'reap.purchase_failed');
   assert.match(failed.content, /Reason: approval_window_lapsed\./);
   assert.match(failed.content, /did not approve before the quote expired/);
+  assert.match(failed.content, /Create a new checkout to try again\./, 'the actionable half of the hint');
   const plain = await getCheckout(view('failed', { last_error_code: 'checkout_failed', poll_after_seconds: null }));
   assert.doesNotMatch(message(plain, 'reap.purchase_failed').content, /did not approve/);
+  // The hint is keyed on the STATE too: the backend writes this code on 'failed' only.
+  for (const state of ['refused', 'expired']) {
+    const other = await getCheckout(view(state, { refusal_reason: 'approval_window_lapsed', last_error_code: 'approval_window_lapsed', poll_after_seconds: null }));
+    assert.doesNotMatch(message(other, `reap.purchase_${state}`).content, /did not approve/, state);
+  }
 });
 
 test('get_checkout: the completed checkout carries the order reference and the charged total', async () => {

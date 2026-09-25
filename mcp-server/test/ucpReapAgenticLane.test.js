@@ -146,11 +146,24 @@ describe("the approval deadline is the quote TTL, not the hosted page's expiry (
     assert.equal(out.expires_at, SOON);
     assert.equal(out.messages.find((m) => m.code === "reap.approval_deadline").content, SOON);
   });
-  test("a passed approval_deadline hides a link whose page is still live", () => {
+  test("a passed approval_deadline hides a link whose page is still live, and says the window closed (not 'page not ready')", () => {
     const out = map({ ...base, approval_deadline: PAST });
     assert.equal(out.status, "incomplete");
     assert.equal(Object.hasOwn(out, "continue_url"), false);
-    assert.ok(out.messages.some((m) => m.code === "reap.hosted_page_not_ready"));
+    assert.equal(out.messages.some((m) => m.code === "reap.hosted_page_not_ready"), false);
+    const passed = out.messages.find((m) => m.code === "reap.approval_deadline_passed");
+    assert.equal(passed.type, "warning");
+    assert.ok(passed.content.endsWith(`Closed at ${PAST}.`));
+  });
+  test("the raw deadline text is never echoed — only the normalised instant", () => {
+    const raw = "2026-09-23T11:59:00+00:00";
+    const out = map({ ...base, approval_deadline: raw });
+    const passed = out.messages.find((m) => m.code === "reap.approval_deadline_passed");
+    assert.equal(passed.content.includes(raw), false);
+    assert.ok(passed.content.endsWith("Closed at 2026-09-23T11:59:00.000Z."));
+    const live = map({ ...base, approval_deadline: "2026-09-23T12:05:00+00:00" });
+    assert.equal(live.expires_at, "2026-09-23T12:05:00.000Z");
+    assert.equal(live.messages.find((m) => m.code === "reap.approval_deadline").content, "2026-09-23T12:05:00.000Z");
   });
   test("absent (or null) approval_deadline falls back to hosted_url_expires_at; a present unreadable one does not", () => {
     assert.equal(map(base).expires_at, LATER);

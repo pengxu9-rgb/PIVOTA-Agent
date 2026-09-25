@@ -389,6 +389,14 @@ export function vetHostedUrl(raw, expiresAt, now) {
   return url;
 }
 
+/** The normalised ISO instant when `raw` is a readable timestamp at or before `now`; null otherwise. */
+function passedInstant(raw, now) {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t) || t > now) return null;
+  return new Date(t).toISOString();
+}
+
 // ---- the response ------------------------------------------------------------------------------------------
 
 function pollSeconds(view) {
@@ -411,7 +419,7 @@ const STATE_MESSAGES = Object.freeze({
   resolving: "Pivota has opened this purchase with the payment partner (Reap) and is confirming the item with the merchant. Nothing is charged. Poll get_checkout for the next step.",
   needs_enrollment: "The buyer must add a card on the payment partner's secure page at continue_url. Pivota never sees the card. Poll get_checkout afterwards.",
   quoting: "The merchant is pricing this order (item, shipping and tax). Nothing is charged. Poll get_checkout for the approval step.",
-  awaiting_approval: "The order is priced. The buyer must review the total and approve it on the payment partner's page at continue_url before expires_at — the quote's own expiry, about five minutes; after it the purchase fails and a new checkout is needed. Nothing is charged until they approve.",
+  awaiting_approval: "The order is priced. The buyer must review the total and approve it on the payment partner's page at continue_url before expires_at. That window is usually the merchant quote's own TTL (about five minutes from pricing), after which the purchase fails and a new checkout is needed. Nothing is charged until they approve.",
   processing: "The buyer approved; the payment partner is placing the order with the merchant. Poll get_checkout for the outcome.",
   completed: "The order was placed with the merchant through the payment partner.",
   refused: "This purchase was not placed: it could not be matched or priced exactly for this merchant. Nothing was charged.",
@@ -423,6 +431,11 @@ const STATE_MESSAGES = Object.freeze({
 const REASON_HINTS = Object.freeze({
   approval_window_lapsed: " The buyer did not approve before the quote expired (about five minutes); nothing was charged. Create a new checkout to try again.",
 });
+// A deadline the backend published that has ALREADY PASSED, on a row its poller has not yet closed. Saying "the
+// page is not available yet, poll again" here would be false in both halves: the page was available, and polling
+// will only ever find the purchase failed. Content is a CONSTANT sentence plus the normalised instant.
+const DEADLINE_PASSED_MESSAGE =
+  "The approval window closed before the buyer approved; the link is no longer valid and nothing was charged. Poll get_checkout once more for the final state, then create a new checkout to try again.";
 const PENDING_WITHOUT_URL_MESSAGE =
   "The buyer's next step is on the payment partner's page, but that page is not available yet. Poll get_checkout again.";
 const UNRECOGNISED_STATE_MESSAGE =
@@ -564,7 +577,9 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
       if (state === "awaiting_approval") messages.push(info("reap.approval_deadline", expiresAt, "$.expires_at"));
     } else {
       status = "incomplete";
-      messages.push(info("reap.hosted_page_not_ready", PENDING_WITHOUT_URL_MESSAGE));
+      const passed = state === "awaiting_approval" ? passedInstant(own(view, "approval_deadline"), now) : null;
+      if (passed) messages.push(warning("reap.approval_deadline_passed", `${DEADLINE_PASSED_MESSAGE} Closed at ${passed}.`));
+      else messages.push(info("reap.hosted_page_not_ready", PENDING_WITHOUT_URL_MESSAGE));
     }
   } else if (state === "completed") {
     messages.push(info("reap.completed", STATE_MESSAGES.completed));
@@ -577,7 +592,8 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     const raw = str(own(view, "refusal_reason")) || str(own(view, "last_error_code"));
     const reason = raw ? raw.toLowerCase() : null;
     const named = reason && REASON_RE.test(reason) ? ` Reason: ${reason}.` : "";
-    const hint = named && Object.prototype.hasOwnProperty.call(REASON_HINTS, reason) ? REASON_HINTS[reason] : "";
+    // Keyed on the state as well as the code: the backend writes `approval_window_lapsed` on 'failed' only.
+    const hint = named && state === "failed" && Object.prototype.hasOwnProperty.call(REASON_HINTS, reason) ? REASON_HINTS[reason] : "";
     messages.push(warning(`reap.purchase_${state}`, `${STATE_MESSAGES[state]}${named}${hint}`));
   } else {
     messages.push(info(`reap.${state}`, STATE_MESSAGES[state]));

@@ -118,7 +118,10 @@ purchasability fact).
   userinfo), intact through the money filter. That deadline is the checkout's `expires_at`, and on
   `awaiting_approval` it is also published bare as `messages[].code = "reap.approval_deadline"`.
   A present but unreadable `approval_deadline` is refused, never skipped over for the longer page
-  expiry.
+  expiry. An `awaiting_approval` row whose `approval_deadline` has already **passed** (the backend
+  keeps the field after the link is dropped, until its poller closes the row) is answered
+  `incomplete` with `messages[].code = "reap.approval_deadline_passed"` — not
+  `reap.hosted_page_not_ready` — and never `canceled`: this door does not invent a terminal state.
   A buyer-action state without one is answered `incomplete` with
   `messages[].code = "reap.hosted_page_not_ready"` — never `requires_escalation` without a link —
   and **a link is never forwarded for any other state**.
@@ -207,7 +210,10 @@ Then poll `get_checkout { meta, id }`:
   approved): the checkout flips to `FAILED` — not `EXPIRED` — 1–10 s after the quote's `expiresAt`
   and never reaches `PROCESSING`. The backend publishes the earlier of the two expiries as
   `approval_deadline`; this door forwards it as `expires_at` and as the bare
-  `reap.approval_deadline` message. Show the buyer the link at once, and read a `canceled` with
+  `reap.approval_deadline` message. When the backend does not send the field (older backend, or
+  `needs_enrollment`), `expires_at` is the page's own expiry — read the value, not the prose. Show
+  the buyer the link at once; read an `incomplete` carrying `reap.approval_deadline_passed` as
+  "too late, poll once more for the final state", and a `canceled` with
   `Reason: approval_window_lapsed` as "the buyer did not approve in time — create a new checkout".
 - **Done**: `completed` carries `code: "reap.order_reference"` whose `content` is the merchant's
   order reference, verbatim.
