@@ -411,12 +411,17 @@ const STATE_MESSAGES = Object.freeze({
   resolving: "Pivota has opened this purchase with the payment partner (Reap) and is confirming the item with the merchant. Nothing is charged. Poll get_checkout for the next step.",
   needs_enrollment: "The buyer must add a card on the payment partner's secure page at continue_url. Pivota never sees the card. Poll get_checkout afterwards.",
   quoting: "The merchant is pricing this order (item, shipping and tax). Nothing is charged. Poll get_checkout for the approval step.",
-  awaiting_approval: "The order is priced. The buyer must review the total and approve it on the payment partner's page at continue_url. Nothing is charged until they approve.",
+  awaiting_approval: "The order is priced. The buyer must review the total and approve it on the payment partner's page at continue_url before expires_at — the quote's own expiry, about five minutes; after it the purchase fails and a new checkout is needed. Nothing is charged until they approve.",
   processing: "The buyer approved; the payment partner is placing the order with the merchant. Poll get_checkout for the outcome.",
   completed: "The order was placed with the merchant through the payment partner.",
   refused: "This purchase was not placed: it could not be matched or priced exactly for this merchant. Nothing was charged.",
   failed: "This purchase could not be completed. Nothing further will happen on it.",
   expired: "This purchase expired before the buyer finished it. Nothing was charged. Create a new checkout to try again.",
+});
+// One sentence more for the terminal reasons a buyer agent can act on. CONSTANT text keyed by a code that already
+// passed REASON_RE; no backend text reaches it.
+const REASON_HINTS = Object.freeze({
+  approval_window_lapsed: " The buyer did not approve before the quote expired (about five minutes); nothing was charged. Create a new checkout to try again.",
 });
 const PENDING_WITHOUT_URL_MESSAGE =
   "The buyer's next step is on the payment partner's page, but that page is not available yet. Poll get_checkout again.";
@@ -541,11 +546,22 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     messages.push(info("reap.state_unrecognised", UNRECOGNISED_STATE_MESSAGE));
   } else if (PENDING_BUYER_STATES.has(state)) {
     // The ONLY states in which a hosted URL is read at all.
-    const expiry = own(view, "hosted_url_expires_at");
-    continueUrl = vetHostedUrl(own(view, "hosted_url"), expiry, now) || undefined;
+    //
+    // THE DEADLINE IS `approval_deadline`, NOT THE PAGE'S OWN EXPIRY. Measured 2026-09-25 in the Reap sandbox: the
+    // hosted page's `expiresAt` is created + 15 min, but an unapproved checkout is FAILED (not EXPIRED, never
+    // PROCESSING) seconds after the QUOTE's `expiresAt` (created + 5 min). The backend publishes the earlier of the
+    // two as `approval_deadline` on 'awaiting_approval'; `hosted_url_expires_at` is the fallback for
+    // 'needs_enrollment' (nothing quoted yet) and for a backend that does not send the field. A deadline that is
+    // PRESENT but unreadable is not skipped over for the longer one — `vetHostedUrl` refuses it and the answer is
+    // `incomplete` — because the alternative is a link published with ten minutes it does not have.
+    const deadline = own(view, "approval_deadline") ?? own(view, "hosted_url_expires_at");
+    continueUrl = vetHostedUrl(own(view, "hosted_url"), deadline, now) || undefined;
     if (continueUrl) {
-      expiresAt = new Date(Date.parse(expiry)).toISOString();
+      expiresAt = new Date(Date.parse(deadline)).toISOString();
       messages.push(info(`reap.${state}`, STATE_MESSAGES[state], "$.continue_url"));
+      // The bare instant, so a platform can read the deadline without parsing prose — the same reason
+      // `reap.poll_after_seconds` is a bare integer. The same value is `expires_at` on the checkout.
+      if (state === "awaiting_approval") messages.push(info("reap.approval_deadline", expiresAt, "$.expires_at"));
     } else {
       status = "incomplete";
       messages.push(info("reap.hosted_page_not_ready", PENDING_WITHOUT_URL_MESSAGE));
@@ -561,7 +577,8 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     const raw = str(own(view, "refusal_reason")) || str(own(view, "last_error_code"));
     const reason = raw ? raw.toLowerCase() : null;
     const named = reason && REASON_RE.test(reason) ? ` Reason: ${reason}.` : "";
-    messages.push(warning(`reap.purchase_${state}`, `${STATE_MESSAGES[state]}${named}`));
+    const hint = named && Object.prototype.hasOwnProperty.call(REASON_HINTS, reason) ? REASON_HINTS[reason] : "";
+    messages.push(warning(`reap.purchase_${state}`, `${STATE_MESSAGES[state]}${named}${hint}`));
   } else {
     messages.push(info(`reap.${state}`, STATE_MESSAGES[state]));
   }

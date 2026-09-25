@@ -150,6 +150,7 @@ const ENROLL_URL = 'https://pay.prava.space/enroll/3fa85f64';
 const APPROVE_URL = 'https://pay.prava.space/checkout/chk_7f3a';
 const LATER = '2026-09-23T13:00:00.000000+00:00';
 const EARLIER = '2026-09-23T11:00:00.000000+00:00';
+const SOON = '2026-09-23T12:05:00.000000+00:00';
 const QUOTED = { currency: 'USD', our_price_minor: 4250, quoted_total_minor: 4500, final_total_minor: null, shipping_minor: 100, tax_minor: 150 };
 const FINAL = { ...QUOTED, final_total_minor: 4500 };
 
@@ -502,6 +503,96 @@ for (const [label, body, status, continueUrl, code] of STATE_TABLE) {
     assert.equal(Boolean(message(out, 'reap.poll_after_seconds')), !terminal, 'a poll hint on every non-terminal answer, none on a terminal one');
   });
 }
+
+// =========================================================================================================
+// 2b. the approval deadline — the quote TTL, not the hosted page's expiry
+//
+// Measured 2026-09-25 in the Reap sandbox: the page says created + 15 min; the checkout is FAILED (not EXPIRED)
+// seconds after the quote's created + 5 min. The backend publishes the earlier as `approval_deadline`.
+// =========================================================================================================
+
+async function getCheckout(body) {
+  const backend = fakeBackend();
+  backend.state.get.set(PID, { status: 200, body });
+  const ctx = await build({ backend });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  return keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+}
+
+test('awaiting_approval: expires_at is approval_deadline (the quote TTL), NOT the page\'s later hosted_url_expires_at', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const out = await getCheckout(view('awaiting_approval', {
+    totals: QUOTED, reap_quote_expires_at: SOON, approval_deadline: SOON, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
+  }));
+  assert.equal(out.status, 'requires_escalation');
+  assert.equal(out.continue_url, APPROVE_URL);
+  assert.equal(out.expires_at, new Date(Date.parse(SOON)).toISOString());
+  assert.notEqual(out.expires_at, new Date(Date.parse(LATER)).toISOString());
+  const deadline = message(out, 'reap.approval_deadline');
+  assert.ok(deadline, 'the deadline is a bare message a platform can read without parsing prose');
+  assert.equal(deadline.content, out.expires_at);
+  assert.equal(deadline.path, '$.expires_at');
+  assert.match(message(out, 'reap.awaiting_approval').content, /before expires_at/);
+  assertSpecCheckout(out);
+});
+
+test('awaiting_approval: a PASSED approval_deadline hides the link even though the page itself is still live', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const out = await getCheckout(view('awaiting_approval', {
+    totals: QUOTED, reap_quote_expires_at: EARLIER, approval_deadline: EARLIER, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
+  }));
+  assert.equal(out.status, 'incomplete');
+  assert.equal(out.continue_url, undefined);
+  assert.ok(message(out, 'reap.hosted_page_not_ready'));
+  assert.equal(message(out, 'reap.approval_deadline'), undefined);
+  assert.equal(JSON.stringify(out).includes('prava.space'), false, 'a link to a page that will not take the approval is not published');
+});
+
+test('awaiting_approval: a backend that does not send approval_deadline falls back to hosted_url_expires_at', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const out = await getCheckout(view('awaiting_approval', {
+    totals: QUOTED, reap_quote_expires_at: LATER, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
+  }));
+  assert.equal(out.status, 'requires_escalation');
+  assert.equal(out.expires_at, new Date(Date.parse(LATER)).toISOString());
+  assert.equal(message(out, 'reap.approval_deadline').content, out.expires_at);
+});
+
+test('awaiting_approval: a PRESENT but unreadable approval_deadline is refused, not skipped over for the longer page expiry', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const bad of ['soon', '', 42, {}]) {
+    const out = await getCheckout(view('awaiting_approval', {
+      totals: QUOTED, approval_deadline: bad, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
+    }));
+    assert.equal(out.status, 'incomplete', JSON.stringify(bad));
+    assert.equal(out.continue_url, undefined);
+  }
+  // null is "not sent" — the fallback, as for an older backend.
+  const out = await getCheckout(view('awaiting_approval', {
+    totals: QUOTED, approval_deadline: null, hosted_url: APPROVE_URL, hosted_url_expires_at: LATER,
+  }));
+  assert.equal(out.status, 'requires_escalation');
+  assert.equal(out.expires_at, new Date(Date.parse(LATER)).toISOString());
+});
+
+test('needs_enrollment: the page expiry is the deadline (nothing is quoted yet) and no reap.approval_deadline message is published', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const out = await getCheckout(view('needs_enrollment', { hosted_url: ENROLL_URL, hosted_url_expires_at: LATER }));
+  assert.equal(out.status, 'requires_escalation');
+  assert.equal(out.expires_at, new Date(Date.parse(LATER)).toISOString());
+  assert.equal(message(out, 'reap.approval_deadline'), undefined);
+});
+
+test('failed with approval_window_lapsed: canceled, the reason named, and the buyer agent told what to do', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const out = await getCheckout(view('failed', { last_error_code: 'approval_window_lapsed', poll_after_seconds: null }));
+  assert.equal(out.status, 'canceled');
+  const failed = message(out, 'reap.purchase_failed');
+  assert.match(failed.content, /Reason: approval_window_lapsed\./);
+  assert.match(failed.content, /did not approve before the quote expired/);
+  const plain = await getCheckout(view('failed', { last_error_code: 'checkout_failed', poll_after_seconds: null }));
+  assert.doesNotMatch(message(plain, 'reap.purchase_failed').content, /did not approve/);
+});
 
 test('get_checkout: the completed checkout carries the order reference and the charged total', async () => {
   const backend = fakeBackend();

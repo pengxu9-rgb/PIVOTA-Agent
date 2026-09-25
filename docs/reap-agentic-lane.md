@@ -112,8 +112,13 @@ purchasability fact).
 
 | a state this door does not know yet | `incomplete` | — (`reap.state_unrecognised`; logged once) |
 
-- A link is forwarded ONLY with a **present, future `hosted_url_expires_at`**, on Reap's hosts
-  (`prava.space`, `reap.global`; https; default port; no userinfo), intact through the money filter.
+- A link is forwarded ONLY with a **present, future deadline** — `approval_deadline` when the backend
+  sends it (on `awaiting_approval`: the earlier of the quote's expiry and the page's), else
+  `hosted_url_expires_at` — on Reap's hosts (`prava.space`, `reap.global`; https; default port; no
+  userinfo), intact through the money filter. That deadline is the checkout's `expires_at`, and on
+  `awaiting_approval` it is also published bare as `messages[].code = "reap.approval_deadline"`.
+  A present but unreadable `approval_deadline` is refused, never skipped over for the longer page
+  expiry.
   A buyer-action state without one is answered `incomplete` with
   `messages[].code = "reap.hosted_page_not_ready"` — never `requires_escalation` without a link —
   and **a link is never forwarded for any other state**.
@@ -196,7 +201,14 @@ Then poll `get_checkout { meta, id }`:
   1. `needs_enrollment` — **add a card** on Reap's secure page (first purchase, or after a
      re-link). Pivota never sees the card.
   2. `awaiting_approval` — **review the total and approve**. Nothing is charged until they do.
-  A link is valid until the checkout's `expires_at`; do not reuse one after it.
+  A link is valid until the checkout's `expires_at`; do not reuse one after it. **On
+  `awaiting_approval` that is the quote's TTL — about five minutes from the quote, NOT the fifteen
+  the hosted page itself claims.** Measured 2026-09-25 in the Reap sandbox (two checkouts, neither
+  approved): the checkout flips to `FAILED` — not `EXPIRED` — 1–10 s after the quote's `expiresAt`
+  and never reaches `PROCESSING`. The backend publishes the earlier of the two expiries as
+  `approval_deadline`; this door forwards it as `expires_at` and as the bare
+  `reap.approval_deadline` message. Show the buyer the link at once, and read a `canceled` with
+  `Reason: approval_window_lapsed` as "the buyer did not approve in time — create a new checkout".
 - **Done**: `completed` carries `code: "reap.order_reference"` whose `content` is the merchant's
   order reference, verbatim.
 - **Not done**: `canceled` carries `reap.purchase_refused` / `reap.purchase_failed` /
