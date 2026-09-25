@@ -57,6 +57,27 @@ const PHANTOMS = [
   'vitamin c serum 10-20%',
   'between 10 and 20% niacinamide',
   'price 10-20%',
+  // re-review of #2275: soft markers (about / max / ~ / < / budget / or less) with no
+  // currency also count things -- they must never bring the K18/3CE phantoms back
+  'K18 max',
+  'No7 max',
+  'Olaplex No 3 max',
+  'what about 3CE lip tint',
+  'tell me about 2 serums',
+  'apply about 2 drops',
+  'approximately 10 products',
+  'max 3 layers',
+  'budget 2-in-1 shampoo',
+  '~3 drops',
+  'love this serum <3',
+  '预算3步护肤',
+  '2 or less ingredients',
+  'serum 30~50',
+  'spf 30 ~ 50',
+  'spf about 30',
+  '3刀片剃须刀',
+  // a number must not backtrack out of a glued word: "about 111SKIN" is not "about 11"
+  'tell me about 111SKIN',
 ];
 
 // Real budgets: identical with the flag on and off.
@@ -157,6 +178,23 @@ describe('flag ON: a bare number is never a budget', () => {
   ])('an unmarked range never overrides the real budget: %s', (q, expected) => {
     on();
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+
+  test.each([
+    ['about', ' '.repeat(20000)],
+    ['max', '\n'.repeat(20000) + 'x'],
+    ['预算', ' '.repeat(20000)],
+    ['budget of', ' '.repeat(20000)],
+    ['between', ' '.repeat(50000) + 'x'],
+    ['1 -', ' '.repeat(50000) + 'x'],
+    ['under', ' '.repeat(50000) + 'x'],
+  ])('a long whitespace run after "%s" parses in linear time', (head, tail) => {
+    // re-review of #2275: chained optional \s* runs backtracked super-linearly ("about" +
+    // 5,000 spaces took 29 s on the event loop).
+    on();
+    const started = Date.now();
+    parseBudgetToPriceConstraint(`${head}${tail}`);
+    expect(Date.now() - started).toBeLessThan(250);
   });
 
   test('an unmarked range is not a budget ("serum 20-40")', () => {
