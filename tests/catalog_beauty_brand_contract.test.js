@@ -233,7 +233,6 @@ describe('self-tan vocabulary', () => {
     'gradual tan lotion',
     'tanning mousse',
     'tanning drops',
-    'bronzing drops',
     'self tanning body mist',
     'tanning lotion',
     '美黑',
@@ -243,6 +242,9 @@ describe('self-tan vocabulary', () => {
 
   test.each([
     ['bronzer', 'beauty/makeup/face/bronzer/'],
+    // bronzing-drops rows are filed in the bronzer leaf (prod census 2026-09-25)
+    ['bronzing drops', 'beauty/makeup/face/bronzer/'],
+    ['bronzing water', 'beauty/makeup/face/bronzer/'],
     ['body mist', 'beauty/fragrance/'],
     ['tanning oil spf 30', 'beauty/skincare/sun/'],
     ['tanning bed', ''],
