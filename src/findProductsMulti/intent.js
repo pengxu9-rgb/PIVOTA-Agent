@@ -918,6 +918,13 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
   return null;
 }
 
+// Default OFF: the parser below is byte-identical to its pre-flag behaviour unless this is set.
+function budgetRequiresMarker() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.SEARCH_BUDGET_REQUIRE_MARKER || '').trim().toLowerCase(),
+  );
+}
+
 function parseBudgetToPriceConstraint(latestUserQuery) {
   const q = String(latestUserQuery || '');
   if (!q) return null;
@@ -959,10 +966,26 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Range forms: "30-50", "30~50", "30 to 50", "30到50". Percentage
   // ranges are formulation strengths, not prices (for example niacinamide
   // 5%-10%), so never let them preempt a later explicit budget.
-  const rangeMatch = normalized.match(
-    /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
-  );
-  if (rangeMatch) {
+  // Flag on: the range may carry a currency marker on either end ("$20-$40") or be
+  // spelled "between 20 and 40" -- both used to fall through and cap at the first number.
+  const rangeMatch = budgetRequiresMarker()
+    ? normalized.match(
+        /(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～|and)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
+      )
+    : normalized.match(
+        /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
+      );
+  // SEARCH_BUDGET_REQUIRE_MARKER: "3-in-1", "5-10 minutes", "Olaplex No 4-5" are not
+  // budgets -- a range counts only with a currency marker or a price word, and never when
+  // a size/strength unit follows it.
+  const rangeIsBudget =
+    !budgetRequiresMarker() ||
+    (Boolean(rangeMatch) &&
+      (Boolean(currency) || /\b(?:budget|price|priced|between|range|spend|cost)\b|预算|价格|价位|之间/i.test(normalized)) &&
+      !/^\s*(?:ml|l\b|g\b|gr?ams?|kg|oz|fl|%|ct\b|count|pack|pcs|mm|cm|in\b|spf)/i.test(
+        normalized.slice((rangeMatch.index || 0) + rangeMatch[0].length),
+      ));
+  if (rangeMatch && rangeIsBudget) {
     const a = Number(rangeMatch[1]);
     const b = Number(rangeMatch[2]);
     if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
@@ -983,7 +1006,31 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
         /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:s\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
       )
     : null;
-  const m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
+  let m;
+  if (budgetRequiresMarker()) {
+    // SEARCH_BUDGET_REQUIRE_MARKER: a bare number is NEVER a budget. Measured on prod
+    // 2026-09-25: the first-number fallback below turned "K18" into a $18 cap (the agent
+    // door served 2 of 29 K18 rows), "retinol 0.5" into $0.50, "niacinamide 10% serum"
+    // into $10, "3CE" / "Olaplex No 3" into $3 -- and since 113df702a that cap is enforced
+    // in the canonical SQL, so it deletes rows. A budget now needs a currency marker, a
+    // bound word before the number ("under 40"), or a CJK bound after it ("100以内").
+    // A number followed by a size/strength unit is never a price, bound word or not.
+    const unitAfter = (match) =>
+      Boolean(match) &&
+      /^\s*(?:ml|l\b|g\b|gr?ams?|kg|oz|fl|%|percent|pct|ct\b|count|pack|pk\b|pcs|pieces|mm|cm|inch|in\b|spf|pa\b|x\b)/i.test(
+        normalized.slice((match.index || 0) + match[0].length),
+      );
+    const spfBefore = (match) =>
+      Boolean(match) && /\bspf\s*$/i.test(normalized.slice(0, (match.index || 0) + match[0].indexOf(match[1])));
+    const usable = (match) => (match && !unitAfter(match) && !spfBefore(match) ? match : null);
+    const cjkPostfixBound = normalized.match(
+      /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円)?\s*(?:以内|以下|以上|左右|起)/,
+    );
+    const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块)(?!\s*以)/);
+    m = usable(currencyAmountMatch) || usable(boundedAmountMatch) || usable(cjkPostfixBound) || usable(cjkCurrencySuffix);
+  } else {
+    m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
+  }
   if (!m) return null;
 
   const val = Number(m[1]);
@@ -1658,4 +1705,5 @@ module.exports = {
   EYE_SHADOW_BRUSH_SIGNALS_EN,
   INTENT_VERSION,
   QueryClassEnum,
+  parseBudgetToPriceConstraint,
 };
