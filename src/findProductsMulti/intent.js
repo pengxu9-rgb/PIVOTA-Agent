@@ -933,6 +933,10 @@ const BUDGET_CURRENCY_MARKER_RE =
   /s\$|[$€£¥￥元块円刀]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid)\b|美元|美金|欧元|英镑|人民币|日元|日圆|新加坡元/i;
 const NOT_A_PRICE_UNIT_AFTER_RE =
   /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
+// Right after the number: a glued Latin letter ("111SKIN", "30CE"), "-in-1", a count noun,
+// or a CJK classifier.
+const COUNT_WORD_AFTER_RE =
+  /^(?:[a-z]|\s*-?\s*in\s*-?\s*\d|\s*-?\s*(?:items?|products?|pieces?|reviews?|ratings?|stars?|drops?|pumps?|layers?|coats?|swipes?|steps?|uses?|applications?|times?|shades?|colou?rs?|options?|picks?|results?|ingredients?|brands?|people|users?|followers?|likes?|views?|sold|k|h)\b|\s*(?:个|件|支|瓶|步|款|种|片|盒|套|次|天|岁|层))/i;
 const SPF_BEFORE_RE =
   /\bspf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
 
@@ -963,13 +967,14 @@ function findMarkedBudgetRange(normalized) {
   for (const match of normalized.matchAll(re)) {
     const { start } = numberSpan(match, 1);
     const { end } = numberSpan(match, 2);
-    const before = normalized.slice(0, start);
+    // Both tests are anchored at the end of the prefix: a bounded window keeps the loop linear.
+    const before = normalized.slice(Math.max(0, start - 48), start);
     const after = normalized.slice(end);
     if (SPF_BEFORE_RE.test(before)) continue;
     const marked =
       /s\$|[$€£¥￥]/.test(match[0]) ||
       /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i.test(after) ||
-      /(?:\b(?:price|priced|budget|range|spend|cost)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
+      /(?:\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
       /^\s*之间/.test(after);
     if (marked && !NOT_A_PRICE_UNIT_AFTER_RE.test(after)) return match;
   }
@@ -1066,24 +1071,30 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // after it ("100以内", "30 bucks", "30 or less"). An unmarked number followed by a
     // size/strength/age/duration unit, or preceded by SPF, is never a price.
     const usable = (match) => (isMarkedBudgetAmount(normalized, match) ? match : null);
-    // about / max / budget / < / ~ / "or less" without a currency also count things ("about 2
-    // drops", "max 3 layers", "~3 pumps", "<3"): honour them only for a number of at least 5
-    // that no word follows ("max 40", "budget 30", "around 30 for a serum").
+    // A number that counts things is not a price, whatever marker precedes it:
+    // "budget 2-in-1", "预算3步", "max 10 items", "about 20 reviews", "预算10个".
+    const countsThings = (match) =>
+      COUNT_WORD_AFTER_RE.test(normalized.slice((match.index || 0) + match[0].length));
+    const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
+    // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
+    // the number ("about 5 products", "~50 reviews", "around 30s") and at least 5 ("<3",
+    // "max 3 layers", "tell me about 2 serums").
     const softUsable = (match) => {
       if (!usable(match)) return null;
       if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return match;
-      if (Number(match[1]) < 5) return null;
+      if (Number(match[1]) < 5 || countsThings(match)) return null;
       const tail = normalized.slice((match.index || 0) + match[0].length);
-      if (/^\s*-?\s*[\p{L}]/u.test(tail) && !/^\s*(?:for|or|ish|each|per|tops|total|budget|range|price)\b/i.test(tail)) {
-        return null;
-      }
-      return match;
+      return /^\s*-?\s*[a-z]*s\b/i.test(tail) ? null : match;
     };
+    const budgetWordMatch = normalized.match(
+      /(?:\b(?:max(?:imum)?\s+)?budget(?:\s+of)?(?:\s*(?:is|:))?\s*|预算(?:\s*(?:是|在|大概|大约))?\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
+    );
+    // about / around / max / < / ~ with no currency also count things -- see softUsable.
     const softBoundMatch = normalized.match(
-      /(?:\b(?:max(?:imum)?|budget(?:\s+of)?|around|about|approx(?:imately)?|roughly)(?:\s*(?:is|:))?\s*|(?<![\d.]\s?)[<~≈]\s*|预算(?:\s*(?:是|在))?\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
+      /(?:\b(?:max(?:imum)?|around|about|approx(?:imately)?|roughly)(?:\s*(?:is|:))?\s*|(?<![\d.]\s?)[<~≈]\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
     );
     const cjkPostfixBound = normalized.match(
-      /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円)?\s*(?:以内|以下|以上|左右|起)/,
+      /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円|刀(?!片|头))?\s*(?:以内|以下|以上|左右|起)/,
     );
     const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/);
     const postfixBound = normalized.match(
@@ -1092,6 +1103,7 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     m =
       usable(currencyAmountMatch) ||
       usable(boundedAmountMatch) ||
+      hardUsable(budgetWordMatch) ||
       softUsable(softBoundMatch) ||
       usable(cjkPostfixBound) ||
       usable(cjkCurrencySuffix) ||

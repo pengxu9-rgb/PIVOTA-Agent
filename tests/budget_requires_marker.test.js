@@ -78,6 +78,15 @@ const PHANTOMS = [
   '3刀片剃须刀',
   // a number must not backtrack out of a glued word: "about 111SKIN" is not "about 11"
   'tell me about 111SKIN',
+  // third review: count nouns / classifiers after any marker
+  'max 10 items',
+  'about 20 reviews',
+  '~50 reviews',
+  'around 30s',
+  'around 100k',
+  'budget 10-step routine',
+  '预算10个',
+  'about 20 lipsticks', // a plural noun not on the count list
 ];
 
 // Real budgets: identical with the flag on and off.
@@ -127,6 +136,20 @@ const BUDGETS = [
   ['100-200块', { currency: null, min: 100, max: 200 }],
   ['20 to 30 bucks', { currency: null, min: 20, max: 30 }],
   ['100到200之间', { currency: null, min: 100, max: 200 }],
+  // third review: "budget"/预算 are hard markers -- a product word after the number is fine
+  ['预算300买面霜', max(null, 300)],
+  ['预算300 面霜', max(null, 300)],
+  ['budget 30 serum', max(null, 30)],
+  ['budget 4.5', max(null, 4.5)],
+  // ...and a singular product word after a soft marker is fine too
+  ['max 40 serum', max(null, 40)],
+  ['max 40 hydrating serum', max(null, 40)],
+  ['around 30 moisturizer', { currency: null, min: 22.5, max: 37.5 }],
+  ['< 30 cleanser', max(null, 30)],
+  ['30 or less serum', max(null, 30)],
+  ['around 30-40 serum', { currency: null, min: 30, max: 40 }],
+  ['200刀以内', max(null, 200)],
+  ['200刀以下的精华', max(null, 200)],
 ];
 
 describe('flag OFF: byte-identical to the legacy parser (bug pinned, not fixed)', () => {
@@ -188,6 +211,7 @@ describe('flag ON: a bare number is never a budget', () => {
     ['between', ' '.repeat(50000) + 'x'],
     ['1 -', ' '.repeat(50000) + 'x'],
     ['under', ' '.repeat(50000) + 'x'],
+    ['spf 1-2 ', 'spf 1-2 '.repeat(25000)],
   ])('a long whitespace run after "%s" parses in linear time', (head, tail) => {
     // re-review of #2275: chained optional \s* runs backtracked super-linearly ("about" +
     // 5,000 spaces took 29 s on the event loop).
