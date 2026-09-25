@@ -211,7 +211,7 @@ function buildBeautyBrandStats(rows) {
     const nc = Number(row.nc) || 0;
     const nl = Number(row.nl) || 0;
     for (const key of brandAliases(brand)) {
-      if (!admissibleKey(key)) continue;
+      if (!admissibleKey(key) && !ONBOARDED_BRAND_KEYS.has(key)) continue;
       // Two raw spellings can fold to one key ("Kosé" and "KOSE"): one brand, summed.
       const prior = out.get(key);
       out.set(key, prior
@@ -261,11 +261,18 @@ function loadOnboardedBrandKeys() {
   for (const brand of Array.isArray(doc && doc.brands) ? doc.brands : []) {
     for (const spelling of [brand && brand.canonical, ...((brand && brand.store_spellings) || [])]) {
       for (const key of brandAliases(normalize(foldAccents(spelling)))) {
-        if (admissibleKey(key)) keys.add(key);
+        if (admissibleKey(key) || isShortOnboardedKeyShape(key)) keys.add(key);
       }
     }
   }
   return keys;
+}
+// admissibleKey refuses a 3-letter all-alphabetic key (vdl, nyx) because nothing tells a
+// short brand from noise. An onboarded brand IS that signal: OPI (11 beauty rows in prod,
+// 2026-09-26) was never indexed at all, by the detection set or this map. Short keys enter
+// the beauty map only, and qualify only through the allowlist path below.
+function isShortOnboardedKeyShape(key) {
+  return /^[a-z0-9&]{3}$/.test(String(key || '')) && !STOPWORDS.has(key);
 }
 const ONBOARDED_BRAND_KEYS = loadOnboardedBrandKeys();
 
@@ -282,7 +289,17 @@ function isOnboardedBrand(brand) {
 
 function qualifiesAsBeautyBrand(stats) {
   if (!stats || !stats.categorized_n) return false;
-  if (stats.beauty_n >= MIN_BEAUTY_ROWS && stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE) return true;
+  // A short onboarded key (OPI) is in the map only because it is onboarded: it qualifies
+  // through the allowlist or not at all, so it stays inert while that flag is off.
+  const onlyViaAllowlist = !admissibleKey(String(stats.brand || '').replace(/[\s\-]/g, '')) &&
+    !admissibleKey(String(stats.brand || ''));
+  if (
+    !onlyViaAllowlist &&
+    stats.beauty_n >= MIN_BEAUTY_ROWS &&
+    stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE
+  ) {
+    return true;
+  }
   if (
     allowlistEnabled() &&
     isOnboardedBrand(stats.brand) &&
@@ -293,6 +310,7 @@ function qualifiesAsBeautyBrand(stats) {
     return true;
   }
   return (
+    !onlyViaAllowlist &&
     longTailEnabled() &&
     String(stats.brand || '').split(' ').filter(Boolean).length >= 2 &&
     stats.beauty_n >= LONG_TAIL_MIN_BEAUTY_ROWS &&

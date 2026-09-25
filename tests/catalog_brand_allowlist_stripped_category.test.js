@@ -36,6 +36,11 @@ const ROWS = [
   { b: 'simihaze beauty', n: 57, nb: 33, nc: 48, nl: 24 }, // stripped: one token, not an ordinary word
   { b: 'round lab', n: 161, nb: 148, nc: 161, nl: 148 },
   { b: 'round lab us', n: 20, nb: 20, nc: 20, nl: 20 },
+  // prod 2026-09-26: OPI, 11 beauty rows -- a 3-letter key admissibleKey refuses, so it was
+  // never indexed at all. Onboarded, so the allowlist admits it.
+  { b: 'opi', n: 11, nb: 11, nc: 11, nl: 5 },
+  // a 3-letter brand that is NOT onboarded: stays unindexed whatever its row count
+  { b: 'abc', n: 9, nb: 9, nc: 9, nl: 9 },
 ];
 
 const saved = {};
@@ -87,6 +92,25 @@ describe('onboarded-brand allowlist', () => {
     expect(resolve('Mielle').matched).toBe(false);
     setFlags({ GATEWAY_CATALOG_BRAND_ALLOWLIST: null });
     expect(resolve('K18').matched).toBe(false);
+  });
+});
+
+describe('short onboarded brand names (OPI)', () => {
+  test('flag on: "OPI" and "OPI nail polish" route to the brand', () => {
+    expect(cache.isOnboardedBrand('OPI')).toBe(true);
+    expect(resolve('OPI')).toEqual(expect.objectContaining({ matched: true, brand_key: 'catalog:opi' }));
+    const c = contract('OPI nail polish');
+    expect(c.query_class).toBe('brand_category');
+    expect(c.hard_constraints.category_path_prefix).toBe('beauty/makeup/nails/nail-polish/');
+  });
+
+  test('flag off: a short key never qualifies, even with enough rows (deploy stays inert)', () => {
+    setFlags({ GATEWAY_CATALOG_BRAND_ALLOWLIST: null });
+    expect(resolve('OPI').matched).toBe(false);
+  });
+
+  test('a short brand that is not onboarded stays unrouted', () => {
+    expect(resolve('abc').matched).toBe(false);
   });
 });
 
