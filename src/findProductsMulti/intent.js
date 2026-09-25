@@ -989,8 +989,16 @@ function findMarkedBudgetRange(normalized) {
   return null;
 }
 
+// The range, "N+" and currency-suffix regexes below backtrack quadratically on a long run of
+// digits (20k digits took 1.4 s on the event loop). The invoke route now rejects queries over
+// 500 characters (queryLengthCap.js), but this parser is also reached from doors that route cap
+// does not cover -- the Aurora chat shop skill parses the chat message before its hop -- so it
+// reads only the first 500 characters itself. Real queries are far shorter (30 days of prod
+// logs to 2026-09-25: max 65 characters).
+const BUDGET_PARSE_MAX_CHARS = 500;
+
 function parseBudgetToPriceConstraint(latestUserQuery) {
-  const q = String(latestUserQuery || '');
+  const q = String(latestUserQuery || '').slice(0, BUDGET_PARSE_MAX_CHARS);
   if (!q) return null;
 
   // Normalize full-width digits and currency symbols if present.
