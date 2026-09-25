@@ -937,6 +937,11 @@ const NOT_A_PRICE_UNIT_AFTER_RE =
 // or a CJK classifier.
 const COUNT_WORD_AFTER_RE =
   /^(?:[a-z]|\s*-?\s*in\s*-?\s*\d|\s*-?\s*(?:items?|products?|pieces?|reviews?|ratings?|stars?|drops?|pumps?|layers?|coats?|swipes?|steps?|uses?|applications?|times?|shades?|colou?rs?|options?|picks?|results?|ingredients?|brands?|people|users?|followers?|likes?|views?|sold|k|h)\b|\s*(?:个|件|支|瓶|步|款|种|片|盒|套|次|天|岁|层))/i;
+// A plural word after a number with no currency of its own counts things ("about 20
+// lipsticks", "2-3 serums"); "is"/"this"/"less" and friends are not plurals.
+const PLURAL_WORD_AFTER_RE = /^\s*-?\s*(?!(?:is|this|was|has|yes|plus|less|as|us)\b)[a-z]*s\b/i;
+const CURRENCY_WORD_AFTER_RE =
+  /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i;
 const SPF_BEFORE_RE =
   /\bspf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
 
@@ -973,10 +978,13 @@ function findMarkedBudgetRange(normalized) {
     if (SPF_BEFORE_RE.test(before)) continue;
     const marked =
       /s\$|[$€£¥￥]/.test(match[0]) ||
-      /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i.test(after) ||
+      CURRENCY_WORD_AFTER_RE.test(after) ||
       /(?:\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
       /^\s*之间/.test(after);
-    if (marked && !NOT_A_PRICE_UNIT_AFTER_RE.test(after)) return match;
+    if (!marked || NOT_A_PRICE_UNIT_AFTER_RE.test(after) || COUNT_WORD_AFTER_RE.test(after)) continue;
+    // "about 2-3 serums under $30": a counting range must not override the real budget
+    if (!CURRENCY_WORD_AFTER_RE.test(after) && PLURAL_WORD_AFTER_RE.test(after)) continue;
+    return match;
   }
   return null;
 }
@@ -1072,9 +1080,12 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // size/strength/age/duration unit, or preceded by SPF, is never a price.
     const usable = (match) => (isMarkedBudgetAmount(normalized, match) ? match : null);
     // A number that counts things is not a price, whatever marker precedes it:
-    // "budget 2-in-1", "预算3步", "max 10 items", "about 20 reviews", "预算10个".
-    const countsThings = (match) =>
-      COUNT_WORD_AFTER_RE.test(normalized.slice((match.index || 0) + match[0].length));
+    // "budget 2-in-1", "预算3步", "max 10 items", "about 20 reviews", "预算10个" -- nor is
+    // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
+    const countsThings = (match) => {
+      const tail = normalized.slice((match.index || 0) + match[0].length);
+      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*\d/.test(tail);
+    };
     const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
     // the number ("about 5 products", "~50 reviews", "around 30s") and at least 5 ("<3",
@@ -1084,7 +1095,7 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
       if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return match;
       if (Number(match[1]) < 5 || countsThings(match)) return null;
       const tail = normalized.slice((match.index || 0) + match[0].length);
-      return /^\s*-?\s*[a-z]*s\b/i.test(tail) ? null : match;
+      return PLURAL_WORD_AFTER_RE.test(tail) ? null : match;
     };
     const budgetWordMatch = normalized.match(
       /(?:\b(?:max(?:imum)?\s+)?budget(?:\s+of)?(?:\s*(?:is|:))?\s*|预算(?:\s*(?:是|在|大概|大约))?\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
@@ -1116,7 +1127,17 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   const val = Number(m[1]);
   if (!Number.isFinite(val) || val <= 0) return null;
 
-  const within = /左右|around|about|approx/i.test(normalized);
+  // Flag on: "about"/"around"/左右 widen only the number they are attached to -- in
+  // "about 3-4 times a week under $40" the $40 is a plain cap.
+  const within = budgetRequiresMarker()
+    ? (() => {
+        const { start, end } = numberSpan(m);
+        return (
+          /\b(?:around|about|approx(?:imately)?|roughly)\s*(?:s\$|[$€£¥￥])?\s*$/i.test(normalized.slice(Math.max(0, start - 24), start)) ||
+          /^\s*(?:元|块钱|块|美元|美金|日元|円|刀)?\s*左右/.test(normalized.slice(end))
+        );
+      })()
+    : /左右|around|about|approx/i.test(normalized);
 
   if (within) {
     return {

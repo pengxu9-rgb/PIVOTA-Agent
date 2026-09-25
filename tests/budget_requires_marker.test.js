@@ -87,6 +87,10 @@ const PHANTOMS = [
   'budget 10-step routine',
   '预算10个',
   'about 20 lipsticks', // a plural noun not on the count list
+  'about 2-3 drops',
+  'about 10-15 products',
+  'about 5-10 minutes',
+  '预算3-4步护肤',
 ];
 
 // Real budgets: identical with the flag on and off.
@@ -150,6 +154,7 @@ const BUDGETS = [
   ['around 30-40 serum', { currency: null, min: 30, max: 40 }],
   ['200刀以内', max(null, 200)],
   ['200刀以下的精华', max(null, 200)],
+  ['max 40 is fine', max(null, 40)],
 ];
 
 describe('flag OFF: byte-identical to the legacy parser (bug pinned, not fixed)', () => {
@@ -198,6 +203,10 @@ describe('flag ON: a bare number is never a budget', () => {
     ['5-10 minute mask under $30', max('USD', 30)],
     ['20-40 ml under $30', max('USD', 30)],
     ['vitamin c 10-20% under $30', max('USD', 30)],
+    // a counting range never overrides the real budget either
+    ['about 2-3 serums under $30', max('USD', 30)],
+    ['about 3-4 times a week under $40', max('USD', 40)],
+    ['about 3-4 step routine under $30', max('USD', 30)],
   ])('an unmarked range never overrides the real budget: %s', (q, expected) => {
     on();
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
