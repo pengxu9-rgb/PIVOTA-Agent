@@ -32,6 +32,8 @@ let _set = new Set();
 // alias key -> { brand, n, beauty_n, categorized_n }. Accent-folded, and kept
 // apart from _set so the detection set above stays byte-identical.
 let _beauty = new Map();
+// suffix-stripped name -> the same stats entry as _beauty (GATEWAY_CATALOG_BRAND_LONG_TAIL)
+let _beautyStripped = new Map();
 let _loadedAt = 0;
 let _loading = null;
 
@@ -102,7 +104,8 @@ async function refresh() {
     const res = await query(
       `SELECT LOWER(TRIM(brand)) AS b, COUNT(*) AS n,
               COUNT(*) FILTER (WHERE category_path = 'beauty' OR category_path LIKE 'beauty/%') AS nb,
-              COUNT(*) FILTER (WHERE category_path IS NOT NULL AND TRIM(category_path) <> '') AS nc
+              COUNT(*) FILTER (WHERE category_path IS NOT NULL AND TRIM(category_path) <> '') AS nc,
+              COUNT(*) FILTER (WHERE category_path ~ '^beauty/[^/]+/[^/]+') AS nl
          FROM catalog_products
         WHERE brand IS NOT NULL AND TRIM(brand) <> ''
         GROUP BY LOWER(TRIM(brand))
@@ -122,6 +125,7 @@ async function refresh() {
   }
   _set = next;
   _beauty = buildBeautyBrandStats(rows);
+  _beautyStripped = buildStrippedBrandIndex(_beauty);
   _loadedAt = Date.now();
 }
 
@@ -205,21 +209,102 @@ function buildBeautyBrandStats(rows) {
     const n = Number(row.n) || 0;
     const nb = Number(row.nb) || 0;
     const nc = Number(row.nc) || 0;
+    const nl = Number(row.nl) || 0;
     for (const key of brandAliases(brand)) {
       if (!admissibleKey(key)) continue;
       // Two raw spellings can fold to one key ("Kosé" and "KOSE"): one brand, summed.
       const prior = out.get(key);
       out.set(key, prior
-        ? { brand: prior.brand, n: prior.n + n, beauty_n: prior.beauty_n + nb, categorized_n: prior.categorized_n + nc }
-        : { brand, n, beauty_n: nb, categorized_n: nc });
+        ? {
+          brand: prior.brand,
+          n: prior.n + n,
+          beauty_n: prior.beauty_n + nb,
+          categorized_n: prior.categorized_n + nc,
+          beauty_leaf_n: prior.beauty_leaf_n + nl,
+        }
+        : { brand, n, beauty_n: nb, categorized_n: nc, beauty_leaf_n: nl });
     }
   }
   return out;
 }
 
+// LONG TAIL (GATEWAY_CATALOG_BRAND_LONG_TAIL, default OFF). A retailer ingest adds a
+// brand a few rows at a time: Danessa Myricks Beauty arrived 2026-09-25 with 2 rows (lip
+// gloss + brush, both beauty) and sat below MIN_BEAUTY_ROWS, unroutable by name. A
+// MULTI-token brand whose categorised rows are ALL beauty, at least 2 of them at a beauty
+// LEAF (beauty/<area>/<leaf>), qualifies from 2 rows. The leaf requirement is what keeps a
+// misfile out: Shake Baby's 2 rows are diet-drink sticks filed at bare `beauty/makeup`.
+// Single tokens keep the 3-row floor -- a one-word brand is the one that collides with words.
+const LONG_TAIL_MIN_BEAUTY_ROWS = 2;
+
+function longTailEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BRAND_LONG_TAIL || '').trim().toLowerCase(),
+  );
+}
+
 function qualifiesAsBeautyBrand(stats) {
-  if (!stats || stats.beauty_n < MIN_BEAUTY_ROWS || !stats.categorized_n) return false;
-  return stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE;
+  if (!stats || !stats.categorized_n) return false;
+  if (stats.beauty_n >= MIN_BEAUTY_ROWS && stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE) return true;
+  return (
+    longTailEnabled() &&
+    String(stats.brand || '').split(' ').filter(Boolean).length >= 2 &&
+    stats.beauty_n >= LONG_TAIL_MIN_BEAUTY_ROWS &&
+    stats.beauty_n === stats.categorized_n &&
+    (stats.beauty_leaf_n || 0) >= LONG_TAIL_MIN_BEAUTY_ROWS
+  );
+}
+
+// Store-spelled brands carry a suffix buyers do not type: "Danessa Myricks Beauty",
+// "Tower 28 Beauty", "Round Lab US", "Tirtir Global". The catalog holds the suffixed
+// spelling only, so "Danessa Myricks" matched no key at all. This maps the suffix-stripped
+// name to the catalog brand it came from. It is matched ONLY against a query that is the
+// name alone (brandLexicon enforces that): "first aid" is a brand name AND a phrase.
+const STRIPPABLE_BRAND_SUFFIXES = new Set([
+  'beauty', 'cosmetics', 'cosmetic', 'makeup', 'skincare',
+  'us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store',
+]);
+
+function stripBrandSuffixes(brand) {
+  const tokens = String(brand || '').split(' ').filter(Boolean);
+  while (tokens.length > 1 && STRIPPABLE_BRAND_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
+}
+
+function buildStrippedBrandIndex(stats) {
+  const out = new Map();
+  const seen = new Set();
+  for (const entry of stats.values()) {
+    if (seen.has(entry.brand)) continue; // the squashed alias points at the same entry
+    seen.add(entry.brand);
+    const stripped = stripBrandSuffixes(entry.brand);
+    if (!stripped || stripped === entry.brand) continue;
+    for (const key of brandAliases(stripped)) {
+      if (!admissibleKey(key)) continue;
+      // "celimax us" and "celimax jp" both strip to "celimax": the better-stocked wins.
+      const prior = out.get(key);
+      if (!prior || entry.beauty_n > prior.beauty_n) out.set(key, entry);
+    }
+  }
+  return out;
+}
+
+// The catalog beauty brand a query names when the query IS the brand's suffix-stripped
+// name (exact span, either spelling). Same shape as matchCatalogBeautyBrand. The caller
+// must pass the query's core tokens only (stop/suffix words removed) -- this does no
+// span search, on purpose.
+function matchCatalogBeautyBrandByStrippedName(coreQuery) {
+  if (!enabled() || !beautyContractEnabled() || !longTailEnabled()) return null;
+  maybeRefresh();
+  if (!_beautyStripped.size) return null;
+  const span = normalize(foldAccents(coreQuery));
+  if (!span) return null;
+  const squashed = span.replace(/[\s\-]/g, '');
+  const entry = _beautyStripped.get(span) || (squashed !== span ? _beautyStripped.get(squashed) : null);
+  if (!entry) return null;
+  // A stripped name must never shadow a real catalog brand of that exact spelling.
+  if (_beauty.has(span)) return null;
+  return qualifiesAsBeautyBrand(entry) ? { alias: span, ...entry } : null;
 }
 
 // Longest contiguous whole-token span of the query that is a catalog brand. If
@@ -268,6 +353,7 @@ function debugState() {
 function __setBrandSetForTest(values) {
   _set = new Set(values || []);
   _beauty = new Map();
+  _beautyStripped = new Map();
   _loadedAt = Date.now();
 }
 
@@ -275,6 +361,7 @@ function __setBrandSetForTest(values) {
 // rows: [{ b, n, nb, nc }]
 function __setBeautyBrandRowsForTest(rows) {
   _beauty = buildBeautyBrandStats(rows);
+  _beautyStripped = buildStrippedBrandIndex(_beauty);
   _loadedAt = Date.now();
 }
 
@@ -286,7 +373,11 @@ module.exports = {
   getBrandSet,
   matchCatalogBrand,
   matchCatalogBeautyBrand,
+  matchCatalogBeautyBrandByStrippedName,
+  longTailEnabled,
+  stripBrandSuffixes,
   MIN_BEAUTY_ROWS,
+  LONG_TAIL_MIN_BEAUTY_ROWS,
   MIN_BEAUTY_SHARE,
   __setBeautyBrandRowsForTest,
   brandAliases,
