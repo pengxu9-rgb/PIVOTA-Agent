@@ -356,6 +356,64 @@ function detectBrandByStaticAliases(normalizedQuery) {
   return Array.from(new Set(matches));
 }
 
+// Single-word catalog beauty brands that are also ordinary English words. Read
+// as a brand only when the query IS the brand ("Bubble"); "bubble bath",
+// "whipped body butter", "benefits of niacinamide" keep their plain meaning.
+// Reviewed 2026-09-25 against all 164 single-token keys that qualify as catalog
+// beauty brands in prod; a new brand that collides with a word must be added here.
+const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
+  'aida',
+  'benefit',
+  'boto',
+  'bubble',
+  'catkin',
+  'hersteller',
+  'inertia',
+  'lagom',
+  'merit',
+  'organist',
+  'rhode',
+  'tsubaki',
+  'whipped',
+]);
+
+// A brand the static lexicon does not list, recognised because the catalog
+// stocks it as predominantly beauty (brandDictionaryCache.matchCatalogBeautyBrand;
+// GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF -> always null).
+function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}) {
+  const hit = brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery);
+  if (!hit) return null;
+  const queryTokens = tokenizeBrandText(normalizedQuery);
+  const aliasTokens = new Set(tokenizeBrandText(hit.alias));
+  const brandTokens = new Set(tokenizeBrandText(hit.brand));
+  const meaningfulRemainder = queryTokens.filter(
+    (token) =>
+      !aliasTokens.has(token) &&
+      !brandTokens.has(token) &&
+      !BRAND_STOP_TOKENS.has(token) &&
+      !BRAND_SUFFIX_TOKENS.has(token),
+  );
+  const brandOnly = meaningfulRemainder.length === 0;
+  const brandKeyTokens = tokenizeBrandText(hit.brand);
+  if (!brandOnly && brandKeyTokens.length === 1 && AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(brandKeyTokens[0])) {
+    return null;
+  }
+  return {
+    matched: true,
+    brand_like: true,
+    // One key per catalog brand whatever spelling matched ("roundlab" and
+    // "round lab" both resolve to catalog:round lab), so two resolutions of the
+    // same brand compare equal.
+    brand_key: `catalog:${hit.brand}`,
+    brand: toCanonicalBrandLabel(hit.brand),
+    alias: normalizeBrandText(hit.alias),
+    explicit_category: hasExplicitCategoryHint(queryText, options?.intent || null),
+    brand_only: brandOnly,
+    detection_mode: 'catalog_beauty',
+    contract: 'brand_browse',
+  };
+}
+
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   const normalizedQuery = normalizeBrandText(queryText);
   if (!normalizedQuery) {
@@ -394,6 +452,8 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   }
 
   if (!matches.length) {
+    const catalogBeauty = resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options);
+    if (catalogBeauty) return catalogBeauty;
     return {
       matched: false,
       brand_like: Boolean(detectBrandEntities(queryText, options).brand_like),

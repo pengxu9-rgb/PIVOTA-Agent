@@ -29,6 +29,9 @@ const STOPWORDS = new Set([
 ]);
 
 let _set = new Set();
+// alias key -> { brand, n, beauty_n, categorized_n }. Accent-folded, and kept
+// apart from _set so the detection set above stays byte-identical.
+let _beauty = new Map();
 let _loadedAt = 0;
 let _loading = null;
 
@@ -92,8 +95,14 @@ async function refresh() {
   if (typeof query !== 'function') return;
   let rows;
   try {
+    // nb / nc feed ONLY the catalog-beauty map below; the detection set reads
+    // `b` alone, exactly as before. Bare `beauty` counts as beauty: measured
+    // 2026-09-25, Charlotte Tilbury holds 13 of its 17 rows at the bare root,
+    // so `LIKE 'beauty/%'` alone scored a pure beauty brand at 24%.
     const res = await query(
-      `SELECT LOWER(TRIM(brand)) AS b, COUNT(*) AS n
+      `SELECT LOWER(TRIM(brand)) AS b, COUNT(*) AS n,
+              COUNT(*) FILTER (WHERE category_path = 'beauty' OR category_path LIKE 'beauty/%') AS nb,
+              COUNT(*) FILTER (WHERE category_path IS NOT NULL AND TRIM(category_path) <> '') AS nc
          FROM catalog_products
         WHERE brand IS NOT NULL AND TRIM(brand) <> ''
         GROUP BY LOWER(TRIM(brand))
@@ -112,6 +121,7 @@ async function refresh() {
     }
   }
   _set = next;
+  _beauty = buildBeautyBrandStats(rows);
   _loadedAt = Date.now();
 }
 
@@ -159,6 +169,82 @@ function matchCatalogBrand(normalizedQuery) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Catalog BEAUTY brands (GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF).
+//
+// The search-quality contract decides target_domain from the static lexicon
+// only (~60 brands), so a brand the catalog stocks by the hundred — Round Lab,
+// 145 beauty rows — classed `other` and fell to the backend's external-seed
+// lane (price withheld, rendered "0"). This map lets resolveBeautyBrandBrowseQuery
+// recognise a brand whose catalog rows are predominantly beauty.
+//
+// Keys are accent-FOLDED (kosé -> kose). `normalize` above turns é into a
+// space, so "Kosé" indexed as `kos` and was never admissible; the query side
+// (brandLexicon.normalizeBrandText) already folds, so the two now agree.
+const MIN_BEAUTY_ROWS = 3;
+// Share over CATEGORISED rows: a NULL path says nothing about the brand. At
+// 0.6, measured 2026-09-25 over 461 prod brands, the only beauty-stocked
+// brands left out are genuinely mixed ones (GR: 116 fashion/apparel rows).
+const MIN_BEAUTY_SHARE = 0.6;
+
+function beautyContractEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT || '').trim().toLowerCase(),
+  );
+}
+
+function foldAccents(value) {
+  return String(value || '').normalize('NFKD').replace(/[̀-ͯ]/g, '');
+}
+
+function buildBeautyBrandStats(rows) {
+  const out = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const brand = normalize(foldAccents(row && row.b));
+    if (!brand) continue;
+    const n = Number(row.n) || 0;
+    const nb = Number(row.nb) || 0;
+    const nc = Number(row.nc) || 0;
+    for (const key of brandAliases(brand)) {
+      if (!admissibleKey(key)) continue;
+      // Two raw spellings can fold to one key ("Kosé" and "KOSE"): one brand, summed.
+      const prior = out.get(key);
+      out.set(key, prior
+        ? { brand: prior.brand, n: prior.n + n, beauty_n: prior.beauty_n + nb, categorized_n: prior.categorized_n + nc }
+        : { brand, n, beauty_n: nb, categorized_n: nc });
+    }
+  }
+  return out;
+}
+
+function qualifiesAsBeautyBrand(stats) {
+  if (!stats || stats.beauty_n < MIN_BEAUTY_ROWS || !stats.categorized_n) return false;
+  return stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE;
+}
+
+// Longest contiguous whole-token span of the query that is a catalog brand. If
+// that brand is predominantly beauty, returns { brand, alias, n, beauty_n,
+// categorized_n } where `brand` is the CANONICAL spaced key (so `roundlab` and
+// `round lab` resolve to one identity); otherwise null. The longest known brand
+// is THE brand: a non-beauty match never falls back to a shorter sub-span.
+function matchCatalogBeautyBrand(normalizedQuery) {
+  if (!enabled() || !beautyContractEnabled()) return null;
+  maybeRefresh();
+  if (!_beauty.size) return null;
+  const tokens = normalize(foldAccents(normalizedQuery)).split(/\s+/).filter(Boolean);
+  for (let size = Math.min(4, tokens.length); size >= 1; size -= 1) {
+    for (let i = 0; i + size <= tokens.length; i += 1) {
+      const span = tokens.slice(i, i + size).join(' ');
+      const squashed = span.replace(/[\s\-]/g, '');
+      const key = _beauty.has(span) ? span : (squashed !== span && _beauty.has(squashed) ? squashed : null);
+      if (!key) continue;
+      const stats = _beauty.get(key);
+      return qualifiesAsBeautyBrand(stats) ? { alias: span, ...stats } : null;
+    }
+  }
+  return null;
+}
+
 // Read-only diagnostic snapshot. Kicks a (non-blocking) warm so a second call
 // reflects a freshly-loaded set. Returns counts + config only — never the full
 // brand list — so it's safe to expose. Used by the /internal/diag/brand-dict
@@ -181,15 +267,28 @@ function debugState() {
 // Test hook: seed the cache without a DB.
 function __setBrandSetForTest(values) {
   _set = new Set(values || []);
+  _beauty = new Map();
+  _loadedAt = Date.now();
+}
+
+// Test hook: seed the beauty map through the SAME builder the loader uses.
+// rows: [{ b, n, nb, nc }]
+function __setBeautyBrandRowsForTest(rows) {
+  _beauty = buildBeautyBrandStats(rows);
   _loadedAt = Date.now();
 }
 
 module.exports = {
   enabled,
+  beautyContractEnabled,
   refresh,
   maybeRefresh,
   getBrandSet,
   matchCatalogBrand,
+  matchCatalogBeautyBrand,
+  MIN_BEAUTY_ROWS,
+  MIN_BEAUTY_SHARE,
+  __setBeautyBrandRowsForTest,
   brandAliases,
   admissibleKey,
   debugState,
