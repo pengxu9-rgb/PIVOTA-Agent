@@ -18515,9 +18515,14 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   );
   // A reviewed alias pair (APIEU / A'PIEU, romand / rom&nd) denotes one
   // brand. Do not require their punctuation-compacted strings to coincide.
+  // REVIEWED identities only: a catalog-derived key is one raw spelling, so a
+  // row branded "Round Lab US" would key as catalog:round lab us and be rejected
+  // under a "round lab" contract that the containment check below admits.
   if (brand?.brand_key && productBrand) {
     const identity = resolveBeautyBrandBrowseQuery(productBrand);
-    if (identity.matched && identity.brand_only) return identity.brand_key === brand.brand_key;
+    if (identity.matched && identity.brand_only && identity.detection_mode === 'static_beauty') {
+      return identity.brand_key === brand.brand_key;
+    }
   }
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
