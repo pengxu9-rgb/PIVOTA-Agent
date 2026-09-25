@@ -925,6 +925,56 @@ function budgetRequiresMarker() {
   );
 }
 
+// SEARCH_BUDGET_REQUIRE_MARKER helpers. A size, strength, SPF, age or duration next to a
+// number makes it not a price ("under 50ml", "spf50以上", "under 30 years old") -- but only
+// when the amount carries no currency marker of its own: "under $30 SPF 50 sunscreen" and
+// "300元以内 spf50" are budgets.
+const BUDGET_CURRENCY_MARKER_RE =
+  /s\$|[$€£¥￥元块円刀]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid)\b|美元|美金|欧元|英镑|人民币|日元|日圆|新加坡元/i;
+const NOT_A_PRICE_UNIT_AFTER_RE =
+  /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
+const SPF_BEFORE_RE = /\bspf\s*$/i;
+
+function numberSpan(match, group = 1) {
+  const start = (match.index || 0) + match[0].indexOf(match[group]);
+  return { start, end: start + match[group].length };
+}
+
+function isMarkedBudgetAmount(normalized, match) {
+  if (!match) return false;
+  if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return true;
+  const { start, end } = numberSpan(match);
+  if (SPF_BEFORE_RE.test(normalized.slice(0, start))) return false;
+  return !NOT_A_PRICE_UNIT_AFTER_RE.test(normalized.slice(end));
+}
+
+// The first range that is a budget: "between 20 and 40", a currency on either end
+// ("$20-$40", "20-30 usd", "100-200元"), or a price word right before it ("price 20-40").
+// An unmarked range ("spf 30-50", "Olaplex No 4-5", "5-10 minute mask") is skipped, so a
+// real budget later in the query still wins.
+function findMarkedBudgetRange(normalized) {
+  const between = normalized.match(
+    /\bbetween\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)\s*(?:and|&|-|~|to)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/i,
+  );
+  if (between && !NOT_A_PRICE_UNIT_AFTER_RE.test(normalized.slice(numberSpan(between, 2).end))) return between;
+  const re =
+    /(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/gi;
+  for (const match of normalized.matchAll(re)) {
+    const { start } = numberSpan(match, 1);
+    const { end } = numberSpan(match, 2);
+    const before = normalized.slice(0, start);
+    const after = normalized.slice(end);
+    if (SPF_BEFORE_RE.test(before)) continue;
+    const marked =
+      /s\$|[$€£¥￥]/.test(match[0]) ||
+      /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i.test(after) ||
+      /(?:\b(?:price|priced|budget|range|spend|cost)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
+      /^\s*之间/.test(after);
+    if (marked && !NOT_A_PRICE_UNIT_AFTER_RE.test(after)) return match;
+  }
+  return null;
+}
+
 function parseBudgetToPriceConstraint(latestUserQuery) {
   const q = String(latestUserQuery || '');
   if (!q) return null;
@@ -966,30 +1016,24 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Range forms: "30-50", "30~50", "30 to 50", "30到50". Percentage
   // ranges are formulation strengths, not prices (for example niacinamide
   // 5%-10%), so never let them preempt a later explicit budget.
-  // Flag on: the range may carry a currency marker on either end ("$20-$40") or be
-  // spelled "between 20 and 40" -- both used to fall through and cap at the first number.
-  const rangeMatch = budgetRequiresMarker()
-    ? normalized.match(
-        /(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～|and)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
-      )
-    : normalized.match(
-        /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
-      );
-  // SEARCH_BUDGET_REQUIRE_MARKER: "3-in-1", "5-10 minutes", "Olaplex No 4-5" are not
-  // budgets -- a range counts only with a currency marker or a price word, and never when
-  // a size/strength unit follows it.
-  const rangeIsBudget =
-    !budgetRequiresMarker() ||
-    (Boolean(rangeMatch) &&
-      (Boolean(currency) || /\b(?:budget|price|priced|between|range|spend|cost)\b|预算|价格|价位|之间/i.test(normalized)) &&
-      !/^\s*(?:ml|l\b|g\b|gr?ams?|kg|oz|fl|%|ct\b|count|pack|pcs|mm|cm|in\b|spf)/i.test(
-        normalized.slice((rangeMatch.index || 0) + rangeMatch[0].length),
-      ));
-  if (rangeMatch && rangeIsBudget) {
-    const a = Number(rangeMatch[1]);
-    const b = Number(rangeMatch[2]);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
-    return { currency, min: Math.min(a, b), max: Math.max(a, b) };
+  if (budgetRequiresMarker()) {
+    const range = findMarkedBudgetRange(normalized);
+    if (range) {
+      const a = Number(range[1]);
+      const b = Number(range[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+      return { currency, min: Math.min(a, b), max: Math.max(a, b) };
+    }
+  } else {
+    const rangeMatch = normalized.match(
+      /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
+    );
+    if (rangeMatch) {
+      const a = Number(rangeMatch[1]);
+      const b = Number(rangeMatch[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+      return { currency, min: Math.min(a, b), max: Math.max(a, b) };
+    }
   }
 
   // Prefer a number attached to a currency marker or to an explicit bound.
@@ -1013,21 +1057,27 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // door served 2 of 29 K18 rows), "retinol 0.5" into $0.50, "niacinamide 10% serum"
     // into $10, "3CE" / "Olaplex No 3" into $3 -- and since 113df702a that cap is enforced
     // in the canonical SQL, so it deletes rows. A budget now needs a currency marker, a
-    // bound word before the number ("under 40"), or a CJK bound after it ("100以内").
-    // A number followed by a size/strength unit is never a price, bound word or not.
-    const unitAfter = (match) =>
-      Boolean(match) &&
-      /^\s*(?:ml|l\b|g\b|gr?ams?|kg|oz|fl|%|percent|pct|ct\b|count|pack|pk\b|pcs|pieces|mm|cm|inch|in\b|spf|pa\b|x\b)/i.test(
-        normalized.slice((match.index || 0) + match[0].length),
-      );
-    const spfBefore = (match) =>
-      Boolean(match) && /\bspf\s*$/i.test(normalized.slice(0, (match.index || 0) + match[0].indexOf(match[1])));
-    const usable = (match) => (match && !unitAfter(match) && !spfBefore(match) ? match : null);
+    // bound word before the number ("under 40", "max 40", "budget 30", "< 30"), or a bound
+    // after it ("100以内", "30 bucks", "30 or less"). An unmarked number followed by a
+    // size/strength/age/duration unit, or preceded by SPF, is never a price.
+    const usable = (match) => (isMarkedBudgetAmount(normalized, match) ? match : null);
+    const softBoundMatch = normalized.match(
+      /(?:\b(?:max(?:imum)?|budget(?:\s+of)?|around|about|approx(?:imately)?|roughly)\s*(?:is|:)?\s*|[<~≈]\s*|预算\s*(?:是|在)?\s*)(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)/i,
+    );
     const cjkPostfixBound = normalized.match(
       /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円)?\s*(?:以内|以下|以上|左右|起)/,
     );
-    const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块)(?!\s*以)/);
-    m = usable(currencyAmountMatch) || usable(boundedAmountMatch) || usable(cjkPostfixBound) || usable(cjkCurrencySuffix);
+    const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀)(?!\s*以)/);
+    const postfixBound = normalized.match(
+      /(\d+(?:\.\d+)?)\s*(?:bucks\b|quid\b|or less\b|or under\b|and under\b|and below\b|max\b)/i,
+    );
+    m =
+      usable(currencyAmountMatch) ||
+      usable(boundedAmountMatch) ||
+      usable(softBoundMatch) ||
+      usable(cjkPostfixBound) ||
+      usable(cjkCurrencySuffix) ||
+      usable(postfixBound);
   } else {
     m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
   }

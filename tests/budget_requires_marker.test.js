@@ -49,6 +49,14 @@ const PHANTOMS = [
   // "SPF 50 and above sunscreen": 以上 is a bound word, but the number belongs to SPF
   'spf50以上的防晒霜',
   'SPF 50以上',
+  // ages and durations after a bound word are not prices either
+  'under 30 years old',
+  'under 25 age skincare',
+  'about 5 minutes',
+  'spf 50+ sunscreen',
+  'vitamin c serum 10-20%',
+  'between 10 and 20% niacinamide',
+  'price 10-20%',
 ];
 
 // Real budgets: identical with the flag on and off.
@@ -69,6 +77,35 @@ const BUDGETS = [
   ['100元左右的面霜', { currency: 'CNY', min: 75, max: 125 }],
   ['200以上', { currency: null, min: 200, max: null }],
   ['50块', max(null, 50)],
+  // Review of #2275: a size/SPF/"fl..." word AFTER a marked amount must not cancel it --
+  // the unit check reads the text after the NUMBER, and only for an unmarked number.
+  ['under $30 SPF 50 sunscreen', max('USD', 30)],
+  ['300元以内 spf50', max('CNY', 300)],
+  ['30 dollar spf 50', max('USD', 30)],
+  ['under $30 fluid foundation', max('USD', 30)],
+  ['under 40 floral perfume', max(null, 40)],
+  ['under 20 mlbb lipstick', max(null, 20)],
+  ["under 20 l'oreal serum", max(null, 20)],
+  ['serum under 30 in pink', max(null, 30)],
+  ['under $30 pa++++ sunscreen', max('USD', 30)],
+  ['moisturizer under 30 pack of 2', max(null, 30)],
+  // "and" is a range only after "between"
+  ['retinol 1 and 2 under $40', max('USD', 40)],
+  // unambiguous markers the bare-number fallback used to catch by accident
+  ['max 40', max(null, 40)],
+  ['30 max', max(null, 30)],
+  ['budget 30', max(null, 30)],
+  ['budget: 30', max(null, 30)],
+  ['预算300', max(null, 300)],
+  ['< 30', max(null, 30)],
+  ['~30', max(null, 30)],
+  ['around 30', { currency: null, min: 22.5, max: 37.5 }],
+  ['30 or less', max(null, 30)],
+  ['30 bucks', max(null, 30)],
+  ['30刀', max(null, 30)],
+  ['100-200块', { currency: null, min: 100, max: 200 }],
+  ['20 to 30 bucks', { currency: null, min: 20, max: 30 }],
+  ['100到200之间', { currency: null, min: 100, max: 200 }],
 ];
 
 describe('flag OFF: byte-identical to the legacy parser (bug pinned, not fixed)', () => {
@@ -107,6 +144,17 @@ describe('flag ON: a bare number is never a budget', () => {
     ['$20-$40 serum', { currency: 'USD', min: 20, max: 40 }],
     ['lipstick $15 to $25', { currency: 'USD', min: 15, max: 25 }],
   ])('range %s is read whole (was capped at the first number)', (q, expected) => {
+    on();
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+
+  test.each([
+    ['spf 30-50 sunscreen under $20', max('USD', 20)],
+    ['Olaplex No 4-5 under $30', max('USD', 30)],
+    ['5-10 minute mask under $30', max('USD', 30)],
+    ['20-40 ml under $30', max('USD', 30)],
+    ['vitamin c 10-20% under $30', max('USD', 30)],
+  ])('an unmarked range never overrides the real budget: %s', (q, expected) => {
     on();
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });
