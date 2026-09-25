@@ -1850,6 +1850,31 @@ function overlapScore(left, right) {
   return hits / Math.max(a.size, b.size);
 }
 
+// A shared category is a shelf, not evidence that two products are alike. Two equal one-word
+// categories ("mask", "sunscreen") overlap 1.0, and through the max() in scoreCandidateForAnchor
+// that alone scored every same-shelf pair 1.0. Category agreement is capped at the exact-category
+// floor, and catch-all shelves (beauty/haircare/general -> "general") count for nothing.
+const CATEGORY_MATCH_CEILING = 0.72;
+const PLACEHOLDER_CATEGORY_TOKENS = new Set([
+  'default',
+  'general',
+  'misc',
+  'miscellaneous',
+  'none',
+  'other',
+  'others',
+  'uncategorized',
+  'unknown',
+]);
+
+function informativeTokenText(value, excluded = PLACEHOLDER_CATEGORY_TOKENS) {
+  return Array.from(tokenSet(value)).filter((token) => !excluded.has(token)).join(' ');
+}
+
+function categoryTokens(product = {}) {
+  return [...tokenSet(product.category), ...tokenSet(product.category_taxonomy)];
+}
+
 function hasIntersectingIdentity(left, right) {
   const a = new Set(productIdentityKeys(left));
   for (const key of productIdentityKeys(right)) {
@@ -1950,15 +1975,22 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
     candidate.intel_text,
   ].filter(Boolean).join(' ');
   const nameScore = overlapScore(anchor.name, candidate.name);
-  const categoryScoreBase = Math.max(
-    overlapScore(anchor.category, candidate.category),
-    overlapScore(anchor.category_taxonomy, candidate.category_taxonomy),
-    overlapScore(anchor.name, candidate.category),
-    nameScore * 0.65,
+  const anchorCategory = informativeTokenText(anchor.category);
+  const candidateCategory = informativeTokenText(candidate.category);
+  const categoryMatch = Math.min(
+    CATEGORY_MATCH_CEILING,
+    Math.max(
+      overlapScore(anchorCategory, candidateCategory),
+      overlapScore(informativeTokenText(anchor.category_taxonomy), informativeTokenText(candidate.category_taxonomy)),
+      overlapScore(anchor.name, candidateCategory),
+    ),
   );
-  const exactCategory =
-    normalizeLower(anchor.category) &&
+  const categoryScoreBase = Math.max(categoryMatch, nameScore * 0.65);
+  const exactCategory = Boolean(anchorCategory) &&
     normalizeLower(anchor.category) === normalizeLower(candidate.category);
+  // Tags that only repeat a category (retailer rows carry tags = [category leaf]) are the category
+  // term again; they must not re-enter as product evidence below.
+  const shelfTokens = new Set([...PLACEHOLDER_CATEGORY_TOKENS, ...categoryTokens(anchor), ...categoryTokens(candidate)]);
   const categoryUseCase = clamp01(
     Math.max(categoryScoreBase, exactCategory ? 0.72 : 0) +
       (legacyMatch ? 0.12 : 0) +
@@ -1968,7 +2000,7 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
   const ingredientScore = Math.max(
     overlapScore(anchor.ingredient_text, candidate.ingredient_text),
     overlapScore(anchor.description, candidate.description),
-    overlapScore(anchor.tags, candidate.tags),
+    overlapScore(informativeTokenText(anchor.tags, shelfTokens), informativeTokenText(candidate.tags, shelfTokens)),
     overlapScore(anchorText, candidateText) * 0.75,
     categoryUseCase * 0.72,
   );
