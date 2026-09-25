@@ -1759,6 +1759,15 @@ async function fetchCanonicalChainRows(args = {}) {
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        -- At the SAME price a real variant beats the synthetic product-level sku (\`<pk>::canonical\`,
+        -- whose source_variant_id is the product key). The hashed offer_id alone picked between them at
+        -- random, and a card carrying the synthetic id cannot be matched to the store's variant:
+        -- liveMerchantSearchPrice reported variant_missing on 4 of 17 bluemercury.com cards (2026-09-25).
+        -- Also the placeholder ids the backend derives when a store gives no variant id ('default',
+        -- '<id>-default'; services/variant_identity.py): none of them names a variant the store sells.
+        CASE WHEN s.sku_key LIKE '%::canonical' OR s.source_variant_id IS NULL OR s.source_variant_id = s.product_key
+               OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
+          THEN 1 ELSE 0 END ASC,
         o.offer_id ASC
       LIMIT 1
     ) best_sku_offer ON TRUE`

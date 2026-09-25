@@ -130,3 +130,23 @@ test('twenty slow same-host reads respect one page deadline', async () => {
   assert.equal(result.metadata.live_merchant_price.failure_reasons.deadline_exceeded, 20);
   assert.ok(result.products.every((p) => p.price === 28.2 && p.price_source === 'catalog_offer'));
 });
+
+test('a variant id that only restates the product (the ::canonical sku) or a placeholder is not a variant', () => {
+  const retailer = {
+    product_key: 'ext:retailer:05c4febd54ff507122aae7a55440d7c6', price: 46, currency: 'USD',
+    destination_url: 'https://bluemercury.com/products/moroccanoil-intense-hydrating-mask',
+  };
+  // bluemercury.com 2026-09-25: the card carried the product key as its variant -> variant_missing.
+  assert.equal(targetOf({ ...retailer, source_variant_id: retailer.product_key }).variant, '');
+  assert.equal(targetOf({ ...retailer, source_variant_id: 'default' }).variant, '');
+  assert.equal(targetOf({ ...retailer, source_variant_id: '9001-default' }).variant, '');
+  // the URL's own ?variant= still applies once the restated id is set aside
+  assert.equal(targetOf({ ...retailer, source_variant_id: retailer.product_key,
+    destination_url: `${retailer.destination_url}?variant=31691919065163` }).variant, '31691919065163');
+  // a real variant id is untouched
+  assert.equal(targetOf({ ...retailer, source_variant_id: '31691919065163' }).variant, '31691919065163');
+  // single-variant store product: verified with no variant named
+  const one = { product: { variants: [{ id: 31691919065163, price: '46.00', price_currency: 'USD' }] } };
+  assert.deepEqual(verifiedPrice(one, targetOf({ ...retailer, source_variant_id: retailer.product_key }).variant),
+    { amount: 46, currency: 'USD' });
+});
