@@ -86,12 +86,19 @@ function pricedRow() {
   };
 }
 
+// Returns a live counter of upstream calls, so a test can prove its rows came
+// from THIS mock rather than from another lane.
 function mockUpstream(products) {
+  const calls = { count: 0 };
   nock(process.env.PIVOTA_API_BASE)
     .post('/agent/v2/products/search')
     .query(true)
     .times(6)
-    .reply(200, { status: 'success', success: true, total: products.length, metadata: { query_source: 'test_upstream' }, products });
+    .reply(200, () => {
+      calls.count += 1;
+      return { status: 'success', success: true, total: products.length, metadata: { query_source: 'test_upstream' }, products };
+    });
+  return calls;
 }
 
 function invoke(app, metadata) {
@@ -106,6 +113,11 @@ function invoke(app, metadata) {
 
 function isZeroPrice(value) {
   return value !== null && value !== undefined && Number(value) === 0;
+}
+
+// Unknown stock is null/absent. `false` would be an invented claim too.
+function isUnknown(value) {
+  return value === null || value === undefined;
 }
 
 describe('find_products_multi: a withheld external-seed price stays unknown', () => {
@@ -127,19 +139,23 @@ describe('find_products_multi: a withheld external-seed price stays unknown', ()
   });
 
   it('MCP door (no metadata): no zero price, no invented stock, the verification mark reaches the agent', async () => {
-    mockUpstream([withheldRow(), pricedRow()]);
+    const upstream = mockUpstream([withheldRow(), pricedRow()]);
     const app = require('../../src/server');
     const resp = await invoke(app, null);
 
     expect(resp.status).toBe(200);
+    // Premise: the rows came from the mocked v2 upstream, not another lane.
+    expect(upstream.count).toBeGreaterThan(0);
     const withheld = resp.body.products.find((p) => p.product_id === 'round-lab:85dd4c56da58a259');
     expect(withheld).toBeDefined();
     expect(isZeroPrice(withheld.price)).toBe(false);
-    expect(withheld.in_stock).not.toBe(true);
+    expect(isUnknown(withheld.in_stock)).toBe(true);
     expect(withheld.commerce_verification).toEqual(expect.objectContaining({ required: true, status: 'live_quote_required' }));
-    for (const offer of withheld.offers || []) {
+    // Non-vacuous: the offer-level checks below must have offers to check.
+    expect(Array.isArray(withheld.offers) && withheld.offers.length > 0).toBe(true);
+    for (const offer of withheld.offers) {
       expect(isZeroPrice(offer.price)).toBe(false);
-      expect(offer.availability?.in_stock).not.toBe(true);
+      expect(isUnknown(offer.availability?.in_stock)).toBe(true);
     }
 
     // CONTROL: a trusted row keeps its real price and stock through the same path.
@@ -158,7 +174,7 @@ describe('find_products_multi: a withheld external-seed price stays unknown', ()
     const withheld = resp.body.products.find((p) => p.product_id === 'round-lab:85dd4c56da58a259');
     expect(withheld).toBeDefined();
     expect(isZeroPrice(withheld.price)).toBe(false);
-    expect(withheld.in_stock).not.toBe(true);
+    expect(isUnknown(withheld.in_stock)).toBe(true);
     expect(resp.body.metadata.price_contract).toEqual(
       expect.objectContaining({ dropped_unpriced: 0, verification_required_unpriced_kept: 1 }),
     );
