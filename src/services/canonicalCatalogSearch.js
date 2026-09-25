@@ -1625,6 +1625,7 @@ async function fetchCanonicalChainRows(args = {}) {
       best_sku_offer.merchant_effective_price,
       best_sku_offer.estimated_best_price,
       best_sku_offer.price_confidence,
+      best_sku_offer.offer_updated_at AS price_updated_at,
       best_sku_offer.offer_source_system,
       best_sku_offer.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
@@ -1654,7 +1655,8 @@ async function fetchCanonicalChainRows(args = {}) {
       best_offer.list_price      AS list_price,
       best_offer.merchant_effective_price AS merchant_effective_price,
       NULL::numeric              AS estimated_best_price,
-      NULL::text                 AS price_confidence,
+      best_offer.price_confidence AS price_confidence,
+      best_offer.offer_updated_at AS price_updated_at,
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
@@ -1745,6 +1747,7 @@ async function fetchCanonicalChainRows(args = {}) {
         o.merchant_effective_price,
         o.estimated_best_price,
         o.price_confidence,
+        o.updated_at      AS offer_updated_at,
         o.source_system   AS offer_source_system,
         o.offer_payload
       FROM catalog_skus s
@@ -1773,7 +1776,8 @@ async function fetchCanonicalChainRows(args = {}) {
     ) best_sku_offer ON TRUE`
     : `
     LEFT JOIN LATERAL (
-      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
+      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability,
+             o.price_confidence, o.updated_at AS offer_updated_at
       FROM catalog_offers o
       WHERE o.product_key = c.product_key
         AND o.suppressed_at IS NULL

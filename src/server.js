@@ -12226,6 +12226,12 @@ function projectSearchTransportProduct(product, stats = null) {
     'price',
     'price_amount',
     'currency',
+    // Freshness travels with the price through the transport projection too. This is
+    // an explicit allowlist applied at all three primary find_products_multi exits,
+    // so omitting these published them on the early-direct beauty lane ONLY -- the
+    // same product carrying or lacking an as_of depending on how it was routed.
+    'price_as_of',
+    'price_confidence',
     'in_stock',
     'availability',
     'inventory_quantity',
@@ -17702,6 +17708,42 @@ const CANONICAL_NO_OFFER_DERIVED_PRICE_REASON = 'no_offer_derived_price';
  * `> 0` rather than merely present, matching pricedOfferSql: a 0.00 price is
  * not buyable either.
  */
+/**
+ * An offer row's `updated_at` as a UTC ISO-8601 instant, or null.
+ *
+ * `databases`/pg hand this back as a Date on one path and a string on another,
+ * so both are accepted; anything unparseable yields null and the caller emits
+ * no `price_as_of` at all rather than a date it cannot stand behind.
+ */
+function normalizeCanonicalPriceAsOf(value) {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  // ONLY a string past this point. `String(value)` on a number was the bug: pg can
+  // hand back an epoch-ish value on some paths, and `String(0) + 'Z'` is '0Z', which
+  // V8 happily parses as the year 2000. A silently wrong as_of is worse than none --
+  // the entire value of the field is that a reader can trust it.
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  // Require a FULL date and time before parsing. Partials ('2026') and locale forms
+  // ('9/8/2026') parse in V8 but mean something we never asserted, and the second
+  // is timezone-dependent on top.
+  if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(text)) return null;
+  // `catalog_offers.updated_at` is `timestamp WITHOUT time zone` (db/catalog.py, and
+  // migration 058 declares plain TIMESTAMP), so this rendering carries NO offset and
+  // the instant is only as good as the session that stamped NOW(). Reading it as UTC
+  // is therefore an assumption, stated here rather than hidden: it holds while the
+  // database session runs UTC, and a non-UTC session shifts every as_of by its offset.
+  // An offset IS honoured when present, for the paths that do supply one.
+  let candidate = text.includes('T') ? text : text.replace(' ', 'T');
+  const offset = candidate.match(/[+-](\d{2})(:?\d{2})?$/);
+  if (offset && !offset[2]) candidate += ':00';
+  else if (!offset && !candidate.endsWith('Z')) candidate += 'Z';
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function resolveCanonicalOfferDerivedPrice(row) {
   if (!isPlainObject(row)) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
@@ -17712,7 +17754,43 @@ function resolveCanonicalOfferDerivedPrice(row) {
   if (!currency || !Number.isFinite(amount) || amount <= 0) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
   }
-  return { priced: true, amount, currency };
+  // FRESHNESS TRAVELS WITH THE AMOUNT, off the SAME offer row, for the same
+  // reason the currency does: an as-of taken from anywhere else would date a
+  // number it does not describe, which is the amount-without-its-currency class
+  // this function already exists to prevent.
+  //
+  // We were serving an unqualified price. Measured on prod 2026-09-16 over the
+  // serving-eligible referral lane: 2,273 offers under 7 days old, 8,179 at
+  // 7-30 days, 7,350 at 30-90, and 435 over 90 -- against a catalog audit that
+  // found 43% of live PDPs carrying an active markdown at any moment. A cached
+  // price stated as-of is a defensible product; an undated one is not, and a
+  // partner comparing us to the merchant's own door has no way to tell which
+  // they are holding.
+  //
+  // Absent rather than guessed, throughout: a row with no usable timestamp emits
+  // no as_of instead of "now", which would assert a verification we never did.
+  const asOf = normalizeCanonicalPriceAsOf(row.price_updated_at);
+  // NOT `Number(row.price_confidence)`: Number(null) is 0, which is finite, so a
+  // row that recorded NO confidence would publish 0 -- and 0 is a real value
+  // meaning "we do not believe this price". Absent and disbelieved must not
+  // collapse into the same answer. Measured: 4,897 serving-eligible offers carry
+  // a NULL price_confidence today.
+  // Only a string or a number is a confidence. `Number(true)` is 1 and `Number([0.5])`
+  // is 0.5, so an accidental boolean or single-element array would publish a
+  // confidence nobody recorded.
+  const confidenceRaw = row.price_confidence;
+  const confidenceIsScalar =
+    typeof confidenceRaw === 'number' ||
+    (typeof confidenceRaw === 'string' && confidenceRaw.trim() !== '');
+  const confidence =
+    confidenceIsScalar && Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
+  return {
+    priced: true,
+    amount,
+    currency,
+    ...(asOf ? { as_of: asOf } : {}),
+    ...(confidence != null ? { confidence } : {}),
+  };
 }
 
 function buildCanonicalChainMainlineProduct(row) {
@@ -17919,7 +17997,14 @@ function buildCanonicalChainMainlineProduct(row) {
     // even when there was no price, which is where the hardcoded 'USD' default
     // surfaced. A price-less product now carries a reason code instead.
     ...(offerPrice.priced
-      ? { price: offerPrice.amount, currency: offerPrice.currency }
+      ? {
+          price: offerPrice.amount,
+          currency: offerPrice.currency,
+          // Same rule as price/currency: emitted only when the offer row
+          // actually carried them, never defaulted.
+          ...(offerPrice.as_of ? { price_as_of: offerPrice.as_of } : {}),
+          ...(offerPrice.confidence != null ? { price_confidence: offerPrice.confidence } : {}),
+        }
       : { price_absent_reason: offerPrice.reason }),
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
@@ -54677,6 +54762,13 @@ module.exports._debug = {
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   resolveCanonicalOfferDerivedPrice,
+  // Exported because the property that regressed here is INVISIBLE over the wire in
+  // the only direction that matters: a field missing from this allowlist is simply
+  // absent from the response, which is indistinguishable from a product that never
+  // had one. `price_as_of` shipped stripped on all three primary find_products_multi
+  // exits and present on the early-direct beauty lane, so the same product carried or
+  // lacked it depending on routing, and every response looked individually plausible.
+  projectSearchTransportProduct,
   CANONICAL_NO_OFFER_DERIVED_PRICE_REASON,
   finalizeCitableSupplementItem,
   mergeCanonicalChainProductsWithSeedProducts,
