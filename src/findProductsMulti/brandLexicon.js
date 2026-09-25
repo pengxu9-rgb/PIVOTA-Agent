@@ -377,11 +377,54 @@ const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
   'whipped',
 ]);
 
+// Suffix-stripped catalog brand names that are also ordinary words or phrases. The
+// stripped name is only ever matched when the query IS the name, but a buyer typing
+// "first aid", "self" or "flower" alone is not asking for First Aid Beauty, Self Beauty
+// or Flower Beauty. Reviewed 2026-09-25 against all 55 stripped names prod's 335
+// qualifying brands produce; a new collision must be added here.
+const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
+  'aya',
+  'benefit',
+  'first aid',
+  'flower',
+  'lime',
+  'note',
+  'rare',
+  'self',
+  'sigma',
+  'terra',
+]);
+
+// The query's own words, minus framing ("shop", "products") and brand suffixes
+// ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
+function coreBrandQueryTokens(normalizedQuery) {
+  return tokenizeBrandText(normalizedQuery).filter(
+    (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
+  );
+}
+
+// "Danessa Myricks" for the catalog brand "Danessa Myricks Beauty"
+// (GATEWAY_CATALOG_BRAND_LONG_TAIL, default OFF -> always null). Brand-only by
+// construction: the WHOLE core query must equal the stripped name.
+function matchStrippedCatalogBeautyBrand(normalizedQuery) {
+  const core = coreBrandQueryTokens(normalizedQuery).join(' ');
+  if (!core) return null;
+  const hit = brandDictionaryCache.matchCatalogBeautyBrandByStrippedName(core);
+  if (!hit) return null;
+  const alias = normalizeBrandText(hit.alias);
+  if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(alias) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(alias)) {
+    return null;
+  }
+  return hit;
+}
+
 // A brand the static lexicon does not list, recognised because the catalog
 // stocks it as predominantly beauty (brandDictionaryCache.matchCatalogBeautyBrand;
 // GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF -> always null).
 function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}) {
-  const hit = brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery);
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery) ||
+    matchStrippedCatalogBeautyBrand(normalizedQuery);
   if (!hit) return null;
   const queryTokens = tokenizeBrandText(normalizedQuery);
   const aliasTokens = new Set(tokenizeBrandText(hit.alias));
