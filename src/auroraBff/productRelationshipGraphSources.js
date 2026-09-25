@@ -1097,6 +1097,9 @@ async function loadAffectedProductAnchorCandidates({
         FROM external_product_seeds eps
         LEFT JOIN catalog_products cp
           ON cp.source_product_id = eps.external_product_id
+          -- Path-C / retailer-lane seeds point at their catalog row only through
+          -- attached_product_key (same join as the affected-products selector).
+          OR cp.product_key = eps.attached_product_key
         WHERE COALESCE(eps.status, 'active') = 'active'
           AND upper(COALESCE(eps.market, $2)) = $2
           AND (
@@ -2015,13 +2018,34 @@ function compareScoredCandidates(a, b) {
   return normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref));
 }
 
+// Fields that name one listing. They move as a block from a single record, never field by field.
+const LISTING_IDENTITY_FIELDS = [
+  'product_ref',
+  'product_id',
+  'product_key',
+  'source_product_id',
+  'pivota_signature_id',
+  'content_key',
+];
+
+// A retailer-lane catalog row and the external_product_seeds row attached to it collapse into one
+// family. Serving reads edges by `product:sig_<hash>` and the affected selector emits the sig, so
+// when only one side carries a pivota signature, that side owns the merged identity.
+function listingIdentityOwner(preferred, secondary) {
+  const hasSig = (item) => Boolean(normalizeString(item?.pivota_signature_id));
+  return !hasSig(preferred) && hasSig(secondary) ? secondary : preferred;
+}
+
 function mergeDuplicateCandidate(existing, candidate) {
   if (!existing) return candidate;
   const preferred = compareScoredCandidates(existing, candidate) <= 0 ? existing : candidate;
   const secondary = preferred === existing ? candidate : existing;
+  const identityOwner = listingIdentityOwner(preferred, secondary);
+  const identity = Object.fromEntries(LISTING_IDENTITY_FIELDS.map((field) => [field, identityOwner[field]]));
   return {
     ...secondary,
     ...preferred,
+    ...identity,
     source_refs: mergeSourceRefs(existing.source_refs, candidate.source_refs),
     evidence_grade: betterEvidenceGrade(existing.evidence_grade, candidate.evidence_grade),
     category_taxonomy: normalizeCategoryTaxonomy(existing.category_taxonomy, candidate.category_taxonomy),
