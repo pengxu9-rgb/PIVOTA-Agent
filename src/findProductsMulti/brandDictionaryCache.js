@@ -243,9 +243,55 @@ function longTailEnabled() {
   );
 }
 
+// ONBOARDED BRANDS (GATEWAY_CATALOG_BRAND_ALLOWLIST, default OFF). A brand the
+// retailer-ingest pipeline wrote on purpose (data/beauty/onboarded_catalog_brands.json:
+// canonical == the catalog_products.brand the job wrote, plus the store spellings it
+// respelled) needs no row-count evidence -- the floors exist to filter noise from random
+// vendors, and an onboarded brand is not random. It qualifies from ONE beauty-leaf row,
+// with the same majority-beauty share. Single-word ordinary-word brands (KISS) are still
+// held to brand-only queries by brandLexicon.
+function loadOnboardedBrandKeys() {
+  const keys = new Set();
+  let doc = null;
+  try {
+    doc = require('../../data/beauty/onboarded_catalog_brands.json');
+  } catch (_) {
+    return keys;
+  }
+  for (const brand of Array.isArray(doc && doc.brands) ? doc.brands : []) {
+    for (const spelling of [brand && brand.canonical, ...((brand && brand.store_spellings) || [])]) {
+      for (const key of brandAliases(normalize(foldAccents(spelling)))) {
+        if (admissibleKey(key)) keys.add(key);
+      }
+    }
+  }
+  return keys;
+}
+const ONBOARDED_BRAND_KEYS = loadOnboardedBrandKeys();
+
+function allowlistEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BRAND_ALLOWLIST || '').trim().toLowerCase(),
+  );
+}
+
+function isOnboardedBrand(brand) {
+  const key = normalize(foldAccents(brand));
+  return Boolean(key) && (ONBOARDED_BRAND_KEYS.has(key) || ONBOARDED_BRAND_KEYS.has(key.replace(/[\s\-]/g, '')));
+}
+
 function qualifiesAsBeautyBrand(stats) {
   if (!stats || !stats.categorized_n) return false;
   if (stats.beauty_n >= MIN_BEAUTY_ROWS && stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE) return true;
+  if (
+    allowlistEnabled() &&
+    isOnboardedBrand(stats.brand) &&
+    stats.beauty_n >= 1 &&
+    (stats.beauty_leaf_n || 0) >= 1 &&
+    stats.beauty_n / stats.categorized_n >= MIN_BEAUTY_SHARE
+  ) {
+    return true;
+  }
   return (
     longTailEnabled() &&
     String(stats.brand || '').split(' ').filter(Boolean).length >= 2 &&
@@ -330,6 +376,36 @@ function matchCatalogBeautyBrand(normalizedQuery) {
   return null;
 }
 
+// STRIPPED NAME + MORE WORDS (GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY, default OFF).
+// "Danessa Myricks blush" -- the likeliest agent phrasing -- leads with the stripped name
+// of "Danessa Myricks Beauty" and adds a product word. Claimed only when the stripped name
+// is MULTI-token (a one-word stripped name is too collision-prone to anchor a span), it is
+// the query's LEADING span, and at least one more word follows (the name alone is the
+// brand-only matcher's job). The caller passes core tokens (stop/suffix words removed)
+// and applies the ordinary-word list.
+function strippedCategoryEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY || '').trim().toLowerCase(),
+  );
+}
+
+function matchCatalogBeautyBrandByStrippedLeadingSpan(coreTokens) {
+  if (!enabled() || !beautyContractEnabled() || !longTailEnabled() || !strippedCategoryEnabled()) return null;
+  maybeRefresh();
+  if (!_beautyStripped.size) return null;
+  const tokens = (Array.isArray(coreTokens) ? coreTokens : [])
+    .map((token) => normalize(foldAccents(token)))
+    .filter(Boolean);
+  for (let size = Math.min(4, tokens.length - 1); size >= 2; size -= 1) {
+    const span = tokens.slice(0, size).join(' ');
+    const entry = _beautyStripped.get(span);
+    if (!entry) continue;
+    if (_beauty.has(span)) return null; // a real brand of that exact spelling wins elsewhere
+    return qualifiesAsBeautyBrand(entry) ? { alias: span, ...entry } : null;
+  }
+  return null;
+}
+
 // Read-only diagnostic snapshot. Kicks a (non-blocking) warm so a second call
 // reflects a freshly-loaded set. Returns counts + config only — never the full
 // brand list — so it's safe to expose. Used by the /internal/diag/brand-dict
@@ -374,6 +450,10 @@ module.exports = {
   matchCatalogBrand,
   matchCatalogBeautyBrand,
   matchCatalogBeautyBrandByStrippedName,
+  matchCatalogBeautyBrandByStrippedLeadingSpan,
+  allowlistEnabled,
+  strippedCategoryEnabled,
+  isOnboardedBrand,
   longTailEnabled,
   stripBrandSuffixes,
   MIN_BEAUTY_ROWS,
