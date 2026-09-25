@@ -597,7 +597,8 @@ function buildWarmHandoffOutput({ input = {}, descriptor = {}, product = null, o
 // market ('US' by default) for a request that named none, and the purchasability fact is keyed on the BUYER's
 // market: a positive fact gathered from another vantage is evidence for a human, never permission for the
 // door (backend runbook §6 — judydoll.com resets TCP from one of our egresses while answering through
-// another). A request with no market is a question the gate cannot ask, so it keeps the previous behaviour.
+// another). A request with no market has no fact to read: under backend enforcement the gate declines it
+// (backend #2352), otherwise it keeps the previous behaviour.
 function requestBuyerMarket(input = {}) {
   const metadata = isPlainObject(input.metadata) ? input.metadata : {};
   const payload = isPlainObject(input.payload) ? input.payload : {};

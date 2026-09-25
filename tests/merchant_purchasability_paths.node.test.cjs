@@ -65,6 +65,15 @@ const PURCHASE = { tier: 'purchase', enforced: true, sweep_enabled: true };
 const BROWSE_ONLY = { tier: 'browse_only', enforced: true, sweep_enabled: true };
 const NOT_ENFORCED = { tier: 'browse_only', enforced: false, sweep_enabled: true };
 
+/** pivota-backend #2352's answer to `GET /ops/merchant-purchasability?domain=<d>` with no market. */
+function marketUnknownAnswer(domain, keyedBody) {
+  if (!keyedBody || typeof keyedBody !== 'object' || typeof keyedBody.enforced !== 'boolean') return keyedBody;
+  return {
+    domain, market: null, tier: 'browse_only', reason: 'market_unknown',
+    enforced: keyedBody.enforced, sweep_enabled: keyedBody.sweep_enabled, facts: [],
+  };
+}
+
 /**
  * A backend that answers per-domain, recording every request and every concurrent overlap.
  * `delayMs` + `clock` make the latency bounds measurable without any wall-clock sleeping.
@@ -84,11 +93,16 @@ function fakeBackend(bodyFor, { status = 200, ok = true, throws = null, delayMs 
         await Promise.resolve();
       }
       if (throws) throw throws;
-      const domain = new URL(url).searchParams.get('domain');
+      const parsed = new URL(url);
+      const domain = parsed.searchParams.get('domain');
+      const keyedBody = typeof bodyFor === 'function' ? bodyFor(domain) : bodyFor;
+      // A market-less URL is answered the way pivota-backend #2352's route answers it: 200,
+      // browse_only, `reason: market_unknown`, and the SAME backend dials the keyed body carries.
+      const body = parsed.searchParams.has('market') ? keyedBody : marketUnknownAnswer(domain, keyedBody);
       return {
         ok,
         status,
-        json: async () => (malformed ? 'not-an-object' : (typeof bodyFor === 'function' ? bodyFor(domain) : bodyFor)),
+        json: async () => (malformed ? 'not-an-object' : body),
       };
     } finally {
       inFlight -= 1;
@@ -273,7 +287,7 @@ test('path2/escalation: a gate answer with no `offer` key is NOT a refusal (stri
   assert.equal(out.continue_url, MERCHANT_URL);
 });
 
-test('path2/escalation: NO MARKET => unchanged, and `unkeyable` is logged — never a default market', async () => {
+test('path2/escalation: NO MARKET + ENFORCED => the same fall-through as a decline — never a default market', async () => {
   const backend = fakeBackend(BROWSE_ONLY);
   const logger = fakeLogger();
   const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
@@ -284,9 +298,67 @@ test('path2/escalation: NO MARKET => unchanged, and `unkeyable` is logged — ne
     shouldOfferPurchase: realGate({ env, backend, logger }),
   });
 
-  assert.equal(out.continue_url, MERCHANT_URL, 'no market is a question the gate cannot ask');
-  assert.equal(backend.calls.length, 0, 'a defaulted market would have produced a read');
+  // `null` = "not an escalation cart": the kernel path, exactly what a `gate` decline produces.
+  assert.equal(out, null, 'no market => no fact => under enforcement, no storefront checkout');
+  assert.equal(backend.calls.length, 1, 'one market-less enforcement read');
+  const probe = new URL(backend.calls[0].url);
+  assert.equal(probe.searchParams.has('market'), false, 'a defaulted market would have been on this read');
+  assert.equal(probe.searchParams.get('domain'), MERCHANT, 'the storefront HOST, never the product URL');
+  assert.ok(!wireAndLogValues(backend, logger).includes('/products/'));
   assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable' && l.level === 'warn'));
+});
+
+test('path2/escalation: NO MARKET + NOT enforced => unchanged', async () => {
+  const backend = fakeBackend(NOT_ENFORCED);
+  const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+  const out = await runEscalation({
+    env,
+    ucpArgs: ucpCreateArgs({ market: null }),
+    shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.equal(out.continue_url, MERCHANT_URL);
+  assert.deepEqual(out, await runEscalation({ env: { ...offEnv(), [ESCALATION_FLAG]: '1' }, ucpArgs: ucpCreateArgs({ market: null }) }));
+});
+
+for (const [name, opts] of [
+  ['500', { status: 500, ok: false }],
+  ['transport throw', { throws: new Error('ECONNREFUSED') }],
+  ['malformed body', { malformed: true }],
+]) {
+  test(`path2/escalation: NO MARKET + enforcement read ${name} FAILS OPEN — unchanged`, async () => {
+    const backend = fakeBackend(BROWSE_ONLY, opts);
+    const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+    const out = await runEscalation({
+      env, ucpArgs: ucpCreateArgs({ market: null }), shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+    });
+    assert.equal(out.continue_url, MERCHANT_URL, 'enforcement not known is NOT enforcement');
+  });
+}
+
+test('path2/escalation GET: the re-read (no market on the wire) takes the SAME fall-through under enforcement', async () => {
+  // The UCP `get_checkout` body carries no `checkout.context`, so this branch is always unkeyable.
+  // Under enforcement that is a decline, handled by the same `return null` as the create branch.
+  const { tryEscalateUcpCheckout, encodeEscalationId } = await escalation();
+  const sessionId = encodeEscalationId([{ product_id: 'p1', quantity: 1 }]);
+  const run = (env, shouldOfferPurchase) => tryEscalateUcpCheckout({
+    op: { id: 'get_checkout_session', capability: 'checkout' },
+    params: { session_id: sessionId },
+    ctx: {},
+    executor: fakeExecutor(),
+    ucpArgs: { meta: { version: '2026-04-08' } },
+    env,
+    now: 1_700_000_000_000,
+    ...(shouldOfferPurchase ? { shouldOfferPurchase } : {}),
+  });
+  const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+
+  const enforcing = fakeBackend(BROWSE_ONLY);
+  assert.equal(await run(env, realGate({ env, backend: enforcing, logger: fakeLogger() })), null);
+  assert.equal(new URL(enforcing.calls[0].url).searchParams.has('market'), false);
+
+  const unenforced = fakeBackend(NOT_ENFORCED);
+  const kept = await run(env, realGate({ env, backend: unenforced, logger: fakeLogger() }));
+  assert.equal(kept.continue_url, MERCHANT_URL);
 });
 
 test('path2/escalation: the market is the REQUEST\'s `checkout.context.address_country`, never the buyer address', async () => {
@@ -409,7 +481,7 @@ test('path3/offers: a gate answer with no `offer` key is NOT a refusal (strict =
   assert.deepEqual(gated, annotateOffersWithCommerceMetadata(offers));
 });
 
-test('path3/offers: NO MARKET => unchanged, and `unkeyable` is logged — never a default market', async () => {
+test('path3/offers: NO MARKET + ENFORCED => the delete-on-decline path, offer kept — never a default market', async () => {
   const backend = fakeBackend(BROWSE_ONLY);
   const logger = fakeLogger();
   const env = gateEnv();
@@ -418,10 +490,48 @@ test('path3/offers: NO MARKET => unchanged, and `unkeyable` is logged — never 
   const gated = await annotateOffersWithCommerceMetadataGated(offers, {
     env, market: undefined, shouldOfferPurchase: realGate({ env, backend, logger }),
   });
+  // The SAME output a `gate` decline for this merchant produces — the delete path, not a new key.
+  const declined = await annotateOffersWithCommerceMetadataGated(offers, {
+    env, market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }),
+  });
 
-  assert.deepEqual(gated, annotateOffersWithCommerceMetadata(offers));
-  assert.equal(backend.calls.length, 0, 'a defaulted market would have produced a read');
+  assert.deepEqual(gated, declined);
+  assert.equal(gated.length, 1, 'the OFFER survives');
+  assert.ok(!Object.prototype.hasOwnProperty.call(gated[0], 'merchant_checkout_url'));
+  assert.equal(gated[0].commerce_mode, 'links_out');
+  assert.equal(backend.calls.length, 1, 'one market-less enforcement read');
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false,
+    'a defaulted market would have been on this read');
   assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable' && l.level === 'warn'));
+});
+
+test('path3/offers: NO MARKET + NOT enforced / enforcement read failing => unchanged', async () => {
+  const env = gateEnv();
+  const offers = [offer('o1', MERCHANT), offer('o2', 'example-shop.test')];
+  const baseline = annotateOffersWithCommerceMetadata(offers);
+  for (const [name, backend] of [
+    ['not enforced', fakeBackend(NOT_ENFORCED)],
+    ['500', fakeBackend(BROWSE_ONLY, { status: 500, ok: false })],
+    ['throw', fakeBackend(BROWSE_ONLY, { throws: new Error('ECONNREFUSED') })],
+    ['malformed', fakeBackend(BROWSE_ONLY, { malformed: true })],
+  ]) {
+    const gated = await annotateOffersWithCommerceMetadataGated(offers, {
+      env, market: undefined, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+    });
+    assert.deepEqual(gated, baseline, `${name} must be byte-identical`);
+  }
+});
+
+test('path3/offers: NO MARKET across M merchants costs ONE enforcement read once it is cached', async () => {
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const offers = Array.from({ length: 6 }, (_, i) => offer(`o${i}`, `shop${i}.test`));
+  // concurrency 1 so the first answer is cached before the second merchant is asked
+  const gated = await annotateOffersWithCommerceMetadataGated(offers, {
+    env, market: undefined, concurrency: 1, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.equal(backend.calls.length, 1, 'enforcement is backend-wide: one read, not one per merchant');
+  for (const row of gated) assert.ok(!Object.prototype.hasOwnProperty.call(row, 'merchant_checkout_url'));
 });
 
 test('path3/offers: N offers for ONE merchant x market cost exactly ONE backend read', async () => {
@@ -798,6 +908,56 @@ test('F1: EVERY annotate call site in src/server.js is gated — including the s
   }
   // And every one of them is fed by a decision resolved for this request.
   assert.equal((src.match(/resolveOfferPurchasabilityDecisions\(/g) || []).length, 3);
+});
+
+test('STRUCTURAL: every call site of the gate takes a decline from `offer === false` ALONE — never from `source`', () => {
+  // WHY. Since the unkeyable rule (backend #2352), `offer: false` is reachable from TWO sources: `gate`
+  // (a keyed browse_only fact) and `unkeyable_enforced` (no market under enforcement). A seam that
+  // re-derived the decline from `source === 'gate'` would silently offer a purchase on every
+  // market-less request — the fail-open this change exists to close. So the invariant is: the client
+  // owns the decision, every seam consumes `offer === false` verbatim, and no seam keys on `source`.
+  // The behavioural tests per seam (warm handoff, escalation create + get, offers, Reap) are the
+  // other half: they drive the REAL client into `unkeyable_enforced` and assert the decline branch.
+  const root = path.join(__dirname, '..');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+    return /\.(c|m)?js$/.test(e.name) ? [full] : [];
+  });
+  const CLIENT = path.join('src', 'services', 'merchantPurchasabilityClient.js');
+  const callers = [...walk(path.join(root, 'src')), ...walk(path.join(root, 'mcp-server', 'src'))]
+    .map((f) => path.relative(root, f))
+    .filter((f) => f !== CLIENT)
+    .filter((f) => /shouldOfferPurchase\s*\(|mayOfferPurchaseForDomain\s*\(/.test(fs.readFileSync(path.join(root, f), 'utf8')))
+    .sort();
+  assert.deepEqual(callers, [
+    path.join('mcp-server', 'src', 'ucpCheckoutEscalation.js'),
+    path.join('mcp-server', 'src', 'ucpReapAgenticLane.js'),
+    path.join('src', 'offers', 'offersPriority.js'),
+    path.join('src', 'services', 'ucpWarmHandoff.js'),
+  ], 'a NEW gate call site must consume the decision the same way and be listed here');
+
+  const code = (f) => fs.readFileSync(path.join(root, f), 'utf8')
+    .split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+  // The three that read the client's decision object directly.
+  for (const [file, consume] of [
+    [path.join('src', 'services', 'ucpWarmHandoff.js'), /gateDecision && gateDecision\.offer === false/],
+    [path.join('mcp-server', 'src', 'ucpCheckoutEscalation.js'), /return !\(decision && decision\.offer === false\);/],
+    [path.join('src', 'offers', 'offersPriority.js'), /decision && decision\.offer === false\) declined\.add/],
+  ]) {
+    const src = code(file);
+    assert.match(src, consume, `${file}: the decline must come from \`offer === false\``);
+    assert.doesNotMatch(src, /\.source\s*[!=]==?|SOURCE\.(gate|unkeyable_enforced|unkeyable_unenforced|failed|previous)/,
+      `${file}: a seam must not key a decision on \`source\``);
+  }
+  // The Reap lane consumes through the escalation module's seam, and declines on its boolean.
+  const reap = code(path.join('mcp-server', 'src', 'ucpReapAgenticLane.js'));
+  assert.match(reap, /const offer = await mayOfferPurchaseForDomain\(/);
+  assert.match(reap, /if \(!offer\) return skip\("purchasability_declined"\);/);
+  assert.doesNotMatch(reap, /\.source\s*[!=]==?/);
+  // And both escalation branches (create AND the get re-read) go through that seam.
+  const esc = code(path.join('mcp-server', 'src', 'ucpCheckoutEscalation.js'));
+  assert.equal((esc.match(/if \(!\(await mayOfferStorefrontCheckout\(/g) || []).length, 2);
 });
 
 // =========================================================================================================

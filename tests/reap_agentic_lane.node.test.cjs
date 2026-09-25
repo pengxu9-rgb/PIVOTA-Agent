@@ -908,6 +908,56 @@ test('the purchasability gate: declined -> skipped (no POST); asked with the dom
   assert.equal(off.backend.calls.length, 1);
 });
 
+test('the purchasability gate, UNKEYABLE: no market + ENFORCED takes the SAME declined branch (skipped, no POST); unenforced or unknown is unchanged', async () => {
+  // The Reap lane consumes the gate through the escalation module's `mayOfferPurchaseForDomain`, so an
+  // `unkeyable_enforced` answer (`offer: false`) must land on the very `purchasability_declined` skip a
+  // `gate` decline lands on — and the door then falls through to the storefront escalation lane, which
+  // consults the same gate with the same (absent) market.
+  const m = await mods();
+  const keyedFor = (enforced) => ({ tier: 'browse_only', enforced, sweep_enabled: true });
+  const run = async (answer) => {
+    const opsCalls = [];
+    const env = { [LANE_FLAG]: '1', [BASE_URL_ENV]: 'https://ops.example', [OPS_TOKEN_ENV]: 'admin-jwt-fixture', [GATE_FLAG_ENV]: '1' };
+    const gateClient = createMerchantPurchasabilityClient({
+      env,
+      fetchImpl: async (url) => { opsCalls.push(url); return answer(url); },
+      logger: fakeLogger(),
+    });
+    const lines = [];
+    const log = { info: (o) => lines.push(o), warn: (o) => lines.push(o), error: (o) => lines.push(o) };
+    const backend = fakeBackend();
+    const ctx = await build({ backend });
+    const executor = recordingExecutor(ROWS, m.errors);
+    const args = createArgs();
+    delete args.checkout.context; // the request names NO market
+    const res = await m.lane.tryReapAgenticCheckout({
+      op: { id: 'create_checkout_session' },
+      params: { idempotency_key: 'idem-reap-0001', quote: { items: [{ product_id: REAP_ROW.product_id, quantity: 1 }], customer_email: EMAIL } },
+      ctx: SESSION, executor, ucpArgs: args, client: ctx.client, env, shouldOfferPurchase: (a) => gateClient.shouldOfferPurchase(a), log,
+    });
+    return { res, backend, opsCalls, lines };
+  };
+  // #2352's market-less answer
+  const marketUnknown = (enforced) => async () => ({ ok: true, status: 200, json: async () => ({ ...keyedFor(enforced), market: null, reason: 'market_unknown', facts: [] }) });
+
+  const enforced = await run(marketUnknown(true));
+  assert.equal(enforced.res, null, 'skipped');
+  assert.equal(enforced.backend.calls.length, 0, 'no purchase opened with no market under enforcement');
+  assert.ok(enforced.lines.some((l) => l.outcome === 'skipped' && l.code === 'purchasability_declined'),
+    'the SAME branch a gate decline takes');
+  const url = new URL(enforced.opsCalls[0]);
+  assert.deepEqual([...url.searchParams.keys()], ['domain'], 'no market is invented for the read');
+  assert.equal(url.searchParams.get('domain'), 'brand.example');
+
+  const unenforced = await run(marketUnknown(false));
+  assert.match(unenforced.res.id, REAP_ID_RE);
+  assert.equal(unenforced.backend.calls.length, 1);
+
+  const failing = await run(async () => ({ ok: false, status: 503, json: async () => ({}) }));
+  assert.match(failing.res.id, REAP_ID_RE, 'enforcement NOT KNOWN is not enforcement: fail open');
+  assert.equal(failing.backend.calls.length, 1);
+});
+
 // =========================================================================================================
 // 7. the id — tampering, other buyers, idempotency
 // =========================================================================================================

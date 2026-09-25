@@ -303,8 +303,9 @@ function createWarmHandoffService(deps = {}) {
    *   brandDomain: string,      // the brand storefront host/URL (e.g. cosrx.com)
    *   variantGid: string,       // resolved Shopify variant GID (gid://shopify/ProductVariant/<n>)
    *   market?: string,          // the REQUEST'S buyer market (ISO 3166-1 alpha-2), for the purchasability
-   *                             // gate only. Absent => the gate cannot key a question and keeps the previous
-   *                             // behaviour. NEVER defaulted to a served/egress market: the fact is about the
+   *                             // gate only. Absent => no fact can be read: under backend enforcement that is
+   *                             // a decline (cold redirect), otherwise the previous behaviour.
+   *                             // NEVER defaulted to a served/egress market: the fact is about the
    *                             // buyer's market, and a positive fact from another vantage is evidence for a
    *                             // human, not permission for the door.
    *   quantity?: number,
@@ -347,8 +348,11 @@ function createWarmHandoffService(deps = {}) {
     //
     // FAILS OPEN BY CONSTRUCTION. `shouldOfferPurchase` never throws and never refuses on a failure — the
     // backend already fails closed, and a second fail-closed layer turns one backend blip into a
-    // catalogue-wide outage. `offer: false` is reachable only from `source: 'gate'`, i.e. the backend
-    // answered 200 AND is enforcing AND said browse_only.
+    // catalogue-wide outage. `offer: false` is reachable only when the backend answered 200 AND is
+    // enforcing: `source: 'gate'` (it said browse_only for this merchant × market) or
+    // `source: 'unkeyable_enforced'` (no market on this request, so no fact can exist for it — backend
+    // #2352). Both are taken HERE, by the one `offer === false` test, and neither is re-derived from
+    // `source`.
     //
     // BOUNDED BY WHAT IS LEFT OF THE CALLER'S BUDGET, not by the client's own ceiling.
     // Measured: the click lane runs on a 2000 ms total budget inside the backend's 2.5 s

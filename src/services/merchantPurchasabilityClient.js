@@ -23,6 +23,27 @@
  *   4. FAIL OPEN on transport error / timeout / non-200 / malformed      -> every catch here
  *   5. Log loudly when sweep_enabled=false && enforced=true              -> noteMisorderedArming
  *
+ * And one rule of this gateway's own (backend #2352 made its half true):
+ *
+ *   6. An UNKEYABLE request (no usable market) under ENFORCEMENT is NOT offered a
+ *      purchase. A fact is per (merchant, market); "market unknown" means "no fact",
+ *      and the enforced rule is "no fresh positive fact -> browse-only". Whether the
+ *      backend is enforcing is learned WITHOUT a market from the same ops route, which
+ *      since #2352 answers a market-less call with 200 `{tier: browse_only,
+ *      reason: market_unknown, enforced, sweep_enabled}`             -> fetchEnforcement
+ *
+ * THE DECISION TABLE (docs/merchant-purchasability-gate.md §5 carries the same one, and
+ * tests/merchant_purchasability_gate.node.test.cjs pins every row):
+ *
+ *   switch off                               -> offer  source 'disabled'
+ *   budget below the floor                   -> offer  source 'skipped_budget'
+ *   keyable, backend answered, enforced      -> tier   source 'gate'
+ *   keyable, backend answered, not enforced  -> offer  source 'previous'
+ *   keyable, no usable answer                -> offer  source 'failed'
+ *   unkeyable, enforced=false                -> offer  source 'unkeyable_unenforced'
+ *   unkeyable, enforced=true                 -> NO     source 'unkeyable_enforced', reason 'market_unknown'
+ *   unkeyable, enforcement unknown           -> offer  source 'failed', reason 'market_unknown'
+ *
  * ⚠️ RULE 2 IS NOT A NICETY. With the backend dial off, `is_purchasable` returns
  * False for EVERY merchant — because nothing is enforced, not because the merchant
  * is browse-only — so the route answers `tier: "browse_only"` for the whole
@@ -165,7 +186,22 @@ const MIN_GATE_BUDGET_MS = 300;
 const TIER_PURCHASE = 'purchase';
 const TIER_BROWSE_ONLY = 'browse_only';
 
-/** The four answers, and what each one means to a caller. */
+/**
+ * The backend's `reason` on a market-less ops answer (pivota-backend #2352,
+ * `db/merchant_purchasability.MARKET_UNKNOWN`), and the `reason` this client puts on
+ * every UNKEYABLE decision whose missing half is the market.
+ */
+const REASON_MARKET_UNKNOWN = 'market_unknown';
+/** The `reason` on an unkeyable decision whose missing half is the merchant domain. */
+const REASON_DOMAIN_UNKNOWN = 'domain_unknown';
+
+/**
+ * The enforcement answer is GLOBAL on the backend (`MERCHANT_PURCHASABILITY_ENFORCE` is one
+ * process-wide dial, not a per-merchant field), so it is cached under ONE key, not per domain.
+ */
+const ENFORCEMENT_CACHE_KEY = 'enforced';
+
+/** The answers, and what each one means to a caller. */
 const SOURCE = Object.freeze({
   /** the gateway switch is off — nothing was asked, nothing changed */
   disabled: 'disabled',
@@ -177,6 +213,17 @@ const SOURCE = Object.freeze({
   failed: 'failed',
   /** the caller's remaining wall-clock budget was too small to ask — previous behaviour */
   skipped_budget: 'skipped_budget',
+  /**
+   * no (domain, market) key for this request, and the backend says it is NOT enforcing —
+   * previous behaviour (`offer: true`), `reason` says which half was missing
+   */
+  unkeyable_unenforced: 'unkeyable_unenforced',
+  /**
+   * no (domain, market) key for this request, and the backend IS enforcing: there is no fact,
+   * so there is no positive fact, so the purchase is NOT offered (`offer: false`). Every seam
+   * takes this exactly as it takes a `gate` decline.
+   */
+  unkeyable_enforced: 'unkeyable_enforced',
 });
 
 function isPlainObject(value) {
@@ -263,6 +310,36 @@ function buildFactUrl(baseUrl, domain, market) {
 }
 
 /**
+ * The ENFORCEMENT PROBE's URL: the same route with the domain ONLY and no `market` key at
+ * all. Since pivota-backend #2352 the route answers that shape with 200 and
+ * `reason: market_unknown` (before it, a 422 — which this client reads as a failure and
+ * fails open on). The domain is still required by the route (`min_length=3`); it carries no
+ * more than the keyed read does, and strictly less.
+ */
+function buildEnforcementProbeUrl(baseUrl, domain) {
+  const origin = String(baseUrl || '').replace(/\/+$/, '');
+  const url = new URL(`${origin}${OPS_PATH}`);
+  url.searchParams.set('domain', domain);
+  return url.toString();
+}
+
+/**
+ * Parse the market-less answer. STRICT on purpose: `enforced` is taken from it ONLY when the
+ * body says it is the market-unknown answer (`reason === 'market_unknown'` and
+ * `tier === 'browse_only'`). A body that is anything else — an old backend, a proxy page, a
+ * keyed answer nobody asked for — is `null`, i.e. a failure, i.e. fail OPEN. A loose parse
+ * here would be the one place a malformed body could turn into a refusal.
+ */
+function parseEnforcementProbe(body) {
+  if (!isPlainObject(body)) return null;
+  if (body.reason !== REASON_MARKET_UNKNOWN) return null;
+  if (typeof body.tier !== 'string' || body.tier.trim() !== TIER_BROWSE_ONLY) return null;
+  if (typeof body.enforced !== 'boolean') return null;
+  const sweepEnabled = typeof body.sweep_enabled === 'boolean' ? body.sweep_enabled : null;
+  return { tier: TIER_BROWSE_ONLY, enforced: body.enforced, sweep_enabled: sweepEnabled };
+}
+
+/**
  * Read the fields this gateway is allowed to act on, and NOTHING else. An
  * allow-list rather than a spread: a field the backend adds later cannot start
  * steering this decision because somebody forgot it existed.
@@ -290,6 +367,22 @@ function decide(fact) {
   if (!fact) return { offer: true, source: SOURCE.failed };
   if (fact.enforced !== true) return { offer: true, source: SOURCE.previous };
   return { offer: fact.tier !== TIER_BROWSE_ONLY, source: SOURCE.gate };
+}
+
+/**
+ * The decision for an UNKEYABLE request, as a pure function of what is known about
+ * enforcement. `enforced` is `true`, `false`, or anything else (`null`/`undefined`: not known —
+ * the probe failed, could not be asked, or nothing is cached).
+ *
+ * ⚠️ ONLY A LITERAL `true` REFUSES. Unknown is NOT enforced: an absent, stale or failed
+ * enforcement read resolves to the previous behaviour (`source: 'failed'`), exactly as every
+ * other non-answer in this module does. Defaulting unknown to "enforced" would be the second
+ * fail-closed layer rule 4 forbids — one backend blip would take every market-less click cold.
+ */
+function decideUnkeyable(enforced, reason = REASON_MARKET_UNKNOWN) {
+  if (enforced === true) return { offer: false, source: SOURCE.unkeyable_enforced, reason };
+  if (enforced === false) return { offer: true, source: SOURCE.unkeyable_unenforced, reason };
+  return { offer: true, source: SOURCE.failed, reason };
 }
 
 /**
@@ -382,7 +475,10 @@ function createMerchantPurchasabilityClient(deps = {}) {
       : DEFAULT_CACHE_MAX_ENTRIES,
     now,
   });
-  // Rate limiters for the two "say it once" logs. Bounded by the same cache shape.
+  // THE ENFORCEMENT FLAG, learned without a market (see `fetchEnforcement`). One key; same TTL
+  // ceilings as the facts. Values: `true` / `false` / `null` (a failed read, negative-cached).
+  const enforcementCache = createTtlCache({ maxEntries: 1, now });
+  // Rate limiters for the "say it once" logs. Bounded by the same cache shape.
   const logGuards = createTtlCache({ maxEntries: DEFAULT_CACHE_MAX_ENTRIES, now });
 
   function note(level, event, detail) {
@@ -487,25 +583,25 @@ function createMerchantPurchasabilityClient(deps = {}) {
   }
 
   /**
-   * One read, cached. Returns a parsed fact or `null`. NEVER throws and never
-   * rejects: every failure path is a `null`, which `decide` turns into the
-   * previous behaviour.
+   * THE ONE DEADLINE. Every backend read in this module — the keyed fact read and the
+   * market-less enforcement probe alike — runs inside this, so the probe cannot have a budget
+   * of its own: it is capped at `min(timeoutMs, budgetMs)` exactly as the fact read is, and
+   * a request makes AT MOST ONE of the two reads (keyable -> fact, unkeyable -> probe), so the
+   * caller's window is never spent twice.
+   *
+   * ⚠️ THE DEADLINE STARTS HERE, NOT AFTER THE CREDENTIAL. Review of the first cut: the timer was
+   * created AFTER `await resolveCredential()`, so the metadata server's own 1 s ceiling sat
+   * OUTSIDE both this module's `timeoutMs` and the caller's `budgetMs` — a caller that handed us
+   * 300 ms could still wait 1300 ms. A budget with a step outside it is not a budget. The
+   * controller is armed first and the credential is resolved INSIDE its window.
    */
-  async function fetchFact(domain, market, budgetMs) {
-    const key = `${domain}\u0000${market}`;
-    const cached = cache.get(key);
-    if (cached !== undefined) return cached;
-
-    const origin = baseUrl();
-
-    // ⚠️ THE DEADLINE STARTS HERE, NOT AFTER THE CREDENTIAL. Review of the first cut: the timer was
-    // created AFTER `await resolveCredential()`, so the metadata server's own 1 s ceiling sat
-    // OUTSIDE both this module's `timeoutMs` and the caller's `budgetMs` — a caller that handed us
-    // 300 ms could still wait 1300 ms. A budget with a step outside it is not a budget. The
-    // controller is now armed first and the credential is resolved INSIDE its window.
-    const callTimeoutMs = Number.isFinite(budgetMs) && budgetMs > 0
+  function callTimeoutFor(budgetMs) {
+    return Number.isFinite(budgetMs) && budgetMs > 0
       ? Math.min(timeoutMs, Math.floor(budgetMs))
       : timeoutMs;
+  }
+
+  async function withinDeadline(budgetMs, body) {
     const controller = new AbortController();
     // ⚠️ THIS TIMER IS DELIBERATELY **NOT** `unref()`d, AND THAT IS NOT AN OVERSIGHT.
     // It is the ONLY thing that can settle the promise this function returns when the backend
@@ -519,16 +615,22 @@ function createMerchantPurchasabilityClient(deps = {}) {
     // loop for its duration is exactly as long as the caller is waiting anyway — not a leak.
     // Same rule, same reasoning, already written down in
     // `src/services/merchantVariantSource.js` ("The timer is deliberately NOT `unref()`d").
-    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
+    const timer = setTimeout(() => controller.abort(), callTimeoutFor(budgetMs));
     try {
-      return await readFactWithin(key, origin, domain, market, controller);
+      return await body(controller);
     } finally {
       clearTimeout(timer);
     }
   }
 
-  /** The body of `fetchFact`, running entirely inside the caller's deadline. */
-  async function readFactWithin(key, origin, domain, market, controller) {
+  /**
+   * One authenticated GET against the ops route, entirely inside `controller`'s deadline.
+   * Returns `{ value }` (the parser's non-null answer) or `{ failure }`. NEVER throws.
+   * `failure === 'not_configured'` has already been logged here; every other failure is the
+   * caller's to log, with its own key.
+   */
+  async function opsGet(controller, buildUrl, parse) {
+    const origin = baseUrl();
     let authorization = null;
     try {
       // RACED AGAINST THE DEADLINE. `resolveCredential` takes no signal of its own (the metadata
@@ -561,26 +663,22 @@ function createMerchantPurchasabilityClient(deps = {}) {
         has_fetch: typeof fetchImpl === 'function',
         detail: `${GATE_FLAG_ENV} is on but the ops read is unconfigured; keeping the previous behaviour.`,
       });
-      cache.set(key, null, negativeTtlMs);
-      return null;
+      return { failure: 'not_configured' };
     }
 
     let url;
     try {
-      url = buildFactUrl(origin, domain, market);
+      url = buildUrl(origin);
     } catch {
-      cache.set(key, null, negativeTtlMs);
-      return null;
+      return { failure: 'bad_url' };
     }
 
-    // THE CALLER'S REMAINING WINDOW is applied by `fetchFact` above, which arms the deadline
+    // THE CALLER'S REMAINING WINDOW is applied by `withinDeadline`, which arms the deadline
     // BEFORE the credential step. The click lane runs on a 2000 ms total budget
     // (`UCP_WARM_HANDOFF_CLICK_BUDGET_MS`) inside the backend's 2.5 s `wait_for`, and an
     // unclamped gate spending its own 1500 ms default first leaves the cart it is gating unable
     // to finish. A gate that turns fail-open into a cold redirect catalogue-wide has failed open
     // in name only. Same shape as `buildPreview`'s `previewRemainingMs` in ucpWarmHandoff.js.
-    let fact = null;
-    let failure = null;
     try {
       const response = await fetchImpl(url, {
         method: 'GET',
@@ -598,42 +696,108 @@ function createMerchantPurchasabilityClient(deps = {}) {
         signal: controller.signal,
       });
       if (!response || response.ok !== true) {
-        failure = `status_${response && response.status ? response.status : 'unknown'}`;
-      } else {
-        const body = await response.json();
-        fact = parseFact(body);
-        if (!fact) failure = 'malformed_body';
+        return { failure: `status_${response && response.status ? response.status : 'unknown'}` };
       }
+      const value = parse(await response.json());
+      return value ? { value } : { failure: 'malformed_body' };
     } catch (error) {
       // A timeout arrives here as an AbortError. Deliberately not distinguished
       // in the OUTCOME — every one of them is the previous behaviour — only in
       // the log, so an operator can tell a slow backend from a broken one.
-      failure = controller.signal.aborted ? 'timeout' : `threw_${(error && error.name) || 'Error'}`;
+      return { failure: controller.signal.aborted ? 'timeout' : `threw_${(error && error.name) || 'Error'}` };
     }
-    // The timer itself is cleared by `fetchFact`'s own `finally`, which owns it.
-
-    if (failure) {
-      noteOnce('warn', 'merchant_purchasability_read_failed', `${key}\u0000${failure}`, {
-        domain, market, failure,
-        detail: 'failing OPEN to the previous behaviour; the backend already fails closed and two '
-          + 'fail-closed layers turn a blip into an outage.',
-      });
-      cache.set(key, null, negativeTtlMs);
-      return null;
-    }
-
-    noteMisorderedArming(fact, domain, market);
-    cache.set(key, fact, ttlMs);
-    return fact;
   }
 
   /**
-   * THE DECISION HELPER. `{ offer, source }` and nothing else — a caller that only
-   * reads `offer` gets the safe answer, and `source` is there so a log or a metric
-   * can tell "the gate said no" apart from "we never asked".
+   * One read, cached. Returns a parsed fact or `null`. NEVER throws and never
+   * rejects: every failure path is a `null`, which `decide` turns into the
+   * previous behaviour.
+   */
+  async function fetchFact(domain, market, budgetMs) {
+    const key = `${domain}\u0000${market}`;
+    const cached = cache.get(key);
+    if (cached !== undefined) return cached;
+
+    return withinDeadline(budgetMs, async (controller) => {
+      const { value: fact, failure } = await opsGet(
+        controller,
+        (origin) => buildFactUrl(origin, domain, market),
+        parseFact,
+      );
+      if (failure) {
+        if (failure !== 'not_configured' && failure !== 'bad_url') {
+          noteOnce('warn', 'merchant_purchasability_read_failed', `${key}\u0000${failure}`, {
+            domain, market, failure,
+            detail: 'failing OPEN to the previous behaviour; the backend already fails closed and two '
+              + 'fail-closed layers turn a blip into an outage.',
+          });
+        }
+        cache.set(key, null, negativeTtlMs);
+        return null;
+      }
+      noteMisorderedArming(fact, domain, market);
+      cache.set(key, fact, ttlMs);
+      // `enforced` is ONE backend-wide dial, and every keyed answer carries it — so a keyed read
+      // is also a fresh enforcement read, and an unkeyable request right after it need not probe.
+      // Same TTL ceiling as the fact it came with.
+      enforcementCache.set(ENFORCEMENT_CACHE_KEY, fact.enforced, ttlMs);
+      return fact;
+    });
+  }
+
+  /**
+   * IS THE BACKEND ENFORCING? — learned WITHOUT a market. Returns `true`, `false`, or `null`
+   * (not known). NEVER throws.
    *
-   * @param {{ domain: string, market: string }} args
-   * @returns {Promise<{ offer: boolean, source: 'gate'|'previous'|'disabled'|'failed' }>}
+   * Cache first (≤ 5 minutes, one global key: the dial is backend-wide). On a miss, the
+   * market-less probe `GET /ops/merchant-purchasability?domain=<domain>` (pivota-backend #2352
+   * answers it 200 with `reason: market_unknown` and the live `enforced`). A failed probe is
+   * cached as `null` for the NEGATIVE TTL only, so a backend that is down costs one timeout
+   * per 30 s rather than one per request, and recovery is picked up just as fast.
+   *
+   * ⚠️ `null` IS NOT `true`. An absent, expired or failed read is "not known", which
+   * `decideUnkeyable` resolves to the previous behaviour. Nothing here defaults to enforced.
+   *
+   * The route requires a domain, so a request with NO domain either reads the cache or answers
+   * `null` — it is not given a made-up domain to ask with.
+   */
+  async function fetchEnforcement(domain, budgetMs) {
+    const cached = enforcementCache.get(ENFORCEMENT_CACHE_KEY);
+    if (cached !== undefined) return cached;
+    if (!domain) return null;
+
+    return withinDeadline(budgetMs, async (controller) => {
+      const { value: probe, failure } = await opsGet(
+        controller,
+        (origin) => buildEnforcementProbeUrl(origin, domain),
+        parseEnforcementProbe,
+      );
+      if (failure) {
+        if (failure !== 'not_configured' && failure !== 'bad_url') {
+          noteOnce('warn', 'merchant_purchasability_enforcement_read_failed', failure, {
+            domain, failure,
+            detail: 'the market-less enforcement read failed, so enforcement is NOT KNOWN and a request '
+              + 'with no market keeps the previous behaviour (fail OPEN). A status_422 here means the '
+              + 'backend predates pivota-backend #2352.',
+          });
+        }
+        enforcementCache.set(ENFORCEMENT_CACHE_KEY, null, negativeTtlMs);
+        return null;
+      }
+      noteMisorderedArming(probe, domain, '?');
+      enforcementCache.set(ENFORCEMENT_CACHE_KEY, probe.enforced, ttlMs);
+      return probe.enforced;
+    });
+  }
+
+  /**
+   * THE DECISION HELPER. `{ offer, source }` (plus `reason` on an unkeyable request) and
+   * nothing else — a caller that only reads `offer` gets the safe answer, and `source` is
+   * there so a log or a metric can tell "the gate said no" apart from "we never asked".
+   * The full table is in the header of this file.
+   *
+   * @param {{ domain: string, market: string, budgetMs?: number }} args
+   * @returns {Promise<{ offer: boolean, source: string, reason?: string }>}
    */
   async function shouldOfferPurchase({ domain, market, budgetMs } = {}) {
     if (!isGateEnabled(env)) return { offer: true, source: SOURCE.disabled };
@@ -642,7 +806,8 @@ function createMerchantPurchasabilityClient(deps = {}) {
     // inside the backend's 2.5 s `wait_for`) hands us what is LEFT. Below the floor there is
     // no useful question to ask: the read cannot complete, and the milliseconds it burns
     // failing come out of the cart the lane still has to build. Skipping is the previous
-    // behaviour, which is what every other non-answer here resolves to.
+    // behaviour, which is what every other non-answer here resolves to. It applies to the
+    // enforcement probe exactly as to the keyed read: it is checked before either.
     if (Number.isFinite(budgetMs) && budgetMs < MIN_GATE_BUDGET_MS) {
       noteOnce('info', 'merchant_purchasability_skipped_budget', String(domain || '?'), {
         budget_ms: Math.max(0, Math.floor(budgetMs)),
@@ -653,26 +818,14 @@ function createMerchantPurchasabilityClient(deps = {}) {
     }
 
     const normalizedDomain = normalizeDomain(domain);
-    // THE MARKET IS THE REQUEST'S, OR THERE IS NO QUESTION TO ASK. There is no
+    // THE MARKET IS THE REQUEST'S, OR THERE IS NO FACT TO READ. There is no
     // fallback to a configured or server-egress default: the fact is keyed on the
     // BUYER's market, and answering with the market our egress happens to sit in
     // is answering a question nobody asked (runbook §6 — judydoll.com resets TCP
-    // from one of our egresses while answering through another). A request that
-    // carries no market keeps the previous behaviour.
+    // from one of our egresses while answering through another).
     const normalizedMarket = normalizeMarket(market);
     if (!normalizedDomain || !normalizedMarket) {
-      // WARN, not info. This is what a MIS-DEPLOYED CALLER looks like from in here. The
-      // click lane's only caller (pivota-backend `services/outbound_warm_handoff.py`) does
-      // not send a market yet, so until that ships every click-lane request lands here and
-      // the gate is inert on the very lane the flowerbeauty incident travelled. An inert
-      // gate that logs at `info` is an inert gate nobody notices.
-      noteOnce('warn', 'merchant_purchasability_unkeyable', `${normalizedDomain || '?'}\u0000${normalizedMarket || '?'}`, {
-        has_domain: Boolean(normalizedDomain),
-        has_market: Boolean(normalizedMarket),
-        detail: 'no (domain, market) key for this request, so the gate cannot ask anything and keeps '
-          + 'the previous behaviour. A caller that never sends `market` opts out of the gate entirely.',
-      });
-      return { offer: true, source: SOURCE.failed };
+      return decideUnkeyableRequest(normalizedDomain, normalizedMarket, budgetMs);
     }
 
     const fact = await fetchFact(normalizedDomain, normalizedMarket, budgetMs);
@@ -698,11 +851,53 @@ function createMerchantPurchasabilityClient(deps = {}) {
     return decision;
   }
 
+  /**
+   * The UNKEYABLE branch: no (domain, market) key, so no fact can be read. Under enforcement
+   * that is a decline (no fact => no positive fact => browse-only); otherwise, and whenever
+   * enforcement is not known, the previous behaviour.
+   */
+  async function decideUnkeyableRequest(normalizedDomain, normalizedMarket, budgetMs) {
+    const reason = normalizedMarket ? REASON_DOMAIN_UNKNOWN : REASON_MARKET_UNKNOWN;
+    // WARN, not info. A caller that never sends a market is the commonest way this gate is
+    // inert (unenforced) or declines (enforced) on a whole lane — the click lane's caller
+    // (pivota-backend `services/outbound_warm_handoff.py`) sends a market only when it OBSERVED
+    // one. Either way somebody should be able to see it.
+    noteOnce('warn', 'merchant_purchasability_unkeyable', `${normalizedDomain || '?'}\u0000${normalizedMarket || '?'}`, {
+      has_domain: Boolean(normalizedDomain),
+      has_market: Boolean(normalizedMarket),
+      reason,
+      detail: 'no (domain, market) key for this request, so there is no purchasability fact for it. '
+        + 'Under enforcement that means browse-only; unenforced or unknown, the previous behaviour.',
+    });
+    let enforced = null;
+    try {
+      enforced = await fetchEnforcement(normalizedDomain, budgetMs);
+    } catch {
+      enforced = null; // `fetchEnforcement` does not throw; if it ever does, fail OPEN
+    }
+    const decision = decideUnkeyable(enforced, reason);
+    if (decision.source === SOURCE.unkeyable_enforced) {
+      // Once per interval per merchant, NOT once per request: under enforcement a lane whose
+      // caller sends no market declines on every click, and a per-click line would storm.
+      noteOnce('warn', 'merchant_purchasability_browse_only', `${normalizedDomain || '?'}\u0000${reason}`, {
+        domain: normalizedDomain,
+        market: normalizedMarket,
+        reason,
+        detail: 'the backend is ENFORCING and this request names no usable market, so no purchasability '
+          + 'fact can exist for it; purchase not offered (browse and links-out are unchanged).',
+      });
+    }
+    return decision;
+  }
+
   return {
     shouldOfferPurchase,
     fetchFact,
-    // exposed for observability/tests; holds facts only — never a credential, never buyer data.
+    fetchEnforcement,
+    // exposed for observability/tests; hold facts / the enforcement flag only — never a
+    // credential, never buyer data.
     _cache: cache,
+    _enforcementCache: enforcementCache,
   };
 }
 
@@ -745,7 +940,7 @@ function resetMerchantPurchasabilityClientForTest() {
 
 /**
  * Module-level convenience with the singleton's cache. This is what the seam calls.
- * @returns {Promise<{ offer: boolean, source: 'gate'|'previous'|'disabled'|'failed' }>}
+ * @returns {Promise<{ offer: boolean, source: string, reason?: string }>}
  */
 async function shouldOfferPurchase(args, deps) {
   return getMerchantPurchasabilityClient(deps).shouldOfferPurchase(args || {});
@@ -769,9 +964,14 @@ module.exports = {
   isGateEnabled,
   normalizeDomain,
   normalizeMarket,
+  REASON_MARKET_UNKNOWN,
+  REASON_DOMAIN_UNKNOWN,
   buildFactUrl,
+  buildEnforcementProbeUrl,
   parseFact,
+  parseEnforcementProbe,
   decide,
+  decideUnkeyable,
   createTtlCache,
   createMerchantPurchasabilityClient,
   getMerchantPurchasabilityClient,

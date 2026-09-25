@@ -47,8 +47,29 @@ function gateEnv(extra = {}) {
   };
 }
 
+/**
+ * What pivota-backend #2352's ops route answers for a request with NO `market`: 200, `browse_only`,
+ * `reason: market_unknown`, `market: null`, and the LIVE `enforced` / `sweep_enabled` dials. A fake
+ * backend configured with a keyed body answers a market-less URL with this shape, carrying that
+ * body's dials — i.e. the same backend state, asked without a market, exactly as the real route does.
+ * A body with no boolean `enforced` (malformed / html / null) is passed through unchanged, so it
+ * stays malformed for the probe too.
+ */
+function marketUnknownAnswer(url, keyedBody) {
+  if (!keyedBody || typeof keyedBody !== 'object' || typeof keyedBody.enforced !== 'boolean') return keyedBody;
+  return {
+    domain: new URL(url).searchParams.get('domain'),
+    market: null,
+    tier: 'browse_only',
+    reason: 'market_unknown',
+    enforced: keyedBody.enforced,
+    sweep_enabled: keyedBody.sweep_enabled,
+    facts: [],
+  };
+}
+
 /** A backend that answers one body, recording every request. */
-function fakeBackend(body, { status = 200, ok = true, throws = null, hang = false } = {}) {
+function fakeBackend(body, { status = 200, ok = true, throws = null, hang = false, probeAsIs = false } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
@@ -62,10 +83,13 @@ function fakeBackend(body, { status = 200, ok = true, throws = null, hang = fals
         });
       });
     }
+    const keyed = new URL(url).searchParams.has('market');
     return {
       ok,
       status,
-      json: async () => body,
+      // `probeAsIs`: answer the market-less URL with `body` verbatim — a backend (or a proxy) that
+      // does NOT speak #2352's market-unknown shape.
+      json: async () => (keyed || probeAsIs ? body : marketUnknownAnswer(url, body)),
     };
   };
   return { fetchImpl, calls };
@@ -249,17 +273,26 @@ test('auth is a Bearer JWT, never the X-ADMIN-KEY header these ops routes refuse
   assert.equal(backend.calls[0].options.redirect, 'error');
 });
 
-test('a request with no market asks NOTHING and keeps the previous behaviour', async () => {
+test('a request with no market reads NO FACT — only the market-less enforcement probe, never a default market', async () => {
   const backend = fakeBackend(FACT_BROWSE_ONLY);
   const logger = fakeLogger();
   const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger });
 
   for (const market of [undefined, null, '', 'USA', 'EU-DE']) {
     const decision = await client.shouldOfferPurchase({ domain: MERCHANT, market });
-    assert.deepEqual(decision, { offer: true, source: SOURCE.failed }, String(market));
+    assert.deepEqual(
+      decision,
+      { offer: false, source: SOURCE.unkeyable_enforced, reason: 'market_unknown' },
+      String(market),
+    );
   }
-  // No market means no question — and certainly not a question keyed on this deployment's own market.
-  assert.equal(backend.calls.length, 0);
+  // ONE read for all five: the enforcement answer is cached, and it is not a per-market fact.
+  assert.equal(backend.calls.length, 1);
+  // And that read carries NO market — certainly not this deployment's own. The domain only.
+  const probe = new URL(backend.calls[0].url);
+  assert.equal(probe.searchParams.has('market'), false);
+  assert.deepEqual([...probe.searchParams.keys()], ['domain']);
+  assert.equal(probe.searchParams.get('domain'), MERCHANT);
   assert.equal(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable'), true);
 });
 
@@ -512,12 +545,49 @@ test('ON + backend 500 / timeout / malformed: byte-identical (FAIL OPEN)', async
   assert.deepEqual(handoff, PINNED_HANDOFF, 'timeout');
 });
 
-test('ON + enforced + browse_only but NO market on the request: byte-identical (no question to ask)', async () => {
+test('ON + ENFORCED but NO market on the request: cold redirect, exactly as a gate decline', async () => {
+  // THE RULE (backend #2352): a fact is per (merchant, market); no market => no fact => under
+  // enforcement, no positive fact => browse-only. The fallback is the SAME `null` a `gate` decline
+  // returns, so both callers cold-redirect and the merchant is not contacted.
   const backend = fakeBackend(FACT_BROWSE_ONLY);
+  const logger = fakeLogger();
+  const { service, merchant } = warmService({ env: gateEnv(), backend, logger });
+  const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT });
+  assert.equal(handoff, null);
+  assert.deepEqual(merchant.calls.discover, [], 'a merchant we will not sell for is not contacted');
+  assert.deepEqual(merchant.calls.createCart, []);
+  assert.equal(backend.calls.length, 1);
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false,
+    'the deployment market is NOT substituted for the buyer market');
+  const declined = logger.lines.find((l) => l.event === 'ucp_warm_handoff_merchant_not_purchasable');
+  assert.ok(declined, 'the refusal is logged by the seam, as for a gate decline');
+  assert.equal(declined.source, SOURCE.unkeyable_enforced);
+  assert.equal(declined.market, null);
+});
+
+test('ON + NOT enforced and NO market on the request: byte-identical (previous behaviour)', async () => {
+  const backend = fakeBackend(FACT_NOT_ENFORCED);
   const { service } = warmService({ env: gateEnv(), backend });
   const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT });
   assert.deepEqual(handoff, PINNED_HANDOFF);
-  assert.equal(backend.calls.length, 0, 'the deployment market is NOT substituted for the buyer market');
+  assert.equal(backend.calls.length, 1);
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false);
+});
+
+test('ON + NO market and the enforcement read FAILS: byte-identical (fail OPEN)', async () => {
+  for (const [label, backend] of [
+    ['500', fakeBackend(null, { ok: false, status: 500 })],
+    ['422 (a backend without #2352)', fakeBackend({ detail: [{ loc: ['query', 'market'] }] }, { ok: false, status: 422 })],
+    ['malformed', fakeBackend({ tier: 'nope', enforced: 'yes' })],
+    // A KEYED-shaped enforcing body on the market-less URL (no `reason: market_unknown`): not the
+    // probe's answer, so `enforced` is NOT taken from it — a loose parse would refuse here.
+    ['keyed shape, no reason', fakeBackend(FACT_BROWSE_ONLY, { probeAsIs: true })],
+    ['throw', fakeBackend(null, { throws: new Error('ETIMEDOUT') })],
+  ]) {
+    const { service } = warmService({ env: gateEnv(), backend, timeoutMs: 50 });
+    const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT });
+    assert.deepEqual(handoff, PINNED_HANDOFF, label);
+  }
 });
 
 test('the gate keys on the REQUEST market, so SG and US are answered separately', async () => {
@@ -621,11 +691,19 @@ test('resolver lane: the market comes from the REQUEST (metadata.market), never 
   assert.equal(withMarket.output.status, 'blocked');
   assert.equal(new URL(backend.calls[0].url).searchParams.get('market'), 'SG');
 
-  // No market on the request => no question => the previous behaviour, NOT the served market.
+  // No market on the request => no FACT is read (never keyed on the served market). Under
+  // enforcement that is a decline (no fact => browse-only) — the same `blocked` a gate decline gives.
   const backend2 = fakeBackend(FACT_BROWSE_ONLY);
   const without = await resolveWithGate({ env, backend: backend2 });
-  assert.equal(without.output.status, 'resolved');
-  assert.equal(backend2.calls.length, 0);
+  assert.equal(without.output.status, 'blocked');
+  assert.equal(backend2.calls.length, 1);
+  assert.equal(new URL(backend2.calls[0].url).searchParams.has('market'), false);
+
+  // …and unenforced, the previous behaviour.
+  const backend3 = fakeBackend(FACT_NOT_ENFORCED);
+  const unenforced = await resolveWithGate({ env, backend: backend3 });
+  assert.equal(unenforced.output.status, 'resolved');
+  assert.equal(new URL(backend3.calls[0].url).searchParams.has('market'), false);
 });
 
 // ---- 11. buildFactUrl, directly ------------------------------------------------------------------------------
@@ -741,16 +819,17 @@ test('a logger-only dep configures the shared singleton; anything that changes t
 // backend is visible in a log rather than silently un-gated.
 
 test('CLICK LANE: a body with no market logs `unkeyable` at WARN, once per interval', async () => {
-  const backend = fakeBackend(FACT_BROWSE_ONLY);
+  const backend = fakeBackend(FACT_NOT_ENFORCED);
   const logger = fakeLogger();
   const { service } = warmService({ env: gateEnv(), backend, logger });
 
   for (let i = 0; i < 3; i += 1) {
-    // exactly the shape the route builds today from that payload: no `market` key at all
+    // exactly the shape the route builds from a payload with no observed market: no `market` key at all
     const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, quantity: 1 });
-    assert.deepEqual(handoff, PINNED_HANDOFF, 'inert, not refusing — the gate must not fail closed here');
+    assert.deepEqual(handoff, PINNED_HANDOFF, 'unenforced: inert, not refusing — the gate must not fail closed here');
   }
-  assert.equal(backend.calls.length, 0, 'nothing is asked without a market');
+  assert.equal(backend.calls.length, 1, 'no FACT is asked without a market; one cached enforcement probe');
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false);
 
   const unkeyable = logger.lines.filter((l) => l.event === 'merchant_purchasability_unkeyable');
   assert.equal(unkeyable.length, 1, 'once per interval, not once per click');
@@ -1012,4 +1091,268 @@ test('QUIET LOOP: a hanging read still settles when the abort timer is the ONLY 
   `);
   assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the read still pending — an unref'd timer:\n${out}`);
   assert.ok(out.includes('SETTLED:true:failed'), `expected a fail-open settlement, got:\n${out}`);
+});
+
+test('QUIET LOOP: a hanging ENFORCEMENT PROBE (no market) settles on its own abort timer, fail-open', () => {
+  const clientPath = JSON.stringify(nodePath.join(__dirname, '..', 'src', 'services', 'merchantPurchasabilityClient.js'));
+  const out = runOnAQuietLoop(`
+    const { createMerchantPurchasabilityClient } = require(${clientPath});
+    const client = createMerchantPurchasabilityClient({
+      env: { MERCHANT_PURCHASABILITY_GATE_ENABLED: '1', PIVOTA_API_BASE: 'https://b.example', PIVOTA_OPS_ADMIN_TOKEN: 't' },
+      timeoutMs: 20,
+      logger: { warn() {}, info() {}, error() {} },
+      fetchImpl: (url, options) => new Promise((_r, rej) => {
+        options.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+      }),
+    });
+    let settled = false;
+    client.shouldOfferPurchase({ domain: 'flowerbeauty.com' })
+      .then((d) => { settled = true; console.log('SETTLED:' + d.offer + ':' + d.source); });
+    process.on('exit', () => { if (!settled) console.log('PENDING_AT_EXIT'); });
+  `);
+  assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the probe still pending:\n${out}`);
+  assert.ok(out.includes('SETTLED:true:failed'), `expected a fail-open settlement, got:\n${out}`);
+});
+
+// ---- 14. UNKEYABLE UNDER ENFORCEMENT (backend #2352) ------------------------------------------------------------
+//
+// A purchasability fact is per (merchant, market). "Market unknown" is "no fact", and the enforced rule is
+// "no fresh positive fact -> browse-only". Enforcement is learned WITHOUT a market from the same ops route,
+// which since #2352 answers a market-less call 200 {tier: browse_only, reason: market_unknown, enforced, ...}.
+
+const {
+  decideUnkeyable,
+  parseEnforcementProbe,
+  buildEnforcementProbeUrl,
+  REASON_MARKET_UNKNOWN,
+  REASON_DOMAIN_UNKNOWN,
+  MAX_TTL_MS,
+} = require('../src/services/merchantPurchasabilityClient');
+/** The escalation seam (an ESM module), loaded on first use. */
+const loadEscalation = () => import('../mcp-server/src/ucpCheckoutEscalation.js');
+
+/** A backend whose answer the test can change between calls. */
+function switchableBackend(initial) {
+  const calls = [];
+  const state = { answer: initial };
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    const a = state.answer;
+    if (a.throws) throw a.throws;
+    if (a.status) return { ok: false, status: a.status, json: async () => ({}) };
+    const keyed = new URL(url).searchParams.has('market');
+    return { ok: true, status: 200, json: async () => (keyed ? a.body : marketUnknownAnswer(url, a.body)) };
+  };
+  return { fetchImpl, calls, state };
+}
+
+test('DECISION TABLE: every row, pinned', async () => {
+  const run = async ({ env = gateEnv(), body, status, domain = MERCHANT, market, budgetMs, prime }) => {
+    const backend = switchableBackend(status ? { status } : { body });
+    const client = createMerchantPurchasabilityClient({ env, fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+    if (prime) await client.shouldOfferPurchase(prime);
+    const before = backend.calls.length;
+    const decision = await client.shouldOfferPurchase({ domain, market, ...(budgetMs !== undefined ? { budgetMs } : {}) });
+    return { decision, calls: backend.calls.length - before };
+  };
+  const OFF = { [BASE_URL_ENV]: BASE, [OPS_TOKEN_ENV]: TOKEN };
+  const rows = [
+    ['switch off, keyable', { env: OFF, body: FACT_BROWSE_ONLY, market: 'US' }, { offer: true, source: 'disabled' }, 0],
+    ['switch off, unkeyable', { env: OFF, body: FACT_BROWSE_ONLY }, { offer: true, source: 'disabled' }, 0],
+    ['budget below floor, unkeyable', { body: FACT_BROWSE_ONLY, budgetMs: 10 }, { offer: true, source: 'skipped_budget' }, 0],
+    ['keyable + enforced + browse_only', { body: FACT_BROWSE_ONLY, market: 'US' }, { offer: false, source: 'gate' }, 1],
+    ['keyable + enforced + purchase', { body: FACT_PURCHASE, market: 'US' }, { offer: true, source: 'gate' }, 1],
+    ['keyable + not enforced', { body: FACT_NOT_ENFORCED, market: 'US' }, { offer: true, source: 'previous' }, 1],
+    ['keyable + failed', { status: 503, market: 'US' }, { offer: true, source: 'failed' }, 1],
+    ['unkeyable + enforced=false', { body: FACT_NOT_ENFORCED },
+      { offer: true, source: 'unkeyable_unenforced', reason: REASON_MARKET_UNKNOWN }, 1],
+    ['unkeyable + enforced=true', { body: FACT_BROWSE_ONLY },
+      { offer: false, source: 'unkeyable_enforced', reason: REASON_MARKET_UNKNOWN }, 1],
+    ['unkeyable + enforcement read failed', { status: 503 },
+      { offer: true, source: 'failed', reason: REASON_MARKET_UNKNOWN }, 1],
+    // The route requires a domain: with none, nothing is asked and nothing is made up to ask with.
+    ['no domain, nothing cached', { body: FACT_BROWSE_ONLY, domain: null, market: 'US' },
+      { offer: true, source: 'failed', reason: REASON_DOMAIN_UNKNOWN }, 0],
+    ['no domain, enforced=true cached', {
+      body: FACT_BROWSE_ONLY, domain: 'not a host', market: 'US', prime: { domain: MERCHANT, market: 'US' },
+    }, { offer: false, source: 'unkeyable_enforced', reason: REASON_DOMAIN_UNKNOWN }, 0],
+  ];
+  for (const [label, args, expected, calls] of rows) {
+    const got = await run(args);
+    assert.deepEqual(got.decision, expected, label);
+    assert.equal(got.calls, calls, `${label}: backend reads`);
+  }
+});
+
+test('decideUnkeyable: ONLY a literal `true` refuses — unknown is never enforced', () => {
+  assert.deepEqual(decideUnkeyable(true), { offer: false, source: SOURCE.unkeyable_enforced, reason: 'market_unknown' });
+  assert.deepEqual(decideUnkeyable(false), { offer: true, source: SOURCE.unkeyable_unenforced, reason: 'market_unknown' });
+  for (const unknown of [null, undefined, 'true', 1, {}, NaN]) {
+    assert.deepEqual(decideUnkeyable(unknown), { offer: true, source: SOURCE.failed, reason: 'market_unknown' }, String(unknown));
+  }
+});
+
+test('parseEnforcementProbe is STRICT: only #2352\'s market_unknown shape yields `enforced`', () => {
+  const good = { domain: MERCHANT, market: null, tier: 'browse_only', reason: 'market_unknown', enforced: true, sweep_enabled: true, facts: [] };
+  assert.deepEqual(parseEnforcementProbe(good), { tier: 'browse_only', enforced: true, sweep_enabled: true });
+  assert.equal(parseEnforcementProbe({ ...good, enforced: false }).enforced, false);
+  for (const [label, body] of [
+    ['a keyed answer (no reason)', { tier: 'browse_only', enforced: true, sweep_enabled: true }],
+    ['a keyed answer (reason null)', { ...good, reason: null }],
+    ['tier purchase', { ...good, tier: 'purchase' }],
+    ['enforced as a string', { ...good, enforced: 'true' }],
+    ['enforced absent', { ...good, enforced: undefined }],
+    ['a 422 detail body', { detail: [{ loc: ['query', 'market'], msg: 'field required' }] }],
+    ['html', '<html>502</html>'],
+    ['null', null],
+  ]) {
+    assert.equal(parseEnforcementProbe(body), null, label);
+  }
+});
+
+test('buildEnforcementProbeUrl: the domain and NOTHING else — no market key at all', () => {
+  const url = new URL(buildEnforcementProbeUrl('https://b.example///', MERCHANT));
+  assert.equal(url.pathname, '/ops/merchant-purchasability');
+  assert.deepEqual([...url.searchParams.keys()], ['domain']);
+});
+
+test('the probe asks with the NORMALISED host only — never a URL, path or buyer value', async () => {
+  const backend = switchableBackend({ body: FACT_BROWSE_ONLY });
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  await client.shouldOfferPurchase({ domain: 'https://WWW.FlowerBeauty.com/products/x?email=a@b.c', market: 'USA' });
+  const url = new URL(backend.calls[0].url);
+  assert.deepEqual([...url.searchParams.entries()], [['domain', MERCHANT]]);
+});
+
+test('MUTANT (ii): a STALE enforcement cache is not read — it expires at the TTL and a failed re-read fails OPEN', async () => {
+  let clock = 1_000_000;
+  const backend = switchableBackend({ body: FACT_BROWSE_ONLY });
+  const client = createMerchantPurchasabilityClient({
+    env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger(), now: () => clock,
+  });
+  assert.equal((await client.shouldOfferPurchase({ domain: MERCHANT })).offer, false, 'enforced=true: declined');
+  clock += MAX_TTL_MS - 1;
+  assert.equal((await client.shouldOfferPurchase({ domain: MERCHANT })).offer, false, 'inside the TTL: cached');
+  assert.equal(backend.calls.length, 1);
+
+  // Past the ceiling the stale `true` is GONE, and the backend is now unreachable.
+  clock += 2;
+  backend.state.answer = { status: 503 };
+  const after = await client.shouldOfferPurchase({ domain: MERCHANT });
+  assert.equal(backend.calls.length, 2, 'the stale value was not reused — it re-read');
+  assert.deepEqual(after, { offer: true, source: 'failed', reason: 'market_unknown' },
+    'a stale or absent enforcement answer defaults to NOT enforced, and the source says so');
+});
+
+test('MUTANT (ii): the enforcement cache can never be widened past 5 minutes by a caller', async () => {
+  let clock = 1_000_000;
+  const backend = switchableBackend({ body: FACT_BROWSE_ONLY });
+  const client = createMerchantPurchasabilityClient({
+    env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger(), now: () => clock, ttlMs: 60 * 60 * 1000,
+  });
+  await client.shouldOfferPurchase({ domain: MERCHANT });
+  clock += MAX_TTL_MS + 1;
+  backend.state.answer = { body: FACT_NOT_ENFORCED };
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT }),
+    { offer: true, source: 'unkeyable_unenforced', reason: 'market_unknown' });
+});
+
+test('MUTANT (iii): a FAILED enforcement probe is never read as enforced — every failure shape fails OPEN', async () => {
+  for (const [label, answer, extra] of [
+    ['500', { status: 500 }],
+    ['422 (backend predates #2352)', { status: 422 }],
+    ['401', { status: 401 }],
+    ['throw', { throws: new Error('ECONNREFUSED') }],
+    ['keyed-shaped enforcing body', { body: null }, { raw: FACT_BROWSE_ONLY }],
+  ]) {
+    const backend = switchableBackend(answer);
+    if (extra && extra.raw) {
+      backend.fetchImpl = async (url) => { backend.calls.push({ url }); return { ok: true, status: 200, json: async () => extra.raw }; };
+    }
+    const logger = fakeLogger();
+    const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger });
+    const decision = await client.shouldOfferPurchase({ domain: MERCHANT });
+    assert.deepEqual(decision, { offer: true, source: 'failed', reason: 'market_unknown' }, label);
+    assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_enforcement_read_failed'), `${label}: logged`);
+  }
+  // and the timeout, measured
+  const hanging = fakeBackend(null, { hang: true });
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: hanging.fetchImpl, logger: fakeLogger(), timeoutMs: 20 });
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT }), { offer: true, source: 'failed', reason: 'market_unknown' });
+});
+
+test('a failed probe is NEGATIVE-cached briefly: no storm while down, and recovery is picked up', async () => {
+  let clock = 1_000_000;
+  const backend = switchableBackend({ status: 503 });
+  const client = createMerchantPurchasabilityClient({
+    env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger(), now: () => clock,
+  });
+  for (let i = 0; i < 5; i += 1) assert.equal((await client.shouldOfferPurchase({ domain: MERCHANT })).offer, true);
+  assert.equal(backend.calls.length, 1, 'one failed read per negative TTL, not one per request');
+  clock += 30 * 1000 + 1;
+  backend.state.answer = { body: FACT_BROWSE_ONLY };
+  assert.equal((await client.shouldOfferPurchase({ domain: MERCHANT })).offer, false, 'recovered: now enforcing');
+  assert.equal(backend.calls.length, 2);
+});
+
+test('a KEYED read refreshes the enforcement answer: an unkeyable request right after it does not probe', async () => {
+  for (const [body, expected] of [
+    [FACT_PURCHASE, { offer: false, source: 'unkeyable_enforced', reason: 'market_unknown' }],
+    [FACT_NOT_ENFORCED, { offer: true, source: 'unkeyable_unenforced', reason: 'market_unknown' }],
+  ]) {
+    const backend = switchableBackend({ body });
+    const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+    await client.shouldOfferPurchase({ domain: 'other-shop.test', market: 'US' });
+    assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT }), expected);
+    assert.equal(backend.calls.length, 1, 'the keyed answer already said whether the backend enforces');
+  }
+});
+
+test('the probe raises the misordered-arming alarm too (enforced with the sweep off)', async () => {
+  const backend = switchableBackend({ body: { tier: 'browse_only', enforced: true, sweep_enabled: false } });
+  const logger = fakeLogger();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger });
+  await client.shouldOfferPurchase({ domain: MERCHANT });
+  assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_misordered_arming' && l.level === 'error'));
+});
+
+test('unkeyable + enforced declines are logged ONCE per interval per merchant, not per request', async () => {
+  const backend = switchableBackend({ body: FACT_BROWSE_ONLY });
+  const logger = fakeLogger();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger });
+  for (let i = 0; i < 4; i += 1) await client.shouldOfferPurchase({ domain: MERCHANT });
+  const lines = logger.lines.filter((l) => l.event === 'merchant_purchasability_browse_only');
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].reason, 'market_unknown');
+  assert.equal(lines[0].market, null);
+});
+
+test('MUTANT (v): the probe runs inside the SAME clamp as the keyed read — min(timeoutMs, budgetMs)', async () => {
+  // Default per-call timeout (1500 ms) and a 350 ms caller budget: a probe with a budget of its own
+  // (or one added AFTER a keyed read's window) would wait 1500 ms here.
+  const hanging = fakeBackend(null, { hang: true });
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: hanging.fetchImpl, logger: fakeLogger() });
+  const started = Date.now();
+  const decision = await client.shouldOfferPurchase({ domain: MERCHANT, budgetMs: 350 });
+  const elapsed = Date.now() - started;
+  assert.deepEqual(decision, { offer: true, source: 'failed', reason: 'market_unknown' });
+  assert.equal(hanging.calls.length, 1, 'exactly one read: the probe, never a probe plus a fact read');
+  assert.ok(elapsed >= 300, `it waits the budget, not zero; took ${elapsed}ms`);
+  assert.ok(elapsed < 1000, `the probe must be clamped to the caller's 350 ms; took ${elapsed}ms`);
+});
+
+test('MUTANT (v): through the escalation seam the probe is capped at ESCALATION_GATE_MAX_MS (800 ms)', async () => {
+  const { mayOfferPurchaseForDomain, ESCALATION_GATE_MAX_MS } = await loadEscalation();
+  assert.equal(ESCALATION_GATE_MAX_MS, 800);
+  const hanging = fakeBackend(null, { hang: true });
+  // timeoutMs 2000 = the client's hard ceiling; only the seam's clamp can make this finish near 800.
+  const client = createMerchantPurchasabilityClient({
+    env: gateEnv(), fetchImpl: hanging.fetchImpl, logger: fakeLogger(), timeoutMs: 2000,
+  });
+  const started = Date.now();
+  const offer = await mayOfferPurchaseForDomain(MERCHANT, null, (a) => client.shouldOfferPurchase(a), true, 10_000);
+  const elapsed = Date.now() - started;
+  assert.equal(offer, true, 'a timed-out probe fails open');
+  assert.ok(elapsed >= 700, `waited the clamp; took ${elapsed}ms`);
+  assert.ok(elapsed < 1500, `the 800 ms clamp must bound the probe; took ${elapsed}ms`);
 });
