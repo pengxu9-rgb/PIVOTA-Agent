@@ -379,7 +379,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const lateral = skuOfferLateralOf(query.calls[0].sql);
     const price = lateral.indexOf('COALESCE(o.merchant_effective_price, o.list_price) ASC');
     const realFirst = lateral.search(
-      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+THEN 1 ELSE 0 END ASC/,
+      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+OR s\.source_variant_id = 'default' OR s\.source_variant_id LIKE '%-default'\s+THEN 1 ELSE 0 END ASC/,
     );
     const offerId = lateral.indexOf('o.offer_id ASC');
     expect(price).toBeGreaterThan(-1);

@@ -161,6 +161,33 @@ suite('representative offer availability on real PostgreSQL', () => {
     expect(rows[0].price_currency).toBe('USD');
   });
 
+  test.each([
+    ['the synthetic ::canonical sku (variant = product key)', 'product_fixture::canonical', 'product_fixture'],
+    ['a NULL-variant sku', 'sku_null_variant', null],
+    ['a derived placeholder variant', 'sku_default_variant', 'x-default'],
+  ])('at equal price a real variant beats %s, whatever the offer_id order', async (_name, skuKey, variantId) => {
+    // bluemercury.com 2026-09-25: the hashed offer_id picked the synthetic sku, and the card carried the
+    // product key as its variant, so live price verification reported variant_missing.
+    await db.query('INSERT INTO catalog_skus(sku_key, product_key, source_variant_id) VALUES ($1, $2, $3)',
+      [skuKey, 'product_fixture', variantId]);
+    try {
+      await db.query('TRUNCATE catalog_offers');
+      for (const [id, sku] of [['a_synthetic', skuKey], ['b_real', 'sku_fixture']]) {
+        await db.query(`INSERT INTO catalog_offers(offer_id, sku_key, product_key, merchant_effective_price,
+          currency, availability, market) VALUES ($1, $2, 'product_fixture', 46, 'USD', 'in_stock', 'US')`, [id, sku]);
+      }
+      const rows = await search(true);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].source_variant_id).toBe('variant_fixture');
+      // a tie-break only: a cheaper synthetic offer still wins on price
+      await db.query("UPDATE catalog_offers SET merchant_effective_price = 40 WHERE offer_id = 'a_synthetic'");
+      const cheaper = await search(true);
+      expect(Number(cheaper[0].merchant_effective_price)).toBe(40);
+    } finally {
+      await db.query('DELETE FROM catalog_skus WHERE sku_key = $1', [skuKey]);
+    }
+  });
+
   test('inStockOnly keeps its broader exclusion vocabulary', async () => {
     await setOffers([
       { id: 'a', price: 1, availability: 'oos' },
