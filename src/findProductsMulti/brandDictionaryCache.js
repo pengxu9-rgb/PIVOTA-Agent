@@ -387,6 +387,10 @@ function matchCatalogBeautyBrand(normalizedQuery) {
       const squashed = span.replace(/[\s\-]/g, '');
       const key = _beauty.has(span) ? span : (squashed !== span && _beauty.has(squashed) ? squashed : null);
       if (!key) continue;
+      // A short onboarded key (OPI) is in the map only for the allowlist. With that flag
+      // off it must be invisible -- not merely unqualified -- or, as the longest match, it
+      // would end the search and hide a real brand elsewhere in the query ("opi olaplex").
+      if (!admissibleKey(key) && !allowlistEnabled()) continue;
       const stats = _beauty.get(key);
       return qualifiesAsBeautyBrand(stats) ? { alias: span, ...stats } : null;
     }

@@ -109,6 +109,17 @@ describe('short onboarded brand names (OPI)', () => {
     expect(resolve('OPI').matched).toBe(false);
   });
 
+  test('flag off: a short onboarded key never hides another brand in the query', () => {
+    // Review of #2274: "opi olaplex" resolved Olaplex on main but nothing on this branch.
+    cache.__setBeautyBrandRowsForTest([
+      { b: 'opi', n: 11, nb: 11, nc: 11, nl: 5 },
+      { b: 'olaplex', n: 44, nb: 44, nc: 44, nl: 44 },
+    ]);
+    setFlags({ GATEWAY_CATALOG_BRAND_ALLOWLIST: null });
+    expect(resolve('opi olaplex')).toEqual(expect.objectContaining({ matched: true, brand_key: 'catalog:olaplex' }));
+    expect(resolve('olaplex opi')).toEqual(expect.objectContaining({ matched: true, brand_key: 'catalog:olaplex' }));
+  });
+
   test('a short brand that is not onboarded stays unrouted', () => {
     expect(resolve('abc').matched).toBe(false);
   });
