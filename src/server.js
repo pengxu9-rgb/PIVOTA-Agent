@@ -22119,7 +22119,11 @@ function scoreBeautyExternalSeedProduct({
   if (hasStrictLipstickQueryIntent(queryText) && !beautyProductMatchesStrictLipstickIntent(product)) {
     return { product, relevant: false, score: -55 };
   }
-  if (targetFamilies.length === 0 && !hasBeautyCatalogProductSignal(candidateText)) {
+  if (
+    targetFamilies.length === 0 &&
+    !hasBeautyCatalogProductSignal(candidateText) &&
+    !beautyProductHasCatalogLeafSignal(product)
+  ) {
     return { product, relevant: false, score: -30 };
   }
 
@@ -34321,6 +34325,24 @@ function classifyBeautyBucketFromText(text) {
 
 function hasBeautyCatalogProductSignal(candidateText) {
   return classifyBeautyBucketFromText(candidateText) !== 'other';
+}
+
+// The row's OWN catalog category, when it is a beauty leaf (beauty/<area>/<leaf>, three
+// segments or deeper), is itself the "this is a beauty product" signal that
+// hasBeautyCatalogProductSignal guesses at from text. That text classifier has no
+// vocabulary for whole product classes: measured 2026-09-25 on prod, 337 of 12,182
+// serving beauty-leaf rows bucket 'other' (gift-set 130, haircare/general 98,
+// body/care 25, body/tanning 14 ...) and were silently dropped (score -30) from every
+// query without a product family -- "self tanner" and "Bondi Sands" served 3 of 17
+// rows, and those 3 only because "no added fragrance" bucketed them as fragrance.
+//
+// A bare `beauty` or a two-segment ancestor (`beauty/makeup`) is NOT a leaf and keeps
+// needing text evidence: that is where misfiled non-beauty rows sit. Flag-gated,
+// default OFF (BEAUTY_RANKER_CATALOG_LEAF_SIGNAL_ENABLED), read per call.
+function beautyProductHasCatalogLeafSignal(product) {
+  if (!parseBooleanEnv(process.env.BEAUTY_RANKER_CATALOG_LEAF_SIGNAL_ENABLED, false)) return false;
+  const path = beautyRelevanceGate.getProductCategoryPathText(product);
+  return /^beauty\/[^/]+\/[^/]+/.test(path);
 }
 
 function classifyBeautyBucketFromProduct(product) {
