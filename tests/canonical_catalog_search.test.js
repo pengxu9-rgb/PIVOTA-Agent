@@ -370,6 +370,23 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(lateral).toMatch(/o\.offer_id ASC/);
   });
 
+  test('at equal price a real variant sku beats the synthetic ::canonical sku, before offer_id', async () => {
+    // Every retailer-lane product carries a `<pk>::canonical` sku (source_variant_id = product key) next
+    // to its real variant skus, each with an offer at the same price. offer_id is a hash, so without this
+    // term the synthetic id won about half the ties and live price verification reported variant_missing.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    const price = lateral.indexOf('COALESCE(o.merchant_effective_price, o.list_price) ASC');
+    const realFirst = lateral.search(
+      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+THEN 1 ELSE 0 END ASC/,
+    );
+    const offerId = lateral.indexOf('o.offer_id ASC');
+    expect(price).toBeGreaterThan(-1);
+    expect(realFirst).toBeGreaterThan(price);     // a tie-break only: price still decides first
+    expect(offerId).toBeGreaterThan(realFirst);   // and it runs before the hashed offer_id
+  });
+
   test('sku/offer LATERAL prefers the caller market when one is supplied', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
