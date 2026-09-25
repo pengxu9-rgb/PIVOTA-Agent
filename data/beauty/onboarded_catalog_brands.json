@@ -1,0 +1,469 @@
+{
+  "_comment": "Brands the retailer-ingest pipeline deliberately onboarded (canonical == catalog_products.brand as written by the job's options.brands map). Read by src/findProductsMulti/brandDictionaryCache.js behind GATEWAY_CATALOG_BRAND_ALLOWLIST: an onboarded brand qualifies as a catalog beauty brand from its FIRST beauty-leaf row. Only add brands an ingest job wrote on purpose; never add a vendor seen in the wild.",
+  "sources": [
+    {
+      "market": "US",
+      "generated": "2026-09-25",
+      "source": "us_top100 retailer-ingest cohorts: canonical = options.brands value (the spelling written to catalog_products.brand); store_spellings = store vendor strings mapped to it"
+    }
+  ],
+  "brands": [
+    {
+      "canonical": "Aesop",
+      "store_spellings": [
+        "Aesop"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Amika",
+      "store_spellings": [
+        "AMIKA",
+        "Amika",
+        "amika"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Anastasia Beverly Hills",
+      "store_spellings": [
+        "Anastasia Beverly Hills"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Ariana Grande",
+      "store_spellings": [
+        "Ariana Grande"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Biolage",
+      "store_spellings": [
+        "Biolage"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "By Terry",
+      "store_spellings": [
+        "By Terry"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Carolina Herrera",
+      "store_spellings": [
+        "Carolina Herrera"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "CeraVe",
+      "store_spellings": [
+        "Cerave"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Charlotte Tilbury",
+      "store_spellings": [
+        "Charlotte Tilbury"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Clean Skin Club",
+      "store_spellings": [
+        "Clean Skin Club"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Clinique",
+      "store_spellings": [
+        "Clinique"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Danessa Myricks Beauty",
+      "store_spellings": [
+        "Danessa Myricks Beauty"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Dior",
+      "store_spellings": [
+        "Christian Dior"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Dolce & Gabbana Beauty",
+      "store_spellings": [
+        "Dolce and Gabbana"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "EltaMD",
+      "store_spellings": [
+        "EltaMD",
+        "eltamd"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Estée Lauder",
+      "store_spellings": [
+        "Estee Lauder"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Jean Paul Gaultier",
+      "store_spellings": [
+        "Jean Paul Gaultier"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Jo Malone",
+      "store_spellings": [
+        "Jo Malone",
+        "Jo Malone London"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "K18",
+      "store_spellings": [
+        "K18"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "KISS",
+      "store_spellings": [
+        "KISS",
+        "Kiss"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Kiehl's Since 1851",
+      "store_spellings": [
+        "Kiehl's Since 1851"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Kiss New York",
+      "store_spellings": [
+        "Kiss New York"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "La Mer",
+      "store_spellings": [
+        "La Mer"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "La Roche-Posay",
+      "store_spellings": [
+        "La Roche-Posay"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Lancôme",
+      "store_spellings": [
+        "Lancome"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Lattafa",
+      "store_spellings": [
+        "LATTAFA",
+        "Lattafa"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "MAYBELLINE",
+      "store_spellings": [
+        "MAYBELLINE"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Make Up For Ever",
+      "store_spellings": [
+        "Make Up For Ever"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Mielle",
+      "store_spellings": [
+        "MIELLE"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Moroccanoil",
+      "store_spellings": [
+        "MOROCCANOIL",
+        "Moroccanoil"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "NARS",
+      "store_spellings": [
+        "Nars"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "NYX",
+      "store_spellings": [
+        "NYX"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "OPI",
+      "store_spellings": [
+        "OPI"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Olaplex",
+      "store_spellings": [
+        "OLAPLEX",
+        "Olaplex"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Pantene",
+      "store_spellings": [
+        "Pantene"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Parfums de Marly",
+      "store_spellings": [
+        "PARFUMS DE MARLY",
+        "Parfums de Marly",
+        "parfums de marly"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Prada",
+      "store_spellings": [
+        "Prada"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Pureology",
+      "store_spellings": [
+        "PUREOLOGY",
+        "Pureology"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Redken",
+      "store_spellings": [
+        "REDKEN",
+        "Redken"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Revlon",
+      "store_spellings": [
+        "Revlon"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Saie",
+      "store_spellings": [
+        "Saie"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Sol de Janeiro",
+      "store_spellings": [
+        "Sol de Janeiro"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Supergoop!",
+      "store_spellings": [
+        "Supergoop",
+        "Supergoop!"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "TRESemmé",
+      "store_spellings": [
+        "TRESemme"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Tarte",
+      "store_spellings": [
+        "Tarte"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Tom Ford Beauty",
+      "store_spellings": [
+        "Tom Ford"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Valentino",
+      "store_spellings": [
+        "Valentino"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "Westman Atelier",
+      "store_spellings": [
+        "WESTMAN ATELIER",
+        "Westman Atelier",
+        "Westman-Atelier",
+        "westman atelier"
+      ],
+      "markets": [
+        "US"
+      ]
+    },
+    {
+      "canonical": "YSL",
+      "store_spellings": [
+        "Yves Saint Laurent"
+      ],
+      "markets": [
+        "US"
+      ]
+    }
+  ]
+}

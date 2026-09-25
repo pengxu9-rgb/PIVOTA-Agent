@@ -369,6 +369,9 @@ const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
   'catkin',
   'hersteller',
   'inertia',
+  // KISS (lashes/nails) is an onboarded US brand (2026-09-25) with no rows yet; once it has
+  // 3, "kiss proof lipstick" would otherwise become a KISS brand filter.
+  'kiss',
   'lagom',
   'merit',
   'organist',
@@ -407,9 +410,14 @@ function coreBrandQueryTokens(normalizedQuery) {
 // (GATEWAY_CATALOG_BRAND_LONG_TAIL, default OFF -> always null). Brand-only by
 // construction: the WHOLE core query must equal the stripped name.
 function matchStrippedCatalogBeautyBrand(normalizedQuery) {
-  const core = coreBrandQueryTokens(normalizedQuery).join(' ');
+  const coreTokens = coreBrandQueryTokens(normalizedQuery);
+  const core = coreTokens.join(' ');
   if (!core) return null;
-  const hit = brandDictionaryCache.matchCatalogBeautyBrandByStrippedName(core);
+  // The name alone first; then (GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY) a multi-token
+  // stripped name leading the query with more words after it ("Danessa Myricks blush").
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedName(core) ||
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedLeadingSpan(coreTokens);
   if (!hit) return null;
   const alias = normalizeBrandText(hit.alias);
   if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(alias) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(alias)) {
