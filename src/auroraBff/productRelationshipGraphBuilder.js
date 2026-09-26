@@ -1007,13 +1007,14 @@ function leafFormsInText(text) {
   return { phraseForms: consumed, wordForms: ordered };
 }
 
-// The head form of a product name: the last form word before a modifier clause
-// ("Lip Balm with Hemp Seed Oil" -> balm, "Cream-to-Foam Face Cleanser" -> cleanser).
+// The head form of a product name: a multi-word synonym phrase when the name carries one ("Tinted
+// Moisturizer Cream" -> foundation, not moisturizer), else the last form word before a modifier
+// clause ("Lip Balm with Hemp Seed Oil" -> balm, "Cream-to-Foam Face Cleanser" -> cleanser).
 function leafHeadForm(name) {
   const head = normalizeLower(name, 512).split(/\s+(?:with|for|and|&|\+|featuring|infused|enriched)\s+|\s+[—–]\s+|\s*\|\s*/)[0] || '';
   const { phraseForms, wordForms } = leafFormsInText(head);
-  if (wordForms.length) return wordForms[wordForms.length - 1];
   if (phraseForms.length) return phraseForms[phraseForms.length - 1];
+  if (wordForms.length) return wordForms[wordForms.length - 1];
   return '';
 }
 
@@ -1162,12 +1163,17 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
 //   1. curated evidence (aurora_dupe_kb), OR shared product name words >= 2;
 //   2. when BOTH sides carry an ingredient list, the lists must overlap by at least
 //      DUPE_MIN_INCI_OVERLAP — a contradicting INCI refutes a dupe. INCI is not required: a
-//      retailer row without an ingredient list can still be a dupe on its name words (#2268);
+//      retailer row without an ingredient list, or with only a few "key ingredients" tokens
+//      (< DUPE_MIN_INCI_TOKENS), can still be a dupe on its name words (#2268);
 //   3. score_total >= DUPE_MIN_SCORE_TOTAL (productRelationshipGraph.js, re-expressed for the
 //      graded scale: the 0.72 shelf floor plus a fifth of the pair evidence), category >= 0.55,
 //      and the candidate is not dearer than the anchor.
 const DUPE_MIN_SHARED_PRODUCT_TOKENS = 2;
 const DUPE_MIN_INCI_OVERLAP = 0.35;
+// A "key ingredients" blurb of a few tokens is not an INCI list; comparing it against a full list
+// (hits / max size) would refute every genuine dupe. Below this many tokens on either side the
+// refutation abstains.
+const DUPE_MIN_INCI_TOKENS = 5;
 const PRODUCT_AREA_TOKENS = new Set(['body', 'eye', 'eyes', 'face', 'facial', 'hair', 'lip', 'lips', 'scalp', 'skin']);
 const SHELF_PLACEHOLDER_TOKENS = new Set(['general', 'misc', 'other', 'others', 'uncategorized', 'unknown']);
 
@@ -1195,7 +1201,7 @@ function sharedProductEvidence(anchorSnapshot = {}, candidateSnapshot = {}) {
 function ingredientOverlap(anchorSnapshot = {}, candidateSnapshot = {}) {
   const left = new Set(normalizeTokens(anchorSnapshot.ingredient_text).filter((token) => token.length > 2));
   const right = new Set(normalizeTokens(candidateSnapshot.ingredient_text).filter((token) => token.length > 2));
-  if (!left.size || !right.size) return null;
+  if (left.size < DUPE_MIN_INCI_TOKENS || right.size < DUPE_MIN_INCI_TOKENS) return null;
   let hits = 0;
   for (const token of left) if (right.has(token)) hits += 1;
   return hits / Math.max(left.size, right.size);
@@ -1610,11 +1616,18 @@ const keepClaims = {
   value: (value) => value,
 };
 
-// why_candidate.summary is user-visible; stripping must never leave it empty.
-function withSummaryFallback(why, fallbackSummary) {
-  if (!isPlainObject(why)) return { summary: fallbackSummary };
-  if (normalizeString(why.summary, 2000)) return why;
-  return { ...why, summary: fallbackSummary };
+// why_candidate is user-visible; stripping must never leave its summary empty or its reasons list
+// empty.
+const DEFAULT_REASONS_USER_VISIBLE = ['Category/use-case evidence is aligned.', 'Source provenance is available.'];
+
+function withSummaryFallback(why, fallbackSummary, fallbackReasons = DEFAULT_REASONS_USER_VISIBLE) {
+  if (!isPlainObject(why)) return { summary: fallbackSummary, reasons_user_visible: fallbackReasons };
+  const out = { ...why };
+  if (!normalizeString(out.summary, 2000)) out.summary = fallbackSummary;
+  if (Array.isArray(why.reasons_user_visible) && !why.reasons_user_visible.some((item) => normalizeString(item, 2000))) {
+    out.reasons_user_visible = fallbackReasons;
+  }
+  return out;
 }
 
 function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, reviewStatus = 'pending' } = {}) {
@@ -1738,7 +1751,7 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
     evidence_grade: candidate.evidence_grade || candidate.evidenceGrade || needObj.evidence_grade_min || 'B',
     review_status: reviewStatus,
     why_candidate: isPlainObject(candidate.why_candidate || candidate.whyCandidate)
-      ? withSummaryFallback(nicheClaims.value(candidate.why_candidate || candidate.whyCandidate), nicheSummary)
+      ? withSummaryFallback(nicheClaims.value(candidate.why_candidate || candidate.whyCandidate), nicheSummary, ['Need-specific tags and source evidence are available.'])
       : {
         summary: nicheSummary,
         reasons_user_visible: ['Need-specific tags and source evidence are available.'],

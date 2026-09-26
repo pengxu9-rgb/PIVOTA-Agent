@@ -265,10 +265,13 @@ describe('social-proof copy is stripped, phrase by phrase, from the snapshot tex
     expect(audit.auditUnsupportedClaims(edge, 0)).toEqual([]);
   });
 
-  test('why_candidate.summary never ends up empty', () => {
+  test('why_candidate.summary and reasons_user_visible never end up empty', () => {
     const edge = edgeFor({ why_candidate: { summary: 'A viral bestseller', reasons_user_visible: ['Cheaper'] } });
     expect(edge.why_candidate.summary).toBe('Cross-brand alternative with matching category and use-case signals.');
     expect(edge.why_candidate.reasons_user_visible).toEqual(['Cheaper']);
+    const stripped = edgeFor({ why_candidate: { summary: 'Solid dupe.', reasons_user_visible: ['A viral bestseller', 'Cult favourite'] } });
+    expect(stripped.why_candidate.summary).toBe('Solid dupe.');
+    expect(stripped.why_candidate.reasons_user_visible).toEqual(['Category/use-case evidence is aligned.', 'Source provenance is available.']);
 
     const niche = buildNicheSpecialistEdge({
       need: { need_id: 'need:budget-peptide-serum', label: 'budget peptide serum', category_taxonomy: ['skincare', 'serum'] },
@@ -276,6 +279,49 @@ describe('social-proof copy is stripped, phrase by phrase, from the snapshot tex
       nowIso: NOW,
     });
     expect(niche.edge.why_candidate.summary).toBe('Specialist candidate for budget peptide serum.');
+  });
+
+  test('the gate matches a SUBSET of the pre-#2290 audit pattern (embedded verbatim from 1ce5d9f24^)', () => {
+    const PRE_2290_GATE = /\b(?:tiktok|tik\s*tok|instagram|insta|creator|influencer|viral|social proof|ugc|testimonial|celebrity|raved about|hyped|trending)\b/i;
+    const probes = [
+      'loved by influencers', 'real testimonials from customers', 'content creators love it', 'creators favourite pick',
+      'content creator pick', 'creator favourite', 'creator-approved', 'influencer favourite', 'a testimonial',
+      'viral hit', 'as raved about on TikTok', 'trending on Instagram', 'trending now', 'Insta famous', 'Insta-Glow Serum',
+      'creator labs', 'Trending shade', 'social proof', 'ugc video', 'celebrity favourite', 'hyped launch', 'tik tok famous',
+      'popular pick', 'most popular', 'famous formula', 'loved by many', 'fan favourite', 'customer favourite', 'top-rated',
+      'best-selling', 'award-winning', 'cult classic', 'as seen on TV', 'number one', '#1 serum', 'No. 1 cushion',
+      'editor pick', 'press favourite', 'rated 5 stars', 'thousands of reviews', 'sold out twice', 'iconic', 'legendary',
+      'must-have', 'holy grail', 'go-to', 'internet famous', 'everyone is talking about it', 'buzzy', 'hot right now',
+    ];
+    for (const probe of probes) {
+      if (claimPhrases.SOCIAL_CLAIM_PATTERN.test(probe)) expect([probe, 'matched by the gate but not by the pre-#2290 gate']).toEqual([probe, PRE_2290_GATE.test(probe) ? 'matched by the gate but not by the pre-#2290 gate' : 'WIDER']);
+    }
+    // Every alternative in the gate source is itself a subset of the old alternation: none may name a
+    // word the old gate did not.
+    const oldWords = ['tiktok', 'tik', 'instagram', 'insta', 'creator', 'influencer', 'viral', 'social proof', 'ugc', 'testimonial', 'celebrity', 'raved about', 'hyped', 'trending'];
+    for (const alternative of claimPhrases.SOCIAL_CLAIM_SOURCE) {
+      // Every alternative must carry a pre-#2290 gate word as a whole word (its match is then a
+      // subset of the old \bword\b match); a new word such as "popular" fails here.
+      const literal = alternative.replace(/\\s[*+]/g, ' ').replace(/\(\?[!:][^)]*\)/g, ' ').replace(/[\\()?|\[\]]/g, ' ');
+      const anchored = oldWords.some((word) => new RegExp(`(?:^|\\s)${word}(?:\\s|$)`).test(` ${literal.replace(/\s+/g, ' ').trim()} `));
+      expect(anchored ? 'ok' : `${alternative}: not anchored on a pre-#2290 gate word`).toBe('ok');
+    }
+    expect(claimPhrases.SOCIAL_CLAIM_PATTERN.test('loved by influencers')).toBe(false);
+    expect(claimPhrases.SOCIAL_CLAIM_PATTERN.test('real testimonials from customers')).toBe(false);
+    expect(claimPhrases.SOCIAL_CLAIM_PATTERN.test('content creators love it')).toBe(false);
+  });
+
+  test('a sentence stripped down to garbage is dropped whole', () => {
+    expect(claimPhrases.stripSocialProofPhrases('A viral bestseller loved by content creators everywhere.')).toBe('');
+    expect(claimPhrases.stripSocialProofPhrases('Loved by influencers, this serum hydrates for hours. Apply morning and night.')).toBe('Apply morning and night.');
+    expect(claimPhrases.stripSocialProofPhrases('Real testimonials from customers prove it works. Contains 2% niacinamide.')).toBe('Contains 2% niacinamide.');
+    expect(claimPhrases.stripSocialProofPhrases('Loved by content creators everywhere. Contains 2% niacinamide.')).toBe('Contains 2% niacinamide.');
+    // Fewer than 60% of its words survive: dropped even though nothing dangles.
+    expect(claimPhrases.stripSocialProofPhrases('Viral hyped trending now celebrity pick: formula with niacinamide. Contains 2% niacinamide.')).toBe('Contains 2% niacinamide.');
+    // Opens on a conjunction after the cut: dropped even though 7 of 8 words survive.
+    expect(claimPhrases.stripSocialProofPhrases('Viral and clinically tested formula for dry skin. Contains 2% niacinamide.')).toBe('Contains 2% niacinamide.');
+    // Kept: the phrase is gone, the sentence still reads.
+    expect(claimPhrases.stripSocialProofPhrases("The viral product you've been waiting for! Introducing Neo Blurring Powder.")).toBe("The product you've been waiting for! Introducing Neo Blurring Powder.");
   });
 
   test('the audit gate is not wider than before: a stored edge with "best-selling" still passes, and the gate ignores name compounds', () => {
@@ -426,6 +472,14 @@ describe('dupe: an explicit rule on the graded scale', () => {
     expect(got.relation).toBe('competitive_alternative');
   });
 
+  test('accepts: a truncated "key ingredients" list on one side does not refute a genuine dupe', () => {
+    const got = relationFor(snap({
+      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
+      inci_list: 'niacinamide, hyaluronic acid',
+    }));
+    expect(got.relation).toBe('dupe');
+  });
+
   test('accepts: a retailer row without an ingredient list can still be a dupe on its name words', () => {
     const got = relationFor(snap({ brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+', category: 'sunscreen', price: 9 }));
     expect(got.relation).toBe('dupe');
@@ -459,6 +513,7 @@ describe('leaf category agreement for dupe / competitive_alternative', () => {
     ['clarifying lotion vs toner', { category: 'lotion', name: 'Clinique Clarifying Lotion' }, { category: 'Toner', name: 'Pixi Glow Tonic Toner' }],
     ['BB cream vs foundation', { category: 'foundation', name: 'Erborian BB Cream' }, { category: 'Foundation', name: "Fenty Pro Filt'r Foundation" }],
     ['tinted moisturizer vs foundation', { category: 'complexion', name: 'Laura Mercier Tinted Moisturizer' }, { category: 'Foundation', name: 'Rare Beauty Liquid Touch Foundation' }],
+    ['tinted moisturizer CREAM vs foundation (phrase beats head noun)', { category: 'complexion', name: 'Tinted Moisturizer Cream SPF 30' }, { category: 'Foundation', name: 'Fenty Pro Filt\'r Foundation' }],
     ['sun cream vs UV gel', { category: 'sunscreen', name: 'Nivea Sun Cream SPF50' }, { category: 'sunscreen', name: 'Ayura Water Feel UV Gel' }],
     ['night cream vs face oil', { category: 'cream', name: "Kiehl's Midnight Night Cream" }, { category: 'oil', name: 'Sunday Riley Face Oil' }],
     ['blush vs cheek tint', { category: 'blush', name: 'Nars Blush' }, { category: 'cheek', name: 'Benefit Cheek Tint' }],
@@ -486,6 +541,7 @@ describe('leaf category agreement for dupe / competitive_alternative', () => {
     expect(forms({ name: 'Ayura Water Feel UV Gel' })).toEqual(['sunscreen']);
     expect(forms({ name: 'Erborian BB Cream' })).toEqual(['foundation']);
     expect(forms({ name: 'Laura Mercier Tinted Moisturizer' })).toEqual(['foundation']);
+    expect(forms({ name: 'Tinted Moisturizer Cream SPF 30' })).toEqual(['foundation']);
     expect(forms({ name: 'Guerlain Rouge G' })).toEqual(['lipstick']);
     expect(areas({ name: 'Guerlain Rouge G' })).toEqual(['lip']);
     expect(forms({ name: 'Hada Labo Gokujyun Lotion' })).toEqual(['lotion']);

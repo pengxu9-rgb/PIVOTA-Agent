@@ -29,14 +29,15 @@ const SOCIAL_CLAIM_SOURCE = [
   'instagram',
   // "insta" alone, never the compound "Insta-Glow" / "InstaBright".
   'insta(?![\\w-])',
-  // "creator" only as social proof, never "creator labs" / "Creator Studio".
-  'content creators?',
-  'creator[\\s-]+(?:favou?rites?|approved|loved|backed|picks?)',
-  'influencers?',
+  // "creator" only as social proof, never "creator labs" / "Creator Studio". Singular only: the
+  // pre-#2290 gate was \bcreator\b, and this gate must match a SUBSET of what that one matched.
+  'content creator',
+  'creator[\\s-]+(?:favou?rite|approved|loved|backed|pick)',
+  'influencer',
   'viral',
   'social proof',
   'ugc',
-  'testimonials?',
+  'testimonial',
   'celebrity',
   'raved about',
   'hyped',
@@ -46,6 +47,12 @@ const SOCIAL_CLAIM_SOURCE = [
 const SOCIAL_CLAIM_PATTERN = new RegExp(`\\b(?:${SOCIAL_CLAIM_SOURCE.join('|')})\\b`, 'i');
 
 const POPULARITY_CLAIM_SOURCE = [
+  // Plural social-proof forms the gate never matched (it is a subset of the pre-#2290 gate); the
+  // builder still strips them.
+  'content creators',
+  'creators?[\\s-]+(?:favou?rites|picks)',
+  'influencers',
+  'testimonials',
   'best[\\s-]?sellers?',
   'best[\\s-]?selling',
   'award[\\s-]?winning',
@@ -74,6 +81,35 @@ const CANDIDATE_CLAIM_FIELDS = [
   'why',
 ];
 const ANCHOR_CLAIM_FIELDS = ['description', 'claims', 'benefits'];
+
+// Words that cannot open or close a clause on their own; a stripped sentence that starts or ends on
+// one, or has one left hanging before a comma, has lost its predicate and is dropped whole.
+const DANGLING_LEAD_WORDS = new Set(['and', 'as', 'but', 'by', 'of', 'or', 'so', 'than', 'with']);
+const DANGLING_TAIL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'from', 'into', 'of', 'on', 'or', 'so', 'than', 'the', 'to', 'with']);
+const MIN_KEPT_WORD_SHARE = 0.6;
+// A removed phrase that was the object of a preposition ("loved by [influencers]") or a noun between
+// a modifier and a preposition ("Real [testimonials] from customers") leaves the clause without its
+// argument; the sentence is dropped whole.
+const PREPOSITIONS = new Set(['at', 'by', 'for', 'from', 'in', 'of', 'on', 'to', 'with']);
+const DETERMINERS = new Set(['a', 'an', 'the', 'our', 'your', 'their', 'its', 'this', 'that', 'these', 'those', 'my']);
+
+function orphansClause(text, start, end) {
+  const before = (text.slice(0, start).trim().match(/[\p{L}\p{N}']+$/u) || [''])[0].toLowerCase();
+  const after = (text.slice(end).trim().match(/^[\p{L}\p{N}']+/u) || [''])[0].toLowerCase();
+  if (PREPOSITIONS.has(before)) return true;
+  return Boolean(before) && !DETERMINERS.has(before) && PREPOSITIONS.has(after);
+}
+
+function danglingAfterStrip(text) {
+  const words = normalizeText(text).toLowerCase().match(/[\p{L}\p{N}']+|[,;:]/gu) || [];
+  if (!words.length) return true;
+  if (DANGLING_LEAD_WORDS.has(words[0])) return true;
+  if (DANGLING_TAIL_WORDS.has(words[words.length - 1])) return true;
+  for (let i = 0; i + 1 < words.length; i += 1) {
+    if (/^[,;:]$/.test(words[i + 1]) && DANGLING_TAIL_WORDS.has(words[i])) return true;
+  }
+  return false;
+}
 
 // Sentence ends: ". ! ?" followed by whitespace ("No." as in "No. 1" is an abbreviation, not an
 // end), Japanese 。！？ with or without a following space, line breaks, bullets.
@@ -122,19 +158,26 @@ function ordinalNamesProduct(sentence, index, brand) {
 function stripPhrasesFromSentence(sentence, { brand } = {}) {
   let out = sentence;
   let touched = false;
+  let orphaned = false;
   for (const pattern of [SOCIAL_CLAIM_PATTERN, POPULARITY_CLAIM_PATTERN]) {
     const global = new RegExp(pattern.source, 'gi');
-    const next = out.replace(global, () => { touched = true; return ' '; });
-    out = next;
+    const source = out;
+    out = source.replace(global, (match, offset) => {
+      touched = true;
+      if (orphansClause(source, offset, offset + match.length)) orphaned = true;
+      return ' ';
+    });
   }
   const ordinal = new RegExp(ORDINAL_CLAIM_PATTERN.source, 'gi');
-  out = out.replace(ordinal, (match, offset) => {
+  const ordinalSource = out;
+  out = ordinalSource.replace(ordinal, (match, offset) => {
     const leading = /^[\s(]/.test(match) ? match[0] : '';
-    if (ordinalNamesProduct(out, offset + leading.length, brand)) return match;
+    if (ordinalNamesProduct(ordinalSource, offset + leading.length, brand)) return match;
     touched = true;
+    if (orphansClause(ordinalSource, offset + leading.length, offset + match.length)) orphaned = true;
     return leading;
   });
-  if (!touched) return { text: sentence, touched: false };
+  if (!touched) return { text: sentence, touched: false, orphaned: false };
   const cleaned = out
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s+([,;:.!?。！？])/g, '$1')
@@ -142,15 +185,16 @@ function stripPhrasesFromSentence(sentence, { brand } = {}) {
     .replace(/^[\s,;:]+/, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return { text: cleaned, touched: true };
+  return { text: cleaned, touched: true, orphaned };
 }
 
 function contentWordCount(text) {
   return (normalizeText(text).match(CONTENT_WORD) || []).length;
 }
 
-// Cut social-proof phrases out of `text`. A sentence that keeps fewer than three content words, or
-// fewer than half of the ones it had, is dropped. Returns '' when nothing supportable is left.
+// Cut social-proof phrases out of `text`. A sentence that keeps fewer than three content words, fewer
+// than 60% of the words it had, or is left opening / closing on a function word ("Loved by, this
+// serum", "A loved by everywhere") is dropped whole. Returns '' when nothing supportable is left.
 function stripSocialProofPhrases(text, options = {}) {
   const raw = normalizeText(text).trim();
   if (!raw) return raw;
@@ -159,14 +203,14 @@ function stripSocialProofPhrases(text, options = {}) {
   for (const part of raw.split(SENTENCE_SPLIT)) {
     const sentence = normalizeText(part).trim();
     if (!sentence) continue;
-    const { text: stripped, touched } = stripPhrasesFromSentence(sentence, options);
+    const { text: stripped, touched, orphaned } = stripPhrasesFromSentence(sentence, options);
     if (!touched) {
       kept.push(sentence);
       continue;
     }
     const before = contentWordCount(sentence);
     const after = contentWordCount(stripped);
-    if (after < 3 || after * 2 < before) continue;
+    if (orphaned || after < 3 || after < before * MIN_KEPT_WORD_SHARE || danglingAfterStrip(stripped)) continue;
     kept.push(stripped);
   }
   return kept.join(' ').trim();
@@ -214,6 +258,7 @@ function neutralizeSnapshotClaims(snapshot, fields, options = {}) {
 }
 
 module.exports = {
+  SOCIAL_CLAIM_SOURCE,
   SOCIAL_CLAIM_PATTERN,
   POPULARITY_CLAIM_PATTERN,
   ORDINAL_CLAIM_PATTERN,
