@@ -1163,17 +1163,18 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
 //   1. curated evidence (aurora_dupe_kb), OR shared product name words >= 2;
 //   2. when BOTH sides carry an ingredient list, the lists must overlap by at least
 //      DUPE_MIN_INCI_OVERLAP — a contradicting INCI refutes a dupe. INCI is not required: a
-//      retailer row without an ingredient list, or with only a few "key ingredients" tokens
-//      (< DUPE_MIN_INCI_TOKENS), can still be a dupe on its name words (#2268);
+//      retailer row without an ingredient list, or with only a few "key ingredients" entries
+//      (< DUPE_MIN_INCI_ENTRIES, comma-separated), can still be a dupe on its name words (#2268);
 //   3. score_total >= DUPE_MIN_SCORE_TOTAL (productRelationshipGraph.js, re-expressed for the
 //      graded scale: the 0.72 shelf floor plus a fifth of the pair evidence), category >= 0.55,
 //      and the candidate is not dearer than the anchor.
 const DUPE_MIN_SHARED_PRODUCT_TOKENS = 2;
 const DUPE_MIN_INCI_OVERLAP = 0.35;
-// A "key ingredients" blurb of a few tokens is not an INCI list; comparing it against a full list
-// (hits / max size) would refute every genuine dupe. Below this many tokens on either side the
-// refutation abstains.
-const DUPE_MIN_INCI_TOKENS = 5;
+// A "key ingredients" blurb of a few ENTRIES is not an INCI list; comparing it against a full list
+// (hits / max size) would refute every genuine dupe. Entries are the comma / semicolon-separated
+// items, not words: "Niacinamide, Sodium Hyaluronate, Zinc PCA, Glycerin" is 4 entries (6 words).
+// Below this many entries on either side the refutation abstains.
+const DUPE_MIN_INCI_ENTRIES = 5;
 const PRODUCT_AREA_TOKENS = new Set(['body', 'eye', 'eyes', 'face', 'facial', 'hair', 'lip', 'lips', 'scalp', 'skin']);
 const SHELF_PLACEHOLDER_TOKENS = new Set(['general', 'misc', 'other', 'others', 'uncategorized', 'unknown']);
 
@@ -1198,10 +1199,16 @@ function sharedProductEvidence(anchorSnapshot = {}, candidateSnapshot = {}) {
   return { count: shared.length, tokens: shared };
 }
 
+function inciEntryCount(value) {
+  return String(value == null ? '' : value).split(/[,;]/).map((item) => item.trim()).filter(Boolean).length;
+}
+
 function ingredientOverlap(anchorSnapshot = {}, candidateSnapshot = {}) {
+  if (inciEntryCount(anchorSnapshot.ingredient_text) < DUPE_MIN_INCI_ENTRIES) return null;
+  if (inciEntryCount(candidateSnapshot.ingredient_text) < DUPE_MIN_INCI_ENTRIES) return null;
   const left = new Set(normalizeTokens(anchorSnapshot.ingredient_text).filter((token) => token.length > 2));
   const right = new Set(normalizeTokens(candidateSnapshot.ingredient_text).filter((token) => token.length > 2));
-  if (left.size < DUPE_MIN_INCI_TOKENS || right.size < DUPE_MIN_INCI_TOKENS) return null;
+  if (!left.size || !right.size) return null;
   let hits = 0;
   for (const token of left) if (right.has(token)) hits += 1;
   return hits / Math.max(left.size, right.size);

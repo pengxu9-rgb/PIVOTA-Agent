@@ -428,7 +428,7 @@ describe('score spread: pair evidence, not provenance, moves the score', () => {
 describe('dupe: an explicit rule on the graded scale', () => {
   const sunAnchor = snap({
     brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14,
-    inci_list: 'water alcohol ethylhexyl methoxycinnamate glycerin butylene glycol hyaluronic acid dimethicone tocopherol',
+    inci_list: 'Water, Alcohol, Ethylhexyl Methoxycinnamate, Glycerin, Butylene Glycol, Hyaluronic Acid, Dimethicone, Tocopherol',
   });
   function relationFor(cand) {
     const score = scoreCandidateForAnchor(sunAnchor, cand);
@@ -448,7 +448,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
   test('accepts: a genuine cross-brand dupe (same leaf, similar INCI, shared name words) emits with margin', () => {
     const got = relationFor(snap({
       brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
-      inci_list: 'water alcohol ethylhexyl methoxycinnamate glycerin butylene glycol hyaluronic acid tocopherol niacinamide',
+      inci_list: 'Water, Alcohol, Ethylhexyl Methoxycinnamate, Glycerin, Butylene Glycol, Hyaluronic Acid, Tocopherol, Niacinamide',
     }));
     expect(got.relation).toBe('dupe');
     expect(got.score - DUPE_MIN_SCORE_TOTAL).toBeGreaterThanOrEqual(0.05);
@@ -457,7 +457,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
   test('accepts: a modest-evidence dupe between the new threshold and the old 0.82 is still a dupe', () => {
     const got = relationFor(snap({
       brand: 'Anessa', name: 'Anessa Perfect UV Sunscreen Skincare Milk SPF50+', category: 'sunscreen', price: 12,
-      inci_list: 'water alcohol zinc oxide glycerin butylene glycol silica tocopherol',
+      inci_list: 'Water, Alcohol, Zinc Oxide, Glycerin, Butylene Glycol, Silica, Tocopherol',
     }));
     expect(got.relation).toBe('dupe');
     expect(got.score).toBeGreaterThanOrEqual(DUPE_MIN_SCORE_TOTAL);
@@ -467,7 +467,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
   test('a contradicting INCI refutes a dupe even when the names match', () => {
     const got = relationFor(snap({
       brand: 'Other', name: 'Other UV Aqua Essence Sunscreen SPF50+', category: 'sunscreen', price: 9,
-      inci_list: 'zinc oxide titanium dioxide caprylic triglyceride coconut alkanes',
+      inci_list: 'Zinc Oxide, Titanium Dioxide, Caprylic Triglyceride, Coconut Alkanes, Polyhydroxystearic Acid, Isododecane',
     }));
     expect(got.relation).toBe('competitive_alternative');
   });
@@ -478,6 +478,25 @@ describe('dupe: an explicit rule on the graded scale', () => {
       inci_list: 'niacinamide, hyaluronic acid',
     }));
     expect(got.relation).toBe('dupe');
+  });
+
+  test('accepts: a 4-ENTRY blurb (6 words) against a full 20+-entry INCI list still emits a dupe', () => {
+    const fullInci = [
+      'Water', 'Alcohol', 'Ethylhexyl Methoxycinnamate', 'Glycerin', 'Butylene Glycol', 'Diethylamino Hydroxybenzoyl Hexyl Benzoate',
+      'Ethylhexyl Triazone', 'Silica', 'Dimethicone', 'Polymethylsilsesquioxane', 'Sodium Hyaluronate', 'Tocopherol', 'Niacinamide',
+      'Zinc PCA', 'Xanthan Gum', 'Carbomer', 'Potassium Hydroxide', 'Disodium EDTA', 'Phenoxyethanol', 'Methylparaben', 'Fragrance', 'BHT',
+    ].join(', ');
+    const anchorFull = snap({
+      brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14, inci_list: fullInci,
+    });
+    const blurb = snap({
+      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
+      inci_list: 'Niacinamide, Sodium Hyaluronate, Zinc PCA, Glycerin',
+    });
+    const score = scoreCandidateForAnchor(anchorFull, blurb);
+    const out = build([anchorFull], { [anchorFull.product_ref]: [{ ...blurb, ...score, similarity_score: score.score_total, score_breakdown: score, price_observed_at: NOW }] });
+    expect(out.edges.map((edge) => edge.relation_type)).toEqual(['dupe']);
+    expect(out.edges[0].score_total).toBeGreaterThanOrEqual(DUPE_MIN_SCORE_TOTAL);
   });
 
   test('accepts: a retailer row without an ingredient list can still be a dupe on its name words', () => {
