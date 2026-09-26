@@ -34,7 +34,6 @@ const SCALAR_BIND_BASELINE = {
   'src/auroraBff/productRecV1.js': 2,
   'src/auroraBff/travelLocalProductAuthority.js': 1,
   'src/findProductsExternalSeedBrandFastpath.js': 2,
-  'src/findProductsExternalSeedDirectRetrieval.js': 1,
   'src/modules/decisioning/shopping_agent/strictFindProductsMulti.js': 1,
   'src/services/RecommendationEngine.js': 5,
   // NOT in this baseline: canonicalCatalogSearch.js. Its two `AND market = $1` hits were PROSE
@@ -56,7 +55,6 @@ const SCALAR_BIND_BASELINE = {
 const CANONICAL_SCALAR_GATES = 3;
 
 const RAW_ENV_BASELINE = {
-  'src/findProductsExternalSeedDirectPlanning.js': 1,
   'src/services/RecommendationEngine.js': 1,
   'src/services/categories.js': 2,
   'src/services/discoveryFeed.js': 2,  // see the NUL-byte note above

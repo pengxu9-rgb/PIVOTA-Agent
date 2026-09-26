@@ -375,12 +375,23 @@ function matchCatalogBeautyBrandByStrippedName(coreQuery) {
 // that brand is predominantly beauty, returns { brand, alias, n, beauty_n,
 // categorized_n } where `brand` is the CANONICAL spaced key (so `roundlab` and
 // `round lab` resolve to one identity); otherwise null. The longest known brand
-// is THE brand: a non-beauty match never falls back to a shorter sub-span.
-function matchCatalogBeautyBrand(normalizedQuery) {
+// is THE brand: a non-beauty match never falls back to a shorter sub-span (with
+// GATEWAY_CATALOG_SHORT_KEY_YIELDS, a short key OUTSIDE that span still may).
+function matchCatalogBeautyBrand(normalizedQuery, options = {}) {
   if (!enabled() || !beautyContractEnabled()) return null;
   maybeRefresh();
   if (!_beauty.size) return null;
   const tokens = normalize(foldAccents(normalizedQuery)).split(/\s+/).filter(Boolean);
+  const shortKeysYield = shortKeysYieldEnabled();
+  let deferredShortKey = null;
+  let regularBrandRefused = false;
+  let refusedSpan = null; // [start, end) tokens of the refused longest regular brand
+  // An ordinary word that is also a catalog brand ("bubble", "merit") must not outrank a
+  // short key: measured on prod brand stats 2026-09-26, deferring OPI without this would
+  // send "opi bubble bath" (an OPI shade) to the 3-row brand "bubble", which brandLexicon
+  // then refuses as ambiguous -- leaving no brand at all.
+  const isWeakRegularKey = typeof options.isWeakRegularKey === 'function' ? options.isWeakRegularKey : () => false;
+  let weakRegular = null;
   for (let size = Math.min(4, tokens.length); size >= 1; size -= 1) {
     for (let i = 0; i + size <= tokens.length; i += 1) {
       const span = tokens.slice(i, i + size).join(' ');
@@ -392,10 +403,43 @@ function matchCatalogBeautyBrand(normalizedQuery) {
       // would end the search and hide a real brand elsewhere in the query ("opi olaplex").
       if (!admissibleKey(key) && !allowlistEnabled()) continue;
       const stats = _beauty.get(key);
-      return qualifiesAsBeautyBrand(stats) ? { alias: span, ...stats } : null;
+      // GATEWAY_CATALOG_SHORT_KEY_YIELDS: with the allowlist on, the same scan let "opi"
+      // (token 0) end the search before "olaplex" (token 1) was looked at -- live
+      // 2026-09-26, "opi olaplex" served 6 OPI rows. A short key is held back while the
+      // scan looks for a regular brand elsewhere in the query; it answers only if none does.
+      if (shortKeysYield && !admissibleKey(key)) {
+        // A short key inside the refused brand's own span is part of that brand ("opi tools"
+        // being a non-beauty brand): the longest brand is still THE brand.
+        const insideRefused = refusedSpan && i >= refusedSpan[0] && i + size <= refusedSpan[1];
+        if (!insideRefused && !deferredShortKey && qualifiesAsBeautyBrand(stats)) {
+          deferredShortKey = { alias: span, ...stats };
+        }
+        continue;
+      }
+      if (regularBrandRefused) continue;
+      if (shortKeysYield && isWeakRegularKey(key)) {
+        // It still ends the search for other regular brands, exactly as before; only a short
+        // key found anywhere in the query outranks it.
+        if (qualifiesAsBeautyBrand(stats)) weakRegular = { alias: span, ...stats };
+        regularBrandRefused = true;
+        continue;
+      }
+      if (qualifiesAsBeautyBrand(stats)) return { alias: span, ...stats };
+      if (!shortKeysYield) return null;
+      // The longest regular brand is not beauty: no shorter regular span may answer (the
+      // rule above), but a short key elsewhere in the query still can, whatever its position.
+      regularBrandRefused = true;
+      refusedSpan = [i, i + size];
     }
   }
-  return null;
+  return deferredShortKey || weakRegular;
+}
+
+// Default OFF: matchCatalogBeautyBrand is unchanged unless this is set.
+function shortKeysYieldEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_SHORT_KEY_YIELDS || '').trim().toLowerCase(),
+  );
 }
 
 // STRIPPED NAME + MORE WORDS (GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY, default OFF).

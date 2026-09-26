@@ -113,6 +113,12 @@ describe('product_intel_pilot_compare gemini fallback', () => {
     expect(result.model_candidates).toContain('gemini-3.1-pro-preview');
     expect(result.attempted_models).toEqual(['gemini-3-flash-preview', 'gemini-3.1-pro-preview']);
     expect(postMock.mock.calls[1][1].tools).toEqual([{ google_search: {} }]);
+    // Grounding and forced structured output are mutually exclusive: the API
+    // 400s the pair ("Tool use with a response mime type: 'application/json' is
+    // unsupported"). Every grounded call must omit responseMimeType, or it dies
+    // before the model runs.
+    expect(postMock.mock.calls[1][1].generationConfig).not.toHaveProperty('responseMimeType');
+    expect(postMock.mock.calls[0][1].generationConfig).not.toHaveProperty('responseMimeType');
     expect(result.output.gemini_grounding).toEqual(
       expect.objectContaining({
         has_grounding: true,

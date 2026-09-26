@@ -127,6 +127,57 @@ describe("status table", () => {
   });
 });
 
+describe("the approval deadline is the quote TTL, not the hosted page's expiry (measured 2026-09-25)", () => {
+  const URL = "https://pay.prava.space/checkout/chk_7f3a";
+  const SOON = new Date(NOW + 5 * 60_000).toISOString();
+  const LATER = new Date(NOW + 15 * 60_000).toISOString();
+  const PAST = new Date(NOW - 60_000).toISOString();
+  const base = {
+    id: PID, state: "awaiting_approval", product_key: SNAP.productKey, product_name: "Name", quantity: 1,
+    totals: { currency: "USD", our_price_minor: 4250, quoted_total_minor: 4500, final_total_minor: null },
+    hosted_url: URL, hosted_url_expires_at: LATER, reap_quote_expires_at: SOON, poll_after_seconds: 30,
+  };
+  const map = (view) => mapReapPurchaseToCheckout({ id: encodeReapCheckoutId(SNAP), snapshot: SNAP, view, now: NOW, env: {} });
+
+  test("expires_at is approval_deadline when the backend sends it, and it is published as a bare message", () => {
+    const out = map({ ...base, approval_deadline: SOON });
+    assert.equal(out.status, "requires_escalation");
+    assert.equal(out.continue_url, URL);
+    assert.equal(out.expires_at, SOON);
+    assert.equal(out.messages.find((m) => m.code === "reap.approval_deadline").content, SOON);
+  });
+  test("a passed approval_deadline hides a link whose page is still live, and says the window closed (not 'page not ready')", () => {
+    const out = map({ ...base, approval_deadline: PAST });
+    assert.equal(out.status, "incomplete");
+    assert.equal(Object.hasOwn(out, "continue_url"), false);
+    assert.equal(out.messages.some((m) => m.code === "reap.hosted_page_not_ready"), false);
+    const passed = out.messages.find((m) => m.code === "reap.approval_deadline_passed");
+    assert.equal(passed.type, "warning");
+    assert.ok(passed.content.endsWith(`Closed at ${PAST}.`));
+  });
+  test("the raw deadline text is never echoed — only the normalised instant", () => {
+    const raw = "2026-09-23T11:59:00+00:00";
+    const out = map({ ...base, approval_deadline: raw });
+    const passed = out.messages.find((m) => m.code === "reap.approval_deadline_passed");
+    assert.equal(passed.content.includes(raw), false);
+    assert.ok(passed.content.endsWith("Closed at 2026-09-23T11:59:00.000Z."));
+    const live = map({ ...base, approval_deadline: "2026-09-23T12:05:00+00:00" });
+    assert.equal(live.expires_at, "2026-09-23T12:05:00.000Z");
+    assert.equal(live.messages.find((m) => m.code === "reap.approval_deadline").content, "2026-09-23T12:05:00.000Z");
+  });
+  test("absent (or null) approval_deadline falls back to hosted_url_expires_at; a present unreadable one does not", () => {
+    assert.equal(map(base).expires_at, LATER);
+    assert.equal(map({ ...base, approval_deadline: null }).expires_at, LATER);
+    assert.equal(map({ ...base, approval_deadline: "not a time" }).status, "incomplete");
+  });
+  test("needs_enrollment never carries the deadline message", () => {
+    const out = map({ ...base, state: "needs_enrollment", hosted_url: "https://pay.prava.space/enroll/1", reap_quote_expires_at: null });
+    assert.equal(out.status, "requires_escalation");
+    assert.equal(out.expires_at, LATER);
+    assert.equal(out.messages.some((m) => m.code === "reap.approval_deadline"), false);
+  });
+});
+
 describe("a successful read is the ONLY source of what is displayed", () => {
   const VIEW = {
     id: PID, state: "processing", product_key: "prod::m_brand::shopify::1001", product_name: "Backend Name", quantity: 2,

@@ -354,6 +354,11 @@ function createMerchantVariantSource(deps = {}) {
     return hit.value;
   }
   function cacheSet(key, value, ttlMs) {
+    // `resultTtlMs === 0` means the cache is DISABLED, and disabled must mean "writes nothing" as well as
+    // "reads nothing". `cacheGet` short-circuits on it, but `cacheSet` was still writing negative entries
+    // that could never be read — bounded at `resultMax`, so not a leak, but a disabled cache quietly holding
+    // 500 dead entries is the kind of thing that makes a later memory question hard to answer.
+    if (resultTtlMs === 0) return;
     const ttl = Number.isFinite(ttlMs) ? ttlMs : resultTtlMs;
     if (ttl <= 0) return;
     if (results.size >= resultMax) results.delete(results.keys().next().value);
@@ -503,7 +508,15 @@ function createMerchantVariantSource(deps = {}) {
     for (const v of raws) {
       if (!v.title && v.sku_id) v.title = `SKU ${v.sku_id}`;
     }
-    if (raws.length > 1 && !raws.every(pdpWouldExpose)) {
+    // MATCHES THE BUILDER'S `some()`, not a stricter `every()`.
+    //
+    // `shouldExposeProductVariants` is all-or-nothing over the whole array: if ANY variant is displayable it
+    // publishes them all, so there is no partial-publish risk to guard against. An `every()` gate here
+    // therefore declined sets the PDP would have shown in full — measured: `[One-Pack, Default Title]` was
+    // refused although the builder publishes both with their real gids. That is availability lost for no
+    // safety gain. The decline exists for the case where NOTHING would be shown, which is the one that
+    // leaves the row worse off than its placeholder.
+    if (raws.length > 1 && !raws.some(pdpWouldExpose)) {
       logger?.warn?.({ product_id, merchant_host: pdp.host, variant_count: raws.length },
         'merchant variants declined: the pdp would hide at least one, and a partial variant set is worse than the placeholder');
       return null;
@@ -514,6 +527,11 @@ function createMerchantVariantSource(deps = {}) {
   }
 
   sourceMerchantVariants.details = sourceMerchantVariantDetails;
+  // A small diagnostic surface for the cache. Operationally useful (a cache nobody can size is a cache
+  // nobody can reason about when a memory question comes up) and, concretely, it is what makes "a disabled
+  // cache writes nothing" an OBSERVABLE property: with reads short-circuited, a stray write is invisible
+  // from the outside, so a test asserting only call counts passes whether or not the bug is present.
+  sourceMerchantVariants.stats = () => ({ cachedEntries: results.size, inflight: inflight.size });
   return sourceMerchantVariants;
 }
 

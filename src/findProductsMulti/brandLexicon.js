@@ -431,7 +431,9 @@ function matchStrippedCatalogBeautyBrand(normalizedQuery) {
 // GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF -> always null).
 function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}) {
   const hit =
-    brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery) ||
+    brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery, {
+      isWeakRegularKey: (key) => AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(key),
+    }) ||
     matchStrippedCatalogBeautyBrand(normalizedQuery);
   if (!hit) return null;
   const queryTokens = tokenizeBrandText(normalizedQuery);
