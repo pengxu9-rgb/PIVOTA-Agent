@@ -127,6 +127,10 @@ describe('agentCenterLlmProbe — request validation', () => {
   test('PRIMARY_ISSUE_TYPE_BY_SCAN_MODE covers all four demand-test modes', () => {
     const { PRIMARY_ISSUE_TYPE_BY_SCAN_MODE } = _internals;
     for (const mode of ALLOWED_SCAN_MODES) {
+      if (mode === 'consumer_answer_test') {
+        expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeUndefined();
+        continue;
+      }
       expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeTruthy();
     }
   });
@@ -951,6 +955,8 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
       max_runs: 1,
       context: { queries: ['X'], product: { title: 'X' } },
     });
+    expect(out.raw_runs[0].evidence_kind).toBe('merchant_context_diagnostic');
+    expect(out.raw_runs[0].prompt_contract).toBe('merchant_context_diagnostic_v1');
     expect(out.raw_runs[0].grounding_sources).toEqual([
       { uri: 'https://vertexaisearch.cloud.google.com/abc', title: 'Sephora' },
       { uri: 'https://vertexaisearch.cloud.google.com/def', title: 'Olive Young Global' },
@@ -1271,6 +1277,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       cost_usd_estimate: expect.any(Number),
     }));
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       competitors_listed: ['Sephora'],
       evidence_excerpt: 'Merchant PDP was cited.',
@@ -1351,9 +1359,12 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       context: { queries: ['where can I buy Product X'], product: { title: 'Product X' } },
     });
 
-    // tokens: 1000/1000*0.005 + 100/1000*0.02 = 0.005 + 0.002 = 0.007
-    // web search: 2 calls * 0.015 = 0.030  ->  total 0.037
-    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.037, 6);
+    // Published chat-latest token cost: 0.005 + 0.003 = 0.008
+    // Preview search SKU uncertainty: 2 * $0.01–$0.025.
+    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.058, 6);
+    expect(out.usage.cost_usd_estimate_min).toBeCloseTo(0.028, 6);
+    expect(out.usage.web_search_requests).toBe(2);
+    expect(out.usage.cost_settled).toBe(false);
     // The search fee dominates token cost here — the whole point of metering it.
     expect(out.usage.cost_usd_estimate).toBeGreaterThan(0.007 * 2);
   });
@@ -1381,6 +1392,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.scores.visibility_score).toBe(0);
     expect(out.findings.map((f) => f.issue_type)).toContain('ai_visibility_loss');
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '',
       parsed: null,
       product_visible: false,
@@ -1574,6 +1587,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(100);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       evidence_excerpt: 'Merchant page cited.',
       grounding_chunks: ['https://merchant.com/p/123'],
@@ -1609,6 +1624,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(0);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '__error__:upstream unavailable',
       parsed: null,
       product_visible: false,
@@ -1671,5 +1688,154 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       max_runs: 1,
       context: { queries: ['x'] },
     })).rejects.toThrow(/unsupported provider: perplexity/);
+  });
+});
+
+describe('Claude lane on Vertex AI (ADC transport)', () => {
+  // Save/restore EVERYTHING this suite touches: the file runs in one jest
+  // worker with many sibling suites, and a leaked ANTHROPIC_API_KEY or a
+  // deleted K_SERVICE would silently change which transport THEY exercise.
+  const SAVED_KEYS = [
+    'VERTEX_AI_ENABLED', 'GOOGLE_CLOUD_PROJECT',
+    'GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_APPLICATION_CREDENTIALS',
+    'K_SERVICE', 'ANTHROPIC_API_KEY',
+    'PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL',
+    'PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION',
+  ];
+  let savedEnv;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(SAVED_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    jest.resetModules();
+    for (const k of SAVED_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+    try { jest.dontMock('@anthropic-ai/vertex-sdk'); } catch (_e) { /* absent ok */ }
+  });
+
+  function fakeInlineCredential() {
+    return JSON.stringify({
+      type: 'service_account',
+      client_email: 'probe@test.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n',
+      project_id: 'pivota-test',
+    });
+  }
+
+  test('constructs AnthropicVertex under the service ADC seam — no ANTHROPIC_API_KEY needed', () => {
+    jest.resetModules();
+    process.env.VERTEX_AI_ENABLED = 'true';
+    process.env.GOOGLE_CLOUD_PROJECT = 'pivota-test';
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = fakeInlineCredential();
+    delete process.env.ANTHROPIC_API_KEY;
+
+    const observed = {};
+    const AnthropicVertex = jest.fn(function AnthropicVertex(opts) {
+      Object.assign(observed, opts);
+      return { messages: { create: jest.fn() } };
+    });
+    jest.doMock('@anthropic-ai/vertex-sdk', () => ({ AnthropicVertex }), { virtual: true });
+
+    const probe = require('../src/internal/agentCenterLlmProbe');
+    const client = probe._internals.getAnthropicClient();
+
+    expect(client).not.toBeNull();
+    expect(AnthropicVertex).toHaveBeenCalledTimes(1);
+    expect(observed.projectId).toBe('pivota-test');
+    // Default region: "global", the endpoint Google recommends for Claude;
+    // PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION pins a specific region.
+    expect(observed.region).toBe('global');
+    expect(observed.googleAuth).toBeTruthy();
+  });
+
+  test('maps the model id to the Vertex @-form and respects explicit overrides', () => {
+    jest.resetModules();
+    process.env.VERTEX_AI_ENABLED = 'true';
+    let probe = require('../src/internal/agentCenterLlmProbe');
+    expect(probe._internals.anthropicModelForTransport()).toBe('claude-sonnet-4@20250514');
+
+    jest.resetModules();
+    process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL = 'claude-opus-5@20260101';
+    probe = require('../src/internal/agentCenterLlmProbe');
+    expect(probe._internals.anthropicModelForTransport()).toBe('claude-opus-5@20260101');
+
+    jest.resetModules();
+    delete process.env.VERTEX_AI_ENABLED;
+    process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+    probe = require('../src/internal/agentCenterLlmProbe');
+    // Direct-API transport keeps the hyphen form.
+    expect(probe._internals.anthropicModelForTransport()).toBe('claude-sonnet-4-20250514');
+  });
+
+  test('vertex enabled but no credential source -> null client (mock fallback, never a crash)', () => {
+    jest.resetModules();
+    process.env.VERTEX_AI_ENABLED = 'true';
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    delete process.env.K_SERVICE;
+    delete process.env.ANTHROPIC_API_KEY;
+
+    const probe = require('../src/internal/agentCenterLlmProbe');
+    expect(probe._internals.getAnthropicClient()).toBeNull();
+  });
+
+  test('the injected GoogleAuth is the SDK\'s own class — never the hoisted v9', () => {
+    // Review-confirmed hazard: the repo hoists google-auth-library v9 while
+    // @anthropic-ai/vertex-sdk is built against v10, and a v9 instance
+    // crashes the SDK's header handling (plain object vs WHATWG Headers)
+    // whenever authClient.projectId is unset — the ADC/workstation and
+    // stripped-credential shapes. The auth must resolve from the SDK's own
+    // dependency context. NO mock of the vertex-sdk here, by design.
+    jest.resetModules();
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = fakeInlineCredential();
+    const vertexGemini = require('../src/llm/vertexGemini');
+    const sdkAuthLib = require(require.resolve('google-auth-library', {
+      paths: [require.resolve('@anthropic-ai/vertex-sdk')],
+    }));
+
+    const auth = vertexGemini.googleAuthForVertex();
+
+    expect(auth).toBeInstanceOf(sdkAuthLib.GoogleAuth);
+  });
+
+  test('vertex-credential failure reports a vertex sentinel, not a key sentinel', async () => {
+    // The fallback provider string is what an operator debugging an
+    // unmeasured lane sees. On the vertex branch it must point at the ADC
+    // credential seam that branch actually reads — 'no_anthropic_key' would
+    // send them to a variable the active code path ignores.
+    jest.resetModules();
+    process.env.VERTEX_AI_ENABLED = 'true';
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    delete process.env.K_SERVICE;
+    delete process.env.ANTHROPIC_API_KEY;
+    const probe = require('../src/internal/agentCenterLlmProbe');
+
+    const out = await probe._internals.buildClaudeProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: { queries: ['where can I buy Product X'], product: { title: 'Product X' } },
+    });
+
+    expect(out.provider).toBe('mock_fallback_no_vertex_credentials');
+  });
+
+  test('legacy direct-API path is untouched when the vertex flag is off', () => {
+    jest.resetModules();
+    delete process.env.VERTEX_AI_ENABLED;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-fake';
+    const Anthropic = jest.fn(function Anthropic(opts) {
+      expect(opts.apiKey).toBe('sk-ant-fake');
+      return { messages: { create: jest.fn() } };
+    });
+    jest.doMock('@anthropic-ai/sdk', () => Anthropic);
+
+    const probe = require('../src/internal/agentCenterLlmProbe');
+    expect(probe._internals.getAnthropicClient()).not.toBeNull();
+    expect(Anthropic).toHaveBeenCalledTimes(1);
   });
 });

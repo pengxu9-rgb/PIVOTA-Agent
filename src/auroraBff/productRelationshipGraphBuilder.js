@@ -928,6 +928,43 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
   };
 }
 
+// A dupe claims the candidate does the anchor's job for less. Category agreement cannot carry that
+// claim: it saturates the similarity score, and in the 2026-09-25 JP/AU dry run 697 of 1,299 dupes
+// shared no name word at all (a sunscreen gel "duped" by eye patches). The claim needs words both
+// products are NAMED or formulated with, beyond brand, catch-all shelf, body area, generic and size
+// words. A category word counts only when both names carry it ("Barrier Serum" / "Barrier Serum
+// Alternative"); a category label the names do not share is not evidence. Curated dupe evidence
+// (aurora_dupe_kb) stands on its own.
+const DUPE_MIN_SHARED_PRODUCT_TOKENS = 2;
+const PRODUCT_AREA_TOKENS = new Set(['body', 'eye', 'eyes', 'face', 'facial', 'hair', 'lip', 'lips', 'scalp', 'skin']);
+const SHELF_PLACEHOLDER_TOKENS = new Set(['general', 'misc', 'other', 'others', 'uncategorized', 'unknown']);
+
+function productEvidenceTokens(snapshot = {}, excluded = new Set()) {
+  return new Set(
+    normalizeTokens([snapshot.name, snapshot.ingredient_text])
+      .filter((token) => token.length > 2)
+      .filter((token) => !/^\d/.test(token))
+      .filter((token) => !GENERIC_USE_CASE_TOKENS.has(token))
+      .filter((token) => !PRODUCT_AREA_TOKENS.has(token))
+      .filter((token) => !excluded.has(token)),
+  );
+}
+
+function sharedProductEvidence(anchorSnapshot = {}, candidateSnapshot = {}) {
+  const excluded = new Set([
+    ...SHELF_PLACEHOLDER_TOKENS,
+    ...normalizeTokens([anchorSnapshot.brand, candidateSnapshot.brand]),
+  ]);
+  const candidateTokens = productEvidenceTokens(candidateSnapshot, excluded);
+  const shared = Array.from(productEvidenceTokens(anchorSnapshot, excluded)).filter((token) => candidateTokens.has(token));
+  return { count: shared.length, tokens: shared };
+}
+
+function hasCuratedDupeEvidence(candidate = {}) {
+  const refs = Array.isArray(candidate.source_refs || candidate.sourceRefs) ? (candidate.source_refs || candidate.sourceRefs) : [];
+  return refs.some((ref) => normalizeLower(isPlainObject(ref) ? ref.type : ref, 80) === 'aurora_dupe_kb');
+}
+
 function jaccard(left, right) {
   const l = new Set(normalizeTokens(left));
   const r = new Set(normalizeTokens(right));
@@ -1262,7 +1299,9 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       useCaseAlignment,
     };
   }
-  if (categoryScore >= 0.55 && scoreTotal >= 0.82 && priceRatio != null && priceRatio <= 1.0) {
+  const productEvidence = sharedProductEvidence(anchorSnapshot, candidateSnapshot);
+  const dupeEvidence = hasCuratedDupeEvidence(candidate) || productEvidence.count >= DUPE_MIN_SHARED_PRODUCT_TOKENS;
+  if (dupeEvidence && categoryScore >= 0.55 && scoreTotal >= 0.82 && priceRatio != null && priceRatio <= 1.0) {
     return {
       relation_type: 'dupe',
       categoryScore,
@@ -1272,6 +1311,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       setCompatibility,
       jobCompatibility,
       useCaseAlignment,
+      productEvidence,
     };
   }
   if (categoryScore >= 0.55) {

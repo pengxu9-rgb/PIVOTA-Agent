@@ -161,3 +161,194 @@ describe('token-credential exchange (client_credentials grant)', () => {
     expect(fetchImpl.mcpCalls()[0].headers.authorization).toBe('Bearer static-jwt');
   });
 });
+
+// ---- credential-carrying requests NEVER follow a redirect ---------------------------------------
+//
+// A 307/308 REPLAYS the request body verbatim at the redirect target. Measured on node 24: undici strips
+// the `Authorization` header cross-origin, but the JSON body and every other header (including an RFC 9421
+// `signature`) go through untouched. The token exchange body holds the client secret; callTool/listTools
+// carry the tier credential and the cart/buyer payload. So a redirecting endpoint — compromised,
+// misconfigured, or behind a catch-all rewrite — would hand that material to whatever origin it names.
+//
+// The stub below HONOURS `redirect` for the two values this code can produce, which is the only shape
+// that can tell the behaviours apart: on 'error' the fetch REJECTS; on 'follow' the caller never sees the
+// 3xx and is handed the redirect TARGET's 200 — and the target records what it received. A stub that merely
+// returned a 302 would prove nothing (302 is already !ok, so the unfixed code fails there too). It does NOT
+// model 'manual' (real undici returns the 3xx itself, which `!res.ok` already refuses safely); anything
+// other than 'error' takes the follow branch, so a mutation to 'manual' reports a kill it has not earned.
+describe('credential-carrying requests refuse redirects', () => {
+  const LEAK_TARGET = 'https://attacker.example/collect';
+
+  /** Every request 307s to LEAK_TARGET; the target records the exact body + headers it would receive. */
+  function makeRedirectingFetch({ leakedTokenResponse } = {}) {
+    const inits = [];
+    const receivedAtTarget = [];
+    const impl = async (url, init = {}) => {
+      inits.push({ url: String(url), redirect: init.redirect, method: init.method });
+      if (init.redirect === 'error') throw new TypeError('fetch failed');
+      // 'follow' (or unset): what a 307 replay actually delivers to the redirect target.
+      // Records headers verbatim; real undici would strip `Authorization` cross-origin (measured), so the
+      // Bearer assertions below are conservative -- the load-bearing leak is the BODY, which does replay.
+      receivedAtTarget.push({ url: LEAK_TARGET, body: init.body, headers: init.headers || {} });
+      const resp = leakedTokenResponse || CREATE_CART_FIXTURE;
+      return jsonResponse(resp);
+    };
+    impl.inits = inits;
+    impl.receivedAtTarget = receivedAtTarget;
+    return impl;
+  }
+
+  test('token exchange: a redirecting token endpoint receives NOTHING — the secret never leaves', async () => {
+    const fetchImpl = makeRedirectingFetch({
+      leakedTokenResponse: { access_token: 'jwt-from-attacker', token_type: 'bearer', expires_in: 3600 },
+    });
+    const client = createUcpBuyerAgentClient({
+      clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, tokenEndpoint: TOKEN_ENDPOINT, fetchImpl,
+      retryAttempts: 0,
+    });
+    // The exchange happens lazily on the first credentialed call.
+    const result = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+
+    // The redirect target got NOTHING. Under the mutant (redirect dropped) it gets the secret verbatim —
+    // this is deliberately the FIRST assertion of all, so the failure diff prints the secret sitting at
+    // the attacker rather than a missing init option or a missing throw. Holds for the single-site and
+    // the all-three-sites revert alike.
+    const leaked = fetchImpl.receivedAtTarget.map((r) => String(r.body)).join('\n');
+    expect(leaked).not.toContain(CLIENT_SECRET);
+    expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+    // Refused, and refused OPAQUELY: the thrown error carries no credential material.
+    expect(result.threw).toBeInstanceOf(Error);
+    expect(String(result.threw && result.threw.message)).not.toContain(CLIENT_SECRET);
+    // And the request went out with the refusal actually set (catches a stub-shaped false pass).
+    const tokenInit = fetchImpl.inits.find((i) => i.url === TOKEN_ENDPOINT);
+    expect(tokenInit).toBeDefined();
+    expect(tokenInit.redirect).toBe('error');
+  });
+
+  test('callTool and listTools: a redirecting MCP endpoint receives neither the Bearer nor the payload', async () => {
+    const fetchImpl = makeRedirectingFetch();
+    const client = createUcpBuyerAgentClient({
+      credential: 'static-bearer-DO-NOT-LEAK', fetchImpl, retryAttempts: 0,
+    });
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: 'variant-DO-NOT-LEAK' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+    const list = await client.listTools(MCP_ENDPOINT).catch((e) => ({ threw: e }));
+
+    expect(cart.threw).toBeInstanceOf(Error);
+    expect(list.threw).toBeInstanceOf(Error);
+    for (const i of fetchImpl.inits) expect(i.redirect).toBe('error');
+    expect(fetchImpl.inits.length).toBeGreaterThanOrEqual(2);
+
+    const leaked = JSON.stringify(fetchImpl.receivedAtTarget);
+    expect(leaked).not.toContain('static-bearer-DO-NOT-LEAK');
+    expect(leaked).not.toContain('variant-DO-NOT-LEAK');
+    expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+  });
+
+  test('ANONYMOUS tier too: no credential is not a licence to follow — the cart payload still must not travel', async () => {
+    // The live warm-handoff lane is built from env only; with no credential, no client credentials and no
+    // signing key it runs at ANONYMOUS tier, and createCart is explicitly the unauthenticated path. A future
+    // "there is nothing to protect at anonymous" exemption would still ship variant ids / attribution /
+    // buyer context to the redirect target -- and without this case, every other test here stays green.
+    const fetchImpl = makeRedirectingFetch();
+    const client = createUcpBuyerAgentClient({ fetchImpl, retryAttempts: 0 });
+    expect(client.describeTier().tier).toBe('anonymous');
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: 'variant-ANON-DO-NOT-LEAK' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+    expect(JSON.stringify(fetchImpl.receivedAtTarget)).not.toContain('variant-ANON-DO-NOT-LEAK');
+    expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+    expect(cart.threw).toBeInstanceOf(Error);
+    for (const i of fetchImpl.inits) expect(i.redirect).toBe('error');
+  });
+
+  test('control: the same fixtures are accepted when no redirect is involved', async () => {
+    // Pins that the two refusals above fail on the REFUSAL, not on an unusable fixture: with a plain fetch
+    // the exchange mints and the cart call succeeds end to end.
+    const fetchImpl = makeTokenFetch();
+    const client = createUcpBuyerAgentClient({
+      clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, tokenEndpoint: TOKEN_ENDPOINT, fetchImpl,
+    });
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] });
+    expect(cart.ok).toBe(true);
+    expect(fetchImpl.tokenCalls()).toHaveLength(1);
+  });
+});
+
+// ---- the token endpoint receives the client SECRET, so it is validated before the secret is sent --------
+//
+// UCP_AGENT_TOKEN_ENDPOINT is operator-configured and was previously not validated at all: an `http://` typo
+// would post the secret in plaintext; userinfo would put it in a fetch TypeError. Both are refused before
+// any request is made, with an opaque error that carries neither the URL nor the secret.
+describe('token endpoint is validated before the secret is sent', () => {
+  function recordingFetch() {
+    const calls = [];
+    const impl = async (url, init = {}) => { calls.push({ url: String(url), body: init.body }); return jsonResponse({ access_token: 'x' }); };
+    impl.calls = calls;
+    return impl;
+  }
+
+  test.each([
+    ['plaintext http', 'http://api.shopify.example/auth/access_token'],
+    ['userinfo (user:pass)', 'https://svc:endpoint-password-DO-NOT-LEAK@api.shopify.example/auth/access_token'],
+    // Each half of `username || password` on its own: a token-in-username config is the common real shape,
+    // and fetch throws its URL-echoing TypeError for both (measured), so a guard on `password` alone leaks.
+    ['userinfo (username only)', 'https://api-token-DO-NOT-LEAK@api.shopify.example/auth/access_token'],
+    ['userinfo (password only)', 'https://:endpoint-password-DO-NOT-LEAK@api.shopify.example/auth/access_token'],
+    ['not a URL', 'nope'],
+  ])('%s -> refused, nothing sent, nothing echoed', async (_label, tokenEndpoint) => {
+    const fetchImpl = recordingFetch();
+    const client = createUcpBuyerAgentClient({
+      clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, tokenEndpoint, fetchImpl,
+    });
+    const result = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+
+    expect(result.threw).toBeInstanceOf(Error);
+    // The property: NO request left (the secret was never put on the wire, plaintext or otherwise)...
+    expect(fetchImpl.calls).toHaveLength(0);
+    // ...and the thrown message is opaque: neither the configured URL (which may hold a password) nor the secret.
+    const msg = String(result.threw.message);
+    expect(msg).not.toContain(CLIENT_SECRET);
+    expect(msg).not.toContain('DO-NOT-LEAK');
+    expect(msg).not.toContain('api.shopify.example');
+    expect(msg).toMatch(/token endpoint refused/);
+  });
+
+  test('describeTier / verifyTokenTier never emit the raw token endpoint (it may hold a password)', async () => {
+    // These two are the diagnostic surfaces the probe script prints. Before this, they returned the configured
+    // string verbatim -- right next to the refusal that exists because the string may carry a credential.
+    const tokenEndpoint = 'https://svc:endpoint-password-DO-NOT-LEAK@api.shopify.example/auth/access_token?x=1';
+    const client = createUcpBuyerAgentClient({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, tokenEndpoint, fetchImpl: recordingFetch() });
+    const described = JSON.stringify(client.describeTier());
+    const verified = JSON.stringify(await client.verifyTokenTier());
+    expect(described).not.toContain('DO-NOT-LEAK');
+    expect(verified).not.toContain('DO-NOT-LEAK');
+    // Still useful: WHERE the exchange goes is visible (origin + path), just never the userinfo or query.
+    expect(client.describeTier().token_endpoint).toBe('https://api.shopify.example/auth/access_token');
+  });
+
+  test('mcpEndpoint / businessBaseUrl with userinfo are refused without echoing it (normalizeBaseUrl)', async () => {
+    // normalizeBaseUrl's userinfo branch was otherwise reachable-under-test only through tokenEndpoint.
+    const fetchImpl = recordingFetch();
+    const client = createUcpBuyerAgentClient({ credential: 'static-jwt', fetchImpl });
+    const bad = 'https://svc:mcp-password-DO-NOT-LEAK@cosrx.example.myshopify.com/ucp/mcp';
+    const r1 = await client.createCart(bad, { lineItems: [{ item: { id: '111' }, quantity: 1 }] }).catch((e) => ({ threw: e }));
+    const r2 = await client.discoverEndpoint('https://svc:base-password-DO-NOT-LEAK@cosrx.com').catch((e) => ({ threw: e }));
+    for (const r of [r1, r2]) {
+      expect(r.threw).toBeInstanceOf(Error);
+      expect(String(r.threw.message)).not.toContain('DO-NOT-LEAK');
+      expect(String(r.threw.message)).toMatch(/must not contain userinfo/);
+    }
+    expect(fetchImpl.calls).toHaveLength(0);
+  });
+
+  test('control: the https default is accepted and the exchange proceeds', async () => {
+    const fetchImpl = makeTokenFetch();
+    const client = createUcpBuyerAgentClient({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, fetchImpl });
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] });
+    expect(cart.ok).toBe(true);
+    expect(fetchImpl.tokenCalls()).toHaveLength(1);
+    expect(fetchImpl.tokenCalls()[0].url).toBe(TOKEN_ENDPOINT);
+  });
+});

@@ -1,4 +1,6 @@
 const { lookupBrandForRow } = require('./recommendationBrandBackfill');
+const { formatDisplayPriceLabel, readFiniteAmount } = require('./priceLabelFormat');
+const { inferCurrencyFromPriceText } = require('./priceAmountText');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -429,9 +431,36 @@ function looksLikeRecommendationCardMarketingHeavyCopy(value) {
     || /\b(?:evaluation\s+tied|filter\s+cues?|clear\s+filter\s+identity|reapplication\s+expectations?\s+explicit|moisturizer[-\s]?style\s+claims?|shoppers?\s+who\s+need\s+a\s+daily\s+sunscreen\s+step)\b/i.test(text);
 }
 
+// A price amount, read strictly. asNumber reaches for Number() on anything that is not already a
+// number, and Number(null), Number(''), Number(false) and Number([]) are each a finite 0 -- so four
+// different kinds of "no amount" became a real price of zero. The `unknown` test below was written to
+// key on `amount == null` and only ever saw it for `undefined`, which is the one no-amount shape
+// Number() maps to NaN. Everything else shipped a card that said the product was FREE: price_label
+// '$0' and, via inferPriceTierFromAmount, price_tier 'budget'. A row whose price is literally `null`
+// took the scalar path and produced { amount: 0, currency: 'USD' } out of nothing at all.
+//
+// Same class as #2063, which closed this on the prompt side ("a candidate with no price told the LLM
+// the product was free"); the card side still did it. asNumber itself is left alone -- its other
+// callers read ratings and counts, where coercion is a separate question.
+function priceAmount(value) {
+  const amount = isPlainObject(value) ? readFiniteAmount(value.amount) : readFiniteAmount(value);
+  // A NEGATIVE amount is not a price under any reading, and it used to render: a row carrying -5 put
+  // "$-5" on a card and, via inferPriceTierFromAmount, called the product 'budget'. The reco lane's
+  // own reader (toPositiveNumberOrNull) has always refused it. ZERO is deliberately kept: a declared
+  // 0 is a statement about the product, and the card renders it as "$0" rather than hiding it. That
+  // one difference from the prompt lane is a decision; this one was an oversight.
+  if (amount != null && amount < 0) return null;
+  if (amount == null) return null;
+  // Money to the cent, the same rounding the reco lane applies at parse (toRoundedPositiveOrNull).
+  // Without it the card SHOWED "$1.30" for '1.299' while shipping price.amount 1.299 in the same
+  // payload -- the label and the field disagreeing about one price, and the card disagreeing with the
+  // lane about the same row.
+  return Number(amount.toFixed(2));
+}
+
 function normalizePrice(value, fallbackCurrency = '') {
   if (isPlainObject(value)) {
-    const amount = asNumber(value.amount);
+    const amount = priceAmount(value.amount);
     const currency = asString(value.currency) || fallbackCurrency || 'USD';
     const unknown = value.unknown === true || amount == null;
     if (unknown) {
@@ -443,35 +472,59 @@ function normalizePrice(value, fallbackCurrency = '') {
       unknown: false,
     };
   }
-  const amount = asNumber(value);
+  const amount = priceAmount(value);
   if (amount == null) return null;
   return {
     amount,
-    currency: fallbackCurrency || 'USD',
+    // A price written as TEXT carries its currency in the text, and that is the most specific
+    // evidence there is -- '£88' is 88 GBP no matter what a sibling field says. Mirrors the scalar
+    // leg of normalizePriceObject (routes.js), which infers here and only here, so the card and the
+    // prompt resolve one row to one currency. Without this, sharing the number parser alone would
+    // have made the card read '£88' as 88 and then label it "$88".
+    currency: inferCurrencyFromPriceText(value) || fallbackCurrency || 'USD',
     unknown: false,
   };
 }
 
+// Rendering lives in priceLabelFormat.js, shared with the reco prompt formatter, because these two
+// had already drifted: this function printed '$' for every currency it did not special-case, so a JPY
+// card said '$4500' beside a price.currency of 'JPY'. What stays here is this surface's own policy for
+// a price it cannot render -- the card says so in words rather than omitting the field.
 function formatPriceLabel(price) {
   if (!isPlainObject(price)) return '';
   if (price.unknown === true || price.amount == null) return 'Price unavailable';
-  const amount = Number(price.amount);
-  if (!Number.isFinite(amount)) return 'Price unavailable';
-  const currency = asString(price.currency).toUpperCase();
-  const symbol =
-    currency === 'CNY' || currency === 'RMB'
-      ? '¥'
-      : currency === 'EUR'
-        ? '€'
-        : currency === 'GBP'
-          ? '£'
-          : '$';
-  const rounded = Math.round(amount * 100) / 100;
-  return `${symbol}${rounded}`;
+  // Unreachable today: normalizePrice returns either an explicitly unknown price or one whose amount
+  // is a finite number, so the formatter has nothing to fail on. Kept because this function accepts
+  // any price-shaped object, and a surviving mutant here is documented rather than covered by a test
+  // that cannot fail -- the precondition itself is pinned, by 'a priced card always carries an amount
+  // its formatter can render' in tests/reco_card_price_label_currency.node.test.cjs.
+  return formatDisplayPriceLabel(price.amount, price.currency) || 'Price unavailable';
 }
 
-function inferPriceTierFromAmount(amount) {
-  if (!Number.isFinite(amount)) return 'mid';
+// The tier bands are US DOLLARS -- 20 and 45 are dollar amounts, not numbers. Applied to a raw
+// foreign amount they read the unit as if it were a dollar, so 4500 JPY (about 30 USD, an ordinary
+// mid-priced product) came back 'premium', and so did 1500 JPY, 40000 KRW and 200 SEK -- every
+// currency whose unit is smaller than a dollar is systematically called expensive. The bug is as old
+// as the bands; what made it reachable is #2065 and #2069, which stopped a declared non-USD currency
+// being discarded and stamped USD before it got here.
+//
+// Converting is not available: this lane holds no FX rates, which is exactly why
+// classifyRecoCandidateAgainstPriceCeiling returns 'unknown' for a foreign currency rather than a
+// verdict (recoPriceCeiling.js), and why the ceiling upstream disables itself on an unrecognized one.
+// So this returns NOTHING for a currency it cannot measure in, and the caller falls back to a
+// declared tier or to the neutral 'mid'. A missing band is recoverable; a confident wrong one is not.
+// The `!Number.isFinite` guard is unreachable from the card -- the one call site tests the amount
+// first -- and returning null there is equivalent to returning 'mid', because the caller defaults a
+// missing band to 'mid' anyway. Documented rather than covered by a test that cannot fail.
+//
+// A currency is only "dollars" if it says so. The DEFAULT parameter carries the absent case: an
+// undeclared currency is USD on this path, the same assumption normalizePrice and the serving layer
+// already make. An unreadable token is not banded, because a band we cannot justify is worse than no
+// band -- which is why this is `!== 'USD'` and not `&& !== 'USD'`.
+function inferPriceTierFromAmount(amount, currency = 'USD') {
+  if (!Number.isFinite(amount)) return null;
+  const code = String(currency == null ? '' : currency).trim().toUpperCase().replace(/[^A-Z]/g, '');
+  if (code !== 'USD') return null;
   if (amount < 20) return 'budget';
   if (amount >= 45) return 'premium';
   return 'mid';
@@ -1129,13 +1182,20 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     normalizePrice(row.price, asString(row.currency || product.currency || sku.currency)) ||
     normalizePrice(product.price, asString(product.currency || row.currency)) ||
     normalizePrice(sku.price, asString(sku.currency || row.currency));
+  // Whether any source CLAIMED a price, as opposed to never mentioning one. Distinguishes "no price
+  // here" (key absent) from "a price we could not read" (key null) at the card literal below.
+  const priceDeclared = row.price !== undefined || product.price !== undefined || sku.price !== undefined;
   const priceTierRaw = asString(row.price_tier) || asString(row.priceTier) || asString(row.item_type);
+  // A tier the ROW declares still wins: price_tier is a real independent signal here, not only a
+  // derived one -- the research lane emits {name, price_tier} with no price at all (routes.js), and so
+  // do the LLM candidate shapes. Dropping an unbacked tier would discard that, so the only thing that
+  // changed is what happens when we DERIVE: a band we cannot compute honestly is no band at all.
   const priceTier =
     ['budget', 'mid', 'premium'].includes(priceTierRaw)
       ? priceTierRaw
-      : price && price.unknown !== true && Number.isFinite(Number(price.amount))
-        ? inferPriceTierFromAmount(Number(price.amount))
-        : 'mid';
+      : (price && price.unknown !== true && Number.isFinite(Number(price.amount))
+        ? inferPriceTierFromAmount(Number(price.amount), price.currency)
+        : null) || 'mid';
   const bestFor = normalizeStringList(
     row.best_for || row.bestFor || row.best_for_tags || row.bestForTags || row.use_cases || row.useCases,
     4,
@@ -1306,7 +1366,13 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     ...(asString(row.image_url) || asString(product.image_url) || asString(sku.image_url)
       ? { image_url: asString(row.image_url) || asString(product.image_url) || asString(sku.image_url) }
       : {}),
-    ...(price ? { price } : {}),
+    // `...row` above copies the row's own `price` verbatim, so whenever normalizePrice declines a
+    // value this key would otherwise keep the RAW one: `price: ['19.99']` shipped a card whose
+    // `price` was an array, and '' / false / 'abc' shipped those. Before the strict amount reader
+    // every one of them normalized to a (fabricated) price object, so nothing downstream ever saw a
+    // non-object here. Always decide this key: the normalized price, or an explicit null when a
+    // source declared a price we could not read, and nothing at all when none of them mentioned one.
+    ...(price ? { price } : priceDeclared ? { price: null } : {}),
     ...(asString(row.price_label) ? { price_label: asString(row.price_label) } : {}),
     ...(!asString(row.price_label) && price ? { price_label: formatPriceLabel(price) } : {}),
     ...(asString(row.price_position) ? { price_position: asString(row.price_position) } : {}),

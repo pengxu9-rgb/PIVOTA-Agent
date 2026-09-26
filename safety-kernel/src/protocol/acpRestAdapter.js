@@ -449,6 +449,11 @@ function toAcpSession(id, session, stored) {
     line_items: session.line_items,
     totals: session.totals,
     expires_at: session.expires_at,
+    // The AP2 binding JWT the wallet must hash. Allowlisted responses drop anything not named
+    // here, so omitting it left AP2 unusable on this door even with the flag on. It is minted
+    // over `id` (the ACP session id) — see attachAp2CheckoutJwt — and survives the sanitizer by
+    // key+shape; see AP2_CHECKOUT_JWT_KEYS in resultSanitizer.js.
+    ap2_checkout_jwt: session.ap2_checkout_jwt,
     order: stored?.order_id ? { id: stored.order_id } : undefined,
   };
 }

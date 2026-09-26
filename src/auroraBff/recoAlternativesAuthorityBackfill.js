@@ -694,8 +694,7 @@ async function runPostApplyEnrichmentDefault({
       livePdpResults.push(
         await auditExternalSeedPdpQualityRow(row, {
           catalogBaseUrl:
-            process.env.CATALOG_INTELLIGENCE_BASE_URL ||
-            'https://pivota-catalog-intelligence-production.up.railway.app',
+            process.env.CATALOG_INTELLIGENCE_BASE_URL,
           gatewayUrl: resolveQualityGatewayUrl(
             process.env.PIVOTA_GATEWAY_URL ||
               process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||

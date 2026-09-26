@@ -1,5 +1,6 @@
 const nock = require('nock');
 const request = require('supertest');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../src/services/catalogEntityResolutionSqlTag');
 
 jest.mock('../src/db', () => ({
   query: jest.fn(),
@@ -1006,7 +1007,7 @@ describe('external seed product detail hydration', () => {
 
     expect(db.query.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(
-      db.query.mock.calls.filter(([sql]) => String(sql || '').includes('WITH offer_stats AS')),
+      db.query.mock.calls.filter(([sql]) => String(sql || '').includes(CANONICAL_ENTITY_GROUP_SQL_TAG)),
     ).toHaveLength(0);
     expect(
       db.query.mock.calls.filter(([sql]) =>
@@ -2394,7 +2395,7 @@ describe('external seed product detail hydration', () => {
           ],
         });
       }
-      if (text.includes('WITH offer_stats AS')) {
+      if (text.includes(CANONICAL_ENTITY_GROUP_SQL_TAG)) {
         return Promise.resolve({ rows: [competingPrimaryRow, signatureGroupRow] });
       }
       if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing')) {
@@ -2440,7 +2441,7 @@ describe('external seed product detail hydration', () => {
       .expect(200);
 
     const canonicalGroupCalls = db.query.mock.calls.filter(([sql]) =>
-      String(sql || '').includes('WITH offer_stats AS'),
+      String(sql || '').includes(CANONICAL_ENTITY_GROUP_SQL_TAG),
     );
     expect(canonicalGroupCalls).toHaveLength(1);
     expect(res.body.metadata.identity_resolution).toEqual(
@@ -2958,7 +2959,7 @@ describe('external seed product detail hydration', () => {
 
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
-      if (text.includes('WITH offer_stats AS')) {
+      if (text.includes(CANONICAL_ENTITY_GROUP_SQL_TAG)) {
         return Promise.resolve({ rows: groupRows });
       }
       if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing')) {
@@ -3488,10 +3489,18 @@ describe('external seed product detail hydration', () => {
         image_url: 'https://images.ulta.com/mac-russian-red.jpg',
         destination_url: 'https://www.ulta.com/p/macximal-silky-matte-lipstick-pimprod2044115',
         product_type: 'lipstick',
-        price: 25,
         in_stock: true,
       }),
     );
+    // This row carries NO joined catalog_offers columns, so it has no price —
+    // even though its seed payload says price_amount 25.00 / USD. That payload
+    // tier used to be a fallback and this assertion used to read `price: 25`.
+    // The fallback is gone on purpose: amount and currency must come from one
+    // offer row or the product ships no price and the serving gate drops it.
+    // See tests/canonical_chain_offer_derived_price.test.js for the contract.
+    expect(product.price).toBeUndefined();
+    expect(product.currency).toBeUndefined();
+    expect(product.price_absent_reason).toBe('no_offer_derived_price');
     expect(product.seed_data).toEqual(
       expect.objectContaining({
         title: 'MAC MACximal Silky Matte Lipstick',
@@ -3925,7 +3934,7 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
       }
       // NOTE: check the entity-group SQL BEFORE the signature-exact SQL — the
       // group query also contains 'pivota_signature_id = $1' in its OR clause.
-      if (text.includes('WITH offer_stats AS')) {
+      if (text.includes(CANONICAL_ENTITY_GROUP_SQL_TAG)) {
         return Promise.resolve({ rows: [catalogGroupRow] });
       }
       if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
@@ -4009,7 +4018,7 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     const runWithPayload = async (productPayload) => {
       const queryFn = jest.fn((sql) => {
         const text = String(sql || '');
-        if (text.includes('WITH offer_stats AS')) {
+        if (text.includes(CANONICAL_ENTITY_GROUP_SQL_TAG)) {
           return Promise.resolve({ rows: [{ ...baseRow, product_payload: productPayload }] });
         }
         return Promise.resolve({ rows: [] });

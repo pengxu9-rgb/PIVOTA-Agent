@@ -177,10 +177,39 @@ function isExternalSeedLaneProduct(product) {
   );
 }
 
+// ADR-009 — "is this MERCHANT ID external-seed supply?", for the call sites that
+// hold only an id and no row. Distinct from isExternalSeedLaneProduct (which
+// needs a row) and from isSeedRoutedLane, which deliberately has NO merch_obs_
+// arm: the lane predicate answers "is this row seed-ROUTED" from row evidence,
+// whereas this answers "does this seller supply via the seed pipeline" from the
+// id shape alone. server.js:isExternalSeedListingMerchantId is the same test;
+// this is the module-level twin so services need not reach into the app entry.
+//
+// The merch_obs_ arm is what the A9-4 re-key made necessary: seed supply used to
+// live under one shared sentinel seller and now lives under per-brand observed
+// sellers, so an id-shaped test that names only the sentinel stopped matching
+// any live row.
+function isExternalSeedSupplyMerchantId(merchantId) {
+  const mid = firstNonEmptyString(merchantId);
+  if (!mid) return false;
+  return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
+}
+
+// ADR-009 — "is this seller the brand's OWN D2C crawl?" (a per-brand observed
+// seller). Narrower than isExternalSeedSupplyMerchantId on purpose: the retired
+// shared bucket is scraped supply but is NOT anyone's own storefront, so callers
+// that exempt a brand from identity-coverage gates must ask THIS, not that.
+// Owned here so the prefix lives in one watched place instead of being retyped.
+function isObservedSellerMerchantId(merchantId) {
+  return firstNonEmptyString(merchantId).startsWith('merch_obs_');
+}
+
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   SEED_ROUTED_SOURCE_SYSTEMS,
   isExternalSeedLaneProduct,
+  isExternalSeedSupplyMerchantId,
+  isObservedSellerMerchantId,
   readSeedLaneFields,
   readSeedLaneIdCandidates,
   // Re-exported so a SQL call site needs one import, and so the JS and SQL

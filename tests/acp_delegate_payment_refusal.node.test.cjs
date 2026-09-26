@@ -131,6 +131,29 @@ test('the raw wire bytes of a delegate_payment request are NEVER stashed on req.
   assert.equal(shouldCaptureAcpRawBody('/v1/chat'), false);
 });
 
+test('a signed door keeps its stash under EVERY spelling Express routes to it', () => {
+  // The carve-out above was already spelling-proof; the sibling prefix test was not — it ran against the raw
+  // url, so `/ACP/checkout_sessions` (which Express serves: caseSensitive default off) got no stash and the
+  // adapter HMAC'd an empty body against a signature computed over the real one. Fail-closed, but it made a
+  // live door unusable by capitalisation. Asserted per spelling so re-raw-ing either side fails here.
+  for (const u of [
+    '/ACP/checkout_sessions',
+    '/Acp/Checkout_Sessions',
+    '/acp/checkout_sessions/',
+    '/ACP/checkout_sessions?idempotency_key=k1',
+    '/ACP/checkout_sessions/CS_1/complete',
+    '/UCP/ORDER-WEBHOOK/',
+  ]) {
+    assert.equal(shouldCaptureAcpRawBody(u), true, `${u} is routed to a signed door, so it must be stashed`);
+  }
+  // Normalizing the prefix must not widen it: a sibling that merely SHARES the prefix is still not an ACP
+  // door, and the PAN carve-out still wins under the same case variation.
+  for (const u of ['/acp-preview/checkout_sessions', '/ucp/order-webhook-config', '/acpx/feed', '/acp']) {
+    assert.equal(shouldCaptureAcpRawBody(u), false, `${u} must not be stashed`);
+  }
+  assert.equal(shouldCaptureAcpRawBody('/ACP/AGENTIC_COMMERCE/DELEGATE_PAYMENT?x=1'), false);
+});
+
 test('the refusal answers with every ACP door flag OFF — a refusal is not a capability', async () => {
   // Positive control from the same boot: the real ACP checkout endpoints are dark and 404 here.
   const dark = await supertest(app)

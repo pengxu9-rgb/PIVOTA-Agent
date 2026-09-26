@@ -45,6 +45,8 @@
  */
 
 const crypto = require('crypto');
+// Dependency-free by design, like this module: undici hides the real network reason on `.cause`.
+const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
 
 const FLAG_ENV = 'UCP_ORDER_WEBHOOK_RECEIVER_ENABLED';
 const VERIFY_ENV = 'UCP_VERIFY_ORDER_WEBHOOK';
@@ -200,9 +202,18 @@ function createUcpOrderWebhookReceiver(deps = {}) {
   let jwksCache = null; // { url, keys, expiresAt, good }
   let jwksInFlight = null; // { url, promise } — coalesces concurrent refreshes into ONE fetch
 
+  // `err` is flattened to its message on purpose (never the Error object). `fetchCauseDetail` adds the
+  // underlying network reason, which for a fetch failure is the ONLY informative part: undici reports every
+  // one of them as `TypeError: fetch failed` and hides the real reason on `.cause` — DNS, refused connect,
+  // TLS/socket. That is not cosmetic here: a fetch that keeps failing with no previously-good key set falls
+  // back to an EMPTY key list (below), which rejects every inbound order webhook, and this line is what says
+  // why. (A REDIRECTED profile is a different, better-off case since `redirect: 'manual'` below: it does not
+  // throw at all — it arrives as `business profile fetch failed (301)`, no `cause` needed.)
   function warn(err, msg) {
     if (logger && typeof logger.warn === 'function') {
-      logger.warn({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, msg);
+      logger.warn({
+        err: err?.message || String(err), ...fetchCauseDetail(err), surface: 'ucp_order_webhook',
+      }, msg);
     }
   }
 
@@ -218,6 +229,15 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       warn(new Error('UCP_BUSINESS_PROFILE_URL must be a valid https URL'), 'UCP business profile URL refused');
       return [];
     }
+    // Refuse userinfo BEFORE fetch, and never echo the URL. `https://user:pass@host/...` passes the https
+    // check above and then fetch rejects it with `TypeError: Request cannot be constructed from a URL that
+    // includes credentials: <the full URL>` — which the catch below logs as `err`, password included.
+    // (Measured on node 24.) There is no legitimate reason for a public well-known profile URL to carry
+    // credentials, so this is a config error, and a config error must not print the config.
+    if (parsed.username || parsed.password) {
+      warn(new Error('UCP_BUSINESS_PROFILE_URL must not contain userinfo'), 'UCP business profile URL refused');
+      return [];
+    }
 
     const t = now();
     if (jwksCache && jwksCache.url === url && jwksCache.expiresAt > t) return jwksCache.keys;
@@ -231,7 +251,11 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         if (!fetchImpl) throw new Error('no fetch implementation available');
         const res = await fetchImpl(url, {
           headers: { accept: 'application/json' },
-          redirect: 'error', // a redirected profile is refused, never followed
+          // Never followed. 'manual' rather than 'error' so a redirected profile fails through the status
+          // check below as `business profile fetch failed (301)` — a first-class, greppable diagnosis —
+          // instead of undici's opaque `fetch failed` with the reason buried on `.cause`. Same reasoning,
+          // in full, at ucpBuyerAgentClient.discoverEndpoint. `!res.ok` guards `res.json()` from a 3xx body.
+          redirect: 'manual',
           signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT_MS),
         });
         if (!res || !res.ok) throw new Error(`business profile fetch failed (${res ? res.status : 'no response'})`);

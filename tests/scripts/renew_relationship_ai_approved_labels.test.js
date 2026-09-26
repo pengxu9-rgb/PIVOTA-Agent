@@ -9,7 +9,7 @@ const NOW_MS = new Date('2026-08-04T00:00:00.000Z').getTime();
 const RESOLVABLE = new Set(['ext_active_seed', 'catalog_key_1', 'pg_group_1']);
 
 function baseRow(overrides = {}) {
-  return {
+  const row = {
     id: 'lbl_1',
     anchor_type: 'product',
     anchor_ref: 'product:ext_active_seed',
@@ -22,6 +22,68 @@ function baseRow(overrides = {}) {
     last_verified_at: '2026-07-01T00:00:00.000Z',
     ...overrides,
   };
+  // Postgres always returns the SELECTed `expires_at::text AS expires_at_cursor`
+  // column next to `expires_at`; fake rows carry it too unless a test
+  // deliberately withholds it.
+  if (!('expires_at_cursor' in overrides) && row.expires_at != null) row.expires_at_cursor = String(row.expires_at);
+  return row;
+}
+
+// What node-pg does to a Date parameter (pg/lib/utils prepareValue →
+// dateToString): ISO with MILLISECONDS plus an offset. Microseconds are gone.
+function pgSerializeParam(value) {
+  if (value instanceof Date) return value.toISOString().replace('Z', '+00:00');
+  return String(value);
+}
+
+// Postgres text output for a timestamptz, e.g. `2026-08-10 00:00:00.123456+00`.
+function pgTimestamptzText(isoMicros) {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/.exec(isoMicros);
+  if (!m) throw new Error(`bad iso: ${isoMicros}`);
+  const digits = (m[3] || '').replace(/0+$/, '');
+  return `${m[1]} ${m[2]}${digits ? `.${digits}` : ''}+00`;
+}
+
+// Microsecond integer for either Postgres text or a pg-serialized parameter.
+function toMicros(text) {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(?:\+00(?::00)?|Z)$/.exec(String(text));
+  if (!m) throw new Error(`bad timestamptz text: ${text}`);
+  const ms = Date.parse(`${m[1]}T${m[2]}Z`);
+  return ms * 1000 + Number(`${m[3] || ''}000000`.slice(0, 6));
+}
+
+// A fake Postgres for the label scan: rows have microsecond-precision
+// expires_at, and the keyset WHERE is evaluated the way Postgres evaluates it
+// against the parameter node-pg actually sends. This is the only harness in
+// the file that can tell a Date cursor from a text cursor.
+function microsecondPagingDb(rowsIn) {
+  const rows = rowsIn.map(({ id, expiresAtIsoMicros }) => baseRow({
+    id,
+    // node-pg parses a timestamptz into a JS Date, which is ms precision.
+    expires_at: new Date(expiresAtIsoMicros.replace(/(\.\d{3})\d+Z$/, '$1Z')),
+    expires_at_cursor: pgTimestamptzText(expiresAtIsoMicros),
+  }));
+  const calls = [];
+  const queryFn = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 0, rows: [] };
+    if (!/FROM relationship_candidate_labels/.test(sql)) return { rows: [] };
+    const take = Number(params[params.length - 1]);
+    let candidates = rows;
+    if (/\(expires_at, id\) >/.test(sql)) {
+      const cursorMicros = toMicros(pgSerializeParam(params[params.length - 3]));
+      const cursorId = String(params[params.length - 2]);
+      candidates = rows.filter((row) => {
+        const rowMicros = toMicros(row.expires_at_cursor);
+        return rowMicros > cursorMicros || (rowMicros === cursorMicros && row.id > cursorId);
+      });
+    }
+    candidates = [...candidates].sort((a, b) => (
+      toMicros(a.expires_at_cursor) - toMicros(b.expires_at_cursor) || a.id.localeCompare(b.id)
+    ));
+    return { rows: candidates.slice(0, take) };
+  };
+  return { calls, queryFn };
 }
 
 function fakeQueryFn({ rows = [], seeds = [], catalog = [], groups = [], updateRowCount = 0, calls = [] } = {}) {
@@ -44,6 +106,34 @@ function fakeQueryFn({ rows = [], seeds = [], catalog = [], groups = [], updateR
     }
     throw new Error(`unexpected query: ${sql}`);
   };
+}
+
+// Serves `total` rows in pages of `batchSize`, recording an ordered event log of
+// label SELECTs and per-row evaluations. Interleaving is the observable proxy
+// for "does not materialize the backlog": a version that accumulates emits every
+// select before the first eval, a streaming one alternates.
+function pagingHarness({ total, batchSize }) {
+  const events = [];
+  let served = 0;
+  const queryFn = async (sql) => {
+    if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 0, rows: [] };
+    if (/FROM relationship_candidate_labels/.test(sql)) {
+      events.push('select');
+      const take = Math.max(0, Math.min(batchSize, total - served));
+      const rows = [];
+      for (let i = 0; i < take; i += 1) {
+        served += 1;
+        rows.push(baseRow({ id: `lbl_${served}`, expires_at: `2026-08-${String(served).padStart(2, '0')}T00:00:00.000Z` }));
+      }
+      return { rows };
+    }
+    return { rows: [] };
+  };
+  const suppressionFn = (row) => {
+    events.push(`eval:${row.id}`);
+    return [];
+  };
+  return { events, queryFn, suppressionFn };
 }
 
 describe('renew-relationship-ai-approved-labels', () => {
@@ -200,6 +290,150 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(calls[1].params).toContain('lbl_1');
   });
 
+  // The 2026-08-13..16 production failure. `expires_at` arrives as a JS Date
+  // and node-pg sends a Date parameter back at millisecond precision, so a
+  // cursor built from it is truncated below the µs-precision column value and
+  // `expires_at > cursor` re-selects the cursor row's whole tie group. Rows
+  // renewed together share one now(), so tie groups are page-sized and the
+  // scan never advanced (3.6M "renewable" ids from a 6,620-row backlog).
+  test('keyset cursor keeps microsecond precision across a page of tied expires_at values', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const tied = '2026-08-10T00:00:00.207882Z';
+    const { calls, queryFn } = microsecondPagingDb([
+      { id: 'lbl_a', expiresAtIsoMicros: tied },
+      { id: 'lbl_b', expiresAtIsoMicros: tied },
+      { id: 'lbl_c', expiresAtIsoMicros: tied },
+      { id: 'lbl_d', expiresAtIsoMicros: '2026-08-10T00:00:00.207883Z' },
+      { id: 'lbl_e', expiresAtIsoMicros: '2026-08-11T00:00:00.000000Z' },
+    ]);
+
+    const rows = await loadExpiringAiApprovedRows({ queryFn, batchSize: 2 });
+
+    expect(rows.map((r) => r.id)).toEqual(['lbl_a', 'lbl_b', 'lbl_c', 'lbl_d', 'lbl_e']);
+    // The cursor is the Postgres text of the key, never the parsed Date.
+    expect(calls[0].sql).toContain('expires_at::text AS expires_at_cursor');
+    const cursorParams = calls.slice(1).map(({ params }) => params[params.length - 3]);
+    expect(cursorParams).toEqual([
+      '2026-08-10 00:00:00.207882+00',
+      '2026-08-10 00:00:00.207883+00',
+    ]);
+    cursorParams.forEach((value) => expect(value).not.toBeInstanceOf(Date));
+    // The comparison casts the text back so Postgres compares timestamptz, not text.
+    expect(calls[1].sql).toMatch(/\(expires_at, id\) > \(\$\d+::timestamptz, \$\d+::text\)/);
+  });
+
+  test('a scan whose page ends on the key it started after fails loudly instead of looping', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const page = [
+      baseRow({ id: 'lbl_a', expires_at: '2026-08-10T00:00:00.000Z' }),
+      baseRow({ id: 'lbl_b', expires_at: '2026-08-10T00:00:00.000Z' }),
+    ];
+    let selects = 0;
+    // A broken WHERE that never excludes anything: the same full page forever.
+    const queryFn = async () => {
+      selects += 1;
+      if (selects > 50) throw new Error('scan did not stop');
+      return { rows: page };
+    };
+
+    await expect(loadExpiringAiApprovedRows({ queryFn, batchSize: 2 })).rejects.toMatchObject({
+      code: 'RENEWAL_CURSOR_DID_NOT_ADVANCE',
+      cursor: { expiresAt: '2026-08-10T00:00:00.000Z', id: 'lbl_b' },
+    });
+    // First page primes the cursor, the second identical page trips the guard.
+    expect(selects).toBe(2);
+  });
+
+  test('a full page without the text cursor column cannot be paged past', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const queryFn = async () => ({
+      rows: [
+        baseRow({ id: 'lbl_a', expires_at: '2026-08-10T00:00:00.000Z', expires_at_cursor: undefined }),
+        baseRow({ id: 'lbl_b', expires_at: '2026-08-10T00:00:00.000Z', expires_at_cursor: undefined }),
+      ],
+    });
+
+    await expect(loadExpiringAiApprovedRows({ queryFn, batchSize: 2 })).rejects.toMatchObject({
+      code: 'RENEWAL_CURSOR_MISSING',
+    });
+  });
+
+  // The OOM guard. Keyset paging alone did NOT bound memory — the old loader
+  // pushed every page into one array, so a 4GB V8 heap died on the expiring
+  // backlog in production (2026-08-11T10:37Z) with the pagination test above
+  // still green. These assert the rows are CONSUMED per batch, not just fetched
+  // per batch, which is the property that actually caps resident memory.
+  test('runRenewal evaluates each batch before fetching the next', async () => {
+    const { events, queryFn, suppressionFn } = pagingHarness({ total: 6, batchSize: 2 });
+
+    await runRenewal({ queryFn, suppressionFn, batchSize: 2, generatedAt: '2026-08-04T00:00:00.000Z' });
+
+    const firstSelect = events.indexOf('select');
+    const secondSelect = events.indexOf('select', firstSelect + 1);
+    expect(secondSelect).toBeGreaterThan(-1);
+    // An accumulating loader emits select,select,select,... with no eval in between.
+    const betweenSelects = events.slice(firstSelect + 1, secondSelect);
+    expect(betweenSelects).toEqual(['eval:lbl_1', 'eval:lbl_2']);
+  });
+
+  test('runRenewal never holds more than one batch of rows in flight', async () => {
+    const { events, queryFn, suppressionFn } = pagingHarness({ total: 6, batchSize: 2 });
+
+    const report = await runRenewal({ queryFn, suppressionFn, batchSize: 2, generatedAt: '2026-08-04T00:00:00.000Z' });
+
+    // Every row is still scanned exactly once — streaming must not lose rows.
+    expect(report.scanned_rows).toBe(6);
+    expect(events.filter((e) => e.startsWith('eval:'))).toEqual([
+      'eval:lbl_1', 'eval:lbl_2', 'eval:lbl_3', 'eval:lbl_4', 'eval:lbl_5', 'eval:lbl_6',
+    ]);
+    // Max evals seen between two consecutive selects never exceeds one batch.
+    const selectIdx = events.reduce((acc, e, i) => (e === 'select' ? [...acc, i] : acc), []);
+    const spans = selectIdx.map((start, i) => (
+      events.slice(start + 1, selectIdx[i + 1] === undefined ? events.length : selectIdx[i + 1])
+    ));
+    for (const span of spans) expect(span.length).toBeLessThanOrEqual(2);
+  });
+
+  test('streaming still folds counters and ids across every batch', async () => {
+    // Half the rows suppressed, alternating, so a fold that drops or double-counts
+    // a batch cannot produce these totals by accident.
+    const events = [];
+    let served = 0;
+    const queryFn = async (sql) => {
+      if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 2, rows: [] };
+      if (/FROM relationship_candidate_labels/.test(sql)) {
+        const take = Math.max(0, Math.min(2, 4 - served));
+        const rows = [];
+        for (let i = 0; i < take; i += 1) {
+          served += 1;
+          rows.push(baseRow({ id: `lbl_${served}`, expires_at: `2026-08-0${served}T00:00:00.000Z` }));
+        }
+        return { rows };
+      }
+      if (/FROM external_product_seeds/.test(sql)) return { rows: [{ k1: 'ext_active_seed' }] };
+      return { rows: [] };
+    };
+    const suppressionFn = (row) => {
+      events.push(row.id);
+      return Number(row.id.slice(-1)) % 2 === 0 ? ['ai_approved_dupe_quarantined'] : [];
+    };
+
+    const report = await runRenewal({
+      apply: true,
+      confirm: APPLY_CONFIRM_TOKEN,
+      queryFn,
+      suppressionFn,
+      batchSize: 2,
+      generatedAt: '2026-08-04T00:00:00.000Z',
+    });
+
+    expect(report.scanned_rows).toBe(4);
+    expect(report.renewable_count).toBe(2);          // lbl_1, lbl_3 — one per batch
+    expect(report.skipped.suppressed).toBe(2);       // lbl_2, lbl_4 — one per batch
+    expect(report.suppression_reasons).toEqual({ ai_approved_dupe_quarantined: 2 });
+    expect(report.skipped_total).toBe(2);
+  });
+
   test('runRenewal apply that renews zero of a non-empty renewable set fails loudly', async () => {
     const queryFn = fakeQueryFn({
       rows: [baseRow({ id: 'lbl_1' })],
@@ -212,5 +446,134 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(report.renewable_count).toBe(1);
     expect(report.renewed_count).toBe(0);
     expect(report.ok).toBe(false);
+  });
+
+  // The 2026-08-12 production run spent the parent's whole 20-minute budget in
+  // this step and was SIGKILLed: no report, no renewals, no idea which phase was
+  // slow. These pin the three properties that stop that from repeating.
+  describe('scan deadline', () => {
+    // Advances 400ms per label SELECT, so a budget is spent in whole batches.
+    function timedPagingHarness({ total, batchSize, msPerSelect = 400 }) {
+      const harness = pagingHarness({ total, batchSize });
+      const state = { now: 0 };
+      const queryFn = async (sql, params) => {
+        if (/FROM relationship_candidate_labels/.test(sql)) state.now += msPerSelect;
+        return harness.queryFn(sql, params);
+      };
+      return { ...harness, queryFn, clock: () => state.now };
+    }
+
+    test('parseArgs reads --deadline-ms and defaults it off', () => {
+      expect(parseArgs([]).deadlineMs).toBe(0);
+      expect(parseArgs(['--deadline-ms', '90000']).deadlineMs).toBe(90000);
+    });
+
+    test('stops scanning at a batch boundary once the budget is spent', async () => {
+      const { queryFn, suppressionFn, clock, events } = timedPagingHarness({ total: 100, batchSize: 10 });
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      // 3 selects * 400ms crosses 1000ms; the 4th is never issued.
+      expect(report.batches_scanned).toBe(3);
+      expect(report.scanned_rows).toBe(30);
+      expect(report.truncated).toBe(true);
+      expect(events.filter((e) => e === 'select')).toHaveLength(3);
+    });
+
+    test('applies what it verified before truncating — partial progress is durable', async () => {
+      const calls = [];
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 100, batchSize: 10 });
+      const recordingQueryFn = async (sql, params) => {
+        calls.push({ sql, params });
+        if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: params[0].length, rows: [] };
+        // pagingHarness serves no ref rows; without a resolvable anchor every
+        // row would skip and there would be nothing to apply.
+        if (/FROM external_product_seeds/.test(sql)) return { rows: [{ k2: 'ext_active_seed' }] };
+        return queryFn(sql, params);
+      };
+
+      const report = await runRenewal({
+        apply: true,
+        queryFn: recordingQueryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      const update = calls.find(({ sql }) => /UPDATE relationship_candidate_labels/.test(sql));
+      expect(update).toBeDefined();
+      expect(update.params[0]).toHaveLength(30);
+      expect(report.renewed_count).toBe(30);
+      expect(report.truncated).toBe(true);
+      expect(report.ok).toBe(true);
+    });
+
+    test('a budget spent before the first batch is not reported as success', async () => {
+      const { queryFn, suppressionFn } = pagingHarness({ total: 100, batchSize: 10 });
+      // Start stamp, then a clock already past the budget: the ref-set load ate
+      // the whole thing before the first batch could be read.
+      let tick = 0;
+      const clock = () => (tick++ === 0 ? 0 : 5000);
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      expect(report.scanned_rows).toBe(0);
+      expect(report.truncated).toBe(true);
+      expect(report.ok).toBe(false);
+    });
+
+    test('no deadline scans the whole backlog', async () => {
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 100, batchSize: 10 });
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      expect(report.scanned_rows).toBe(100);
+      expect(report.truncated).toBe(false);
+      expect(report.deadline_ms).toBeNull();
+    });
+
+    // stderr progress is the only output a run that outlives its parent leaves
+    // behind — the /tmp report dies with the container.
+    test('reports scan progress per batch as it goes', async () => {
+      const progress = [];
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 30, batchSize: 10 });
+
+      await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        onProgress: (event) => progress.push(event),
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      const scans = progress.filter((event) => event.phase === 'scan');
+      expect(scans).toHaveLength(3);
+      expect(scans[2]).toMatchObject({ batch: 3, rows: 10, scanned_rows: 30 });
+      expect(scans[2].elapsed_ms).toBeGreaterThan(scans[0].elapsed_ms);
+      expect(progress.some((event) => event.phase === 'ref_set')).toBe(true);
+    });
   });
 });

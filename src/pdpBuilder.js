@@ -8,9 +8,9 @@ const {
   isBeautyToolPdpProfile,
 } = require('./pdpSchemaProfile');
 const {
-  lookupSampleFashionMeta,
-  lookupSampleElectronicsMeta,
-} = require('./fashionMetaSamples');
+  lookupCuratedFashionMeta,
+  lookupCuratedElectronicsMeta,
+} = require('./curatedPdpMeta');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -576,8 +576,8 @@ function inferCategoryKind(product) {
     return explicit;
   }
   const productId = product.product_id || product.id || null;
-  if (lookupSampleElectronicsMeta(productId)) return 'electronics';
-  if (lookupSampleFashionMeta(productId)) return 'fashion';
+  if (lookupCuratedElectronicsMeta(productId)) return 'electronics';
+  if (lookupCuratedFashionMeta(productId)) return 'fashion';
   try {
     const profile = resolvePdpSchemaProfile(product);
     if (isBeautyFormulaPdpProfile(profile) || isBeautyToolPdpProfile(profile)) return 'beauty';
@@ -1975,7 +1975,11 @@ function buildVariants(product) {
   const productOptionNames = getProductOptionNames(product);
 
   return rawVariants.map((v, idx) => {
-    const attrs = v && typeof v.variant_attributes === 'object' ? v.variant_attributes : {};
+    // `typeof null === 'object'`, so the null case fell through and `attrs.variant_id` on the next line
+    // threw — a product whose variant carries `variant_attributes: null` 500'd the whole PDP. Found while
+    // mirroring this id chain in the merchant-variant hook (which guards it); the builder needs the guard
+    // too, since it is the one that renders.
+    const attrs = v && typeof v.variant_attributes === 'object' && v.variant_attributes ? v.variant_attributes : {};
     const variantId = v.variant_id || v.id || attrs.variant_id || v.sku || v.sku_id || `${product.product_id}-${idx + 1}`;
     const title =
       attrs.title || v.title || v.name || v.option_title || v.sku_name || `Variant ${idx + 1}`;
@@ -4866,6 +4870,8 @@ function buildPdpPayload(args) {
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
+  // The same emptiness test buildVariants applies (its fabricated single variant exists iff this is 0).
+  const rawVariantCount = Array.isArray(product.variants) ? product.variants.length : 0;
   const defaultVariant = pickDefaultVariant(product, variants);
   const productLineOptions = normalizeProductLineOptions(product);
   const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions)
@@ -5212,7 +5218,7 @@ function buildPdpPayload(args) {
           extractFashionMetaFromMetafields(product.platform_metadata),
         );
         if (fromMetafields) return { fashion_meta: fromMetafields };
-        const sample = pickFashionMeta(lookupSampleFashionMeta(product.product_id || product.id));
+        const sample = pickFashionMeta(lookupCuratedFashionMeta(product.product_id || product.id));
         return sample ? { fashion_meta: sample } : {};
       })(),
       ...(() => {
@@ -5224,7 +5230,7 @@ function buildPdpPayload(args) {
         // its composer, not this reader.
         const upstream = pickElectronicsMeta(product.electronics_meta);
         if (upstream) return { electronics_meta: upstream };
-        const sample = pickElectronicsMeta(lookupSampleElectronicsMeta(product.product_id || product.id));
+        const sample = pickElectronicsMeta(lookupCuratedElectronicsMeta(product.product_id || product.id));
         return sample ? { electronics_meta: sample } : {};
       })(),
       image_url: productImageUrl,
@@ -5245,6 +5251,17 @@ function buildPdpPayload(args) {
       source_url: sourceUrl || undefined,
       default_variant_id: visibleVariants.length ? defaultVariant.variant_id : undefined,
       variants: visibleVariants,
+      // PURCHASE GRAIN — a TYPED statement of what buildVariants above already knew and used to throw away.
+      // 'product': the canonical row carried NO variants, so the single variant published here was minted
+      // FROM the product (`variant_id: product_id`) — the product IS the purchasable unit, and that is the
+      // backend's own convention too (routes/agent_v2.py _canonicalize_search_product gives a variant-less
+      // product one canonical variant, id = product id, priced as offer::<merchant>::<product_id>).
+      // 'variant': the row carried a variant axis; ids are real (or, when upstream lost them, `${pid}-N`
+      // restatements that MUST still be refused at checkout, because pricing would guess).
+      // The checkout resolver (safety-kernel buyerIntake createDefaultVariantResolver) reads THIS FIELD to
+      // accept `variant_id === product_id` for a product-grain row — never the shape of the id, which it
+      // cannot tell apart from the forgery it guards against. Consumers other than the resolver may ignore it.
+      purchase_grain: rawVariantCount === 0 ? 'product' : 'variant',
       ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
       ...(productLineOptions.length > 1 && productLineOptionName
         ? { product_line_option_name: productLineOptionName }

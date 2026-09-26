@@ -77,7 +77,7 @@ function parseNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER }
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
+    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--deadline-ms N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
     '',
     'Dry-run by default. Renews ai_approved relationship_candidate_labels rows whose',
     'expires_at falls within --window-days (already-expired rows included) when they',
@@ -85,6 +85,11 @@ function usage() {
     'actively-serving seed/catalog/group entity, and the row is younger than',
     '--max-age-days. Never modifies label_state and never touches human_approved rows.',
     'Exits non-zero if apply mode found renewable rows but renewed none.',
+    '',
+    '--deadline-ms stops SCANNING once the budget is spent, then applies what was',
+    'already verified and reports truncated=true. Renewed rows leave the expiring',
+    'window, so the next run resumes on what is left. Progress is written to stderr',
+    'as it happens so a killed run still leaves a trail.',
   ].join('\n');
 }
 
@@ -103,6 +108,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     maxAgeDays: parseNumber(argValue(argv, 'max-age-days'), DEFAULT_MAX_AGE_DAYS, { min: 1, max: 3650 }),
     market: normalizeString(argValue(argv, 'market'), 24).toUpperCase(),
     limit: parseNumber(argValue(argv, 'limit'), 0, { min: 0, max: 250000 }),
+    deadlineMs: parseNumber(argValue(argv, 'deadline-ms'), 0, { min: 0, max: 12 * 60 * 60 * 1000 }),
     out: normalizeString(argValue(argv, 'out'), 2000),
     operator: normalizeString(argValue(argv, 'operator'), 120) || DEFAULT_OPERATOR,
   };
@@ -114,21 +120,28 @@ function stripProductPrefix(ref) {
 
 // Cursor-paginated: the rows carry full anchor/candidate snapshots, and a
 // single unbounded SELECT of the whole backlog gets the connection dropped by
-// the Railway public proxy (and would balloon memory in the cron). Keyset
-// pagination on (expires_at, id) matches the ORDER BY, so batches are exact.
+// the Railway public proxy. Keyset pagination on (expires_at, id) matches the
+// ORDER BY, so batches are exact.
+//
+// Paging alone does NOT bound memory — see iterateExpiringAiApprovedRowBatches.
 const SELECT_BATCH_SIZE = 500;
 
-async function loadExpiringAiApprovedRows({
+// Yields one batch at a time and retains nothing. The snapshot columns are why
+// this has to stream rather than narrow: anchor_snapshot and candidate_snapshot
+// are full product blobs that getRelationshipEdgeServingSuppressionReasons
+// reads (titles and brands), so they cannot be dropped from the SELECT — the
+// only lever left is to never hold more than one batch of them at once.
+async function* iterateExpiringAiApprovedRowBatches({
   queryFn = query,
   windowDays = DEFAULT_WINDOW_DAYS,
   market = '',
   limit = 0,
   batchSize = SELECT_BATCH_SIZE,
 } = {}) {
-  const rows = [];
   let cursor = null;
+  let seen = 0;
   for (;;) {
-    const take = limit > 0 ? Math.min(batchSize, limit - rows.length) : batchSize;
+    const take = limit > 0 ? Math.min(batchSize, limit - seen) : batchSize;
     if (take <= 0) break;
     const params = [windowDays];
     const where = [
@@ -141,9 +154,17 @@ async function loadExpiringAiApprovedRows({
     }
     if (cursor) {
       params.push(cursor.expiresAt, cursor.id);
-      where.push(`(expires_at, id) > ($${params.length - 1}, $${params.length})`);
+      where.push(`(expires_at, id) > ($${params.length - 1}::timestamptz, $${params.length}::text)`);
     }
     params.push(take);
+    // expires_at_cursor is the keyset key as Postgres text, microseconds and
+    // all. The `expires_at` column itself comes back as a JS Date, and node-pg
+    // serializes a Date parameter at MILLISECOND precision — so a cursor built
+    // from `last.expires_at` is truncated (…27.207882 → …27.207) and every row
+    // in the same tie group satisfies `expires_at > cursor` again. Rows renewed
+    // in one UPDATE chunk share one `now()`, so the tie groups are 500+ deep and
+    // the scan re-read the same page until the step timeout (2026-08-13..16
+    // production ticks: 3.6M "renewable" ids from a 6,620-row backlog).
     // eslint-disable-next-line no-await-in-loop
     const res = await queryFn(
       `
@@ -151,7 +172,8 @@ async function loadExpiringAiApprovedRows({
                candidate_snapshot, relation_type, display_label, market, vertical,
                category_taxonomy, use_case, label_state, score_total, score_breakdown,
                price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
-               watchouts, provenance, last_verified_at, expires_at
+               watchouts, provenance, last_verified_at, expires_at,
+               expires_at::text AS expires_at_cursor
         FROM relationship_candidate_labels
         WHERE ${where.join('\n          AND ')}
         ORDER BY expires_at ASC, id ASC
@@ -160,12 +182,69 @@ async function loadExpiringAiApprovedRows({
       params,
     );
     const batch = Array.isArray(res && res.rows) ? res.rows : [];
-    rows.push(...batch);
+    if (batch.length) {
+      seen += batch.length;
+      yield batch;
+    }
     if (batch.length < take) break;
     const last = batch[batch.length - 1];
-    cursor = { expiresAt: last.expires_at, id: last.id };
+    const next = { expiresAt: last.expires_at_cursor, id: last.id };
+    if (!next.expiresAt || !next.id) {
+      const err = new Error('renewal_cursor_missing');
+      err.code = 'RENEWAL_CURSOR_MISSING';
+      throw err;
+    }
+    // A keyset scan must strictly advance. If a full page ends on the exact key
+    // it started after, the WHERE clause is not excluding what it should and
+    // the loop would run until the step timeout — fail loudly instead.
+    if (cursor && cursor.expiresAt === next.expiresAt && cursor.id === next.id) {
+      const err = new Error('renewal_cursor_did_not_advance');
+      err.code = 'RENEWAL_CURSOR_DID_NOT_ADVANCE';
+      err.cursor = next;
+      throw err;
+    }
+    cursor = next;
+  }
+}
+
+// Materializes the whole backlog. Kept for tests and bounded ad-hoc use — do
+// NOT put it on the cron path: retaining every row is exactly what produced the
+// 4GB V8 heap OOM in the 2026-08-11T10:37Z production run. runRenewal streams.
+async function loadExpiringAiApprovedRows(options = {}) {
+  const rows = [];
+  for await (const batch of iterateExpiringAiApprovedRowBatches(options)) {
+    rows.push(...batch);
   }
   return rows;
+}
+
+// Per-batch evaluations fold into one report. Only ids and counters survive a
+// batch; the rows themselves are garbage as soon as the batch is folded.
+function createRenewalTally() {
+  return {
+    scannedRows: 0,
+    renewableIds: [],
+    skipped: {
+      suppressed: 0,
+      anchor_unresolvable: 0,
+      candidate_unresolvable: 0,
+      age_capped: 0,
+    },
+    suppressionReasons: {},
+  };
+}
+
+function foldRenewalBatch(tally, batchLength, evaluation = {}) {
+  const { renewableIds = [], skipped = {}, suppressionReasons = {} } = evaluation;
+  tally.scannedRows += batchLength;
+  for (const id of renewableIds) tally.renewableIds.push(id);
+  for (const key of Object.keys(tally.skipped)) {
+    tally.skipped[key] += Number(skipped[key] || 0);
+  }
+  for (const [reason, count] of Object.entries(suppressionReasons)) {
+    tally.suppressionReasons[reason] = Number(tally.suppressionReasons[reason] || 0) + Number(count || 0);
+  }
+  return tally;
 }
 
 // One union set of every id form edges are anchored on in this codebase (see
@@ -292,6 +371,7 @@ async function applyRenewals(renewableIds, {
   queryFn = query,
   operator = DEFAULT_OPERATOR,
   generatedAt = new Date().toISOString(),
+  onProgress = () => {},
 } = {}) {
   let renewed = 0;
   for (let i = 0; i < renewableIds.length; i += UPDATE_CHUNK_SIZE) {
@@ -333,6 +413,7 @@ async function applyRenewals(renewableIds, {
       [chunk, AI_APPROVAL_FRESHNESS_INTERVAL, generatedAt, RENEWAL_METHOD, operator],
     );
     renewed += Number(res && res.rowCount) || 0;
+    onProgress({ phase: 'apply', applied: Math.min(i + UPDATE_CHUNK_SIZE, renewableIds.length), total: renewableIds.length, renewed });
   }
   return renewed;
 }
@@ -343,28 +424,89 @@ async function runRenewal({
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
   market = '',
   limit = 0,
+  batchSize = SELECT_BATCH_SIZE,
   operator = DEFAULT_OPERATOR,
   queryFn = query,
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   generatedAt = new Date().toISOString(),
+  deadlineMs = 0,
+  clock = () => Date.now(),
+  onProgress = () => {},
 } = {}) {
-  const rows = await loadExpiringAiApprovedRows({ queryFn, windowDays, market, limit });
+  // The 2026-08-12 production tick spent the sync routine's entire 20-minute
+  // step budget here and was SIGKILLed, so it wrote no report, renewed nothing,
+  // and left no trace of which phase was slow. Two things follow from that: the
+  // run reports progress as it happens (stderr survives the kill; the /tmp
+  // report does not), and it stops itself before the parent does.
+  const startedMs = clock();
+  const elapsedMs = () => clock() - startedMs;
+  const outOfBudget = () => deadlineMs > 0 && elapsedMs() >= deadlineMs;
+
+  // Ref set first: it is needed to evaluate the very first batch, and loading
+  // it up front keeps the streaming loop below free of per-batch setup.
   const resolvableRefs = await loadResolvableRefSet({ queryFn });
+  onProgress({ phase: 'ref_set', refs: resolvableRefs.size, elapsed_ms: elapsedMs() });
   const nowMs = new Date(generatedAt).getTime() || Date.now();
-  const { renewableIds, skipped, suppressionReasons } = evaluateRenewalCandidates(rows, resolvableRefs, {
-    suppressionFn,
-    maxAgeDays,
-    nowMs,
-  });
+
+  // Stream. Every row carries two full product snapshots, so holding the whole
+  // expiring backlog is what OOMed this step in production; only the id list
+  // and the counters cross a batch boundary here.
+  //
+  // READS MUST ALL FINISH BEFORE THE FIRST WRITE. applyRenewals sets
+  // expires_at = now() + interval, which moves a renewed row FORWARD past the
+  // (expires_at, id) keyset cursor — applying per batch mid-pagination would
+  // re-surface rows this run already processed. Do not "optimize" the apply
+  // into the loop.
+  const tally = createRenewalTally();
+  let batchesScanned = 0;
+  // Truncation stops READS ONLY, and only at a batch boundary — the apply below
+  // still runs on everything verified so far. Renewing pushes expires_at past
+  // the end of the window, so those rows are gone from the next run's SELECT
+  // and it resumes on the remainder: partial progress is durable progress.
+  // Rows that were skipped stay in the window and get re-evaluated next run,
+  // which is cheap (evaluation is pure and microseconds per row).
+  let truncated = outOfBudget();
+  if (!truncated) {
+    for await (const batch of iterateExpiringAiApprovedRowBatches({ queryFn, windowDays, market, limit, batchSize })) {
+      batchesScanned += 1;
+      foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
+        suppressionFn,
+        maxAgeDays,
+        nowMs,
+      }));
+      onProgress({
+        phase: 'scan',
+        batch: batchesScanned,
+        rows: batch.length,
+        scanned_rows: tally.scannedRows,
+        renewable: tally.renewableIds.length,
+        elapsed_ms: elapsedMs(),
+      });
+      if (outOfBudget()) {
+        truncated = true;
+        break;
+      }
+    }
+  }
+  const { renewableIds, skipped, suppressionReasons } = tally;
 
   let renewed = 0;
   if (apply && renewableIds.length) {
-    renewed = await applyRenewals(renewableIds, { queryFn, operator, generatedAt });
+    onProgress({ phase: 'apply_start', renewable: renewableIds.length, elapsed_ms: elapsedMs() });
+    renewed = await applyRenewals(renewableIds, {
+      queryFn,
+      operator,
+      generatedAt,
+      onProgress: (progress) => onProgress({ ...progress, elapsed_ms: elapsedMs() }),
+    });
   }
 
   // Apply mode that found renewable rows but renewed none is an inert no-op
-  // behind a success signal — fail loudly instead.
-  const ok = !apply || !renewableIds.length || renewed > 0;
+  // behind a success signal — fail loudly instead. A run that burned its whole
+  // budget without reading a single batch is the same kind of lie: it renews
+  // nothing and would otherwise report success.
+  const ok = (!truncated || tally.scannedRows > 0)
+    && (!apply || !renewableIds.length || renewed > 0);
   const skippedTotal = Object.values(skipped).reduce((sum, n) => sum + n, 0);
 
   return {
@@ -374,7 +516,11 @@ async function runRenewal({
     window_days: windowDays,
     max_age_days: maxAgeDays,
     market: market || 'all',
-    scanned_rows: rows.length,
+    deadline_ms: deadlineMs || null,
+    elapsed_ms: elapsedMs(),
+    truncated,
+    batches_scanned: batchesScanned,
+    scanned_rows: tally.scannedRows,
     renewable_count: renewableIds.length,
     renewed_count: renewed,
     applied_count: renewed,
@@ -393,7 +539,13 @@ async function main(argv = process.argv.slice(2)) {
     return null;
   }
 
-  const report = await runRenewal(options);
+  // stderr, not stdout: the parent routine captures stderr from a step it kills,
+  // and stdout here is the report itself. This is the only output a run that
+  // exceeds its parent's timeout will ever produce.
+  const report = await runRenewal({
+    ...options,
+    onProgress: (progress) => process.stderr.write(`renewal progress ${JSON.stringify(progress)}\n`),
+  });
   if (options.out) {
     fs.mkdirSync(path.dirname(options.out), { recursive: true });
     fs.writeFileSync(options.out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
@@ -418,6 +570,7 @@ module.exports = {
   DEFAULT_WINDOW_DAYS,
   applyRenewals,
   evaluateRenewalCandidates,
+  iterateExpiringAiApprovedRowBatches,
   loadExpiringAiApprovedRows,
   loadResolvableRefSet,
   parseArgs,

@@ -92,3 +92,27 @@ test('does not override an already-granted eligibility override', async () => {
   });
   assert.equal(res, null);
 });
+
+test('refPatch carries the own row\'s LANE evidence (source_system, platform) when the row has it', async () => {
+  // ADR-009: every row-side gate in get_pdp_v2 asks isSeedRoutedLane over
+  // canonicalProductRef, and on the request path the ref is built from the
+  // caller\'s {merchant_id, product_id} alone. The reconciled own row is a real
+  // catalog row whose eligibility fetch already selects source_system — carrying
+  // it onto the ref is what lets a slug-id observed-seller row (no ext_ prefix)
+  // read as seed-routed after reconciliation. Absent on the row => absent on
+  // the patch (the exact-shape test above pins that direction).
+  const res = await reconcileToOwnServingRow({
+    ...baseArgs,
+    fetchOwnRowEligibility: async () => ({
+      ...OWN_SERVABLE,
+      source_system: 'catalog_enrichment_agent_v1',
+      platform: 'external_seed',
+    }),
+  });
+  assert.ok(res, 'reconcile should succeed');
+  assert.equal(res.refPatch.source_system, 'catalog_enrichment_agent_v1');
+  assert.equal(res.refPatch.platform, 'external_seed');
+  // and the pre-existing keys are untouched
+  assert.equal(res.refPatch.product_key, 'pk_own');
+  assert.equal(res.refPatch.content_key, 'ck_own');
+});

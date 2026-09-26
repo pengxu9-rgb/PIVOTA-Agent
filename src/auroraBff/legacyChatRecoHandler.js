@@ -178,12 +178,14 @@ async function handleLegacyChatRecoRequest({
       ? artifactGate.confidence_level
       : 'unknown';
   const lowConfidenceArtifact = hasRecoArtifact && artifactConfidenceLevel === 'low';
-  const artifactConfidenceScoreRaw = Number(
-    latestArtifact &&
-    latestArtifact.overall_confidence &&
-    latestArtifact.overall_confidence.score,
-  );
-  const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
+  // F4: `!= null` before Number() — a missing artifact (or a stored null
+  // score) is unmeasured, and Number(null) === 0 would report it downstream
+  // as an explicit rock-bottom confidence.
+  const artifactConfidenceScoreRaw = latestArtifact?.overall_confidence?.score;
+  const artifactConfidenceScore =
+    artifactConfidenceScoreRaw != null && Number.isFinite(Number(artifactConfidenceScoreRaw))
+      ? Number(artifactConfidenceScoreRaw)
+      : null;
   const {
     runLegacyChatRecoResultPipeline,
   } = createLegacyChatRecoResultPipelineRuntime({

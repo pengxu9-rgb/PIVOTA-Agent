@@ -24,11 +24,24 @@ process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
 // arrangement in which the doomed retry can occur. The knob that makes this possible is
 // UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS — it caps BOTH the attempt (min(G, budget)) and the deadline
 // (min(D_env, G)), so it must be raised above the budget for the two to decouple. All read at module load.
+//
+// The two numbers are 2050/4000 rather than the 1500/2900 they started at, because the WIRING test below
+// measures wall clock and the gap between them IS its resolution. The shape constrains that gap: the deadline
+// must exceed the attempt timeout (or no retry is ever attempted) but stay under twice it (or the retry is
+// viable and the test is measuring the wrong thing), so the gap can never be wider than one attempt. At
+// 1500/2900 it was ~1400ms, and this file now runs in a `node --test` invocation with 40+ other files in
+// parallel processes, where a CORRECT run was measured at 2766ms — 1177ms of pure scheduling overhead, which
+// ate the window and failed a passing route. Scaling both up widens the gap to ~1950ms in the same shape.
+// G stays at 4000 deliberately. The three direct-call tests below pass their own 150ms attempt timeout, so G
+// does not touch their first attempt — it sets their RETRY timeout, via
+// getTimeoutRetryMs = min(RETRY_MS, max(G, prev + 1200)) = 4000. That is where their ~4.16s comes from
+// (150 + 4000), and raising G raises it one-for-one: at G=12000 this file goes from ~10s to ~29s of test time
+// for no extra coverage.
 process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
 process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '4000';
-process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '1500';
-process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = '1800';
-process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = '2900';
+process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '2050';
+process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = '2300';
+process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = '4000';
 process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
 process.env.API_MODE = 'REAL';
 process.env.PIVOTA_API_BASE = 'http://127.0.0.1:4599';
@@ -121,8 +134,9 @@ const supertest = require('supertest');
 test('WIRING: the route threads its hard deadline into the retry decision', async () => {
   // The tests above pass deadlineAtMs themselves, so they prove the POLICY and not the WIRING — deleting
   // `deadlineAtMs` from the callTrackedUpstream call site leaves every one of them green. This drives the
-  // real invoke route with a hanging backend, in the production shape (1500ms attempt under a 2900ms
-  // deadline), and counts UPSTREAM ATTEMPTS: one with the wiring, two without it.
+  // real invoke route with a hanging backend, in the production shape (a 2050ms attempt under a 4000ms
+  // deadline — see the header for why those numbers and not smaller ones), and counts UPSTREAM ATTEMPTS: one
+  // with the wiring, two without it.
   let attempts = 0;
   nock.cleanAll();
   const hang = () => {
@@ -145,7 +159,19 @@ test('WIRING: the route threads its hard deadline into the retry decision', asyn
       });
     const elapsedMs = Date.now() - startedAt;
     assert.equal(attempts, 1, `the deadline cannot accommodate a retry; expected 1 attempt, saw ${attempts}`);
-    assert.ok(elapsedMs < 2400, `expected to fail fast at the first timeout, took ${elapsedMs}ms`);
+    // The attempt count above is a pure count and does not care how loaded the runner is. THIS one is wall
+    // clock, and it is not redundant: it is the only thing that catches a single attempt riding the deadline
+    // to its end (drop the attempt timeout and this returns at ~4070ms with attempts still 1, and the response
+    // metadata is byte-identical to the healthy one — FPM_NON_BEAUTY_PRIMARY_DEADLINE_EXCEEDED either way, so
+    // there is nothing else to assert on).
+    //
+    // 3500 sits between failing fast at the 2050ms attempt (~2140ms) and riding the 4000ms deadline (~4070ms):
+    // ~1360ms of headroom for scheduling noise, ~570ms of detection margin. It was 2400 against a 1500ms
+    // attempt, which left only ~810ms of headroom — less than the 1177ms of overhead actually measured when
+    // this file runs alongside the rest of the allowlist. Raising the bound ALONE could not fix that: the
+    // ceiling is the deadline, so anything at or above ~4000 stops detecting the case above entirely. The
+    // window had to be widened, not just the threshold moved.
+    assert.ok(elapsedMs < 3500, `expected to fail fast at the first timeout, took ${elapsedMs}ms`);
     // Declining the retry must still be reported AS a deadline outcome. Skipping quietly would buy latency
     // by deleting the very signal an operator uses to see this guard working.
     const metadata = (res.body && res.body.metadata) || {};

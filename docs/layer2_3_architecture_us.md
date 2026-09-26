@@ -16,22 +16,12 @@ Scope: **design only**. No feature work is implemented in this step.
 - **Express** server in `src/server.js`.
 - Entrypoint in `package.json` (`main`: `src/server.js`, scripts `start`, `dev`).
 
-### Current “Look Replicator” endpoints (jobs / share / uploads)
+### Look Replicator endpoints (removed)
 
-Mounted by `mountLookReplicatorRoutes(app, ...)` in `src/server.js`.
-
-- `POST /uploads/signed-url`
-  - Returns S3-compatible PUT signed URL + public URL.
-  - Auth: optional `LOOK_REPLICATOR_API_KEY` (Bearer or `X-API-Key`).
-  - Implementation: `src/lookReplicator/storage.js`
-- `POST /look-jobs`
-  - Creates a job and returns `{ jobId }`.
-  - Current behavior: schedules **mock progress** and writes a **mock result** on completion.
-  - Implementation: `src/lookReplicator/index.js`, `src/lookReplicator/store.js`, `src/lookReplicator/mockResult.js`
-- `GET /look-jobs/:jobId`
-  - Poll job status + result snapshot.
-- `GET /shares/:shareId`
-  - Fetches a share view (currently shareId == jobId).
+The Look Replicator HTTP surface (`/look-jobs`, `/shares`, `/uploads/signed-url`,
+`/api/look-replicate/*`) and `src/lookReplicator/` were removed on 2026-08-11 —
+dead legacy demo, retired with the `look-replicate-share` frontend. The Layer 1–3
+pipeline libraries documented below remain in the repo.
 
 ### Current Layer 1 endpoints (US-only)
 
@@ -165,7 +155,7 @@ The API server becomes a thin controller:
 Layer 3 should reuse existing catalog/search infrastructure:
 
 - `products_cache` (+ embedding recall) where available
-- Promotions enrichment (`promotionStore`)
+- Promotions enrichment (`promotionStore`) — DELETED (ADR-022, pivota-backend)
 - Existing operation gateway (`/agent/shop/v1/invoke`) when needed for live price/availability
 
 ---

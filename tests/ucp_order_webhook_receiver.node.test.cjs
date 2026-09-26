@@ -81,13 +81,21 @@ const { createUcpOrderWebhookReceiver } = require('../src/services/ucpOrderWebho
 
 test('GET /.well-known/ucp serves with AGENT_CHECKOUT_STRICT off and publishes the env signing key', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.ok(resp.body.ucp_version, 'has ucp_version');
+  assert.ok(resp.body.ucp.version, 'has ucp.version');
+  // `signing_keys` is a SIBLING of `ucp`, per spec — Key Discovery reads `profile.signing_keys`, so nesting
+  // it makes every published key invisible to a verifier.
+  assert.equal(resp.body.ucp.signing_keys, undefined, 'must not be nested inside ucp');
   assert.equal(resp.body.signing_keys.length, 1);
   const key = resp.body.signing_keys[0];
   assert.equal(key.kid, 'test-1');
   assert.equal(key.kty, 'EC');
   assert.equal(key.crv, 'P-256');
   assert.equal(key.d, undefined, 'never a private component');
+  // Spec: profile responses MUST be publicly cacheable for at least 60s, and MUST NOT be private/no-store.
+  const cacheControl = resp.headers['cache-control'];
+  assert.match(cacheControl, /(^|[\s,])public([\s,]|$)/);
+  assert.ok(Number(/max-age=(\d+)/.exec(cacheControl)?.[1]) >= 60, `weak max-age: ${cacheControl}`);
+  assert.ok(!/private|no-store|no-cache/.test(cacheControl), `forbidden directive: ${cacheControl}`);
 });
 
 test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async () => {
@@ -101,20 +109,33 @@ test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async 
 });
 
 // M8: with the checkout kill-switch dark, the money capabilities must not be advertised.
-test('strict off: profile withholds checkout/ap2 capabilities (and create_payment_link with them)', async () => {
+test('strict off: the profile is SERVED but advertises nothing callable', async () => {
+  // This suite boots with AGENT_CHECKOUT_STRICT deleted, which is the point of the file's headline
+  // invariant: /.well-known/ucp is decoupled from the money kill-switch and keeps answering 200.
+  //
+  // WHAT CHANGED (founder decision 2026-08-13). It used to assert that checkout/ap2 were withheld while
+  // the READ capabilities stayed advertised. But strict-off also means no transport — the UCP-dialect
+  // door requires strict AND its own flag — so those reads named no reachable endpoint. A profile now
+  // advertises what a platform can CALL, so with no transport the capability list is empty and the
+  // withholding of checkout/ap2 is subsumed by it.
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  const capIds = resp.body.capabilities.map((c) => c.id);
-  assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
-  assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'read capabilities still advertised');
-  const allOps = resp.body.capabilities.flatMap((c) => c.operations);
-  assert.ok(!allOps.includes('create_payment_link'), 'create_payment_link not exposed anywhere');
-  // The intersection endpoint reflects the same withholding.
+  assert.ok(resp.body.ucp.version, 'the profile itself stays up while checkout is dark');
+  // Both members are MAPS in the spec's shape, so empty is `{}` rather than `[]`.
+  assert.deepEqual(resp.body.ucp.services, {}, 'nothing speaks for this profile');
+  assert.deepEqual(resp.body.ucp.capabilities, {}, 'no transport => no capability advertised');
+  // NOTE what is deliberately NOT asserted here. Substring checks for checkout / ap2_mandate /
+  // create_payment_link would be VACUOUS in this state: the whole document is
+  // {ucp:{version,services:{},capabilities:{},payment_handlers:{}}, provider, signing_keys:[]}, so none of
+  // those strings can appear whatever the code does — they would pass with the kill-switch guard deleted.
+  // That guard (which ids to withhold while AGENT_CHECKOUT_STRICT is dark) is driven directly in
+  // tests/commerce_ucp_mcp_door.node.test.cjs against `ucpOmitCapabilityIdsForFlags`, where the served
+  // document cannot mask it.
+  // The intersection endpoint reflects the same emptiness — it can never resurrect what is unadvertised.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
-    .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.discovery'] })
+    .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(inter.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.discovery']);
+  assert.deepEqual(inter.body.ucp.capabilities, {});
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key
@@ -546,4 +567,244 @@ test('events endpoint filters by body_sha256 / checkout_id / order_id', async ()
   assert.deepEqual(bySha.body.events.map((e) => e.checkout_id), ['chk_a']);
   const miss = await receiver.handleListEvents({ headers: EVENTS_AUTH, query: { order_id: 'nope' } });
   assert.equal(miss.body.count, 0);
+});
+
+// ---- fetch-failure diagnosis: log the CAUSE, not just "fetch failed" --------------------------------
+//
+// undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and hides
+// the real reason on `.cause` (measured on node 20 and 24). This receiver refuses a redirected profile
+// (`redirect: 'error'`, per UCP 2026-04-08) — so without the cause, a business profile that 302s logs
+// byte-identically to its host being dead. The stakes are higher here than in the warm-handoff lane: a
+// fetch that keeps failing with no previously-good key set falls back to an EMPTY key list, and that
+// rejects EVERY inbound order webhook. These tests pin that the log can tell the two apart.
+
+/** A TLS/socket failure: another `fetch failed` whose only distinguishing content is on `.cause`. */
+function socketFailureError() {
+  const err = new TypeError('fetch failed');
+  err.cause = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+  return err;
+}
+
+/** Exactly what fetch throws for a host that does not resolve, including the enumerable request detail. */
+function dnsFailureError() {
+  const err = new TypeError('fetch failed');
+  const cause = new Error('getaddrinfo ENOTFOUND ucp.test.local');
+  Object.assign(cause, {
+    errno: -3008, code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: 'ucp.test.local',
+  });
+  err.cause = cause;
+  return err;
+}
+
+/** Drive a real webhook through a receiver whose profile fetch throws `err`; return the warn records. */
+async function warnsFromProfileFetchFailure(err, envOverrides = {}) {
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, ...envOverrides },
+    fetchImpl: async () => { throw err; },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_cause', order_id: 'ord_cause' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) },
+    rawBody,
+    body: JSON.parse(rawBody),
+  });
+  return { warns, out };
+}
+
+test('cause: two thrown fetch failures with the same message are DISTINGUISHABLE in the receiver log', async () => {
+  // Every network-layer failure undici throws is `TypeError: fetch failed`; only `.cause` differs. (A
+  // REDIRECTED profile is deliberately NOT one of these any more: `redirect: 'manual'` returns the 3xx as
+  // a status and never throws -- see the `redirect:` test below. An earlier version of this test modelled a
+  // redirect as a thrown `unexpected redirect`, a shape the receiver can no longer produce.)
+  const socket = await warnsFromProfileFetchFailure(socketFailureError());
+  const dns = await warnsFromProfileFetchFailure(dnsFailureError());
+
+  const sr = socket.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  const dr = dns.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+
+  // Both fail CLOSED to an empty key set, which is what makes this worth diagnosing at all.
+  assert.equal(socket.out.status, 401, 'no keys -> every inbound webhook is rejected');
+  assert.equal(dns.out.status, 401);
+
+  // The property: identical `err`, identical surface -- the cause is the ONLY discriminator.
+  assert.equal(sr.err, dr.err);
+  assert.equal(sr.err, 'fetch failed');
+  assert.notEqual(sr.cause, dr.cause);
+
+  assert.equal(sr.cause, 'other side closed');
+  assert.equal(sr.cause_code, 'UND_ERR_SOCKET');
+  assert.equal(dr.cause, 'getaddrinfo ENOTFOUND ucp.test.local');
+  assert.equal(dr.cause_code, 'ENOTFOUND');
+});
+
+test('cause: the cause object is never spread into the receiver record', async () => {
+  // A real fetch cause carries errno/syscall/hostname as its OWN ENUMERABLE keys -- those, not the stack,
+  // are what a `{...cause}` spread would leak. Asserted as an ALLOWLIST on the key set, never a denylist.
+  const { warns } = await warnsFromProfileFetchFailure(dnsFailureError());
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+
+  assert.deepEqual(Object.keys(rec).sort(), ['cause', 'cause_code', 'err', 'surface']);
+  assert.equal(typeof rec.cause, 'string');
+  assert.equal(rec.surface, 'ucp_order_webhook', 'the pre-existing fields still ride along');
+});
+
+test('cause: a non-fetch warn gains no cause fields', async () => {
+  // The https refusal path warns with a hand-built Error that has no `.cause`. The helper must add
+  // nothing there rather than emitting empty keys.
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: 'http://ucp.test.local/.well-known/ucp' },
+    fetchImpl: async () => { throw new Error('must never be called'); },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_plain' });
+  await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+  const rec = warns.find((w) => w.msg === 'UCP business profile URL refused').rec;
+  assert.deepEqual(Object.keys(rec).sort(), ['err', 'surface']);
+});
+
+// The three tests above cover the receiver's own WIRING. These two cover behaviour of the shared helper
+// that this lane specifically depends on. They deliberately duplicate coverage that also exists in
+// tests/ucp_warm_handoff_service.test.js, because coverage living only in the OTHER consumer's suite is
+// not coverage this lane owns: a mutation review found the two properties below killed by zero tests
+// here, in the lane this change argues has the higher stakes.
+
+test('cause: a throwing `cause` getter yields 401, not an exception out of the handler', async () => {
+  // This is a 500-vs-401 difference, not a logging nicety. `warn()` is called from inside the catch in
+  // loadSigningKeys, and nothing wraps the `await loadSigningKeys(env)` in handleOrderWebhook -- so a
+  // helper that throws escapes the handler entirely. Measured with the helper's try/catch removed:
+  // "handleOrderWebhook THREW -> boom from getter" instead of resolving 401.
+  const err = new TypeError('fetch failed');
+  Object.defineProperty(err, 'cause', { get() { throw new Error('boom from getter'); } });
+
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: VERIFY_ENV,
+    fetchImpl: async () => { throw err; },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_getter' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  assert.equal(out.status, 401, 'the lane still fails CLOSED rather than throwing');
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.deepEqual(Object.keys(rec).sort(), ['err', 'surface'], 'no cause fields, and no crash');
+});
+
+test('cause: a dual-stack connect failure still reports a reason, and a non-string code is dropped', async () => {
+  // AggregateError with an EMPTY message is the real shape for a host with both A and AAAA records; the
+  // per-family reasons live in .errors. Without the fallback this lane would log cause_code and NO cause
+  // -- on exactly the CDN-fronted profile hosts most likely to be dual-stack.
+  const agg = new AggregateError(
+    [new Error('connect ECONNREFUSED ::1:443'), new Error('connect ECONNREFUSED 127.0.0.1:443')],
+    '',
+  );
+  agg.code = 'ECONNREFUSED';
+  const dualStack = new TypeError('fetch failed');
+  dualStack.cause = agg;
+  const { warns } = await warnsFromProfileFetchFailure(dualStack);
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(rec.cause, 'connect ECONNREFUSED ::1:443');
+  assert.equal(rec.cause_code, 'ECONNREFUSED');
+
+  // A NUMERIC code is dropped rather than published. Needs its own fixture: the redirect-refusal case
+  // above has no `code` at all, so it holds whether or not the string guard is there.
+  const numeric = new TypeError('fetch failed');
+  numeric.cause = Object.assign(new Error('aborted'), { code: 23 });
+  const rec2 = (await warnsFromProfileFetchFailure(numeric)).warns
+    .find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(Object.hasOwn(rec2, 'cause_code'), false, 'a bare 23 is not a log field');
+  assert.equal(rec2.cause, 'aborted');
+});
+
+// ---- a profile URL with userinfo must not put the password in the log ------------------------------
+//
+// `https://user:pass@host/.well-known/ucp` passes the https guard, then fetch rejects it with
+// `TypeError: Request cannot be constructed from a URL that includes credentials: <the full URL>` — which
+// the fetch catch logs as `err`, password included (measured on node 24). The URL is refused before fetch.
+
+// Each half of `username || password` gets its own row: a token-in-username config is the common real shape,
+// and fetch throws the URL-echoing TypeError for both (measured), so a guard on `password` alone still leaks.
+for (const [label, userinfo] of [
+  ['user:pass', 'svc:operator-typed-password-DO-NOT-LEAK'],
+  ['username only', 'operator-api-token-DO-NOT-LEAK'],
+  ['password only', ':operator-typed-password-DO-NOT-LEAK'],
+]) test(`userinfo (${label}): a credentialed UCP_BUSINESS_PROFILE_URL is refused before fetch and never logged`, async () => {
+  const PASSWORD = 'DO-NOT-LEAK';
+  const warns = [];
+  const fetchCalls = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: `https://${userinfo}@ucp.test.local/.well-known/ucp` },
+    // If this were reached, real fetch would throw a TypeError carrying the URL. Model exactly that, so a
+    // regression that lets the URL through is caught by the leak assertion, not just by the call count.
+    fetchImpl: async (url) => {
+      fetchCalls.push(String(url));
+      throw new TypeError(`Request cannot be constructed from a URL that includes credentials: ${url}`);
+    },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_userinfo' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  assert.equal(out.status, 401, 'no keys -> fails closed, same as any other refused URL');
+  assert.equal(fetchCalls.length, 0, 'refused BEFORE fetch — the URL never reaches the network layer');
+  // The property: the password is in NOTHING we emitted. Checked over the whole serialized warn set, so a
+  // future field cannot smuggle it either.
+  const everything = JSON.stringify(warns);
+  assert.equal(everything.includes(PASSWORD), false, `password leaked into logs: ${everything}`);
+  const refused = warns.find((w) => w.msg === 'UCP business profile URL refused');
+  assert.ok(refused, 'the refusal is logged');
+  assert.equal(refused.rec.err, 'UCP_BUSINESS_PROFILE_URL must not contain userinfo');
+});
+
+// ---- a redirected business profile is refused as a first-class status ------------------------------
+//
+// `redirect: 'manual'`: the 3xx is returned, never followed (measured on node 24: status 301, ok false,
+// redirected false, target never contacted). It fails through the existing `!res.ok` check as
+// `business profile fetch failed (301)` -- greppable, and not undici's wording. Under `redirect: 'error'`
+// the same event was an opaque `fetch failed` with the reason on `.cause`. Same rule, better diagnosis.
+
+test('redirect: a 301 business profile is refused with the 301 in the message, never followed', async () => {
+  const warns = [];
+  const inits = [];
+  let targetHits = 0;
+  const receiver = createUcpOrderWebhookReceiver({
+    env: VERIFY_ENV,
+    fetchImpl: async (url, init = {}) => {
+      inits.push(init);
+      if (init.redirect === 'manual') {
+        return {
+          ok: false, status: 301, redirected: false,
+          async json() { throw new SyntaxError('Unexpected token <'); },
+          async text() { return '<html>moved</html>'; },
+        };
+      }
+      if (init.redirect === 'error') throw new TypeError('fetch failed');
+      // 'follow' (or unset): the redirect target's 200, carrying a key set we must never adopt.
+      targetHits += 1;
+      return { ok: true, status: 200, async json() { return { ucp: { signing_keys: [PUBLIC_JWK] } }; } };
+    },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_redirect' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  // Never followed: under a 'follow' mutant the target's keys VERIFY the signature and this is a 200 --
+  // trust anchored to an origin we never resolved. That is the assertion that fails first.
+  assert.equal(targetHits, 0, 'the redirect target is never contacted');
+  assert.equal(out.status, 401, 'no keys adopted -> fails closed');
+  assert.equal(inits[0].redirect, 'manual');
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(rec.err, 'business profile fetch failed (301)');
+  assert.equal(Object.hasOwn(rec, 'cause'), false, 'a returned 3xx is not a thrown fetch failure');
 });

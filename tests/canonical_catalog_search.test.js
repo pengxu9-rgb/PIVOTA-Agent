@@ -15,6 +15,7 @@
 
 const {
   fetchCanonicalChainRows,
+  mainlineLaneConfig,
   __internal,
 } = require('../src/services/canonicalCatalogSearch');
 
@@ -29,6 +30,21 @@ function makeMockQuery(rows = []) {
 }
 
 describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
+  test('explicit stock scope requires affirmative offer evidence', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick',
+      includeSkuOffers: true,
+      offerScope: { markets: ['SG'], inStockOnly: true, currency: 'SGD' },
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toContain("IN ('instock', 'available', 'true')");
+    expect(sql).toContain('WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0');
+    expect(sql).toContain('END) IS TRUE');
+    expect(sql).not.toContain('o.inventory_quantity IS NULL OR o.inventory_quantity > 0');
+  });
+
   test('returns [] for empty query without hitting the DB', async () => {
     const query = makeMockQuery([{ product_key: 'should not appear' }]);
     const out = await fetchCanonicalChainRows({ query: '   ', deps: { query } });
@@ -270,41 +286,117 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   // step5_test_rig_retirement / demo_retired_2026_07 / source_currency_or_channel_defect. The row mapper
   // reads price straight off the joined row, so such a row winning the ordering priced a result off
   // retired test-rig, retired demo, or currency-defective data.
-  test('sku/offer fan-out join excludes suppressed offers', async () => {
+  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch.
+  const skuOfferLateralOf = (sql) => {
+    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) best_sku_offer ON TRUE/);
+    expect(m).not.toBeNull();
+    return m[1];
+  };
+
+  test('sku/offer LATERAL excludes suppressed offers', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
-    const { sql } = query.calls[0];
-    const joinMatch = sql.match(/LEFT JOIN catalog_offers o\b[\s\S]*?(?=\n\s*(?:LEFT JOIN|INNER JOIN|JOIN|WHERE|GROUP BY|ORDER BY)\b)/);
-    expect(joinMatch).not.toBeNull();
-    expect(joinMatch[0]).toMatch(/o\.suppressed_at IS NULL/);
+    expect(skuOfferLateralOf(query.calls[0].sql)).toMatch(/o\.suppressed_at IS NULL/);
   });
 
-  test('the suppression filters are in ON clauses — the outer query has NO where at all', async () => {
-    // Putting these predicates in WHERE would turn both LEFT JOINs INNER and drop every product without a
-    // live sku/offer — a hidden deletion rather than a product judged by the serving gate.
+  test('sku/offer LATERAL excludes suppressed skus (same defect one join up)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    expect(skuOfferLateralOf(query.calls[0].sql)).toMatch(/s\.suppressed_at IS NULL/);
+  });
+
+  test('the sku/offer LATERAL is LEFT ... ON TRUE — the outer query has NO where at all', async () => {
+    // The invariant this has always protected: a product with no live/priced
+    // sku+offer must KEEP its row (with NULL offer columns) and be judged by
+    // the serving gate, rather than being silently deleted by an INNER join.
+    // Under the old bare joins that meant "no predicate in an outer WHERE";
+    // under the LATERAL it means LEFT ... ON TRUE, with every predicate living
+    // INSIDE the subquery, where it selects the best offer instead of filtering
+    // the product away.
     //
-    // An earlier version of this test guarded that with `if (whereIdx !== -1) expect(...)`. The outer
-    // template can never emit a WHERE, so the branch never ran and the test could only pass: an inert
-    // assertion sitting behind a green tick, in the very test cited as the safety argument. It now asserts
-    // the real invariant unconditionally, and on ANY offer-alias predicate rather than suppressed_at alone
-    // (an outer `WHERE o.currency IS NOT NULL` would INNER-join just as effectively).
+    // An earlier version guarded this with `if (whereIdx !== -1) expect(...)`.
+    // The outer template can never emit a WHERE, so the branch never ran and the
+    // test could only pass — an inert assertion behind a green tick, in the very
+    // test cited as the safety argument. It asserts unconditionally now.
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/LEFT JOIN catalog_skus s/);
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o/);
-    const afterJoin = sql.slice(sql.lastIndexOf('LEFT JOIN catalog_offers o'));
-    expect(afterJoin).not.toMatch(/\bWHERE\b/);
-    expect(afterJoin.replace(/ON o\.sku_key = s\.sku_key[\s\S]*?IS NULL/, '')).not.toMatch(/\bWHERE[\s\S]*\bo\./);
+    expect(sql).toMatch(/LEFT JOIN LATERAL \(/);
+    expect(sql).toMatch(/\) best_sku_offer ON TRUE/);
+    // Nothing after the LATERAL may re-filter on the offer/sku aliases: an outer
+    // `WHERE o.currency IS NOT NULL` would INNER-join just as effectively.
+    const afterLateral = sql.slice(sql.indexOf(') best_sku_offer ON TRUE'));
+    expect(afterLateral).not.toMatch(/\bWHERE\b/);
   });
 
-  test('sku fan-out join excludes suppressed skus (same defect one join up)', async () => {
+  // ONE ROW PER PRODUCT. This branch used to be a bare pair of LEFT JOINs that
+  // fanned out to one row per (product, sku, offer) while the row mapper builds
+  // one product per ROW — 15,961 rows for 9,289 serving-eligible products on
+  // prod 2026-08-05, with 727 products served at multiple distinct prices at
+  // once. Re-introducing the fan-out must fail here.
+  test('sku/offer LATERAL collapses to ONE row per product', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    const skuJoin = sql.match(/LEFT JOIN catalog_skus s[\s\S]*?(?=LEFT JOIN catalog_offers)/);
-    expect(skuJoin).not.toBeNull();
-    expect(skuJoin[0]).toMatch(/s\.suppressed_at IS NULL/);
+    expect(skuOfferLateralOf(sql)).toMatch(/LIMIT 1/);
+    // The bare fan-out joins must not come back.
+    expect(sql).not.toMatch(/LEFT JOIN catalog_skus s\s+ON/);
+    expect(sql).not.toMatch(/LEFT JOIN catalog_offers o\s+ON/);
+  });
+
+  test('no recency tie-break on sku/offer — that is what sorted price-less rows first', async () => {
+    // `ORDER BY ... s.updated_at DESC, o.updated_at DESC`, with Postgres DESC
+    // defaulting to NULLS FIRST, put a sku carrying NO offer AHEAD of the same
+    // product's priced rows. Both consuming lanes take the first row per
+    // product, so the price-less row won: 2,816 products on prod 2026-08-05 had
+    // an unpriced first row while a priced row existed further down.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).not.toMatch(/s\.updated_at DESC/);
+    expect(sql).not.toMatch(/o\.updated_at DESC/);
+  });
+
+  test('sku/offer LATERAL selects only PRICED offers, cheapest first', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    // Same buyable-price expression as services/pricedOfferSql and the
+    // offer-only best_offer LATERAL: amount and currency from ONE row.
+    expect(lateral).toMatch(/COALESCE\(o\.merchant_effective_price, o\.list_price\) > 0/);
+    expect(lateral).toMatch(/o\.currency IS NOT NULL/);
+    expect(lateral).toMatch(/ORDER BY[\s\S]*COALESCE\(o\.merchant_effective_price, o\.list_price\) ASC/);
+    // Deterministic final tie-break so equal prices cannot reshuffle per call.
+    expect(lateral).toMatch(/o\.offer_id ASC/);
+  });
+
+  test('at equal price a real variant sku beats the synthetic ::canonical sku, before offer_id', async () => {
+    // Every retailer-lane product carries a `<pk>::canonical` sku (source_variant_id = product key) next
+    // to its real variant skus, each with an offer at the same price. offer_id is a hash, so without this
+    // term the synthetic id won about half the ties and live price verification reported variant_missing.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    const price = lateral.indexOf('COALESCE(o.merchant_effective_price, o.list_price) ASC');
+    const realFirst = lateral.search(
+      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+OR s\.source_variant_id = 'default' OR s\.source_variant_id LIKE '%-default'\s+THEN 1 ELSE 0 END ASC/,
+    );
+    const offerId = lateral.indexOf('o.offer_id ASC');
+    expect(price).toBeGreaterThan(-1);
+    expect(realFirst).toBeGreaterThan(price);     // a tie-break only: price still decides first
+    expect(offerId).toBeGreaterThan(realFirst);   // and it runs before the hashed offer_id
+  });
+
+  test('sku/offer LATERAL prefers the caller market when one is supplied', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick', includeSkuOffers: true, marketId: 'us', deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    const lateral = skuOfferLateralOf(sql);
+    const m = lateral.match(/CASE WHEN upper\(coalesce\(o\.market, ''\)\) = \$(\d+) THEN 0 ELSE 1 END,/);
+    expect(m).not.toBeNull();
+    expect(params[Number(m[1]) - 1]).toBe('US');
   });
 
   test('default eligibility gates on serving_eligible (buyable)', async () => {
@@ -537,9 +629,16 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/LEFT JOIN catalog_skus s\s+ON s\.product_key = c\.product_key/);
-    // Multi-line since the suppressed-offer predicate joined the ON clause.
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
+    // Sku and offer columns are surfaced through the collapsing LATERAL, which
+    // correlates on the product and joins the offer to its own sku.
+    const lateral = skuOfferLateralOf(sql);
+    expect(lateral).toMatch(/FROM catalog_skus s/);
+    expect(lateral).toMatch(/JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
+    expect(lateral).toMatch(/WHERE s\.product_key = c\.product_key/);
+    // The columns callers actually read off the row.
+    expect(sql).toMatch(/best_sku_offer\.sku_image_url/);
+    expect(sql).toMatch(/best_sku_offer\.currency/);
+    expect(sql).toMatch(/best_sku_offer\.merchant_effective_price/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {
@@ -826,8 +925,16 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
     expect(query.calls[0].sql).toMatch(/p\.recall_doc LIKE ANY/);
   });
 
-  test('flag on + categoryPathPrefix -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+  // The recall-doc arm's presence under a category prefix follows the
+  // category-browse text union, because that is what decides whether the text
+  // branch of whereClause is used at all. Both sides are driven: with the
+  // union ON the arm belongs in the statement, with the kill-switch thrown it
+  // must not be built. The 08P01 pin (highest $n referenced === params
+  // supplied) is asserted on BOTH — that invariant is what these tests exist
+  // for and it holds either way.
+  test('flag on + categoryPathPrefix + union ON -> recall_doc arm present, binds integral (08P01 guard)', async () => {
     process.env[FLAG] = 'enabled';
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'on';
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'vitamin c serum',
@@ -837,15 +944,35 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
       deps: { query },
     });
     const { sql, params } = query.calls[0];
-    // The category branch of whereClause discards textWhereClause, so the
+    expect(sql).toMatch(/p\.recall_doc LIKE ANY/);
+    expect(sql).toMatch(/p\.recall_market/);
+    expect(params.some((p) => Array.isArray(p))).toBe(true);
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag on + categoryPathPrefix + union OFF -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+    process.env[FLAG] = 'enabled';
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'off';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      categoryMode: 'category_browse',
+      marketId: 'US',
+      deps: { query },
+    });
+    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
+    const { sql, params } = query.calls[0];
+    // Kill-switch thrown: the category branch discards textWhereClause, so the
     // recall-doc arm (and its patterns/market-guard binds) must not be built
     // at all — otherwise the statement declares fewer $n placeholders than
     // supplied params and Postgres rejects every category-lane query (08P01).
     expect(sql).not.toMatch(/recall_doc/);
     expect(sql).not.toMatch(/recall_market/);
     expect(params.some((p) => Array.isArray(p))).toBe(false);
-    // The assertion that would have caught the bug: the highest $n referenced
-    // in the SQL must equal the number of supplied params.
     const maxBind = Math.max(
       ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
     );
@@ -1136,6 +1263,8 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
   test('flag on + categoryPathPrefix: rank-arm binds stay integral on the category branch (08P01 guard)', async () => {
     process.env[RANK_FLAG] = 'enabled';
     delete process.env[DOC_FLAG];
+    // The union ships dark; this test asserts the UNION form, so switch it on.
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'on';
     const { sql, params } = await capture({
       query: 'vitamin c serum',
       categoryPathPrefix: 'beauty/skincare/serum/',
@@ -1144,12 +1273,15 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
       tokenMatch: true,
     });
 
-    // Category branch active: whereClause takes the category form and
-    // discards the text arms — but rank_score is always computed, so every
-    // rank-v2 bind pushed above must still be referenced there.
+    // Category branch active. Under the default text union the category arm
+    // is OR'd with the text arms rather than replacing them; rank_score is
+    // computed in both modes, so every rank-v2 bind pushed above must still be
+    // referenced. The `AND $2::text IS NOT NULL` no-op belongs to the
+    // kill-switch form only and must be gone here.
     expect(sql).toMatch(
-      /p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\) AND \$2::text IS NOT NULL/,
+      /\(\(p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\)\)\n *OR \(/,
     );
+    expect(sql).not.toMatch(/\$2::text IS NOT NULL/);
 
     // Coverage-arm binds ('vitamin' + 'serum'; 'c' < 3 chars dropped) are
     // pushed AND referenced inside the rank_score coverage CASE.
@@ -1168,6 +1300,7 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
       ...[...sql.matchAll(/\$(\d+)/g)].map((x) => Number(x[1])),
     );
     expect(maxBind).toBe(params.length);
+    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
   });
 
   test('rank v2 flag is read per call, not at module load', async () => {
@@ -1310,6 +1443,951 @@ describe('canonicalCatalogSearch deterministic tie-break (Class 4, flag-gated)',
     } finally {
       delete process.env.CANONICAL_CATALOG_RANK_V2;
       delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    }
+  });
+});
+
+describe('canonicalCatalogSearch multi-product set diversity (#1927, flag-gated)', () => {
+  const SET_FLAG = 'CANONICAL_CATALOG_SET_DIVERSITY';
+  const saved = process.env[SET_FLAG];
+  const {
+    applyMultiProductSetTopCap,
+    rowIsMultiProductSet,
+    MULTI_PRODUCT_SET_QUOTA_SHARE,
+  } = __internal;
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env[SET_FLAG];
+    else process.env[SET_FLAG] = saved;
+  });
+
+  async function capture(args, rows = []) {
+    const query = makeMockQuery(rows);
+    const out = await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return { ...query.calls[0], out };
+  }
+
+  // A row as the driver returns it: product_family lives in the payload JSON.
+  const row = (key, family, rankScore = 20) => ({
+    product_key: key,
+    rank_score: rankScore,
+    product_payload: family ? { product_family: family } : {},
+  });
+  const set = (key, rankScore) => row(key, 'set_or_collection', rankScore);
+  const single = (key, rankScore) => row(key, 'single_formula', rankScore);
+  const shape = (rows) => rows.map((r) => (rowIsMultiProductSet(r) ? 'S' : 's')).join('');
+
+  describe('flag off', () => {
+    const COMBOS = [
+      { name: 'text mode', args: { query: 'gel moisturizer', marketId: 'US' } },
+      { name: 'sku/offer', args: { query: 'gel moisturizer', includeSkuOffers: true, limit: 48 } },
+      {
+        name: 'category browse',
+        args: {
+          query: 'gel moisturizer',
+          categoryPathPrefix: 'beauty/skincare/',
+          categoryMode: 'category_browse',
+        },
+      },
+      { name: 'token match', args: { query: 'gel moisturizer', tokenMatch: true, verticalSearch: true } },
+    ];
+
+    test.each(COMBOS)('combo $name: SQL + params identical across every off spelling', async ({ args }) => {
+      delete process.env[SET_FLAG];
+      const base = await capture(args);
+      for (const spelling of ['', 'disabled', 'off', '0', 'false', 'no']) {
+        process.env[SET_FLAG] = spelling;
+        const other = await capture(args);
+        expect(other.sql).toBe(base.sql);
+        expect(other.params).toEqual(base.params);
+      }
+    });
+
+    test('rows are returned in driver order, untouched', async () => {
+      delete process.env[SET_FLAG];
+      const rows = [set('a'), set('b'), set('c'), set('d'), single('e'), single('f')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out).toEqual(rows);
+      expect(shape(out)).toBe('SSSSss');
+    });
+  });
+
+  describe('flag on: quota at the candidate cut', () => {
+    test('splits the CTE and cuts with the quota, never before rank_score', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'gel moisturizer', includeSkuOffers: true, limit: 48 });
+      expect(sql).toMatch(/WITH matched_products AS \(/);
+      expect(sql).toMatch(/candidate_products AS \(/);
+      expect(sql).toMatch(/row_number\(\) OVER \(/);
+      // A demoted set must still outrank every row in a LOWER tie group, so the
+      // demotion flag sorts AFTER rank_score and the window partitions by it.
+      expect(sql).toMatch(/PARTITION BY m\.rank_score, m\.is_multi_product_set/);
+      expect(sql).toMatch(/ORDER BY rank_score DESC, set_quota_demoted ASC,/);
+      // The cut happens exactly once — in the quota CTE, not the inner one.
+      expect(sql.match(/LIMIT \$3/g)).toHaveLength(1);
+    });
+
+    test('quota bind is a share of the candidate budget, and no bind is orphaned', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql, params } = await capture({ query: 'gel moisturizer', includeSkuOffers: true, limit: 48 });
+      const candidateLimit = params[2];
+      expect(params[params.length - 1]).toBe(
+        Math.max(1, Math.ceil(candidateLimit * MULTI_PRODUCT_SET_QUOTA_SHARE)),
+      );
+      // 08P01 idiom: every declared placeholder is supplied and vice versa.
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    });
+
+    test('product_family is read from the payload, in projection only — never in a WHERE', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'gel moisturizer' });
+      expect(sql).toMatch(/p\.product_payload->>'external_seed_product_family'/);
+      expect(sql).toMatch(/p\.product_payload->>'product_family'/);
+      expect(sql).toMatch(/AS is_multi_product_set/);
+      const whereBlock = sql.slice(sql.indexOf('WHERE '), sql.indexOf('    )'));
+      expect(whereBlock).not.toMatch(/product_family/);
+    });
+
+    test('composes with rank v2 + recall-doc + deterministic tie-break without bind drift', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+      process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+      process.env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK = 'enabled';
+      try {
+        const { sql, params } = await capture({
+          query: 'hydrating barrier moisturizer fragrance free',
+          marketId: 'US',
+          includeSkuOffers: true,
+          limit: 48,
+        });
+        expect(sql).toMatch(/ORDER BY m\.product_key ASC/);
+        const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+        expect(maxBind).toBe(params.length);
+      } finally {
+        delete process.env.CANONICAL_CATALOG_RANK_V2;
+        delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+        delete process.env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK;
+      }
+    });
+
+    test('a query that ASKS for a set is exempt — SQL identical to flag off', async () => {
+      delete process.env[SET_FLAG];
+      const off = await capture({ query: 'korean skincare gift set', includeSkuOffers: true, limit: 48 });
+      process.env[SET_FLAG] = 'enabled';
+      for (const q of ['korean skincare gift set', 'starter kit for dry skin', 'discovery set', 'full routine bundle']) {
+        const on = await capture({ query: q, includeSkuOffers: true, limit: 48 });
+        expect(on.sql).toBe(off.sql.replace(/korean skincare gift set/g, q));
+        expect(on.sql).not.toMatch(/matched_products/);
+      }
+    });
+
+    test('"easy to pack for travel" is a SIZE intent, not a set intent — diversity still applies', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'easy to pack for travel' });
+      expect(sql).toMatch(/matched_products/);
+    });
+  });
+
+  describe('flag on: head cap over the returned rows', () => {
+    test('holds sets to 2 per rolling window of 8', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('a'), set('b'), set('c'), set('d'),
+        single('e'), single('f'), single('g'), single('h'), single('i'), single('j'),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.slice(0, 8).filter(rowIsMultiProductSet)).toHaveLength(2);
+      expect(shape(out)).toBe('SSssssssSS');
+    });
+
+    test('demotes but never drops: every input row appears exactly once', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [set('a'), set('b'), set('c'), single('d'), single('e'), set('f'), single('g')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out).toHaveLength(rows.length);
+      expect(out.map((r) => r.product_key).sort()).toEqual(rows.map((r) => r.product_key).sort());
+    });
+
+    test('never crosses a rank_score boundary — a matching set keeps its lead', async () => {
+      // The ladder firing is the case this must not touch: "korean skincare
+      // set" scores the set 140 and a single 80, so the set stays on top.
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('hit1', 140), set('hit2', 140), set('hit3', 140),
+        single('low1', 80), single('low2', 80),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.map((r) => r.product_key)).toEqual(['hit1', 'hit2', 'hit3', 'low1', 'low2']);
+    });
+
+    test('reorders only inside a tie group', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('s20a', 20), set('s20b', 20), set('s20c', 20), single('p20', 20),
+        single('p10', 10),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      // p20 is promoted over s20c (same score); p10 never moves up a group.
+      expect(out.map((r) => r.product_key)).toEqual(['s20a', 's20b', 'p20', 's20c', 'p10']);
+    });
+
+    test('an all-set tie group keeps its received order', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [set('a'), set('b'), set('c'), set('d')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.map((r) => r.product_key)).toEqual(['a', 'b', 'c', 'd']);
+    });
+  });
+
+  describe('rowIsMultiProductSet reads the same payload precedence as the SQL', () => {
+    test.each([
+      ['product_family', { product_family: 'set_or_collection' }, true],
+      ['external_seed_product_family', { external_seed_product_family: 'set_or_collection' }, true],
+      ['external_seed_product_kind.family', { external_seed_product_kind: { family: 'set_or_collection' } }, true],
+      ['mixed case + padding', { product_family: '  Set_Or_Collection ' }, true],
+      ['single_formula', { product_family: 'single_formula' }, false],
+      ['unclassified row fails open', {}, false],
+      ['null payload fails open', null, false],
+    ])('%s -> %s', (_label, payload, expected) => {
+      expect(rowIsMultiProductSet({ product_payload: payload })).toBe(expected);
+    });
+
+    test('a payload delivered as JSON text is parsed, not ignored', () => {
+      expect(rowIsMultiProductSet({ product_payload: '{"product_family":"set_or_collection"}' })).toBe(true);
+      expect(rowIsMultiProductSet({ product_payload: 'not json' })).toBe(false);
+    });
+  });
+
+  test('applyMultiProductSetTopCap is pure — the input array is not mutated', () => {
+    const rows = [set('a'), set('b'), set('c'), single('d')];
+    const before = rows.map((r) => r.product_key);
+    const out = applyMultiProductSetTopCap(rows);
+    expect(rows.map((r) => r.product_key)).toEqual(before);
+    expect(out.rows).not.toBe(rows);
+    expect(out.deferred_count).toBe(1);
+  });
+});
+
+describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-gated)', () => {
+  const ENV_KEYS = ['CANONICAL_CATALOG_RANK_V2', 'CANONICAL_CATALOG_FORM_AGREEMENT'];
+  let saved;
+
+  beforeEach(() => {
+    saved = {};
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  async function runQuery(query) {
+    const q = makeMockQuery();
+    await fetchCanonicalChainRows({ query, marketId: 'US', limit: 8, deps: { query: q } });
+    return q.calls[0];
+  }
+
+  /**
+   * The bind VALUES belonging to the form arm alone. Asserting on the whole
+   * params array is wrong: the coverage arm already pushes `%<token>%` for
+   * every significant token, so `%fragrance%` and `%parfum%` can appear there
+   * for reasons that have nothing to do with this arm.
+   */
+  function formArmBinds({ sql, params }) {
+    // The arm spans two lines (form regex AND NOT tool regex).
+    const m = sql.match(/LOWER\(COALESCE\(p\.title, ''\)\) ~ \$(\d+)\s*\n\s*AND LOWER\(COALESCE\(p\.title, ''\)\) !~ \$(\d+)/);
+    if (!m) return null;
+    return { form: params[Number(m[1]) - 1], tool: params[Number(m[2]) - 1] };
+  }
+
+  test('flag off emits no form arm and pushes no binds', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    delete process.env.CANONICAL_CATALOG_FORM_AGREEMENT;
+    const off = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const on = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    expect(on.sql).not.toBe(off.sql);
+    expect(formArmBinds(off)).toBeNull();
+    // Purely additive: one form-pattern bind and one tool-exclusion bind.
+    expect(formArmBinds(on).form).toContain('moisturizer');
+    expect(formArmBinds(on).form).toMatch(/^\\y\(.+\)\\y$/);
+    expect(on.params.length).toBe(off.params.length + 3); // form + tool + surface
+  });
+
+  test('fires only under rank v2 — the legacy arm stays byte-identical', async () => {
+    delete process.env.CANONICAL_CATALOG_RANK_V2;
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const legacy = await runQuery('gentle cleanser for dry skin');
+    expect(legacy.sql).toContain("p.pdp_scope = 'multi_merchant_canonical'              THEN 200");
+    expect(legacy.sql).not.toMatch(/THEN {2,}60 ELSE 0 END/);
+  });
+
+  test('boosts titles carrying the query form noun, at +60 and title-only', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { sql, params } = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    expect(params).toContain('%moisturizer%');
+    // The arm must not consult brand: a brand named "Mask" says nothing about
+    // what the product is.
+    expect(formArmBinds({ sql, params })).not.toBeNull();
+    // The arm must not consult brand.
+    const armText = sql.slice(sql.indexOf('~ $'), sql.indexOf('THEN  60'));
+    expect(armText).not.toContain('p.brand');
+  });
+
+  test('texture words are NOT forms — "gel" must not collect the boost', async () => {
+    // The regression this arm exists to prevent: if "gel" counted as a form,
+    // "Heartleaf Soothing Gel MASK" would be boosted for a gel-moisturizer
+    // query, which is exactly the row being demoted.
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('gel')).toBe(false);
+    for (const texture of ['cream', 'oil', 'balm', 'powder', 'mist', 'stick', 'water', 'milk', 'foam']) {
+      expect({ texture, isForm: __internal.PRODUCT_FORM_TITLE_PATTERNS.has(texture) }).toEqual({
+        texture,
+        isForm: false,
+      });
+    }
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('moisturizer')).toBe(true);
+    // 'mask' was REMOVED: it boosted six TIRTIR "Mask Fit ... Cushion"
+    // foundations, and no corpus query exercises it.
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('mask')).toBe(false);
+  });
+
+  test('a query naming no product form emits no arm (monotone: never a penalty)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const withForm = await runQuery('hydrating moisturizer');
+    const withoutForm = await runQuery('hydrating glow radiance');
+    expect(withForm.params).toContain('%moisturizer%');
+    // No form token in the query -> only the recall_doc arm scores 60, and the
+    // query carries one fewer bind than the form-bearing one.
+    expect(withoutForm.sql.match(/THEN {2}60 ELSE 0 END/g) || []).toHaveLength(1);
+    expect(withForm.sql.match(/THEN {2}60 ELSE 0 END/g) || []).toHaveLength(2);
+  });
+
+  test('"fragrance" maps to the TITLE vocabulary, never to itself', async () => {
+    // Prod regression 2026-08-07: real perfumes are titled "Eau de Parfum";
+    // the titles literally containing "fragrance" are body mists. Boosting the
+    // query word itself would promote the mists this arm must leave alone.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('woody fragrance under $80'));
+    expect(binds.form).toBe('\\y(parfum|cologne)\\y');
+    // The query word itself must never be a title pattern here.
+    expect(binds.form).not.toContain('fragrance');
+  });
+
+  test('title patterns are deduped when two query tokens share one', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('perfume parfum cologne'));
+    const alts = binds.form.replace(/^\\y\(|\)\\y$/g, '').split('|');
+    expect(new Set(alts).size).toBe(alts.length);
+  });
+
+  test('multiple form nouns in one query all contribute (OR, not AND)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('lipstick and mascara'));
+    expect(binds.form).toContain('lipstick');
+    expect(binds.form).toContain('mascara');
+    expect(binds.form).toContain('|');
+  });
+
+  test('category-bucket mode stays bind-consistent (the 08P01 trap this file warns about)', async () => {
+    // The recall_doc arm had to be suppressed under a category prefix because
+    // its binds live in the text WHERE branch, which category mode discards.
+    // The form arm is different — it lives in the RANK expression, which is
+    // emitted on both branches — so its binds are always referenced. Asserted
+    // rather than assumed, because getting this wrong fails every category
+    // query in prod, not in CI.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const q = makeMockQuery();
+    await fetchCanonicalChainRows({
+      query: 'red lipstick',
+      categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
+      marketId: 'US',
+      limit: 8,
+      deps: { query: q },
+    });
+    const { sql, params } = q.calls[0];
+    const maxPlaceholder = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    expect({ maxPlaceholder, supplied: params.length }).toEqual({
+      maxPlaceholder,
+      supplied: maxPlaceholder,
+    });
+    // ...and the form arm really is present on the category branch.
+    expect(params.some((p) => String(p).includes('lipstick'))).toBe(true);
+  });
+
+  // --- regressions found in adversarial review of the first cut ----------
+
+  test('form matching is word-bounded: "damask" is not a mask, "perfumed" is not a perfume', async () => {
+    // Unanchored LIKE '%mask%' matched "DaMASK Rose Hydrating Toner" (a toner)
+    // and '%perfume%' matched "PERFUMEd Body Lotion". Invisible to the
+    // acceptance rubric, whose own regexes are already \b-bounded — so the
+    // harness could never have falsified it.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const perfumeRe = new RegExp(
+      formArmBinds(await runQuery('vanilla perfume')).form.replace(/\\y/g, '\\b'),
+    );
+    expect(perfumeRe.test('perfumed body lotion')).toBe(false);
+    expect(perfumeRe.test('tobacco vanille eau de parfum')).toBe(true);
+    // 'perfume' is not a title pattern at all now — the titles that say
+    // "Perfume" are a body-cream line and a reed diffuser.
+    expect(perfumeRe.test('perfume nourishing body cream pure')).toBe(false);
+  });
+
+  test('"spf" is not a sunscreen title pattern — it is stamped across complexion products', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { form } = formArmBinds(await runQuery('sunscreen for oily skin'));
+    expect(form).toContain('sunscreen');
+    // Would have boosted "Tinted Moisturizer SPF 30" and "Foundation SPF 15".
+    expect(form).not.toMatch(/\|spf\||\(spf\|/);
+    const re = new RegExp(form.replace(/\\y/g, '\\b'));
+    expect(re.test('laura mercier tinted moisturizer spf 30')).toBe(false);
+    expect(re.test('airbrush flawless foundation spf 15')).toBe(false);
+    expect(re.test('unseen sunscreen spf 40')).toBe(true);
+  });
+
+  test('applicators never collect the form boost', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { tool } = formArmBinds(await runQuery('full coverage foundation'));
+    const re = new RegExp(tool.replace(/\\y/g, '\\b'));
+    for (const t of [
+      'foundation brush 01',
+      'cushion puff applicator',
+      'arocell face mask silicone brush skin care tools moisturizer applicator',
+    ]) {
+      expect({ t, excluded: re.test(t) }).toEqual({ t, excluded: true });
+    }
+    expect(re.test('liquid touch weightless foundation')).toBe(false);
+  });
+
+  test('multi-product sets are excluded from the form boost (#1927 interaction)', async () => {
+    // applyMultiProductSetTopCap can only swap a set with a single of EQUAL
+    // rank_score — it is tie-group scoped. A set titled "Moisturizer Duo"
+    // taking +60 would land in a higher tie group and become undemotable,
+    // reintroducing the head-crowding #1927 shipped to prevent through a
+    // channel that cap cannot see.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { sql } = await runQuery('hydrating moisturizer');
+    const arm = sql.slice(sql.indexOf('~ $'), sql.indexOf('THEN  60'));
+    expect(arm).toContain("IS DISTINCT FROM 'set_or_collection'");
+  });
+
+  test('title vocabulary is not narrower than the rubric for the forms it covers', () => {
+    // Two form vocabularies in one repo will drift. The rubric
+    // (scripts/lib/adr020_recall_relevance.cjs) is authoritative; a title
+    // pattern set narrower than it means real products of the right form are
+    // relatively DEMOTED for lacking a merchandiser keyword.
+    const f = __internal.queryFormTitlePatterns;
+    expect(f(['sunscreen'])).toEqual(expect.arrayContaining(['sun stick', 'sun milk']));
+    expect(f(['moisturizer'])).toEqual(expect.arrayContaining(['lotion', 'gel cream', 'water gel']));
+    expect(f(['serum'])).toEqual(expect.arrayContaining(['ampoule']));
+    expect(f(['concealer'])).toEqual(expect.arrayContaining(['corrector']));
+    // ...but 'spf' stays out: it is stamped across complexion titles.
+    expect(f(['sunscreen'])).not.toContain('spf');
+  });
+
+  test('formAgreementEffectiveFor reports whether the arm FIRED, not the flag', async () => {
+    // A bare flag stamp would read true across the whole lane; this arm is
+    // query-conditional, so the soak could not be sliced to the requests
+    // actually reordered. Also guards the #1933 shape: inert without rank v2.
+    const { formAgreementEffectiveFor } = require('../src/services/canonicalCatalogSearch');
+    const on = { CANONICAL_CATALOG_RANK_V2: 'enabled', CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' };
+    expect(formAgreementEffectiveFor('hydrating moisturizer', on)).toBe(true);
+    expect(formAgreementEffectiveFor('moisturizers', on)).toBe(true);
+    // Query names no form the lexicon covers -> arm cannot fire.
+    expect(formAgreementEffectiveFor('glow radiance', on)).toBe(false);
+    // Chinese queries cannot reach the English lexicon.
+    expect(formAgreementEffectiveFor('红色口红', on)).toBe(false);
+    // Inert without either gate.
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_RANK_V2: 'enabled' })).toBe(false);
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' })).toBe(false);
+  });
+
+  test('form lookup survives punctuation and plurals', () => {
+    const f = __internal.queryFormTitlePatterns;
+    // Each of these yielded NO form before: one comma, or a plural, was enough
+    // to silence the arm on ordinary phrasing.
+    const M = f(['moisturizer']);
+    expect(M).toContain('moisturizer');
+    expect(f(['moisturizer,'])).toEqual(M);
+    expect(f(['moisturizer.'])).toEqual(M);
+    expect(f(['moisturizers'])).toEqual(M);
+    expect(f(['lipsticks'])).toEqual(['lipstick']);
+    expect(f(['glow', 'radiance'])).toEqual([]);
+  });
+
+  test('mainlineLaneConfig parses the flag exactly as src/server.js does', () => {
+    // Regression: this read the flag through this file's {enabled,on,1,true}
+    // set while server.js uses parseBooleanEnv {1,true,yes,y,on}. Since every
+    // sibling flag here is spelled `enabled`, setting the mainline flag to
+    // `enabled` gave a DARK lane in prod and a harness stamping
+    // token_match:true — the instrument defect, inverted and self-certifying.
+    const { parseBooleanEnv } = require('../src/api/gateway/access/invokeAuthEmergencyFallback');
+    for (const v of ['enabled', 'yes', 'y', 'true', '1', 'on', 'off', 'no', '', undefined]) {
+      expect({
+        v,
+        lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: v }).tokenMatch,
+      }).toEqual({ v, lane: parseBooleanEnv(v, false) });
+      expect({
+        v,
+        lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED: v })
+          .sargableTextWhere,
+      }).toEqual({ v, lane: parseBooleanEnv(v, false) });
+    }
+  });
+
+  test('mainlineLaneConfig carries every flag-derived param the mainline passes', () => {
+    // The drift this helper exists to prevent recurred within hours: #1935 gave
+    // the mainline `sargableTextWhere` and the harness kept measuring without
+    // it. That form DROPS three WHERE arms, so it changes the candidate set,
+    // not just the plan. When a new flag-derived param is added to the mainline
+    // call site, add it here and to this list.
+    expect(Object.keys(mainlineLaneConfig({})).sort()).toEqual(
+      ['sargableTextWhere', 'tokenMatch'],
+    );
+  });
+
+  test('binds stay consistent with placeholders (Postgres 08P01 guard)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    for (const q of ['moisturizer', 'lightweight gel moisturizer for acne-prone skin', 'red lipstick']) {
+      const { sql, params } = await runQuery(q);
+      const maxPlaceholder = Math.max(
+        ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+      );
+      expect({ q, maxPlaceholder, supplied: params.length }).toEqual({
+        q,
+        maxPlaceholder,
+        supplied: maxPlaceholder,
+      });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MECHANISM 1: a resolved category prefix must never discard the query text.
+//
+// Measured live on prod 2026-08-20 through the public read tier: "shampoo",
+// "conditioner", "hair mask", "hair care" and "hair oil" all returned ZERO
+// products, and a trailing space did NOT rescue them (unlike the cache-keyed
+// zeros — see mcp-server/test/publicReadSearchZeroResults.test.js). Those
+// queries resolve a category prefix, and a prefix used to REPLACE the
+// query-text predicate outright.
+//
+// The catalog breaks that in two directions, both already measured in
+// src/services/beautyTaxonomy.js:14-18 —
+//   sparse/mis-aimed bucket: "shampoo" -> BROWSE 0 rows, TEXT 48/48 hits.
+//   over-broad bucket:       "hair care" -> the PARENT prefix `beauty/`, where
+//                            categoryScore is a flat +90 on every row.
+//
+// Both sides of each contract are driven, and each test is written so the
+// kill-switch (CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off) restores the
+// old SQL and fails it — a fix that no-ops cannot pass.
+describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+  });
+
+  // Same call as browse() but WITHOUT forcing the flag on, so the default-state
+  // test can observe whatever the env actually says.
+  async function browseRaw() {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+    });
+    return query.calls[0];
+  }
+
+  // The union SHIPS DARK, so every test of its behaviour must switch it on
+  // explicitly. Tests of the default state set the env themselves.
+  async function browse(overrides = {}) {
+    if (process.env[UNION_FLAG] === undefined) process.env[UNION_FLAG] = 'on';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+      ...overrides,
+    });
+    return query.calls[0];
+  }
+
+  test('browse mode recalls the bucket OR the query text — a sparse bucket cannot hide text matches', async () => {
+    const { sql } = await browse();
+    // The two arms are OR'd, so a row that matches the title but sits OUTSIDE
+    // the (empty / mis-aimed) bucket is still recalled. This is the assertion
+    // that "shampoo -> BROWSE 0 rows" can no longer produce a zero page.
+    expect(sql).toMatch(
+      /WHERE \(\(p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\)\)\n\s+OR \(/,
+    );
+    // Title AND brand arms adjacent — this pair exists ONLY in textWhereClause,
+    // so it cannot be satisfied by the rank-v2 CASE arm (which is built in both
+    // modes and would make a bare /title LIKE \$2/ assertion vacuous).
+    expect(sql).toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+  });
+
+  test('the category arm SURVIVES the union — browse recall is widened, never narrowed', async () => {
+    const { sql, params } = await browse();
+    // A row under the prefix that matches no text arm must still be recalled,
+    // exactly as before. The union is additive by construction; if the category
+    // predicate were replaced rather than OR'd this would be a recall
+    // REGRESSION dressed as a fix.
+    expect(sql).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+    expect(params[4]).toBe('beauty/haircare');
+    expect(params[5]).toBe('beauty/haircare/%');
+    expect(sql).toMatch(/THEN 90 ELSE 0 END/); // categoryScore still applied
+  });
+
+  test('text matches outrank EVERY arm a non-matching bucket row can accumulate', async () => {
+    const { sql } = await browse();
+    // The over-broad-bucket half of the defect: with `beauty/` as the prefix the WHERE admits everything,
+    // so only the ORDER BY can keep the shopper's rows inside the candidate cut.
+    //
+    // THE THRESHOLD IS THE SUM, NOT THE LARGEST ARM. A pure-bucket row collects provenance AND
+    // categoryScore together — under rank v1 that is 200 + 90 = 290, not 200. Asserting `boost > 200`
+    // passed for any weight in 201..289, every one of which silently reverts this fix. Parse both arms out
+    // of the emitted SQL and compare against their sum, so the assertion tracks the constants instead of
+    // restating one of them.
+    const boost = sql.match(
+      /LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2\)[\s\S]{0,600}?THEN (\d+) ELSE 0 END/,
+    );
+    expect(boost).not.toBeNull();
+    const provenance = sql.match(/pdp_scope = 'multi_merchant_canonical'\s+THEN (\d+) ELSE 0 END/);
+    const category = sql.match(/p\.category_path LIKE \$6\) THEN (\d+) ELSE 0 END/);
+    expect(provenance).not.toBeNull();
+    expect(category).not.toBeNull();
+    expect(Number(boost[1])).toBeGreaterThan(Number(provenance[1]) + Number(category[1]));
+  });
+
+  test('multi-product sets are excluded from the boost — the top cap can only swap EQUAL ranks', async () => {
+    const { sql } = await browse();
+    // applyMultiProductSetTopCap is tie-group scoped by construction, so an arm that lifts a set into a
+    // strictly higher tie group makes it undemotable and re-opens #1927. The +60 form arm carries this
+    // exclusion for exactly this reason; an arm several times larger needs it more, not less.
+    const boostArm = sql.match(
+      /CASE WHEN \(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2[\s\S]{0,600}?THEN \d+ ELSE 0 END/,
+    );
+    expect(boostArm).not.toBeNull();
+    expect(boostArm[0]).toMatch(/IS DISTINCT FROM 'set_or_collection'/);
+  });
+
+  test('the boost is browse-only — in text mode every surviving row already matched', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'shampoo', deps: { query } });
+    // Keyed on the arm's SHAPE, never on its weight. A negative assertion pinned to a magic literal goes
+    // vacuous the moment the literal moves — which is how re-weighting and deleting this gate could have
+    // shipped together, applying the boost to every text-mode query, with the whole suite green.
+    expect(query.calls[0].sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
+  });
+
+  test('MUTANT CHECK: the kill-switch restores the pre-union SQL exactly', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const { sql } = await browse();
+    // Old behaviour: the category branch REPLACES the text predicate, keeping
+    // the $2 bind alive only through the `AND $2::text IS NOT NULL` no-op.
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+    expect(sql).not.toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+    expect(sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
+  });
+
+  test('the union ships DARK — default off, and only explicit on-values enable it', async () => {
+    // Inverted from the first cut of this PR, deliberately. The union fixes a
+    // defect, so flag-off is the broken behaviour and default-on was the
+    // instinct — but the plan cost is unmeasured and the caller-gate
+    // interaction may make it a no-op, so it merges inert. See the flag's
+    // comment for the two measurements required before flipping it.
+    delete process.env[UNION_FLAG];
+    const { sql } = await browseRaw();
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+
+    for (const value of ['', '   ', 'off', '0', 'false', 'no', 'n', 'disabled', 'never', 'nonsense']) {
+      process.env[UNION_FLAG] = value;
+      expect((await browseRaw()).sql).toMatch(/AND \$2::text IS NOT NULL/);
+    }
+    // Generous on the ON side too: this gets flipped by hand under time pressure.
+    for (const value of ['on', 'ON', ' On ', '1', 'true', 'yes', 'y', 'enabled']) {
+      process.env[UNION_FLAG] = value;
+      expect((await browseRaw()).sql).not.toMatch(/AND \$2::text IS NOT NULL/);
+    }
+  });
+
+  test('binds stay integral on both sides of the switch (08P01 guard)', async () => {
+    for (const value of [undefined, 'off']) {
+      if (value === undefined) delete process.env[UNION_FLAG];
+      else process.env[UNION_FLAG] = value;
+      const { sql, params } = await browse({ marketId: 'US', tokenMatch: true, verticalSearch: true });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An EMPTY rank arm must contribute ZERO BYTES.
+//
+// The file already documents this technique for recallDocArm — carry the leading newline+indent inside
+// the fragment, so that with the feature off the interpolation adds nothing and the generated SQL is
+// byte-identical to pre-feature output. The union's boost arm originally interpolated on its own line and
+// silently added 11 bytes to EVERY non-browse and every kill-switched statement, falsifying the
+// byte-identity claim its own comment made.
+//
+// Nothing caught that: this repo's "byte-identical" tests compare two calls of the SAME build against each
+// other, never against main, so a constant offset present in both sides is invisible to them. This test
+// pins the shape of the rank block's tail instead, which is where such an offset lands.
+describe('canonicalCatalogSearch empty rank arms contribute zero bytes', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  afterEach(() => { delete process.env[UNION_FLAG]; });
+
+  // categoryScore, verticalScore and tokenScore are all empty on this call, and each is interpolated on
+  // its own line by long-standing code — so exactly THREE indent-only lines are expected between the
+  // provenance arm and the closing paren. A fourth means a newly added arm is padding every statement
+  // that does not use it.
+  const TAIL = /THEN 200 ELSE 0 END\n( {10}\n){3} {8}\) AS rank_score/;
+
+  test('text mode: the boost arm adds no bytes when it is not built', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'shampoo', deps: { query } });
+    expect(query.calls[0].sql).toMatch(TAIL);
+  });
+
+  test('kill-switched browse mode: likewise', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+    });
+    // categoryScore IS built here, so the tail has two indent-only lines, not three.
+    expect(query.calls[0].sql).toMatch(/THEN 90 ELSE 0 END\n( {10}\n){2} {8}\) AS rank_score/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The union's text arm is NARROWER than the plain clause, for a measured reason.
+//
+// The union shipped taking the plain clause. Flipped on in prod 2026-08-20, cold prefix-resolving
+// queries that return rows went from a 7.0-7.5s baseline to 9.3s / 9.5s / 14.2s / 18.6s. This file
+// already measured why: one `OR EXISTS` disjunct forces the whole disjunction off the bitmap path
+// (6.9s vs 3.2s for the same rows). An 18s query holds a pool connection for 18s, which is the shape
+// that has wedged this service before.
+//
+// Both directions are driven. Removing an arm from the union must not remove it from TEXT recall, and
+// the arms must not creep back into the union.
+describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped one', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  const DOC_FLAG = 'CANONICAL_CATALOG_RECALL_DOC_MATCH';
+
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+    delete process.env[DOC_FLAG];
+  });
+
+  async function capture(args) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return query.calls[0];
+  }
+
+  // Everything from `WHERE (` up to the eligibility guard that follows it.
+  function whereOf(sql) {
+    const start = sql.indexOf('WHERE (');
+    return sql.slice(start, sql.indexOf('\n        AND ', start));
+  }
+
+  const BROWSE = {
+    query: 'hair mask',
+    categoryPathPrefix: 'beauty/haircare/',
+    categoryMode: 'category_browse',
+    tokenMatch: true,
+    verticalSearch: true,
+    sargableTextWhere: true,
+    marketId: 'US',
+  };
+
+  test('the catalog_skus OR-EXISTS arms are NOT in the union, even with verticalSearch on', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const { sql } = await capture(BROWSE);
+    const where = whereOf(sql);
+    expect(where).not.toMatch(/OR EXISTS/);
+    expect(where).not.toMatch(/catalog_skus/);
+    // The cross-table and leading-wildcard arms go too, for the same plan reason.
+    expect(where).not.toMatch(/m\.merchant_name/);
+    expect(where).not.toMatch(/p\.source_product_id/);
+  });
+
+  test('what the union KEEPS is exactly what the measured win runs through', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const where = whereOf((await capture(BROWSE)).sql);
+    // toner and shampoo recovered as TITLE matches; brand/token/recall_doc carry the rest.
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/\) >= 2\)/);          // token-overlap arm
+    expect(where).toMatch(/p\.recall_doc LIKE ANY/); // recall_doc arm
+    // And the category arm is of course still there — the union is an OR, not a replacement.
+    expect(where).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+  });
+
+  test('TEXT recall is untouched — the EXISTS arms are dropped from the UNION, not from the lane', async () => {
+    // The inverse assertion. Without it, "narrow the union" and "delete vertical recall everywhere" are
+    // indistinguishable to the suite.
+    process.env[UNION_FLAG] = 'on';
+    const { sql } = await capture({ query: 'niacinamide serum', tokenMatch: true, verticalSearch: true });
+    const where = whereOf(sql);
+    expect(where).toMatch(/OR EXISTS/);
+    expect(where).toMatch(/catalog_skus/);
+    expect(where).toMatch(/m\.merchant_name/);
+    expect(where).toMatch(/p\.source_product_id/);
+  });
+
+  test('the union stays bind-integral with every expensive option on (08P01 guard)', async () => {
+    // The dropped fragments reference $1/$2 only and push no binds of their own, so removing them cannot
+    // orphan a param — but that is a property of the current code, not a law, so it is pinned.
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const { sql, params } = await capture({ ...BROWSE, brandFilter: 'laneige', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    }
+  });
+
+  // THE DESIGN CLAIM, PINNED. Every other assertion in this block runs in ONE flag state
+  // (sargableTextWhere on, recall_doc on) — and that is exactly the state in which
+  // `citableSargableLane` is true and `textWhereClause` HAPPENS to already be the narrow form. So a
+  // refactor swapping `unionTextWhereClause` for `textWhereClause` looks harmless there while
+  // reintroducing the OR-EXISTS plan — the measured 18.6s shape — in the other flag states. Review
+  // caught exactly that: two mutants survived the rest of this block for this reason.
+  //
+  // The union's text arm must depend on NEITHER PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED nor
+  // the recall_doc flag. Byte-identity across the sargable axis states that directly.
+  test('the union arm is independent of sargableTextWhere — byte-identical either way', async () => {
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const on = whereOf((await capture({ ...BROWSE, sargableTextWhere: true })).sql);
+      const off = whereOf((await capture({ ...BROWSE, sargableTextWhere: false })).sql);
+      expect(on).toBe(off);
+    }
+  });
+
+  test('no flag state can put an OR-EXISTS back into the union, or narrow its token arm', async () => {
+    for (const doc of ['enabled', undefined]) {
+      for (const sargableTextWhere of [true, false]) {
+        process.env[UNION_FLAG] = 'on';
+        if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+        const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
+        const label = `doc=${doc || 'off'} sargable=${sargableTextWhere}`;
+        expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
+        // The token arm must be the PLAIN form. plainTokenWhere opens `OR (((CASE WHEN`; the sargable
+        // variant opens `OR ((LOWER(...) LIKE $n OR ...) AND ((` — a strictly narrower, recall-reducing
+        // conjunct that the union must never take. Both forms contain `) >= 2)`, so the pre-existing
+        // token assertion cannot tell them apart.
+        expect({ label, m: /OR \(\(\(CASE WHEN/.test(where) }).toEqual({ label, m: true });
+      }
+    }
+  });
+
+  test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const { sql } = await capture(BROWSE);
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+    // Browse-with-prefix has never carried the text arms at all in this mode.
+    expect(whereOf(sql)).not.toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The union's ingredient carve-out: restored at 1 token, dropped at 2+.
+//
+// `plainTokenWhere` needs 2+ significant tokens, so a BARE ingredient query collapses the union arm to
+// title/brand alone — and bare ingredient queries are exactly what reaches here with verticalSearch on
+// (`niacinamide` resolves beauty/skincare/treat/ AND sets it). The sibling citableSargableLane refuses
+// the identical narrowing for this reason: bare "glycerin" measured 22/25 rows lost. recall_doc does not
+// cover the gap — migration 058 projects external-seed text only.
+//
+// Both directions are driven. Restoring the arm unconditionally would put the 18.6s shape back; never
+// restoring it loses the rows.
+describe('canonicalCatalogSearch union ingredient carve-out', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  beforeEach(() => { process.env[UNION_FLAG] = 'on'; });
+  afterEach(() => { delete process.env[UNION_FLAG]; });
+
+  async function unionWhere(overrides) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      categoryPathPrefix: 'beauty/skincare/treat/',
+      categoryMode: 'category_browse',
+      tokenMatch: true,
+      verticalSearch: true,
+      sargableTextWhere: true,
+      deps: { query },
+      ...overrides,
+    });
+    const { sql, params } = query.calls[0];
+    const start = sql.indexOf('WHERE (');
+    return { where: sql.slice(start, sql.indexOf('\n        AND ', start)), sql, params };
+  }
+
+  test('a BARE ingredient query keeps the ingredient_ids arm — nothing else could recall it', async () => {
+    const { where } = await unionWhere({ query: 'niacinamide' });
+    expect(where).not.toMatch(/\) >= 2\)/);          // token arm genuinely absent (the precondition)
+    expect(where).toMatch(/ingredient_ids/);          // so the carve-out must fire
+    // The OTHER sku arm stays out: sku codes and variant labels are not ingredient names, so it is all
+    // cost and none of the measured recall.
+    expect(where).not.toMatch(/sw\.sku/);
+  });
+
+  test('a MULTI-token query drops it again — the fast path is the default', async () => {
+    const { where } = await unionWhere({ query: 'salicylic acid toner' });
+    expect(where).toMatch(/\) >= 2\)/);               // token arm present
+    expect(where).not.toMatch(/ingredient_ids/);      // so the carve-out must NOT fire
+    expect(where).not.toMatch(/OR EXISTS/);
+  });
+
+  test('without verticalSearch there is no arm to restore, at any token count', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { where } = await unionWhere({ query, verticalSearch: false });
+      expect(where).not.toMatch(/OR EXISTS/);
+      expect(where).not.toMatch(/ingredient_ids/);
+    }
+  });
+
+  test('the carve-out is bind-integral (08P01), single- and multi-token', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { sql, params } = await unionWhere({ query, marketId: 'US', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect({ query, maxBind }).toEqual({ query, maxBind: params.length });
     }
   });
 });

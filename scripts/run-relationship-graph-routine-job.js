@@ -6,6 +6,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { formatRoutineFailure } = require('./lib/format-routine-failure');
+
 const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_ROUTINE';
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 200;
@@ -239,6 +241,11 @@ function buildRoutineSteps(options) {
     pushArg(args, 'affected-products-file', options.affectedProductsFile);
     pushArg(args, 'external-product-ids-file', options.externalProductIdsFile);
     pushArg(args, 'sig-ids-file', options.sigIdsFile);
+    // --allow-empty-build already declares that the manifest may yield nothing
+    // (a quiet day); the sig refresh reads the same manifest and needs the same
+    // tolerance, or the routine dies at its first step on exactly those days
+    // (production 2026-08-16T10:37Z: missing_pba_sig_refresh_filter).
+    if (!options.requireAnchors) args.push('--allow-empty-filter');
     if (options.applyBuild) {
       args.push('--apply', '--confirm', 'REFRESH_PBA_SIG_IDS');
     }
@@ -861,12 +868,12 @@ async function main(argv = process.argv.slice(2)) {
 if (require.main === module) {
   main()
     .catch((err) => {
-      const summary = err && err.summary;
-      if (summary) {
-        process.stderr.write(`${err.message}\nsummary: ${summary.summary_path || summary.out_dir}\n`);
-      } else {
-        process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-      }
+      // This process is spawned by the sync routine, which captures only our
+      // stderr — so the inner step's exit code and stderr have to be printed
+      // here or they die with the container along with the /tmp summary. Before
+      // this, a cron failure reported "failed at step: pba_sig_refresh" and
+      // nothing about why that step exited non-zero.
+      process.stderr.write(`${formatRoutineFailure(err)}\n`);
       process.exitCode = 1;
     })
     .finally(() => {

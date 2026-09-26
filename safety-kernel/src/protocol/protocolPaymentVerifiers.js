@@ -257,3 +257,49 @@ function isPlainObject(v) {
   const p = Object.getPrototypeOf(v);
   return p === Object.prototype || p === null;
 }
+
+/**
+ * Compose the per-method verifier map the payment authorization verifier is built over.
+ *
+ * EXTRACTED SO IT CAN BE TESTED. This logic used to be an inline callback in src/server.js,
+ * where nothing could reach it: the registry's own tests inject a FAKE build callback, so the
+ * real composition never ran in CI. That is exactly how an unconditional
+ * createSignedGrantVerifier({ issuers: [] }) shipped — buildIssuerRegistry hard-throws on an
+ * empty array, and once ap2-only rows became live trust a config with no signed_grant issuer
+ * made the throw land before the AP2 flag was read, refusing EVERY payment on EVERY method.
+ *
+ * THE RULE: a method with no usable issuer is ABSENT from the map. Absence is the kernel's
+ * clean "no verifier for this method" refusal, scoped to that one method. A build-time throw is
+ * not — it takes the sibling methods down with it.
+ *
+ * @param {object}   o
+ * @param {Array}    o.signedGrantIssuers  issuers trusted for signed_grant (acp_delegated_token + ucp_handler)
+ * @param {Array}    o.ap2MandateIssuers   issuers EXPLICITLY trusted for ap2_mandate — never implied by signed_grant
+ * @param {object|null} o.ap2Binding       the checkout-binding service; null/absent when the AP2 flag is off
+ * @param {string}   o.expectedVct         optional credential-type pin for AP2
+ * @returns {Record<string, Function>} method -> verifier; keys are omitted, never null
+ */
+export function buildPaymentMethodVerifiers({
+  signedGrantIssuers = [],
+  ap2MandateIssuers = [],
+  ap2Binding = null,
+  expectedVct = '',
+} = {}) {
+  const methods = {};
+  if (Array.isArray(signedGrantIssuers) && signedGrantIssuers.length) {
+    const signedGrantVerifier = createSignedGrantVerifier({ issuers: signedGrantIssuers });
+    methods.acp_delegated_token = signedGrantVerifier;
+    methods.ucp_handler = signedGrantVerifier;
+  }
+  // AP2 needs BOTH the flag (=> binding service) AND at least one issuer trusted for
+  // ap2_mandate. Registry rows opt in via methods; static env entries may too, but AP2 trust is
+  // never implicit — a signed_grant-only issuer cannot mint mandates.
+  if (ap2Binding && Array.isArray(ap2MandateIssuers) && ap2MandateIssuers.length) {
+    methods.ap2_mandate = createAp2MandateVerifier({
+      issuers: ap2MandateIssuers,
+      verifyCheckoutHash: ap2Binding.createCheckoutHashVerifier(),
+      ...(expectedVct ? { expectedVct } : {}),
+    });
+  }
+  return methods;
+}

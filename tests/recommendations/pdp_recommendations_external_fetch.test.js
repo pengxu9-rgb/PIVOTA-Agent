@@ -4271,6 +4271,66 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
   });
 
+  // ADR-009: seed supply has NO products_cache row — measured on prod
+  // 2026-08-17, 821 rows and ZERO under an observed seller or the retired
+  // sentinel. The guard on these two lookups used to name only the sentinel, so
+  // the re-key onto merch_obs_ sellers silently re-enabled them. These two
+  // tests are a pair on purpose: the CONTROL proves the mock does fire, so the
+  // "no query" assertion cannot pass merely because nothing would have matched.
+  test('CONTROL: a connected merchant DOES query products_cache', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    const queryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    await _internals.fetchInternalCandidates({
+      merchantId: 'merch_live_acme',
+      categoryHint: 'Serum',
+      limit: 6,
+    });
+    const cacheCalls = queryMock.mock.calls.filter(([sql]) =>
+      String(sql).includes('FROM products_cache'),
+    );
+    expect(cacheCalls.length).toBeGreaterThan(0);
+  });
+
+  test('an observed seller skips the products_cache lookups entirely', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    const queryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    await _internals.fetchInternalCandidates({
+      merchantId: 'merch_obs_022b65d47a58b87a',
+      categoryHint: 'Serum',
+      limit: 6,
+    });
+    const cacheCalls = queryMock.mock.calls.filter(([sql]) =>
+      String(sql).includes('FROM products_cache'),
+    );
+    expect(cacheCalls).toHaveLength(0);
+  });
+
+  test('PRESERVATION: the retired sentinel still skips them', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    const queryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    await _internals.fetchInternalCandidates({
+      merchantId: 'external_seed',
+      categoryHint: 'Serum',
+      limit: 6,
+    });
+    const cacheCalls = queryMock.mock.calls.filter(([sql]) =>
+      String(sql).includes('FROM products_cache'),
+    );
+    expect(cacheCalls).toHaveLength(0);
+  });
+
   test('uses internal category-focused candidates before recent merchant rows', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

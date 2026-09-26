@@ -28,10 +28,26 @@
  *   3. content_key equality.
  *   4. Normalized brand+title fallback.
  *
+ * LANE CONFIGURATION. fetchCanonicalChainRows takes several behaviour-changing
+ * optional params that default to OFF, and this harness must mirror what the
+ * mainline passes or it measures a lane nobody serves. It did exactly that
+ * until 2026-08-07: `tokenMatch` was never passed, so the +25/token rank arm
+ * (and its WHERE arm) stayed dark, while prod runs with
+ * PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED=true. Catalog-lane precision@8 over
+ * the in-domain corpus was 59.8% measured that way and 75.0% measured as prod
+ * serves it.
+ *
+ * The structural fix is that this harness no longer RESTATES the lane params:
+ * it spreads `mainlineLaneConfig()` from canonicalCatalogSearch.js, so a new
+ * flag reaches this harness by construction rather than by someone remembering.
+ * The effective config is recorded as `token_match` / `form_agreement` in the
+ * report; a report without them cannot be compared to another.
+ *
  * Usage:
  *   node scripts/audit-recall-lane-parity.cjs \
  *     [--corpus /path/to/corpus.jsonl] \
  *     [--limit 8] [--max-queries 50] [--market US] \
+ *     [--no-token-match] \
  *     [--out reports/recall_lane_parity.json]
  *
  * Corpus format: JSONL, one object per line with a `query` string field
@@ -41,8 +57,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_CORPUS_PATH =
-  '/Users/pengchydan/dev/pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl';
+/**
+ * The in-repo, in-domain corpus. This default used to point at an absolute path
+ * in a sibling checkout (pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl) —
+ * a GENERIC multi-category corpus covering apparel, footwear, electronics and
+ * housewares, run against what is effectively a beauty catalog. Queries like
+ * "running shoes" have no correct answer in this data, so the seed lane's
+ * substring hits on them ("Ombré *Leather* Eau de Parfum" for "black leather
+ * sneakers") were recorded as recall gaps and became Phase 1 acceptance
+ * targets. Keep the default in-repo and in-domain.
+ */
+const DEFAULT_CORPUS_PATH = path.join(__dirname, '..', 'tests', 'fixtures', 'adr020_phase1_recall_corpus.jsonl');
 const DEFAULT_LIMIT = 8;
 const DEFAULT_MAX_QUERIES = 50;
 const EXTERNAL_SEED_PRODUCT_KEY_PREFIX = 'prod::external_seed::external_seed::';
@@ -443,6 +468,15 @@ async function main() {
   ).toUpperCase();
   process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = market;
 
+  // Lane config is READ FROM THE SHARED SOURCE, never restated here. Listing
+  // params in this file is what let the harness drift from the mainline for
+  // months (see the LANE CONFIGURATION note above); taking them from
+  // mainlineLaneConfig means a new flag reaches this harness by construction.
+  // --no-token-match forces the pre-#1933 shape for A/B comparison.
+  const { mainlineLaneConfig } = require('../src/services/canonicalCatalogSearch');
+  const laneConfig = mainlineLaneConfig();
+  if (hasFlag('no-token-match')) laneConfig.tokenMatch = false;
+
   // routes.js boots a large module graph; keep require-time side effects
   // quiet (mirrors tests/aurora_bff_product_intel.test.js env stubs).
   if (process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED == null) {
@@ -470,7 +504,7 @@ async function main() {
   if (typeof searchLocalExternalSeedProducts !== 'function') {
     throw new Error('routes.js __internal.searchLocalExternalSeedProducts is unavailable');
   }
-  const { fetchCanonicalChainRows } = require('../src/services/canonicalCatalogSearch');
+  const { fetchCanonicalChainRows, isFormAgreementEnabled } = require('../src/services/canonicalCatalogSearch');
   const dbQuery = (sql, params) => db.query(sql, params);
 
   console.log(
@@ -504,6 +538,8 @@ async function main() {
           query: entry.query,
           marketId: market,
           limit,
+          // Spread, never enumerated — see laneConfig above.
+          ...laneConfig,
           deps: { query: dbQuery },
         });
       } catch (error) {
@@ -560,6 +596,10 @@ async function main() {
     market,
     limit,
     max_queries: maxQueries,
+    // Recorded because it silently changes which rank arms fire; a report
+    // without it cannot be compared to another.
+    token_match: laneConfig.tokenMatch,
+    form_agreement: isFormAgreementEnabled(),
     aggregate,
     per_query: perQuery,
   };

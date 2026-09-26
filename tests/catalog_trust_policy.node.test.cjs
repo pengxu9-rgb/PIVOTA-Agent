@@ -758,7 +758,17 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // (NON_CANONICAL_DUPLICATE), which moves 121 measured prod rows
   // 'public' -> 'shadow'. This repo is the SECOND half of that pair —
   // pivota-backend#1649 is the first. Until both deploy, the twins disagree.
-  assert.equal(POLICY_VERSION, 'c1.v0.7');
+  //
+  // c1.v0.7 -> c1.v0.8 on 2026-08-17 (ADR-009): both seed-lane predicates here
+  // stopped naming the retired sentinel seller. deriveVerificationSource tested
+  // it and so labelled scraped rows 'shopify_sync'; isExternalSeedContent was a
+  // hand-rolled trio missing the source_system and seed-id arms, so a mirrored
+  // row on its UPSTREAM's platform (the minted lane) skipped the
+  // identity-coverage gate. Measured on prod: the widened arms catch ZERO rows
+  // the old trio did not, so the serving blast radius is 0 — the bump is for
+  // the DERIVATION change the twin has to agree with. This repo is again the
+  // SECOND half: pivota-backend adr009/trust-policy-lane-parity merges FIRST.
+  assert.equal(POLICY_VERSION, 'c1.v0.8');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
@@ -1056,4 +1066,111 @@ test('NON_CANONICAL_DUPLICATE applies to external_seed supply', () => {
   const trust = callExternalSeed({ row_is_elected_canonical: false });
   assert.equal(trust.serving_decision, 'shadow');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+// ---------------------------------------------------------------------------
+// ADR-009 — trust classification follows the seed LANE, not the retired seller.
+//
+// Three readers here asked about the sentinel merchant or retyped the
+// observed-seller prefix. The A9-4 re-key moved scraped supply onto per-brand
+// observed sellers, so `merchant_id === 'external_seed'` is now permanently
+// false for every catalog row and `deriveVerificationSource` began reporting
+// SCRAPED rows as merchant syncs — it falls through to the platform arms.
+//
+// NOTE for whoever edits these: `verification_source` names whichever freshness
+// SIGNAL is newest, not the row's class — so each fixture makes the product's
+// own sync the most recent, or `identity_resolver` wins and the test measures
+// the picker instead of the classifier. That mistake cost a red run here.
+// ---------------------------------------------------------------------------
+
+test('verification_source: a re-keyed mirror row is still a SCRAPE, not a sync', () => {
+  // The row mirrors a shopify storefront, so the platform arm below would claim
+  // 'shopify_sync' — which is exactly what shipped after the re-key.
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_obs_7f3a2b1c9d4e5f60',
+      platform: 'shopify',
+      source_system: 'external_product_seeds_mirror_v1',
+      last_seen_in_sync_at: NOW,
+    }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('verification_source: the MINTED lane is a scrape too (no ext_ id, shopify platform)', () => {
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_obs_7f3a2b1c9d4e5f60',
+      platform: 'shopify',
+      source_system: 'catalog_enrichment_agent_v1',
+      source_product_id: 'ilia-the-spf-and-go-makeup-edit',
+      last_seen_in_sync_at: NOW,
+    }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('PRESERVATION: the retired sentinel lump is still a scrape', () => {
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds',
+      last_seen_in_sync_at: NOW,
+    }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('CONTROL: a genuinely connected shopify merchant still reports a sync', () => {
+  // Without this, every assertion above would pass on a function that returned
+  // 'external_seed_scrape' unconditionally.
+  const trust = call({
+    product: activeMerchantProduct({ last_seen_in_sync_at: NOW }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'shopify_sync');
+});
+
+test('seed content is recognised by its LANE even under a seller that is neither the sentinel nor merch_obs_', () => {
+  // The arm the hand-rolled trio lacked. 54 such rows exist on prod: seed-routed
+  // supply whose merchant is neither the retired lump nor an observed seller.
+  // Classified by merchant alone they read as FIRST-PARTY and skip the
+  // identity-coverage gate, i.e. scraped content would serve as brand-official.
+  // (Uses a real such seller from that cohort. NOT the retired rig id, which
+  // short-circuits on TEST_MERCHANT_EXCLUDED before this gate is reached.)
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_924da2be8503e5f7',
+      // platform is the UPSTREAM's, not 'external_seed' — that is the whole
+      // point. An earlier version of this fixture used platform:'external_seed',
+      // which the old hand-rolled trio already matched, so it never exercised
+      // the arms this test claims to cover and the narrowing mutant survived.
+      platform: 'shopify',
+      source_system: 'external_product_seeds_mirror_v1',
+    }),
+    identity: approvedIdentity({ identity_confidence: null }),
+  });
+  assert.ok(
+    trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL),
+    `expected the coverage gate to apply; got ${JSON.stringify(trust.serving_reason_codes)}`,
+  );
+  assert.ok(
+    !trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY),
+    'scraped supply must not be exempted as first-party',
+  );
+});
+
+test('CONTROL: a genuinely first-party merchant IS exempt from the coverage gate', () => {
+  // Proves the assertion above discriminates rather than always holding.
+  const trust = call({
+    product: activeMerchantProduct(),
+    identity: approvedIdentity({ identity_confidence: null }),
+  });
+  assert.ok(
+    trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY),
+    `expected first-party exemption; got ${JSON.stringify(trust.serving_reason_codes)}`,
+  );
 });

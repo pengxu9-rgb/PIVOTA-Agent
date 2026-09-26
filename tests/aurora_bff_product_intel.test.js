@@ -223,7 +223,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -333,7 +333,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -673,6 +673,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'shopping-agent';
+    // Exercise the upstream 504 contract, not the production deadline race on CI.
+    process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS = '12000';
+    process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS = '8000';
     jest.resetModules();
 
     nock('https://probe.example')
@@ -682,7 +685,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         '<html><body><h1>Lab Series All-in-One Defense Lotion</h1><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol.</p></body></html>',
         { 'Content-Type': 'text/html' },
       );
-    nock('http://catalog.test')
+    const catalogFailure = nock('http://catalog.test')
       .persist()
       .get(/\/agent\/v1\/(?:beauty\/)?products\/search/)
       .query(true)
@@ -697,6 +700,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
     });
 
+    expect(catalogFailure.isDone()).toBe(true);
     expect(out).toBeTruthy();
     const payload = out.payload || {};
     expect(payload.provenance).toBeTruthy();
@@ -1235,8 +1239,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1405,8 +1409,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1542,7 +1546,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,

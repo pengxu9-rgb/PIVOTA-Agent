@@ -47,6 +47,10 @@
 // list, and a rig excluded everywhere but here is precisely the bug this gate
 // closes. testMerchantPolicy.js has no imports of its own, so there is no cycle.
 const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
+const {
+  isExternalSeedLaneProduct,
+  isObservedSellerMerchantId,
+} = require('./externalSeedLane');
 
 // Worked example 2 — the test-merchant gate, 2026-07-27. It adds a NEW arm to
 // deriveServingDecision (a real logic change), but the arm sits after the
@@ -81,7 +85,7 @@ const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
 // Worked example 4 — the canonical-election gate, 2026-07-31. Bumps: it moves
 // 121 measured prod rows from 'public' to 'shadow'. Pairs with pivota-backend,
 // backend first.
-const POLICY_VERSION = 'c1.v0.7';
+const POLICY_VERSION = 'c1.v0.8';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -601,7 +605,12 @@ function deriveFreshness({ product, ips, externalSeed, now }) {
 
 function deriveVerificationSource(product) {
   if (!product) return null;
-  if (product.merchant_id === 'external_seed') return 'external_seed_scrape';
+  // ADR-009: this labels HOW the row's facts were obtained. It tested the
+  // retired sentinel seller, which no row carries any more, so scraped supply
+  // silently began reporting itself as a merchant sync — the platform arms
+  // below catch it first. Ask the lane instead: a crawled row is a scrape
+  // whatever seller it now sits under, and whatever platform it mirrors.
+  if (isExternalSeedLaneProduct(product)) return 'external_seed_scrape';
   if (product.platform === 'shopify') return 'shopify_sync';
   if (product.platform === 'wix') return 'wix_sync';
   return 'merchant_sync';
@@ -680,12 +689,22 @@ function deriveServingDecision({
   //     its own content, so exempt from the identity-COVERAGE shadow gates (below)
   //     like a first-party merchant — but NOT from the index/quality gate.
   const _merchantId = product ? String(product.merchant_id || '') : '';
-  const _platform = product ? String(product.platform || '').toLowerCase() : '';
+  // The lane predicate adds the source_system and seed-id arms this hand-rolled
+  // trio lacked, so a mirrored row whose platform is its upstream's (the minted
+  // lane) is no longer missed.
+  //
+  // BE PRECISE ABOUT WHAT THIS GATES — an earlier version of this comment said
+  // "the index/quality gate", which is wrong. This flag has exactly ONE
+  // consumer, isIdentityCoverageExempt below; the index/quality gate (`!ips` ->
+  // blocked, and ipsEligible) never reads it. So widening does not gate more
+  // rows on quality — it strips the identity-COVERAGE exemption, i.e. public ->
+  // shadow. Safe for exposure, but a live serving demotion, which is why it
+  // needs a POLICY_VERSION bump and the Python twin moving with it.
+  // Measured on prod 2026-08-17: the new arms catch ZERO rows the old trio did
+  // not, so today's demotion blast radius is 0.
   const isExternalSeedContent =
-    _platform === 'external_seed' ||
-    _merchantId === 'external_seed' ||
-    _merchantId.startsWith('merch_obs_');
-  const isObservedSeller = _merchantId.startsWith('merch_obs_');
+    isExternalSeedLaneProduct(product) || isObservedSellerMerchantId(_merchantId);
+  const isObservedSeller = isObservedSellerMerchantId(_merchantId);
   if (product) {
     if (!ips) {
       reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);

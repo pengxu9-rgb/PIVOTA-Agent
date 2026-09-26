@@ -342,13 +342,19 @@ test('CONFORMANCE: a credential bound to ANOTHER session is rejected by BOTH (se
   assert.equal(h.charges().length, 0);
 });
 
-test('CONFORMANCE: amount-from-quote — a caller-injected amount is STRIPPED by BOTH (adversarial pricing stub)', async () => {
+test('CONFORMANCE: amount-from-quote — a caller-injected amount cannot reach pricing on EITHER door (adversarial pricing stub)', async () => {
   const h = await harness();
-  // ONE poisoned cart, both doors. The surface schema has no amount field; a stuffed one is dropped by the
-  // allowlist on either side.
+  // ONE poisoned cart, both doors. The surface schema has no amount field. The native MCP door now REFUSES
+  // undeclared fields outright (declared-schema guard); the ACP REST door still strips by allowlist. Either
+  // way the invariant below holds: no caller amount field ever reaches pricing input.
   const poisoned = () => ({ ...cart(), total: 1, items: CART_ITEMS.map((it) => ({ ...it, price: 1 })) });
   const sess = mcpSession('sess_mcp');
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: poisoned() }, sess);
+  await assert.rejects(
+    h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: poisoned() }, sess),
+    (e) => e.code === 'INVALID_ARGUMENTS' && e.message.includes('"amount_total"') && e.message.includes('"quote.total"'),
+  );
+  // a clean cart still prices from the locked quote, never from anything the caller could send
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c2', quote: cart() }, sess);
   const grant = await h.mintGrant(created.session_id);
   const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'q-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   assert.equal(out.order.amount_total, 113); // the adversarial stub would have priced this 1 if total/price leaked

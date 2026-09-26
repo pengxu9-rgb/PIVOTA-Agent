@@ -5,7 +5,7 @@ const supertest = require('supertest');
 const fs = require('fs');
 const { PassThrough, Writable } = require('stream');
 
-const { parseMultipart } = require('../src/lookReplicator/multipart');
+const { parseMultipart } = require('../src/lib/multipart');
 
 test('parseMultipart fails fast when request never finishes', async () => {
   const req = new PassThrough();

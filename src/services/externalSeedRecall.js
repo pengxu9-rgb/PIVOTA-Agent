@@ -1,3 +1,9 @@
+// Strict mode so a write to a frozen object THROWS. In sloppy CJS it fails
+// silently, which made a 'deep-freeze the inputs and assert no throw' purity
+// test pass with a planted mutation. Verified nothing here relies on sloppy
+// semantics.
+'use strict';
+
 const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
 const { buildRecoAuthorityAliasTokens } = require('./recoAlternativesAuthority');
 const {
@@ -266,6 +272,14 @@ function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
 }
 
 function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title = '', textCandidates = [] } = {}) {
+  if (String(row.external_product_id || '').trim() === 'jungsaemmool:615e47aee567b863'
+      && String(row.domain || '').trim().toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+      && normalizeRecallLeafCategory(seedData.category) === 'Lip Gloss'
+      && normalizeRecallLeafCategory(snapshot.category) === 'Lip Gloss'
+      && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
+      && !/[+&]|\band\b|\b(?:set|kit|bundle|duo|trio)\b/i.test(title)) {
+    return 'Lip Gloss';
+  }
   const titleLeaf = inferRecallLeafCategoryFromText(title);
   if (titleLeaf) return titleLeaf;
 
@@ -839,14 +853,30 @@ function readStoredRecallDoc(seedData) {
   return ensureJsonObject(ensureJsonObject(seedData).derived?.recall);
 }
 
-function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } = {}) {
+// `buildDoc` is an injected seam in a SECOND parameter, matching the
+// `queryFn` / `searchFn` convention used elsewhere in this codebase. Second
+// parameter rather than a key on the first: the first is built from row data,
+// and a `{ ...rowContext }` spread carrying a `buildDoc` key would otherwise
+// shadow the builder.
+//
+// It exists because the duplicate build this function used to do has no other
+// observable signature -- the second call was to the local binding, so it cannot
+// be spied through the export. Counting calls through the seam is NOT sufficient
+// on its own: a mutant that restores the original local-binding call is not
+// counted at all. The test also tags the injected builder's output and asserts
+// the tag survives into the returned doc, which is what proves the returned
+// spread came from the counted build.
+function resolveExternalSeedRecallDoc(
+  { row = {}, seedData = {}, snapshot = {} } = {},
+  { buildDoc = buildExternalSeedRecallDoc } = {},
+) {
   const stored = readStoredRecallDoc(seedData);
   if (
     normalizeNonEmptyString(stored.retrieval_title) ||
     normalizeNonEmptyString(stored.retrieval_summary) ||
     normalizeNonEmptyString(stored.retrieval_body)
   ) {
-    const fallback = buildExternalSeedRecallDoc({ row, seedData, snapshot });
+    const fallback = buildDoc({ row, seedData, snapshot });
     const brand = firstNonEmptyString(stored.brand, fallback.brand);
     const category = resolveStoredRecallCategory(stored, fallback);
     const retrievalTitle =
@@ -879,7 +909,12 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
     });
 
     return {
-      ...buildExternalSeedRecallDoc({ row, seedData, snapshot }),
+      // `fallback` above is this exact call with these exact arguments, and the
+      // function is pure. Calling it again rebuilt the whole doc a second time
+      // per row -- every text scan, every token pass -- for a byte-identical
+      // result. It doubled the cost of the quadratic stripper before #2153 and
+      // it still doubles the residual.
+      ...fallback,
       ...stored,
       retrieval_title: retrievalTitle,
       retrieval_summary: retrievalSummary,
@@ -897,7 +932,7 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
       suppression_flags: protection.suppression_flags,
     };
   }
-  return buildExternalSeedRecallDoc({ row, seedData, snapshot });
+  return buildDoc({ row, seedData, snapshot });
 }
 
 const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({

@@ -33,12 +33,29 @@ const {
 } = require('./externalSeedLocalityFacts');
 const {
   buildCatalogImageCacheVisibleUrl,
+  normalizeCatalogImageCacheUrlHost,
 } = require('./catalogImageCacheStorage');
 const {
   resolveBeautyCategoryPathPrefixFromText,
 } = require('../findProductsMulti/queryUnderstanding');
 
+// TWO AXES THAT SHARE A STRING, and must not share a NAME.
+//
+// EXTERNAL_SEED_MERCHANT_ID is the sentinel SELLER — "the world has one shared seller". ADR-009
+// is retiring it (tests/scripts/external_seed_merchant_literal_ratchet.test.js is the shrink-only
+// ratchet) because rows migrate to their observed sellers and every comparison against it then
+// goes silently blind. Measured 2026-09-10: catalog_products and catalog_offers carry ZERO rows
+// with it — all 13,896 external-seed products already have a real merch_* seller.
+//
+// EXTERNAL_SEED_PLATFORM is the LANE, and it survives that re-key. It is what the data uses:
+// platform=external_seed on 13,896 of 15,516 catalog_products rows, and on 90/90 rows served by
+// the live agent door.
+//
+// They are the same string today, which is exactly why spelling a lane question with the seller
+// constant is invisible — and src/server.js did it in a SQL WHERE clause, so retiring the
+// sentinel would have left that lane silently matching nothing.
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const EXTERNAL_SEED_PLATFORM = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
   /\b(sunscreen|sun\s*screen|broad\s+spectrum|spf\s*\d{2,3}\+?|pa\s*\+{2,4}|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock))\b/i;
 const BEAUTY_CATEGORY_PATTERNS = [
@@ -1421,7 +1438,11 @@ function appendImageUrls(out, value) {
 function normalizeCatalogImageCacheVisibleUrl(value) {
   const normalized = normalizePdpImageUrl(value);
   if (!normalized) return '';
-  return buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized;
+  // buildCatalogImageCacheVisibleUrl hands a stored URL back verbatim on its non-proxy branch, so
+  // a row cached under a retired host survives it. Re-home on the way out.
+  return normalizeCatalogImageCacheUrlHost(
+    buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized,
+  );
 }
 
 function normalizeCatalogImageCacheVisibleUrls(values) {
@@ -2925,9 +2946,11 @@ function rewriteSeedImageUrlThroughCache(url, cacheUrlMap, fallbackImageUrl = ''
     isCatalogImageCacheUrl(fallback) &&
     !isCatalogImageCacheUrl(candidate)
   ) {
-    return fallback;
+    return normalizeCatalogImageCacheUrlHost(fallback);
   }
-  return candidate;
+  // A cache-map miss falls back to the RAW stored value, which is how rows cached under a retired
+  // host reach the home feed and search cards. Re-home whichever candidate wins.
+  return normalizeCatalogImageCacheUrlHost(candidate);
 }
 
 function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap) {
@@ -4420,9 +4443,16 @@ function buildExternalSeedProduct(row, options = {}) {
     .map(ensureJsonObject)
     .find((contract) => Object.keys(contract).length > 0);
 
+  // ADR-009 (writer side): this is a synthetic, product-SHAPED bag assembled
+  // for ingredient classification only — it never leaves this function and
+  // never reaches a response, a row, or a cache key. It used to carry a
+  // fabricated seller purely so the ingredient module's seed detector would
+  // recognise it, which is the category error in miniature: provenance dressed
+  // as a seller. The detector reads five signals and `source` below is the
+  // SOURCING one, which is the honest answer to "where did this come from" and
+  // is the axis ADR-009 keeps. So the seller axis is simply absent here.
   const authorityInput = {
     product_id: externalProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     source: 'external_seed',
     title,
     description,
@@ -4731,11 +4761,16 @@ function buildExternalSeedBrandSearchProduct(row) {
     ingredientIds: [],
   });
   const cachedImageUrls = collectCachedSeedImageUrls(effectiveSeedData);
-  const imageUrl = firstNonEmptyString(
-    cachedImageUrls[0],
-    row.image_url,
-    snapshot.image_url,
-    effectiveSeedData.image_url,
+  // Only the cached-contract arm is re-homed upstream; the row/snapshot/seed columns are raw and
+  // one of them wins whenever that contract is absent — which is how a retired host reaches a
+  // search card.
+  const imageUrl = normalizeCatalogImageCacheUrlHost(
+    firstNonEmptyString(
+      cachedImageUrls[0],
+      row.image_url,
+      snapshot.image_url,
+      effectiveSeedData.image_url,
+    ),
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
   const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);
@@ -4834,6 +4869,7 @@ function buildExternalSeedBrandSearchProduct(row) {
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
+  EXTERNAL_SEED_PLATFORM,
   stableExternalProductId,
   ensureJsonObject,
   normalizeSeedAvailability,
@@ -4847,6 +4883,10 @@ module.exports = {
   collectSeedImageUrls,
   collectCachedSeedImageUrls,
   normalizeSeedImageUrls,
+  // Exposed so the stale-cache-host re-homing can be pinned on the lane that actually serves the
+  // home feed and search cards, rather than only on the shared helper it calls.
+  normalizeCatalogImageCacheVisibleUrl,
+  rewriteSeedImageUrlThroughCache,
   normalizeSeedVariants,
   normalizeExternalSeedPrice,
   sanitizeSeedVariantDisplayFields,

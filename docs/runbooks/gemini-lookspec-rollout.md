@@ -16,7 +16,7 @@ Design goals:
 - `LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC=1` (use Gemini for selfie lookSpec when selfie image is present)
 
 **Reference path**
-- `LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC=1` (use Gemini for reference lookSpec; fail-closed fallback to existing `extractLookSpec`)
+- `LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC=1` (use Gemini for reference lookSpec; fail-closed fallback to the since-removed `extractLookSpec` (module deleted 2026-08-11; historical description))
 
 **Layer2 selection**
 - `LAYER2_ENABLE_TRIGGER_MATCHING=1`

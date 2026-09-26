@@ -18,7 +18,8 @@
  *   - shopify.dev/docs/agents/profiles/auth-and-rate-limiting — for the SIGNED tier, the agent's public key is
  *     read from this profile (RFC 9421 / ECDSA P-256). We publish it in `ucp.signing_keys` as a PUBLIC JWK
  *     array; the `keyid` the client signs with is the JWK `kid`. Verifiers do `find_key_by_kid(profile
- *     .signing_keys, keyid)` (ucp.dev/2026-04-08/specification/signatures). The signing alg is derived from the
+ *     .signing_keys, keyid)` (`<UCP_SPEC_BASE>signatures`, i.e. the signatures document on the pinned spec
+ *     line — see safety-kernel/src/protocol/ucpSpecVersion.cjs). The signing alg is derived from the
  *     JWK `crv` (P-256), so no `alg` member is required.
  *
  * KEY SOURCING (public key only — it IS public, but is sourced from env so the founder controls rotation and
@@ -34,17 +35,66 @@
  * payment processor in this probe. `assertNoPurchaseCompletion()` enforces that at build time.
  */
 
-// UCP spec version we negotiate against. The live carts-and-checkout docs reference
-// `https://ucp.dev/2026-04-08/specification/...`, so we pin the 2026-04-08 line by default.
-const DEFAULT_UCP_VERSION = '2026-04-08';
-const DEFAULT_SPEC_BASE = 'https://ucp.dev/2026-04-08/specification/';
-const DEFAULT_SCHEMA_BASE = 'https://ucp.dev/2026-04-08/schema/';
+// UCP spec version we negotiate against, and the versioned spec/schema bases derived from it. The literal
+// lives in ONE place for both of Pivota's UCP roles — `safety-kernel/src/protocol/ucpSpecVersion.cjs` —
+// because the seller profile (`/.well-known/ucp`) previously pinned a different, older line than this file
+// did while advertising capabilities whose tool names came from THIS line. Read that file for the evidence
+// behind the pinned version; never re-declare a version literal here.
+const {
+  UCP_SPEC_VERSION,
+  UCP_SPEC_BASE,
+  UCP_SCHEMA_BASE,
+  UCP_SERVICE_SCHEMA_BASE,
+} = require('../../safety-kernel/src/protocol/ucpSpecVersion.cjs');
+
+const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
+const DEFAULT_SPEC_BASE = UCP_SPEC_BASE;
+const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
+const DEFAULT_SERVICE_SCHEMA_BASE = UCP_SERVICE_SCHEMA_BASE;
 
 // The shopping capabilities Pivota requests. Deliberately EXCLUDES any `*.complete` / payment capability.
+//
+// EVERY ID HERE MUST EXIST IN THE UCP VOCABULARY, because negotiation is a set INTERSECTION: a merchant
+// grants the capabilities it advertises ∩ the ones we request, and an id that exists nowhere intersects with
+// nothing. It fails SILENTLY — the call succeeds, the profile is accepted, and the tools simply are not there.
+//
+// That is exactly what `dev.ucp.shopping.catalog` did. No such capability exists at any version: the
+// 2026-04-08 spec (ucp.dev/2026-04-08/specification/catalog) splits catalog into
+//   dev.ucp.shopping.catalog.search — "Search for products using query text and filters."
+//   dev.ucp.shopping.catalog.lookup — "Retrieve products or variants by identifier."
+// and the 2026-01-23 profile has no catalog capability at all, so it is not even a stale spelling.
+//
+// MEASURED against a live merchant (cosrx, 2026-08-13), the correlation was exact and left no tool
+// unexplained: the merchant advertised {checkout, fulfillment, discount, cart, order, catalog.search,
+// catalog.lookup, dev.shopify.catalog}; we requested {catalog, cart, checkout}; and `tools/list` returned
+// exactly 9 tools — the 4 cart + 5 checkout ones. The four withheld (get_product, search_catalog,
+// lookup_catalog, get_order) were precisely the ones behind the id we mis-spelled and the one we never ask
+// for. BOTH catalog ids are requested because this client uses both halves: `searchCatalog` is free text
+// (.search) and `getProduct` is retrieval by identifier (.lookup).
+//
+// `dev.ucp.shopping.order` is deliberately NOT requested — it would grant `get_order`, which is a capability
+// decision (do we track orders on the merchant's rails?) rather than part of fixing a wrong id.
+//
+// FULFILLMENT is requested because negotiation gates ARGUMENT SHAPES, not just the tool list — the same
+// lesson as the catalog ids, one level in. The spec (ucp.dev/2026-04-08/specification/fulfillment) says the
+// extension "adds a `fulfillment` field to Checkout" carrying `methods[]`, `destinations[]` and `groups[]`.
+// Without requesting it, a merchant's negotiated create_checkout schema OMITS that field entirely: measured
+// 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` anywhere, which is why an
+// earlier note in the UCP argument adapter concluded — wrongly — that "UCP carries no shipping_address".
+// It carries one; we were not asking for the capability that reveals it.
+//
+// WHAT THIS DOES AND DOES NOT BUY. Requesting it means a merchant may now OFFER destination fields. This
+// client does not yet SEND a destination: `buildCheckoutArgs` still emits only `context` hints, so today the
+// observable behaviour is unchanged (`normalizePricedCheckout` reads `shipping_options`, not
+// `fulfillment.groups[].options[]`, so an unpopulated fulfillment block is inert rather than breaking).
+// Mapping `checkout.fulfillment` — destination selection, the single-destination bound, and what the in-chat
+// priced preview does with real shipping/tax — is the follow-up this unblocks, not something it completes.
 const SHOPPING_SERVICE = 'dev.ucp.shopping';
-const CATALOG_CAPABILITY = 'dev.ucp.shopping.catalog';
+const CATALOG_SEARCH_CAPABILITY = 'dev.ucp.shopping.catalog.search';
+const CATALOG_LOOKUP_CAPABILITY = 'dev.ucp.shopping.catalog.lookup';
 const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
+const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
@@ -109,12 +159,44 @@ function requireHttps(url, field) {
  * Assert the negotiated capability set never requests purchase-completion / payment. Throws otherwise.
  * @param {string[]} capabilityNames
  */
+// The capabilities this buyer profile is ALLOWED to request. An ALLOWLIST, because the denylist this
+// replaces could not express the rule it existed to enforce.
+//
+// `FORBIDDEN_CAPABILITY_PATTERN` matches /(complete|payment|charge|purchase)/i, and the UCP capability that
+// authorizes money is spelled `dev.ucp.shopping.ap2_mandate` — none of those substrings. So the one id the
+// guard exists to keep out was the one id it could not see, and adding it to the requested set passed every
+// test, including the test named "…but NOT purchase-completion / payment". The same hole covers
+// `com.google.pay`, `dev.shopify.shop_pay` and `dev.ucp.processor_tokenizer`. This repo already knew
+// ap2_mandate is the payment capability — canonicalContract.js titles it "Payment authorization" and
+// ucpProfile.js deliberately strips it from the seller profile — so the denylist was contradicted by its own
+// neighbours.
+//
+// An allowlist cannot have that failure mode: a capability nobody has vetted is refused because it is
+// ABSENT, not because someone predicted its spelling. Adding one is a deliberate edit here.
+const ALLOWED_BUYER_CAPABILITIES = Object.freeze(new Set([
+  'dev.ucp.shopping.catalog.search',
+  'dev.ucp.shopping.catalog.lookup',
+  'dev.ucp.shopping.cart',
+  'dev.ucp.shopping.checkout',
+  'dev.ucp.shopping.fulfillment',
+]));
+
 function assertNoPurchaseCompletion(capabilityNames) {
   for (const name of capabilityNames || []) {
+    // Kept as a first pass: it names the SHAPE of the rule for anything obviously money-flavoured, and gives
+    // a clearer message than "not on the allowlist" for the case someone is most likely to attempt.
     if (FORBIDDEN_CAPABILITY_PATTERN.test(String(name))) {
       throw new Error(
         `ucpBuyerAgentProfile: capability "${name}" implies purchase-completion/payment, which this buyer ` +
         'profile must never request (probe is cart-build + storefront handoff only).',
+      );
+    }
+    if (!ALLOWED_BUYER_CAPABILITIES.has(String(name))) {
+      throw new Error(
+        `ucpBuyerAgentProfile: capability "${name}" is not on the vetted buyer allowlist. Pivota requests ` +
+        'discovery + cart-build + checkout-create ONLY and never completes payment; a payment-authorizing ' +
+        'capability such as dev.ucp.shopping.ap2_mandate must never be requested here. Add an id to ' +
+        'ALLOWED_BUYER_CAPABILITIES deliberately, after checking what it authorizes.',
       );
     }
   }
@@ -135,17 +217,53 @@ function buildUcpBuyerAgentProfile(config = {}) {
   const version = config.ucpVersion || DEFAULT_UCP_VERSION;
   const specBase = `${(config.specBase || DEFAULT_SPEC_BASE).replace(/\/+$/, '')}/`;
   const schemaBase = `${(config.schemaBase || DEFAULT_SCHEMA_BASE).replace(/\/+$/, '')}/`;
+  const serviceSchemaBase = `${(config.serviceSchemaBase || DEFAULT_SERVICE_SCHEMA_BASE).replace(/\/+$/, '')}/`;
   const profileUrl = config.profileUrl ? requireHttps(config.profileUrl, 'profileUrl') : undefined;
+  // The spec marks `spec` and `schema` REQUIRED on a capability entry, and every profile example carries
+  // both. We computed the bases and attached them only to the SERVICE entry, so a merchant that validates
+  // the platform profile would answer `profile_malformed` (422) — a profile that fails negotiation for a
+  // reason nothing in it announces, which is the same silent class as a wrong capability id.
+  const capabilitySpec = (name) => `${specBase}${name}`;
+  const capabilitySchema = (name) => `${schemaBase}shopping/${name}.json`;
 
-  // Requested capabilities — catalog (discover), cart (build), checkout (create + hand off). NOT complete.
-  const capabilityNames = [CATALOG_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY];
+  // Requested capabilities — catalog search + lookup (discover), cart (build), checkout (create + hand off).
+  // NOT complete.
+  const capabilityNames = [
+    CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY,
+    FULFILLMENT_CAPABILITY,
+  ];
   assertNoPurchaseCompletion(capabilityNames);
 
+  // `extends` IS A PRUNING KEY, NOT A DESCRIPTION. Intersection step 3 is: "Prune orphaned extensions:
+  // Remove any capability where `extends` is set but none of its parent capabilities are in the
+  // intersection." Declaring a parent therefore declares a DEPENDENCY THAT CAN DELETE THE ENTRY — and the
+  // spec is explicit that `extends` is "Present for extensions, absent for ROOT capabilities."
+  //
+  // checkout is a ROOT capability. It previously declared `extends: CART_CAPABILITY`, so any merchant
+  // advertising checkout but NOT cart pruned our checkout entirely — all five checkout tools gone, silently.
+  // That is the exact failure this file was edited to fix, sitting one line below the fix; cosrx happens to
+  // advertise cart, which is the only reason it never showed. Both spec profile examples declare checkout
+  // with no `extends`; only extensions (fulfillment, discount) carry one.
   const capabilities = {
-    [CATALOG_CAPABILITY]: [{ version }],
-    [CART_CAPABILITY]: [{ version }],
-    // checkout builds on cart; still hands off to the storefront — Pivota does not complete it.
-    [CHECKOUT_CAPABILITY]: [{ version, extends: CART_CAPABILITY }],
+    [CATALOG_SEARCH_CAPABILITY]: [{ version, spec: capabilitySpec('catalog'), schema: capabilitySchema('catalog_search') }],
+    [CATALOG_LOOKUP_CAPABILITY]: [{ version, spec: capabilitySpec('catalog'), schema: capabilitySchema('catalog_lookup') }],
+    [CART_CAPABILITY]: [{ version, spec: capabilitySpec('cart'), schema: capabilitySchema('cart') }],
+    // Root: no `extends`. Pivota still hands off to the storefront and never completes payment — that bound
+    // lives in the non-money allowlist and `completes_payment: false`, not in a dependency edge.
+    [CHECKOUT_CAPABILITY]: [{ version, spec: capabilitySpec('checkout'), schema: capabilitySchema('checkout') }],
+    // A STRING, matching the spec's canonical declaration for exactly this capability
+    // (`"extends": "dev.ucp.shopping.checkout"`, in both profile examples and in prose). An earlier revision
+    // used the array `[checkout, cart]` on one merchant's authority and claimed a string "would be our own
+    // spelling, not the spec's" — that had it backwards. Both forms are legal (`extends` is typed OneOf[]),
+    // but multi-parent means "at least ONE parent must be present", so the array would let fulfillment
+    // survive a cart-only intersection where it means nothing. The single parent is spec-canonical AND
+    // semantically tighter.
+    [FULFILLMENT_CAPABILITY]: [{
+      version,
+      spec: capabilitySpec('fulfillment'),
+      schema: capabilitySchema('fulfillment'),
+      extends: CHECKOUT_CAPABILITY,
+    }],
   };
 
   const ucp = {
@@ -154,9 +272,17 @@ function buildUcpBuyerAgentProfile(config = {}) {
       [SHOPPING_SERVICE]: [
         {
           version,
-          spec: specBase,
+          // DOCUMENTS, NOT DIRECTORY BASES. These were `specBase` and `schemaBase` — the bare
+          // `.../specification/` and `.../schemas/` prefixes — and BOTH 404 (measured 2026-08-14): the
+          // origin serves documents, not directory listings. Every merchant that dereferenced our service
+          // entry to validate this profile got nothing, twice. A service entry's `spec` is the overview
+          // document, and its `schema` is the TRANSPORT's machine description (OpenRPC for MCP) which lives
+          // in a DIFFERENT tree from the capability schemas — hence UCP_SERVICE_SCHEMA_BASE rather than a
+          // path under `schemaBase`. Both measured 200, and both match the spec's own profile example and
+          // cosrx's live profile.
+          spec: `${specBase}overview`,
           transport: 'mcp',
-          schema: schemaBase,
+          schema: `${serviceSchemaBase}shopping/mcp.openrpc.json`,
         },
       ],
     },
@@ -164,15 +290,24 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Empty object = Pivota declares NO payment handler. It never processes payment; the buyer completes on
     // the merchant's own storefront via the returned handoff URL.
     payment_handlers: {},
-    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
-    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
-    // `keyid` against a JWK `kid` here.
-    signing_keys: resolveSigningKeys(config),
   };
   if (profileUrl) ucp.profile_url = profileUrl;
 
   return {
     ucp,
+    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
+    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
+    // `keyid` against a JWK `kid` here.
+    //
+    // A SIBLING OF `ucp`, PER SPEC — it was inside `ucp`, and the seller profile had the identical defect.
+    // Both spec profile examples (Business AND Platform) close the `ucp` object and then declare
+    // `signing_keys` beside it: "The `ucp` object contains protocol metadata: version, services,
+    // capabilities, and payment handlers. The `signing_keys` array contains public keys…". Key Discovery is
+    // literally "extract `keyid` from Signature-Input and match to `kid` in `signing_keys[]`" of the fetched
+    // profile — so a merchant verifying one of our SIGNED-tier requests read `profile.signing_keys`, got
+    // undefined, and answered `key_not_found` / 401. The whole signed tier dark, for a reason nothing in the
+    // document announces.
+    signing_keys: resolveSigningKeys(config),
     // Human/founder-facing truthful descriptor of who Pivota is and what it will (and will NOT) do. Additive
     // metadata alongside the spec `ucp` block; kept small to stay under the profile payload size limit.
     agent: {
@@ -198,8 +333,11 @@ module.exports = {
   PLACEHOLDER_PUBLIC_JWK,
   DEFAULT_UCP_VERSION,
   SHOPPING_SERVICE,
-  CATALOG_CAPABILITY,
+  ALLOWED_BUYER_CAPABILITIES,
+  CATALOG_SEARCH_CAPABILITY,
+  CATALOG_LOOKUP_CAPABILITY,
   CART_CAPABILITY,
   CHECKOUT_CAPABILITY,
+  FULFILLMENT_CAPABILITY,
   FORBIDDEN_CAPABILITY_PATTERN,
 };

@@ -71,10 +71,6 @@ describe('merchant category mapping guardrail', () => {
       getTaxonomyView: async () => taxonomy,
     }));
 
-    jest.doMock('../../src/promotionStore', () => ({
-      getAllPromotions: async () => [],
-    }));
-
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');

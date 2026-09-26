@@ -17,9 +17,22 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/**"
+      # The two ESM packages the node:test suites reach into — the safety kernel and the MCP
+      # commerce surface, i.e. the money path. Without these a PR that touched ONLY them ran NO gate at all:
+      # #2018 (mcp-server/src/ucpArgumentAdapter.js + its test, the "file that matters most" per the note
+      # below) produced a single green "CI Entrypoint" that had correctly computed "nothing expected". A
+      # green that means "nothing ran" is the failure mode this whole file is about; do not narrow this back.
+      - "mcp-server/**"
+      - "safety-kernel/**"
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"
+      # The LLM prompts are behaviour, not assets. prompts/reco_main_v1_2.system.txt bounds the Aurora
+      # chat lane to skincare and reco_main_v1_3 opens the agent door to beauty; either file is one
+      # editable line away from re-narrowing a door or widening the chat surface, and
+      # tests/reco_widen_lane_domain_scope.node.test.cjs asserts on both. Without this a prompt-only PR
+      # would have run NO gate at all — the same "green that means nothing ran" this file exists to stop.
+      - "prompts/**"
       # ANY workflow change, not just this file's. The workflow-hygiene gate in
       # tests/ polices `.github/workflows/**`, and a PR that ADDS a workflow
       # touches nothing else — so without this the gate could not fire on the
@@ -35,21 +48,31 @@ concurrency:
 jobs:
   # THE SUITES JEST STRUCTURALLY CANNOT SEE. jest.config.js testMatch is
   # `**/tests/**/*.test.(js|ts)`, so every `*.node.test.cjs` file is invisible to
-  # the shard matrix below — including tests written specifically to pin
-  # behaviour that had already broken production once. #1829's
-  # `commerce_kernel_error_body` has never run in CI; #1837's
-  # `commerce_kernel_error_mapping` would have joined it.
+  # the shard matrix below — including tests written specifically to pin behaviour
+  # that had already broken production once.
   #
-  # DELIBERATELY A SHORT ALLOWLIST, which the header above rightly forbids for
-  # jest. The repo has ~45 `.node.test.cjs` files listed in `npm run test:node`
-  # and no workflow runs any of them; sweeping them all in here without first
-  # confirming each is green would trade a silent gap for a permanently red gate.
-  # This starts with the shared error taxonomy — the money-path classification —
-  # and should grow file by file as each is confirmed.
+  # This job used to be a 1,100-line hand-maintained allowlist, added to file by
+  # file, on the reasoning that sweeping every suite in "without first confirming
+  # each is green would trade a silent gap for a permanently red gate". The caution
+  # was sound; the allowlist was not. Measured on 2026-09-10 against 205e9f1cd it
+  # named 87 of 295 suites. A second list in the `test:node` npm script named 66
+  # more — but no workflow invokes `npm run test:node`, so those never ran either,
+  # which is easy to miss because the list looks like coverage. 208 suites had never
+  # executed in CI. 163 of them were passing, gating nothing, purely because nobody
+  # had typed their names. Among the rest was `aurora_undefined_symbol_guard`, red
+  # over a live ReferenceError in src/server.js (`crossMerchantCacheRouteDebug`,
+  # referenced at two points outside the scope of its `let`) that no gate could see.
+  #
+  # So discovery is now a GLOB, and the list is a list of EXCLUSIONS
+  # (tests/node_suite_quarantine.txt) that may only shrink: the runner executes the
+  # quarantined suites too and FAILS if one of them passes, telling you to delete
+  # its line. The original caution is preserved — the 45 suites red on main are
+  # still excluded — but the default is inverted. A suite added tomorrow is gated
+  # tomorrow, with nobody remembering anything.
   node-tests:
-    name: node:test (allowlist)
+    name: node:test (glob + quarantine)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,8 +88,6 @@ jobs:
       # checkout — including this runner and `git archive` — starts with a
       # DANGLING link. On a dev box it silently resolves to a populated tree, so
       # "this test needs no deps" verifies as true locally and is false in CI.
-      # commerce_kernel_error_body pulls in the axios/pino side of src/; only the
-      # mapping test is genuinely dependency-free.
       - name: Install
         run: |
           for attempt in 1 2 3; do
@@ -78,178 +99,12 @@ jobs:
           echo "npm ci failed after 3 attempts" >&2
           exit 1
 
-      # ADDED 2026-07-27: the three ACP feed-lane suites. Jest's testMatch is
-      # `**/tests/**/*.test.(js|ts)`, so `*.node.test.cjs` is STRUCTURALLY
-      # invisible to the sharded jest job below — landing them without this
-      # entry would mean the only tests for the feed's flag gates, price gate and
-      # rig exclusion run in no CI job at all. In a repo that has shipped "a test
-      # that cannot fail" four times in three days, that is the same wound.
-      # CORRECTION to an earlier version of this comment: these files do NOT run
-      # dependency-free. `product_entity_index_feed_election` reaches
-      # src/services/productEntityIndexFeed -> ../db -> ../logger and fails with
-      # `Cannot find module 'pino'` on a checkout without node_modules. The job
-      # is green because `npm ci` runs above, NOT because the files are leaves.
-      # Green here proves the job passes; it does not prove the reason. Said
-      # plainly so nobody relies on the wrong one.
-      #
-      # ADDED 2026-07-29: the three suites guarding the PDP-renderability
-      # predicate and the public-read chain filter (pdp_renderability,
-      # public_read_chain_resolvability, public_read_chain_seed_routed_probe),
-      # all confirmed green locally before landing. The per-platform verdict
-      # flip in this same change is exactly the event the probe suite exists to
-      # catch, and none of the three ran in ANY workflow before this.
-      # ADDED 2026-07-28: `acp_feed_flags`, confirmed green (6/6) before landing,
-      # per the "grow file by file as each is confirmed" rule above. It was the
-      # ONLY suite asserting the invariant that publishing the read-only feed
-      # never mounts a money-path endpoint — and it ran in no workflow at all,
-      # while the commit alongside this one turns that feed on in production.
-      # ADDED 2026-08-01: `ucp_order_webhook_receiver`, confirmed green (18/18)
-      # before landing. It is the ONLY suite covering the ported UCP business
-      # doors — the /.well-known/ucp kill-switch decoupling, the published
-      # business signing keys (private material refused), and the order-webhook
-      # detached-JWS verification/dedup — which run in no other workflow.
-      # ADDED 2026-08-04: `acp_delegate_payment_refusal`, confirmed green (6/6)
-      # before landing. It guards the one gateway path a caller sends a raw PAN
-      # and CVC to (ACP delegate_payment, permanently refused): that the refusal
-      # answers in every configuration, that neither the PAN nor the CVC reaches
-      # the response or any log line, and that the express.json rawBody stash
-      # skips that path. Nothing else asserts any of it.
-      # ADDED 2026-08-04: `public_read_mcp_heartbeat`, confirmed green (8/8)
-      # before landing. It is the ONLY suite covering the edge-timeout guard on
-      # the public MCP tier — that slow responses commit 200 + heartbeat bytes
-      # (the cold-search dropped-connection fix) and that fast paths stay
-      # byte-identical buffered responses. Dependency-free (node builtins + the
-      # pure module), but per the npm-ci note above, green proves the job
-      # passes, not that the file is a leaf.
-      # ADDED 2026-08-04: `commerce_mcp_route_heartbeat`, confirmed green (7/7)
-      # before landing. It is the ONLY suite covering the same edge-timeout
-      # guard on the AUTHENTICATED commerce /mcp lane: a slow tools/call
-      # commits 200 + heartbeat whitespace with a still-parseable JSON-RPC
-      # body, while the non-200 fast paths (strict-off 404, missing-key 401)
-      # keep their real statuses because they resolve before the heartbeat is
-      # created. Boots the real server via supertest, so it needs the npm ci
-      # above.
-      # ADDED 2026-08-04: `commerce_mcp_heartbeat_gate`, confirmed green (7/7)
-      # before landing AND mutation-checked — deleting the tools/call gate
-      # fails 2 of its tests, deleting the elapsed-budget subtraction fails a
-      # 3rd. It carries the safety property the route suite structurally
-      # CANNOT: committing locks the response to 200 forever, so only
-      # tools/call may arm the heartbeat (the adapter's 202 for
-      # notifications/initialized would otherwise become 200 + an unparseable
-      # "\n"). A route test cannot prove that — everything preceding the
-      # dispatch is synchronous, so the commit timer never fires there — which
-      # is exactly the "test that cannot fail" shape this job exists to avoid.
-      # ADDED 2026-08-05: `commerce_search_self_invoke_budget`, confirmed green
-      # (6/6) before landing AND mutation-checked — reverting the budget wiring,
-      # the `disableTimeoutRetry: selfInvoked` policy, or the `selfInvoked` flag
-      # on find_products_multi each fail a test. It guards the cold-search
-      # latency fix: the loopback self-call gets its own budget and is attempted
-      # ONCE, because a retry re-ran the whole pipeline concurrently and doubled
-      # partner latency to ~2x the real work.
-      # It ALSO carries the counter-invariant, which matters more than the perf:
-      # the canonical-chain await must NOT be raced against a budget. Its name
-      # says telemetry, but it applies a strict-empty PRODUCT rescue, so
-      # abandoning the wait serves an empty result where products existed. A
-      # first cut of this PR did exactly that; the guard test is what stops it
-      # coming back. Boots the real server via supertest + nock, so it needs the
-      # npm ci above.
-      # ADDED 2026-08-05: the first two `mcp-server/test/**` files in ANY CI job.
-      # Those suites live under `test/` (singular) while jest's testMatch wants
-      # `tests/`, so every one of them has always run in no workflow at all.
-      # `commerceReadCache` (13/13, mutation-checked) carries the argument that
-      # lets commerce search results be SHARED ACROSS CALLERS: that
-      # search_catalog is caller-independent. Its headline test records at the
-      # UPSTREAM seam through a real canonical executor, because a stubbed
-      # executor would stub out the very layer that can break the property —
-      # an earlier draft did exactly that, and the reviewer's leak mutation
-      # (passing buyer_ref through the executor's read()) landed GREEN.
-      # `commerceToolSurface` (17/17) is added alongside it because it covers
-      # the sanitizer/identity behaviour of the same surface and independently
-      # catches that leak. Both are ESM (mcp-server sets type:module); node
-      # --test handles that next to the .cjs files.
-      # ADDED 2026-08-05: `upstream_retry_deadline_budget`, confirmed green
-      # (4/4) AND mutation-checked — removing the skip, or the retry-timeout
-      # clamp, each fail a test. It guards a rule the find_products_multi
-      # mainline broke: never start an upstream attempt the caller's hard
-      # deadline will cut off. A 6000ms deadline over a 4500ms attempt gave the
-      # retry 1500ms to redo work that had just failed in 4500ms, so its only
-      # effects were +1.5s of latency and a second request at an upstream
-      # already under stress. Includes a ROUTE-level test that counts upstream
-      # attempts in the production shape (attempt timeout under deadline):
-      # deleting the one-line call-site wiring makes it see 2 attempts instead
-      # of 1. An earlier draft claimed that shape could not be posed in a
-      # harness and shipped the gap as a comment; review disproved it, so the
-      # claim is gone and the test is here.
-      # ADDED 2026-08-05: `fpm_stage_attribution`, confirmed green (5/5) AND
-      # mutation-checked — deleting route_entry fails 3, deleting the beauty
-      # lane stage fails 1, renaming fpm_unattributed_ms fails 1, and moving
-      # route_entry back BELOW the early beauty lane fails 2 (that ordering is
-      # load-bearing: recorded after the lane, route_entry's span CONTAINS it,
-      # so fpm_stage_total_ms double-counts a multi-second lane and the
-      # attribution gap goes negative — confidently wrong beats missing only in
-      # the wrong direction). It guards the
-      # search pipeline's own latency telemetry: full-pipeline requests were 99%
-      # attributed while EARLY-EXIT requests left 93-99% of their latency with
-      # nothing to explain it. Instrumentation that quietly stops firing is
-      # indistinguishable from working, so the test reads the log line the
-      # server really emits — via a child process, because pino writes through
-      # sonic-boom to fd 1 and an in-process stdout patch captures nothing.
-      # ADDED 2026-08-04: `integration/agent_checkout_acp_ucp_doors`, confirmed
-      # green (8/8) before landing. It already existed and ran in NO workflow —
-      # found while adding the ACP door's buyer/address/item intake (PR-E), whose
-      # end-to-end proof it now is: the only suite that drives a real signed ACP
-      # create through src/server.js's own wiring, and pairs it with a no-email
-      # credential that must be REFUSED at intake, so the attested-buyer-email
-      # path (verified JWT claim -> resolveUserRef ->
-      # quote buyer_context) is exercised outside the kernel's own harness. It is
-      # also the only coverage of the ACP/UCP door flag gates and the 405 on the
-      # charge endpoint while submit_payment is disabled.
-      # ADDED 2026-08-04: `acp_spt_gateway_handoff`, confirmed green (6/6) before
-      # landing. It is the only place the delegated-PSP-token (Stripe
-      # SharedPaymentToken) money lane is exercised through src/server.js's own
-      # wiring: that ACP_SPT_GATEWAY_HANDOFF_ENABLED is OFF by default, the exact
-      # body sent to POST /agent/v1/payments, and — end to end against a stub
-      # backend — that the order carries `metadata.protocol_name = "acp"` (without
-      # which the backend's off-session gate never engages) and the BACKEND's own
-      # quote id, that the token reaches the off-session endpoint and never the
-      # hosted checkout surface, and that flag-off neither creates an order nor
-      # charges. The kernel-side routing invariants live in safety-kernel's own
-      # suite; this file is the only proof the three gateway body builders it
-      # crosses still agree.
+      # The same command a developer runs. `test:node` is this script plus the
+      # preflight guard; invoking the script directly keeps the guard's cwd-name
+      # check (which wants the checkout to be named PIVOTA-Agent) from deciding
+      # whether the suites run.
       - name: Run node:test suites
-        run: |
-          node --test \
-            tests/commerce_kernel_error_body.node.test.cjs \
-            tests/commerce_kernel_error_mapping.node.test.cjs \
-            tests/asserted_privilege_observation.node.test.cjs \
-            tests/acp_feed_item.node.test.cjs \
-            tests/acp_feed_source.node.test.cjs \
-            tests/product_entity_index_feed_election.node.test.cjs \
-            tests/acp_feed_flags.node.test.cjs \
-            tests/acp_feed_pagination.node.test.cjs \
-            tests/public_feed_gate.node.test.cjs \
-            tests/acp_adapter_applies_mapper.node.test.cjs \
-            tests/pdp_renderability.node.test.cjs \
-            tests/pdp_identity_coverage_catchup.node.test.cjs \
-            tests/caller_identity.node.test.cjs \
-            tests/public_read_chain_resolvability.node.test.cjs \
-            tests/public_read_chain_seed_routed_probe.node.test.cjs \
-            tests/external_seed_lane_reader_parity.node.test.cjs \
-            tests/ucp_order_webhook_receiver.node.test.cjs \
-            tests/acp_delegate_payment_refusal.node.test.cjs \
-            tests/public_read_mcp_heartbeat.node.test.cjs \
-            tests/commerce_mcp_route_heartbeat.node.test.cjs \
-            tests/commerce_mcp_heartbeat_gate.node.test.cjs \
-            tests/commerce_search_self_invoke_budget.node.test.cjs \
-            mcp-server/test/commerceReadCache.test.js \
-            mcp-server/test/commerceToolSurface.test.js \
-            mcp-server/test/mcpBuyerIntake.test.js \
-            mcp-server/test/crossProtocolConformance.test.js \
-            tests/upstream_retry_deadline_budget.node.test.cjs \
-            tests/fpm_stage_attribution.node.test.cjs \
-            tests/acp_spt_gateway_handoff.node.test.cjs \
-            tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs
-
+        run: node scripts/run_node_test_suites.cjs
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -298,3 +153,37 @@ jobs:
             --maxWorkers=1 \
             --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
+
+  canonical-main-postgres:
+    name: Canonical main SQL + HTTP (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gateway_review
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gateway_review -d gateway_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then exit 0; fi
+            sleep $((attempt * 15))
+          done
+          exit 1
+      - name: Execute canonical primary SQL through HTTP without rescue
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/canonical_offer_availability_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js tests/integration/find_products_multi_prod_flags_bind_types_postgres.test.js tests/integration/catalog_entity_group_offer_count_postgres.test.js tests/integration/catalog_entity_group_membership_postgres.test.js tests/integration/discovery_brand_seed_scan_postgres.test.js tests/integration/external_seed_brand_fastpath_postgres.test.js tests/integration/aurora_activity_keyset_postgres.test.js tests/integration/relationship_graph_ref_resolution_postgres.test.js tests/integration/canonical_brand_match_postgres.test.js tests/integration/search_name_evidence_admission_postgres.test.js tests/integration/search_name_evidence_acceptance_postgres.test.js tests/integration/find_products_multi_buyer_market_postgres.test.js

@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { query, closePool, withClient } = require('../src/db');
+const {
+  CANONICAL_CATEGORY_PATHS,
+  categoryPathIsCategorised,
+} = require('../src/services/beautyTaxonomy');
 
 const CONFIRM_TOKEN = 'APPLY_REVIEWED_EXTERNAL_SEED_CATEGORY_PATCH';
 const OVERWRITE_CONFIRM_TOKEN = 'APPLY_REVIEWED_EXTERNAL_SEED_CATEGORY_OVERWRITE';
@@ -144,9 +148,31 @@ function validateEntry(entry) {
   if (!entry.external_product_id) blockers.push('missing_external_product_id');
   if (!entry.category) blockers.push('missing_category');
   if (!entry.category_path) blockers.push('missing_category_path');
+  // THE `|$` ALTERNATIVE MADE THE LITERAL STRING `beauty` A PASSING VALUE. This validator is the
+  // gate on a REVIEWED manifest -- the whole point of the lane is that a human stood behind each
+  // path -- and it accepted `{category: 'beauty', product_type: 'beauty', category_path: 'beauty'}`
+  // as reviewed. `beauty` is a NAMESPACE, not an answer to "what is this": the row it writes is
+  // unretrievable by category-scoped recall, and simultaneously invisible to everything that would
+  // repair it, because pivota-backend's regex backfill selects `WHERE category_path IS NULL` and an
+  // off-taxonomy health check passes a bare domain (`beauty` IS on the taxonomy -- every root is an
+  // ANCESTOR_NODES entry, so `has_category_door("beauty")` is True while `resolve("beauty")` is
+  // None). Measured on the live index, 16 of 50 rows returned for "eau de parfum" sit on bare
+  // `beauty`, including the entire Ariana Grande fragrance line.
+  //
+  // TWO SEPARATE QUESTIONS, TWO SEPARATE BLOCKERS. "is it in the beauty domain" and "is it
+  // categorised at all" were fused into one regex, which is why tightening it naively would report
+  // `beauty` as `category_path_not_beauty` -- a reason that is false on its face and would send a
+  // reviewer looking for the wrong thing. `categoryPathIsCategorised` is the shared rule, the same
+  // one the two sync writers now gate on and the twin of pivota-backend's `is_categorised_path()`.
   if (entry.category_path && !/^beauty(?:\/|$)/.test(entry.category_path)) blockers.push('category_path_not_beauty');
+  if (entry.category_path && !categoryPathIsCategorised(entry.category_path)) {
+    blockers.push('category_path_not_categorised');
+  }
   if (entry.catalog_category_path && !/^beauty(?:\/|$)/.test(entry.catalog_category_path)) {
     blockers.push('catalog_category_path_not_beauty');
+  }
+  if (entry.catalog_category_path && !categoryPathIsCategorised(entry.catalog_category_path)) {
+    blockers.push('catalog_category_path_not_categorised');
   }
   if (entry.source_url && !/^https?:\/\//i.test(entry.source_url)) blockers.push('invalid_source_url');
   if (!entry.source_url) blockers.push('missing_source_url');
@@ -175,6 +201,37 @@ function collectExistingCategoryValues(seedData) {
   };
 }
 
+// THE PLACEHOLDER BLOCKED ITS OWN REPAIR. `findConflicts` treats any non-empty existing value as a
+// prior claim worth protecting, and a bare domain is not a claim -- it is the absence of one,
+// written down. Measured against the real function before this change:
+//
+//   seed_data.category_path = 'beauty'                 + manifest beauty/fragrance/perfume
+//     -> blocked: existing_category_conflict:seed_data.category_path:beauty
+//   seed_data.category_path absent                     + the same manifest -> planned
+//   seed_data.category_path = 'beauty/makeup/face/blush' + the same manifest -> blocked  (correct)
+//
+// So the one tool built to repair this cohort refused to touch exactly the rows that needed it,
+// and the only escape was `--allow-overwrite`, which disables conflict protection for EVERY field
+// across the WHOLE run -- a blunt instrument that would also let a manifest silently overwrite
+// paths that are genuinely right. A real disagreement (the blush row above) still blocks.
+//
+// Generic by construction: the domains come from the taxonomy, so `fashion` and `electronics` are
+// covered by the same rule without being named.
+const TAXONOMY_DOMAINS = new Set(
+  Object.values(CANONICAL_CATEGORY_PATHS).map((path) => String(path).split('/')[0]),
+);
+
+function isPlaceholderCategoryClaim(value) {
+  const normalized = normalizeComparable(value).trim();
+  if (!normalized) return true;
+  // `Beauty Product` was the sync mirror's terminal-fallback label, minted beside category_path
+  // 'beauty' on the same rows; it names a namespace with a noun stapled on.
+  if (TAXONOMY_DOMAINS.has(normalized) || TAXONOMY_DOMAINS.has(normalized.replace(/\s+product$/, ''))) {
+    return true;
+  }
+  return false;
+}
+
 function findConflicts(seedData, entry) {
   const conflicts = [];
   const existing = collectExistingCategoryValues(seedData);
@@ -186,11 +243,13 @@ function findConflicts(seedData, entry) {
 
   for (const [field, value] of existing.categories) {
     const current = normalizeComparable(value);
-    if (current && current !== nextCategory) conflicts.push(`${field}:${text(value)}`);
+    if (!current || isPlaceholderCategoryClaim(value)) continue;
+    if (current !== nextCategory) conflicts.push(`${field}:${text(value)}`);
   }
   for (const [field, value] of existing.paths) {
     const current = normalizePathComparable(value);
-    if (current && !nextPaths.has(current)) conflicts.push(`${field}:${text(value)}`);
+    if (!current || !categoryPathIsCategorised(current)) continue;
+    if (!nextPaths.has(current)) conflicts.push(`${field}:${text(value)}`);
   }
   return conflicts;
 }

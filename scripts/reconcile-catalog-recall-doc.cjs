@@ -13,6 +13,12 @@
  *   - a drift metric (rows where recall_doc IS NULL or recall_doc_updated_at
  *     lags the attached seed's updated_at) reported on every run and
  *     standalone via --drift-only;
+ *   - an orphaned-mirror metric (external_referral rows with NO active seed
+ *     carrying their attached_product_key). Such rows are invisible to the
+ *     attached-seed join, so the reconciler can never project them and
+ *     drift_total does not count them — without this counter the metric
+ *     silently reads "converged" over rows it cannot reach (prod 2026-07-31:
+ *     1,963 of 12,542, of which 3 sat in the gap-scope acceptance corpus);
  *   - counters count UPDATE rowCount actually landed, never rows attempted.
  *
  * The projected doc mirrors, field for field, what the seed lane searches —
@@ -25,10 +31,19 @@
  * '\n'-separated line so a pattern cannot span two fields.
  *
  * Acceptance corpus for this phase:
- *   tests/fixtures/adr020_phase1_gap_scope.json — 15 gap queries / 71 unique
- *   products measured 2026-07-30 by scripts/audit-recall-lane-parity.cjs
- *   against prod (queries the seed lane recalls that the catalog lane misses;
- *   the projection must close them).
+ *   tests/fixtures/adr020_phase1_gap_scope.json, built by
+ *   scripts/build-adr020-phase1-acceptance-corpus.cjs from prod parity passes
+ *   over the in-domain corpus tests/fixtures/adr020_phase1_recall_corpus.jsonl
+ *   and judged by scripts/lib/adr020_recall_relevance.cjs.
+ *
+ *   A gap means "a product graded RELEVANT that the seed lane returned and the
+ *   catalog lane did not" — NOT the raw parity diff. The 2026-07-30 corpus
+ *   (15 queries / 71 products) recorded the diff with no relevance judgement
+ *   over a generic multi-category query set run against a beauty catalog, so
+ *   seed-lane substring noise became acceptance targets ("black leather
+ *   sneakers" -> Ombré *Leather* Eau de Parfum; "running shoes" -> five tinted
+ *   moisturizers). Closing those was never the projection's job, and tuning
+ *   rank to reproduce them would degrade results.
  *
  * Read-only DRY-RUN by default. Writing requires BOTH --write and
  * --confirm RECONCILE_CATALOG_RECALL_DOC_PROJECTION.
@@ -248,6 +263,38 @@ const ATTACHED_SEED_LATERAL_SQL = `
   ) eps ON true
 `;
 
+/**
+ * Orphaned mirrors: external_referral rows no active seed points back at
+ * (external_product_seeds.attached_product_key). The reconciler joins through
+ * that back-pointer, so these rows are structurally out of its reach — they
+ * are not drift (they can never converge) but a broken back-link that needs
+ * re-attachment or retirement. Counted separately so drift_total=0 cannot be
+ * read as "every mirror row is projected". The live-only sub-count is the
+ * serving-relevant slice (archived/stale orphans are already out of serving).
+ */
+async function fetchOrphanedMirrorMetric() {
+  const res = await query(
+    `
+      SELECT
+        count(*)::int AS orphaned_mirror_count,
+        count(*) FILTER (WHERE cp.sync_status = 'live')::int AS orphaned_mirror_live_count
+      FROM catalog_products cp
+      WHERE cp.catalog_track = 'external_referral'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM external_product_seeds eps
+          WHERE eps.attached_product_key = cp.product_key
+            AND eps.status = 'active'
+        )
+    `,
+  );
+  const row = res.rows?.[0] || {};
+  return {
+    orphaned_mirror_count: Number(row.orphaned_mirror_count || 0),
+    orphaned_mirror_live_count: Number(row.orphaned_mirror_live_count || 0),
+  };
+}
+
 async function fetchDriftMetric() {
   const res = await query(
     `
@@ -277,6 +324,8 @@ async function fetchDriftMetric() {
     drift_total: drift,
     converged_pct: total ? Math.round(((total - drift) / total) * 1000) / 10 : 100,
     max_staleness: row.max_staleness || null,
+    // Rows outside the attached-seed join entirely; disjoint from drift_total.
+    ...(await fetchOrphanedMirrorMetric()),
   };
 }
 
@@ -502,6 +551,7 @@ module.exports = {
   normalizeAvailability,
   textOf,
   fetchDriftMetric,
+  fetchOrphanedMirrorMetric,
   fetchDriftedBatch,
   landBatch,
   reconcile,

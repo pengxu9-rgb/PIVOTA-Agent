@@ -14,6 +14,15 @@ const SAFE_ORIGINAL_IMAGE_HOSTS = [
   'images.unsplash.com',
   'web-production-fedb.up.railway.app',
   'pivota-agent-production.up.railway.app',
+  // Pivota-owned names for the same two services, kept ALONGSIDE the Railway hosts: image URLs
+  // already persisted carry the old host, and an unlisted host fails silently.
+  'api.pivota.cc',
+  'gateway.pivota.cc',
+  // agent.pivota.cc is the UI, not the gateway - it cannot SERVE /catalog-image-cache/* (it answers
+  // HTML). It is listed here anyway because prod minted image URLs on it for as long as
+  // PIVOTA_AGENT_PUBLIC_BASE_URL won the base-url chain, so persisted rows carry it. Listing it stops
+  // those from being treated as third-party originals and re-fetched.
+  'agent.pivota.cc',
 ];
 
 function normalizeNonEmptyString(value) {
