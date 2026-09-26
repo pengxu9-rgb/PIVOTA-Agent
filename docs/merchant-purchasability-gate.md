@@ -302,13 +302,24 @@ usable domain reads the cache only and is never given a made-up domain to ask wi
   requests on a cold cache (a click storm, an offers page at concurrency 4) sends ONE read; the
   others wait for it, each inside its **own** deadline (`min(timeoutMs, budgetMs)`, the same clamp).
   A waiter whose deadline expires first gets "not known" and fails open, exactly as its own timed-out
-  read would have; the shared read keeps going for everyone else.
+  read would have; the shared read keeps going for everyone else. **The LEADER's budget bounds every
+  waiter:** the shared read runs under the deadline of the request that started it, so a
+  long-budget request that joins a short-budget leader gets "not known" when the leader's read times
+  out, even with time of its own to spare. That is fail-open (the previous behaviour) and accepted;
+  its own next request re-reads after the 30 s negative TTL.
 * **Freshness.** Every read that can carry `enforced` — a keyed fact read or the market-less read —
-  takes a sequence number when it STARTS, and its answer is written only if no read that started
-  later has already written. So a slow market-less read that started before a keyed read cannot land
-  after it and pin a stale `enforced` for another five minutes; its caller acts on the newer cached
-  answer. A **failed** read never erases a known value (a failure says nothing about the dial), and a
-  failed keyed read does not touch the enforcement cache at all.
+  takes a sequence number when it STARTS. A **real** answer is written only if no read that started
+  later has already written a real answer. So a slow market-less read that started before a keyed
+  read cannot land after it and pin a stale `enforced` for another five minutes. Such a DROPPED
+  answer is never acted on: its caller gets the newer cached answer if that is still fresh, and
+  otherwise "not known" (fail open) — never its own stale value, even when the newer answer has
+  since expired.
+* **A failure never outranks an answer, in either order.** A failed read (timeout, non-200,
+  malformed) never claims a sequence slot and never replaces anything cached. It is cached as "not
+  known" (30 s) only when nothing is cached at all, and a real answer from ANY read — including an
+  OLDER one that lands afterwards — overwrites that "not known". If the failure lands after a real
+  answer, the real answer stays and the failed read's own caller acts on it. A failed keyed read
+  does not touch the enforcement cache at all.
 
 **Two properties worth knowing.**
 
@@ -508,7 +519,7 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
 | # | path | what it offers | market source | fallback when `offer === false` |
 |---|---|---|---|---|
-| 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
+| 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule (`selectBuyerMarket`; on the click lane it has one carrier, `body.market`, so `"US,US"` is US and `"US,SG"` / `"USA"` are no market) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
 | 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market`, then `payload.market`, then `metadata.market` — the first that yields ONE ISO-2 market (§5 carrier rule; `offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with its price and its PDP/browse links; its "buyable here" signals are rewritten to the links-out vocabulary: `commerce_mode: links_out`, `checkout_handoff: redirect`, `purchase_route: affiliate_outbound` (see "A URL is not the only thing…" below) |
 

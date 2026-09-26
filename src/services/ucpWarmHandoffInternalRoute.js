@@ -30,6 +30,7 @@
 const crypto = require('crypto');
 
 const { createWarmHandoffService, createTtlCache, isWarmHandoffEnabled } = require('./ucpWarmHandoff');
+const { selectBuyerMarket } = require('./merchantPurchasabilityClient');
 const {
   toVariantGid, resolveShopifyVariant, extractProductHandle, normalizeBrandOrigin,
 } = require('./shopifyVariantResolver');
@@ -377,6 +378,10 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     }
 
     const quantity = Number.isInteger(body.quantity) && body.quantity > 0 ? body.quantity : 1;
+    // The caller's buyer market by the ONE carrier rule every door uses (`selectBuyerMarket`,
+    // docs/merchant-purchasability-gate.md §5): one ISO-2 market or none — "US,US" is US, "US,SG"
+    // and "USA" are none.
+    const clickMarket = selectBuyerMarket(body.market);
     let handoff = null;
     try {
       handoff = await resolveService(env).resolveWarmHandoff({
@@ -384,10 +389,11 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
         variantGid,
         quantity,
         // The CALLER'S buyer market, for the merchant-purchasability gate only. Optional and additive: a
-        // caller that sends none is exactly today's request, and the gate then keeps the previous
-        // behaviour rather than substituting this deployment's own market. Never echoed in the response,
-        // never sent anywhere but the (domain, market) ops read.
-        ...(firstNonEmptyString(body.market) ? { market: firstNonEmptyString(body.market) } : {}),
+        // caller that sends none is exactly today's request, and this deployment's own market is never
+        // substituted. With no market the gate reads no fact: under backend ENFORCEMENT the click is
+        // browse-only (the `null` below -> cold redirect); unenforced, the previous behaviour. Never
+        // echoed in the response, never sent anywhere but the ops read.
+        ...(clickMarket ? { market: clickMarket } : {}),
         ...(isPlainObject(body.attribution) ? { attribution: body.attribution } : {}),
       });
     } catch {

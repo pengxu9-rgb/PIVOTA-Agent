@@ -858,19 +858,27 @@ function createMerchantPurchasabilityClient(deps = {}) {
   }
 
   /**
-   * Write one enforcement answer, FRESHEST WINS, and return the value the caller should act on.
+   * Write one enforcement answer, FRESHEST REAL ANSWER WINS, and return what the caller should act
+   * on (`true` / `false` / `null` = not known => fail open).
    *
-   *   - a result from a read that started BEFORE the one that last wrote is dropped (the newer
-   *     answer stays cached, and is what the caller gets back);
-   *   - a failure (`null`) never erases a KNOWN value — a failed read says nothing about the dial;
-   *   - otherwise: a boolean for the TTL (≤ 5 min), a failure for the negative TTL (30 s).
+   *   - A FAILURE (`null`) NEVER CLAIMS THE SEQUENCE SLOT and never replaces anything: it is cached
+   *     (negative TTL, 30 s) only when NOTHING is cached, and `enforcementWrittenSeq` does not move.
+   *     So a real value from an OLDER read that lands afterwards still overwrites that cached null
+   *     — a failure says nothing about the dial and must not outrank an answer that does.
+   *   - A REAL value is written unless a read that started LATER already wrote a real value
+   *     (`ticket < enforcementWrittenSeq`). Then this result is DROPPED and NEVER acted on: the
+   *     caller gets the newer cached boolean if it is still fresh, and otherwise `null` (fail open)
+   *     — never its own stale value, even when the newer write has since expired.
    */
   function writeEnforcement(ticket, value) {
     const cached = enforcementCache.get(ENFORCEMENT_CACHE_KEY);
-    if (ticket < enforcementWrittenSeq) return cached !== undefined ? cached : value;
-    if (value === null && typeof cached === 'boolean') return cached;
+    if (value === null) {
+      if (cached === undefined) enforcementCache.set(ENFORCEMENT_CACHE_KEY, null, negativeTtlMs);
+      return typeof cached === 'boolean' ? cached : null;
+    }
+    if (ticket < enforcementWrittenSeq) return typeof cached === 'boolean' ? cached : null;
     enforcementWrittenSeq = ticket;
-    enforcementCache.set(ENFORCEMENT_CACHE_KEY, value, value === null ? negativeTtlMs : ttlMs);
+    enforcementCache.set(ENFORCEMENT_CACHE_KEY, value, ttlMs);
     return value;
   }
 
