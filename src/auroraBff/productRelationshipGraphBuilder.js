@@ -11,6 +11,25 @@ const {
     resolveFamilyDedupeKey,
   },
 } = require('./productRelationshipGraphSources');
+const {
+  CANDIDATE_CLAIM_FIELDS,
+  ANCHOR_CLAIM_FIELDS,
+  neutralizeClaimValue,
+  neutralizeSnapshotClaims,
+} = require('./relationshipClaimPhrases');
+const {
+  CATEGORY_LEAF_ALIASES,
+  CATEGORY_LEAF_STOP_TOKENS,
+  categoryLeafTokens,
+} = require('./productRelationshipGraphPreflight');
+
+// One candidate may serve at most this many anchors as a dupe / competitive_alternative in one
+// build. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
+// most cream anchors in its shard; nothing bounded a candidate's fan-in, so a single well-described
+// SKU crowded every anchor's slot. The cap keeps a candidate's best-scoring anchors and rejects
+// the rest with `candidate_fan_in_cap`. See capCandidateFanIn for how the value was chosen.
+const DEFAULT_MAX_ANCHORS_PER_CANDIDATE = 8;
+const FAN_IN_CAPPED_RELATION_TYPES = new Set(['dupe', 'competitive_alternative']);
 
 const CURATED_NEED_NODES = [
   {
@@ -854,6 +873,109 @@ function productJobCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
   return { compatible: true, reason: '', shared_groups: [] };
 }
 
+// Leaf-category agreement for dupe / competitive_alternative.
+//
+// 2026-09-26 JP/AU dry run: a jelly lip gloss got a lip balm and a lip kit as alternatives; a hand
+// cream got a dry oil and a hair oil; a face cream got an eye emulsion; a muslin face cloth was a
+// cleanser alternative. The job gates above read description copy, where every product mentions
+// every area, and their skincare rules only run when `category` is literally "skincare" while the
+// JP/AU catalogs carry leaf categories ("cream", "Eye Cream", "Hand Cream").
+//
+// This rule reads only the leaf category and the product name. Two products agree when
+//   1. their body areas intersect: eye / lip / body / hand / nail / foot / hair, with face (and
+//      cheeks, as the preflight gate allows) as the default when nothing is named; and
+//   2. their forms intersect, where a form is a leaf-category token canonicalised by the
+//      preflight's categoryLeafTokens (cream / lotion -> moisturizer, wash -> cleanser, mist ->
+//      toner, stop words dropped) or, when the name carries one, a form word from the builder's
+//      own form vocabulary. A side with no recognisable form abstains on (2), never on (1).
+const LEAF_AREA_GROUPS = {
+  eye: [...EYE_AREA_TOKENS, 'brows', 'eyes', 'lashes', 'mascara', 'undereye'],
+  lip: ['lip', 'lips', 'lipstick', 'lipgloss'],
+  body: ['body'],
+  hand: ['hand', 'hands'],
+  nail: ['nail', 'nails'],
+  foot: ['foot', 'feet'],
+  hair: ['hair', 'scalp'],
+  face: ['face', 'facial', 'cheek', 'cheeks'],
+};
+const LEAF_AREA_WORDS = new Set(Object.values(LEAF_AREA_GROUPS).flat());
+// Strong use-case words that qualify a product rather than name its form.
+const LEAF_FORM_MODIFIER_TOKENS = new Set(['acne', 'barrier', 'complexion', 'gel', 'peptide', 'retinoid']);
+const LEAF_NAME_FORM_TOKENS = new Set(
+  [...STRONG_USE_CASE_TOKENS, ...TOPICAL_FORM_TOKENS, ...TOOL_FORM_TOKENS]
+    .filter((token) => !LEAF_AREA_WORDS.has(token))
+    .filter((token) => !CATEGORY_LEAF_STOP_TOKENS.has(token))
+    .filter((token) => !LEAF_FORM_MODIFIER_TOKENS.has(token))
+    .filter((token) => !GENERIC_USE_CASE_TOKENS.has(token)),
+);
+
+function leafCategoryValue(snapshot = {}) {
+  const candidates = [snapshot.category];
+  if (Array.isArray(snapshot.category_taxonomy)) candidates.push(...[...snapshot.category_taxonomy].reverse());
+  for (const raw of candidates) {
+    const segments = normalizeCategoryValue(raw).split(/\s*[/>|›]\s*/).map((item) => item.trim()).filter(Boolean);
+    const leaf = segments.length ? segments[segments.length - 1] : '';
+    if (!leaf || isBroadCategoryValue(leaf) || SHELF_PLACEHOLDER_TOKENS.has(leaf)) continue;
+    return leaf;
+  }
+  return '';
+}
+
+function leafAreas(tokens) {
+  const areas = new Set();
+  for (const [area, words] of Object.entries(LEAF_AREA_GROUPS)) {
+    if (words.some((word) => tokens.has(word))) areas.add(area);
+  }
+  if (!areas.size) areas.add('face');
+  return areas;
+}
+
+function snapshotLeafProfile(snapshot = {}) {
+  const leaf = leafCategoryValue(snapshot);
+  const leafTokens = categoryLeafTokens(normalizeTokens(leaf).join('_'));
+  const nameTokens = new Set(normalizeTokens([
+    snapshot.name,
+    snapshot.title,
+    snapshot.display_name,
+    snapshot.displayName,
+    snapshot.product_name,
+    snapshot.productName,
+  ]));
+  const categoryForms = new Set(
+    [...leafTokens].filter((token) => !LEAF_AREA_WORDS.has(token) && !GENERIC_USE_CASE_TOKENS.has(token)),
+  );
+  const nameForms = new Set(
+    [...nameTokens]
+      .filter((token) => LEAF_NAME_FORM_TOKENS.has(token))
+      .map((token) => CATEGORY_LEAF_ALIASES[token] || token),
+  );
+  return {
+    leaf,
+    forms: nameForms.size ? nameForms : categoryForms,
+    areas: leafAreas(new Set([...leafTokens, ...nameTokens])),
+  };
+}
+
+function setsIntersect(left, right) {
+  for (const item of left) {
+    if (right.has(item)) return true;
+  }
+  return false;
+}
+
+function leafCategoryCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
+  const anchor = snapshotLeafProfile(anchorSnapshot);
+  const candidate = snapshotLeafProfile(candidateSnapshot);
+  const label = (set) => [...set].sort().join('+') || 'none';
+  if (!setsIntersect(anchor.areas, candidate.areas)) {
+    return { compatible: false, reason: `leaf_area_mismatch:${label(anchor.areas)}_vs_${label(candidate.areas)}`, evaluated: true };
+  }
+  if (anchor.forms.size && candidate.forms.size && !setsIntersect(anchor.forms, candidate.forms)) {
+    return { compatible: false, reason: `leaf_form_mismatch:${label(anchor.forms)}_vs_${label(candidate.forms)}`, evaluated: true };
+  }
+  return { compatible: true, reason: '', evaluated: Boolean(anchor.forms.size && candidate.forms.size) };
+}
+
 function collectUseCaseTokens(snapshot = {}) {
   const rawValues = [
     snapshot.category,
@@ -1222,7 +1344,9 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
   );
   const ingredientScore = extractScore(candidate, ['ingredient_functional_similarity', 'ingredient_similarity'], 0);
   const explicitSim = extractScore(candidate, ['similarity_score', 'similarityScore', 'score_total'], 0);
-  const scoreTotal = Math.max(explicitSim, ingredientScore, categoryScore * 0.75);
+  // The sources scorer already folds ingredient / category evidence into similarity_score; taking
+  // the max over its components again let an identical tag list (ingredient 1.0) saturate the edge.
+  const scoreTotal = explicitSim > 0 ? explicitSim : Math.max(ingredientScore, categoryScore * 0.75);
   const anchorPrice = toNumberOrNull(anchorSnapshot.price ?? anchorSnapshot.price_amount);
   const candidatePrice = toNumberOrNull(candidateSnapshot.price ?? candidateSnapshot.price_amount ?? candidate.price);
   const priceRatio = anchorPrice != null && candidatePrice != null && anchorPrice > 0
@@ -1231,6 +1355,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
   const setCompatibility = setCompositionCompatibility(anchorSnapshot, candidateSnapshot);
   const formCompatibility = productFormCompatibility(anchorSnapshot, candidateSnapshot);
   const jobCompatibility = productJobCompatibility(anchorSnapshot, candidateSnapshot);
+  const leafCompatibility = leafCategoryCompatibility(anchorSnapshot, candidateSnapshot);
   const useCaseAlignment = hasSpecificUseCaseAlignment(anchorSnapshot, candidateSnapshot, { ingredientScore });
 
   if (isOutOfScopeBeautyProduct(anchorSnapshot) || isOutOfScopeBeautyProduct(candidateSnapshot)) {
@@ -1287,6 +1412,20 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       useCaseAlignment,
     };
   }
+  if (!leafCompatibility.compatible) {
+    return {
+      relation_type: 'rejected',
+      categoryScore,
+      ingredientScore,
+      scoreTotal,
+      priceRatio,
+      setCompatibility,
+      formCompatibility,
+      jobCompatibility,
+      leafCompatibility,
+      useCaseAlignment,
+    };
+  }
   if (!useCaseAlignment.aligned) {
     return {
       relation_type: 'rejected',
@@ -1310,6 +1449,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       priceRatio,
       setCompatibility,
       jobCompatibility,
+      leafCompatibility,
       useCaseAlignment,
       productEvidence,
     };
@@ -1323,6 +1463,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       priceRatio,
       setCompatibility,
       jobCompatibility,
+      leafCompatibility,
       useCaseAlignment,
     };
   }
@@ -1361,9 +1502,9 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
   const edge = coerceRelationshipEdge({
     anchor_type: 'product',
     anchor_ref: anchorNorm.product_ref,
-    anchor_snapshot: anchorNorm.snapshot,
+    anchor_snapshot: neutralizeSnapshotClaims(anchorNorm.snapshot, ANCHOR_CLAIM_FIELDS),
     candidate_product_ref: candidateNorm.product_ref,
-    candidate_snapshot: candidateNorm.snapshot,
+    candidate_snapshot: neutralizeSnapshotClaims(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
     relation_type: inferred.relation_type,
     market,
     category_taxonomy: candidate.category_taxonomy || candidate.categoryTaxonomy || candidateNorm.snapshot.category_taxonomy || candidateNorm.snapshot.category,
@@ -1388,7 +1529,7 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
     evidence_grade: candidate.evidence_grade || candidate.evidenceGrade || 'B',
     review_status: reviewStatus,
     why_candidate: isPlainObject(candidate.why_candidate || candidate.whyCandidate)
-      ? (candidate.why_candidate || candidate.whyCandidate)
+      ? neutralizeClaimValue(candidate.why_candidate || candidate.whyCandidate)
       : {
         summary: inferred.relation_type === 'dupe'
           ? 'Lower-priced alternative with similar category and function signals.'
@@ -1397,8 +1538,8 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
             : 'Cross-brand alternative with matching category and use-case signals.',
         reasons_user_visible: ['Category/use-case evidence is aligned.', 'Source provenance is available.'],
       },
-    tradeoffs: Array.isArray(candidate.tradeoffs) ? candidate.tradeoffs : [],
-    watchouts: Array.isArray(candidate.watchouts) ? candidate.watchouts : [],
+    tradeoffs: Array.isArray(candidate.tradeoffs) ? neutralizeClaimValue(candidate.tradeoffs) : [],
+    watchouts: Array.isArray(candidate.watchouts) ? neutralizeClaimValue(candidate.watchouts) : [],
     provenance: {
       pipeline: 'product_relationship_graph_builder.v1',
       generated_at: nowIso,
@@ -1430,7 +1571,7 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
     anchor_ref: normalizeString(needObj.need_id || needObj.id || needObj.label, 260),
     anchor_snapshot: needObj,
     candidate_product_ref: candidateNorm.product_ref,
-    candidate_snapshot: candidateNorm.snapshot,
+    candidate_snapshot: neutralizeSnapshotClaims(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
     relation_type: 'niche_specialist',
     market,
     category_taxonomy: needObj.category_taxonomy || needObj.categoryTaxonomy,
@@ -1451,7 +1592,7 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
     evidence_grade: candidate.evidence_grade || candidate.evidenceGrade || needObj.evidence_grade_min || 'B',
     review_status: reviewStatus,
     why_candidate: isPlainObject(candidate.why_candidate || candidate.whyCandidate)
-      ? (candidate.why_candidate || candidate.whyCandidate)
+      ? neutralizeClaimValue(candidate.why_candidate || candidate.whyCandidate)
       : {
         summary: `Specialist candidate for ${normalizeString(needObj.label || needObj.need_id)}.`,
         reasons_user_visible: ['Need-specific tags and source evidence are available.'],
@@ -1496,6 +1637,47 @@ function dedupeEdgesByIdentity(edges) {
   return Array.from(byKey.values()).sort((a, b) => Number(b.score_total || 0) - Number(a.score_total || 0));
 }
 
+// Bound how many anchors one candidate may serve as a dupe / competitive_alternative. Input edges
+// arrive score-sorted from dedupeEdgesByIdentity; within one candidate the best-scoring anchors are
+// kept, ties broken by anchor_ref so a rerun over the same input keeps the same edges. Other
+// relation types (related_product, niche_specialist) are never capped: a same-brand sibling or a
+// need node is expected to fan in.
+function capCandidateFanIn(edges, { maxAnchorsPerCandidate = DEFAULT_MAX_ANCHORS_PER_CANDIDATE } = {}) {
+  const cap = Math.max(1, Math.floor(Number(maxAnchorsPerCandidate) || DEFAULT_MAX_ANCHORS_PER_CANDIDATE));
+  const list = Array.isArray(edges) ? edges : [];
+  const ranked = list
+    .map((edge, index) => ({ edge, index }))
+    .sort((a, b) =>
+      Number(b.edge.score_total || 0) - Number(a.edge.score_total || 0) ||
+      normalizeLower(a.edge.anchor_ref).localeCompare(normalizeLower(b.edge.anchor_ref)) ||
+      a.index - b.index);
+  const served = new Map();
+  const dropIndexes = new Set();
+  const dropped = [];
+  for (const { edge, index } of ranked) {
+    if (!FAN_IN_CAPPED_RELATION_TYPES.has(edge.relation_type)) continue;
+    const key = normalizeLower(edge.candidate_product_ref);
+    const count = Number(served.get(key) || 0) + 1;
+    served.set(key, count);
+    if (count <= cap) continue;
+    dropIndexes.add(index);
+    dropped.push({
+      anchor_ref: edge.anchor_ref,
+      candidate_ref: edge.candidate_product_ref,
+      errors: ['candidate_fan_in_cap'],
+      metrics: { relation_type: edge.relation_type, score_total: edge.score_total, fan_in_rank: count, cap },
+    });
+  }
+  let maxFanIn = 0;
+  for (const count of served.values()) maxFanIn = Math.max(maxFanIn, count);
+  return {
+    kept: list.filter((edge, index) => !dropIndexes.has(index)),
+    dropped,
+    max_fan_in_before_cap: maxFanIn,
+    cap,
+  };
+}
+
 function buildProductRelationshipGraphDryRun({
   anchors = [],
   candidatesByAnchor = {},
@@ -1505,6 +1687,7 @@ function buildProductRelationshipGraphDryRun({
   now = new Date(),
   reviewStatus = 'pending',
   limit = 200,
+  maxAnchorsPerCandidate = DEFAULT_MAX_ANCHORS_PER_CANDIDATE,
 } = {}) {
   const nowIso = new Date(now).toISOString();
   const edges = [];
@@ -1563,7 +1746,9 @@ function buildProductRelationshipGraphDryRun({
     }
   }
 
-  const deduped = dedupeEdgesByIdentity(edges);
+  const fanIn = capCandidateFanIn(dedupeEdgesByIdentity(edges), { maxAnchorsPerCandidate });
+  rejected_edges.push(...fanIn.dropped);
+  const deduped = fanIn.kept;
   const anchorsWithApprovedAlternative = new Set(
     deduped
       .filter((edge) => ['dupe', 'competitive_alternative'].includes(edge.relation_type))
@@ -1590,6 +1775,9 @@ function buildProductRelationshipGraphDryRun({
       rejected_count: rejected_edges.length,
       anchors_with_alternative_count: anchorsWithApprovedAlternative.size,
       niche_specialist_count: deduped.filter((edge) => edge.relation_type === 'niche_specialist').length,
+      max_anchors_per_candidate: fanIn.cap,
+      max_fan_in_before_cap: fanIn.max_fan_in_before_cap,
+      fan_in_capped_count: fanIn.dropped.length,
       relation_counts: deduped.reduce((acc, edge) => {
         acc[edge.relation_type] = Number(acc[edge.relation_type] || 0) + 1;
         return acc;
@@ -1604,10 +1792,12 @@ function buildProductRelationshipGraphDryRun({
 
 module.exports = {
   CURATED_NEED_NODES,
+  DEFAULT_MAX_ANCHORS_PER_CANDIDATE,
   normalizeProductSnapshot,
   buildEdgeForCandidate,
   buildNicheSpecialistEdge,
   dedupeEdgesByIdentity,
+  capCandidateFanIn,
   buildProductRelationshipGraphDryRun,
   __internal: {
     inferRelationship,
@@ -1617,6 +1807,8 @@ module.exports = {
     productFormCompatibility,
     setCompositionCompatibility,
     productJobCompatibility,
+    leafCategoryCompatibility,
+    snapshotLeafProfile,
     needCandidateCompatibility,
     isOutOfScopeBeautyProduct,
   },

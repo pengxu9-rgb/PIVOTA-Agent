@@ -9,8 +9,13 @@ const {
   __internal: relationshipInternals,
 } = require('../src/auroraBff/productRelationshipGraph');
 
+const {
+  SOCIAL_CLAIM_PATTERN,
+  CANDIDATE_CLAIM_FIELDS,
+  ANCHOR_CLAIM_FIELDS,
+} = require('../src/auroraBff/relationshipClaimPhrases');
+
 const ALTERNATIVE_RELATION_TYPES = new Set(['dupe', 'competitive_alternative']);
-const SOCIAL_CLAIM_PATTERN = /\b(?:tiktok|tik\s*tok|instagram|insta|creator|influencer|viral|social proof|ugc|testimonial|celebrity|raved about|hyped|trending)\b/i;
 const SOCIAL_SOURCE_SUPPORT_PATTERN = /\b(?:social|creator|influencer|tiktok|tik\s*tok|instagram|ugc|review|reviews|testimonial|press|editorial|citation|source)\b/i;
 
 const UNSUPPORTED_CLAIM_PATTERNS = [
@@ -267,20 +272,9 @@ function claimTextFragments(edge) {
   const fragments = [];
   const candidate = ensureObject(edge.candidate_snapshot || edge.candidateSnapshot);
   const anchor = ensureObject(edge.anchor_snapshot || edge.anchorSnapshot);
-  const candidateClaimFields = [
-    'description',
-    'short_description',
-    'long_description',
-    'marketing_copy',
-    'claims',
-    'claim',
-    'benefits',
-    'highlights',
-    'reason',
-    'reasons',
-    'why',
-  ];
-  const anchorClaimFields = ['description', 'claims', 'benefits'];
+  // The builder neutralises exactly these fields (src/auroraBff/relationshipClaimPhrases.js).
+  const candidateClaimFields = CANDIDATE_CLAIM_FIELDS;
+  const anchorClaimFields = ANCHOR_CLAIM_FIELDS;
 
   collectStrings(edge.why_candidate || edge.whyCandidate, 'why_candidate', fragments);
   collectStrings(edge.tradeoffs, 'tradeoffs', fragments);
@@ -773,6 +767,7 @@ if (require.main === module) {
 
 module.exports = {
   ALTERNATIVE_RELATION_TYPES,
+  SOCIAL_CLAIM_PATTERN,
   UNSUPPORTED_CLAIM_PATTERNS,
   auditReport,
   auditUnsupportedClaims,
