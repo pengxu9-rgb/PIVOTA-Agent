@@ -49,7 +49,9 @@ Platform reality check (drives sequencing):
 ## 3. Schema: `provider_integrations`
 
 One row per (provider, platform) binding. Capability is explicit so the booking
-path can branch without guessing. Migration `049_provider_integrations.sql`.
+path can branch without guessing. Migration `src/db/migrations/060_provider_integrations.sql`
+(049 is taken by `049_index_pipeline_state_readiness_tier.sql`; 059 was the highest on main
+at 2026-09-26 — re-check the next free number when this ships).
 
 ```sql
 CREATE TABLE IF NOT EXISTS provider_integrations (
@@ -175,7 +177,7 @@ Key invariants:
 
 1. **Keep T1 for the Seoul pilot.** Prove traveler demand before paying any
    integration cost. (Naver/Kakao have no open API anyway.)
-2. **Ship migration `049_provider_integrations.sql`** + the registry skeleton with
+2. **Ship migration `060_provider_integrations.sql`** + the registry skeleton with
    only the `manual_relay` default path wired. Zero behavior change.
 3. **Build one T3 adapter end-to-end — Mindbody or Square** (best docs) to
    validate the `getAvailability`/`createBooking`/webhook contract against a real
