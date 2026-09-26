@@ -66,6 +66,9 @@ const {
   buildIdentityListingFromProduct,
   _internals: { applyIdentityOverrides },
 } = require('../src/services/pdpIdentityGraph');
+// The trust policy's own observed-seller test (catalogTrustPolicy.js uses the same helper), so the
+// exemption this report prints cannot drift from the one serving applies.
+const { isObservedSellerMerchantId } = require('../src/services/externalSeedLane');
 
 const MIN_SIBLINGS = 3;
 
@@ -192,7 +195,7 @@ function planRow({ row, rebuilt, overrides = [], brandDomain = new Map(), allowP
 function servingImpact(servingRows = []) {
   const liveRead = servingRows.some((r) => r.live_read_enabled === true);
   const isPublic = servingRows.some((r) => r.serving_decision === 'public');
-  const observedSeller = servingRows.some((r) => String(r.merchant_id || '').startsWith('merch_obs_'));
+  const observedSeller = servingRows.some((r) => isObservedSellerMerchantId(r.merchant_id));
   const cross = servingRows.some((r) => String(r.seed_kind || '').trim().toLowerCase() === 'cross');
   return {
     live_read: liveRead,
