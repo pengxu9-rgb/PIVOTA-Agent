@@ -7,6 +7,7 @@ const { closePool, query } = require('../src/db');
 const {
   buildProductRelationshipGraphDryRun,
   CURATED_NEED_NODES,
+  DEFAULT_MAX_ANCHORS_PER_CANDIDATE,
   normalizeProductSnapshot,
 } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const {
@@ -932,6 +933,7 @@ async function main() {
   const reviewStatus = normalizeLower(reviewStatusArg || 'pending', 32) || 'pending';
   const defaultLabelState = resolveDefaultLabelState(reviewStatusArg);
   const maxPerAnchor = numberArg('max-per-anchor', 24, { min: 1, max: 100 });
+  const maxAnchorsPerCandidate = numberArg('max-anchors-per-candidate', DEFAULT_MAX_ANCHORS_PER_CANDIDATE, { min: 1, max: 1000 });
   const includeTransitiveRecall = !hasFlag('no-transitive-recall');
   const maxBridgePerAnchor = numberArg('max-bridge-per-anchor', 8, { min: 1, max: 24 });
   const maxBridgeCandidates = numberArg('max-bridge-candidates', 8, { min: 1, max: 24 });
@@ -980,6 +982,7 @@ async function main() {
     market,
     reviewStatus,
     limit,
+    maxAnchorsPerCandidate,
   });
 
   // defaultLabelState resolution above (via resolveDefaultLabelState):
