@@ -591,11 +591,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       mainlineExecution.llmDeclinedInItsOwnWords
       && isPlainObject(norm?.payload)
       && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)
-      // KNOWN UNTESTED: a mutant removing this guard survives. Driving it needs a turn that is BOTH
-      // a decline and one of postMainline's specific empty cases (planner-blocked, step-aware,
-      // framework, prompt-contract), and those are set from real recall/contract state the harness
-      // cannot force. Its absence would mislabel — a decline overwriting a more precise account —
-      // not break correctness, so it is named here rather than pinned by a fixture built to pass.
+      // Pinned by tests/reco_model_declined_reason.node.test.cjs: since #2184 a named makeup step
+      // (a bronzer) resolves a step-aware target, and with an empty pool postMainline records
+      // `no_viable_candidates_for_target` first -- a pre-LLM catalog-gap measurement this stamp
+      // must not overwrite.
       && !pickFirstTrimmed(norm.payload.products_empty_reason)
     ) {
       norm.payload.products_empty_reason = 'model_declined';

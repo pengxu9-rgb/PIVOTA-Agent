@@ -28,7 +28,16 @@ const ROUTES_ID = require.resolve('../src/auroraBff/routes');
 const DECLINE_REASON = 'The request asks for a bronzer, which falls under makeup.';
 
 // Drives the REAL lane through the REAL agent bridge. The stub is the upstream, nothing else.
-async function askAgentDoor(answer) {
+// NOT a bronzer. Since #2184 taught the lane which category was asked for, a named makeup step
+// ("a bronzer", "a lipstick", "an eau de toilette") resolves a step-aware target, and in this harness
+// its candidate pool is EMPTY (there is no catalog) -- so postMainline records the more specific,
+// pre-LLM account `no_viable_candidates_for_target` before the decline stamp runs, exactly as the
+// engine's guard intends. That precedence is pinned by its own test below. This need reaches the
+// model without resolving a step target, which is the case the stamp exists for.
+const DECLINED_NEED = 'something to make my face look glowy for a party';
+const STEP_AWARE_NEED = 'a bronzer for contouring my cheekbones, warm undertone';
+
+async function askAgentDoor(answer, need = DECLINED_NEED) {
   delete require.cache[ROUTES_ID];
   delete require.cache[CLIENT_ID];
   const client = require('../src/auroraBff/auroraDecisionClient');
@@ -43,7 +52,7 @@ async function askAgentDoor(answer) {
       budgetMs: 6000,
     });
     return await handler(
-      { payload: { need: 'a bronzer for contouring my cheekbones, warm undertone' } },
+      { payload: { need } },
       { agent_id: 'partner_test' },
     );
   } finally {
@@ -67,6 +76,23 @@ test('a refusal reaches the partner as model_declined, not as "we produced nothi
   // The prose survives too — the token is what a machine reads, this is what a human reads.
   assert.ok((out.metadata.missing_info || []).includes(DECLINE_REASON),
     'and the reason itself is still carried, not replaced by the token');
+});
+
+test('a decline does NOT overwrite a more specific empty reason the lane already recorded', async () => {
+  // The engine's "only when nothing else claimed the field" guard. A step-aware target whose pool
+  // was empty BEFORE the model ran (a catalog gap, measured pre-LLM) is a truer account than the
+  // model's words about the same empty shortlist, and a partner acts on it differently: no retry
+  // and no rephrasing will make a bronzer appear. Removing the guard used to survive every test.
+  const out = await askAgentDoor({
+    recommendations: [],
+    confidence: 0.2,
+    warnings: [],
+    missing_info: [DECLINE_REASON],
+  }, STEP_AWARE_NEED);
+
+  assert.equal(out.signals.length, 0);
+  assert.equal(out.metadata.products_empty_reason, 'no_viable_candidates_for_target',
+    'the step-aware empty-pool reason was recorded first and must survive the decline stamp');
 });
 
 test('a lane that simply produced nothing is NOT reported as a refusal', async () => {
