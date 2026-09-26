@@ -48597,9 +48597,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ),
           };
         }
-        if (response) {
-          // Explicit strict commerce surfaces must not fall back to legacy search paths.
-        } else {
         if (!response) {
           logger.warn(
             {
@@ -48626,7 +48623,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               querySource: 'agent_products_error_fallback',
             }),
           };
-        }
         }
       }
 
