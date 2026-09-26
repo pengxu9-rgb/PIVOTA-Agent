@@ -188,3 +188,11 @@ test('control: "face cream" still rejects the tanning row and keeps a moisturize
   const kept = score('face cream', moisturizerRow());
   assert.equal(kept.relevant, true, JSON.stringify(kept));
 });
+
+// --- curl styling products route to haircare, so "cream" / "foam" there is a texture ---
+
+for (const query of ['curl cream', 'curl defining cream', 'curl foam', 'Moroccanoil curl cream']) {
+  test(`"${query}": no moisturizer or cleanser gate`, () => {
+    assert.deepEqual(inferBeautyMainlineIntent(query).families, []);
+  });
+}

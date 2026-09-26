@@ -101,8 +101,16 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     // hairspray/hair spray arm added 2026-08-20 (second residue pass): both
     // spellings safe-emptied; 13 eligible hairspray-titled rows live in
     // beauty/haircare/general, inside this rule's existing broad prefix.
+    // Curl arms added 2026-09-26: `curl cream` fell through to the
+    // moisturizer rule's bare `cream` and browsed skincare/moisturize (prod
+    // recall: 4 curl rows of 200, 4.0s; the served page was 18 face creams of
+    // 20). Under beauty/haircare/ the same recall held 11 curl rows with the
+    // three Moroccanoil curl creams at the head, in 1.9s. Only a curl word
+    // followed by a styling-product noun, or curly/wavy/coily hair, is
+    // claimed: `curling mascara` (33 mascara rows carry "curl") and `curling
+    // iron` keep their homes.
     pattern:
-      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care|curl(?:s|y|ing)?(?:[-\s]+(?:defining|enhancing|refreshing|boosting))?\s+(?:creams?|custards?|gels?|mousses?|foams?|butters?|milks?|sprays?|activators?|definers?)|(?:curly|wavy|coily)\s+hair)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
   },
   {
     category: 'mascara',

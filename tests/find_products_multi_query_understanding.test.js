@@ -400,6 +400,43 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
   });
 
+  // 2026-09-26: `curl cream` was claimed by the moisturizer rule's bare
+  // `cream` and browsed skincare/moisturize (prod recall 4 curl rows of 200;
+  // served page 18 face creams of 20). curl gel/mousse/foam/custard had no
+  // rule at all and safe-emptied. Curl styling products live in
+  // beauty/haircare/general (prod recall under haircare: 11 curl rows, the
+  // three Moroccanoil curl creams at the head).
+  test.each([
+    ['curl cream'],
+    ['curl defining cream'],
+    ['curl-defining cream'],
+    ['curling cream'],
+    ['cream for curly hair'],
+    ['best curl cream for wavy hair'],
+    ['curl gel'],
+    ['curl mousse'],
+    ['curl foam'],
+    ['curl custard'],
+  ])('%s browses haircare, not skincare/moisturize', (query) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe('category_browse');
+    expect(contract.hard_constraints.category_path_prefix).toBe('beauty/haircare/');
+  });
+
+  test.each([
+    // "curl" also names a lash effect and a tool: 33 mascara rows carry it.
+    ['curling mascara', 'beauty/makeup/eye/'],
+    ['curl mascara', 'beauty/makeup/eye/'],
+    ['curling iron', null],
+    ['lash curler', null],
+    ['eyelash curler', null],
+    ['curl', null],
+  ])('%s is not claimed by the curl arms', (query, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
   test('body mist keeps its fragrance claim over the toner mist arm', () => {
     const contract = buildSearchQualityContract({ rawQuery: 'body mist', market: 'US' });
     expect(contract.query_class).toBe('category_browse');
