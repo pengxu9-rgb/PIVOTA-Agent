@@ -242,6 +242,37 @@ function isCandidateKeyPrefilterEnabled(env = process.env) {
   return CANDIDATE_KEY_PREFILTER_ON_VALUES.has(raw);
 }
 
+// SINGLE PAYLOAD READ (default OFF). Read per call.
+//
+// product_payload is stored out of line (TOAST: 207MB against a 51MB heap in prod, 2026-09-26), and
+// PostgreSQL re-fetches and re-decompresses an out-of-line value EVERY time an expression reads it --
+// there is no per-row cache. The candidate CTE reads it up to ~8 times per row (4 source-unavailable
+// checks, the 3-path product-family rank arm, more under a brand filter, which reads up to 11 paths),
+// and prod EXPLAIN ANALYZE put that per-candidate evaluation at 25-30 shared buffers and 60-70% of the
+// query once the candidate-key prefilter removed the catalog walk.
+//
+// With the flag on, the CTE joins `LATERAL (SELECT jsonb_path_query_first(p.product_payload, '$') AS
+// product_payload OFFSET 0) pp` and its filter/rank fragments read `pp.product_payload` instead:
+//   * jsonb_path_query_first(v, '$') returns v unchanged for every JSON value (and NULL for NULL), but
+//     as a function RESULT it is an in-memory copy, so every later read is free. A plain pass-through
+//     (`SELECT p.product_payload AS x`) would carry the TOAST pointer and change nothing -- measured.
+//   * OFFSET 0 keeps the planner from flattening the subquery back into the per-reference form.
+//   * The plain `p.product_payload` projection stays a pointer: carrying the decompressed value (up to
+//     940KB for one prod row) through the pre-LIMIT sort would make the sort spill.
+//   * The candidate-key prefilter's subquery is left alone: its inner `p` is a different row.
+// Measured on a prod-scale local catalog: same outputs, 419k -> 60k buffers for the filter+rank reads.
+const SINGLE_PAYLOAD_READ_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isSinglePayloadReadEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_SINGLE_PAYLOAD_READ ?? '').trim().toLowerCase();
+  return SINGLE_PAYLOAD_READ_ON_VALUES.has(raw);
+}
+
+// `\b` before `p` keeps `np.product_payload` (the name-evidence carrier CTE) and similar aliases out.
+function readPayloadOnce(fragment) {
+  return String(fragment ?? '').replace(/\bp\.product_payload\b/g, 'pp.product_payload');
+}
+
 // Whether a WHERE fragment reads ONLY the candidate row `p` (plus aliases it declares itself, e.g. an
 // EXISTS over catalog_skus correlated on p). Only such a predicate can be moved into
 // `SELECT p.product_key FROM catalog_products p WHERE ...` unchanged: the inner `p` then shadows the
@@ -1543,6 +1574,13 @@ async function fetchCanonicalChainRows(args = {}) {
         WHERE ${whereClause}
       ))`;
   }
+  // See isSinglePayloadReadEnabled. `pl` is applied to every interpolated fragment of the candidate
+  // CTE; the literal text (including the plain p.product_payload projection) is never rewritten.
+  const singlePayloadRead = isSinglePayloadReadEnabled();
+  const pl = (fragment) => (singlePayloadRead ? readPayloadOnce(fragment) : fragment);
+  const payloadLateralSql = singlePayloadRead
+    ? "\n      CROSS JOIN LATERAL (SELECT jsonb_path_query_first(p.product_payload, '$') AS product_payload OFFSET 0) pp"
+    : '';
   // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
   // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
   //  * the carrier count is a CTE, counted once;
@@ -2063,30 +2101,30 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}${nameEvidenceProjectionSql}
+        p.updated_at            AS product_updated_at,${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
         (
-          ${skuIdentityScore}
+          ${pl(skuIdentityScore)}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${nameEvidenceRankArm}
-          ${canonicalScopeRankArms}
-          ${categoryScore}${categoryBrowseTextArm}
-          ${verticalScore}
-          ${tokenScore}
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${pl(nameEvidenceRankArm)}
+          ${pl(canonicalScopeRankArms)}
+          ${pl(categoryScore)}${pl(categoryBrowseTextArm)}
+          ${pl(verticalScore)}
+          ${pl(tokenScore)}
         ) AS rank_score
       FROM catalog_products p
       INNER JOIN index_pipeline_state ips
         ON ips.content_key = p.content_key
        AND ips.${eligibilityColumn} = TRUE
-      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
-      WHERE ${whereClause}
-        AND ${activeCatalogProductSourceWhere('p', 'm')}
-        ${externalSeedUnavailableWhere}
-        ${candidateOfferWhere}
-      ${merchantClause}
-      ${marketWhere}
-      ${brandWhere}${innerOrderLimitSql}
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id${payloadLateralSql}
+      WHERE ${candidateKeyPrefilter ? whereClause : pl(whereClause)}
+        AND ${pl(activeCatalogProductSourceWhere('p', 'm'))}
+        ${pl(externalSeedUnavailableWhere)}
+        ${pl(candidateOfferWhere)}
+      ${pl(merchantClause)}
+      ${pl(marketWhere)}
+      ${pl(brandWhere)}${innerOrderLimitSql}
     )${setDiversityCteSql},
     candidate_slots AS (
       -- listing_slot: which of the product's listings (in best-offer order)
@@ -2172,6 +2210,7 @@ module.exports = {
   isCategoryBrowseTextUnionEnabled,
   // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
   isCandidateKeyPrefilterEnabled,
+  isSinglePayloadReadEnabled,
   // Exported so callers whose lane preserves recall order (the
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
@@ -2216,6 +2255,8 @@ module.exports = {
     isCategoryBrowseTextUnionEnabled,
     isCandidateKeyPrefilterEnabled,
     whereReadsOnlyCandidateRow,
+    isSinglePayloadReadEnabled,
+    readPayloadOnce,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
     isDeterministicTiebreakEnabled,
