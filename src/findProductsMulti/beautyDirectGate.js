@@ -6,6 +6,10 @@
 // folded it in here, so a pivot contract request skips those two conditions and every other
 // request keeps them. tests/beauty_direct_gate.node.test.cjs checks this against the old two
 // gates over every combination of inputs.
+//
+// `pivotBeautyContract` may be a boolean or a function; a function is only called once the
+// cheap conditions hold, as the inline && chain did, because the pivot detector runs beauty
+// intent inference over the whole query.
 function isBeautyDirectAfterContextEligible({
   directRecallEnabled,
   canonicalSigEntityMode,
@@ -18,19 +22,22 @@ function isBeautyDirectAfterContextEligible({
   strictCommerce,
   shoppingCanonicalMainlineEligible,
 }) {
+  if (
+    !directRecallEnabled ||
+    canonicalSigEntityMode ||
+    !hasQueryText ||
+    !(beautyLike || searchQualityContractApplied) ||
+    hasMerchantScope
+  ) {
+    return false;
+  }
+  const isPivot = typeof pivotBeautyContract === 'function' ? pivotBeautyContract() : pivotBeautyContract;
   return Boolean(
-    directRecallEnabled &&
-      !canonicalSigEntityMode &&
-      hasQueryText &&
-      (beautyLike || searchQualityContractApplied) &&
-      !hasMerchantScope &&
+    isPivot ||
       (
-        pivotBeautyContract ||
-        (
-          !productOnly &&
-          (!strictCommerce || searchQualityContractApplied) &&
-          (shoppingCanonicalMainlineEligible || searchQualityContractApplied)
-        )
+        !productOnly &&
+        (!strictCommerce || searchQualityContractApplied) &&
+        (shoppingCanonicalMainlineEligible || searchQualityContractApplied)
       ),
   );
 }

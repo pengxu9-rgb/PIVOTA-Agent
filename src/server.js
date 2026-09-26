@@ -46808,7 +46808,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         beautyLike: beautyMainlineIntentForDirect.beautyLike,
         searchQualityContractApplied: routeSearchQualityContractApplied,
         hasMerchantScope,
-        pivotBeautyContract: isPivotBeautyContractInvokeRequest({ operation, req }),
+        pivotBeautyContract: () => isPivotBeautyContractInvokeRequest({ operation, req }),
         productOnly: findProductsMultiProductOnly,
         strictCommerce: strictCommerceFindProductsMulti,
         shoppingCanonicalMainlineEligible: shoppingCanonicalMainlineDirectEligible,

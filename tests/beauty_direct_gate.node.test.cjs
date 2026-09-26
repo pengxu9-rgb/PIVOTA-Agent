@@ -74,6 +74,19 @@ test('a pivot contract request skips the product_only and strict conditions', ()
   assert.equal(isBeautyDirectAfterContextEligible({ ...pivot, strictCommerce: true }), true);
 });
 
+test('the pivot detector is only called once the cheap conditions hold', () => {
+  let calls = 0;
+  const detector = () => {
+    calls += 1;
+    return true;
+  };
+  assert.equal(isBeautyDirectAfterContextEligible({ ...pivot, hasMerchantScope: true, pivotBeautyContract: detector }), false);
+  assert.equal(isBeautyDirectAfterContextEligible({ ...pivot, beautyLike: false, pivotBeautyContract: detector }), false);
+  assert.equal(calls, 0);
+  assert.equal(isBeautyDirectAfterContextEligible({ ...pivot, pivotBeautyContract: detector }), true);
+  assert.equal(calls, 1);
+});
+
 test('any other request keeps them', () => {
   const shopping = { ...pivot, pivotBeautyContract: false, shoppingCanonicalMainlineEligible: true };
   assert.equal(isBeautyDirectAfterContextEligible(shopping), true);

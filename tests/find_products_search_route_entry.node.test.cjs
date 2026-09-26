@@ -180,7 +180,7 @@ test('direct route child marker suppresses beauty semantic handoff reinjection',
   );
 });
 
-test('guidance-only external seed route remains a direct fastpath, not discovery owner lock', () => {
+test('guidance-only external seed route keeps the discovery owner lane and a support-recall contract', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
     query: {
