@@ -207,7 +207,25 @@ function extractCurrentPricingCurrency(value) {
   );
 }
 
-function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, row, seedData, snapshot }) {
+function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, hasExtractedVariants = false, row, seedData, snapshot }) {
+  // This reviewed direct PDP is SGD even though its legacy seed lives in the
+  // US partition. Require fresh, unanimous source currency and no conflicting
+  // stored pricing. Failing the backfill is safer than relabeling SGD 30 as
+  // USD 30. Leave unrelated seeds on their existing resolution policy.
+  if (normalizeNonEmptyString(row?.external_product_id) === 'jungsaemmool:615e47aee567b863') {
+    const storedCurrency = normalizeCurrencyCode(row?.price_currency);
+    const variants = Array.isArray(effectiveSnapshotVariants) ? effectiveSnapshotVariants : [];
+    const declaredCurrencies = [
+      extractCurrentPricingCurrency(seedData?.pricing),
+      extractCurrentPricingCurrency(snapshot?.pricing),
+    ].filter(Boolean);
+    if (!hasExtractedVariants || storedCurrency !== 'SGD' || variants.length === 0
+        || !variants.every((variant) => normalizeCurrencyCode(variant?.currency) === 'SGD')
+        || declaredCurrencies.some((currency) => currency !== 'SGD')) {
+      throw new Error('reviewed_meitu_source_currency_conflict');
+    }
+    return 'SGD';
+  }
   return (
     extractCurrentPricingCurrency(seedData?.pricing) ||
     extractCurrentPricingCurrency(snapshot?.pricing) ||
@@ -3381,7 +3399,7 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
   return products[0];
 }
 
-function mapSnapshotVariants(product, response, existingSeedData) {
+function mapSnapshotVariants(product, response, existingSeedData, { allowSeedFallback = true } = {}) {
   const responseVariants = Array.isArray(response?.variants) ? response.variants : [];
   const productDetailSections = normalizeDetailsSections(product?.details_sections || product?.pdp_details_sections);
   const normalizeBooleanLike = (value) => (
@@ -3505,7 +3523,7 @@ function mapSnapshotVariants(product, response, existingSeedData) {
       ...sanitizeSeedVariantDisplayFields(variant),
     }));
   }
-  return normalizeSeedVariants(existingSeedData, null);
+  return allowSeedFallback ? normalizeSeedVariants(existingSeedData, null) : [];
 }
 
 function variantLooksHiddenOrQuarantined(variant = {}) {
@@ -3987,7 +4005,10 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
   const existingRawSnapshotVariants = Array.isArray(snapshot.variants) ? cloneJsonValue(snapshot.variants) : [];
   const existingSeedVariants = normalizeSeedVariants(seedData, row);
   const existingSnapshotVariants = normalizeSeedVariants(snapshot, row);
-  const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
+  const freshSnapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData, { allowSeedFallback: false });
+  const snapshotVariants = freshSnapshotVariants.length > 0
+    ? freshSnapshotVariants
+    : normalizeSeedVariants(seedData, null);
   const effectiveSnapshotVariants =
     preserveCommerce ? existingSeedVariants : fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
   const selectedSnapshotVariant = pickVariantByHints(effectiveSnapshotVariants, [
@@ -4789,6 +4810,10 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
   const currency = resolveBackfillCurrency({
     selectedSnapshotVariant,
     effectiveSnapshotVariants,
+    hasExtractedVariants: !preserveCommerce && Array.isArray(representativeProduct?.variants)
+      && representativeProduct.variants.length > 0
+      && freshSnapshotVariants.length === representativeProduct.variants.length
+      && freshSnapshotVariants.every((variant) => (parsePrice(variant.price) || 0) > 0),
     row,
     seedData,
     snapshot,
@@ -4930,9 +4955,10 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
       representativeProduct?.productType ||
       representativeProduct?.type,
   );
-  const sourceDerivedCategory = extractedCategory ? null : deriveSourceBackedCategoryFromProductText(representativeProduct);
   const existingCategory = normalizeNonEmptyString(seedData.category || snapshot.category);
-  const nextCategory = extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory);
+  const { nextCategory, sourceDerivedCategory } = resolveBackfillCategory({
+    extractedCategory, existingCategory, identityRepairBackfill, representativeProduct, row,
+  });
   const shopifyProductJsonMetadata =
     representativeProduct?.shopify_product_json_metadata_v1 &&
     typeof representativeProduct.shopify_product_json_metadata_v1 === 'object'
@@ -6312,7 +6338,26 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function deriveSourceBackedCategoryFromProductText(representativeProduct) {
+function resolveBackfillCategory({ extractedCategory, existingCategory, identityRepairBackfill, representativeProduct, row }) {
+  const genericSerum = normalizeNonEmptyString(extractedCategory).toLowerCase() === 'serum';
+  const inferred = (!extractedCategory || genericSerum)
+    ? deriveSourceBackedCategoryFromProductText(representativeProduct, row)
+    : null;
+  // The direct merchant PDP calls this exact product Lip Gloss. The extractor
+  // currently emits only "Serum" from its title. Preserve every other explicit
+  // extractor category, and only replace that generic label for the reviewed row.
+  const sourceDerivedCategory = extractedCategory
+    ? (genericSerum && inferred?.source_kind === 'reviewed_merchant_product_type' ? inferred : null)
+    : inferred;
+  return {
+    nextCategory: sourceDerivedCategory?.source_kind === 'reviewed_merchant_product_type'
+      ? sourceDerivedCategory.category
+      : extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory),
+    sourceDerivedCategory,
+  };
+}
+
+function deriveSourceBackedCategoryFromProductText(representativeProduct, row = {}) {
   if (!representativeProduct || typeof representativeProduct !== 'object') return null;
   const title = normalizeNonEmptyString(representativeProduct?.title);
   if (!title) return null;
@@ -6334,6 +6379,29 @@ function deriveSourceBackedCategoryFromProductText(representativeProduct) {
   const titleLower = title.toLowerCase();
   const textLower = text.toLowerCase();
   if (/\b(?:e-?gift\s+card|gift\s+card|mystery|surprise|value)\b|\$\s*\d/i.test(title)) return null;
+
+  // Verified on the merchant's direct Shopify PDP: this line's product_type
+  // is Lip Gloss. The extractor omits product_type, so title-only inference
+  // otherwise mistakes its texture word "Serum" for a skincare category.
+  const priorSeedData = ensureJsonObject(row?.seed_data);
+  const priorSnapshot = ensureJsonObject(priorSeedData.snapshot);
+  const priorKind = [priorSeedData.product_kind, priorSeedData.product_family,
+    priorSnapshot.product_kind, priorSnapshot.product_family].map(normalizeNonEmptyString).join(' ');
+  const priorBundle = /\b(?:bundle|set|set_or_collection|collection)\b/i.test(priorKind)
+    || (Array.isArray(priorSeedData.bundle_components) && priorSeedData.bundle_components.length > 0)
+    || (Array.isArray(priorSnapshot.bundle_components) && priorSnapshot.bundle_components.length > 0);
+  if (normalizeNonEmptyString(row?.external_product_id) === 'jungsaemmool:615e47aee567b863'
+      && normalizeNonEmptyString(row?.domain).toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+      && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
+      && !/[+&]|\band\b|\b(?:set|kit|bundle|duo|trio)\b/i.test(title)
+      && !priorBundle) {
+    return {
+      category: 'Lip Gloss',
+      source_kind: 'reviewed_merchant_product_type',
+      source_title: title,
+      source_fields: ['title'],
+    };
+  }
 
   let category = '';
   if (/\bdry['’]?n\s+shape\b.*\btower\b|\btower\b.*\bdry['’]?n\s+shape\b/i.test(title)) {
@@ -7722,6 +7790,7 @@ module.exports = {
   readTargetUrlOverridesFile,
   resolveTargetUrlOverride,
   buildExtractRequestBody,
+  resolveBackfillCurrency,
   extractSeed,
   extractSeedCommerceFacts,
   resolveCatalogExtractTimeoutMs,
@@ -7731,6 +7800,7 @@ module.exports = {
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,
   deriveSourceBackedCategoryFromProductText,
+  resolveBackfillCategory,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
   buildVariantSeedRows,

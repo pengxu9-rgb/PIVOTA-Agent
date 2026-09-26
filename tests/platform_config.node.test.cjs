@@ -33,6 +33,7 @@ const {
   requirePlatformEnv,
   normalizeEnvName,
   resetPlatformWarnings,
+  setBakedCommitShaFileForTests,
 } = platform;
 
 /** A bare environment: no platform markers, no environment names. */
@@ -347,4 +348,180 @@ test('env is read at CALL time — no import-time caching', () => {
     resetPlatformWarnings();
     assert.equal(platformEnv(), 'production', 'K_SERVICE alone must fail closed');
   });
+});
+
+
+// ---------------------------------------------------------------------------------------
+// THE COMMIT BAKED INTO THE IMAGE
+//
+// `gcloud run deploy --image X` with no env flag INHERITS the previous revision's whole
+// environment. On 2026-08-25 that put the `17e7cfa8` image in front of traffic while
+// PIVOTA_COMMIT_SHA still said `6aa49526db95`: /health under-reported the deployed commit by
+// 7, and gateway-prod-drift.yml — whose only job is comparing that value to main — computed
+// "30 commits behind" against a true 23. The alarm validates the reported sha is HEX; it
+// cannot see a stamp that is merely WRONG.
+//
+// The Dockerfile now writes the sha into /app/.image_commit_sha from a build arg, and it
+// outranks every env var, so the reported commit is a property of the code rather than a
+// claim about it. These drive the reader against a real file — the path is a module constant
+// precisely so it cannot be redirected by configuration, so a test hook is the only way in.
+// ---------------------------------------------------------------------------------------
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+const BAKED = 'aaaaaaaabbbbbbbbccccccccdddddddd11112222';
+const DECLARED = '6aa49526db95c1d2e3f4a5b6c7d8e9f0a1b2c3d4';
+
+/** Write a stamp file, point the module at it, and undo both afterwards. */
+function withBakedSha(contents, body) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'baked-sha-'));
+  const file = path.join(dir, '.image_commit_sha');
+  if (contents !== null) fs.writeFileSync(file, contents);
+  setBakedCommitShaFileForTests(file);
+  resetPlatformWarnings();
+  try {
+    body();
+  } finally {
+    setBakedCommitShaFileForTests();
+    resetPlatformWarnings();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('the baked sha outranks every env var, including PIVOTA_COMMIT_SHA', () => {
+  withBakedSha(BAKED, () => {
+    // THE REGRESSION. `declared` is the stale value a hand deploy left behind; `BAKED` is what
+    // the image was actually built from. Reporting `declared` is the whole defect.
+    assert.equal(commitSha({ PIVOTA_COMMIT_SHA: DECLARED }), BAKED);
+    assert.equal(commitSha({ RAILWAY_GIT_COMMIT_SHA: DECLARED }), BAKED);
+    assert.equal(commitSha({ COMMIT_SHA: DECLARED, SOURCE_VERSION: DECLARED }), BAKED);
+    assert.equal(commitShaShort({ PIVOTA_COMMIT_SHA: DECLARED }), BAKED.slice(0, 12));
+  });
+});
+
+test('a disagreement between the image and the env var is logged loudly', () => {
+  const seen = [];
+  const realError = console.error;
+  console.error = (...args) => { seen.push(args.join(' ')); };
+  try {
+    withBakedSha(BAKED, () => {
+      commitSha({ PIVOTA_COMMIT_SHA: DECLARED });
+    });
+  } finally {
+    console.error = realError;
+  }
+  assert.equal(seen.length, 1, `expected one warning, got ${JSON.stringify(seen)}`);
+  // Both shas must be IN the message. A warning that says "they disagree" without naming the
+  // two values leaves the operator exactly where the silent version did.
+  assert.match(seen[0], /disagrees/);
+  assert.match(seen[0], new RegExp(BAKED));
+  assert.match(seen[0], new RegExp(DECLARED));
+});
+
+test('agreement between the image and the env var is silent', () => {
+  const seen = [];
+  const realError = console.error;
+  console.error = (...args) => { seen.push(args.join(' ')); };
+  try {
+    withBakedSha(BAKED, () => {
+      assert.equal(commitSha({ PIVOTA_COMMIT_SHA: BAKED }), BAKED);
+      // No env var at all is the normal state under CONFIG=preserve's sibling paths, and is
+      // not a disagreement either.
+      assert.equal(commitSha({}), BAKED);
+    });
+  } finally {
+    console.error = realError;
+  }
+  assert.deepEqual(seen, []);
+});
+
+test('an image built without the build arg falls back to the env chain', () => {
+  // The Dockerfile defaults COMMIT_SHA to "", so a local `docker build` bakes an EMPTY file.
+  // Treating that as a value would report '' — or worse, null — for every local image and
+  // shadow a perfectly good env var. Whitespace is the same case: the arg is interpolated.
+  for (const empty of ['', '   ', '\n']) {
+    withBakedSha(empty, () => {
+      assert.equal(commitSha({ PIVOTA_COMMIT_SHA: DECLARED }), DECLARED);
+      assert.equal(commitSha({}), null);
+    });
+  }
+});
+
+test('no stamp file at all falls back to the env chain', () => {
+  // Local dev, tests, and every image built before this change.
+  withBakedSha(null, () => {
+    assert.equal(commitSha({ PIVOTA_COMMIT_SHA: DECLARED }), DECLARED);
+    assert.equal(commitSha(LOCAL), null);
+    assert.equal(commitShaShort(LOCAL), null);
+  });
+});
+
+test('the stamp is trimmed, so a trailing newline is not part of the sha', () => {
+  // `printf '%s'` writes no newline, but a hand-edited or differently-built file might. A sha
+  // with a trailing \n string-compares unequal to the same sha everywhere downstream, and
+  // gateway-prod-drift.yml resolves it with `git rev-parse` — which would fail on the whole
+  // value and report "cannot verify what the gateway runs".
+  withBakedSha(`${BAKED}\n`, () => {
+    assert.equal(commitSha({}), BAKED);
+  });
+});
+
+// THE CONTRACT BETWEEN TWO FILES THAT NEVER IMPORT EACH OTHER.
+//
+// The Dockerfile writes the stamp; src/config/platform.js reads it. Nothing links them but a
+// path string, and every assertion above runs against a file the TEST wrote — so all of them
+// would stay green with the Dockerfile writing somewhere else, or not writing at all. These
+// two run the Dockerfile's own RUN line and read the result back through the real module.
+
+/** The `printf ... > <path>` command and its target, parsed out of the Dockerfile. */
+function dockerfileStampStep() {
+  const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /^ARG COMMIT_SHA=/m, 'the Dockerfile declares no COMMIT_SHA build arg');
+  const line = dockerfile.match(/^RUN (printf .*?) *$/m);
+  assert.ok(line, 'the Dockerfile has no `RUN printf ...` stamping step');
+  const target = line[1].match(/> *(\S+)/);
+  assert.ok(target, `no redirect target in: ${line[1]}`);
+  return { command: line[1], target: target[1] };
+}
+
+test('the Dockerfile writes the stamp to exactly the path this module reads', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'config', 'platform.js'), 'utf8');
+  const constant = source.match(/const IMAGE_COMMIT_SHA_FILE = '([^']+)';/);
+  assert.ok(constant, 'IMAGE_COMMIT_SHA_FILE is no longer a literal this test can read');
+  assert.equal(dockerfileStampStep().target, constant[1]);
+});
+
+test("the Dockerfile's own RUN line produces a stamp this reader accepts", () => {
+  // No docker on the test runner, so run the real command in a temp dir with the redirect
+  // pointed there. What this proves is the half a unit test otherwise cannot: that the shell
+  // written into the image yields bytes the module turns back into the right sha — no stray
+  // newline from `echo`, no quoting that swallows the value.
+  const { command, target } = dockerfileStampStep();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'baked-sha-docker-'));
+  const file = path.join(dir, '.image_commit_sha');
+  const asWritten = command.replace(target, JSON.stringify(file));
+  try {
+    // COMMIT_SHA set: a real Cloud Build, which passes --build-arg COMMIT_SHA=$COMMIT_SHA.
+    execFileSync('sh', ['-c', asWritten], { env: { COMMIT_SHA: BAKED } });
+    setBakedCommitShaFileForTests(file);
+    assert.equal(commitSha({ PIVOTA_COMMIT_SHA: DECLARED }), BAKED);
+
+    // COMMIT_SHA unset: a local `docker build`, where ARG defaults to "". The stamp must come
+    // out empty and the env chain must take over, or every local image reports a blank commit.
+    execFileSync('sh', ['-c', asWritten], { env: {} });
+    setBakedCommitShaFileForTests(file);
+    // BLANK, not byte-for-byte empty: `echo` instead of `printf '%s'` leaves a newline the
+    // reader trims away, and failing on that would be pinning a spelling rather than the
+    // contract. A DEFAULT that is not blank — `${COMMIT_SHA:-unknown}` — is the real hazard,
+    // because it stamps every local image with a value that outranks the env chain.
+    assert.equal(fs.readFileSync(file, 'utf8').trim(), '', 'an unset build arg must bake a BLANK stamp');
+    assert.equal(commitSha({ PIVOTA_COMMIT_SHA: DECLARED }), DECLARED);
+  } finally {
+    setBakedCommitShaFileForTests();
+    resetPlatformWarnings();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

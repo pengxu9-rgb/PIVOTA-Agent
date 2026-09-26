@@ -452,10 +452,24 @@ export function normalizeCartItems(rawItems) {
  * is threaded anyway because it is what the LIMITER checks (an aborted batch launches no further reads); if
  * `read()` ever grows a third argument, in-flight cancellation follows for free.
  *
- * @param {{ executor: {execute:Function}, timeoutMs?: number }} deps
+ * OPTIONAL MERCHANT FALLBACK (`sourceMerchantVariants`). Our catalog carries no real variant identity for the
+ * seed cohort — it publishes ids restated from the product id, which the filter below correctly refuses. The
+ * merchant's OWN storefront does carry them (see src/services/merchantVariantSource.js), so a door may inject
+ * a source that asks it. This hook changes WHERE candidate ids come from and nothing else:
+ *   * it is consulted ONLY when our own read produced no real identity — never to override or outvote one;
+ *   * whatever it returns goes through the SAME `isRestatedProductId` filter and the SAME exactly-one-real
+ *     rule, so property 1 holds for merchant answers exactly as for ours (a storefront that echoed our
+ *     product id back would still be refused);
+ *   * it runs AFTER the product-grain carve-out, so a row the read declared product-grain keeps resolving
+ *     locally and never spends a network hop;
+ *   * returning null/[] leaves the existing refusal exactly as it was, and a throw is caught into that same
+ *     refusal — there is no path from a failed merchant lookup to a priced cart.
+ *
+ * @param {{ executor: {execute:Function}, timeoutMs?: number,
+ *           sourceMerchantVariants?: (productRead:object, product_id:string, ctx:object)=>Promise<string[]|null> }} deps
  * @returns {(items:Array, merchant_id:string|undefined, ctx:object)=>Promise<void>} mutates items in place
  */
-export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
+export function createDefaultVariantResolver({ executor, timeoutMs, sourceMerchantVariants } = {}) {
   if (!executor || typeof executor.execute !== 'function') {
     throw new Error('createDefaultVariantResolver requires a canonical executor with execute()');
   }
@@ -470,7 +484,10 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     if (nonEmpty(merchant_id)) product.merchant_id = merchant_id;
     const result = await executor.execute('get_product', { payload: { product } }, { ...ctx, signal });
     assertProductIdentity(result, product_id, merchant_id);
-    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result) };
+    // The RAW read rides along so an injected merchant source can use the storefront pointer the read
+    // already carries (the seed lane publishes the merchant PDP url on the product). No second read of our
+    // own catalog, and nothing downstream reads `raw` unless a source was injected.
+    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result), raw: result };
   }
 
   /**
@@ -509,8 +526,77 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
       throw itemVariantRefusal('resolution_unavailable', VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
+
+    // MERCHANT SOURCING RUNS AS A BATCH, BEFORE THE ITEM LOOP — never inside it.
+    //
+    // The loop below is sequential, so asking the storefront from inside it made a cart of N DISTINCT
+    // products cost N lookups END TO END, each up to the source's own deadline (~50 x 6s past a 3s batch
+    // deadline for a full cart) — an unbounded stall the batch deadline above had already been designed to
+    // prevent for our OWN reads. Per-product deduping fixed only the repeated-line case; distinct products
+    // were still serial. So the products that need a storefront are computed FIRST, then resolved through
+    // the same limiter + deadline + controller our own reads use.
+    //
+    // WHICH PRODUCTS NEED ONE is decided here exactly as the loop decides it: our read published no REAL
+    // identity, and the product-grain carve-out does not apply. The loop is still the only place that
+    // ACCEPTS an id — this pass only pre-fetches candidates for it, so no verdict moves out of the loop.
+    //
+    // ABORT, STATED HONESTLY: an expired deadline stops us WAITING and stops the limiter LAUNCHING further
+    // lookups (`mapWithConcurrency` checks `signal.aborted` before each launch). It does not cancel an HTTP
+    // request already in flight — the UCP client owns its own per-call timeout and accepts no external
+    // signal — so the bound this buys is on INTAKE latency, not on the merchant's socket. `ctx.signal` is
+    // threaded for a source that wants to stop early; the shipped one takes two parameters and ignores it.
+    //
+    // TWO DEADLINES, NOT ONE SHARED BUDGET, deliberately: worst-case intake becomes 2x `deadlineMs` rather
+    // than `deadlineMs + N x source_timeout`. A single shared budget would let slow local reads starve this
+    // phase to nothing, and the capability would silently never fire under exactly the load that makes it
+    // matter. A caller sizing an HTTP timeout off `variantResolutionTimeoutMs` must budget for 2x.
+    const merchantByProduct = new Map();
+    if (typeof sourceMerchantVariants === 'function') {
+      const needMerchant = productIds.filter((pid) => {
+        const read = byProduct.get(pid);
+        if (!read) return false;
+        if (read.ids.some((id) => !isRestatedProductId(id, pid))) return false; // our read already answered
+        if (read.productGrain && read.ids.every((id) => id === pid) && read.ids.length <= 1) return false;
+        return true;
+      });
+      if (needMerchant.length > 0) {
+        const merchantController = new AbortController();
+        let merchantResults = [];
+        try {
+          merchantResults = await withDeadline(
+            mapWithConcurrency(
+              needMerchant,
+              VARIANT_RESOLUTION_CONCURRENCY,
+              async (pid) => {
+                if (merchantController.signal.aborted) return null;
+                try {
+                  return await sourceMerchantVariants(byProduct.get(pid).raw, pid, { ...ctx, signal: merchantController.signal });
+                } catch {
+                  return null; // fail closed; the loop's existing refusal stands for this product
+                }
+              },
+              merchantController,
+            ),
+            deadlineMs,
+            merchantController,
+          );
+        } catch {
+          // A blown deadline refuses every product it covered — fail-closed, and the same outcome the loop
+          // would have produced without a source at all.
+          //
+          // KNOWN COST, accepted for now: this discards lookups that had ALREADY SUCCEEDED before the
+          // deadline fired (measured by review: 4 products, 2 answered, all 4 refuse), because the array
+          // `mapWithConcurrency` was filling is not reachable from here. Preserving partial results needs a
+          // limiter that surfaces them on abort; until then the trade is a rare wasted answer in exchange
+          // for never returning a partially-populated map that the loop would read as complete.
+          merchantResults = [];
+        }
+        needMerchant.forEach((pid, i) => merchantByProduct.set(pid, merchantResults[i] ?? null));
+      }
+    }
+
     for (const it of needing) {
-      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false };
+      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false, raw: null };
       const candidates = read.ids;
       // THE central filter. A candidate that is the requested product_id, or the requested product_id plus a
       // separator, carries no identity of its own — it is the product id restated. src/pdpBuilder.js
@@ -550,6 +636,24 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
         if (read.productGrain && candidates.every((id) => id === it.product_id) && candidates.length <= 1) {
           it.variant_id = it.product_id;
           continue;
+        }
+        // ASK THE MERCHANT, if a door injected a source. Our catalog has nothing real to offer for this row;
+        // the storefront it was crawled from does. Merchant answers are NOT trusted more than ours — they go
+        // through the identical filter and the identical exactly-one rule immediately below.
+        if (typeof sourceMerchantVariants === 'function') {
+          // Already fetched by the batch above (one entry per DISTINCT product, refusals included, so a
+          // storefront that declined is never re-asked for the next line naming the same product). No
+          // network call happens inside this loop.
+          const merchantIds = merchantByProduct.get(it.product_id) ?? null;
+          const merchantReal = (Array.isArray(merchantIds) ? merchantIds : [])
+            .filter((id) => nonEmpty(id) && !isRestatedProductId(id, it.product_id));
+          if (merchantReal.length === 1) {
+            it.variant_id = merchantReal[0];
+            continue;
+          }
+          if (merchantReal.length > 1) {
+            throw itemVariantRefusal('ambiguous', variantAmbiguousMessage(merchantReal.length), { variant_count: merchantReal.length });
+          }
         }
         // Distinguish "the catalog published no variant identity for this product" (it published only
         // restatements of the product id) from "the product genuinely has no variants". Ops needs both.

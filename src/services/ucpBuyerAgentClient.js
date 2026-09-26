@@ -42,6 +42,9 @@
  */
 
 const nodeCrypto = require('node:crypto');
+const nodeDns = require('node:dns');
+const nodeHttps = require('node:https');
+const nodeNet = require('node:net');
 const {
   buildUcpBuyerAgentProfile,
   DEFAULT_UCP_VERSION,
@@ -130,10 +133,245 @@ function normalizeBaseUrl(u, field) {
   return parsed;
 }
 
+function ipv4Number(address) {
+  return address.split('.').reduce((value, octet) => (value << 8) + Number(octet), 0) >>> 0;
+}
+
+function inIpv4Range(address, base, prefix) {
+  const mask = prefix === 0 ? 0 : ((0xffffffff << (32 - prefix)) >>> 0);
+  return (ipv4Number(address) & mask) === (ipv4Number(base) & mask);
+}
+
+function ipv6Value(address) {
+  const raw = String(address || '').toLowerCase();
+  const [leftRaw, rightRaw] = raw.split('::');
+  if (raw.split('::').length > 2) throw new Error('invalid IPv6 address');
+  const expand = (part) => (part ? part.split(':').filter(Boolean) : []).flatMap((piece) => {
+    if (piece.includes('.')) {
+      if (nodeNet.isIP(piece) !== 4) throw new Error('invalid embedded IPv4');
+      const value = ipv4Number(piece);
+      return [((value >>> 16) & 0xffff).toString(16), (value & 0xffff).toString(16)];
+    }
+    return [piece];
+  });
+  const left = expand(leftRaw);
+  const right = expand(rightRaw);
+  const missing = 8 - left.length - right.length;
+  const groups = raw.includes('::')
+    ? [...left, ...Array(Math.max(0, missing)).fill('0'), ...right]
+    : left;
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) {
+    throw new Error('invalid IPv6 address');
+  }
+  return groups.reduce((value, group) => (value << 16n) + BigInt(`0x${group}`), 0n);
+}
+
+function inIpv6Range(value, base, prefix) {
+  const baseValue = ipv6Value(base);
+  const shift = BigInt(128 - prefix);
+  return (value >> shift) === (baseValue >> shift);
+}
+
+/** Reject addresses that must never be reachable through merchant-controlled URLs. */
+// A refusal that says which refusal it was. Without a code every in-house
+// rejection here — the SSRF guard, a refused redirect, the size cap, an
+// unsupported status — reaches the probe as a bare Error and is recorded
+// identically as `threw=unknown`, the same collapse of distinct causes that
+// made the probe's reason string unreadable in the first place. The PIVOTA_
+// prefix keeps them apart from libuv's errno codes, which share this field.
+// The literal an SSRF check has to actually test. WHATWG URL.hostname KEEPS the
+// brackets on an IPv6 literal ('[::1]'), and net.isIP('[::1]') is 0 — so a guard
+// spelled `isIP(hostname) && isForbidden(hostname)` short-circuits and never asks
+// the question. isForbiddenNetworkAddress strips brackets itself and would have
+// answered true; it was simply never called. Node then strips them too and,
+// because the host is an IP literal, SKIPS the lookup hook entirely, so
+// createPublicOnlyLookup does not fence it either — there is no third guard.
+// Measured 2026-09-04: https://[::ffff:169.254.169.254] produced a live
+// connection attempt at the cloud metadata address. v4-mapped literals are the
+// sharp end, because they ride the v4 stack even where IPv6 is unrouted.
+function forbiddenLiteralHost(hostname) {
+  const literal = String(hostname || '').replace(/^\[|\]$/g, '');
+  return Boolean(nodeNet.isIP(literal)) && isForbiddenNetworkAddress(literal);
+}
+
+function codedError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function isForbiddenNetworkAddress(address) {
+  const raw = String(address || '').toLowerCase().replace(/^\[|\]$/g, '');
+  const family = nodeNet.isIP(raw);
+  if (family === 4) {
+    return [
+      ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10],
+      ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+      ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24],
+      ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+      ['203.0.113.0', 24], ['224.0.0.0', 4],
+      // 240.0.0.0/4 is reserved ("Class E") and includes the limited-broadcast
+      // address 255.255.255.255/32, listed explicitly for auditability.
+      ['240.0.0.0', 4], ['255.255.255.255', 32],
+    ].some(([base, prefix]) => inIpv4Range(raw, base, prefix));
+  }
+  if (family === 6) {
+    try {
+      const value = ipv6Value(raw);
+      return [
+        ['::', 128], ['::1', 128],
+        // IPv4-compatible and mapped forms are never valid merchant origins.
+        ['::', 96], ['::ffff:0:0', 96],
+        // RFC 2765 IPv4-TRANSLATED (`::ffff:0:0:0/96`) — the sibling of the mapped form above, and the
+        // one that was missing: `[::ffff:0:7f00:1]` embeds 127.0.0.1 and was ALLOWED. Only reachable
+        // behind a SIIT translator, but every other embedding form here is already refused.
+        ['::ffff:0:0:0', 96],
+        ['64:ff9b::', 96], ['100::', 64],
+        ['2001:db8::', 32], ['2001:2::', 48],
+        // Each embeds or tunnels to somewhere it must not reach: 2002::/16
+        // (6to4) carries a v4 address inside the prefix, 2001::/32 (Teredo)
+        // tunnels v4, fec0::/10 is the deprecated site-local range, and
+        // 64:ff9b:1::/48 is local-use NAT64. Measured 2026-09-04: [2002:7f00:1::]
+        // (6to4 for 127.0.0.1) and [fec0::1] both reached a real socket.connect.
+        ['2002::', 16], ['2001::', 32], ['fec0::', 10], ['64:ff9b:1::', 48],
+        ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
+      ].some(([base, prefix]) => inIpv6Range(value, base, prefix));
+    } catch {
+      return true;
+    }
+  }
+  return true; // Unknown address family fails closed.
+}
+
+function createPublicOnlyLookup(lookup = nodeDns.lookup) {
+  return (hostname, options, callback) => {
+    // Node's socket layer calls a custom lookup in TWO shapes: legacy
+    // (hostname, callback) and (hostname, options, callback). Since Node 20,
+    // autoSelectFamily (default ON) passes { all: true } and expects an ARRAY
+    // of { address, family } records back — answering the legacy single-address
+    // shape there fails every connection with "Invalid IP address: undefined".
+    const cb = typeof options === 'function' ? options : callback;
+    const opts = (typeof options === 'function' || !options) ? {} : options;
+    lookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
+      if (error) return cb(error);
+      const records = Array.isArray(addresses) ? addresses : [];
+      // Reject mixed answers too. Falling back from a public address to a
+      // private one after a connection failure is a common SSRF bypass.
+      if (!records.length || records.some((entry) => isForbiddenNetworkAddress(entry.address))) {
+        return cb(codedError('merchant endpoint resolved to a non-public address', 'PIVOTA_SSRF_REFUSED'));
+      }
+      if (opts.all) {
+        return cb(null, records.map(({ address, family }) => ({ address, family })));
+      }
+      // SINGLE-ADDRESS SHAPE, WHICH HAS NO FALLBACK. Whichever record we return
+      // decides the request outright. `verbatim: true` keeps the resolver's
+      // order, commonly AAAA first for a dual-stack merchant — and on a host
+      // with no IPv6 route that connect answers ENETUNREACH with no second
+      // attempt, because Happy Eyeballs is what normally rescues it and is not
+      // in play here. The store-audit crawl subnet is exactly such a host
+      // (measured 2026-09-04: v6 connect => ENETUNREACH, v4 fine).
+      //
+      // Node uses this shape only when autoSelectFamily is OFF — an older
+      // runtime, --no-network-family-autoselection, or
+      // net.setDefaultAutoSelectFamily(false) — so this is a LATENT failure,
+      // invisible until someone changes that flag, at which point every
+      // dual-stack merchant drops out at once on a subnet where v6 is dead.
+      //
+      // Preferring IPv4 is not a claim that v6 is worse; it is that a branch
+      // which cannot retry should pick the family routable from the widest set
+      // of hosts we run on. A v6-only answer still returns v6 — filtering to
+      // nothing would turn a reachable merchant into a resolution failure — and
+      // the mixed public/private refusal above still runs first, so this cannot
+      // become the private-address fallback that guard exists to stop.
+      const preferred = records.find((entry) => entry.family === 4) || records[0];
+      return cb(null, preferred.address, preferred.family);
+    });
+  };
+}
+
+// Response bodies from merchant-controlled origins are bounded so a probed
+// endpoint cannot balloon this process's memory.
+const MAX_MERCHANT_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Map a raw node HTTP response (status, headers, buffered body) onto a WHATWG
+ * Response. Pure and exported so the null-body edge cases are testable without
+ * a socket: `new Response(body, { status })` THROWS for 1xx (RangeError) and
+ * for the null-body statuses 204/205/304 (TypeError) — inside an 'end' event
+ * callback that would be an uncaught exception, i.e. a merchant-triggerable
+ * process crash.
+ */
+function toFetchResponse(statusCode, headers, bodyBuffer) {
+  const status = Number(statusCode) || 0;
+  if (status < 200) {
+    throw codedError(`merchant endpoint returned an unsupported status ${status}`, 'PIVOTA_UNSUPPORTED_STATUS');
+  }
+  if (status === 204 || status === 205 || status === 304) {
+    return new Response(null, { status, headers });
+  }
+  return new Response(bodyBuffer, { status, headers });
+}
+
+function createPublicNetworkFetch(lookup) {
+  const publicOnlyLookup = createPublicOnlyLookup(lookup);
+  return (url, options = {}) => new Promise((resolve, reject) => {
+    const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
+    if (forbiddenLiteralHost(parsed.hostname)) {
+      reject(codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL'));
+      return;
+    }
+    const request = nodeHttps.request(parsed, {
+      method: options.method || 'GET',
+      headers: options.headers,
+      lookup: publicOnlyLookup,
+    }, (response) => {
+      if (options.redirect === 'error' && response.statusCode >= 300 && response.statusCode < 400) {
+        response.resume();
+        reject(codedError('merchant endpoint redirected', 'PIVOTA_REDIRECT_REFUSED'));
+        return;
+      }
+      const chunks = [];
+      let receivedBytes = 0;
+      response.on('data', (chunk) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > MAX_MERCHANT_RESPONSE_BYTES) {
+          const error = codedError('merchant endpoint response exceeded the size cap', 'PIVOTA_SIZE_CAP');
+          reject(error);
+          request.destroy(error);
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => {
+        try {
+          resolve(toFetchResponse(response.statusCode, response.headers, Buffer.concat(chunks)));
+        } catch (error) {
+          reject(error);
+        }
+      });
+      response.on('error', reject);
+    });
+    request.once('error', reject);
+    const onAbort = () => {
+      const error = new Error('merchant endpoint request aborted');
+      error.name = 'AbortError';
+      request.destroy(error);
+    };
+    if (options.signal) {
+      if (options.signal.aborted) return onAbort();
+      options.signal.addEventListener('abort', onAbort, { once: true });
+      request.once('close', () => options.signal.removeEventListener('abort', onAbort));
+    }
+    if (options.body) request.write(options.body);
+    request.end();
+  });
+}
+
 /**
  * Create a UCP buyer-agent client.
  * @param {{
  *   credential?: string,        // JWT/token for the TOKEN tier. Defaults to env UCP_AGENT_CREDENTIAL. Never logged.
+ *   forceAnonymous?: boolean,   // ignore all credential/signing env so an audit probe cannot escalate trust tier.
  *   profileUrl?: string,        // agent profile HTTPS URL the MERCHANT will FETCH. Defaults to env
  *                               // UCP_AGENT_PROFILE_URL, else `${UCP_BASE_URL}/.well-known/ucp-agent`.
  *                               // Never defaulted to an invented host — see the note at its resolution.
@@ -144,15 +382,35 @@ function normalizeBaseUrl(u, field) {
  * }} [options]
  */
 function createUcpBuyerAgentClient(options = {}) {
-  const credential = firstNonEmpty(options.credential, process.env.UCP_AGENT_CREDENTIAL);
+  // Store Audit probes must be able to prove they are anonymous even in a
+  // gateway process that has token/signing credentials configured for another
+  // workload. This is a hard mode, not a best-effort preference: it ignores
+  // every credential source below while retaining the buyer profile pointer.
+  const forceAnonymous = options.forceAnonymous === true;
+  // Merchant profiles choose both the storefront origin and the MCP endpoint.
+  // Pin each connection through a resolver that refuses private/local ranges,
+  // so DNS rebinding cannot pivot this crawl workload into the VPC.
+  const merchantFetch = options.merchantFetchImpl
+    // Test fakes never reach the network. Production uses the pinned HTTPS
+    // transport rather than global fetch, whose DNS lookup cannot be bound.
+    || (typeof options.fetchImpl === 'function'
+      ? options.fetchImpl
+      : createPublicNetworkFetch(options.dnsLookup || nodeDns.lookup));
+  const credential = forceAnonymous
+    ? undefined
+    : firstNonEmpty(options.credential, process.env.UCP_AGENT_CREDENTIAL);
   // TOKEN tier via SELF-SERVE client-credential exchange (Shopify Dev Dashboard flow, verified 2026-07-13 from
   // shopify.dev/docs/agents/get-started/authentication): POST { client_id, client_secret,
   // grant_type:"client_credentials" } to the token endpoint -> a short-lived (60-min) JWT that feeds the
   // EXISTING Bearer token-tier path. The client_id/secret are env-only and NEVER logged; the minted JWT is
   // cached and refreshed before expiry and never logged either. A static `credential` (UCP_AGENT_CREDENTIAL)
   // still wins and short-circuits the exchange (existing behavior unchanged).
-  const clientId = firstNonEmpty(options.clientId, process.env.UCP_AGENT_CLIENT_ID);
-  const clientSecret = firstNonEmpty(options.clientSecret, process.env.UCP_AGENT_CLIENT_SECRET);
+  const clientId = forceAnonymous
+    ? undefined
+    : firstNonEmpty(options.clientId, process.env.UCP_AGENT_CLIENT_ID);
+  const clientSecret = forceAnonymous
+    ? undefined
+    : firstNonEmpty(options.clientSecret, process.env.UCP_AGENT_CLIENT_SECRET);
   const hasClientCredentials = Boolean(clientId && clientSecret);
   const tokenEndpoint = firstNonEmpty(
     options.tokenEndpoint,
@@ -242,7 +500,9 @@ function createUcpBuyerAgentClient(options = {}) {
 
   // SIGNED tier: load our OWN ECDSA P-256 private key from env ONLY (PEM or JWK). Never logged. The public half
   // lives in the hosted profile's `ucp.signing_keys`; `keyid` must match its JWK `kid`.
-  const signingPrivateRaw = firstNonEmpty(options.signingPrivateKey, process.env.UCP_AGENT_SIGNING_PRIVATE_KEY);
+  const signingPrivateRaw = forceAnonymous
+    ? undefined
+    : firstNonEmpty(options.signingPrivateKey, process.env.UCP_AGENT_SIGNING_PRIVATE_KEY);
   let signingKeyObject;
   let signingKeyId;
   if (signingPrivateRaw) {
@@ -348,6 +608,18 @@ function createUcpBuyerAgentClient(options = {}) {
       throw new Error('No fetch implementation available (Node >= 18 required, or pass options.fetchImpl).');
     }
     return fetchImpl;
+  }
+
+  async function fetchMerchantEndpoint(url, options) {
+    const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
+    if (forbiddenLiteralHost(parsed.hostname)) {
+      // Same refusal as the one inside createPublicNetworkFetch, reached by a
+      // different caller — fetchMerchantEndpoint checks the literal before the
+      // request is built. Both carry the code, or the pre-flight path is the one
+      // that lands in the threw=unknown bucket.
+      throw codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL');
+    }
+    return merchantFetch(parsed.toString(), options);
   }
 
   /**
@@ -510,9 +782,8 @@ function createUcpBuyerAgentClient(options = {}) {
   async function discoverEndpoint(businessBaseUrl) {
     const base = normalizeBaseUrl(businessBaseUrl, 'businessBaseUrl');
     const wellKnownUrl = new URL('/.well-known/ucp', base.origin).toString();
-    const doFetch = requireFetch();
     // Idempotent GET: safe to retry transient network/5xx with backoff (H1).
-    const res = await fetchWithPolicy((signal) => doFetch(wellKnownUrl, {
+    const res = await fetchWithPolicy((signal) => fetchMerchantEndpoint(wellKnownUrl, {
       method: 'GET',
       headers: { accept: 'application/json', 'user-agent': userAgent },
       // UCP 2026-04-08, "Profile Requirements" -> Hosting/Fetching: a profile endpoint MUST NOT use
@@ -562,7 +833,6 @@ function createUcpBuyerAgentClient(options = {}) {
     // cart/checkout call (would risk a duplicate cart/checkout). Callers pass retry:true only for get_product.
     const retryOk = retry && IDEMPOTENT_TOOLS.has(toolName);
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
-    const doFetch = requireFetch();
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
     const idempotencyKey = tier === TRUST_TIER.SIGNED ? cryptoId() : undefined;
     const meta = requestMeta(idempotencyKey);
@@ -631,7 +901,7 @@ function createUcpBuyerAgentClient(options = {}) {
       Object.assign(headers, sigHeaders);
     }
 
-    const res = await fetchWithPolicy((signal) => doFetch(endpoint, {
+    const res = await fetchWithPolicy((signal) => fetchMerchantEndpoint(endpoint, {
       method: 'POST',
       headers,
       body: bodyString,
@@ -749,7 +1019,6 @@ function createUcpBuyerAgentClient(options = {}) {
    */
   async function listTools(mcpEndpoint) {
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
-    const doFetch = requireFetch();
     const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
     const headers = authHeaders(bearer);
     const body = {
@@ -761,7 +1030,7 @@ function createUcpBuyerAgentClient(options = {}) {
     };
     const bodyString = JSON.stringify(body);
     // tools/list is read-only discovery: safe to retry on a transient error (H1).
-    const res = await fetchWithPolicy((signal) => doFetch(endpoint, {
+    const res = await fetchWithPolicy((signal) => fetchMerchantEndpoint(endpoint, {
       // Same rule as callTool: this carries the tier credential too.
       method: 'POST', headers, body: bodyString, redirect: 'error', signal,
     }), { retry: true });
@@ -1087,7 +1356,7 @@ function normalizePricedCheckout(toolResult) {
   if (!payload || typeof payload !== 'object') {
     return {
       item: null, shipping_options: [], tax: null, total: null, subtotal: null, shipping: null,
-      currency: null, continue_url: null, status: null, messages: [], raw: null,
+      currency: null, continue_url: null, checkout_id: null, status: null, messages: [], raw: null,
     };
   }
   const lineItems = Array.isArray(payload.line_items) ? payload.line_items
@@ -1102,7 +1371,21 @@ function normalizePricedCheckout(toolResult) {
   const totalsByType = indexTotals(payload.totals);
   const tax = pickMoney(payload.total_tax, payload.tax, totalsByType.tax, totalsByType.taxes);
   const subtotal = pickMoney(payload.subtotal, totalsByType.subtotal);
-  const shipping = pickMoney(payload.total_shipping, totalsByType.shipping, totalsByType.delivery);
+  // `fulfillment` FIRST — it is the wire name. UCP's totals type enum is "subtotal,
+  // items_discount, discount, fulfillment, tax, fee, total"
+  // (ucp.dev/2026-04-08/schemas/shopping/types/total.json); "Shipping" and "Delivery" appear
+  // there only as `display_text` examples, i.e. the human label. Live on
+  // cosrx-renewal.myshopify.com, `fulfillment` appears 12 times in its checkout schemas and
+  // `"shipping"` as a totals type zero times — so this pick returned null on a merchant that
+  // HAD quoted shipping. The same omission caused a real bug in pivota-backend (#1923), where a
+  // landed quote read as unlanded and earned card headroom it should not have had.
+  //
+  // Latent here rather than live: `buildPreview` does not carry `shipping` into the warm-handoff
+  // preview, so nothing consumes this value yet. Fixed now precisely because the day something
+  // does, the bug would arrive silently.
+  const shipping = pickMoney(
+    payload.total_shipping, totalsByType.fulfillment, totalsByType.shipping, totalsByType.delivery,
+  );
   const total = pickMoney(
     payload.total_amount, payload.grand_total, payload.total_price, totalsByType.total,
     (typeof payload.total === 'string' || typeof payload.total === 'number') ? payload.total : undefined,
@@ -1113,6 +1396,21 @@ function normalizePricedCheckout(toolResult) {
   const continue_url = firstNonEmpty(
     payload.continue_url, payload.checkout_url, payload.permalink, payload.url,
   ) || null;
+  // THE MERCHANT'S HANDLE ON THIS CHECKOUT. It was in `raw` all along and simply never lifted
+  // out, which is the whole reason the card rail and the link rail looked like separate worlds:
+  // `CardIssueRequest` requires a UCP `checkout_id`, and nothing surfaced one. `update_checkout`
+  // takes this same value as its required top-level `id`, so the merchant's own schema names it.
+  //
+  // It is what makes a card mintable against a checkout the buyer is about to finish on the
+  // STOREFRONT: `continue_url` (already lifted above) is where the agent types, and re-reading
+  // `get_checkout` on this id AFTER an address is entered is the only way to learn a total that
+  // includes shipping and tax — which a pre-address preview cannot carry (see the audit's B7).
+  // `id` first because the UCP checkout schema declares it required and response-only
+  // (`ucp_request: "omit"`), and Shopify returns `gid://shopify/Checkout/...` there. The aliases
+  // are not speculative: PIVOTA'S OWN door names this `session_id`
+  // (mcp-server/test/ucpFulfillmentAddressContract.test.js reads `created.session_id ?? created.id`
+  // and feeds it to `update_checkout`'s `id`), so an `id`-only read would return null against us.
+  const checkout_id = firstNonEmpty(payload.id, payload.checkout_id, payload.session_id) || null;
   const status = firstNonEmpty(payload.status) || null;
   const messages = Array.isArray(payload.messages)
     ? payload.messages.map((m) => (isPlainObjectLocal(m)
@@ -1120,7 +1418,7 @@ function normalizePricedCheckout(toolResult) {
       : null)).filter(Boolean)
     : [];
 
-  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, status, messages, raw: payload };
+  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, checkout_id, status, messages, raw: payload };
 }
 
 /**
@@ -1129,13 +1427,43 @@ function normalizePricedCheckout(toolResult) {
  * through as-is (minor units) — no coercion.
  */
 function indexTotals(totals) {
+  // A REPEATED DETAIL TYPE RESOLVES TO ABSENT, NOT TO THE LAST ONE.
+  //
+  // UCP states it plainly: "MUST contain exactly one subtotal and one total entry. Detail types
+  // (tax, fee, discount, fulfillment) may appear multiple times for itemization."
+  // (ucp.dev/2026-04-08/schemas/shopping/types/totals.json). This index is a single-value lookup,
+  // so an itemised merchant has no single answer to give — and last-wins silently reported ONE
+  // line of an itemisation as the whole figure: two fulfillment rows of 500 and 300 published
+  // `shipping = 300` for an 800 charge, into a store-audit acceptance receipt.
+  //
+  // Summing them is the other obvious repair and is deliberately NOT done: `pickMoney` in this
+  // file is documented "no math, no coercion", amounts arrive as numbers OR strings OR objects,
+  // and inventing arithmetic over merchant money to paper over an ambiguity is a worse failure
+  // than admitting the ambiguity. Absent reads downstream as "unknown", which is true.
+  //
+  // This also repairs the same pre-existing hazard for `tax`, which was last-wins before this
+  // function ever looked at `fulfillment`.
   const out = {};
+  const seen = new Set();
   if (Array.isArray(totals)) {
     for (const t of totals) {
-      if (isPlainObjectLocal(t) && t.type) out[String(t.type)] = (t.amount !== undefined ? t.amount : t.value);
+      if (!isPlainObjectLocal(t) || !t.type) continue;
+      // NORMALISED: `type` is a free-text string in the schema, so casing and stray whitespace
+      // are the merchant's to choose, and an unnormalised key means a merchant sending "Tax" is
+      // read as having quoted none. That one reaches the warm-handoff response today via
+      // buildPreview -> pricedTotals.includes_tax.
+      const key = String(t.type).trim().toLowerCase();
+      // `amount` before `value`: `amount` is the schema's field, `value` is tolerated only for
+      // merchants that use it instead.
+      const amount = (t.amount !== undefined ? t.amount : t.value);
+      if (seen.has(key)) { out[key] = undefined; continue; }
+      seen.add(key);
+      out[key] = amount;
     }
   } else if (isPlainObjectLocal(totals)) {
-    for (const [k, v] of Object.entries(totals)) out[k] = v;
+    // The object form gets the SAME normalisation. Fixing only the array branch left
+    // `{ Tax: 190 }` reading as no tax — the exact bug this was meant to close.
+    for (const [k, v] of Object.entries(totals)) out[String(k).trim().toLowerCase()] = v;
   }
   return out;
 }
@@ -1352,6 +1680,10 @@ async function withTimeout(run, ms) {
 
 module.exports = {
   createUcpBuyerAgentClient,
+  // Exported so merchant variant sourcing unwraps the MCP envelope with THIS function rather than a copy of
+  // it: the shapes it handles (`content[].json`, `content[].text` holding JSON) are the client's own contract
+  // with the storefront, and a twin would drift the day a merchant changes which one it sends.
+  unwrapToolPayload,
   TOOL,
   // Exported so a test can pin the SET ITSELF, not just one tool's behaviour: this is the only thing
   // standing between a transient 500 and a blind-retried mutating call (a duplicate cart, a re-priced
@@ -1378,4 +1710,13 @@ module.exports = {
   isGeneratedInfraHost,
   normalizeHostname,
   configuredProfileHostnames,
+  isForbiddenNetworkAddress,
+  // Exported so a transport that is NOT this module's node:https fetch (the aurora BFF's axios lane)
+  // applies the IDENTICAL literal rule instead of a twin that drifts. The bracket-stripping in here is
+  // exactly the subtlety a re-implementation gets wrong — see the note above the function.
+  forbiddenLiteralHost,
+  createPublicOnlyLookup,
+  createPublicNetworkFetch,
+  toFetchResponse,
+  MAX_MERCHANT_RESPONSE_BYTES,
 };

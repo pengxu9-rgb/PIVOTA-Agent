@@ -255,7 +255,7 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql, params = []) => {
         const text = String(sql || '');
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           seedQueryParams.push(params);
           return {
             rows: [
@@ -321,8 +321,10 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
       }),
     );
     expect(String(resp.body.products[0].title || '')).toMatch(/tom ford/i);
-    // The seed recall queries by derived category term (香水 → fragrance).
-    expect(seedQueryParams.some((params) => params.includes('fragrance'))).toBe(true);
+    // Fragrance selects its text pattern query before any row is read.
+    expect(seedQueryParams).toHaveLength(3);
+    expect(seedQueryParams.every((params) => params.flat().some(value => /^%.*(?:fragrance|perfume|parfum).*%$/i.test(String(value))))).toBe(true);
+    expect(resp.body.metadata?.retrieval_query_debug.every(entry => entry.primary_text_query === true)).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
     // The upstream search is intentionally not consulted on this lane.
     expect(upstreamScope.isDone()).toBe(false);
@@ -505,18 +507,14 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     nock.cleanAll();
   });
 
-  test('fragrance supplement retries external seed with brand hints when first pass is irrelevant', async () => {
-    // BEHAVIOR UPDATE 2026-07-11: the retry-with-hints behavior now lives
-    // inside queryBeautyExternalSeedRowsFast (src/server.js ~15682): the DB
-    // recall issues an exact category-term pass ('fragrance') followed by
-    // pattern passes ('%fragrance%'/brand hints). An irrelevant first-pass row
-    // must be filtered while the pattern-pass perfume is served.
+  test('fragrance selects its primary pattern query without an irrelevant exact-category first pass', async () => {
+    // The irrelevant exact-category fixture is a trap: this query shape must never execute.
     const exactPassParams = [];
     const patternPassParams = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql, params = []) => {
         const text = String(sql || '');
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const base = {
             market: 'US',
             tool: 'shopping_agents',
@@ -603,13 +601,14 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
           /tom ford/i.test(String(product.title || '')),
       ),
     ).toBe(true);
-    // Irrelevant first-pass row is not adopted for a fragrance query.
+    // The unselected exact-category shape cannot contribute an irrelevant row.
     expect(
       (resp.body.products || []).some((product) => /ordinary/i.test(String(product.title || ''))),
     ).toBe(false);
-    // Both recall passes were attempted (exact category + pattern retry).
-    expect(exactPassParams.length).toBeGreaterThanOrEqual(1);
-    expect(patternPassParams.length).toBeGreaterThanOrEqual(1);
+    expect(exactPassParams).toHaveLength(0);
+    expect(patternPassParams).toHaveLength(3);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.metadata?.retrieval_query_debug.every(entry => entry.primary_text_query === true)).toBe(true);
   });
 
   test('external-seed upstream result backfills image_url from image_urls and prefers https', async () => {

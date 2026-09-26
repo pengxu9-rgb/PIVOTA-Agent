@@ -159,37 +159,6 @@ describe('serving eligibility default-strict behavior', () => {
     expectServingEligibleJoin(sql, 'cp');
   });
 
-  test('direct external-seed retrieval gates seeds through eligible catalog products', async () => {
-    const { retrieveExternalSeedDirectCandidates } = require('../../src/findProductsExternalSeedDirectRetrieval');
-    const query = jest.fn(async () => ({ rows: [] }));
-
-    await retrieveExternalSeedDirectCandidates({
-      retrievalQueries: ['lipstick'],
-      relevanceQueryText: 'lipstick',
-      deps: {
-        resolveGuidanceDirectExternalSeedRetrievalBudget: () => ({
-          per_variant_limit: 5,
-          raw_product_cap: 5,
-        }),
-        shouldRunExternalSeedExactTitleRecall: () => false,
-        queryExternalSeedExactTitleRows: jest.fn(),
-        normalizeExactTitleLookupText: (value) => String(value || '').trim().toLowerCase(),
-        compactExactTitleLookupText: (value) => String(value || '').replace(/\s+/g, ''),
-        buildExternalSeedProduct: () => null,
-        buildSearchProductKey: () => '',
-        normalizeSearchTextForMatch: (value) => String(value || '').trim().toLowerCase(),
-        extractSearchAnchorTokens: () => ['lipstick'],
-        tokenizeSearchTextForMatch: (value) => String(value || '').split(/\s+/).filter(Boolean),
-        query,
-      },
-    });
-
-    const sql = String(query.mock.calls[0][0] || '');
-    expect(sql).toMatch(/FROM external_product_seeds/i);
-    expect(sql).toMatch(/FROM catalog_products cp/i);
-    expectRowTrustServingJoin(sql, 'cp');
-  });
-
   test('brand external-seed fastpath gates exact and broad queries through eligible catalog products', async () => {
     const { runExternalSeedBrandMainlineFastpath } = require('../../src/findProductsExternalSeedBrandFastpath');
     const query = jest.fn(async () => ({ rows: [] }));

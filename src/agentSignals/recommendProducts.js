@@ -1,5 +1,8 @@
 'use strict';
 
+const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
+const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
+
 // recommend_products — a NEED in natural language → a reasoned shortlist, as agent-facing Signals.
 //
 // This is the bridge from Pivota's prompt-level recommendation lane (the Aurora BFF's
@@ -9,9 +12,19 @@
 // lane's UI envelope into the `{ subject, signals[], metadata }` shape every other insights tool uses.
 //
 // HONEST LIMITS, stated in the tool description too:
-//  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned for
-//    skincare/beauty. An off-vertical need answers with an empty shortlist + `missing_info`, not with
-//    fabricated products;
+//  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned
+//    for SKINCARE. This bridge asks for the wider beauty prompt (promptDomainScope 'beauty'), but that ask
+//    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template DIFFERENT from the chat lane's
+//    (it inherits that id, so they match unless someone sets it) — the decision service 400s on an id it
+//    does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
+//    makeup/haircare/fragrance need still comes back with skincare picks, which is what the tool
+//    description says;
+//    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
+//    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
+//    and will happily answer a trading-card need with a cleanser;
+//  - every returned signal is a CATALOG product with a non-null product_id. The lane also emits
+//    "ungrounded" archetypes (a product it named but could not resolve, every identity field null); they
+//    are suppressed from the shortlist and reported as text on `metadata.unresolved_archetypes`;
 //  - it calls an external decision service (AURORA_DECISION_BASE_URL) — seconds, not milliseconds; the
 //    door's heartbeat keeps the connection alive. `budgetMs` is passed to the lane's own deadline for its
 //    enrichment/framework passes; the upstream LLM leg is bounded separately by the lane's
@@ -25,7 +38,8 @@
 //
 // SANITIZER-SAFE BY CONSTRUCTION. The commerce surface strips `score`/`confidence` from product-shaped nodes
 // and drops `score_breakdown`/`candidate_source`/`debug` anywhere (safety-kernel/src/protocol/resultSanitizer).
-// Per-item certainty therefore lives under `value.fit` (not a bare `confidence`), and the overall certainty
+// Per-item certainty therefore lives under `value.lane_confidence` (see the note there: `value` turns
+// out NOT to be a product node, so the original bare-`confidence` premise was wrong), and the overall certainty
 // sits on `metadata` (not a product node).
 
 const MAX_NEED_CHARS = 500;
@@ -33,6 +47,9 @@ const MAX_CONSTRAINT_KEYS = 8;
 const MAX_CONSTRAINT_VALUE_CHARS = 120;
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 10;
+// Not MAX_LIMIT: the archetype list is built from every row the lane returned, which is independent of
+// the caller's `limit` (see where it is emitted). Sized for a pathological response, not a shortlist.
+const MAX_UNRESOLVED_ARCHETYPES = 50;
 const DEFAULT_BUDGET_MS = 9000;
 // Live price re-verification bounds: check only the items that could reach the shortlist (limit plus a
 // small margin for slots freed by the ceiling pass), and never let one slow PDP lookup hold the whole
@@ -73,6 +90,172 @@ function dedupe(values) {
     out.push(v);
   }
   return out;
+}
+
+// ── OFF-VERTICAL GATE ────────────────────────────────────────────────────────────────────────────
+// The tool description promises: "Today's lane is tuned for beauty/skincare: off-vertical needs answer
+// with an empty shortlist and a reason, never with fabricated products." Nothing enforced that half of
+// the sentence. Live 2026-09-08, "I collect Pokémon trading cards and want a sealed Scarlet & Violet
+// booster box" answered with a Jurlique cleanser and a COSRX moisturizer — both at `fit.level: 'high'`,
+// both `grounding: 'catalog'`, `products_empty_reason: null` — plus one invented sunscreen. Nothing had
+// malfunctioned: the beauty lane is never ASKED whether the need is a beauty need, it is asked to
+// recommend, and a recommender always recommends. The question has to be put before it is called.
+//
+// Lexical, and deliberately so: it runs BEFORE the lane, so an off-vertical need costs no LLM
+// generation (that live call took 21s) and no fabricated shortlist is ever built to be filtered later.
+//
+// DELIBERATELY ASYMMETRIC, because the two error directions are not equally expensive:
+//   - a false NEGATIVE (an off-vertical domain this list does not name) leaves today's behaviour, which
+//     the grounding suppression downstream already makes safer — the answer is wrong-vertical, not
+//     fabricated;
+//   - a false POSITIVE refuses a real beauty buyer, which is the only outcome here that loses a sale.
+// So a need is off-vertical ONLY when it names an off-vertical domain AND names nothing beauty at all.
+// "a lipstick to match my dress" keeps its shortlist; "a sealed booster box" does not. That asymmetry
+// is also why the beauty lexicon is generous and the off-vertical one is narrow: a word added to the
+// beauty side can only ever make this gate QUIETER, while a word added to the off-vertical side can
+// refuse a paying buyer.
+//
+// "Quieter" is NOT the same as free, and an earlier revision of this comment said it cost nothing.
+// It does not: a beauty word that the rest of commerce also owns (`brush`, `sponge`, `nail`,
+// `palette`, `highlighter`) silences the gate for a dishwasher sponge and a chainsaw brush. That is
+// what the STRONG/WEAK split below is for — liberality is free only for words nothing else uses.
+//
+// LEXICAL, AND ONLY LEXICAL — which is why the served description says a RECOGNISED off-vertical need
+// rather than promising a universal.
+//
+// A second axis was tried and REMOVED, and the reason is worth keeping: the lane frequently admits in
+// its own `warnings` that it excluded the need as off-domain ("Non-skincare requests … have been
+// excluded per domain boundaries"), which looked like free coverage for needs no keyword list holds.
+// It is not, because the lane's DOMAIN IS NARROWER THAN THIS TOOL'S. prompts/reco_main_v1_2.system.txt
+// says "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices, fragrance,
+// haircare, or supplements" — so it emits that same admission for a bronzer, a brush set, cologne or a
+// gua sha tool, all of which are squarely inside the beauty/skincare lane this tool advertises. Its
+// prose cannot distinguish "not commerce for us" from "beauty, but not skincare for me", so acting on
+// it emptied the shortlist for in-vertical buyers and told them their beauty need was not beauty. The
+// admission is still relayed verbatim in `metadata.warnings`; nothing is lost by not acting on it.
+//
+// SEPARATORS ARE NORMALISED FIRST. Every multi-word alternative here is written with a single space,
+// so "booster-box", "trading-cards", "graphics-card" and "magic: the gathering" all escaped the gate
+// while their spaced spellings were refused — the repro's own wording, one hyphen away from passing.
+// normalizeForMatch collapses `-`, `:`, `/`, `_` to spaces before matching, so a rewording cannot buy
+// a fabricated shortlist.
+//
+// Word-anchored so a token cannot match inside a longer word: `\btcg\b` refuses "tcg singles" but not
+// "tcgel". (An earlier version of this comment claimed the anchors stop "carbon" being read as "car" —
+// they do not, because `car` is not an alternative here; the only bare-`car` entry is the two-word
+// `car t[iy]res`. Test 8f pins the case the anchors actually carry.) The CJK patterns are bare
+// substrings on purpose: `\b` is meaningless between CJK characters, and this tool takes
+// `language: 'CN'` as a first-class parameter, so a CN need must reach the same gate.
+// Each group below is an alternation of word-anchored alternatives; `anchored` wraps the lot so a
+// group can be edited without re-deriving the boundaries every time.
+const anchored = (groups) => new RegExp(String.raw`\b(?:${groups.join('|')})\b`, 'i');
+const OFF_VERTICAL_HARD_RE = anchored([
+  // HARD: domains that are never a plausible context for a beauty purchase. A weak beauty word does
+  // NOT rescue these — "a sponge for my dishwasher" is a dishwasher need whatever `sponge` suggests.
+  String.raw`trading cards?|booster (?:box|pack)e?s?|pok[eé]mon|tcg|graded cards?|magic the gathering|sports cards?|funko`,
+  String.raw`laptops?|smartphones?|iphones?|ipads?|headphones|earbuds|graphics cards?|gpus?|cpus?|game consoles?|xbox|playstation|nintendo|keyboards?|webcams?|televisions?|printers?|drones?`,
+  // `blenders?` is HARD again. #2149 removed it because "a blender sponge" was being refused; the fix
+  // for that is putting the beauty phrase on the strong side, not deleting a whole kitchen category —
+  // "a blender for smoothies" and "a kitchen blender" were unrefusable in between.
+  String.raw`air ?fryers?|microwaves?|blenders?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
+  String.raw`refrigerators?|dishwashers?|washing machines?|mattress(?:es)?|sofas?|couch(?:es)?|lawn ?mowers?|power drills?|nail guns?`,
+  String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?|car wax|wiper blades?`,
+  String.raw`treadmills?|dumbbells?|kettlebells?|exercise bikes?|yoga mats?|protein powder`,
+  String.raw`diapers?|nappies|strollers?|car seats?`,
+  String.raw`rifle scopes?|fishing rods?|tents?|sleeping bags?|chainsaws?`,
+  String.raw`dog food|cat litter|aquariums?|textbooks?|firearms?|ammunition`,
+]);
+// SOFT: apparel and accessories. These ARE off-vertical for this lane, and on their own they are
+// refused — "running shoes" and "a winter coat" were both measured returning beauty products. But
+// they are also the things a buyer carries cosmetics IN or wears WHILE using them, so they co-occur
+// innocently with real beauty needs ("a brush that fits in my handbag", "nails that will not chip
+// while I wear sneakers all day"). A weak beauty word is enough to keep them served.
+const OFF_VERTICAL_SOFT_RE = anchored([
+  String.raw`sneakers?|running shoes?|jeans|handbags?|purses?|backpacks?|winter coats?|raincoats?|hoodies?`,
+]);
+const OFF_VERTICAL_CJK_RE = /卡牌|显卡|笔记本电脑|智能手机|游戏机|键盘|冰箱|洗碗机|洗衣机|床垫|沙发|摩托车|狗粮|猫砂/;
+
+// STRONG beauty: unambiguous in any sentence. Presence anywhere serves the need, mixed or not —
+// "a duo fibre brush and a treadmill" is a buyer who wants a makeup brush and mentioned a treadmill.
+const BEAUTY_STRONG_RE = anchored([
+  String.raw`skin|skin ?care|complexion|faces?|facial|derma\w*|cosmetics?|makeup|beauty`,
+  String.raw`serums?|essences?|ampoules?|moistur\w*|cleansers?|cleans\w*|toners?|exfoliat\w*|peels?|masks?|creams?|lotions?|balms?|oils?|mists?`,
+  String.raw`sunscreens?|spf|retinols?|retinoids?|niacinamide|hyaluronic|ceramides?|salicylic|glycolic|azelaic|vitamin c|peptides?|antioxidants?`,
+  String.raw`acne|breakouts?|blackheads?|whiteheads?|pores?|wrinkles?|fine lines|dark spots?|hyperpigmentation|redness|rosacea|eczema|psoriasis|dryness|oiliness|sensitive|dull\w*`,
+  String.raw`anti ?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
+  String.raw`lips?|lipsticks?|foundations?|concealers?|mascaras?|eyeliners?|eyeshadows?|blush(?:es)?|primers?|nail polish`,
+  // The class the lane's NARROW prompt refuses and this tool advertises. Since #2155 the tool's own
+  // door loads the wide prompt, so these are in-domain end to end; they stay on the suppression side
+  // because the gate must not refuse them if that prompt is ever pointed back at reco_main_v1_2.
+  // Measured 2026-09-08: "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
+  // carried no beauty token at all.
+  String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
+  String.raw`bronzers?|contour\w*|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?`,
+  String.raw`manicures?|pedicures?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
+  // The QUALIFIED forms of the ambiguous nouns. Each qualifier must be a word that is itself beauty:
+  // `brush set`, `silicone sponge`, `colour palette`, `highlighter pen` and `nail clipper` were all
+  // tried and all leaked (a wire brush set, a dishwasher sponge, a laptop colour palette, a textbook
+  // highlighter, a dog's nail clipper). A qualifier that the rest of commerce also uses is not one.
+  String.raw`(?:makeup|make up|cosmetics?|blush|brow|lash|eyeshadow|eyeliner|foundation|contour|powder|kabuki|fan|blending|stippling|duo fibre|duo fiber|beauty) brush(?:es)?`,
+  String.raw`(?:makeup|make up|blending|blender|beauty|konjac|cleansing) sponges?|beauty blenders?`,
+  String.raw`(?:eyeshadow|contour|highlight\w*|makeup|blush|bronzer) palettes?`,
+  String.raw`highlighter (?:sticks?|powders?|palettes?)|(?:cream|powder|liquid|stick) highlighters?`,
+  String.raw`nail (?:polish|art|care|files?|salons?|beds?|strengtheners?)|(?:gel|acrylic|press.on) nails?`,
+]);
+// WEAK beauty: the bare ambiguous nouns. They are NOT beauty evidence on their own — they never
+// rescue a HARD domain — but they are enough to tip a SOFT one back to being served.
+const BEAUTY_WEAK_RE = anchored([
+  String.raw`brush(?:es)?|sponges?|nails?|palettes?|highlighters?|compacts?|travel sized?`,
+]);
+const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
+
+/** Fold the separators a buyer may type between words of one term onto a single space. */
+function normalizeForMatch(s) {
+  return String(s).replace(/[-–—_:/\\]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+/** Does the need name something unambiguously beauty? The suppression side of the asymmetry. */
+function hasBeautyMarker(need) {
+  if (!nonEmpty(need)) return false;
+  return BEAUTY_STRONG_RE.test(normalizeForMatch(need)) || BEAUTY_CJK_RE.test(need);
+}
+
+/**
+ * Is this need plainly outside the beauty/skincare lane? Exported so the rule is testable directly
+ * rather than only through a mocked lane.
+ *
+ * TWO TIERS A SIDE, one rule — replacing a per-word lexicon that had to be re-tuned every review and
+ * moved its leak to a neighbouring phrase each time (`sponge` -> `silicone sponge` -> …). What the
+ * tiers encode is that ambiguity is a property of the WORD, not of the phrase it happens to sit in:
+ *   - a STRONG beauty word serves the need outright, even mixed with an off-vertical one;
+ *   - a HARD off-vertical domain refuses regardless of any weak beauty noun;
+ *   - a SOFT one (apparel, bags) refuses only when nothing beauty-ish is present at all, because it
+ *     is exactly what a cosmetic is carried in or worn with.
+ *
+ * @returns {string|null} the off-vertical phrase that fired, or null (in-vertical, or unrecognised)
+ */
+function offVerticalMarker(need) {
+  if (!nonEmpty(need)) return null;
+  // Resolve the object of a narrow non-beauty phrase before ambiguous nouns such as foundation
+  // or oil can suppress the ordinary gate. A cosmetic used at home or to remove machine oil stays in.
+  const n = normalizeForMatch(need);
+  const contextual = anchored([
+    String.raw`foundations?\s+(?:for|of|under|beneath)\s+(?:(?:my|our|the|a|an|new)\s+)*(?:houses?|homes?|buildings?|garages?|sheds?)(?!\s+part(?:y|ies)\b)`,
+    String.raw`(?:house|building|concrete|structural)\s+foundations?`,
+    String.raw`(?:engine|motor|machine|chainsaw|gear)\s+(?:oils?|lubricants?)`,
+    String.raw`(?:oils?|lubricants?)\s+(?:for|in)\s+(?:(?:my|our|the|a|an)\s+)*(?:chainsaws?|engines?|motors?|machines?|cars?|lawn mowers?)`,
+  ]).exec(n);
+  if (contextual) {
+    const cosmeticUse = /\b(?:cleansers?|cleansing oils?|hand soaps?|body wash|makeup removers?|moisturizers?|sunscreens?)\b[^.!?;]{0,80}\b(?:remove|wash off|clean off|after|while|during)\b/i.exec(n);
+    const negated = /\b(?:not|without|avoiding)\s+$/i.test(n.slice(0, contextual.index));
+    if (!negated && !(cosmeticUse && cosmeticUse.index < contextual.index)) return contextual[0];
+  }
+  if (hasBeautyMarker(need)) return null;
+  const hard = OFF_VERTICAL_HARD_RE.exec(n) || OFF_VERTICAL_CJK_RE.exec(need);
+  if (hard) return hard[0];
+  if (BEAUTY_WEAK_RE.test(n)) return null;
+  const soft = OFF_VERTICAL_SOFT_RE.exec(n);
+  return soft ? soft[0] : null;
 }
 
 /** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
@@ -266,7 +449,19 @@ function markPriceViolation(signal, ceiling) {
   v.watchouts = dedupe([marker, ...stripBudgetClaims(v.watchouts)]).slice(0, 6);
   // Only ever a DOWNGRADE: where the lane emitted no score there is no band to assert, and inventing
   // one would be the same fabrication this file's header guards against.
-  v.fit = { ...v.fit, level: v.fit.level === null ? null : 'low' };
+  // MUTATED IN PLACE, deliberately: `v.fit` and `v.lane_confidence` are the same object (see
+  // recommendationItemToSignal), and reassigning would split them and leave the alias stale.
+  // TWO KINDS OF NULL, and only one of them may be overwritten.
+  //
+  // 'ungrounded' means the product is not in the catalog: there is no object to measure, so a band
+  // here would be invented, and test 4b-4 pins that it must not be. 'positional' means we simply do
+  // not score this answer path — but a ceiling breach IS something we measured and the item failed,
+  // so it earns a band where position does not. The guard used to be `level !== null`, which lumped
+  // the two together, so once positional rows lost their band a real violation stopped being
+  // downgraded at all while the description called that null "no information".
+  if (v.lane_confidence.level !== null || ['positional', 'catalog_rebound'].includes(v.lane_confidence.basis)) {
+    v.lane_confidence.level = 'low';
+  }
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -353,7 +548,20 @@ function normalizeConstraints(raw) {
  * `watchouts`, `fit_level`, `evidence_grade` and `pdp_open.directUrl` — none of which this lane
  * emits — so every real call answered with empty reasoning and a null price.
  */
-function recommendationItemToSignal(item, { rank } = {}) {
+// `confidenceBasis` says what the lane's `score` on this item is MADE OF — see
+// recommendation_meta.confidence_basis. It defaults to null ('unknown'), which behaves exactly as
+// before for any caller that does not know about it; only a caller that positively reports
+// 'positional' or a catalog identity replacement suppresses the band.
+function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
+  if (recommendationIdentityConflict(item)) return null;
+  // Per-row basis (stamped by applyStrictConformingTopUp on catalog filler) overrides the
+  // answer-level one. Without it a mixed answer labels its filler as the model's own estimate.
+  //
+  // ONLY the namespaced key is trusted. A plain `score_basis` is a key the MODEL can emit, and every
+  // transform on the lane spreads unknown keys through, so reading it let a model row claim
+  // 'model_self_report' inside a positional answer and take back the band. Reading only the
+  // server-written name closes that.
+  const effectiveBasis = str(item && item.__pivota_score_basis) || confidenceBasis;
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
@@ -398,7 +606,7 @@ function recommendationItemToSignal(item, { rank } = {}) {
   // safety warning off the list — the #2036 failure class reached by eviction instead of deletion.
   const watchouts = [...asStringArray(item.warnings, 4), ...asStringArray(item.constraint_notes, 4)];
 
-  return {
+  const signal = {
     signal_type: 'recommendation',
     subject: { kind: 'product', id: productId || null },
     value: {
@@ -424,8 +632,25 @@ function recommendationItemToSignal(item, { rank } = {}) {
       // Grounded = resolved to a product in Pivota's catalog; ungrounded = the lane named a product it could
       // not resolve, and such items carry NO url/price by construction (the lane strips them).
       grounding: grounded ? 'catalog' : 'ungrounded',
-      fit: {
-        // Not a bare `confidence`/`score`: the sanitizer removes those keys from product-shaped nodes.
+      // `lane_confidence` — RENAMED FROM `fit` (#2156). The band answers "how sure is the lane about
+      // this product?", never "how well does this answer the need?": nothing on this path reads `need`.
+      // Those two questions diverge exactly when it matters — measured live 2026-09-08, "an air fryer",
+      // "a treadmill" and "a bronzer" all came back at the top band, the last one alongside the lane's
+      // own warning that it had excluded makeup. A field called `fit` sitting in a per-item node is
+      // read as agreement with the need, so the name was doing the misleading.
+      //
+      // `fit` is still emitted, as a DEPRECATED ALIAS pointing at the SAME object (so the price-ceiling
+      // downgrade below cannot leave the two disagreeing). A silent rename would have broken every
+      // partner reading `value.fit.level` — including the integration this defect was found from — and
+      // the description now names `lane_confidence` as the field to read. Drop the alias in a later
+      // release, not in the one that introduces the replacement.
+      //
+      // The earlier note here claimed this could not be a bare `confidence` because the sanitizer
+      // strips that from product-shaped nodes. Measured: `value` is NOT a product node (its
+      // product_id lives one level down in `value.product`), so a bare `confidence` survives there
+      // too — the rationale was wrong, though the conclusion to avoid the name still stands on its
+      // own merits. `lane_confidence` was verified to survive resultSanitizer in both positions.
+      lane_confidence: {
         // The lane emits an integer 0-100 `score`; it is surfaced as a BAND, which is what an agent can
         // act on, and lane-level certainty stays on metadata.confidence_overall.
         //
@@ -434,7 +659,21 @@ function recommendationItemToSignal(item, { rank } = {}) {
         // capped the REAL item to fit=low, so the model's own score outranked the only thing an agent
         // could actually buy). Fit-to-catalog is unmeasurable for a product that is not in the catalog;
         // an asserted band there is a model claim with no object, the class this file exists to strip.
-        level: grounded ? scoreBand(finiteNumber(item.score)) : null,
+        // A POSITIONAL SCORE IS NOT A BAND EITHER — the same argument as the ungrounded case above,
+        // one step further. The catalog paths set `score = Math.max(72, 95 - index * 3)`, so with a
+        // shortlist of six every item scores >= 80 and bands to 'high' regardless of what it is.
+        // Measured on prod 2026-09-09: a bronzer need answered with three cleansers, all 'high'.
+        // Banding a row's POSITION as the lane's certainty about it is an assertion with no object,
+        // which is the class this file exists to strip.
+        // A ROW'S OWN BASIS BEATS THE ANSWER'S. The lane builds MIXED answers: with a price ceiling
+        // set, applyStrictConformingTopUp appends catalog rows (positional scores) into an
+        // llm_primary answer, and the answer-level basis would vouch for them as the model's own
+        // estimate — banding filler `high` above the model's actual pick at `medium`.
+        // A catalog replacement also cannot inherit the model's confidence in the original product.
+        level: grounded && effectiveBasis !== 'positional' && effectiveBasis !== 'catalog_rebound' ? scoreBand(finiteNumber(item.score)) : null,
+        // Why there is (or is not) a band, so an agent can tell "we are not sure" from "we do not
+        // measure this on this answer path". Without it, null reads as low confidence.
+        basis: grounded ? (effectiveBasis || 'unknown') : 'ungrounded',
       },
     },
     evidence: {
@@ -445,6 +684,15 @@ function recommendationItemToSignal(item, { rank } = {}) {
     },
     visibility: 'buyer_safe',
   };
+  // THE SAME OBJECT, not a copy: every later pass that downgrades the band (markPriceViolation) must
+  // reach both keys, and two independently-built objects would let the deprecated alias keep saying
+  // 'high' on an item the ceiling had already capped to 'low' — a worse defect than the rename fixes.
+  // NOTE this makes `signal.value` a DAG: one object reachable by two keys. resultSanitizer handles
+  // that deliberately (it tracks ancestors, not every node ever seen). Other walkers in this repo use
+  // a permanent visited set — mcp-server/src/safety.js and recoPrelabelService.js — and would drop
+  // the second occurrence; neither is on this path today, but a new walker that is must be checked.
+  signal.value.fit = signal.value.lane_confidence;
+  return signal;
 }
 
 /**
@@ -452,9 +700,14 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
- *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|null>,
+ *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{unresolvable:true}|null>,
  *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
- *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all
+ *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
+ *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
+ *     // same read chain get_product serves) — the item is DROPPED from the shortlist, unlike null,
+ *     // which only degrades it to an unverified snapshot price. `{unresolvable:true, confirm:true}`
+ *     // is the AMBIGUOUS flavor (an envelope a transient dependency blip can also mint): the bridge
+ *     // probes that item once more, and only a repeated unresolvable answer buys the drop
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
@@ -534,6 +787,58 @@ function makeRecommendProducts(deps = {}) {
     const enforcing = ceiling !== null && Number.isFinite(ceiling.limit);
 
     const startedAt = now();
+
+    // OFF-VERTICAL: answer with an empty shortlist and a REASON, before spending a lane generation on
+    // a need this lane cannot serve. See offVerticalMarker for why the rule is shaped the way it is.
+    // The full metadata block is returned (not the thin `reason:` shape the disabled/need_required
+    // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
+    // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
+    // description points it at.
+    const offVerticalAnswer = (marker) => ({
+      subject,
+      signals: [],
+      metadata: {
+        need,
+        constraints,
+        limit,
+        returned: 0,
+        recommendation_set_id: recommendationSetId,
+        confidence_overall: null,
+        // What Pivota would need for this to become answerable: a different lane. Said as the thing
+        // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
+        missing_info: [
+          lang === 'CN'
+            ? '该推荐通道仅覆盖护肤/美妆品类，无法回答此需求。'
+            : 'This recommendation lane covers skincare and beauty only; it cannot serve this need.',
+        ],
+        warnings: [
+          lang === 'CN'
+            ? `需求涉及非美妆品类（“${marker}”），已返回空结果，未生成任何推荐。`
+            : `The need names an off-vertical domain ("${marker}"); returned an empty shortlist rather than beauty products.`,
+        ],
+        grounding_status: null,
+        source_mode: null,
+        products_empty_reason: 'off_vertical',
+        vertical: 'beauty',
+        // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
+        // instead of guessing which word refused a buyer.
+        off_vertical_marker: marker,
+        // Always 'need_lexicon' — the only axis left. Kept as an explicit key rather than dropped:
+        // a caller that has to distinguish a future second axis should not have to infer it from
+        // absence, and a parameter with one call site and one value is not that distinction.
+        off_vertical_detected_by: 'need_lexicon',
+        latency_ms: now() - startedAt,
+      },
+    });
+
+    const offVertical = offVerticalMarker(need);
+    if (offVertical) {
+      logger?.info?.(
+        { recommendation_set_id: recommendationSetId, marker: offVertical, detected_by: 'need_lexicon' },
+        'recommend_products refused an off-vertical need',
+      );
+      return offVerticalAnswer(offVertical);
+    }
     let result;
     try {
       result = await generate({
@@ -549,6 +854,17 @@ function makeRecommendProducts(deps = {}) {
         logger,
         recoTriggerSource: 'agent_tool',
         entryType: 'direct',
+        // WIDEN THE LANE'S QUESTION, not its answer. This tool advertises beauty; the lane's default
+        // prompt is bounded to skincare, so a makeup/haircare/fragrance need was answered with a
+        // skincare product carrying the exclusion in warnings -- measured 2026-09-08, "a bronzer for
+        // contouring my cheekbones" returned The Ordinary Soothing & Barrier Support Serum at
+        // fit 'high' (#2155).
+        //
+        // Set HERE, by the bridge, and never from `p.*`: it is a property of which door the caller
+        // came through, not something a calling agent may ask for. entryType cannot carry it --
+        // the consumer POST /v1/reco/generate lane shares entryType 'direct' with this tool and its
+        // buyers are on a skincare surface.
+        promptDomainScope: 'beauty',
         budgetMs,
         // Only an ENFORCING ceiling is threaded. A `price_max` the extractor refused (prose, an array,
         // a non-positive number) must leave recall exactly as it is today rather than silently biasing
@@ -558,6 +874,11 @@ function makeRecommendProducts(deps = {}) {
         // hold. Without it the lane has no idea whether one conforming item is the whole answer or a
         // third of it.
         shortlistTarget: limit,
+        // THIS DOOR RECORDS ITS OWN ANSWER PATH, below, once the shortlist is final. The lane records
+        // `served` from ITS final list, but this bridge then drops every ungrounded row and every
+        // row whose price probe came back unresolvable — so an all-ungrounded turn, which is the
+        // #2155 failure exactly, would be counted as served while the partner receives nothing.
+        deferAnswerPathRecord: true,
       });
     } catch (err) {
       // The set id goes IN THE LOG, not just the response. `lane_unavailable` returns zero
@@ -569,11 +890,13 @@ function makeRecommendProducts(deps = {}) {
         { err: err?.message || String(err), recommendation_set_id: recommendationSetId },
         'recommend_products lane failed',
       );
+      recordAuroraRecoAnswerPath({ door: 'agent_tool', path: 'none', served: false });
       return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt, recommendation_set_id: recommendationSetId } };
     }
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
     const items = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+
     // DETERMINISTIC CONSTRAINT ENFORCEMENT. The lane only ever sees constraints as prompt text
     // (normalizeConstraints → buildAsk), so nothing upstream guarantees the shortlist honours them —
     // live 2026-08-20 a "under $40" need answered with a $45 product whose why[] asserted budget fit.
@@ -581,26 +904,89 @@ function makeRecommendProducts(deps = {}) {
     // order preserved); violating items are kept only in slots left over, each carrying an explicit
     // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
     // never displace a conforming item, and never travels as a clean recommendation.
+    const laneConfidenceBasis = firstString(
+      isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.confidence_basis : null,
+    ) || null;
     const projected = [];
+    let identityMismatchSuppressed = 0;
     for (const item of items) {
-      const s = recommendationItemToSignal(item, {});
+      // A price check cannot repair a product whose evidence/destination belongs to another ID.
+      // Withhold the complete row before projection, verification, or buyer-visible notes escape.
+      if (recommendationIdentityConflict(item)) {
+        identityMismatchSuppressed += 1;
+        continue;
+      }
+      const s = recommendationItemToSignal(item, { confidenceBasis: laneConfidenceBasis });
       if (s) projected.push(s);
     }
-    // GROUNDED BEFORE UNGROUNDED, always. An ungrounded item is the lane's advisory ("look for this
-    // kind of product") with no product_id, no price and nothing to open or buy — it may take a
-    // leftover slot, but a commerce door must never rank it above a real catalog item (live
-    // 2026-08-20: an invented cleanser sat at #1 above the only purchasable result). Lane order is
-    // preserved within each group.
-    const groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
-    const ungroundedSignals = projected.filter((s) => s.value.grounding !== 'catalog');
+    // NOTHING UNBUYABLE LEAVES THIS FUNCTION. Two independent ways a signal can carry no purchasable
+    // identity; both are suppressed HERE, the one point every exit below flows through.
+    //
+    //  (1) UNGROUNDED — the lane named a product it could not resolve, so product_id, price, url and
+    //      image are all null by construction. An earlier revision RANKED these last instead of
+    //      dropping them, on the theory that an advisory archetype is still worth something to an
+    //      agent. Live 2026-09-08 settled it: a "Daily Broad Spectrum SPF 30 Sunscreen" with every
+    //      identity field null reached a partner agent as rank 3 of 3, in a tool whose own description
+    //      promises that exact case never happens ("never with fabricated products"). Ranking it last
+    //      was never the fix — a commerce door's shortlist is a list of things to BUY, and an item an
+    //      agent can neither open, price nor purchase is not a weaker recommendation, it is a
+    //      different kind of object. It travels on `metadata.unresolved_archetypes` now, as TEXT,
+    //      where it cannot be mistaken for something with a product identity.
+    //      NOTE the count was already computed before this change (`ungrounded_returned`) — the
+    //      condition was detected and then not acted on, which is the whole defect.
+    //
+    //  (2) A NULL product_id on an item that claims catalog grounding — a lane defect rather than a
+    //      design choice (grounding_status is ABSENT on some rows and absence reads as grounded, so an
+    //      item with a name and no id projects to grounding 'catalog' with product_id null). Rare, and
+    //      it must not reach a caller either: the chain contract this file already enforces on the
+    //      verifier path is "never advertise a product_id that get_product cannot resolve", and null
+    //      is the strongest form of that. Filtering on grounding ALONE would leave this one open, so
+    //      the id is checked on its own terms.
+    //
+    // Lane order is preserved among the survivors.
+    const suppressed = { ungrounded: 0, unidentified: 0 };
+    const unresolvedArchetypes = [];
+    let groundedSignals = [];
+    for (const s of projected) {
+      if (s.value.grounding !== 'catalog') {
+        suppressed.ungrounded += 1;
+        // The archetype is the only part worth keeping: "look for a broad-spectrum SPF 30".
+        const name = str(s.value.product.title);
+        if (name) unresolvedArchetypes.push(name);
+        continue;
+      }
+      if (!nonEmpty(s.value.product.product_id)) {
+        suppressed.unidentified += 1;
+        // The title goes to the SAME place as an ungrounded archetype's. From a caller's side these
+        // are one thing — "a product the lane named but could not resolve" — and the description says
+        // such products appear there. Counting this one and dropping its name silently made that
+        // sentence false for exactly the route the grounding filter does not cover, and a named
+        // product would vanish leaving only an integer.
+        const named = str(s.value.product.title);
+        if (named) unresolvedArchetypes.push(named);
+        continue;
+      }
+      groundedSignals.push(s);
+    }
+    if (suppressed.unidentified > 0) {
+      logger?.warn?.(
+        { recommendation_set_id: recommendationSetId, count: suppressed.unidentified },
+        'recommend_products suppressed catalog-grounded items carrying no product_id',
+      );
+    }
 
     // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
     // product). The lane's price is a catalog-offer snapshot; the injected `verifyPrice` resolves the
     // same PDP/offer lane the public product page renders from, so a stale snapshot is corrected
     // BEFORE the ceiling is enforced — the gate must judge the price the buyer would actually see.
     // Bounded: only items that could reach the shortlist are checked, in parallel, and a failed or
-    // slow check degrades to the snapshot price with `price_verified: false` — never an error, never
-    // a dropped item. Each signal records the outcome so a partner agent knows what it is holding.
+    // slow check degrades to the snapshot price with `price_verified: false` — never an error. The
+    // ONE outcome that removes an item is a definitive `{unresolvable:true}`: the loopback proved the
+    // id this item would advertise answers PRODUCT_NOT_FOUND on the very read chain get_product
+    // serves, so returning it breaks the chain contract ("never advertise a product_id that
+    // get_product cannot resolve" — the same rule the public search projector enforces). Only the
+    // proven envelope buys a drop; a timeout or error must never buy a delisting. Each signal
+    // records the outcome so a partner agent knows what it is holding.
     let verification = null;
     if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
       // The window is sized to what can actually RETURN: without a ceiling the first `limit` grounded
@@ -614,16 +1000,34 @@ function makeRecommendProducts(deps = {}) {
         enforcing ? limit + PRICE_VERIFY_EXTRA : limit,
         PRICE_VERIFY_MAX_CHECKS,
       ));
-      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unchecked: 0 };
+      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
+      const unresolvableSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
-        let live = null;
-        try {
-          live = await Promise.race([
-            verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
-            new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
-          ]);
-        } catch { live = null; }
+        const probe = async () => {
+          try {
+            return await Promise.race([
+              verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
+              new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
+            ]);
+          } catch { return null; }
+        };
+        let live = await probe();
+        if (isPlainObject(live) && live.unresolvable === true && live.confirm === true) {
+          // The AMBIGUOUS not-found (see classifyVerifyPriceResponse): a transient dependency blip
+          // mints the same body as a truly absent row, so this envelope must be seen TWICE before
+          // it buys a drop. A second answer carrying a price — or nothing at all — wins the item
+          // back to the ordinary degrade path.
+          live = await probe();
+        }
+        if (isPlainObject(live) && live.unresolvable === true) {
+          // Grounded in Aurora's corpus, dead on the serving chain (live repro 2026-08-26: the lane's
+          // top acne picks 404'd on get_product). Dropped, and the slot backfills from the remaining
+          // grounded candidates below.
+          unresolvableSignals.add(s);
+          verification.unresolvable += 1;
+          return;
+        }
         const livePrice = finiteNumber(isPlainObject(live) ? live.price : null);
         const liveCurrency = isPlainObject(live) ? str(live.currency).toUpperCase() : '';
         // A live answer is trusted only when it is a POSITIVE amount in a KNOWN currency. `price: 0` is a
@@ -655,18 +1059,27 @@ function makeRecommendProducts(deps = {}) {
           s.value.watchouts = dedupe(['live availability check: out of stock', ...s.value.watchouts]).slice(0, 6);
         }
       }));
+      if (unresolvableSignals.size > 0) {
+        logger?.warn?.(
+          {
+            dropped_product_ids: [...unresolvableSignals].map((s) => s.value.product?.product_id ?? null),
+          },
+          'recommend_products dropped items unresolvable on the read chain',
+        );
+        groundedSignals = groundedSignals.filter((s) => !unresolvableSignals.has(s));
+      }
     }
 
     let signals;
     let violationsReturned = 0;
     let unverifiedReturned = 0;
     if (!enforcing) {
-      signals = [...groundedSignals, ...ungroundedSignals].slice(0, limit);
+      signals = groundedSignals.slice(0, limit);
     } else {
-      // Verified-conforming first, then price-unverifiable, then known violations — and only then
-      // ungrounded advisories: a slot never goes to an item known to breach the ceiling while one that
-      // honours it is waiting, and never to an invented product while any real one (even a flagged
-      // near-miss) is waiting.
+      // Verified-conforming first, then price-unverifiable, then known violations: a slot never goes
+      // to an item known to breach the ceiling while one that honours it is waiting. There is no
+      // fourth rung any more — ungrounded advisories used to backfill the leftover slots here, and
+      // they are suppressed above instead.
       const verdicts = new Map(groundedSignals.map((s) => [s, checkPriceMax(s, ceiling)]));
       signals = groundedSignals.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
       for (const rung of ['unverifiable', 'violation']) {
@@ -677,14 +1090,8 @@ function makeRecommendProducts(deps = {}) {
           else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
         }
       }
-      for (const s of ungroundedSignals) {
-        if (signals.length >= limit) break;
-        signals.push(markPriceUnverifiable(s, ceiling));
-        unverifiedReturned += 1;
-      }
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });
-    const ungroundedReturned = signals.filter((s) => s.value.grounding !== 'catalog').length;
     // Coverage honesty: with a ceiling, re-slotting can return a grounded item from beyond the
     // verification window (a conforming item the lane ranked low). It carries `price_verified: false`
     // like any other unchecked price, and `unchecked` counts it — otherwise "checked N, unavailable 0"
@@ -692,7 +1099,8 @@ function makeRecommendProducts(deps = {}) {
     // misreading this metadata exists to prevent.
     if (verification) {
       for (const s of signals) {
-        if (s.value.grounding !== 'catalog') continue;
+        // Every survivor is catalog-grounded now (see the suppression above), so there is no
+        // grounding test here: an ungrounded item can no longer reach this loop to be skipped.
         if (s.value.product.price_verified === undefined) {
           s.value.product.price_verified = false;
           verification.unchecked += 1;
@@ -751,6 +1159,14 @@ function makeRecommendProducts(deps = {}) {
     // partner waited; stamping the lane's latency alone would understate the call by that much.
     const latencyMs = now() - startedAt;
 
+    // THE ANSWER IS FINAL HERE, and only here. `signals` is what the partner agent actually receives,
+    // after the resolvability pass and the price probe have removed rows the lane still counted.
+    recordAuroraRecoAnswerPath({
+      door: 'agent_tool',
+      path: result?.structuredSource,
+      served: signals.length > 0,
+    });
+
     return {
       subject,
       signals,
@@ -765,21 +1181,60 @@ function makeRecommendProducts(deps = {}) {
         recommendation_set_id: recommendationSetId,
         // Lane-level certainty. On metadata on purpose: the sanitizer strips `confidence` from PRODUCT nodes;
         // this node carries no product identity.
-        confidence_overall: confidence,
+        //
+        // NULL WHEN THE NUMBER IS NOT A JUDGEMENT. The catalog paths hard-code 0.9 (and the transient
+        // fallback 0.62) regardless of the need, the items or how well either matched — so a bronzer
+        // need answered with three cleansers reported 0.9. Reporting a constant as certainty is worse
+        // than reporting nothing: an agent can route around a null, but it cannot route around a
+        // confident-looking number that means "the catalog code ran".
+        confidence_overall: laneConfidenceBasis === 'positional' ? null : confidence,
+        // What that number is made of, always present: 'model_self_report' | 'positional' | 'none'.
+        // Read it before presenting any certainty to a buyer.
+        confidence_basis: laneConfidenceBasis || 'unknown',
         missing_info: asStringArray(payload.missing_info, 8),
         warnings: asStringArray(payload.warnings, 8),
         grounding_status: firstString(payload.grounding_status, meta.grounding_status) || null,
         source_mode: firstString(meta.source_mode, payload.source) || null,
-        products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
+        // When the shortlist emptied because the resolvability pass dropped everything, say THAT —
+        // 'no_recommendations' would blame the lane for items it actually produced.
+        products_empty_reason: signals.length === 0
+          ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
+            || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
+            // The lane DID answer, but every item it produced was an archetype it could not resolve
+            // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
+            // truth is that nothing it produced was buyable — a different problem with a different fix.
+            || (identityMismatchSuppressed > 0 ? 'identity_mismatch' : suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
+          : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
-        // How many returned signals are advisory archetypes rather than catalog products — said out
-        // loud so "returned: 2" is never read as "2 purchasable products" when one of them cannot be
-        // opened or bought.
-        ...(ungroundedReturned > 0 ? { ungrounded_returned: ungroundedReturned } : {}),
+        // What was withheld, and why. `ungrounded_returned` used to live here and counted archetypes
+        // that were RETURNED; nothing is returned any more, so the key would be permanently absent and
+        // is gone. These replace it: a shortlist shorter than `limit` now has a stated reason rather
+        // than looking like a thin catalog.
+        ...(suppressed.ungrounded > 0 ? { ungrounded_suppressed: suppressed.ungrounded } : {}),
+        // The archetypes themselves, as plain strings. Deliberately NOT product-shaped: the whole
+        // point is that these have no product identity, and a node with a null `product_id` is exactly
+        // what a partner agent showed a buyer on 2026-09-08.
+        ...(unresolvedArchetypes.length > 0
+          // Capped well above what a lane response can carry. NOT bounded by `limit`: an earlier comment
+          // here claimed it was, which is false — this list is built from every PROJECTED row (see the
+          // suppression loop), and `.slice(0, limit)` runs later and only on survivors, so a lane
+          // returning 12 unresolvable rows against limit 3 produces 12 names. The description says such
+          // products appear ONLY here, so a cap that truncates makes that sentence false; this one is a
+          // sanity bound on a pathological response, not a display limit.
+          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, MAX_UNRESOLVED_ARCHETYPES) }
+          : {}),
+        // A lane defect, not a policy outcome (see the suppression block): an item that claimed
+        // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
+        ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
+        ...(identityMismatchSuppressed > 0 ? { identity_mismatch_suppressed: identityMismatchSuppressed } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
-        // checked = confirmed + updated + unavailable; `updated` items carry the corrected price and a
-        // watchout naming the move; `unavailable` items keep the snapshot with price_verified: false.
+        // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
+        // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
+        // price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
+        // answers PRODUCT_NOT_FOUND on the read chain get_product serves, so they never reach the
+        // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
+        // even in a diagnostic field).
         ...(verification ? { price_verification: verification } : {}),
         // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
         // flagged near-misses" from "could not be checked" — without rescanning items, and without
@@ -807,14 +1262,54 @@ function makeRecommendProducts(deps = {}) {
         // unreadable second constraint) the key reports the unread constraint — either value already means
         // "do not treat this shortlist as fully price-checked".
         ...(ceiling !== null && ceiling.unstructured ? { price_constraint_unenforced: ceiling.unstructured } : {}),
-        ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
+        // Counts only items projection could not IDENTIFY (items minus projected), not the whole
+        // lane output: an empty shortlist can now also mean identified items were dropped as
+        // unresolvable, and those belong to price_verification.unresolvable, not to this key.
+        ...(signals.length === 0 && items.length > projected.length + identityMismatchSuppressed
+          ? { dropped_unidentified_items: items.length - projected.length - identityMismatchSuppressed }
+          : {}),
       },
     };
   };
+}
+
+/**
+ * Classify the loopback get_pdp_v2 HTTP answer for the injected verifyPrice. Pure, and exported so
+ * the server.js wiring and its tests read the SAME line — the `{unresolvable: true}` drop signal
+ * must come from exactly one place. ONLY an HTTP 404 carrying the PRODUCT_NOT_FOUND envelope is
+ * definitive (that is what the pdp_v2 lane answers for an id get_product cannot serve); a 404
+ * without the code, and every other non-2xx, is null ("price unavailable") — cannot-verify must
+ * never buy a delisting.
+ * @param {number} status
+ * @param {any} body
+ * @returns {{unresolvable:true}|null|undefined} undefined = 2xx: the caller reads the price itself
+ */
+function classifyVerifyPriceResponse(status, body) {
+  if (status === 404) {
+    const b = isPlainObject(body) ? body : null;
+    const code = b ? String(b.error || b.reasonCode || '').trim().toUpperCase() : '';
+    // PRODUCT_NOT_SERVABLE is emitted ONLY after a SUCCESSFUL serving-eligibility read (server.js
+    // get_pdp_v2 eligibility gate) — a definitive "get_product will not serve this id", with no
+    // transient path that can mint it. It maps to the same NO_MERCHANT_OFFER the buyer would see.
+    if (code === 'PRODUCT_NOT_SERVABLE') return { unresolvable: true };
+    if (code === 'PRODUCT_NOT_FOUND') {
+      // With details.reason (e.g. external_seed_not_active) the verdict came from a successful
+      // read of the row — definitive. WITHOUT it, this is the rescue-fail emit, and that path
+      // swallows dependency errors into null: a transient DB blip mints the SAME body as a truly
+      // absent row. Ambiguous — the caller must CONFIRM it with a second probe before it may buy
+      // a drop.
+      const reason = b && isPlainObject(b.details) ? str(b.details.reason) : '';
+      return reason ? { unresolvable: true } : { unresolvable: true, confirm: true };
+    }
+    // A 404 without either code (a proxy, a route miss) proves nothing.
+    return null;
+  }
+  if (status < 200 || status >= 300) return null;
+  return undefined;
 }
 
 // markPriceViolation/markPriceUnverifiable are exported ONLY so a test can pin that they mutate
 // `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
 // join-key mint above is ordered after them precisely because of it, and without a direct
 // assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse, offVerticalMarker };

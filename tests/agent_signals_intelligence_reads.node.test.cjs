@@ -8,7 +8,13 @@ const assert = require('node:assert/strict');
 
 const { relationshipEdgeToSignal, relationshipEdgesToSignals } = require('../src/agentSignals/relationshipEdgeToSignal');
 const { offerToSignal, offersToSignals } = require('../src/agentSignals/offerToSignal');
-const { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse } = require('../src/agentSignals/intelligenceReads');
+const {
+  makeGetAlternatives,
+  makeGetOffers,
+  mapOffersResolveResponse,
+  candidateSnapshotNeedsHydration,
+  hydrateCandidateSnapshotFromEntity,
+} = require('../src/agentSignals/intelligenceReads');
 
 function sampleEdge(over = {}) {
   return {
@@ -50,6 +56,31 @@ test('relationshipEdgeToSignal: 1:1 field map incl. evidence/freshness/review_st
   assert.equal(s.freshness.fresh_until, '2026-07-01T00:00:00Z');
   assert.equal(s.review_state, 'human_approved');
   assert.equal(s.visibility, 'buyer_safe');
+});
+
+test('relationshipEdgeToSignal: currency read tolerates producer key variants (price_currency)', () => {
+  // The stored candidate_snapshot is a raw product spread whose currency key varies by producer.
+  // Verified in prod 2026-08-25: a one-key `snapshot.currency` read served a $49 alternative with an
+  // amount and no currency next to a currency-carrying anchor.
+  const viaPriceCurrency = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, price_currency: 'USD' } }),
+  );
+  assert.equal(viaPriceCurrency.value.related.price, 49);
+  assert.equal(viaPriceCurrency.value.related.currency, 'USD');
+  const viaCamel = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, priceCurrency: 'EUR' } }),
+  );
+  assert.equal(viaCamel.value.related.currency, 'EUR');
+  // `currency` stays the first-read key when several are present.
+  const both = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, currency: 'GBP', price_currency: 'USD' } }),
+  );
+  assert.equal(both.value.related.currency, 'GBP');
+  // Still honest when nothing carries a currency: null, never a guess.
+  const none = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49 } }),
+  );
+  assert.equal(none.value.related.currency, null);
 });
 
 test('related_product → signal_type "related"', () => {
@@ -192,6 +223,73 @@ test('makeGetAlternatives: hydrateCandidates fills title-less candidate snapshot
   assert.equal(hydrateRanWith, 1);
   assert.equal(res.signals[0].value.related.title, 'Resolved Lip Gloss');
   assert.equal(res.signals[0].value.related.brand, '786 Cosmetics');
+});
+
+test('candidateSnapshotNeedsHydration: title-less, or priced without any currency key', () => {
+  assert.equal(candidateSnapshotNeedsHydration({ brand: 'B', price: 19.99, currency: 'USD' }), true, 'no title');
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49 }), true, 'priced, currency-less');
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, price_currency: 'USD' }), false);
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, currency: 'USD' }), false);
+  // EVERY currency key the signal mapper reads must count as "has a currency" here, or hydration
+  // overrides a producer's own currency (review F1).
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 4900, priceCurrency: 'JPY' }), false);
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', brand: 'B' }), false, 'unpriced needs no currency');
+});
+
+test('hydrateCandidateSnapshotFromEntity: fills the stored amount’s missing currency from the canonical row', () => {
+  const snap = { title: 'T', brand: 'B', price: 49 };
+  const hydrated = hydrateCandidateSnapshotFromEntity(snap, {
+    title: 'T',
+    display_snapshot: { title: 'T', price: '49.00', currency: 'USD' },
+  });
+  assert.equal(hydrated.currency, 'USD');
+  assert.equal(hydrated.price, 49, 'the STORED amount is kept — only its currency is filled');
+});
+
+test('hydrateCandidateSnapshotFromEntity: never overwrites a currency the snapshot already carries', () => {
+  const kept = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 49, price_currency: 'EUR' },
+    { display_snapshot: { price: '49.00', currency: 'USD' } },
+  );
+  assert.equal(kept, null, 'nothing to fill — edge kept as-is');
+  // The camelCase producer key counts too — the mapper reads it, so hydration must respect it (review F1).
+  const keptCamel = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900, priceCurrency: 'JPY' },
+    { display_snapshot: { price: '4900', currency: 'USD' } },
+  );
+  assert.equal(keptCamel, null, 'a priceCurrency:JPY snapshot must not be re-badged USD');
+});
+
+test('hydrateCandidateSnapshotFromEntity: an amount MISMATCH refuses the pairing (different member listing)', () => {
+  // A sig/group-keyed ref can resolve to the group's PRIMARY member — a different merchant's listing,
+  // possibly in another currency (review F2). Only a matching amount licenses the currency pairing;
+  // otherwise the price stays currency-less and the projection withholds it (honest omission).
+  const mismatched = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900 },
+    { title: 'T', display_snapshot: { price: '49.00', currency: 'USD' } },
+  );
+  assert.equal(mismatched, null, 'stored 4900 vs canonical 49.00 — no currency fill');
+  // A canonical row with a currency but NO price cannot prove it is the same listing either.
+  assert.equal(
+    hydrateCandidateSnapshotFromEntity({ title: 'T', price: 49 }, { title: 'T', display_snapshot: { currency: 'USD' } }),
+    null,
+  );
+});
+
+test('hydrateCandidateSnapshotFromEntity: fills title (with brand fallback) and is null on a no-op', () => {
+  const titled = hydrateCandidateSnapshotFromEntity(
+    { price: 19.99, currency: 'USD' },
+    { title: 'Resolved Lip Gloss', brand: '786 Cosmetics' },
+  );
+  assert.equal(titled.title, 'Resolved Lip Gloss');
+  assert.equal(titled.brand, '786 Cosmetics');
+  assert.equal(hydrateCandidateSnapshotFromEntity({ title: 'T', brand: 'B' }, { title: 'X' }), null);
+  assert.equal(hydrateCandidateSnapshotFromEntity({ price: 49 }, null), null, 'unresolved ref is a no-op');
+  // A resolved row with no currency of its own fills nothing rather than guessing.
+  assert.equal(
+    hydrateCandidateSnapshotFromEntity({ title: 'T', price: 49 }, { title: 'T', display_snapshot: { price: '49.00' } }),
+    null,
+  );
 });
 
 test('makeGetAlternatives: a hydrateCandidates throw is fail-open (edges still served)', async () => {
@@ -340,4 +438,565 @@ test('"nobody said" is null, NOT false — false is its own claim about where th
     assert.equal(sig.value.cart_prefilled, null,
       `absence must stay unknown, not become a PDP claim, for ${JSON.stringify(offer.cart_prefilled)}`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION SPEC v0 — the rest of the handoff contract.
+//
+// `cart_prefilled` answers "is there a cart". This answers "where exactly, with what in it, until
+// when, and how is the click attributed". The backend composes every url in one function, so the
+// gateway must PASS IT THROUGH rather than re-derive anything — but must also refuse to relay a
+// value that is not the shape it claims to be, because every field here is a sentence an agent
+// will say to a buyer.
+// ---------------------------------------------------------------------------------------------
+
+const FULL_SPEC = {
+  merchant_domain: 'brand.com',
+  pdp_url: 'https://brand.com/products/serum?utm_source=pivota&pvt_click_id=clk_abc',
+  cart_url: 'https://brand.com/cart/40064041844877:1?attributes[pivota_click_id]=clk_abc',
+  variant_id: '40064041844877',
+  rail: 'shopify_cart',
+  expires_at: '2026-09-01T00:00:00Z',
+  // The live-verification half. Present in the fixture so the verbatim-passthrough assertion
+  // below covers the COMPLETE published shape — a deep-equal that omits half the spec would go
+  // green while those fields were being silently dropped.
+  expected_item_total: 19.99,
+  expected_currency: 'USD',
+  expected_quantity: 1,
+  expected_total_expires_at: '2026-08-26T03:10:00Z',
+  tracking: {
+    click_id: 'clk_abc',
+    param: 'attributes[pivota_click_id]',
+    join_mode: 'cart_permalink',
+  },
+};
+
+test('the execution spec reaches the agent verbatim — the gateway re-derives nothing', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', execution_spec: FULL_SPEC },
+    { productId: 'sig_1' },
+  );
+  assert.deepEqual(sig.value.execution_spec, FULL_SPEC);
+});
+
+test('an offer with no spec reports null, NOT an empty spec', () => {
+  // `{}` reads as "a spec exists and it is blank". `null` reads as "nobody said" — the truth for an
+  // older backend or a non-external offer. Same reasoning as cart_prefilled.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },
+    { merchant_id: 'm1', execution_spec: null },
+    { merchant_id: 'm1', execution_spec: 'not an object' },
+    { merchant_id: 'm1', execution_spec: 42 },
+    { merchant_id: 'm1', execution_spec: [FULL_SPEC] }, // an array is not a spec
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.equal(sig.value.execution_spec, null,
+      `must be null for ${JSON.stringify(offer.execution_spec)}`);
+  }
+});
+
+test('a malformed field degrades alone and never costs a good one', () => {
+  // A bad `expires_at` must not take `cart_url` down with it. Whole-spec rejection would make one
+  // sloppy field silently remove a working handoff.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    {
+      merchant_id: 'm1',
+      execution_spec: { ...FULL_SPEC, expires_at: 1756684800, merchant_domain: '   ' },
+    },
+    { productId: 'sig_1' },
+  );
+  const spec = sig.value.execution_spec;
+  assert.equal(spec.expires_at, null, 'a numeric timestamp is not the ISO string we promised');
+  assert.equal(spec.merchant_domain, null, 'whitespace is not a domain');
+  assert.equal(spec.cart_url, FULL_SPEC.cart_url, 'and the good fields are untouched');
+  assert.equal(spec.variant_id, FULL_SPEC.variant_id);
+});
+
+test('a withheld pdp_url stays null rather than being back-filled', () => {
+  // The backend withholds `pdp_url` when its host is not the one the domain allowlist approved.
+  // Null here means "we will not vouch for a product page", never "there isn't one" — and the
+  // gateway must not helpfully substitute cart_url or affiliate_url for it.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    {
+      merchant_id: 'm1',
+      affiliate_url: 'https://api.pivota.cc/r?token=abc.def',
+      execution_spec: { ...FULL_SPEC, pdp_url: null },
+    },
+    { productId: 'sig_1' },
+  );
+  const spec = sig.value.execution_spec;
+  assert.equal(spec.pdp_url, null);
+  assert.equal(spec.cart_url, FULL_SPEC.cart_url, 'the cart is unaffected');
+});
+
+test('tracking is always an object, so reading tracking.click_id can never throw', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const tracking of [undefined, null, 'nope', 7, []]) {
+    const sig = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { ...FULL_SPEC, tracking } },
+      { productId: 'sig_1' },
+    );
+    const t = sig.value.execution_spec.tracking;
+    assert.ok(t && typeof t === 'object' && !Array.isArray(t),
+      `tracking must stay an object for ${JSON.stringify(tracking)}`);
+    assert.equal(t.click_id, null);
+    assert.equal(t.param, null);
+    assert.equal(t.join_mode, null);
+  }
+});
+
+test('tracking.param is relayed as sent — the carrier differs by join mode', () => {
+  // A cart carries the join key as `attributes[pivota_click_id]`; a referral as a plain query
+  // param. The gateway must not normalise these to one value: an agent uses `param` to FIND the
+  // key in the url it was handed, and the wrong name means the key looks missing.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const cart = offerToSignal(
+    { merchant_id: 'm1', execution_spec: FULL_SPEC }, { productId: 'sig_1' },
+  ).value.execution_spec;
+  assert.equal(cart.tracking.param, 'attributes[pivota_click_id]');
+  assert.ok(cart.cart_url.includes(`${cart.tracking.param}=${cart.tracking.click_id}`),
+    'the named carrier must literally appear in the url it describes');
+
+  const referral = offerToSignal(
+    {
+      merchant_id: 'm1',
+      execution_spec: {
+        ...FULL_SPEC,
+        cart_url: null,
+        rail: 'referral',
+        tracking: { click_id: 'clk_abc', param: 'pvt_click_id', join_mode: 'referral_only' },
+      },
+    },
+    { productId: 'sig_1' },
+  ).value.execution_spec;
+  assert.equal(referral.tracking.param, 'pvt_click_id');
+  assert.ok(referral.pdp_url.includes(`${referral.tracking.param}=${referral.tracking.click_id}`));
+});
+
+test('an unknown rail from a newer backend is relayed, not nulled', () => {
+  // `rail` is a label, not a promise about a url. Checking it against a hardcoded set would mean a
+  // rail added on the backend silently disappears here — the allowlist-drops-the-new-value trap
+  // this repo has paid for before. An agent can ignore a rail it does not recognise.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { ...FULL_SPEC, rail: 'ucp_checkout' } },
+    { productId: 'sig_1' },
+  );
+  assert.equal(sig.value.execution_spec.rail, 'ucp_checkout');
+});
+
+// ---------------------------------------------------------------------------------------------
+// LIVE VERIFICATION — what the merchant said, just now.
+//
+// The backend asks the merchant's own storefront before a handoff. Without these keys an agent
+// gets a spec that looks IDENTICAL whether we checked it a second ago or are reciting an index
+// row that is, on the audit's measurement, wrong 31.1% of the time. Three separate facts because
+// they fail separately, and absence is never a claim.
+// ---------------------------------------------------------------------------------------------
+
+const VERIFIED_OFFER = {
+  merchant_id: 'm1',
+  price: 19.99,
+  currency: 'USD',
+  stock_verified: true,
+  merchant_price_verified: true,
+  execution_spec: {
+    merchant_domain: 'brand.com',
+    cart_url: 'https://brand.com/cart/40064041844877:1',
+    expected_item_total: 19.99,
+    expected_currency: 'USD',
+    expected_quantity: 1,
+    expected_total_expires_at: '2026-08-26T03:10:00Z',
+  },
+};
+
+test('a verified offer carries what the merchant said, and when it stops being true', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(VERIFIED_OFFER, { productId: 'sig_1' }).value;
+
+  assert.equal(v.stock_verified, true);
+  assert.equal(v.merchant_price_verified, true);
+  assert.equal(v.execution_spec.expected_item_total, 19.99);
+  assert.equal(v.execution_spec.expected_currency, 'USD');
+  assert.equal(v.execution_spec.expected_quantity, 1);
+  assert.equal(v.execution_spec.expected_total_expires_at, '2026-08-26T03:10:00Z');
+});
+
+test('stock and price verify SEPARATELY — one can hold while the other does not', () => {
+  // The storefront endpoint the backend reads carries an amount with NO currency code, so a
+  // price is only verified once the shop's declared currency is known to match the offer's.
+  // Stock is currency-free and holds regardless. Folding these into one flag is what published
+  // a yen amount under a dollar label in an earlier cut.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { ...VERIFIED_OFFER, merchant_price_verified: false,
+      execution_spec: { merchant_domain: 'brand.com' } },
+    { productId: 'sig_1' },
+  ).value;
+
+  assert.equal(v.stock_verified, true, 'stock is currency-free and still established');
+  assert.equal(v.merchant_price_verified, false);
+  assert.equal(v.execution_spec.expected_item_total, null,
+    'no total may be published for a price we could not verify');
+});
+
+test('an offer nobody checked reports null, NOT false', () => {
+  // "We did not look" and "we looked and it failed" are different facts. An offer outside the
+  // verified top-3, a non-external offer, or an older backend has no verdict at all — and
+  // flattening that into `false` would make the measurement useless AND defame a fine merchant.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },
+    { merchant_id: 'm1', stock_verified: null },
+    { merchant_id: 'm1', stock_verified: 'true' },
+    { merchant_id: 'm1', stock_verified: 1 },
+  ]) {
+    const v = offerToSignal(offer, { productId: 'sig_1' }).value;
+    assert.equal(v.stock_verified, null,
+      `absence must stay null for ${JSON.stringify(offer.stock_verified)}`);
+    assert.equal(v.merchant_price_verified, null);
+  }
+});
+
+test('an explicit false IS relayed — it is a real answer', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', stock_verified: false, merchant_price_verified: false },
+    { productId: 'sig_1' },
+  ).value;
+  assert.equal(v.stock_verified, false);
+  assert.equal(v.merchant_price_verified, false);
+});
+
+test('a total is a NUMBER — a numeric-looking string is not money', () => {
+  // It would sort and compare as text wherever an agent does arithmetic on it, which is worse
+  // than not having it: "9.99" < "10.00" is false as a string.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  // A VALID CURRENCY IS SUPPLIED on purpose. The amount/currency atomicity rule nulls an amount
+  // with no currency before `num()` is ever consulted, so without this these rows stopped
+  // exercising the type check — and the mutant that made `num()` accept a numeric string survived.
+  for (const bad of ['19.99', '', {}, [], true, NaN, Infinity]) {
+    const v = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_item_total: bad, expected_currency: 'USD' } },
+      { productId: 'sig_1' },
+    ).value;
+    assert.equal(v.execution_spec.expected_item_total, null,
+      `must not publish ${JSON.stringify(bad)} as a total`);
+  }
+});
+
+test('rank_one_unverified surfaces only when the backend asserts it', () => {
+  // The backend sets this when the WHOLE shortlist came back unverified, so rank 1 cannot be
+  // presented as confidently checked. Absent means the ordinary case, not a denial.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  assert.equal(
+    offerToSignal({ merchant_id: 'm1', rank_one_unverified: true }, { productId: 's' })
+      .value.rank_one_unverified,
+    true,
+  );
+  assert.equal(
+    offerToSignal({ merchant_id: 'm1' }, { productId: 's' }).value.rank_one_unverified,
+    null,
+  );
+});
+
+test('the verification keys survive the shared sanitizer', () => {
+  // Everything an agent sees passes through it, and it has previously eaten a cart url whose
+  // variant id looked like a card number. A total and a boolean must come through untouched.
+  const { sanitizeResult } = require('../safety-kernel/src/protocol/resultSanitizer.js');
+  const out = sanitizeResult({ offers: [VERIFIED_OFFER] }).offers[0];
+  assert.equal(out.stock_verified, true);
+  assert.equal(out.merchant_price_verified, true);
+  assert.equal(out.execution_spec.expected_item_total, 19.99);
+  assert.equal(out.execution_spec.cart_url, VERIFIED_OFFER.execution_spec.cart_url);
+});
+
+test('rank_one_unverified needs an explicit true, not a truthy value', () => {
+  // It is a warning that the top result was NOT confirmed. A stray string or a 1 arriving from
+  // a future backend must not be able to raise it — a false alarm here tells an agent to distrust
+  // a shortlist we actually checked.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const truthy of ['true', 1, {}, []]) {
+    const v = offerToSignal(
+      { merchant_id: 'm1', rank_one_unverified: truthy }, { productId: 's' },
+    ).value;
+    assert.equal(v.rank_one_unverified, null,
+      `must not raise the warning for ${JSON.stringify(truthy)}`);
+  }
+});
+
+test('best_offer does not hand the agent an UNVERIFIED offer over a confirmed one', () => {
+  // The tool now advertises live verification. Sorting on price alone made a cheaper offer we
+  // could NOT confirm win `best_offer` over one the merchant had just confirmed — the headline
+  // answer contradicting the feature. An agent reading only `best_offer` also never sees
+  // `rank_one_unverified`, which rides on signals[0].
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'cheap_unchecked', price: 12.5, currency: 'USD', stock_verified: false },
+      { merchant_id: 'confirmed', price: 14.99, currency: 'USD', stock_verified: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'confirmed');
+});
+
+test('an UNCHECKED offer is not penalised the way a FAILED check is', () => {
+  // null means "we did not look" — no evidence against the merchant. Treating it like a failed
+  // check would demote every offer outside the verified top-3 on the strength of our own budget.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'cheap_unchecked', price: 12.5, currency: 'USD' },
+      { merchant_id: 'pricier_confirmed', price: 14.99, currency: 'USD', stock_verified: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'pricier_confirmed', 'confirmed still wins');
+
+  // The unchecked offer is the DEARER one here, deliberately: if the tiers were equal, price
+  // would decide and pick the cheap failed offer. Only a real tier difference can produce this.
+  const { best_offer: b2 } = offersToSignals(
+    [
+      { merchant_id: 'cheap_failed', price: 12.5, currency: 'USD', stock_verified: false },
+      { merchant_id: 'pricier_unchecked', price: 14.99, currency: 'USD' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(b2.value.merchant_id, 'pricier_unchecked',
+    'an unchecked offer must outrank one whose check FAILED, even when dearer');
+});
+
+test('a verified offer carries a positive stock statement, not just a stale availability', () => {
+  // The backend corrects `in_stock` and leaves `availability` alone. External-seed offers default
+  // to availability "unknown", so dropping in_stock published `availability: "unknown"` next to
+  // `stock_verified: true` — a confirmed item with nothing on it saying so.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', availability: 'unknown', in_stock: true, stock_verified: true },
+    { productId: 'p' },
+  ).value;
+  assert.equal(v.in_stock, true);
+  assert.equal(v.stock_verified, true);
+});
+
+test('an amount and its currency move together, or neither moves', () => {
+  // #2102/#2104 settled this for the sibling readers: an amount without its currency is not a
+  // smaller truth, it is a different and wrong one. The description tells an agent to compare
+  // `expected_item_total` against a merchant checkout total — with no unit, that is a guess.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const orphanAmount = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99 } }, { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(orphanAmount.expected_item_total, null, 'an amount with no currency is withheld');
+  assert.equal(orphanAmount.expected_currency, null);
+
+  const orphanCurrency = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_currency: 'USD' } }, { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(orphanCurrency.expected_currency, null, 'a currency with no amount says nothing');
+
+  const both = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99, expected_currency: 'USD' } },
+    { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(both.expected_item_total, 14.99);
+  assert.equal(both.expected_currency, 'USD');
+});
+
+test('a blank or non-string currency is refused, not relayed', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const bad of ['', '   ', 42, {}, null]) {
+    const spec = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99, expected_currency: bad } },
+      { productId: 'p' },
+    ).value.execution_spec;
+    assert.equal(spec.expected_currency, null, `must refuse ${JSON.stringify(bad)}`);
+    assert.equal(spec.expected_item_total, null, 'and withhold the amount with it');
+  }
+});
+
+test('a blank expiry is refused — a promise with an unreadable shelf life is not a promise', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const bad of ['', '   ', 12345, {}]) {
+    const spec = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_total_expires_at: bad } }, { productId: 'p' },
+    ).value.execution_spec;
+    assert.equal(spec.expected_total_expires_at, null, `must refuse ${JSON.stringify(bad)}`);
+  }
+});
+
+test('stock_verified is its own fact and never inherits cart_prefilled', () => {
+  // They answer different questions — "is it buyable" vs "where does the link land". Falling
+  // through would report a merchant as stock-confirmed on the strength of a cart permalink we
+  // built ourselves, without asking anyone.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', cart_prefilled: true }, { productId: 'p' },
+  ).value;
+  assert.equal(v.cart_prefilled, true);
+  assert.equal(v.stock_verified, null, 'a prefilled cart is not evidence about stock');
+});
+
+test('a zero total is a real number and survives', () => {
+  // A 100%-off promo is a legitimate total. Rejecting 0 as falsy would silently withhold it.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const spec = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 0, expected_currency: 'USD' } },
+    { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(spec.expected_item_total, 0);
+});
+
+test('the sanitizer preserves the PROJECTION, not just a raw backend offer', () => {
+  // The earlier version sanitized VERIFIED_OFFER — the backend shape — so it proved the key names
+  // survive canon() but nothing about the projection's output reaching the wire. Stripping the
+  // booleans from the projection left it green.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const { sanitizeResult } = require('../safety-kernel/src/protocol/resultSanitizer.js');
+  const projected = offerToSignal(VERIFIED_OFFER, { productId: 'sig_1' });
+  const out = sanitizeResult({ signals: [projected] }).signals[0].value;
+
+  assert.equal(out.stock_verified, true);
+  assert.equal(out.merchant_price_verified, true);
+  assert.equal(out.execution_spec.expected_item_total, 19.99);
+  assert.equal(out.execution_spec.expected_currency, 'USD');
+  assert.equal(out.execution_spec.cart_url, VERIFIED_OFFER.execution_spec.cart_url);
+});
+
+test('best_offer is a seller that CAN sell, not the cheapest one that cannot (prod 2026-09-18)', () => {
+  // get_offers on the Purito Oat-in Calming Gel Cream, three retailers, verification off.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer, signals } = offersToSignals(
+    [
+      // Prod shape: every catalog-arm offer carries purchase_route 'affiliate_outbound'. Leaving it out
+      // let a mutant that exempted EVERY routed offer (switching the fix off in prod) pass.
+      { merchant_id: 'eyurs', price: 13, currency: 'USD', availability: 'out_of_stock', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'sokoglam', price: 19.5, currency: 'USD', availability: 'in_stock', in_stock: true,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'ohlolly', price: 21, currency: 'USD', availability: 'out_of_stock', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
+    ],
+    { productId: 'ext:retailer:0465db3774ad9906d3d91664fcd3ab1a' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'sokoglam');
+  // signals keep the backend's order — only the headline pick is re-ranked here.
+  assert.deepEqual(signals.map((s) => s.value.merchant_id), ['eyurs', 'sokoglam', 'ohlolly']);
+});
+
+test('either statement alone marks an offer unsellable: the flag, or the availability string', () => {
+  // The seed and internal lanes ship `in_stock` with no `availability`; a sloppy feed value is
+  // normalised the way the backend normalises it.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const flagOnly = offersToSignals(
+    [
+      { merchant_id: 'cheap_flag_false', price: 10, currency: 'USD', in_stock: false },
+      { merchant_id: 'dear', price: 20, currency: 'USD', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(flagOnly.best_offer.value.merchant_id, 'dear');
+  const stringOnly = offersToSignals(
+    [
+      { merchant_id: 'cheap_sold_out', price: 10, currency: 'USD', availability: ' SOLD_OUT ' },
+      { merchant_id: 'dear', price: 20, currency: 'USD' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(stringOnly.best_offer.value.merchant_id, 'dear');
+});
+
+test('unknown availability is NOT unsellable: it competes on price with in-stock offers', () => {
+  // `unknown` is catalog_offers.availability's column default and the backend ships it as
+  // in_stock: true. Demoting it would make best_offer disagree with the backend's offers[0].
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'dear_in_stock', price: 20, currency: 'USD', availability: 'in_stock', in_stock: true },
+      { merchant_id: 'cheap_unknown', price: 10, currency: 'USD', availability: 'unknown', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'cheap_unknown');
+});
+
+test('a RESTOCKED, verified offer wins even though its feed availability still says out_of_stock', () => {
+  // The shape live verification actually produces: apply_verdicts stamps stock_verified: true and
+  // corrects in_stock to true, but leaves the feed's stale `availability` untouched. The flag must win;
+  // reading the string here would demote the one offer the merchant just confirmed.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'restocked_verified', price: 13, currency: 'USD', stock_verified: true, in_stock: true,
+        availability: 'out_of_stock', purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'unchecked_in_stock', price: 19.5, currency: 'USD', in_stock: true,
+        availability: 'in_stock', purchase_route: 'affiliate_outbound' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'restocked_verified');
+});
+
+test('every unavailable spelling counts when the flag is absent', () => {
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  for (const spelling of ['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable']) {
+    const { best_offer } = offersToSignals(
+      [
+        { merchant_id: 'cheap', price: 10, currency: 'USD', availability: spelling },
+        { merchant_id: 'dear', price: 20, currency: 'USD' },
+      ],
+      { productId: 'p' },
+    );
+    assert.equal(best_offer.value.merchant_id, 'dear', `${spelling} must mark the offer unavailable`);
+  }
+});
+
+test('a sold-out PRIMARY seller does not win best_offer over a sellable one', () => {
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'primary_sold_out', price: 10, currency: 'USD', is_primary: true, in_stock: false },
+      { merchant_id: 'other', price: 20, currency: 'USD', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'other');
+});
+
+test('an INTERNAL offer is not demoted on its in_stock flag (mirrors the backend exemption)', () => {
+  // The backend computes an internal offer's in_stock from inventory_quantity alone, so an
+  // untracked-inventory variant that is buyable arrives as in_stock: false.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'referral', price: 20, currency: 'USD', in_stock: true, purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'buy_here', price: 15, currency: 'USD', in_stock: false, purchase_route: 'internal_checkout' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'buy_here');
+});
+
+test('sellable outranks the verification tier: a FAILED check beats a sold-out unchecked offer', () => {
+  // With live verification on: A's check failed (fetch error — no evidence about stock, feed says in
+  // stock); B was never checked and its feed says sold out. Ranking verification above sellability
+  // would pick B, a seller that cannot sell.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'unchecked_sold_out', price: 10, currency: 'USD', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'check_failed_in_stock', price: 20, currency: 'USD', stock_verified: false,
+        in_stock: true, purchase_route: 'affiliate_outbound' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'check_failed_in_stock');
 });

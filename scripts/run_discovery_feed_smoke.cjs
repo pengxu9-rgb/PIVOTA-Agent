@@ -121,7 +121,9 @@ function validateDiscoveryResponse(response, expectations = {}) {
   const productsSearchBreakdown = providerBreakdown.find(
     (entry) => String(entry?.provider || '').trim() === 'products_search',
   );
-  const disallowedProductsSearchFailures = new Set(['missing_base_url', 'http_401', 'http_403', 'timeout']);
+  // circuit_open means the gateway stopped calling products_search after repeated timeouts/401s/5xx, so it
+  // is the same outage as those reasons and must fail the gate the same way.
+  const disallowedProductsSearchFailures = new Set(['missing_base_url', 'http_401', 'http_403', 'timeout', 'circuit_open']);
   ensure(
     !disallowedProductsSearchFailures.has(String(productsSearchBreakdown?.failure_reason || '').trim()),
     `products_search provider degraded unexpectedly: ${JSON.stringify({

@@ -25,17 +25,16 @@ test("remote MCP tools/call binds identity/session from verified request context
     resolveSessionContext: (req) => req.sessionContext,
   });
 
+  const verifiedSession = { user_ref: "user_verified", acp_session_id: "sess_verified", agent_id: "gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } };
   const out = await adapter.handleJsonRpc({
-    sessionContext: { user_ref: "user_verified", acp_session_id: "sess_verified", agent_id: "gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } },
+    sessionContext: verifiedSession,
     body: rpc("tools/call", {
       name: "create_checkout_session",
       arguments: {
         idempotency_key: "idem-remote-001",
-        user_ref: "user_attacker",
-        acp_session_id: "sess_attacker",
         quote: {
           merchant_id: "m1",
-          items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }],
+          items: [{ product_id: "p1", variant_id: "v1", quantity: 1 }],
         },
       },
     }),
@@ -47,7 +46,32 @@ test("remote MCP tools/call binds identity/session from verified request context
   assert.deepEqual(seen.ctx, { user_ref: "user_verified", acp_session_id: "sess_verified", agent_id: "gemini" });
   assert.equal(seen.params.user_ref, undefined);
   assert.equal(seen.params.acp_session_id, undefined);
-  assert.equal(seen.params.quote.items[0].amount, undefined, "model-set money fields must not enter canonical params");
+
+  // Model-asserted identity or money fields in tool args are undeclared: the declared-schema guard refuses
+  // the whole call over the wire (isError tool result), and the executor never sees it.
+  seen = undefined;
+  const refused = await adapter.handleJsonRpc({
+    sessionContext: verifiedSession,
+    body: rpc("tools/call", {
+      name: "create_checkout_session",
+      arguments: {
+        idempotency_key: "idem-remote-002",
+        user_ref: "user_attacker",
+        acp_session_id: "sess_attacker",
+        quote: {
+          merchant_id: "m1",
+          items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }],
+        },
+      },
+    }),
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.result.isError, true);
+  const errBody = JSON.parse(refused.body.result.content[0].text);
+  assert.equal(errBody.error.code, "INVALID_ARGUMENTS");
+  assert.match(errBody.error.message, /"user_ref"/);
+  assert.match(errBody.error.message, /"quote\.items\[0\]\.amount"/, "model-set money fields must be refused by name");
+  assert.equal(seen, undefined, "a refused call must never reach the executor");
 });
 
 test("remote MCP write without verified buyer/session returns a non-leaky tool error result", async () => {

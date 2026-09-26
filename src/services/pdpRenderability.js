@@ -44,6 +44,12 @@
 // in src/server.js, which keys off the id, not the merchant.
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+// The LANE, which is a different axis from the seller above even though the string is the same.
+// Declared locally to match this module's style and to keep it dependency-free; the reasoning
+// lives with the owner in src/services/externalSeedProducts.js. The seller sentinel is being
+// retired (ADR-009) and the lane is not, so a lane question asked with the seller constant goes
+// blind at the re-key — which is what three sites in this file were doing.
+const EXTERNAL_SEED_PLATFORM = 'external_seed';
 
 // Source systems whose rows exist only as a projection of external_product_seeds.
 const SEED_ROUTED_SOURCE_SYSTEMS = new Set([
@@ -179,7 +185,7 @@ function seedRouteResolvesSql(cpAlias = 'cp') {
     ' AND NOT EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any ' +
     `WHERE _seed_route_any.external_product_id = ${cpAlias}.source_product_id ` +
     `AND lower(trim(coalesce(${cpAlias}.platform, ''))) ` +
-    `= '${EXTERNAL_SEED_MERCHANT_ID}')` +
+    `= '${EXTERNAL_SEED_PLATFORM}')` +
     ' AND EXISTS (SELECT 1 FROM external_product_seeds _seed_route_minted ' +
     `WHERE _seed_route_minted.attached_product_key = ${cpAlias}.product_key ` +
     "AND coalesce(lower(trim(_seed_route_minted.status)), '') " +
@@ -217,7 +223,7 @@ function seedRoutedLaneSql(cpAlias = 'cp') {
   const idPrefixes = EXTERNAL_SEED_ID_PREFIXES.map((prefix) => `'${prefix}'`).join(', ');
   return (
     `(${cpAlias}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` +
-    ` OR lower(trim(coalesce(${cpAlias}.platform, ''))) = '${EXTERNAL_SEED_MERCHANT_ID}'` +
+    ` OR lower(trim(coalesce(${cpAlias}.platform, ''))) = '${EXTERNAL_SEED_PLATFORM}'` +
     ` OR lower(trim(coalesce(${cpAlias}.source_system, ''))) IN (${sourceSystems})` +
     ` OR left(lower(trim(coalesce(${cpAlias}.source_product_id, ''))), 4) IN (${idPrefixes}))`
   );
@@ -268,7 +274,7 @@ function isSeedRoutedLane({ merchantId, platform, sourceSystem, sourceProductId 
   const loweredPlatform = String(platform ?? '').trim().toLowerCase();
   return (
     String(merchantId ?? '') === EXTERNAL_SEED_MERCHANT_ID ||
-    loweredPlatform === EXTERNAL_SEED_MERCHANT_ID ||
+    loweredPlatform === EXTERNAL_SEED_PLATFORM ||
     SEED_ROUTED_SOURCE_SYSTEMS.has(String(sourceSystem ?? '').trim().toLowerCase()) ||
     EXTERNAL_SEED_ID_PREFIXES.includes(loweredId.slice(0, 4))
   );
@@ -292,6 +298,7 @@ function pdpRouteResolvableFromRow(row) {
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
+  EXTERNAL_SEED_PLATFORM,
   MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
   MERCHANT_SYNCED_PLATFORMS,
   MINTED_SOURCE_SYSTEM,

@@ -13,6 +13,9 @@
 //     only in a leftover slot with fit=low + machine-readable constraint_violations + a leading watchout,
 //     and its false budget-fit why[] lines are stripped IN THE BRIDGE (the sanitizer is never asked to
 //     catch this). Free-text budgets are out of scope: no parsing of prose.
+//  8. THE TWO CONTRACT GUARANTEES THE TOOL DESCRIPTION MAKES (both were violated in prod 2026-09-08):
+//     an off-vertical need answers empty with `products_empty_reason: 'off_vertical'` and never calls
+//     the lane, and NO returned signal ever carries a null product_id — by either route into one
 //  5. through createCommerceToolSurface: the tool is listed with the strict schema, toParams keeps need /
 //     constraints / language / limit (and clones constraints), and the SANITIZER keeps why/fit/grounding/
 //     confidence_overall while the projector never places a bare `confidence`/`score` on a product node
@@ -22,7 +25,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable } = require('../src/agentSignals/recommendProducts');
+const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, offVerticalMarker } = require('../src/agentSignals/recommendProducts');
 
 function laneResult(items, extra = {}) {
   return {
@@ -164,7 +167,8 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   assert.deepEqual(s.value.notes, ['well tolerated by sensitive skin']);
   assert.equal(s.value.routine_step, 'treatment');
   assert.equal(s.value.product_type, 'treatment');
-  assert.equal(s.value.fit.level, 'high', 'the lane score bands, never the raw score');
+  assert.equal(s.value.lane_confidence.level, 'high', 'the lane score bands, never the raw score');
+  assert.equal(s.value.fit.level, 'high', 'the deprecated alias carries the identical value');
   assert.equal(s.value.grounding, 'catalog');
   assert.equal(s.evidence.method, 'llm_recommendation_catalog_grounded');
   assert.equal(s.evidence.grade, undefined, 'this lane carries no graded evidence — get_intel does');
@@ -176,22 +180,19 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   // the projector builds a fresh object, so the hostile keys cannot ride along by construction
   assert.equal(s.value.product.confidence, undefined);
   assert.equal(s.value.product.score, undefined);
-  // GROUNDED BEFORE UNGROUNDED: the second slot goes to the later CATALOG item, not to the ungrounded
-  // advisory the lane ranked ahead of it (live 2026-08-20: an invented product sat at #1 above the only
-  // purchasable result). The empty item is still dropped.
+  // The second slot goes to the later CATALOG item, not to the ungrounded advisory the lane ranked
+  // ahead of it. The empty item is still dropped.
   assert.equal(res.signals[1].value.grounding, 'catalog');
   assert.equal(res.signals[1].subject.id, 'sig_abc');
-  // With room for it, the ungrounded item is still returned — last, with NO fit band (fit-to-catalog is
-  // unmeasurable for a product that is not in the catalog) and counted out loud in metadata.
+  // EVEN WITH ROOM, the ungrounded item does not appear: it is suppressed, not demoted. Its archetype
+  // survives as TEXT on metadata, where it carries no product identity to be mistaken for one.
   const wide = await h({ payload: { need: 'exfoliant', limit: 5 } }, { agent_id: 'agent_a' });
-  const tail = wide.signals[wide.signals.length - 1];
-  assert.equal(wide.signals.length, 3);
-  assert.equal(tail.value.grounding, 'ungrounded');
-  assert.equal(tail.subject.id, null);
-  assert.equal(tail.value.product.title, 'Some product the lane named but could not resolve');
-  assert.equal(tail.value.fit.level, null, 'an ungrounded item never asserts a fit band');
-  assert.equal(wide.metadata.ungrounded_returned, 1);
-  assert.equal(res.metadata.ungrounded_returned, undefined, 'zero ungrounded returned ⇒ no key at all');
+  assert.equal(wide.signals.length, 2, 'the ungrounded advisory takes no slot at any limit');
+  assert.ok(wide.signals.every((x) => x.value.grounding === 'catalog'));
+  assert.equal(wide.metadata.ungrounded_suppressed, 1);
+  assert.deepEqual(wide.metadata.unresolved_archetypes, ['Some product the lane named but could not resolve']);
+  assert.equal(wide.metadata.ungrounded_returned, undefined, 'the old key is gone, not merely zero');
+  assert.equal(res.metadata.ungrounded_suppressed, 1);
 
   assert.equal(res.metadata.confidence_overall, 0.72);
   assert.deepEqual(res.metadata.missing_info, ['skin type']);
@@ -218,7 +219,7 @@ test('3b. an internally-grounded item (no direct URL) surfaces the product_ref t
   assert.equal(s.value.product.url, null, 'this lane path has no direct URL');
   assert.equal(s.value.product.product_ref, 'sig_int', 'without a ref the agent holds an id it cannot open');
   assert.equal(s.value.product.price, 18.5);
-  assert.equal(s.value.fit.level, 'medium');
+  assert.equal(s.value.lane_confidence.level, 'medium');
 });
 
 test('3c. the need text is scrubbed by the sanitizer — it must never sit under an id-shaped key', async () => {
@@ -258,15 +259,15 @@ test('4b. mutant-killer: a $45 product against price_max 40 never passes as a cl
   assert.equal(res.signals.length, 2);
   assert.equal(res.signals[0].subject.id, 'sig_abc');
   assert.equal(res.signals[0].value.rank, 1);
-  assert.equal(res.signals[0].value.fit.level, 'high', 'a conforming item is untouched');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'high', 'a conforming item is untouched');
   assert.equal(res.signals[0].value.constraint_violations, undefined);
   assert.equal(res.signals[0].value.watchouts.some((w) => /price_max/.test(w)), false, 'a conforming item carries no price marker');
 
   const v = res.signals[1];
   assert.equal(v.subject.id, 'sig_2c7636bb');
   assert.equal(v.value.rank, 2);
-  assert.notEqual(v.value.fit.level, 'high', 'the violating item must not pass as fit=high');
-  assert.equal(v.value.fit.level, 'low');
+  assert.notEqual(v.value.lane_confidence.level, 'high', 'the violating item must not pass as fit=high');
+  assert.equal(v.value.lane_confidence.level, 'low');
   assert.deepEqual(v.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
   assert.equal(v.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD', 'the marker leads so the cap cannot truncate it');
   assert.equal(v.value.why.some((line) => /budget|price/i.test(line)), false, 'the false budget-fit claim is stripped in the bridge');
@@ -317,7 +318,7 @@ test('4b-4. marking a violator only ever DOWNGRADES fit — it never invents a b
   const h = makeRecommendProducts({ generate: async () => laneResult([noScore]), isEnabled: () => true });
   const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
   const s = res.signals[0];
-  assert.equal(s.value.fit.level, null, 'no lane score ⇒ no band, even on a violator: the marker carries the signal');
+  assert.equal(s.value.lane_confidence.level, null, 'no lane score ⇒ no band, even on a violator: the marker carries the signal');
   assert.equal(s.value.constraint_violations.length, 1, 'the violation itself is still recorded');
 });
 
@@ -340,7 +341,7 @@ test('4c-2. the ceiling is a MAXIMUM: a price exactly at the ceiling conforms', 
   const h = makeRecommendProducts({ generate: async () => laneResult([atCeiling]), isEnabled: () => true });
   const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
   assert.equal(res.signals[0].value.constraint_violations, undefined, 'price == price_max is within the ceiling');
-  assert.equal(res.signals[0].value.fit.level, 'high');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'high');
   assert.equal(res.metadata.constraint_violations_returned, 0);
 });
 
@@ -388,7 +389,7 @@ test('4d. free-text-only budget is OUT of scope: no prose parsing, but the calle
   const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
   const res = await h({ payload: { need: 'a gentle exfoliant under $40', constraints: { budget: 'under $40' } } }, { agent_id: 'agent_a' });
   const s = res.signals[0];
-  assert.equal(s.value.fit.level, 'high', 'no structured ceiling ⇒ the bridge must not guess one from prose');
+  assert.equal(s.value.lane_confidence.level, 'high', 'no structured ceiling ⇒ the bridge must not guess one from prose');
   assert.equal(s.value.constraint_violations, undefined);
   assert.deepEqual(s.value.why, ['Fits comfortably within the under $40 budget constraint', 'PHA is the gentlest exfoliating acid']);
   assert.equal(res.metadata.price_max_enforced, undefined);
@@ -430,11 +431,14 @@ test('4e. extractPriceMax: every allowlisted key, numerals only, smallest wins, 
 });
 
 test('4f. an item with no resolvable price is unverifiable — never marked, never silently clean', async () => {
-  const noPrice = { name: 'Named but unresolved', grounding_status: 'ungrounded', reasons: ['gentle'] };
+  // GROUNDED with no price. The fixture used to be an ungrounded item, which the grounding suppression
+  // now drops before the ceiling pass ever sees it — leaving this rung untested while still green. A
+  // catalog row with a missing price is the real shape this rung exists for (offer_price_missing).
+  const noPrice = { name: 'Priced nowhere', sku: { product_id: 'sig_noprice' }, reasons: ['gentle'] };
   const h = makeRecommendProducts({ generate: async () => laneResult([noPrice]), isEnabled: () => true });
   const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
   assert.equal(res.signals[0].value.constraint_violations, undefined);
-  assert.equal(res.signals[0].value.fit.level, null, 'no lane score ⇒ no invented band, in either direction');
+  assert.equal(res.signals[0].value.lane_confidence.level, null, 'no lane score ⇒ no invented band, in either direction');
   assert.equal(res.signals[0].value.watchouts[0], 'price_max 40 USD not verified: no catalog price');
   assert.equal(res.metadata.constraint_violations_returned, 0);
   assert.equal(res.metadata.price_unverified_returned, 1);
@@ -549,32 +553,40 @@ test('4k. an unreadable second constraint is disclosed even when a structured ce
 });
 
 // THE LIVE SHAPE OF 2026-08-20, SECOND ROUND: an invented "Hydrating Amino Acid Gel Cleanser"
-// (ungrounded, no price, no url) rode fit=high at rank #1 ABOVE the flagged $45 catalog item — the
-// model's own score outranked the only thing an agent could buy, while the deterministic gate had
-// capped the real item to fit=low. Ungrounded items are advisory: last slot, no fit band, counted.
-test('5. an ungrounded advisory never outranks a real catalog item, and never asserts a fit band', async () => {
+// (ungrounded, no price, no url) rode fit=high at rank #1 ABOVE the flagged $45 catalog item. That was
+// first fixed by DEMOTING the invention to the last slot. 2026-09-08 showed demotion was not enough:
+// a "Daily Broad Spectrum SPF 30 Sunscreen" with every identity field null still reached a partner
+// agent at rank 3 of 3, in a tool that promises "never with fabricated products". It is suppressed now.
+test('5. an ungrounded advisory is suppressed entirely — it takes no slot, at any limit', async () => {
   const phantom = {
     name: 'Hydrating Amino Acid Gel Cleanser',
     grounding_status: 'ungrounded',
-    score: 92, // the lane scored its own invention highly — the band must NOT survive projection
+    score: 92, // the lane scored its own invention highly — no band, and no slot, survives projection
     reasons: ['Amino acid surfactants cleanse without stripping'],
   };
   // lane order deliberately puts the phantom first, as the live lane did
   const h = makeRecommendProducts({ generate: async () => laneResult([phantom, ITEM_OVERPRICED]), isEnabled: () => true });
   const res = await h({ payload: { need: 'a gentle exfoliant for sensitive skin under $40', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
-  assert.deepEqual(res.signals.map((s) => [s.value.grounding, s.value.rank]), [['catalog', 1], ['ungrounded', 2]],
-    'the flagged real item leads; the invented one takes the leftover slot');
-  assert.equal(res.signals[0].value.fit.level, 'low', 'the violator stays flagged');
-  assert.equal(res.signals[1].value.fit.level, null, 'a 92-scored invention still carries no band');
-  assert.match(res.signals[1].value.watchouts[0], /not verified: no catalog price/);
-  assert.equal(res.metadata.ungrounded_returned, 1);
+  assert.deepEqual(res.signals.map((s) => [s.value.grounding, s.value.rank]), [['catalog', 1]],
+    'the flagged real item is the whole shortlist; the invention is gone, not demoted');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'low', 'the violator stays flagged');
+  assert.equal(res.metadata.ungrounded_suppressed, 1);
+  assert.deepEqual(res.metadata.unresolved_archetypes, ['Hydrating Amino Acid Gel Cleanser']);
   assert.equal(res.metadata.constraint_violations_returned, 1);
 
-  // and without a ceiling the same demotion holds
+  // and without a ceiling — the leftover-slot path that actually shipped the 2026-09-08 defect
   const h2 = makeRecommendProducts({ generate: async () => laneResult([phantom, ITEM_FULL]), isEnabled: () => true });
-  const res2 = await h2({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
-  assert.deepEqual(res2.signals.map((s) => s.value.grounding), ['catalog', 'ungrounded']);
-  assert.equal(res2.signals[1].value.fit.level, null);
+  const res2 = await h2({ payload: { need: 'cleanser', limit: 10 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res2.signals.map((s) => s.value.grounding), ['catalog'],
+    'a limit far above the item count still buys the invention no slot');
+  assert.equal(res2.metadata.ungrounded_suppressed, 1);
+
+  // a shortlist that was ONLY inventions is empty, and says which kind of empty it is
+  const h3 = makeRecommendProducts({ generate: async () => laneResult([phantom]), isEnabled: () => true });
+  const res3 = await h3({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res3.signals, []);
+  assert.equal(res3.metadata.products_empty_reason, 'no_grounded_recommendations',
+    "the lane DID answer — blaming it for 'no_recommendations' would point at the wrong fix");
 });
 
 // LIVE PRICE RE-VERIFICATION: the lane's price is a catalog snapshot; the injected verifyPrice resolves
@@ -597,7 +609,7 @@ test('6. verifyPrice corrects a stale snapshot BEFORE the ceiling pass, and mark
   assert.deepEqual(v.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }],
     'the ceiling is enforced against the LIVE price, not the stale snapshot');
   assert.equal(v.watchouts.some((w) => /price updated by live check: 35 USD -> 45 USD/.test(w)), true);
-  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 0, updated: 1, unavailable: 0, unchecked: 0 });
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 0, updated: 1, unavailable: 0, unresolvable: 0, unchecked: 0 });
 });
 
 test('6b. a confirmed price is marked verified; a failed check degrades to the snapshot, marked', async () => {
@@ -615,7 +627,7 @@ test('6b. a confirmed price is marked verified; a failed check degrades to the s
   assert.equal(a.watchouts.some((w) => /price updated/.test(w)), false, 'a confirmed price earns no watchout');
   assert.equal(b.product.price_verified, false, 'a thrown check degrades to the snapshot, marked');
   assert.equal(b.product.price, 18.5, 'the snapshot price is kept');
-  assert.deepEqual(res.metadata.price_verification, { checked: 2, confirmed: 1, updated: 0, unavailable: 1, unchecked: 0 });
+  assert.deepEqual(res.metadata.price_verification, { checked: 2, confirmed: 1, updated: 0, unavailable: 1, unresolvable: 0, unchecked: 0 });
   // both still conform to the ceiling on the prices the bridge holds
   assert.equal(res.metadata.constraint_violations_returned, 0);
 });
@@ -636,8 +648,9 @@ test('6d. ungrounded items are never sent to the verifier — there is nothing t
   });
   const res = await h({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
   assert.deepEqual(calls, ['sig_abc']);
-  assert.equal(res.signals[1].value.product.price_verified, undefined, 'no phantom price_verified on advisories');
-  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 1, updated: 0, unavailable: 0, unchecked: 0 });
+  assert.equal(res.signals.length, 1, 'the advisory is suppressed, so only the catalog item remains');
+  assert.equal(res.metadata.ungrounded_suppressed, 1);
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 1, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 });
 });
 
 test('6e. an out-of-stock live check is said out loud on the item', async () => {
@@ -747,6 +760,170 @@ test('6k. latency_ms includes the verification pass the partner actually waited 
   });
   const res = await h({ payload: { need: 'x' } }, {});
   assert.ok(res.metadata.latency_ms >= 50, `latency_ms=${res.metadata.latency_ms} must cover the ~60ms verify pass`);
+});
+
+// CHAIN CONTRACT (2026-08-26, live repro): the lane's top picks answered NO_MERCHANT_OFFER on
+// get_product — the reco corpus is Aurora's, and nothing here checked that the id an item ADVERTISES
+// resolves on the read chain that serves it. The public search projector already enforces "never
+// advertise a product_id that get_product cannot resolve"; these tests pin the same rule onto this
+// surface. The signal rides the existing verifyPrice loopback: a DEFINITIVE `{unresolvable: true}`
+// (HTTP 404 + PRODUCT_NOT_FOUND envelope, classified in the server.js wiring) drops the item; every
+// other failure stays "price unavailable" — cannot-verify must never buy a delisting.
+test('6l. a definitively unresolvable id is dropped and its slot backfills; the drop is counted', async () => {
+  const dead = { ...ITEM_FULL, sku: { product_id: 'sig_dead', name: 'Dead Pick' } };
+  const checked = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([dead, ITEM_FULL, ITEM_INTERNAL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => {
+      checked.push(product_id);
+      if (product_id === 'sig_dead') return { unresolvable: true };
+      return { price: 35, currency: 'USD' };
+    },
+  });
+  const res = await h({ payload: { need: 'exfoliant', limit: 2 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(checked, ['sig_dead', 'sig_abc'], 'the window covered the first two grounded items');
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int'],
+    'the dead pick is gone and the next grounded item takes its slot');
+  assert.equal(JSON.stringify(res).includes('sig_dead'), false,
+    'the dead id appears NOWHERE in the response — not even a diagnostic field may hand it to an agent');
+  assert.equal(res.signals[0].value.product.price_verified, true);
+  assert.equal(res.signals[1].value.product.price_verified, false, 'the backfilled item is honestly unchecked');
+  assert.deepEqual(res.metadata.price_verification,
+    { checked: 2, confirmed: 1, updated: 0, unavailable: 0, unresolvable: 1, unchecked: 1 });
+});
+
+test('6m. unresolvable must be the PROVEN envelope — null, a thrown check, and a truthy-but-not-true flag all keep the item', async () => {
+  for (const answer of [null, () => { throw new Error('pdp lane down'); }, { unresolvable: 1 }, { unresolvable: 'true' }]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([ITEM_FULL]),
+      isEnabled: () => true,
+      verifyPrice: async () => (typeof answer === 'function' ? answer() : answer),
+    });
+    const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+    assert.equal(res.signals.length, 1, `answer ${JSON.stringify(String(answer))} must not buy a delisting`);
+    assert.equal(res.signals[0].subject.id, 'sig_abc');
+    assert.equal(res.signals[0].value.product.price_verified, false, 'it degrades to unverified, marked');
+    assert.equal(res.metadata.price_verification.unresolvable, 0);
+    assert.equal(res.metadata.price_verification.unavailable, 1);
+  }
+});
+
+test('6o. the HTTP classifier: which 404s are definitive, which must be confirmed, which prove nothing', () => {
+  const classify = require('../src/agentSignals/recommendProducts').classifyVerifyPriceResponse;
+  // DEFINITIVE, no confirmation needed — envelopes only a successful read can produce:
+  // PRODUCT_NOT_SERVABLE (post-eligibility-read; the incident cohort finding 2 named), and
+  // PRODUCT_NOT_FOUND carrying details.reason (e.g. the external_seed_not_active precheck).
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_SERVABLE' }), { unresolvable: true });
+  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_SERVABLE' }), { unresolvable: true });
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND', details: { reason: 'external_seed_not_active' } }),
+    { unresolvable: true });
+  // AMBIGUOUS — the bare rescue-fail emit: a transient dependency blip mints the same body as a
+  // truly absent row, so it must be seen twice (both envelope spellings).
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND' }), { unresolvable: true, confirm: true });
+  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_FOUND' }), { unresolvable: true, confirm: true });
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND', details: {} }), { unresolvable: true, confirm: true },
+    'an empty details object carries no reason and stays ambiguous');
+  // PROVES NOTHING: a 404 without either code (a proxy, a route miss) must not buy a delisting
+  assert.equal(classify(404, {}), null);
+  assert.equal(classify(404, null), null);
+  assert.equal(classify(404, 'Not Found'), null);
+  assert.equal(classify(404, { error: 'SOMETHING_ELSE' }), null);
+  // other failures degrade to "price unavailable"
+  assert.equal(classify(500, { error: 'PRODUCT_NOT_FOUND' }), null, 'the code without the status is not the envelope');
+  assert.equal(classify(500, { error: 'PRODUCT_NOT_SERVABLE' }), null);
+  assert.equal(classify(503, {}), null);
+  assert.equal(classify(302, {}), null);
+  // 2xx: the caller reads the price itself
+  assert.equal(classify(200, { modules: [] }), undefined);
+  assert.equal(classify(204, null), undefined);
+});
+
+test('6p. the ambiguous envelope is probed twice: a second answer wins the item back; a repeat buys the drop', async () => {
+  // (a) blip on the first probe, real price on the second: the item is KEPT and live-verified
+  let calls = 0;
+  const blipThenPrice = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => {
+      calls += 1;
+      return calls === 1 ? { unresolvable: true, confirm: true } : { price: 35, currency: 'USD' };
+    },
+  });
+  const kept = await blipThenPrice({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 2, 'the ambiguous answer costs exactly one extra probe');
+  assert.equal(kept.signals.length, 1);
+  assert.equal(kept.signals[0].value.product.price_verified, true, 'the second probe answer is USED, not discarded');
+  assert.equal(kept.metadata.price_verification.unresolvable, 0);
+
+  // (b) the same ambiguous envelope twice: two independent probes agree — dropped
+  calls = 0;
+  const blipTwice = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => { calls += 1; return { unresolvable: true, confirm: true }; },
+  });
+  const dropped = await blipTwice({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 2);
+  assert.equal(dropped.signals.length, 0);
+  assert.equal(dropped.metadata.price_verification.unresolvable, 1);
+
+  // (c) a DEFINITIVE answer needs no confirmation: exactly one probe, dropped
+  calls = 0;
+  const definitive = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => { calls += 1; return { unresolvable: true }; },
+  });
+  const gone = await definitive({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 1, 'a definitive envelope must not spend a second loopback');
+  assert.equal(gone.signals.length, 0);
+});
+
+test('6q. an all-dropped shortlist says WHY — and does not blame identity', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ unresolvable: true }),
+  });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals.length, 0);
+  assert.equal(res.metadata.products_empty_reason, 'unresolvable_on_read_chain',
+    "'no_recommendations' would blame the lane for items it actually produced");
+  assert.equal(res.metadata.dropped_unidentified_items, undefined,
+    'a dropped IDENTIFIED item must not be counted as unidentified');
+  assert.equal(res.metadata.price_verification.unresolvable, 1);
+});
+
+test('6r. the server.js wiring actually consumes the classifier — the delivery line is pinned', () => {
+  // The repo pattern from #1898: mutate the DELIVERY path, not your diff. Reverting only the two
+  // wiring lines in server.js would leave every unit test here green while making the whole PR a
+  // production no-op, so the consuming lines are pinned at the source level (same pattern as
+  // tests/public_feed_gate.node.test.cjs).
+  const fs = require('node:fs');
+  const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(server, /const classified = classifyVerifyPriceResponse\(response\.status, response\.data\);/,
+    'the verifyPrice wiring must classify through the exported function');
+  assert.match(server, /if \(classified !== undefined\) return classified;/,
+    'the wiring must RETURN the classification — reading it without returning is the no-op mutant');
+  assert.match(server, /makeRecommendProducts, classifyVerifyPriceResponse \} = require\('\.\/agentSignals\/recommendProducts'\)/,
+    'the classifier must be the exported one, not a local copy that can drift');
+});
+
+test('6n. a drop under an enforced ceiling still re-slots from the survivors, never resurrects the dead id', async () => {
+  const dead = { ...ITEM_FULL, sku: { product_id: 'sig_dead', name: 'Dead Cheap Pick' }, price: { amount: 10, currency: 'USD' } };
+  const pricey = { ...ITEM_FULL, sku: { product_id: 'sig_pricey', name: 'Violator' }, price: { amount: 50, currency: 'USD' } };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([dead, pricey, ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => (product_id === 'sig_dead' ? { unresolvable: true } : { price: 50, currency: 'USD' }),
+  });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(JSON.stringify(res).includes('sig_dead'), false,
+    'a conforming price on a dead id must not out-rank real items — the item does not exist');
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_pricey', 'sig_abc'],
+    'the surviving items are slotted by the ceiling rules alone');
+  assert.equal(res.metadata.price_verification.unresolvable, 1);
 });
 
 // REVIEW FINDING: assuming the ceiling's currency for a currency-less price re-introduced the very
@@ -942,6 +1119,12 @@ test('4i. the enforcement markers survive the REAL commerce surface and its sani
   assert.deepEqual(sig.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
   assert.equal(sig.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD');
   assert.equal(sig.value.fit.level, 'low');
+  // THE FIELD PARTNERS ARE TOLD TO READ, asserted on the far side of the REAL sanitizer. 4i is the
+  // only test that drives it, and without this line `lane_confidence` could be added to
+  // resultSanitizer's RANKING_INTERNAL set — beside `rankingscore`/`scorebreakdown`/`xscore`, a
+  // plausible edit — and vanish from the wire with every suite still green, unnoticed until the
+  // deprecated `fit` alias is dropped and the band disappears entirely.
+  assert.equal(sig.value.lane_confidence.level, 'low');
   assert.equal(body.metadata.price_max_enforced, 40);
   assert.equal(body.metadata.constraint_violations_returned, 1);
   // and the advertised schema must teach the shape that is actually enforced
@@ -985,8 +1168,17 @@ test('5. through the real commerce surface: listed, strict schema, toParams, and
   assert.equal(tool.annotations.openWorldHint, true);
   assert.equal(tool.annotations.idempotentHint, false);
 
+  // an UNDECLARED argument is refused loudly by the surface's declared-schema guard — it used to be
+  // silently dropped by the allowlist, which is how a misplaced top-level price_max became an
+  // unenforced budget on prod (2026-08-25)
+  await assert.rejects(
+    surface.callTool('recommend_products', { need: 'gentle exfoliant', merchant_id: 'dropped' }, { agent_id: 'agent_a' }),
+    (e) => e.code === 'INVALID_ARGUMENTS' && e.message.includes('"merchant_id"'),
+  );
+  assert.equal(seen.length, 0, 'a refused call must never reach the lane');
+
   const constraints = { budget: 'under $40' };
-  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant', constraints, language: 'EN', limit: 2, merchant_id: 'dropped' }, { agent_id: 'agent_a' });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant', constraints, language: 'EN', limit: 2 }, { agent_id: 'agent_a' });
   assert.equal(seen[0].op, 'recommend_products');
   assert.deepEqual(seen[0].params, { payload: { need: 'gentle exfoliant', language: 'EN', limit: 2, constraints: { budget: 'under $40' } } });
   assert.notEqual(seen[0].params.payload.constraints, constraints, 'constraints must be cloned, not aliased');
@@ -1150,4 +1342,447 @@ test('7g. a lane outage is JOINABLE — the set id reaches the log, not just the
     'the logged id must be the SAME one the caller received, or the join is fiction',
   );
   assert.match(warnings[0].fields.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// 8. THE CONTRACT THE TOOL DESCRIPTION MAKES. Both halves of this sentence were false in production on
+// 2026-09-08, verified against commerce.mcp.pivota.cc:
+//
+//   "Today's lane is tuned for beauty/skincare: off-vertical needs answer with an empty shortlist and
+//    a reason, never with fabricated products."
+//
+// The live call — need: "I collect Pokémon trading cards and want a sealed Scarlet & Violet booster
+// box for my collection", limit 5 — returned a Jurlique cleanser and a COSRX moisturizer at
+// `fit.level: 'high'`, plus a "Daily Broad Spectrum SPF 30 Sunscreen" whose product_id, merchant_id,
+// brand, price, currency, url and image_url were ALL null. `products_empty_reason` was null and no
+// warning mentioned the vertical. Note the response already carried `ungrounded_returned: 1` — the
+// condition was detected and then not acted on, which is why these pins assert on the RETURNED
+// SIGNALS and not on a counter.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('8a. the live 2026-09-08 repro: an off-vertical need is empty and reasoned, and never reaches the lane', async () => {
+  let laneCalls = 0;
+  const infos = [];
+  const h = makeRecommendProducts({
+    // If the gate ever stops firing, the lane answers with beauty products and this fixture makes the
+    // failure LOUD rather than merely returning a different empty.
+    generate: async () => { laneCalls += 1; return laneResult([ITEM_FULL]); },
+    isEnabled: () => true,
+    logger: { info: (o, m) => infos.push([o, m]) },
+  });
+  const res = await h({ payload: {
+    need: 'I collect Pokémon trading cards and want a sealed Scarlet & Violet booster box for my collection',
+    limit: 5,
+  } }, { agent_id: 'agent_a' });
+
+  assert.deepEqual(res.signals, [], 'an off-vertical need answers with an EMPTY shortlist');
+  assert.equal(res.metadata.products_empty_reason, 'off_vertical', 'and with a REASON — it was null in prod');
+  assert.equal(res.metadata.returned, 0);
+  assert.equal(res.metadata.vertical, 'beauty');
+  assert.equal(res.metadata.off_vertical_marker, 'Pokémon');
+  assert.equal(laneCalls, 0, 'the lane is never called: no LLM generation, and nothing to fabricate from');
+  assert.equal(res.metadata.off_vertical_detected_by, 'need_lexicon');
+  // the refusal is joinable: an unlogged gate cannot be audited for the false positives that cost sales
+  assert.equal(infos.length, 1);
+  assert.match(infos[0][1], /off-vertical/);
+  assert.equal(infos[0][0].marker, 'Pokémon');
+  assert.equal(infos[0][0].detected_by, 'need_lexicon');
+  assert.equal(infos[0][0].recommendation_set_id, res.metadata.recommendation_set_id);
+  // The refusal is an ANSWER, not a failure — it must not wear the shape the outage exits use, or a
+  // partner cannot tell "we cannot help with this" from "we broke".
+  assert.equal(res.metadata.reason, undefined);
+  assert.equal(typeof res.metadata.recommendation_set_id, 'string', 'still an addressable event');
+  assert.equal(res.metadata.missing_info[0],
+    'This recommendation lane covers skincare and beauty only; it cannot serve this need.',
+    'missing_info says what would be needed');
+  // The CN refusal is a first-class output of this tool (`language: 'CN'`) and was pinned by nothing.
+  const resCn = await h({ payload: { need: 'a graphics card', language: 'CN' } }, { agent_id: 'agent_a' });
+  assert.equal(resCn.metadata.products_empty_reason, 'off_vertical');
+  assert.equal(resCn.metadata.missing_info[0], '该推荐通道仅覆盖护肤/美妆品类，无法回答此需求。');
+  assert.match(resCn.metadata.warnings[0], /非美妆品类/);
+  assert.ok(/off-vertical/i.test(res.metadata.warnings[0]), 'the vertical mismatch is warned about explicitly');
+});
+
+test('8b. the gate is asymmetric: it refuses only needs that name NO beauty at all', async () => {
+  // OFF — named domains, nothing beauty
+  for (const need of [
+    'a sealed booster box for my collection',
+    'best headphones under 200',
+    'a gaming laptop for my son',
+    'dog food for a senior labrador',
+    'a new mattress, king size',
+    '我想买一张显卡',
+  ]) assert.ok(offVerticalMarker(need), `"${need}" is off-vertical`);
+
+  // IN — a false positive here refuses a paying buyer, the only error direction that costs a sale.
+  for (const need of [
+    'a gentle retinol for beginners under $40',
+    'a lipstick to match my dress',          // apparel word, but clearly beauty
+    'a moisturizer that works under makeup',
+    'sunscreen for a hiking trip',
+    'something for my dark spots',
+    'a hair dryer that will not fry my ends',
+    'carbon filter tips for my car ride skincare kit',
+    '敏感肌的防晒推荐',
+  ]) assert.equal(offVerticalMarker(need), null, `"${need}" must keep its shortlist`);
+
+  // The suppression is what makes it asymmetric: the SAME off-vertical word passes once beauty is named.
+  assert.ok(offVerticalMarker('a booster box'));
+  assert.equal(offVerticalMarker('a booster box of sheet masks'), null,
+    'a beauty word anywhere suppresses the gate — false negatives are the cheap direction');
+});
+
+test('8c. NO returned signal ever carries a null product_id — by either route into one', async () => {
+  // Route 1: the lane's ungrounded archetype (the prod defect: every identity field null).
+  const phantom = {
+    name: 'Daily Broad Spectrum SPF 30 Sunscreen',
+    grounding_status: 'ungrounded',
+    score: 88,
+    reasons: ['Broad spectrum protection for daily use'],
+  };
+  // Route 2: NO grounding_status at all — absence reads as GROUNDED in the projector, so this item
+  // claims `grounding: 'catalog'` while carrying no id. Filtering on grounding alone leaves it open,
+  // which is exactly why the id is checked on its own terms.
+  const namedNoId = { name: 'A product with a name and no id', score: 91, reasons: ['unresolved'] };
+
+  const warns = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([phantom, namedNoId, ITEM_FULL]),
+    isEnabled: () => true,
+    logger: { warn: (o, m) => warns.push([o, m]) },
+  });
+  const res = await h({ payload: { need: 'a daily sunscreen', limit: 10 } }, { agent_id: 'agent_a' });
+
+  // THE INVARIANT, asserted over whatever came back rather than over a fixed length: this must hold
+  // for every shortlist this function can produce, not just this fixture's.
+  for (const sig of res.signals) {
+    assert.equal(typeof sig.value.product.product_id, 'string');
+    assert.ok(sig.value.product.product_id.length > 0, 'a null/empty product_id must never reach a caller');
+    assert.equal(sig.subject.id, sig.value.product.product_id);
+    assert.equal(sig.value.grounding, 'catalog');
+    assert.equal(sig.evidence.method, 'llm_recommendation_catalog_grounded',
+      "'llm_recommendation' is the ungrounded method — it must not appear on a returned signal");
+  }
+  assert.deepEqual(res.signals.map((x) => x.value.product.product_id), ['sig_abc']);
+  assert.equal(res.metadata.ungrounded_suppressed, 1);
+  assert.equal(res.metadata.unidentified_suppressed, 1);
+  // BOTH names land here, not just the ungrounded one. From a caller's side these are one thing —
+  // "a product the lane named but could not resolve" — and the description says they appear here.
+  // Counting the id-less one and dropping its name left a named product vanishing behind an integer.
+  assert.deepEqual(res.metadata.unresolved_archetypes,
+    ['Daily Broad Spectrum SPF 30 Sunscreen', 'A product with a name and no id']);
+  // The id-less GROUNDED item is a lane defect, not a policy outcome, so it is logged rather than
+  // only counted — a silent suppression is how this class of thing survives unnoticed for a month.
+  assert.equal(warns.length, 1);
+  assert.match(warns[0][1], /no product_id/);
+  assert.equal(warns[0][0].count, 1);
+
+  // and the archetype, which IS the only useful part, survives as TEXT and never as a product node
+  assert.equal(typeof res.metadata.unresolved_archetypes[0], 'string');
+});
+
+test('8d. an ungrounded item that DOES carry an id is still suppressed — the contract is grounding, not just identity', async () => {
+  // The two rules are independent. An "ungrounded" row carrying a stale id must not slip through on
+  // the strength of the id alone: the description promises no FABRICATED products, and the lane has
+  // told us it could not resolve this one.
+  const idBearingPhantom = {
+    name: 'Invented but id-bearing',
+    grounding_status: 'ungrounded',
+    sku: { product_id: 'sig_phantom' },
+    reasons: ['x'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([idBearingPhantom, ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a serum', limit: 10 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((x) => x.value.product.product_id), ['sig_abc']);
+  assert.equal(res.metadata.ungrounded_suppressed, 1);
+});
+
+test('8e. the tool description and the code agree — the promises are quoted from the served text', async () => {
+  // The description is what a partner agent actually plans against. Each assertion below pins one
+  // claim the served text makes — the two the 2026-09-08 response contradicted outright, plus the
+  // limits later review forced into the open (the off-vertical hedge, what the band measures, and the
+  // domain the door's own prompt actually allows — WIDE since #2162, and checked against that prompt
+  // rather than against this text). If someone re-broadens a promise, it fails here rather than in a
+  // partner's product.
+  const surfaceMod = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const src = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js'), 'utf8');
+  assert.ok(src.includes("products_empty_reason: 'off_vertical'"),
+    'the description must name the reason code the code actually emits');
+  assert.ok(/never returned as items/.test(src),
+    'the description must say unresolved products are not returned, since they are not');
+  assert.ok(!/never with fabricated products\./.test(src),
+    'the old wording promised something the response shape could not express — it must not come back');
+  // THE HEDGE IS LOAD-BEARING. Off-vertical detection is a keyword list plus the lane's own
+  // admission; neither is exhaustive, and measured 2026-09-08 "an air fryer" and "a treadmill" reached
+  // the real door and came back with beauty products. A description promising the universal would be
+  // the same false-description defect this PR exists to fix, one level up — so the unconditional claim
+  // must NOT return, and the caveat must stay.
+  assert.ok(/best-effort, not exhaustive/.test(src) && /RECOGNISED off-vertical/.test(src),
+    'the off-vertical promise must stay hedged to what the detection can actually honour');
+  assert.ok(!/an off-vertical need answers with an empty shortlist and `metadata/.test(src),
+    'the unhedged universal must not come back');
+  // The id guarantee, by contrast, IS unconditional — it is enforced on every exit, so it is stated flatly.
+  assert.ok(/Every returned item IS a catalog product with a non-null `product_id`/.test(src));
+  // `fit` bands the LANE's score with no reference to the need (recommendationItemToSignal), so a
+  // gate-passing off-vertical need still reads fit 'high'. Unfixed here, but it must not be unsaid.
+  assert.ok(/Read `lane_confidence` for per-item certainty/.test(src)
+    && /NOT a measure of how well the product answers your need/.test(src),
+    'the description must not let the band be read as agreement with the need');
+  assert.ok(/`fit` is a DEPRECATED alias/.test(src),
+    'the alias must be advertised as deprecated, or partners never migrate off it');
+  // THE DOMAIN SENTENCE IS CHECKED AGAINST THE PROMPT THE DOOR ACTUALLY LOADS, not against itself.
+  // #2162 widened this to beauty and had to be rolled back: AURORA_DECISION_BASE_URL validates
+  // PROMPT_TEMPLATE_ID and answered 400 for reco_main_v1_3, killing the LLM leg in prod. The wide
+  // template is default-off, so the door is back on the skincare-bounded reco_main_v1_2 and the
+  // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
+  // id is registered upstream and the default flips, this fails until the sentence is updated with
+  // it — which is the point.
+  assert.ok(/The lane is tuned for SKINCARE specifically/.test(src),
+    "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
+  // AND THE OTHER TWO CLAIMS GO WITH IT. v1_2 — the template the door actually loads while the wide
+  // one is inert — has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
+  // section is "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices,
+  // fragrance, haircare, or supplements." So promising a partner that the lane answers in the category
+  // it names, or answers a tool request empty rather than off-category, would be exactly the
+  // description-ahead-of-the-prompt defect this file exists to prevent. They return when v1_3 does.
+  assert.ok(!/return an empty shortlist rather than substitute an adjacent one/.test(src),
+    'the category-fidelity promise is v1_3-only; it must not be advertised while v1_2 is loaded');
+  assert.ok(!/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
+    'the tools empty-answer promise is v1_3-only; v1_2 merely declines to recommend them');
+  // The mechanism that keeps this honest either way: read the prompt the scope RESOLVES TO.
+  const doorPromptFile = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'prompts', `${require('../src/auroraBff/routes').__internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' }).system_file}`), 'utf8');
+  assert.ok(/Recommend skincare only/.test(doorPromptFile),
+    'while the wide template is default-off the door must resolve to the skincare-bounded prompt');
+  const { __internal } = require('../src/auroraBff/routes');
+  const doorSpec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+  assert.equal(doorSpec.wide_template_active, false,
+    'the wide template must stay off by default until the decision service accepts its id');
+  const doorPrompt = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'prompts', doorSpec.system_file), 'utf8');
+  assert.ok(/Recommend skincare only/.test(doorPrompt),
+    'the description says skincare-only; the prompt this door loads must actually bound it that way');
+  assert.ok(/Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare, or supplements/.test(doorPrompt),
+    'the exclusions the description names must be the ones the loaded prompt states');
+  assert.ok(surfaceMod, 'the surface module still loads with the edited description');
+});
+
+
+test('8f. separators cannot buy a fabricated shortlist — the repro one hyphen away still refuses', async () => {
+  // Every multi-word alternative is written with a single space, so before normalisation these ALL
+  // passed the gate while their spaced spellings were refused: the reported need, reworded.
+  for (const need of ['a booster-box', 'trading-cards', 'a graphics-card', 'magic: the gathering cards', 'an air-fryer'])
+    assert.ok(offVerticalMarker(need), `"${need}" must refuse exactly like its spaced spelling`);
+  // and the spaced spellings still do
+  for (const need of ['a sealed Scarlet & Violet booster box', 'trading cards', 'a graphics card'])
+    assert.ok(offVerticalMarker(need));
+
+  // WHAT THE WORD ANCHORS ACTUALLY CARRY. An earlier comment claimed they stop "carbon" being read as
+  // "car"; they do not, because `car` is not an alternative (only the two-word `car tires` is). This
+  // is the real case: a token must not match inside a longer word.
+  assert.ok(offVerticalMarker('tcg singles'), 'the bare token matches');
+  assert.equal(offVerticalMarker('tcgel gets everywhere'), null, 'but never inside a longer word (trailing \\b)');
+  assert.equal(offVerticalMarker('the wtcg deck'), null, 'nor at the end of one (leading \\b)');
+  assert.equal(offVerticalMarker('carbon filter'), null);
+});
+
+test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — its domain is narrower than ours', async () => {
+  // A REMOVED AXIS, pinned so it cannot come back. The lane admits in its own warnings when it declines
+  // a need ("Non-skincare requests … have been excluded per domain boundaries"), which looked like free
+  // coverage for needs no keyword list holds. It is not: prompts/reco_main_v1_2.system.txt bounds the
+  // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
+  // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
+  // sentence for a bronzer or a brush set (this axis must stay out however the prompt is pointed —
+  // #2162's widening is shipped but default-off), and acting on it emptied the shortlist for in-vertical
+  // buyers while telling them their beauty need was not beauty.
+  for (const [need, warning] of [
+    ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],
+    ['a brush set for my kit', 'Beauty tools are outside the scope of this lane.'],
+    ['cologne for my dad', 'Fragrance is outside the skincare domain.'],
+    ['what helps with razor burn', 'Consult a dermatologist; prescription options fall outside the scope of this routine.'],
+    ['something for my kitchen counter', 'Non-skincare requests (such as kitchen appliances) have been excluded per domain boundaries.'],
+  ]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([ITEM_FULL], { warnings: [warning] }),
+      isEnabled: () => true,
+    });
+    const res = await h({ payload: { need } }, { agent_id: 'agent_a' });
+    assert.equal(res.signals.length, 1, `"${warning}" must be relayed, never acted on`);
+    assert.equal(res.metadata.products_empty_reason, null);
+    assert.equal(res.metadata.off_vertical_detected_by, undefined);
+    assert.deepEqual(res.metadata.warnings, [warning], "the lane's own words reach the caller intact");
+  }
+});
+
+test('8h. an in-vertical beauty need is never refused by the gate, whatever tier its evidence is', async () => {
+  // Every need below was measured carrying NO beauty token at all, so each sat one lexicon entry away
+  // from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
+  //
+  // The ORIGINAL reason for this test is now history worth keeping straight: until #2162 the lane's
+  // prompt was skincare-only while the tool advertised beauty, so makeup/fragrance/haircare needs were
+  // in-vertical for the TOOL and refused by the LANE. #2162 widened the door's prompt, so the lane
+  // refuses none of those any more — only tools, devices and supplements. What survives is the gate
+  // question this test actually asks: none of these needs may be refused before the lane is called.
+  // STRONG evidence: an unambiguous beauty word, which outranks even a HARD off-vertical domain.
+  const strongEvidence = [
+    'a bronzer for contouring', 'a highlighter stick', 'setting spray',
+    'false lashes for a wedding', 'an eyelash curler', 'a gel manicure kit', 'cologne for my dad',
+    'body butter', 'a gua sha tool', 'melasma treatment', 'under-eye bags', 'razor burn',
+    'an eyeshadow palette', 'a brow pencil', 'a blender sponge', 'a makeup brush set',
+  ];
+  // WEAK evidence: an ambiguous noun (`brush`, `nails`, `palette`…). Served on its own, and enough to
+  // hold a SOFT domain, but deliberately NOT enough to outrank a HARD one — "a sponge for my
+  // dishwasher" is the same shape and must refuse.
+  const weakEvidence = ['a brush set for my kit', 'a top coat for my nails', 'a compact palette'];
+  for (const need of [...strongEvidence, ...weakEvidence])
+    assert.equal(offVerticalMarker(need), null, `"${need}" is in-vertical for this tool and must not be refused`);
+
+  // THE ASSERTION ABOVE CANNOT FAIL ON ITS OWN, and that is worth saying out loud: these needs carry no
+  // off-vertical token either, so they return null whether or not the beauty side knows the word —
+  // deleting the entire makeup/tool/fragrance vocabulary left every line above green. The suppression
+  // only does work when an off-vertical token is ALSO present, so that is the shape it must be pinned
+  // in: each need is probed with a known off-vertical word appended, where only a beauty token can
+  // still win. This is what makes the vocabulary load-bearing rather than decorative.
+  // THE PROBE TIER MUST MATCH THE EVIDENCE TIER, or the test asserts the wrong rule: strong evidence
+  // is probed against a HARD domain, weak evidence against a SOFT one.
+  for (const need of strongEvidence)
+    assert.equal(offVerticalMarker(`${need} laptop`), null,
+      `"${need}" must carry a beauty token strong enough to suppress a HARD off-vertical word`);
+  for (const need of weakEvidence) {
+    assert.equal(offVerticalMarker(`${need} sneakers`), null,
+      `"${need}" must carry enough beauty to hold a SOFT off-vertical word`);
+    assert.ok(offVerticalMarker(`${need} dishwasher`),
+      `"${need}" is ambiguous and must NOT outrank a HARD one — that is the dishwasher-sponge shape`);
+  }
+
+  // controls: both probe words refuse on their own, so neither probe is vacuous
+  assert.ok(offVerticalMarker('a widget laptop'));
+  assert.ok(offVerticalMarker('a widget sneakers'));
+
+  // MIXED AND INCIDENTAL NEEDS — the direction that loses a sale, and the one this file's doctrine
+  // names as the expensive one. All of these were SERVED on main and REFUSED by the first version of
+  // the qualification fix, which measured itself only against needs containing no off-vertical word
+  // and so could not see it. Two shapes: a bag or garment the cosmetic is carried in / worn with
+  // (SOFT), and a genuinely mixed basket (STRONG beauty word alongside a HARD domain).
+  for (const need of [
+    'a brush that fits in my handbag',
+    'a travel palette for my backpack',
+    'a highlighter small enough for my handbag',
+    'a sponge I can keep in my backpack',
+    'a compact palette for my carry on backpack',
+    'nails that will not chip while I wear sneakers all day',
+    'a stippling brush, and diapers while I am here',
+    'a duo fibre brush and a treadmill',
+  ]) assert.equal(offVerticalMarker(need), null, `"${need}" is a beauty buyer and must keep the shortlist`);
+
+  // and the SOFT words still refuse on their own, or the tier would be doing nothing
+  for (const need of ['running shoes', 'a winter coat', 'a handbag', 'sneakers'])
+    assert.ok(offVerticalMarker(need), `"${need}" alone names no beauty and must refuse`);
+});
+
+test('8i. the categories measured live on 2026-09-08 are refused now', async () => {
+  // Every one of these reached the real door and came back with the beauty shortlist at fit 'high'.
+  // The list is not exhaustive and the description no longer claims it is — but a measured miss that
+  // stays missing is just an unfixed bug.
+  for (const need of ['a new iPhone', 'an air fryer', 'a treadmill', 'diapers', 'running shoes',
+    'a winter coat', 'a rifle scope', 'car wax', 'protein powder'])
+    assert.ok(offVerticalMarker(need), `"${need}" was measured passing the gate — it must refuse now`);
+
+  // and none of them cost a beauty buyer their shortlist. PROBED, not asserted bare: these needs carry
+  // no off-vertical token either, so a plain `=== null` here passes even with the beauty side deleted —
+  // the same shape that made 8h green while pinning nothing. Appending an explicit off-vertical word
+  // means only a beauty token can still win.
+  for (const need of ['a beauty blender sponge', 'a foundation brush',
+    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema']) {
+    assert.equal(offVerticalMarker(need), null, `"${need}" is beauty and must keep its shortlist`);
+    assert.equal(offVerticalMarker(`${need} treadmill`), null,
+      `"${need}" must carry a beauty token strong enough to suppress a HARD off-vertical word`);
+  }
+  // weak evidence: served, and held against a SOFT domain, but not against a HARD one (see 8h)
+  assert.equal(offVerticalMarker('a top coat for my nails'), null);
+  assert.equal(offVerticalMarker('a top coat for my nails sneakers'), null);
+  assert.ok(offVerticalMarker('a widget treadmill'), 'control: the probe word does refuse on its own');
+});
+
+test('8j. an ambiguous beauty word never cancels an explicit off-vertical signal', async () => {
+  // THE FIX-FORWARD DEFECT from #2149. `brush`, `sponge`, `nail`, `palette` and `highlighter` went onto
+  // the suppression side BARE, and they are ordinary English before they are beauty words — so every
+  // one of them cancelled an unambiguous off-vertical need. Measured on the merged commit: 40/40 of
+  // these refused correctly BEFORE the widening and 0/40 after it. The suppression side is the cheap
+  // direction to be liberal in, but not with words the rest of commerce also owns.
+  const ambiguous = ['sponge', 'brush', 'nails', 'palette', 'highlighter'];
+  const offVertical = ['dishwasher', 'chainsaw', 'textbooks', 'laptop', 'treadmill', 'air fryer', 'mattress', 'dog food'];
+  for (const w of ambiguous)
+    for (const o of offVertical)
+      assert.ok(offVerticalMarker(`a ${w} for my ${o}`),
+        `"${w}" must not cancel "${o}" — a bare beauty word is not a beauty need`);
+
+  // The QUALIFIED spellings are the ones that carry beauty, and they still win outright.
+  for (const need of ['a makeup brush', 'a blending sponge', 'nail polish', 'an eyeshadow palette',
+    'a highlighter stick', 'a beauty blender sponge', 'gel nails'])
+    assert.equal(offVerticalMarker(`${need} laptop`), null,
+      `"${need}" names its beauty context and must still suppress`);
+
+  // AND THE QUALIFIERS THEMSELVES MUST NOT BE AMBIGUOUS — the same defect one level in. Each of these
+  // was a qualifier the previous revision accepted, and each moved the leak rather than closing it: a
+  // wire brush SET, a silicone SPONGE, a COLOUR palette, a highlighter PEN, a nail CLIPPER and "MY
+  // nail gun" are hardware, stationery and pet-grooming phrases. A qualifier the rest of commerce also
+  // uses is not a qualifier.
+  for (const need of ['a wire brush set for my chainsaw', 'a brush kit for my lawn mower',
+    'a silicone sponge for my dishwasher', 'my nail gun and a power drill',
+    'a color palette for my laptop', 'a colour palette for my graphics card',
+    'an eye palette for my webcam', 'a highlighter pen for my textbooks',
+    'dog food and a nail clipper for my dog', 'a blender for smoothies', 'a kitchen blender'])
+    assert.ok(offVerticalMarker(need), `"${need}" is not a beauty need — its qualifier is borrowed`);
+});
+
+test('8l. the archetype list is not bounded by `limit` — it is built from every lane row', async () => {
+  // The cap was raised from 8 on the stated grounds that a lane response cannot exceed `limit`. It
+  // can: `unresolvedArchetypes` is built in the suppression loop over EVERY projected row, and
+  // `.slice(0, limit)` runs later and only on survivors. Driven, because the justification was wrong
+  // even though the change was right.
+  const rows = Array.from({ length: 12 }, (_, i) => ({ name: `Archetype ${i + 1}`, grounding_status: 'ungrounded', reasons: ['x'] }));
+  const h = makeRecommendProducts({ generate: async () => laneResult(rows), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a serum', limit: 3 } }, {});
+  assert.equal(res.metadata.ungrounded_suppressed, 12);
+  assert.equal(res.metadata.unresolved_archetypes.length, 12,
+    'twelve suppressed rows produce twelve names, and `limit: 3` does not truncate them');
+  assert.equal(res.metadata.products_empty_reason, 'no_grounded_recommendations');
+});
+
+
+test('8k. `fit` is a deprecated alias of `lane_confidence` and cannot drift from it', async () => {
+  // #2156. The band answers "how sure is the lane about this product?", never "does this answer the
+  // need?" — nothing on that path reads `need`. Renaming it is the fix; `fit` stays for one release so
+  // a live partner reading `value.fit.level` does not break silently (this defect was found FROM such
+  // an integration). The alias is only safe while it cannot disagree with what it aliases.
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  const v = res.signals[0].value;
+  assert.equal(v.lane_confidence.level, 'high');
+  assert.equal(v.fit, v.lane_confidence, 'the alias is the SAME object, not a copy');
+
+  // THE DRIFT CASE, which is the whole reason the alias is a shared reference: the ceiling pass
+  // downgrades a violator, and a copied alias would keep advertising 'high' on an item already capped
+  // to 'low'. That would be a worse defect than the rename fixes.
+  const h2 = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res2 = await h2({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const v2 = res2.signals[0].value;
+  assert.equal(v2.lane_confidence.level, 'low', 'the violator is downgraded');
+  assert.equal(v2.fit.level, 'low', 'and the deprecated alias followed it down');
+  assert.equal(v2.fit, v2.lane_confidence);
+
+  // an ungrounded-style item asserts no band on either key
+  const noScore = { name: 'No score', sku: { product_id: 'sig_ns' }, price: { amount: 10, currency: 'USD' } };
+  const h3 = makeRecommendProducts({ generate: async () => laneResult([noScore]), isEnabled: () => true });
+  const res3 = await h3({ payload: { need: 'x' } }, {});
+  assert.equal(res3.signals[0].value.lane_confidence.level, null);
+  assert.equal(res3.signals[0].value.fit.level, null);
+
+  // Sanitizer survival is NOT asserted here. It was, as `assert.ok(createCommerceToolSurface)` — a
+  // tautology that passes against a stub and proved nothing about the field. Test 4i drives the real
+  // SafetyKernel -> commerce surface -> sanitizeResult path and asserts `lane_confidence` there,
+  // which is the only place that claim can honestly be made.
 });

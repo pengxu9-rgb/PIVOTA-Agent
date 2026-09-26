@@ -116,17 +116,26 @@ test('the ON CONFLICT arm PRESERVES live_read_enabled, never takes EXCLUDED', ()
   );
 });
 
-test('the scheduled workflow run is pinned to uncovered-only', () => {
+test('the unattended lane lives in Cloud Run now — this workflow must not re-grow a schedule', () => {
+  // The weekly catch-up moved to the Cloud Run Job `pdp-identity-graph-backfill`
+  // (pivota-prod/us-west1, pivota-backend infra/gcp/setup_scheduler.sh), whose
+  // command line hard-pins `--limit 2000 --only-uncovered` — the uncovered-only
+  // pin this test used to check on the GH scheduled path now lives there, where
+  // CI here cannot see it. What CI here CAN hold: this workflow's DATABASE_URL
+  // secret points at the Railway proxy decommissioned 2026-08-25, so a re-added
+  // `schedule:` trigger is a lane that can only fail — and if the secret is ever
+  // repointed, an unattended GH apply lane needs the uncovered-only pin argued
+  // all over again, in this test.
   const wf = fs.readFileSync(
     path.join(__dirname, '..', '.github', 'workflows', 'pdp-identity-graph-backfill.yml'),
     'utf8',
   );
-  assert.match(wf, /schedule:/, 'the catch-up must actually be scheduled');
-  // The whole safety argument for an unattended APPLY rests on this pin.
-  assert.match(
-    wf,
-    /IN_ONLY_UNCOVERED:.*github\.event_name == 'schedule' && 'true'/,
-    'scheduled runs must force only-uncovered',
+  assert.ok(
+    !/^\s*schedule:/m.test(wf),
+    'the scheduled catch-up moved to the Cloud Run Job pdp-identity-graph-backfill; a GH schedule here runs against a decommissioned DATABASE_URL',
   );
+  // The surviving manual path stays fail-safe: a bare dispatch is a dry run,
+  // and the uncovered-only plumbing is still wired for ad-hoc catch-ups.
+  assert.match(wf, /dry_run:[\s\S]{0,200}?default: true/, 'manual dispatch must default to dry-run');
   assert.match(wf, /--only-uncovered/);
 });

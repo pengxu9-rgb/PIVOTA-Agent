@@ -47,10 +47,14 @@
  * variable change, so a rollback is a redeploy — fast and low-risk, but not instantaneous.)
  *
  * DELIBERATELY NOT COPIED: src/recommendations/routes.js `requireInternalKey` already guards
- * /v1/recommendations/* with this same header, and it has two defects this must not inherit —
- *   1. it FAILS OPEN when NODE_ENV is not literally 'production'/'prod' and no key is set. Prod
- *      leaves NODE_ENV UNSET, so that "dev default" branch IS the production branch;
- *   2. it compares with `===` rather than a constant-time comparison.
+ * /v1/recommendations/* with this same header. It used to carry two defects this must not inherit,
+ * BOTH FIXED 2026-08-25 — left recorded here because the reasoning is what matters, not the bug:
+ *   1. it FAILED OPEN when NODE_ENV was not literally 'production'/'prod' and no key was set. Prod
+ *      leaves NODE_ENV UNSET, so that "dev default" branch WAS the production branch. It now uses
+ *      isProduction() from src/config/platform.js, which reads PIVOTA_ENV and fails closed on a
+ *      deployed-but-unlabelled revision;
+ *   2. it compared with `===` rather than a constant-time comparison. It now uses a local
+ *      timingSafeEqualString, the same shape as authStore.js and server.js.
  * (A third defect in the same function — its refusal returned a truthy Response, so the caller's
  * `if (!requireInternalKey(...)) return;` never fired and an anonymous request crashed the process —
  * is fixed separately in PR #2040.)

@@ -123,6 +123,49 @@ function buildCatalogImageCacheVisibleUrl({ key, cachedUrl } = {}) {
   return publicBase ? `${publicBase}/${normalizedKey}` : '';
 }
 
+// Re-home an ALREADY-STORED catalog image URL onto the current runtime base.
+//
+// buildCatalogImageCacheVisibleUrl only governs URLs we mint now. Rows written before a host
+// migration keep whatever base was current when they were cached — prod still serves
+// recommendation rows pointing at the decommissioned Railway host, which 404s, while the very
+// same object answers 200 at the configured base. The bytes never moved: the key is a content
+// digest, so the path is stable across hosts and only the origin is wrong.
+//
+// Rewrites ONLY a value whose path parses as a catalog-image-cache key (two hex chars / 64-hex
+// sha256 / known extension, enforced by normalizeCatalogImageCacheKey). Anything else — a
+// merchant CDN URL, a relative path, junk — is returned byte-identical.
+//
+// The key must also be lower-case to be ours: buildCatalogImageCacheKey lower-cases every key it
+// mints and R2 keys are case-sensitive, so an upper-case variant of our exact path shape is
+// somebody else's URL that would 404 if re-homed. normalizeCatalogImageCacheKey matches
+// case-insensitively, so that last check happens here.
+//
+// Honours CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY: that flag is the documented lever for taking
+// traffic off the gateway proxy (rotated R2 creds, proxy outage). Re-homing onto the proxy base
+// while it is set would silently defeat the rollback.
+function normalizeCatalogImageCacheUrlHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return raw;
+  if (parseBooleanEnv('CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY', false)) return raw;
+  const key = extractCatalogImageCacheKeyFromUrl(raw);
+  if (!key || key !== key.toLowerCase()) return raw;
+  const base = trimTrailingSlashes(getCatalogImageCacheRuntimePublicBaseUrl());
+  if (!base) return raw;
+  let baseOrigin = '';
+  try {
+    baseOrigin = new URL(base).origin;
+  } catch {
+    // A malformed configured base must not mangle a URL that is currently serving.
+    return raw;
+  }
+  try {
+    if (new URL(raw).origin === baseOrigin) return raw;
+  } catch {
+    // Not absolute (a bare key or path): fall through and mint it against the base.
+  }
+  return `${base}/${key}`;
+}
+
 let cachedClient = null;
 
 function getClient() {
@@ -190,6 +233,7 @@ module.exports = {
   getCatalogImageCacheObject,
   hasCatalogImageCacheConfig,
   normalizeCatalogImageCacheKey,
+  normalizeCatalogImageCacheUrlHost,
   putCatalogImageCacheObject,
   sha256Buffer,
 };

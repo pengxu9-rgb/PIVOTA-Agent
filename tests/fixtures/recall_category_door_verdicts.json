@@ -1,0 +1,1362 @@
+{
+ "generated_from": "pivota-backend services/category_path_aliases.has_category_door",
+ "leaf_count": 72,
+ "prod_paths": [
+  {
+   "path": "beauty/makeup",
+   "rows": 1843,
+   "serving": 1667,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare",
+   "rows": 1694,
+   "serving": 1040,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/brush",
+   "rows": 1430,
+   "serving": 101,
+   "door": true
+  },
+  {
+   "path": "beauty",
+   "rows": 1385,
+   "serving": 722,
+   "door": true
+  },
+  {
+   "path": "beauty/sets/gift-set",
+   "rows": 900,
+   "serving": 624,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/moisturize/cream",
+   "rows": 760,
+   "serving": 549,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/serum",
+   "rows": 717,
+   "serving": 504,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/cleanse/cleanser",
+   "rows": 489,
+   "serving": 383,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/mask",
+   "rows": 445,
+   "serving": 384,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/tone/toner",
+   "rows": 378,
+   "serving": 301,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/foundation",
+   "rows": 319,
+   "serving": 173,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/general",
+   "rows": 273,
+   "serving": 240,
+   "door": true
+  },
+  {
+   "path": "beauty/fragrance/perfume",
+   "rows": 272,
+   "serving": 46,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/sun/sunscreen",
+   "rows": 269,
+   "serving": 187,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip/lipstick",
+   "rows": 249,
+   "serving": 132,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/concealer",
+   "rows": 220,
+   "serving": 183,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip/balm",
+   "rows": 177,
+   "serving": 142,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/shampoo",
+   "rows": 145,
+   "serving": 117,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/exfoliant",
+   "rows": 131,
+   "serving": 67,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/powder",
+   "rows": 110,
+   "serving": 90,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/blush",
+   "rows": 109,
+   "serving": 87,
+   "door": true
+  },
+  {
+   "path": "beauty/sets",
+   "rows": 105,
+   "serving": 62,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/intimates/lingerie",
+   "rows": 90,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/treatment",
+   "rows": 83,
+   "serving": 73,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eye/mascara",
+   "rows": 82,
+   "serving": 40,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eye/eyeshadow",
+   "rows": 81,
+   "serving": 38,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare",
+   "rows": 77,
+   "serving": 24,
+   "door": true
+  },
+  {
+   "path": "fashion/accessories/pet",
+   "rows": 76,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip",
+   "rows": 73,
+   "serving": 41,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/highlighter",
+   "rows": 70,
+   "serving": 55,
+   "door": true
+  },
+  {
+   "path": "beauty/body/care",
+   "rows": 58,
+   "serving": 56,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip/gloss",
+   "rows": 56,
+   "serving": 48,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/nails/nail-polish",
+   "rows": 54,
+   "serving": 37,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/eye/eyeliner",
+   "rows": 52,
+   "serving": 42,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/pet",
+   "rows": 50,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eye/brow",
+   "rows": 44,
+   "serving": 26,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/conditioner",
+   "rows": 44,
+   "serving": 40,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/moisturize/oil",
+   "rows": 43,
+   "serving": 35,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/sets",
+   "rows": 38,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/bronzer",
+   "rows": 35,
+   "serving": 26,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eye",
+   "rows": 34,
+   "serving": 7,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip/liner",
+   "rows": 32,
+   "serving": 30,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/primer",
+   "rows": 31,
+   "serving": 24,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lip/oil",
+   "rows": 28,
+   "serving": 15,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/sleepwear",
+   "rows": 28,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/tops/tshirt",
+   "rows": 24,
+   "serving": 7,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/eye-care",
+   "rows": 22,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/apparel/outerwear/vest",
+   "rows": 21,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/tops/sweater",
+   "rows": 19,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/outerwear/coat",
+   "rows": 15,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/sponge",
+   "rows": 14,
+   "serving": 6,
+   "door": true
+  },
+  {
+   "path": "fashion/accessories/bag",
+   "rows": 14,
+   "serving": 10,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/face-oil",
+   "rows": 12,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/haircare/sets",
+   "rows": 10,
+   "serving": 3,
+   "door": true
+  },
+  {
+   "path": "wellness/supplements",
+   "rows": 10,
+   "serving": 10,
+   "door": false
+  },
+  {
+   "path": "electronics/audio/headphones",
+   "rows": 10,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/body/oil",
+   "rows": 9,
+   "serving": 8,
+   "door": true
+  },
+  {
+   "path": "beauty/accessories/makeup-bag",
+   "rows": 9,
+   "serving": 7,
+   "door": false
+  },
+  {
+   "path": "beauty/tools/brush-cleaner",
+   "rows": 9,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/body/luminizer",
+   "rows": 8,
+   "serving": 8,
+   "door": true
+  },
+  {
+   "path": "electronics/audio/earbuds",
+   "rows": 8,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lips/lip-liner",
+   "rows": 8,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/tools/brush-accessory",
+   "rows": 8,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/styling",
+   "rows": 8,
+   "serving": 8,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/tops/hoodie",
+   "rows": 8,
+   "serving": 6,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/base-layer",
+   "rows": 7,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "home/fragrance/candle",
+   "rows": 7,
+   "serving": 2,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/lip/tint",
+   "rows": 7,
+   "serving": 7,
+   "door": true
+  },
+  {
+   "path": "beauty/accessories",
+   "rows": 6,
+   "serving": 2,
+   "door": false
+  },
+  {
+   "path": "beauty/body-care/deodorant",
+   "rows": 6,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/nails/nail-stickers",
+   "rows": 5,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "electronics/audio/earbuds_wireless",
+   "rows": 5,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/body-care/body-wash",
+   "rows": 5,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/accessories/hat",
+   "rows": 4,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "electronics/audio/headphones_noise_cancelling",
+   "rows": 4,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/bodycare/body-balm",
+   "rows": 4,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "electronics/ereader",
+   "rows": 4,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/wellness/beauty-supplements/sets",
+   "rows": 4,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/body/hand-care",
+   "rows": 4,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/bodycare/sets",
+   "rows": 4,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/devices/hair-styling",
+   "rows": 3,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/dry-shampoo",
+   "rows": 3,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "fashion/accessories/scarf",
+   "rows": 3,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/body/body-oil",
+   "rows": 3,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/palette",
+   "rows": 3,
+   "serving": 3,
+   "door": true
+  },
+  {
+   "path": "electronics/reading/ereader",
+   "rows": 3,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "electronics/drones/camera-drone",
+   "rows": 3,
+   "serving": 3,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lips/lip-gloss",
+   "rows": 3,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/lip",
+   "rows": 3,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/accessories/stickers",
+   "rows": 3,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/haircare/mask",
+   "rows": 3,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/fragrance/sets",
+   "rows": 3,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/brush_care",
+   "rows": 2,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/accessories/pouch",
+   "rows": 2,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "fashion/apparel/bottoms/pants",
+   "rows": 2,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/bodycare/body-lotion",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/patch",
+   "rows": 2,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/accessory/clip",
+   "rows": 2,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/treatment",
+   "rows": 2,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/fragrance/deodorant",
+   "rows": 2,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/accessory",
+   "rows": 2,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/bodycare/soap",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/tinted-moisturizer",
+   "rows": 2,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/setting-spray",
+   "rows": 2,
+   "serving": 2,
+   "door": false
+  },
+  {
+   "path": "beauty/bodycare/body-oil",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/accessories/hair-accessories",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/nails/nail-polish-remover",
+   "rows": 2,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/bodycare/body-wash",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/body/body-wash",
+   "rows": 2,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/acne-patch",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/setting-powder",
+   "rows": 2,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/lips/lip-balm",
+   "rows": 2,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/lip/lip-oil",
+   "rows": 2,
+   "serving": 2,
+   "door": true
+  },
+  {
+   "path": "fashion/apparel/bottoms/skirt",
+   "rows": 2,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/styling/gel",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/eye-cream",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/apparel/tops/shirt",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/moisturizer/milk",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/tint",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/cleanser/micellar-water",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/lip/lip_gloss",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/moisturizer",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/hand/hand_salve",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/body/exfoliation-tool",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/oil",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/accessories/bags/belt_bag",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/nails/cuticle-oil",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/eyes/lashes",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/spa/body_treatment",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/bodycare/body-scrub",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/lip/lip_oil",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/hair-mask",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/set",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/aromatherapy/pen",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/acne",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/body/body_mousse",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eyes/false-lashes",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/oral-care/toothpaste",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/beard-care/oil",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/blotting_paper",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/body/foot-care",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/cleanser/foam",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/travel/toiletry-bag",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/tools/sharpener",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/moisturizer/balm",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/fragrance/tray",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/blotting-paper",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/gift-card",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/bath/shower_gel",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/eye/balm",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "home/bath/towels/hooded",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/eye/serum",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/serum/retinal",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/sunscreen/tinted",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/travel/organizer",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/accessories/headband",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/body/body-lotion",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/bath/shower/oil",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/oral-care/teeth-whitening",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/apparel/bottoms/shorts",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "other/gift_card",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/cleanser/gel",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/body/body-butter",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/razor-stand",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/scalp-treatment/mask",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/hair-oil",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eye/eyeliner/sharpener",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/routine",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/haircare/treatments",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "other/service/shipping-protection",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/accessories/bag",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/bath/accessory/soap-saver",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/tools/cotton-buds",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/set",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/tools/exfoliator",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/eyes/eyeliner",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/body/anti-chafe",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/hair-serum",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/tools/gua-sha",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/tools/applicator",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/retinal",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eyes/false_lashes",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/exfoliator",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/men/beard/oil",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/bronzer-blush-lip",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/mist",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/fragrance/fragrance-oils",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/body/moisturizer",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/tools",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/accessories/keychain",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/trio",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/haircare/care/oil",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/blemish",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/palette",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/accessories/pouch",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "fashion/apparel/bottoms/sweatpants",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "electronics/audio/headphones_wireless",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face/contour",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/mirror",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/tools/nail-tools",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/emulsion",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/eyebrow",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/patches",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/treat/bronzer",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/essence",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/haircare/styling-cream",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/sunscreen/refillable-case",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/treat/spot-treatment",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/accessory/soap_dish",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/setting-spray",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/exfoliate/face-scrub",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/lip/lip_liner",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/makeup/face",
+   "rows": 1,
+   "serving": 0,
+   "door": true
+  },
+  {
+   "path": "beauty/skincare/toner/milk",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/skincare/cleanser/moisturizer",
+   "rows": 1,
+   "serving": 0,
+   "door": false
+  },
+  {
+   "path": "beauty/haircare/hair-mist",
+   "rows": 1,
+   "serving": 1,
+   "door": true
+  },
+  {
+   "path": "beauty/oral-care/teeth-whitening-devices",
+   "rows": 1,
+   "serving": 1,
+   "door": false
+  }
+ ],
+ "edge_cases": [
+  {
+   "path": "beauty",
+   "door": true
+  },
+  {
+   "path": "fashion",
+   "door": true
+  },
+  {
+   "path": "electronics",
+   "door": true
+  },
+  {
+   "path": "beauty/",
+   "door": false
+  },
+  {
+   "path": "",
+   "door": false
+  },
+  {
+   "path": "beauty/fragrance",
+   "door": true
+  },
+  {
+   "path": "beauty/fragrance/perfume",
+   "door": true
+  },
+  {
+   "path": "fashion/shoes",
+   "door": true
+  },
+  {
+   "path": "wellness/supplements",
+   "door": false
+  },
+  {
+   "path": "home/fragrance/candle",
+   "door": false
+  },
+  {
+   "path": "other/gift_card",
+   "door": false
+  },
+  {
+   "path": "Beauty/Makeup",
+   "door": false
+  },
+  {
+   "path": "beauty/makeup/face/blush",
+   "door": true
+  }
+ ]
+}

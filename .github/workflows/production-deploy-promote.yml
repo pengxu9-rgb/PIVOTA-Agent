@@ -1,10 +1,33 @@
+# Promote a build to the RAILWAY production app and verify it came up.
+#
+# THIS DOES NOT DEPLOY THE PRODUCTION GATEWAY. Since the 2026-08-22 cutover the gateway that serves
+# real traffic is Cloud Run behind gateway.pivota.cc, deployed by hand with deploy_gateway.sh. This
+# workflow only ever talked to `pivota-agent-production.up.railway.app`, which still auto-deploys
+# from GitHub and is no longer the production surface.
+#
+# WHY THE `push` TRIGGER IS GONE. On every merge to main this ran, watched Railway pick the commit
+# up on its own, and reported a green "Production Deploy Promote" - while the Cloud Run gateway
+# stayed exactly where it was. #2097 merged at 06:33Z on 2026-08-25 and this job went green at
+# 06:35Z; the gateway did not get that commit until a hand deploy about eight hours later. The
+# `gateway prod drift` alarm was correct throughout, and correctly quiet at first: it holds a
+# 120-minute grace window, so it stayed green until 09:10Z and was then red until the deploy. For
+# those five-plus hours the two jobs disagreed about the same commit and only the red one was
+# true. A verification aimed at a host nobody serves from does not weaken into a partial check -
+# it becomes a claim that the deploy happened.
+#
+# That is the same failure `gateway-prod-drift.yml` was written to end, and its own header records
+# the previous instance: `production-deploy-drift-guard.yml` watched a Vercel 404 and a Railway URL
+# until it was switched off in June. Two workflows disagreeing about production is worse than one
+# reporting it, so the answer to `push` is to remove it rather than repoint it - `gateway prod
+# drift` already measures the real gateway on merge and hourly, and it is the single source of
+# truth for whether production runs main.
+#
+# `workflow_dispatch` stays: promoting to Railway on purpose is still a thing an operator may want,
+# and run by hand it makes no claim about the gateway.
 name: Production Deploy Promote
 
 on:
   workflow_dispatch: {}
-  push:
-    branches:
-      - main
 
 concurrency:
   group: production-deploy-promote

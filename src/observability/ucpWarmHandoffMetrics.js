@@ -119,6 +119,9 @@ function renderHistogram(lines, metricName, helpText, store, buckets) {
  *   - success => the lane returned a warm cart + continue_url. reason defaults to 'ok'.
  *   - fallback => the lane fell back to the cold redirect; reason is the H1 taxonomy tag (e.g. not_ucp_reachable,
  *     timeout, out_of_stock, variant_invalid, tool_error, profile_unreachable, profile_redirected, no_continue_url).
+ *     `out_of_stock` and `variant_invalid` are also emitted by the internal CLICK route for misses that
+ *     never reach this service (a known sold-out variant, or no resolvable variant at all) — the route
+ *     maps its own wire reasons onto these tags so both lanes share one dial.
  */
 function recordWarmHandoffOutcome({ outcome, reason, brandDomain } = {}) {
   const outcomeLabel = cleanLabel(outcome, 'unknown');

@@ -9,16 +9,20 @@ on:
   # serving-eligible and therefore stuck in `shadow` forever -- the trust
   # policy cannot evaluate a row whose listing does not exist.
   #
-  # The scheduled run is ALWAYS --only-uncovered, which is what makes it safe
+  # The scheduled run was ALWAYS --only-uncovered, which is what makes it safe
   # to run unattended: it selects only seeds with no listing, so it never
-  # reaches the writer's ON CONFLICT branch. Cost is ~1 short run/week against
-  # a CI budget already under pressure.
-  # ⚠️ VERIFY AFTER THE FIRST MONDAY RUN that it actually EXECUTED and reported
-  # written_rows > 0. The job declares `environment: Pivota Agent / production`;
-  # if that environment carries required reviewers, a scheduled run sits pending
-  # approval forever — an inert no-op wearing a green tick.
-  schedule:
-    - cron: "40 3 * * 1"
+  # reaches the writer's ON CONFLICT branch.
+  #
+  # The weekly schedule (cron "40 3 * * 1") moved to the Cloud Run Job
+  # `pdp-identity-graph-backfill` (pivota-prod, us-west1, Cloud Scheduler
+  # trigger — see pivota-backend infra/gcp/setup_scheduler.sh), pinned to the
+  # same --limit 2000 --only-uncovered arguments; the result JSON lands in
+  # Cloud Logging instead of a workflow artifact. This workflow's DATABASE_URL
+  # secret still points at the decommissioned Railway Postgres proxy (torn down
+  # 2026-08-25), so scheduled runs here could only fail (ECONNRESET on every
+  # query; last success 2026-08-24). Manual dispatch is kept for ad-hoc runs
+  # (brand-filtered, dry-run, or blanket applies), but requires repointing the
+  # environment's DATABASE_URL secret to a reachable database first.
   workflow_dispatch:
     inputs:
       brand:

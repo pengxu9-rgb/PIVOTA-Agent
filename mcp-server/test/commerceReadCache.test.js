@@ -156,22 +156,29 @@ test("a user-scoped tool still refuses without identity, cache or not", async ()
   const exec = recordingExecutor();
   const s = surface(exec);
   await assert.rejects(
-    () => s.callTool("create_checkout_session", { merchant_id: "m1", items: [] }, {}),
+    () => s.callTool("create_checkout_session", { idempotency_key: "idem-cache-1", quote: { merchant_id: "m1", items: [{ product_id: "p1", quantity: 1 }] } }, {}),
     (err) => err.code === "USER_AUTH_REQUIRED",
   );
   assert.equal(exec.calls.length, 0);
 });
 
-test("junk arguments cannot mint cache keys or evict real entries", async () => {
-  // Nothing rejects unknown argument properties, so keying on the RAW tool args would let any caller mint
-  // unlimited distinct keys for one identical upstream call — a 0% hit rate, and enough junk requests to
-  // evict every real entry. The key is the allowlisted params, so junk is already gone by then.
+test("junk arguments are refused at the door and cannot mint cache keys or evict real entries", async () => {
+  // The declared-schema guard refuses undeclared argument properties outright, so a junk-carrying call never
+  // reaches the cache at all — it cannot mint a key, evict an entry, or buy a cold upstream run. The key
+  // stays derived from the allowlisted params anyway (defense in depth; see the note in the surface).
   const exec = recordingExecutor();
   const s = surface(exec);
   for (let i = 0; i < 5; i += 1) {
-    await s.callTool("search_catalog", { ...ARGS, _cb: `nonce-${i}`, tracking: i }, {});
+    await assert.rejects(
+      () => s.callTool("search_catalog", { ...ARGS, _cb: `nonce-${i}`, tracking: i }, {}),
+      (err) => err.code === "INVALID_ARGUMENTS",
+    );
   }
-  assert.equal(exec.calls.length, 1, "unknown args must not fragment the cache key");
+  assert.equal(exec.calls.length, 0, "refused junk must never reach the executor");
+  // …and the same DECLARED args repeated still share one entry.
+  await s.callTool("search_catalog", { ...ARGS }, {});
+  await s.callTool("search_catalog", { ...ARGS }, {});
+  assert.equal(exec.calls.length, 1, "identical declared args must share one cache entry");
 });
 
 test("a degraded upstream envelope is not pinned for the TTL", async () => {

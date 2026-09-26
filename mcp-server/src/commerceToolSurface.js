@@ -6,7 +6,9 @@
 //
 // SECURITY MODEL (the adapter boundary's job):
 //   - Identity (user_ref / acp_session_id / agent_id) is taken from the SERVER-VERIFIED session context
-//     ONLY, never from the model's tool arguments. Any identity fields a model puts in the args are stripped.
+//     ONLY, never from the model's tool arguments. An identity field a model puts in the args is REFUSED by
+//     the declared-schema guard wherever the schema is strict (no schema declares one), and in the few
+//     free-form envelopes (constraints, payment_authorization) it is still never copied into params.
 //   - A user-scoped tool with no verified buyer is refused (USER_AUTH_REQUIRED) before the executor runs.
 //   - payment_authorization IS a tool argument (the delegated token / mandate the agent obtained), but it is
 //     VERIFIED inside the executor (verifyPaymentAuthorization) — never trusted blindly.
@@ -34,11 +36,13 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
+import { tryReapAgenticCheckout } from "./ucpReapAgenticLane.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
   ucpToNativeToolArgs,
 } from "./ucpArgumentAdapter.js";
+import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -194,7 +198,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -203,7 +207,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
   // Default-variant resolution over THIS surface's executor — the same canonical `get_product` read the ACP
   // door resolves through, built by the same factory. Nothing about the rule lives here.
-  const resolveDefaultVariants = createDefaultVariantResolver({ executor });
+  // `sourceMerchantVariants` (optional) lets the seed cohort resolve identity from the MERCHANT's own
+  // storefront when our catalog publishes only restatements of the product id. It is threaded, not
+  // defaulted: a door that passes nothing keeps today's behaviour exactly.
+  const resolveDefaultVariants = createDefaultVariantResolver({ executor, sourceMerchantVariants });
 
   // Shorter-lived than the public tier's 10min/60min: these results carry prices and availability an agent
   // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
@@ -259,6 +266,21 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       throw new ToolValidationError("Tool arguments must be an object.");
     }
 
+    // 0b) ENFORCE THE ADVERTISED SCHEMA — native dialect. Every tool's inputSchema declares
+    //     `additionalProperties: false`, and until this line nothing read that declaration: `toParams` below
+    //     is a filter, not a validator, so a misplaced argument was silently deleted. Live consequence
+    //     (prod, 2026-08-25): `recommend_products {price_max: 40}` — the ceiling belongs INSIDE
+    //     `constraints` — was accepted, the constraint vanished, and an over-budget item returned with empty
+    //     warnings. A buyer-agent believing an unenforced budget is enforced is exactly the failure this
+    //     surface exists to prevent, so an undeclared argument is a LOUD refusal naming the field (and,
+    //     when the same name is declared deeper, where it belongs). Before the identity gate on purpose:
+    //     a malformed call is malformed regardless of who sent it, and the schemas are public via tools/list
+    //     so the refusal teaches nothing an anonymous caller could not already read.
+    //     The UCP dialect is validated in its own mapper instead (`rejectUnknown` et al. in
+    //     ucpArgumentAdapter.js) against the UCP wire schemas, with UCP-vocabulary refusals — running this
+    //     guard on those args would misjudge them against a shape they never claimed to have.
+    if (dialect === TOOL_DIALECTS.mcp) assertDeclaredArguments(op, toolArgs);
+
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
     //    read-only ops (anonymous) and surface as USER_AUTH_REQUIRED for user-scoped ops below.
     const ctx = buildContext(sessionContext);
@@ -292,15 +314,43 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     default OFF). Deliberately AFTER the identity check (2) — an escalated checkout is still a buyer's
     //     checkout — and after the allowlist, so it only ever sees fields this op defines. See
     //     ucpCheckoutEscalation.js for the classification rule and the wire shape.
+    // 7-early) DIALECT RESULT SHAPING — see step 7 below. Defined here so the Reap lane's answer (3a-i) leaves
+    //     through the SAME shaper every other result of this call does.
+    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+
     let resolveVariantsForThisCall = resolveDefaultVariants;
     if (dialect === TOOL_DIALECTS.ucp && op.capability === "checkout") {
       // ONE read per product per call: the escalation classifier and the checkout resolver both perform the
       // unscoped `get_product` read; a memoizing view of the executor lets a contracted cart (classified
       // "kernel path" here) be read once and the resolver reuse the same result. Scoped to this call.
       const reads = memoizedProductReads(executor);
+      // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
+      //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
+      //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
+      //     uses: a row Pivota transacts returns null there before anything else, and so reaches the kernel
+      //     below exactly as it did without this lane. Kill-switched (REAP_AGENTIC_LANE_ENABLED, default OFF)
+      //     and inert without an injected backend client. Its answer carries no kernel state, so it takes the
+      //     result half of this door here — the SAME money filter (step 5) and the SAME dialect shaper (step 7)
+      //     as a kernel result — instead of the executor.
+      const reapHints = [];
+      const reap = await tryReapAgenticCheckout({
+        op, params, ctx, executor: reads, ucpArgs: toolArgs, attested,
+        client: reapAgentic && reapAgentic.client, log: logger, hints: reapHints,
+      });
+      if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
-      if (escalated) return escalated;
-      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads });
+      // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
+      // storefront answer only. With no hint the escalation answer is returned as the very same object.
+      if (escalated) {
+        return reapHints.length
+          ? { ...escalated, messages: [...(Array.isArray(escalated.messages) ? escalated.messages : []), ...reapHints] }
+          : escalated;
+      }
+      // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
+      // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
+      // certain to arrive without variant identity. Threading it here was missed in the first revision, which
+      // armed the capability for native `create_checkout_session` alone.
+      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads, sourceMerchantVariants });
     }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
@@ -324,17 +374,18 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    (getOrCompute lets errors propagate uncached), which keeps a transient MERCHANT_UNAVAILABLE from
     //    being served for the rest of the TTL. See the CACHEABLE_TOOLS note above for why the key omits
     //    identity — that omission is the whole safety argument and is asserted by tests.
-    //    The key is the ALLOWLISTED params, never the raw tool args. Nothing rejects unknown argument
-    //    properties, so keying on the raw args lets any caller mint unlimited distinct keys for one
-    //    identical upstream call (`{query, _cb: <nonce>}`) — a 0% hit rate, and 60 such requests evict
-    //    every real entry. Keying on what actually reaches the executor makes that impossible by
-    //    construction: junk properties are already gone by this line.
+    //    The key is the ALLOWLISTED params, never the raw tool args. The declared-schema guard now refuses
+    //    undeclared properties on this surface, but the params-derived key stays for the same reason it was
+    //    chosen: keyed on raw args, any accepted-but-non-allowlisted spelling (`{query, _cb: <nonce>}`)
+    //    would mint unlimited distinct keys for one identical upstream call — a 0% hit rate, and 60 such
+    //    requests evict every real entry. Keying on what actually reaches the executor makes that
+    //    impossible by construction, whatever the guard's coverage.
     // 7) DIALECT RESULT SHAPING — the outbound twin of step 2b, applied to whatever the steps above produced
     //    (fresh or cached). Deliberately AFTER the cache: the cache stores the NATIVE sanitized value keyed on
     //    dialect-agnostic params, and both dialects read the same entry — shaping before the cache would let
     //    a UCP call poison the entry the next /mcp call reads, and vice versa. The shaper is pure and runs on
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
-    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+    //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
@@ -409,6 +460,51 @@ function attestedBuyerFromSession(sessionContext = {}) {
 // polluting keys (__proto__/constructor) all simply never get copied. Each field is read by OWN-property
 // lookup, so a JSON `__proto__` entry cannot inject anything.
 
+// --- declared-schema enforcement (native dialect) ---------------------------------------------------------
+//
+// The refusal half of the advertisement above: findUndeclaredArguments walks the SAME schema object that
+// tools/list publishes, so what the door refuses is exactly what it advertises it refuses — there is no
+// second field table to drift. See inputSchemaGuard.js for the walking rules and the prod incident that
+// motivated this (a silently-dropped top-level price_max on recommend_products).
+
+// "Did you mean" paths per tool, computed lazily from the declared schema (generic: a misplaced
+// `customer_email` on create_checkout_session is pointed at `quote.customer_email`). recommend_products
+// needs its own hint because `constraints` is free-form (additionalProperties as a typed subschema), so a
+// misplaced constraint's name is — by design — declared nowhere the generic scan can find it.
+const DECLARED_PATHS_BY_TOOL = new Map();
+function declaredPathsFor(op) {
+  if (!DECLARED_PATHS_BY_TOOL.has(op.id)) {
+    DECLARED_PATHS_BY_TOOL.set(op.id, declaredPropertyPathsByName(INPUT_SCHEMAS[op.id]));
+  }
+  return DECLARED_PATHS_BY_TOOL.get(op.id);
+}
+
+function assertDeclaredArguments(op, toolArgs) {
+  const schema = INPUT_SCHEMAS[op.id];
+  const violations = findUndeclaredArguments(schema, toolArgs);
+  if (violations.length === 0) return;
+
+  const declared = declaredPathsFor(op);
+  const parts = violations.map(({ path }) => {
+    const leaf = path.replace(/\[\d+\]/g, "").split(".").pop();
+    const elsewhere = (declared.get(leaf) || []).filter((p) => p !== path);
+    return elsewhere.length > 0 ? `"${path}" (did you mean "${elsewhere[0]}"?)` : `"${path}"`;
+  });
+  // The observed live failure class: a hard constraint sent at the top level of recommend_products. Name the
+  // correct envelope explicitly — a model that is told only "unknown argument" retries with a synonym and is
+  // refused identically; one told the envelope fixes it in one retry.
+  const constraintHint =
+    op.id === "recommend_products" && violations.some(({ path }) => !path.includes("."))
+      ? ' If this is a hard constraint (e.g. a price ceiling), send it inside `constraints`: {"constraints":{"price_max":40}}.'
+      : "";
+  const topLevelAllowed = Object.keys(schema.properties || {}).join(", ");
+  throw new ToolValidationError(
+    `${op.mcp}: unknown argument${violations.length > 1 ? "s" : ""} ${parts.join(", ")} — this tool's input ` +
+      `schema declares additionalProperties:false, so undeclared arguments are refused rather than silently ` +
+      `ignored.${constraintHint} Accepted top-level arguments: ${topLevelAllowed}.`,
+  );
+}
+
 const QUOTE_KEYS = ["merchant_id", "discount_codes", "customer_email", "customer_name"];
 const ITEM_KEYS = ["product_id", "sku_id", "variant_id", "quantity"];
 const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "address_line2", "name", "recipient_name", "phone"];
@@ -417,7 +513,7 @@ function toParams(op, toolArgs) {
   const a = asObj(toolArgs);
   switch (op.id) {
     case "search_catalog":
-      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
+      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
       return {
         payload: {
@@ -604,9 +700,9 @@ function describe(op) {
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
-      "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. An external offer may carry `cart_prefilled`, which says what following its `affiliate_url` actually does: true = the buyer lands on the merchant's own checkout with the item already in the cart; false = a bare product page they must add from themselves; null = Pivota does not know. Treat null as unknown and say nothing about where the link lands — only an explicit false licenses telling a buyer to expect a product page. Read-only; surfaces real cross-merchant competition only when it exists.",
+      "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. An external offer may carry `cart_prefilled`, which says what following its `affiliate_url` actually does: true = the buyer lands on the merchant's own checkout with the item already in the cart; false = a bare product page they must add from themselves; null = Pivota does not know. Treat null as unknown and say nothing about where the link lands — only an explicit false licenses telling a buyer to expect a product page. An offer may also carry `stock_verified` and `merchant_price_verified`: true means Pivota asked the MERCHANT'S own storefront moments ago and it agreed, false means it disagreed or could not be compared, null means we did not check this one. They are separate because they fail separately — stock can be confirmed while price cannot. When `merchant_price_verified` is true the spec carries `expected_item_total` with its `expected_currency` and `expected_quantity`, valid until `expected_total_expires_at`; abort the handoff rather than proceeding if the merchant's checkout shows a different total. If `rank_one_unverified` is true, NOTHING in the shortlist could be confirmed this turn — say so rather than presenting the top result as checked. Note the two flags differ on false as well as true: here false means we asked the merchant and could not confirm, while null means we did not ask. Never present an offer as price-checked on the strength of `price_verified` from another surface — that one means consistent with Pivota's own records rather than with the merchant, and its false covers unchecked and failed alike. Read-only; surfaces real cross-merchant competition only when it exists.",
     recommend_products:
-      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Today's lane is tuned for beauty/skincare: off-vertical needs answer with an empty shortlist and a reason, never with fabricated products. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
+      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Read `lane_confidence` for per-item certainty: it is the lane's own confidence in the product, NOT a measure of how well the product answers your need — nothing on that path reads your need, so an off-vertical need that slips the gate below can still come back at `lane_confidence: high`. Judge relevance yourself. Read `lane_confidence.basis` (and `metadata.confidence_basis`) before trusting the band at all: `lane_confidence.basis` is PER ITEM, and a single shortlist can mix them: `model_self_report` means that item's number is the model's own estimate of it; `positional` means the lane has NO certainty estimate for that item — the underlying score was the item's POSITION in the list, not a judgement about it — and its band is null. `metadata.confidence_basis` describes the ANSWER as a whole and `metadata.confidence_overall` is null when that is `positional`. A null band usually means unmeasured rather than low — with one exception: a row that breaches a `price_max` you set is downgraded to `low` even on a positional answer, because that IS a measurement, and it carries `constraint_violations`. `catalog_rebound` means grounding selected a different catalog product; the original product’s confidence and evidence were discarded, so the new product’s band is null unless a price violation independently downgrades it. `basis` also takes `ungrounded` (the lane named a product it could not resolve) and `none`/`unknown`. (`fit` is a DEPRECATED alias carrying the identical value and will be removed; migrate to `lane_confidence`.) The lane is tuned for SKINCARE specifically: it is instructed never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements, so a need for any of those may come back with skincare picks instead of nothing. Detection of off-vertical needs is best-effort, not exhaustive: a RECOGNISED off-vertical need answers with an empty shortlist and `metadata.products_empty_reason: 'off_vertical'`, but an unrecognised one may still come back with beauty products — so check that the shortlist actually matches the need before presenting it. Every returned item IS a catalog product with a non-null `product_id`: that one holds unconditionally, and products the lane named but could not resolve are never returned as items — they appear only as plain text in `metadata.unresolved_archetypes`, and are not buyable. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
     get_intel:
       "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
@@ -680,7 +776,7 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       query: { type: "string" }, merchant_id: { type: "string" }, category: { type: "string" },
-      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" },
+      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2)." },
       in_stock_only: { type: "boolean" }, page: { type: "integer", minimum: 1 },
       page_size: { type: "integer", minimum: 1, maximum: 50 },
     },

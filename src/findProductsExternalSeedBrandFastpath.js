@@ -45,6 +45,19 @@ async function runExternalSeedBrandMainlineFastpath({
         .filter(Boolean),
     ),
   ).slice(0, 8);
+  // NOTE: normalizeBrandText is NOT the twin of the '[^a-z0-9]' fold this is compared against —
+  // it KEEPS '-', '&' and '\u00ae' and folds accents to ASCII, where the SQL class drops all of them,
+  // so "AXIS-Y" binds 'axis-y' against a stored 'axisy' and "Estee Lauder" with the acute binds
+  // 'esteelauder' against a stored 'estelauder'. Those brands are still unreachable by this arm.
+  //
+  // Binding the SQL fold of the raw query text as a second key was tried here and REVERTED: it is
+  // not additive. For a query in a non-Latin script the fold leaves only the Latin residue, which
+  // is a product-line token and not a brand — "<hangul> BB" yields the key 'bb' — and because the
+  // exact arm returns before the broad fallback runs, one junk match SUPPRESSES the rows the
+  // fallback used to return. Measured: that query lost its Sulwhasoo row. `split_part(domain, ...)`
+  // in the match expression means a 2-character residue does not even need a 2-letter brand to
+  // collide; it reached a brandless seed on 'cc.co.kr'. A length floor only moves the boundary.
+  // Reaching those brands needs a key derived from a DETECTED brand, not from raw query residue.
   const exactBrandCompactVariants = Array.from(
     new Set(
       buildBrandQueryVariants(relevanceQueryText, brandTerms)
@@ -67,19 +80,30 @@ async function runExternalSeedBrandMainlineFastpath({
     ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
     : '';
   const attachedFilter = 'AND attached_product_key IS NOT NULL';
+  // lower() wraps the COALESCE, not the regexp_replace. The other order filters before it
+  // case-folds, and 'A-Z' is not in '[^a-z0-9]', so every capital letter is DELETED:
+  // lower(regexp_replace('Fenty Beauty', '[^a-z0-9]+', '', 'g')) is 'entyeauty', not
+  // 'fentybeauty'. The bound key comes from normalizeBrandText, which lowercases first, so the
+  // exact arm could only ever match a brand stored entirely in lower case. Measured on prod
+  // 2026-09-16: 10,283 of 11,817 attached active seeds carry a capital, and replaying the 59
+  // largest brand pages matched 1,311 rows this way against 7,916 with the order below.
+  //
+  // The index definitions in migrations 031/032 carry the broken spelling, so this expression no
+  // longer matches them — which costs nothing here: both are partial on `attached_product_key
+  // IS NULL` while this query requires IS NOT NULL, so neither could ever serve it.
   const brandMatchExpr = `
-    lower(
-      regexp_replace(
+    regexp_replace(
+      lower(
         coalesce(
           seed_data->>'brand',
           seed_data->'snapshot'->>'brand',
           split_part(domain, '.', 1),
           ''
-        ),
-        '[^a-z0-9]+',
-        '',
-        'g'
-      )
+        )
+      ),
+      '[^a-z0-9]+',
+      '',
+      'g'
     )
   `;
   const servingEligibleSeedExistsClause = `
