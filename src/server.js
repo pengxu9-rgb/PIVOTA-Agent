@@ -338,10 +338,7 @@ const {
   recordPdpV2ModuleLatency,
   recordSimilarDeferred,
 } = require('./observability/pdpMetrics');
-const {
-  normalizeRecommendationDecisionMode,
-  normalizeQueryStepStrength,
-} = require('./shared/recommendationDecisionCapability');
+const { normalizeQueryStepStrength } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
@@ -23669,12 +23666,7 @@ const agentProductsSearchRouteEntryRuntime = createFindProductsSearchRouteEntryR
   buildFindProductsSearchRequestContract,
   resolveLegacyBeautyCacheOwnerBypass: resolveLegacyBeautyCacheOwnerBypassForPublicSearchRoute,
   normalizeAgentSource,
-  runGuidanceServerOwnedLadderSearch: async () => null,
-  persistGuidanceSearchSeenProducts: async () => false,
   normalizeSearchUiSurface,
-  normalizeRecommendationDecisionMode,
-  searchExternalSeedOnlyProductsDirect: async () => null,
-  searchIngredientIntentProductsDirect: async () => null,
 });
 
 async function searchExternalSeedBrandCandidatesLocally({
@@ -36394,15 +36386,6 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
             public_search_route: true,
           },
   };
-
-  const fastpathResult = await agentProductsSearchRouteEntryRuntime.maybeHandleAgentProductsSearchRouteFastpaths({
-    req,
-    payload,
-    forceDirectInvokeMainPath: routePreparation.forceDirectInvokeMainPath === true,
-  });
-  if (fastpathResult?.handled && fastpathResult.response) {
-    return res.status(200).json(fastpathResult.response);
-  }
 
   req.query = routePreparation.query || req.query;
   req.body = {

@@ -24,12 +24,7 @@ function buildRuntime(overrides = {}) {
     buildFindProductsSearchRequestContract,
     resolveLegacyBeautyCacheOwnerBypass: () => ({ bypass: false, semanticContract: null }),
     normalizeAgentSource: (value) => String(value || '').trim().toLowerCase(),
-    runGuidanceServerOwnedLadderSearch: async () => null,
-    persistGuidanceSearchSeenProducts: async () => undefined,
     normalizeSearchUiSurface: (value) => String(value || '').trim().toLowerCase(),
-    normalizeRecommendationDecisionMode: (value) => String(value || '').trim().toLowerCase(),
-    searchExternalSeedOnlyProductsDirect: async () => null,
-    searchIngredientIntentProductsDirect: async () => null,
     ...overrides,
   });
 }
