@@ -25,6 +25,9 @@ const DEFAULT_RESELLER_HOSTS = Object.freeze([
   'amazon.ca', 'amazon.de', 'amzn.to', 'amzn.com', 'bestbuy.com', 'oliveyoung.co.kr',
   // UK/AU beauty retailers (pivota-backend #2363, review of #2359).
   'beautybay.com', 'adorebeauty.com.au', 'chemistwarehouse.com.au',
+  // Parity with pivota-backend offer_seller_identity: ccTLD Amazons + StyleKorean.
+  'amazon.com.br', 'amazon.com.mx', 'amazon.com.au', 'amazon.fr', 'amazon.it', 'amazon.es',
+  'stylekorean.com',
 ]);
 
 function hostOf(url) {
