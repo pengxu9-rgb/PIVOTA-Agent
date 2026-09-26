@@ -338,10 +338,7 @@ const {
   recordPdpV2ModuleLatency,
   recordSimilarDeferred,
 } = require('./observability/pdpMetrics');
-const {
-  normalizeRecommendationDecisionMode,
-  normalizeQueryStepStrength,
-} = require('./shared/recommendationDecisionCapability');
+const { normalizeQueryStepStrength } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
