@@ -970,18 +970,69 @@ test('a sold-out PRIMARY seller does not win best_offer over a sellable one', ()
   assert.equal(best_offer.value.merchant_id, 'other');
 });
 
-test('an INTERNAL offer is not demoted on its in_stock flag (mirrors the backend exemption)', () => {
-  // The backend computes an internal offer's in_stock from inventory_quantity alone, so an
-  // untracked-inventory variant that is buyable arrives as in_stock: false.
+test('a SOLD-OUT internal offer ranks behind an equal-fit sellable referral (no purchase-route exemption)', () => {
+  // pivota-backend #2221: an internal offer's in_stock IS the eligibility gate's verdict now, so a false
+  // flag is trustworthy. Cheaper, primary-less, same verification tier: only sellability separates them.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'buy_here', price: 15, currency: 'USD', in_stock: false, purchase_route: 'internal_checkout' },
+      { merchant_id: 'referral', price: 20, currency: 'USD', in_stock: true, purchase_route: 'affiliate_outbound' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'referral');
+});
+
+test('control: a SELLABLE internal offer still wins on price over a pricier sellable referral', () => {
   const { offersToSignals } = require('../src/agentSignals/offerToSignal');
   const { best_offer } = offersToSignals(
     [
       { merchant_id: 'referral', price: 20, currency: 'USD', in_stock: true, purchase_route: 'affiliate_outbound' },
-      { merchant_id: 'buy_here', price: 15, currency: 'USD', in_stock: false, purchase_route: 'internal_checkout' },
+      { merchant_id: 'buy_here', price: 15, currency: 'USD', in_stock: true, purchase_route: 'internal_checkout' },
     ],
     { productId: 'p' },
   );
   assert.equal(best_offer.value.merchant_id, 'buy_here');
+});
+
+test('ONE unavailable vocabulary: the JS pick and the SQL tier read the backend literal set', () => {
+  const {
+    OFFER_UNAVAILABLE_AVAILABILITIES,
+    OFFER_AVAILABILITY_TIER_SQL,
+    isUnavailableAvailabilityText,
+  } = require('../src/services/offerAvailabilitySql');
+  // pivota-backend services/offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES, verbatim.
+  const BACKEND = ['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable'];
+  assert.deepEqual([...OFFER_UNAVAILABLE_AVAILABILITIES].sort(), [...BACKEND].sort());
+  const sqlList = OFFER_AVAILABILITY_TIER_SQL.match(/IN\s*\(([^)]*)\)/)[1]
+    .split(',').map((token) => token.trim().replace(/^'|'$/g, ''));
+  assert.deepEqual(sqlList.sort(), [...BACKEND].sort());
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  for (const spelling of BACKEND) {
+    assert.equal(isUnavailableAvailabilityText(`  ${spelling.toUpperCase()}\t`), true, spelling);
+    // The JS best_offer pick uses the same list: a cheaper offer carrying only the string loses.
+    const { best_offer } = offersToSignals(
+      [
+        { merchant_id: 'cheap', price: 1, currency: 'USD', availability: spelling },
+        { merchant_id: 'sellable', price: 9, currency: 'USD', availability: 'in_stock' },
+      ],
+      { productId: 'p' },
+    );
+    assert.equal(best_offer.value.merchant_id, 'sellable', spelling);
+  }
+  // Unknown stays sellable, in both.
+  for (const unknown of ['unknown', '', 'backorder', 'oos', null, undefined, 7]) {
+    assert.equal(isUnavailableAvailabilityText(unknown), false, String(unknown));
+  }
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'unknown_cheap', price: 1, currency: 'USD', availability: 'unknown' },
+      { merchant_id: 'in_stock', price: 9, currency: 'USD', availability: 'in_stock' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'unknown_cheap');
 });
 
 test('sellable outranks the verification tier: a FAILED check beats a sold-out unchecked offer', () => {

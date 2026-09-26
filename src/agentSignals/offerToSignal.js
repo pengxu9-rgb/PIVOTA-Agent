@@ -8,6 +8,8 @@
 // `agent_signal` store (computed from the decision_outcome loop) and are not available yet. We never
 // fabricate competition — a single-offer product yields best_offer + an empty competition set.
 
+const { isUnavailableAvailabilityText } = require('../services/offerAvailabilitySql');
+
 function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
@@ -173,27 +175,26 @@ function offerToSignal(offer, { productId = null } = {}) {
   };
 }
 
-// "THIS SELLER CANNOT SELL IT" — the backend's OFFER_UNAVAILABLE_AVAILABILITIES (pivota-backend #2218,
-// routes/agent_shop_gateway.py; #2220 moves it to services/offer_buyability.py), mirrored verbatim. Only an
-// explicit statement counts. The `in_stock` FLAG decides whenever it is a boolean — exactly as the backend's
-// `_offer_is_known_unavailable` reads only the flag — and the availability string is consulted only when the
-// flag is absent. That order matters: live verification CORRECTS `in_stock` to true on a restocked offer and
-// leaves the feed's stale `availability: "out_of_stock"` beside it. `unknown`, null and anything unrecognised
-// are NOT unavailability — the backend reports them as `in_stock: true` and ranks them with the in-stock
-// offers, and ranking them lower here would make `best_offer` disagree with the backend's offers[0].
-const UNAVAILABLE_AVAILABILITIES = new Set(['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable']);
-
+// "THIS SELLER CANNOT SELL IT" — the backend's OFFER_UNAVAILABLE_AVAILABILITIES (pivota-backend
+// services/offer_buyability.py). The list itself lives in ONE place, src/services/offerAvailabilitySql.js,
+// which also builds the SQL availability tier from it, so this pick and the canonical search / index feed
+// LATERALs cannot drift apart. Only an explicit statement counts. The `in_stock` FLAG decides whenever it is
+// a boolean — exactly as the backend's `_offer_is_known_unavailable` reads only the flag — and the
+// availability string is consulted only when the flag is absent. That order matters: live verification
+// CORRECTS `in_stock` to true on a restocked offer and leaves the feed's stale `availability: "out_of_stock"`
+// beside it. `unknown`, null and anything unrecognised are NOT unavailability — the backend reports them as
+// `in_stock: true` and ranks them with the in-stock offers, and ranking them lower here would make
+// `best_offer` disagree with the backend's offers[0].
+//
+// NO PURCHASE-ROUTE EXEMPTION. INTERNAL (buy-here) offers used to be exempt here, mirroring a backend
+// exemption, because their `in_stock` was computed from inventory_quantity alone and an untracked-inventory
+// Shopify variant arrived as `in_stock: false`. pivota-backend #2221 removed the backend twin: an internal
+// offer's `in_stock` is now the eligibility gate's own verdict (`standard_variant_in_stock`), so a false flag
+// is trustworthy and a sold-out buy-here offer must not win best_offer over a seller that can sell.
 function isKnownUnavailable(signal) {
-  // INTERNAL (buy-here) offers are exempt, mirroring the backend's `_offer_is_known_unavailable`. Their
-  // `in_stock` is computed from inventory_quantity alone, so an untracked-inventory Shopify variant that is
-  // perfectly buyable arrives as `in_stock: false`; demoting on it would hand best_offer away from a buyable
-  // buy-here offer. Drop this together with the backend exemption once that flag reads the way the backend's
-  // eligibility gate does.
-  if (signal.value.purchase_route === 'internal_checkout') return false;
   if (signal.value.in_stock === true) return false;
   if (signal.value.in_stock === false) return true;
-  const a = typeof signal.value.availability === 'string' ? signal.value.availability.trim().toLowerCase() : '';
-  return UNAVAILABLE_AVAILABILITIES.has(a);
+  return isUnavailableAvailabilityText(signal.value.availability);
 }
 
 function offersToSignals(offers, opts = {}) {

@@ -1537,9 +1537,13 @@ async function fetchCanonicalChainRows(args = {}) {
   // an offer without a currency is not price-quotable. The branches differ
   // only in whether the sku columns ride along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
+  // The same market term as a VALUE, so the served-listing pick below can
+  // compare one listing's best offer against another's on the identical key.
+  let bestOfferMarketRankSql = '0';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
-    bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
+    bestOfferMarketRankSql = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END`;
+    bestOfferMarketOrder = `${bestOfferMarketRankSql},`;
   }
   // Match #2240: unknown availability shares the sellable ranking tier. An
   // explicit inStockOnly filter below is stricter: it requires positive stock
@@ -1603,29 +1607,29 @@ async function fetchCanonicalChainRows(args = {}) {
         )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
-      best_sku_offer.sku_key,
-      best_sku_offer.source_variant_id,
-      best_sku_offer.sku,
-      best_sku_offer.barcode,
-      best_sku_offer.sku_title,
-      best_sku_offer.visible_attributes,
-      best_sku_offer.visible_option_labels,
-      best_sku_offer.ingredient_ids,
-      best_sku_offer.sku_image_url,
-      best_sku_offer.offer_id,
-      best_sku_offer.offer_catalog_track,
-      best_sku_offer.offer_truth_tier,
-      best_sku_offer.offer_readiness_tier,
-      best_sku_offer.offer_mode,
-      best_sku_offer.availability,
-      best_sku_offer.inventory_quantity,
-      best_sku_offer.currency,
-      best_sku_offer.list_price,
-      best_sku_offer.merchant_effective_price,
-      best_sku_offer.estimated_best_price,
-      best_sku_offer.price_confidence,
-      best_sku_offer.offer_source_system,
-      best_sku_offer.offer_payload,
+      served.sku_key,
+      served.source_variant_id,
+      served.sku,
+      served.barcode,
+      served.sku_title,
+      served.visible_attributes,
+      served.visible_option_labels,
+      served.ingredient_ids,
+      served.sku_image_url,
+      served.offer_id,
+      served.offer_catalog_track,
+      served.offer_truth_tier,
+      served.offer_readiness_tier,
+      served.offer_mode,
+      served.availability,
+      served.inventory_quantity,
+      served.currency,
+      served.list_price,
+      served.merchant_effective_price,
+      served.estimated_best_price,
+      served.price_confidence,
+      served.offer_source_system,
+      served.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
       -- internal_merchant offer must NOT outrank an equally-relevant
       -- third-party offer for the same product — ownership is not a ranking
@@ -1647,11 +1651,11 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_truth_tier,
       NULL::text                 AS offer_readiness_tier,
       NULL::text                 AS offer_mode,
-      best_offer.availability    AS availability,
+      served.availability    AS availability,
       NULL::integer              AS inventory_quantity,
-      best_offer.currency        AS currency,
-      best_offer.list_price      AS list_price,
-      best_offer.merchant_effective_price AS merchant_effective_price,
+      served.currency        AS currency,
+      served.list_price      AS list_price,
+      served.merchant_effective_price AS merchant_effective_price,
       NULL::numeric              AS estimated_best_price,
       NULL::text                 AS price_confidence,
       NULL::text                 AS offer_source_system,
@@ -1719,9 +1723,15 @@ async function fetchCanonicalChainRows(args = {}) {
   // A product with no priced offer still returns its row with NULL offer
   // columns (LEFT JOIN LATERAL ... ON TRUE), emits no price, and is dropped by
   // the serving gate on its merits — the same 13 products either way.
-  const skuOfferJoinSql = joinSkuOffers
+  // The offer ranking key, projected as VALUES so one listing's best offer can
+  // be compared with another listing's on exactly the key that chose each.
+  const servedOfferRankColumns = `
+        ${bestOfferMarketRankSql} AS served_market_rank,
+        ${OFFER_AVAILABILITY_TIER_SQL} AS served_availability_tier,
+        COALESCE(o.merchant_effective_price, o.list_price) AS served_price,
+        o.offer_id        AS served_offer_id`;
+  const listingOfferSql = joinSkuOffers
     ? `
-    LEFT JOIN LATERAL (
       SELECT
         s.sku_key,
         s.source_variant_id,
@@ -1745,12 +1755,12 @@ async function fetchCanonicalChainRows(args = {}) {
         o.estimated_best_price,
         o.price_confidence,
         o.source_system   AS offer_source_system,
-        o.offer_payload
+        o.offer_payload,${servedOfferRankColumns}
       FROM catalog_skus s
       JOIN catalog_offers o
         ON o.sku_key = s.sku_key
        AND o.suppressed_at IS NULL
-      WHERE s.product_key = c.product_key
+      WHERE s.product_key = p.product_key
         AND s.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
@@ -1768,13 +1778,11 @@ async function fetchCanonicalChainRows(args = {}) {
                OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
           THEN 1 ELSE 0 END ASC,
         o.offer_id ASC
-      LIMIT 1
-    ) best_sku_offer ON TRUE`
+      LIMIT 1`
     : `
-    LEFT JOIN LATERAL (
-      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
+      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability,${servedOfferRankColumns}
       FROM catalog_offers o
-      WHERE o.product_key = c.product_key
+      WHERE o.product_key = p.product_key
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
@@ -1783,8 +1791,120 @@ async function fetchCanonicalChainRows(args = {}) {
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
+      LIMIT 1`;
+  // THE CARD SHOWS THE PRODUCT'S BEST OFFER, NOT ITS RECALLED LISTING'S.
+  //
+  // A product (content_key) can have several listings — one per retailer — and
+  // recall ranks LISTINGS: whichever listing's title matches the query best is
+  // the row that earns the position. The LATERAL above used to pick the best
+  // offer INSIDE that one listing only (s.product_key = c.product_key), so the
+  // #2242 stock tier never compared two sellers. Measured live 2026-09-22:
+  // "Purito Oat-in Calming Gel Cream" served ohlolly.com $21 out_of_stock as
+  // result #1 because ohlolly's title is the exact query (+100), while
+  // sokoglam.com's in-stock $19.50 listing of the SAME content_key ranked 144th
+  // of 160 on its shorter title. Nothing downstream collapsed them — two
+  // separately ranked rows, the first one unsellable.
+  //
+  // So the row's SELLER — every listing-derived column: merchant, listing key,
+  // source id, URL, signature, payload, and the whole sku/offer block — is taken
+  // from ONE listing, the one holding the best offer across all of the
+  // product's servable listings, on the SAME key #2242 orders offers by (market,
+  // then OFFER_AVAILABILITY_TIER_SQL, then price, then offer_id; a listing with
+  // no priced offer sorts last). Lexicographic min of per-listing mins is the
+  // global min, so this is the product's best offer. What the row EARNED stays
+  // with the recalled row: rank_score and the ordering keys, plus the product
+  // content the downstream ranker re-scores (title, description, brand, type,
+  // category, image, fashion fields) — swapping those would let the JS ranker
+  // move the card back to the recalled listing's position (the flagship case:
+  // sokoglam's own title is what ranked it 144th).
+  //
+  // NEVER SPLICED: the listing columns and the offer columns come from the same
+  // `served` row, and product_payload rides with them because the card builder
+  // falls back to it for URL, source id and availability.
+  //
+  // SIBLINGS PASS THE RECALLED ROW'S OWN PRODUCT-LEVEL FILTERS: the serving
+  // eligibility column, activeCatalogProductSourceWhere (test/demo merchants,
+  // inactive stores), the external-seed source-unavailable gate, the request's
+  // offer scope (market/currency/budget/inStockOnly EXISTS), merchant, market
+  // and brand clauses — the SAME SQL fragments, over the same aliases. Plus
+  // suppressed_at IS NULL and sync_status = 'live', which recall itself does not
+  // check today; a sibling is only ever held to more, never less. The query's
+  // relevance WHERE is deliberately NOT re-applied: the product already earned
+  // its place, and a sibling's own title wording is not a filter on the product.
+  //
+  // ONE LISTING PER CARD, NO DUPLICATES, NO LOST PRODUCTS. When several recalled
+  // rows share a content_key (the flagship: both ohlolly and sokoglam were
+  // recalled), they are numbered in served order (listing_slot) and slot k takes
+  // the k-th listing of the product in best-offer order. The pool always
+  // contains every recalled row of the key, so it is never shorter than the
+  // slots: row count, row order and the set of served listings for a fully
+  // recalled product are unchanged — only WHICH position shows WHICH seller
+  // moves. A key with one listing, or a NULL content_key, is its own pool of
+  // one: identical to before.
+  //
+  // COST is bounded by the already-cut candidate rows (LIMIT $3), never the
+  // recall set: one catalog_products lookup per row by product_key OR
+  // content_key (idx_catalog_products_content_key, pivota-backend mig 083), and
+  // the per-listing best-offer LATERAL for each pool member — ~1.02 per row on
+  // prod (8,514 of 8,681 servable content_keys have one listing).
+  const skuOfferJoinSql = `
+    JOIN LATERAL (
+      SELECT
+        COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
+        m.merchant_name         AS merchant_name,
+        m.primary_platform      AS merchant_primary_platform,
+        p.product_key,
+        p.platform,
+        p.source_product_id,
+        p.canonical_url,
+        p.catalog_track,
+        p.truth_tier,
+        p.readiness_tier,
+        p.pdp_scope,
+        p.source_system,
+        p.product_payload,
+        p.freshness_json,
+        p.pivota_signature_id,
+        p.pivota_canonical_url,
+        p.updated_at            AS product_updated_at,
+        listing_offer.*
+      FROM catalog_products p
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+      LEFT JOIN LATERAL (${listingOfferSql}
+      ) listing_offer ON TRUE
+      WHERE p.product_key = c.product_key
+         OR (
+           c.content_key IS NOT NULL
+           AND p.content_key = c.content_key
+           AND (
+             p.product_key IN (SELECT r.product_key FROM candidate_products r WHERE r.content_key = c.content_key)
+             OR (
+               p.suppressed_at IS NULL
+               AND coalesce(p.sync_status, 'live') = 'live'
+               AND EXISTS (
+                 SELECT 1 FROM index_pipeline_state served_ips
+                 WHERE served_ips.content_key = p.content_key
+                   AND served_ips.${eligibilityColumn} = TRUE
+               )
+               AND ${activeCatalogProductSourceWhere('p', 'm')}
+               ${externalSeedUnavailableWhere}
+               ${candidateOfferWhere}
+               ${merchantClause}
+               ${marketWhere}
+               ${brandWhere}
+             )
+           )
+         )
+      ORDER BY
+        (listing_offer.served_price IS NULL),
+        listing_offer.served_market_rank,
+        listing_offer.served_availability_tier,
+        listing_offer.served_price,
+        listing_offer.served_offer_id,
+        p.product_key
+      OFFSET c.listing_slot - 1
       LIMIT 1
-    ) best_offer ON TRUE`;
+    ) served ON TRUE`;
   // No sku/offer tie-break: there is exactly one row per product now, and the
   // `s.updated_at DESC, o.updated_at DESC` that used to be here is precisely
   // what sorted price-less rows first (DESC => NULLS FIRST).
@@ -1905,32 +2025,43 @@ async function fetchCanonicalChainRows(args = {}) {
       ${merchantClause}
       ${marketWhere}
       ${brandWhere}${innerOrderLimitSql}
-    )${setDiversityCteSql}
+    )${setDiversityCteSql},
+    candidate_slots AS (
+      -- listing_slot: which of the product's listings (in best-offer order)
+      -- this row shows. Numbered in served order; a NULL content_key is a
+      -- product of one. See skuOfferJoinSql.
+      SELECT
+        c.*,
+        CASE WHEN c.content_key IS NULL THEN 1
+             ELSE row_number() OVER (PARTITION BY c.content_key ORDER BY c.rank_score DESC, ${outerTiebreakSql})
+        END AS listing_slot
+      FROM candidate_products c
+    )
     SELECT
-      c.merchant_id,
-      c.merchant_name,
-      c.merchant_primary_platform,
-      c.product_key,
-      c.platform,
-      c.source_product_id,
+      served.merchant_id,
+      served.merchant_name,
+      served.merchant_primary_platform,
+      served.product_key,
+      served.platform,
+      served.source_product_id,
       c.product_title,
       c.product_description,
       c.brand,
       c.product_type,
       c.category,
       c.category_path,
-      c.canonical_url,
+      served.canonical_url,
       c.product_image_url,
-      c.catalog_track,
-      c.truth_tier,
-      c.readiness_tier,
-      c.pdp_scope,
-      c.source_system,
-      c.product_payload,
-      c.freshness_json,
+      served.catalog_track,
+      served.truth_tier,
+      served.readiness_tier,
+      served.pdp_scope,
+      served.source_system,
+      served.product_payload,
+      served.freshness_json,
       c.content_key,
-      c.pivota_signature_id,
-      c.pivota_canonical_url,
+      served.pivota_signature_id,
+      served.pivota_canonical_url,
       c.material,
       c.material_source,
       c.material_confidence,
@@ -1940,9 +2071,14 @@ async function fetchCanonicalChainRows(args = {}) {
       c.size_guide,
       c.size_guide_source,
       c.size_guide_confidence,
-      c.product_updated_at,${nameEvidenceOuterColumnSql}
+      served.product_updated_at,${nameEvidenceOuterColumnSql}
+      -- The listing recall ranked, when the served listing is a sibling. Lets
+      -- lane merges dedupe the recalled listing's other appearances (the seed
+      -- lane keys on it) so a swap never adds a second card for the product.
+      c.product_key             AS recalled_product_key,
+      c.source_product_id       AS recalled_source_product_id,
       ${skuOfferColumns}
-    FROM candidate_products c
+    FROM candidate_slots c
     ${skuOfferJoinSql}
     ORDER BY rank_score DESC, ${outerTiebreakSql}${skuOfferOrderSql}
     LIMIT $4
