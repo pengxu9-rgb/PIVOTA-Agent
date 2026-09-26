@@ -226,6 +226,7 @@ const {
   resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
+const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
 const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
@@ -46799,23 +46800,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      // A pivot beauty contract request takes this call with no product_only / strict conditions:
-      // that is the gate of the mainline_direct call this replaced, so its requests land here
-      // unchanged. Every other request keeps the conditions it always had.
-      const creatorBeautyMainlineDirectEligible =
-        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        !canonicalSigEntityMode &&
-        queryText.length > 0 &&
-        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
-        !hasMerchantScope &&
-        (
-          isPivotBeautyContractInvokeRequest({ operation, req }) ||
-          (
-            !findProductsMultiProductOnly &&
-            (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
-            (shoppingCanonicalMainlineDirectEligible || routeSearchQualityContractApplied)
-          )
-        );
+      const creatorBeautyMainlineDirectEligible = isBeautyDirectAfterContextEligible({
+        directRecallEnabled: PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+        canonicalSigEntityMode,
+        hasQueryText: queryText.length > 0,
+        beautyLike: beautyMainlineIntentForDirect.beautyLike,
+        searchQualityContractApplied: routeSearchQualityContractApplied,
+        hasMerchantScope,
+        pivotBeautyContract: () => isPivotBeautyContractInvokeRequest({ operation, req }),
+        productOnly: findProductsMultiProductOnly,
+        strictCommerce: strictCommerceFindProductsMulti,
+        shoppingCanonicalMainlineEligible: shoppingCanonicalMainlineDirectEligible,
+      });
       if (creatorBeautyMainlineDirectEligible) {
         try {
           const creatorDirectStartedAt = Date.now();
@@ -48784,8 +48780,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        !primaryUnderfilledPublicBeautyUnified &&
 	        !primaryExactIntentUnderfilledPublicBeauty &&
 	        primaryUsableCount > 0;
-      const secondaryFallbackSkipReason = null;
-      const skipSecondaryFallback = false;
       addFpmGateTrace({
         gateId: 'secondary_fallback_skip_check',
         applied: true,
@@ -48795,10 +48789,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryClass: traceQueryClass,
       });
       let secondarySupplementMeta = null;
-      let semanticRetryApplied = false;
-      let semanticRetryQuery = null;
-      let semanticRetryHits = 0;
-      let secondaryFallbackMeta = null;
 
       if (
         operation === 'find_products_multi' &&
@@ -49038,11 +49028,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          if (primaryIrrelevant) {
 	            upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: skipSecondaryFallback
-                ? primaryMonoculture
-                  ? 'primary_monoculture_skip_secondary'
-                  : 'primary_irrelevant_skip_secondary'
-                : primaryMonoculture
+              reason: primaryMonoculture
                 ? 'primary_monoculture_no_fallback'
                 : 'primary_irrelevant_no_fallback',
               upstreamStatus: response.status,
@@ -49050,94 +49036,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: semanticRetryApplied
-                ? 'agent_products_semantic_retry_exhausted'
-                : 'agent_products_error_fallback',
-              semanticRetryApplied,
-              semanticRetryQuery,
-              semanticRetryHits,
+              querySource: 'agent_products_error_fallback',
 	              forceClarify: true,
 	            });
           } else if (primaryLowQualityNonempty) {
-            const lowQualityReason = secondaryFallbackMeta?.semantic_retry_applied
-              ? 'low_quality_semantic_retry_exhausted'
-              : skipSecondaryFallback
-              ? 'primary_low_quality_skip_secondary'
-              : 'primary_low_quality_no_fallback';
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: lowQualityReason,
+              reason: 'primary_low_quality_no_fallback',
               upstreamStatus: response.status,
               route: 'invoke_primary_low_quality',
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: secondaryFallbackMeta?.semantic_retry_applied
-                ? 'agent_products_semantic_retry_exhausted'
-                : 'agent_products_error_fallback',
-              semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
-              semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
-              semanticRetryHits: Math.max(
-                0,
-                Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-              ),
+              querySource: 'agent_products_error_fallback',
               forceClarify: true,
             });
 	          } else {
-            const fallbackReason = skipSecondaryFallback
-              ? 'resolver_miss_skip_secondary'
-              : secondaryFallbackMeta?.semantic_retry_applied
-              ? 'semantic_retry_exhausted'
-              : 'fallback_not_better';
-            const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-            const shouldForceClarifyAfterRetry =
-              SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-              upstreamProducts.length === 0 &&
-              !skipSecondaryFallback &&
-              Boolean(secondaryFallbackMeta?.semantic_retry_applied);
-            if (shouldForceClarifyAfterRetry) {
-              upstreamData = buildProxySearchSoftFallbackResponse({
-                queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-                reason: fallbackReason,
-                upstreamStatus: response.status,
-                route: 'invoke_fallback_exhausted',
-                intent: effectiveIntent,
-                queryClass: traceQueryClass,
-                queryText,
-                querySource:
-                  fallbackReason === 'semantic_retry_exhausted'
-                    ? 'agent_products_semantic_retry_exhausted'
-                    : 'agent_products_error_fallback',
-                semanticRetryApplied: Boolean(
-                  secondaryFallbackMeta?.semantic_retry_applied,
-                ),
-                semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
-                semanticRetryHits: Math.max(
-                  0,
-                  Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-                ),
-                forceClarify: true,
-              });
-            } else {
-              upstreamData = withProxySearchFallbackMetadata(upstreamData, {
-                applied: false,
-                reason: fallbackReason,
-                ...(secondaryFallbackMeta?.semantic_retry_applied ? { query_variant: 'semantic_retry' } : {}),
-              });
-            }
+            upstreamData = withProxySearchFallbackMetadata(upstreamData, {
+              applied: false,
+              reason: 'fallback_not_better',
+            });
             if (upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)) {
               const upstreamMeta =
                 upstreamData.metadata && typeof upstreamData.metadata === 'object'
                   ? { ...upstreamData.metadata }
                   : {};
-              upstreamMeta.semantic_retry_applied = Boolean(
-                secondaryFallbackMeta?.semantic_retry_applied,
-              );
-              upstreamMeta.semantic_retry_query = secondaryFallbackMeta?.semantic_retry_query || null;
-              upstreamMeta.semantic_retry_hits = Math.max(
-                0,
-                Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-              );
+              upstreamMeta.semantic_retry_applied = false;
+              upstreamMeta.semantic_retry_query = null;
+              upstreamMeta.semantic_retry_hits = 0;
               upstreamData = {
                 ...upstreamData,
                 metadata: upstreamMeta,
@@ -49165,30 +49091,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? secondarySupplementMeta?.reason || null
             : !shouldFallback
             ? 'not_needed'
-            : skipSecondaryFallback
-            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
             : 'not_attempted';
-          const retryAttemptCount = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-          );
-          const fallbackAttemptCount = retryAttemptCount;
-          const selectedFallbackAttempt = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
-          );
-          const semanticRetryActualAttempted = Boolean(
-            secondaryFallbackMeta?.semantic_retry_actual_attempted,
-          );
+          // The post-primary fallbacks that set these were deleted (#2280); kept as fields.
+          const retryAttemptCount = 0;
+          const fallbackAttemptCount = 0;
+          const selectedFallbackAttempt = 0;
+          const semanticRetryActualAttempted = false;
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
 	            search_stage_b: secondarySupplementMeta,
-	            semantic_retry_applied: Boolean(semanticRetryApplied),
+	            semantic_retry_applied: false,
 	            semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	            semantic_retry_query: null,
+	            semantic_retry_hits: 0,
 		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -49215,10 +49132,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-	                semantic_retry_applied: Boolean(semanticRetryApplied),
+	                semantic_retry_applied: false,
                   semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_query: null,
+	                semantic_retry_hits: 0,
                 primary_quality_gate_passed: primaryQualityGatePassed,
 	                primary_quality_score:
 	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -49254,31 +49171,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
             : routeHealthProducts.length;
           const supplementAttempted = Boolean(shouldFallback);
-          const supplementSkipReason = !shouldFallback
-            ? 'not_needed'
-            : skipSecondaryFallback
-            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-            : 'not_attempted';
-          const retryAttemptCount = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-          );
-          const fallbackAttemptCount = retryAttemptCount;
-          const selectedFallbackAttempt = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
-          );
-          const semanticRetryActualAttempted = Boolean(
-            secondaryFallbackMeta?.semantic_retry_actual_attempted,
-          );
+          const supplementSkipReason = !shouldFallback ? 'not_needed' : 'not_attempted';
+          // The post-primary fallbacks that set these were deleted (#2280); kept as fields.
+          const retryAttemptCount = 0;
+          const fallbackAttemptCount = 0;
+          const selectedFallbackAttempt = 0;
+          const semanticRetryActualAttempted = false;
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-		            semantic_retry_applied: Boolean(semanticRetryApplied),
+		            semantic_retry_applied: false,
                 semantic_retry_actual_attempted: semanticRetryActualAttempted,
-		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+		            semantic_retry_query: null,
+	            semantic_retry_hits: 0,
 		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -49305,10 +49211,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-	                semantic_retry_applied: Boolean(semanticRetryApplied),
+	                semantic_retry_applied: false,
                   semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_query: null,
+	                semantic_retry_hits: 0,
                 primary_quality_gate_passed: primaryQualityGatePassed,
 	                primary_quality_score:
 	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -49347,10 +49253,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ? upstreamData.metadata
               : {}),
             guard_source_normalized: normalizedGuardSource || null,
-            secondary_fallback_skipped: skipSecondaryFallback,
-            secondary_fallback_skip_reason: skipSecondaryFallback
-              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-              : null,
+            secondary_fallback_skipped: false,
+            secondary_fallback_skip_reason: null,
             latency_guard_applied: Boolean(fpmLatencyGuardApplied),
             skipped_gates_due_to_budget: Array.from(
               new Set(

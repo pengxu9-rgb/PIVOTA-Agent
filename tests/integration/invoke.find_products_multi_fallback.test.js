@@ -26,14 +26,6 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH: process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH,
       FIND_PRODUCTS_BUYER_MARKET: process.env.FIND_PRODUCTS_BUYER_MARKET,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
-      PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
-        process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
-      PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED:
-        process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
-      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
-        process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
-      PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
       FIND_PRODUCTS_MULTI_EXPANSION_MODE: process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
       FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE:
         process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
@@ -47,15 +39,11 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS,
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS:
         process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
-      FPM_PARALLEL_RESOLVER_PRIMARY: process.env.FPM_PARALLEL_RESOLVER_PRIMARY,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
-    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'true';
-    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
-    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
     process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
@@ -81,8 +69,6 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     const queryText = 'ipsa';
     const productId = '9886500127048';
     const merchantId = 'merch_efbc46b4619cfbdf';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
 
     const resolveProductRef = jest.fn().mockResolvedValue({
       resolved: true,
@@ -1150,8 +1136,6 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
 
   test('shopping_agent authoritative rail does not enter resolver-first fallback', async () => {
     const queryText = 'ipsa';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
 
     const resolveProductRef = jest.fn().mockResolvedValue({
       resolved: true,
@@ -1307,8 +1291,6 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
 
   test('creator_agent beauty mainline primary exception skips resolver and invoke fallback owner switches', async () => {
     const queryText = 'ipsa';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
 
     const resolveProductRef = jest.fn().mockResolvedValue({
       resolved: true,

@@ -103,9 +103,6 @@ describe('product search proxy route — mainline contract', () => {
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
     process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
-    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
   });
 
   afterEach(() => {

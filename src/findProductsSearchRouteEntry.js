@@ -184,11 +184,6 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       String(searchRequestContract?.primary_lane || '').trim() === 'catalog_child_recall';
     const forceStrictShoppingMainPath =
       String(searchRequestContract?.primary_lane || '').trim() === 'shop_invoke_strict';
-    const forceDirectInvokeMainPath =
-      localMainlineChild === true ||
-      forceCatalogChildRecallMainPath ||
-      forceStrictShoppingMainPath ||
-      forceBeautyMainlineInvokePath;
 
     if (forceStrictShoppingMainPath) {
       payload.search = {
@@ -345,7 +340,6 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       invalid: false,
       query: nextQuery,
       payload,
-      forceDirectInvokeMainPath,
     };
   }
 
