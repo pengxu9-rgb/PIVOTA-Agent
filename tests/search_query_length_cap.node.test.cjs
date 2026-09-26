@@ -1,6 +1,6 @@
 'use strict';
 
-// Which query text the invoke route measures before rejecting with QUERY_TOO_LONG.
+// Which text the invoke route rejects (the query) and which it truncates (history).
 // The route wiring and the 400 body are pinned in tests/integration/invoke.search_query_length_cap.test.js.
 
 const test = require('node:test');
@@ -9,6 +9,7 @@ const {
   DEFAULT_MAX_CHARS,
   findOverlongSearchQuery,
   resolveSearchQueryMaxChars,
+  truncateSearchHistory,
 } = require('../src/findProductsMulti/queryLengthCap');
 
 const over = 'a'.repeat(DEFAULT_MAX_CHARS + 1);
@@ -33,35 +34,41 @@ test('whitespace padding does not count', () => {
   assert.equal(check({ search: { query: `  ${atCap}  ` } }), null);
 });
 
-test('every user message is measured, since each one is parsed as a query', () => {
+test('the latest user message is the query when no real query field is sent, and is rejected', () => {
   const messages = [{ role: 'user', content: over }];
   assert.equal(check({ messages })?.field, 'messages[].content');
   assert.equal(check({ user: { conversation_messages: messages } })?.field, 'messages[].content');
-  // Not only the latest turn, and not only when it becomes the query: understandShoppingQuery re-parses
-  // prior user turns for refinements, and extractIntentRuleBased classifies every user message.
-  assert.equal(check({ search: { query: 'moisturizer' }, messages })?.field, 'messages[].content');
-  assert.equal(
-    check({ messages: [{ role: 'user', content: over }, { role: 'user', content: 'serum' }] })?.field,
-    'messages[].content',
-  );
+  // A query that does not look real (policy.js looksLikeRealQuery) yields to the message there too.
+  assert.equal(check({ search: { query: '?' }, messages })?.field, 'messages[].content');
+  // find_products does not build a conversation context.
+  assert.equal(check({ messages }, 'find_products'), null);
 });
 
-test('assistant turns are not measured; nothing parses them as a query', () => {
-  assert.equal(check({ search: { query: 'serum' }, messages: [{ role: 'assistant', content: over }] }), null);
+test('history is never rejected: a long earlier turn or recent query beside a real query passes', () => {
+  assert.equal(check({ search: { query: 'moisturizer' }, messages: [{ role: 'user', content: over }] }), null);
+  assert.equal(check({ messages: [{ role: 'user', content: over }, { role: 'user', content: 'serum' }] }), null);
+  assert.equal(check({ search: { query: 'previous search' }, user: { session_recent_queries: [over] } }), null);
 });
 
-test('recent queries are measured: a continuation ("previous search") promotes one to the query', () => {
-  assert.equal(
-    check({ search: { query: 'previous search' }, user: { session_recent_queries: ['serum', over] } })?.field,
-    'user.session_recent_queries[]',
-  );
-  assert.equal(check({ search: { query: 'serum' }, user: { recent_queries: [over] } })?.field, 'user.recent_queries[]');
-  assert.equal(check({ search: { query: 'serum' }, user: { recent_queries: [atCap, 'toner'] } }), null);
-});
-
-test('find_products does not build a conversation context, so its messages are not measured', () => {
-  assert.equal(check({ messages: [{ role: 'user', content: over }] }, 'find_products'), null);
-  assert.equal(check({ user: { recent_queries: [over] } }, 'find_products')?.field, 'user.recent_queries[]');
+test('history over the limit is cut to it in place; the query and assistant turns are untouched', () => {
+  const payload = {
+    search: { query: 'previous search' },
+    user: { session_recent_queries: ['serum', over], recent_queries: [over] },
+    messages: [
+      { role: 'user', content: over },
+      { role: 'assistant', content: over },
+      { role: 'user', content: 'moisturizer' },
+    ],
+  };
+  assert.equal(truncateSearchHistory({ operation: 'find_products_multi', payload }), 3);
+  assert.deepEqual(payload.user.session_recent_queries, ['serum', atCap]);
+  assert.deepEqual(payload.user.recent_queries, [atCap]);
+  assert.equal(payload.messages[0].content, atCap);
+  assert.equal(payload.messages[1].content, over);
+  assert.equal(payload.messages[2].content, 'moisturizer');
+  assert.equal(payload.search.query, 'previous search');
+  assert.equal(truncateSearchHistory({ operation: 'find_products_multi', payload }), 0);
+  assert.equal(truncateSearchHistory({ operation: 'get_pdp_v2', payload: { messages: [{ role: 'user', content: over }] } }), 0);
 });
 
 test('other operations are never checked', () => {
@@ -78,7 +85,8 @@ test('the cap can be raised by env, never below 50', () => {
 });
 
 test('malformed payloads never throw', () => {
-  for (const payload of [null, undefined, 'x', [], { search: 'x' }, { search: { query: 7 } }, { messages: 'x' }, { messages: [null, 5] }]) {
+  for (const payload of [null, undefined, 'x', [], { search: 'x' }, { search: { query: 7 } }, { messages: 'x' }, { messages: [null, 5] }, { user: { recent_queries: 'x' } }]) {
     assert.doesNotThrow(() => check(payload), JSON.stringify(payload));
+    assert.doesNotThrow(() => truncateSearchHistory({ operation: 'find_products_multi', payload }), JSON.stringify(payload));
   }
 });

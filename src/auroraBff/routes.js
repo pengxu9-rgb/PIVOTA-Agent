@@ -2,6 +2,7 @@ const { recommendationIdentityConflict, sameRecommendationProduct } = require('.
 const vertexGemini = require('../llm/vertexGemini');
 const { servedMarkets } = require('../services/servedMarkets');
 const axios = require('axios');
+const { resolveSearchQueryMaxChars } = require('../findProductsMulti/queryLengthLimit');
 // SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
 // BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
 // attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
@@ -19805,7 +19806,8 @@ async function fetchAuroraBeautySharedTruthForChat({
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: userGoal,
+            // The raw chat message: cut to the invoke route's query limit rather than refused there.
+            query: String(userGoal || '').trim().slice(0, resolveSearchQueryMaxChars()),
             limit: 8,
             in_stock_only: true,
             catalog_surface: 'beauty',

@@ -8,6 +8,7 @@
 // routes.js which is coupled to the request).
 
 const axios = require('axios');
+const { resolveSearchQueryMaxChars } = require('../../findProductsMulti/queryLengthLimit');
 
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || '')
   .trim()
@@ -56,7 +57,9 @@ async function findProductsMulti({
   deps = {},
 } = {}) {
   const http = deps.axios || axios;
-  const q = String(query || '').trim();
+  // An internal hop: a chat message over the invoke route's query limit is searched by its start
+  // rather than refused with 400 QUERY_TOO_LONG.
+  const q = String(query || '').trim().slice(0, resolveSearchQueryMaxChars());
   if (!q) return { ok: false, products: [], metadata: {}, reason: 'empty_query' };
   if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], metadata: {}, reason: 'no_backend_base_url' };
 

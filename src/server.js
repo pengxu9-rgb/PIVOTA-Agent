@@ -227,7 +227,7 @@ const {
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
-const { findOverlongSearchQuery } = require('./findProductsMulti/queryLengthCap');
+const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
@@ -40338,6 +40338,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         max_chars: overlongQuery.max_chars,
         length: overlongQuery.length,
       });
+    }
+    // Over-long history (recent queries, earlier user turns) is parsed too but is not the query: it is
+    // cut to the limit so the request still searches. Both copies are cut, since downstream reads both.
+    const truncatedHistoryEntries =
+      truncateSearchHistory({ operation, payload }) +
+      (req?.body?.payload !== payload ? truncateSearchHistory({ operation, payload: req?.body?.payload }) : 0);
+    if (truncatedHistoryEntries > 0) {
+      logger.info(
+        { gateway_request_id: gatewayRequestId, operation, truncated_history_entries: truncatedHistoryEntries },
+        'search history truncated to the query length limit',
+      );
     }
     const requestLevelContext =
       req?.body?.context && typeof req.body.context === 'object' && !Array.isArray(req.body.context)
