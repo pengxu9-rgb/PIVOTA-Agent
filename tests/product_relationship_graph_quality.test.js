@@ -13,7 +13,7 @@ const {
   buildNicheSpecialistEdge,
   capCandidateFanIn,
   DEFAULT_MAX_ANCHORS_PER_CANDIDATE,
-  __internal: { leafCategoryCompatibility, inferRelationship },
+  __internal: { leafCategoryCompatibility, snapshotLeafProfile, inferRelationship },
 } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const {
   normalizeProductCandidateSnapshot,
@@ -446,6 +446,9 @@ describe('leaf category agreement for dupe / competitive_alternative', () => {
     ['lip tint vs lip balm', { category: 'lips', name: 'MCoBeauty Dream Lip Tint Hydrating Gel' }, { category: 'lips', name: 'Missnella Sugar Plum Lip Balm' }, 'leaf_form_mismatch:lipstick_vs_balm'],
     ['sunscreen gel vs face wash mislabelled sunscreen', { category: 'sunscreen', name: 'Ayura Water Feel UV Gel Alpha Prism' }, { category: 'sunscreen', name: 'Upcircle Powder to Foam Face Wash with Willow Bark' }, 'leaf_form_mismatch:sunscreen_vs_cleanser'],
     ['loose powder vs powder wash', { category: 'powder', name: 'Est Long Lasting Loose Powder' }, { category: 'Cleanser', name: 'TIRTIR Hydro Boost Enzyme Powder Wash' }, 'leaf_form_mismatch:powder_vs_cleanser'],
+    ['rouge (a lipstick) vs lip balm', { category: 'Rouge', name: 'Guerlain Rouge G' }, { category: 'lips', name: 'Missnella Sugar Plum Lip Balm' }, 'leaf_form_mismatch:lipstick_vs_balm'],
+    ['rouge (a lip product) vs eye cream', { category: 'Rouge', name: 'Guerlain Rouge G' }, { category: 'Eye Cream', name: 'BYOMA Barrier Repair Eye Cream' }, 'leaf_area_mismatch:lip_vs_eye'],
+    ['sun cream (a sunscreen) vs foaming cleanser', { category: 'sun care', name: 'Nivea Sun Cream SPF50' }, { category: 'cleanser', name: 'Ayura Foaming Wash' }, 'leaf_form_mismatch:sunscreen_vs_cleanser'],
   ];
   test.each(rejects)('rejects: %s', (_label, a, c, reason) => {
     expect(leafCategoryCompatibility(a, c)).toEqual({ compatible: false, reason, evaluated: true });
@@ -474,6 +477,23 @@ describe('leaf category agreement for dupe / competitive_alternative', () => {
   ];
   test.each(accepts)('accepts: %s', (_label, a, c) => {
     expect(leafCategoryCompatibility(a, c).compatible).toBe(true);
+  });
+
+  test('synonym groups canonicalise the head form and the area', () => {
+    const forms = (snapshot) => [...snapshotLeafProfile(snapshot).forms].sort();
+    const areas = (snapshot) => [...snapshotLeafProfile(snapshot).areas].sort();
+    expect(forms({ name: 'Nivea Sun Cream SPF50' })).toEqual(['sunscreen']);
+    expect(forms({ name: 'Ayura Water Feel UV Gel' })).toEqual(['sunscreen']);
+    expect(forms({ name: 'Erborian BB Cream' })).toEqual(['foundation']);
+    expect(forms({ name: 'Laura Mercier Tinted Moisturizer' })).toEqual(['foundation']);
+    expect(forms({ name: 'Guerlain Rouge G' })).toEqual(['lipstick']);
+    expect(areas({ name: 'Guerlain Rouge G' })).toEqual(['lip']);
+    expect(forms({ name: 'Hada Labo Gokujyun Lotion' })).toEqual(['lotion']);
+    expect(forms({ name: 'Benefit Cheek Tint' })).toEqual(['blush']);
+    expect(forms({ name: 'Upcircle Lip Balm with Hemp Seed Oil + Shea Butter' })).toEqual(['balm']);
+    expect(forms({ name: 'First Aid Beauty Ultra Gentle Cream-to-Foam Face Cleanser' })).toEqual(['cleanser']);
+    expect(forms({ name: '肌ラボ 極潤 ヒアルロン液' })).toEqual([]);
+    expect(areas({ name: 'Fenty Shampoo' })).toEqual(['hair']);
   });
 
   test('description copy never feeds the rule: it is what leaked area and form words before', () => {
