@@ -19364,6 +19364,25 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   };
 }
 
+const BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX = 'beauty/skincare/cleanse/';
+
+// True when a texture word ("foam") must not decide the product class: the query
+// names tanning (the self_tanner rule does not claim "bronzing foam", so the words
+// are checked here too), or it resolves a category path that is neither the
+// cleanse leaf nor one of its ancestors (e.g. "beauty/" for "hair foam" does not
+// contradict cleanser, "beauty/skincare/sun/" for "foam sunscreen" does).
+function beautyQueryNamesNonCleanserFamily(raw = '') {
+  if (/\b(self[-\s]?tan\w*|sunless|tanning|tanners?|bronz\w*)\b/i.test(raw) || /美黑|セルフタンニング/.test(raw)) {
+    return true;
+  }
+  const prefix = String(resolveBeautyCategoryPathPrefixForQuery(raw) || '').toLowerCase();
+  if (!prefix) return false;
+  return !(
+    BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX.startsWith(prefix) ||
+    prefix.startsWith(BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX)
+  );
+}
+
 function inferBeautyMainlineIntent(queryText = '') {
   const raw = String(queryText || '');
   const normalized = normalizeSearchTextForMatch(raw);
@@ -19377,10 +19396,15 @@ function inferBeautyMainlineIntent(queryText = '') {
   ) {
     families.add('sunscreen');
   }
-  if (
-    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|洗面|foam|gel\s*cleanser)\b/i.test(raw) ||
-    /洁面|潔面|洗面奶|洗面乳|洗脸|洗臉/.test(raw)
-  ) {
+  const cleanserNamed =
+    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|洗面|gel\s*cleanser)\b/i.test(raw) ||
+    /洁面|潔面|洗面奶|洗面乳|洗脸|洗臉/.test(raw);
+  // Bare "foam" is a texture, not a product class. Measured 2026-09-26 on
+  // gateway-00387-yer: "MineTan self tan foam" resolved beauty/body/tanning/
+  // (16 serving-eligible rows) and then this rule gated it to cleanser, so the
+  // ranker rejected all 16. The texture only implies cleanser when nothing else
+  // in the query names a different family.
+  if (cleanserNamed || (/\bfoam\b/i.test(raw) && !beautyQueryNamesNonCleanserFamily(raw))) {
     families.add('cleanser');
   }
   if (
@@ -50990,6 +51014,7 @@ module.exports._debug = {
   resolveSearchDedupePerTitleLimit,
   resolveBeautyBrandBrowseQuery,
   inferBeautyMainlineIntent,
+  buildBeautyMainlineRetrievalQueries,
   buildBeautyExternalSeedCategoryTerms,
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
