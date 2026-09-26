@@ -46656,8 +46656,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
       // request this spot used to (pivot contract, beauty-like or SQC, no merchant scope) with the
       // same call and the same response; in the 30 days to 2026-09-25 this spot answered 2 of
-      // 3,791 requests. Only a creator-agent-ui request can see a difference: its cache search
-      // (which returns only with CREATOR_CACHE_SHORT_CIRCUIT_ENABLED, off) now runs first.
+      // 3,791 requests. The response is the same; the work before it is not: those requests now
+      // also compute the creator-lane gates (a brand detection) and, when not a shopping source,
+      // start the canonical-chain recall below and discard it. Creator sources additionally run
+      // the creator cache search (returns only with CREATOR_CACHE_SHORT_CIRCUIT_ENABLED, off) and
+      // the human-apparel lane first.
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
 
