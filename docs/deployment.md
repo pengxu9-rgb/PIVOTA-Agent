@@ -9,9 +9,22 @@ This guide covers deploying the Pivota Agent Gateway to production environments,
 
 ## Production Deploy Policy (Source of Truth)
 
+> [!WARNING]
+> **SUPERSEDED 2026-08-25 — this describes the Railway era and is not how production ships.**
+> Since the 2026-08-22 cutover the production gateway is **GCP Cloud Run behind
+> `gateway.pivota.cc`**, built with `infra/gcp/cloudbuild.gateway.yaml` and deployed by
+> `infra/gcp/deploy_gateway.sh prod <sha>` (both in the `pivota-backend` repo). It does **not**
+> deploy on merge, by design.
+>
+> `pivota-agent-production.up.railway.app` is a retired standby. Its GitHub auto-deploy trigger was
+> removed on 2026-08-25, and `production-deploy-promote.yml` no longer runs on push — it only ever
+> verified the Railway host, so on merge it reported success the Cloud Run gateway had not earned.
+> Whether production runs `main` is answered by `.github/workflows/gateway-prod-drift.yml`.
+
 For this repo, production deploys must use **GitHub push to `main` + Railway auto-deploy or production deploy webhook**.
 
-- Allowed: merge to `main`, then wait for Railway production deployment triggered by GitHub integration or `.github/workflows/production-deploy-promote.yml`.
+- Historical (Railway era): merge to `main`, then wait for Railway auto-deploy. Neither that
+  trigger nor the `push` trigger on `production-deploy-promote.yml` exists any more.
 - Not allowed for normal flow: `railway up` to production.
 
 Reason: manual CLI deployment is easy to overwrite by later auto deploy and creates commit drift.
@@ -45,6 +58,53 @@ PIVOTA_API_KEY=<your-api-key>          # From Pivota console
 
 # OpenAI Configuration (for /ui/chat)
 OPENAI_API_KEY=<your-openai-key>      # From platform.openai.com
+
+# Internal shopping-agent console access (/ and /ui/chat)
+# REQUIRED. /ui/chat runs an LLM agent loop, so it is fail-closed: unset, the route 404s on every
+# host and the console goes dark. It 404s on the PUBLIC_READ_MCP_HOSTS names regardless of this key.
+PIVOTA_UI_CHAT_INTERNAL_KEY=<random-32-byte-hex>   # openssl rand -hex 32; send as X-Internal-Key
+
+# Aurora BFF host denylist (/v1, /v2, /metrics)
+# The Aurora surface is gated only by a client-invented X-Aurora-UID and 9 of its routes reach an
+# LLM, so it must not be served on branded public names. PUBLIC_READ_MCP_HOSTS is ALWAYS refused and
+# needs no entry here. Optional, default empty: list any OTHER hostname to refuse.
+# NOTE gateway.pivota.cc is intentionally absent — the R1 migration is pointing consumers AT it
+# (pivota-agent-ui #308: /v1/analysis/skin, /v1/photos/upload; pivota-backend-gcp:
+# /v1/recommendations/*). Add it once those are reconciled.
+AURORA_SURFACE_DENIED_HOSTS=
+
+# Aurora BFF surface caller auth (/v1, /v2) — Phase 1.
+# MODE: `observe` (default) logs what enforcement WOULD do and allows everything through;
+# `enforce` requires X-Internal-Key. Anything that is not exactly "enforce" means observe, so a typo
+# can never take the consumer app down. Do NOT set enforce until every consumer sends the header AND
+# a full traffic day of logs shows would_refuse=0 — photo-analysis is low-volume, so a short window
+# reports "no consumer" for one that is live.
+AURORA_SURFACE_AUTH_MODE=observe
+AURORA_SURFACE_INTERNAL_KEY=
+# ^ Before flipping to enforce, TWO criteria must hold in the aurora_surface_auth logs:
+#     (a) would_refuse=false for all real traffic over a full traffic day, AND
+#     (b) zero lines with caller_class=browser or caller_class=browser_app.
+#   (b) matters because CORS reflects Access-Control-Request-Headers, so X-Internal-Key is reachable
+#   from a browser. A consumer calling /v1 straight from the browser cannot be fixed by sending the
+#   key — that ships a shared secret in a JS bundle. It needs a server-side proxy instead.
+# ^ Set this AT THE SAME TIME as deploying observe mode, not at the flip. With no key configured,
+# would_refuse is pinned TRUE for every request, so the would_refuse=0 gate is unreachable and a
+# correct key cannot be told from a wrong one. (has_key and key_configured are on the same line and
+# do distinguish "consumer hasn't shipped" from "we forgot the key" — that was never the problem.)
+#
+# CONSUMERS THAT MUST SEND THE HEADER BEFORE THE FLIP — this repo's own CI is on the list:
+#   .github/workflows/chat-followup-canary.yml   hourly cron, hits /v1/chat and /metrics
+#   .github/workflows/aurora-bff-release-gate.yml  smoke_aurora_bff_runtime.sh and siblings
+#   pivota-agent-ui, pivota-backend, pivota-backend-gcp, Aurora-Beauty-Decision-System,
+#   pivota-aurora-chatbox (needs a Vercel middleware — a vercel.json rewrite cannot add a header)
+#
+# MEASUREMENT NEEDS A DURABLE LOG SINK. `railway logs` returns only the live deployment and roughly
+# minutes of history (measured: asking for 5,000 lines returned 248 spanning 9 minutes; --since 3d
+# returned 0). A full traffic day is not obtainable from the CLI, so a drain or dashboard export is a
+# PREREQUISITE for step 3, not a nicety.
+#
+# AFTER THE FLIP, demote or remove this log line — would_refuse=false lines have no ongoing value and
+# cost one info line per Aurora request forever.
 
 # Gateway Configuration
 PIVOTA_GATEWAY_URL=<your-gateway-url>  # e.g., https://your-domain.com/agent/shop/v1/invoke
@@ -141,33 +201,12 @@ Post-enable verification:
 - `skinmask_enabled_total` should increase.
 - `photo_modules_v1.payload.module_overlay_debug.skinmask_source` should show `onnx` or `diagnosis_bbox`, not long-term `none`.
 
-### Look Replicator (optional)
+### Look Replicator (removed)
 
-If you are deploying this gateway to support the `pengxu9-rgb/look-replicate-share` app (large image uploads + job polling), also set:
-
-```bash
-# Require callers to send: Authorization: Bearer <token>
-LOOK_REPLICATOR_API_KEY=<strong-random-token>
-
-# Pivota backend (where orders/quotes/ACP live)
-# This service keeps the Agent API key server-side and proxies UI requests to pivota-backend.
-PIVOTA_BACKEND_BASE_URL=https://web-production-fedb.up.railway.app
-PIVOTA_API_KEY=ak_live_...                   # (or SHOP_GATEWAY_AGENT_API_KEY / PIVOTA_AGENT_API_KEY)
-
-# Upload policy (1–10MB selfies are expected; default max is 25MB)
-LOOK_REPLICATOR_MAX_UPLOAD_BYTES=26214400
-LOOK_REPLICATOR_SIGNED_URL_TTL_SECONDS=300
-
-# S3-compatible storage (Cloudflare R2 recommended)
-LOOK_REPLICATOR_S3_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
-LOOK_REPLICATOR_S3_REGION=auto
-LOOK_REPLICATOR_S3_BUCKET=<bucket>
-LOOK_REPLICATOR_S3_ACCESS_KEY_ID=<key>
-LOOK_REPLICATOR_S3_SECRET_ACCESS_KEY=<secret>
-
-# Public base used to form returned publicUrl (e.g. https://<bucket>.r2.dev or custom domain)
-LOOK_REPLICATOR_PUBLIC_ASSET_BASE_URL=https://<public-domain>
-```
+The Look Replicator demo agent was removed on 2026-08-11 (dead legacy demo;
+the `pengxu9-rgb/look-replicate-share` frontend is retired). The
+`LOOK_REPLICATOR_*` env vars no longer exist; remove them from deployed
+services when convenient.
 
 #### Identity bridging (Agent tools login → Pivota order attribution)
 

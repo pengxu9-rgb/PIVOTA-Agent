@@ -13,9 +13,23 @@
 // Usage (IdP-agnostic):
 //   const verify = createUserTokenVerifier({ issuers: [{ iss, aud, jwksUri, algs }] });
 //   const { user_ref, claims } = await verify(token);   // throws UserTokenError on any failure
+//
+// The result ALSO carries `attested_email` / `attested_name` when the verified claims contain them
+// (see attestedBuyerFromClaims). Those are a READ of claims that were already returned in `claims` —
+// nothing about what the verifier ACCEPTS, or how `user_ref` is DERIVED, depends on them.
 
 import { jwtVerify, createRemoteJWKSet, createLocalJWKSet, decodeJwt } from 'jose';
 import { createHash } from 'node:crypto';
+import { attestedBuyerFromClaims } from '../protocol/buyerIntake.js';
+
+// `attestedBuyerFromClaims` is DEFINED in protocol/buyerIntake.js and re-exported here.
+//
+// It moved because the MCP commerce door needs the same "is this email attested?" rule and mcp-server is
+// jose-free by design (productionWiring.js:11-13) — importing it from this module would drag `jose` into
+// mcp-server's import graph for a twenty-line pure function. The re-export keeps every existing importer
+// (safety-kernel/test/acpBuyerIntake.test.js among them) working against the path it already uses, and there
+// is still exactly ONE definition of the rule.
+export { attestedBuyerFromClaims };
 
 export class UserTokenError extends Error {
   constructor(message, code = 'USER_TOKEN_INVALID') {
@@ -153,6 +167,8 @@ export function createUserTokenVerifier(config = {}) {
     }
 
     const user_ref = deriveUserRefFromClaims(payload.iss, payload.sub);
-    return { user_ref, claims: payload };
+    // Additive: `claims` already carried these; surfacing them named saves every caller from re-deriving
+    // the "is this attested?" rule (and getting `email_verified:false` wrong) on its own.
+    return { user_ref, claims: payload, ...attestedBuyerFromClaims(payload) };
   };
 }

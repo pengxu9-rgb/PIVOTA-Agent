@@ -101,4 +101,5 @@ module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   activeCatalogProductSourceWhere,
   activeProductsCacheSourceWhere,
+  catalogProductPlatformExpr,
 };

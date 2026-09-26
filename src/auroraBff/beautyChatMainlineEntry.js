@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -766,6 +768,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     buildRecoPayloadFromBeautyMainlineHandoff,
     classifyBeautyMainlineHandoffFallback,
     buildBeautyMainlineHandoffFallbackEnvelope,
+    buildConfidenceNoticeCardPayload,
     looksLikeRecommendationRequest,
     runConcernSemanticPlanner,
     buildConcernTargetContextFromSemanticPlan,
@@ -840,16 +843,34 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         latestRecoContextFromSession?.user_request,
       )
       : '';
+    // Neither of these two is simply "the better source", so neither spread order is right.
+    //
+    // `profile` is the ranked overlay the caller built (session < free text < request context < action), so where
+    // it HAS a value that value is the newest thing the user said and must win — spreading the scrape last let a
+    // stale stored `skinType` overwrite the `profile_patch` a chip sent in the same request, and the mainline
+    // recommended against the wrong skin type. But `profile` also arrives carrying explicit `null`s and empty
+    // arrays for fields nobody has filled in yet, and those must NOT bury a real value: that is what
+    // `requestContextProfilePatch` is for, and spreading `profile` last let its nulls win instead.
+    //
+    // So: the scrape is the baseline, and only the MEANINGFUL entries of `profile` land on top. A field is
+    // meaningful when it is actually set — not null/undefined, not an empty string, not an empty array.
+    const hasMeaningfulProfileValue = (value) => {
+      if (value === null || value === undefined) return false;
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'string') return value.trim() !== '';
+      return true;
+    };
     const effectiveProfile =
       (requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch))
         || (profile && typeof profile === 'object' && !Array.isArray(profile))
         ? {
-          ...(profile && typeof profile === 'object' && !Array.isArray(profile)
-            ? profile
-            : {}),
           ...(requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch)
             ? requestContextProfilePatch
             : {}),
+          ...Object.fromEntries(
+            Object.entries(profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})
+              .filter(([, value]) => hasMeaningfulProfileValue(value)),
+          ),
         }
         : profile;
     const profileSummary = summarizeProfileForContext(effectiveProfile);
@@ -1302,7 +1323,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             ? 'framework_mainline'
             : 'step_aware_mainline',
         basePayload: {
-          recommendation_confidence_score: 0.61,
+          // F4: no invented 0.61 — nothing computed a score on this hard path.
+          recommendation_confidence_score: null,
           recommendation_confidence_level: 'medium',
           recommendation_meta: {
             ...buildBeautyChatPlannerMeta(hardPathPlannerTrace),
@@ -1451,15 +1473,42 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             },
           }),
         );
+        // A support-only routine must not be presented as though it answered the
+        // concern. The card carries the steps we could ground; this says the one
+        // we could not. Without it the reply reads as a complete answer that
+        // silently omits the product the user actually asked for.
+        const primaryStepUnconfirmed = hardPathHandoff?.searchResult?.metadata
+          ?.candidate_pool_summary?.primary_missing_support_routine_surfaced === true;
+        const primaryStepUnconfirmedCards = primaryStepUnconfirmed
+          && typeof buildConfidenceNoticeCardPayload === 'function'
+          ? [
+            {
+              card_id: `conf_${ctx?.request_id || Date.now()}_primary_step_unconfirmed`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx?.lang,
+                reason: 'primary_step_unconfirmed',
+                severity: 'info',
+                confidence: {
+                  score: 0.45,
+                  level: 'medium',
+                  rationale: ['beauty_mainline_support_routine_without_primary'],
+                },
+                actions: ['retry_recommendations'],
+              }),
+            },
+          ]
+          : [];
         const envelope = buildEnvelope(ctx, {
           assistant_message: assistantText ? makeAssistantMessage(assistantText) : null,
           suggested_chips: [],
           cards: [
             {
-              card_id: `reco_${ctx?.request_id}`,
+              card_id: `reco_${ctx?.request_id || Date.now()}`,
               type: 'recommendations',
               payload: hardPathPayloadBundle.payload,
             },
+            ...primaryStepUnconfirmedCards,
           ],
           session_patch: sessionPatch,
           events: applyRecoContractToRecoRequestedEvents(
@@ -1487,6 +1536,19 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               }),
             },
           ).events,
+        });
+        // THIS DOOR ANSWERS WITHOUT ENTERING THE RECO LANE. It builds a recommendations card from
+        // the beauty mainline's own grounded handoff and returns, so the lane's counter never sees
+        // it. Left uncounted the metric would be biased in the worst direction: this is a catalog
+        // producer that reads no domain prompt, which is exactly the population #2155 is about, and
+        // omitting it would overstate the share of turns the prompt-reading path served.
+        const hardPathRecoCount = Array.isArray(hardPathPayloadBundle?.payload?.recommendations)
+          ? hardPathPayloadBundle.payload.recommendations.length
+          : 0;
+        recordAuroraRecoAnswerPath({
+          door: 'chat',
+          path: 'beauty_mainline_grounded',
+          served: hardPathRecoCount > 0,
         });
         return {
           handled: true,

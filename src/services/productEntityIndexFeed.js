@@ -4,6 +4,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 
 // ADR-018 connection layer, JS twin of pivota-backend
 // `services/connection_layer.classify_connection_layer`. Kept deliberately
@@ -77,6 +78,63 @@ function nonEmptyString(...values) {
   return '';
 }
 
+// A URL IS NOT A TITLE, and this chain used to accept one silently.
+//
+// Measured on the live feed 2026-07-28: 3,952 of 4,375 rows (90%) published
+// `title` IDENTICAL to `link` — the PDP URL as the product name, on the field a
+// shopping ingester displays. Every other field on those rows was correct.
+//
+// ROOT CAUSE IS A CHAIN ORDER, NOT MISSING DATA. `buildExternalSeedProduct`
+// (services/externalSeedProducts:3888) ends its own title fallback with
+// `... || canonicalUrl || destinationUrl || externalProductId`, so for a seed
+// with no authored title `product.title` arrives here ALREADY holding the URL —
+// a non-empty string, which wins `nonEmptyString` at position 1 and means
+// `row.product_name` (i.e. `cp.title`) is never consulted.
+//
+// The real titles were there the whole time. Probed 6 affected rows across 6
+// brands: every one renders a proper name on its own PDP —
+// "Complexion Essentials", "Rice 72 Serum", "Hyalu-Cica First Ampoule". So the
+// residue after this fix is expected to be ~0, not 3,952.
+//
+// Fixing the builder's fallback instead would NOT fix this: the chain would
+// then take `externalProductId` and still never reach `cp.title`. The poisoned
+// candidate has to be rejected HERE, where the alternative sources are in hand.
+const URL_SHAPED = /^(https?:)?\/\//i;
+
+// An ID is not a name either. The builder's chain ends `… || externalProductId`,
+// so with an empty canonical_url the feed shipped `"ext_x1"` as a product title
+// — demonstrated by review, and invisible to the residue counter because the
+// value is non-empty and not URL-shaped.
+//
+// FULL match, not a prefix: a real product legitimately named "ext_" something,
+// or any name that merely begins with those letters, must survive. Only a title
+// that IS nothing but an id is rejected.
+const BARE_ID_SHAPED = /^(ext|sig|merch)_[a-z0-9_]+$/i;
+
+// Exported and shared so the lane and the gate cannot drift apart — two copies
+// of one predicate is the failure ADR-012 names, and review found the /i flag
+// unpinned on both.
+function isUsableTitleText(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  if (URL_SHAPED.test(text)) return false;
+  if (BARE_ID_SHAPED.test(text)) return false;
+  return true;
+}
+
+function firstUsableTitle(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    // Skip empty AND URL-shaped candidates, rather than stopping at the first
+    // non-empty one. Deliberately not skipping `ext_*`/`sig_*` ids too: those
+    // are a different (and much rarer) fallback, and widening this predicate
+    // without measuring it first is how a title gate starts dropping real
+    // products whose name legitimately begins with an id.
+    if (isUsableTitleText(text)) return text;
+  }
+  return '';
+}
+
 function safeJsonObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -94,15 +152,191 @@ function decodeCursor(value) {
   if (!text) return null;
   try {
     const decoded = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
-    return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? decoded : null;
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return null;
+    return isUsableCursor(decoded) ? decoded : null;
   } catch (_err) {
     return null;
   }
 }
 
+// A MALFORMED CURSOR IS AN ABSENT CURSOR, never a 500.
+//
+// Decoding used to succeed on any JSON object and hand its fields straight to
+// Postgres, so two shapes reached the DB and crashed it — confirmed live on
+// acp.pivota.cc, unauthenticated:
+//
+//   {"sort_updated_at":"not-a-date","product_entity_id":"x",
+//    "source_product_id":"y"}  -> 500  ($N::timestamptz cast, ~line 390-397)
+//   {"offset": 1e21}           -> 500  (bigint overflow on OFFSET)
+//
+// There is NO injection here — every value is a bound parameter, and
+// `{"source_listing_ref":"' OR 1=1--"}` correctly returns 200 count=0. This is
+// availability, not confidentiality. But until now the only way to deliver a
+// cursor at all was a JSON body on a GET, which no crawler stumbles into;
+// forwarding the query string puts it one plain URL away on a public,
+// crawler-facing feed — one bad link or scanner from a 500.
+//
+// Degrading to "start from the beginning" is also what a caller replaying a
+// stale or truncated cursor link actually wants.
+//
+// Deliberately SHAPE-only: this validates what Postgres will be asked to cast,
+// not whether the cursor points anywhere real. A well-formed cursor for a
+// deleted row still legitimately returns an empty page.
+// Every field that reaches a bind, not just the two that reach a CAST. The
+// first version of this guard checked `offset` and `sort_updated_at` only, and
+// review proved that insufficient against a local PG 15 on three counts:
+//
+//   * `Date.parse` is LOOSER than `::timestamptz`, not equal to it. 11 of 20
+//     Date.parse-accepted strings threw: "2026", "2026-07", "Jan 2026", "0",
+//     "12", "5/5", "0000-01-01T00:00:00Z", "+275760-09-13T00:00:00.000Z",
+//     "Jul 28 2026 GMT+9999". Using it as a proxy for the cast was the error.
+//   * A NUL byte defeats it in the field it does check —
+//     `Date.parse('2026-07-28T00:00:00Z' + a NUL byte)` is a valid number, and
+//     `String.trim()` does not strip it. PG: "invalid byte sequence for
+//     encoding UTF8: 0x00".
+//   * `product_entity_id`, `source_product_id` and `source_listing_ref` were
+//     validated by NOTHING. They are text comparisons so no cast can throw —
+//     but 0x00 kills the connection-level encode whatever the comparison type,
+//     so "no cast" is not "no hazard".
+//
+// Strict ISO-8601 instead of Date.parse: the only cursor this feed MINTS is
+// `{source_listing_ref, market, tool, include_attached}` (see the keyset cursor
+// builder below), and a keyset cursor's timestamp is always an ISO string. So
+// the strict form accepts everything we produce and rejects the free-form
+// strings that reach the cast. Date.parse still runs afterwards to catch
+// shapes the regex admits but that are not real dates (month 13, day 32).
+const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+
+// 0x00 is the one that matters (it breaks the encode, not the parse); the rest
+// of the C0 range has no business in an id and costs nothing to refuse.
+const hasControlChars = (s) => /[\u0000-\u001f\u007f]/.test(s);
+
+function isUsableCursor(c) {
+  // Reject unexpected value types across the board FIRST — a nested object or
+  // array bound as a parameter is its own class of upstream surprise.
+  for (const [k, v] of Object.entries(c)) {
+    if (v == null) continue;
+    if (typeof v === 'string') {
+      if (hasControlChars(v)) return false;
+      continue;
+    }
+    if (typeof v === 'number' || typeof v === 'boolean') continue;
+    return false; // objects, arrays, anything else
+  }
+
+  if (c.offset != null) {
+    const n = Number(c.offset);
+    // `Number.isSafeInteger` rejects 1e21, Infinity, NaN and 1.5 in one check.
+    // A negative offset is not a crash, but it is not a page either.
+    if (!Number.isSafeInteger(n) || n < 0) return false;
+  }
+
+  if (c.sort_updated_at != null) {
+    const t = c.sort_updated_at;
+    if (typeof t !== 'string') return false;
+    if (!ISO_TIMESTAMP_RE.test(t)) return false;
+    // Catches what the calendar check below cannot see: the TIME fields. V8
+    // rejects hour 25 and minute 60 in an ISO string, so this is load-bearing
+    // for `2026-07-28T25:00:00Z`, which the regex's `\d{2}` happily admits.
+    if (Number.isNaN(Date.parse(t))) return false;
+    if (!isRealCalendarDate(t)) return false;
+  }
+
+  return true;
+}
+
+// Date.parse is NOT a calendar validator, and assuming it was is what left six
+// live 500s in the previous version of this guard.
+//
+// V8's ISO parser accepts day 01-31 for ANY month and then `MakeDay` ROLLS OVER:
+// `Date.parse('2026-02-30T00:00:00Z')` returns a number (it becomes Mar 2), so
+// the "secondary Date.parse check" the last commit described as catching
+// "month 13 / day 32" catches neither of these:
+//
+//   2026-02-30  2026-04-31  2026-06-31  2026-09-31  2026-11-31  2025-02-29
+//
+// All six passed the regex (`\d{2}`), passed Date.parse, and reached
+// `$N::timestamptz` -> "date/time field value out of range". Delivered as a
+// base64url `?cursor=`, which needs no URL encoding at all.
+//
+// A UTC round-trip is the check that actually holds: build the date from its
+// components and require every component to survive. Rollover changes at least
+// one of them, so Feb 30 -> Mar 2 fails on the day, month 13 fails on the year,
+// day 00 fails by rolling into the previous month. Leap days are correct for
+// free — 2024-02-29 survives, 2025-02-29 does not — with no leap-year rule
+// written here, which is the point: the platform already knows the calendar.
+//
+// NO SEPARATE YEAR-0000 CASE. An earlier draft had one; mutation testing showed
+// it was unkillable, i.e. redundant. `Date.UTC(0, ...)` maps year 0 to 1900, so
+// the round-trip compares 1900 against 0 and rejects it anyway. A guard no
+// mutation can kill is not defence in depth — it is dead weight that hides
+// which check is actually load-bearing, so it is gone rather than papered over
+// with a test that only exercises the sibling.
+//
+// The three-component comparison is deliberately kept WHOLE even though the
+// month leg alone catches every case the regex can produce today (rollover
+// always changes the month: Feb 30 -> Mar, day 32 -> next month, day 00 ->
+// previous month). Pruning it to just the month would be correct-by-accident
+// and would silently become wrong if the regex ever admitted a different digit
+// width. One idiom that states "every component survived" beats three guards
+// where two are load-bearing only under conditions a future edit controls.
+function isRealCalendarDate(t) {
+  const year = Number(t.slice(0, 4));
+  const month = Number(t.slice(5, 7));
+  const day = Number(t.slice(8, 10));
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year
+    && d.getUTCMonth() === month - 1
+    && d.getUTCDate() === day;
+}
+
+// `[object Object]` is not a brand — it is a coercion accident, and it POISONS a
+// fallback chain because it is a non-empty string and therefore WINS.
+//
+// Upstream, `externalSeedProducts.js:firstNonEmptyString` does
+// `String(value || '')`, so an object-valued brand candidate (several seeds
+// carry schema.org-shaped `{"@type":"Brand","name":"Anua"}`) arrives here
+// ALREADY stringified. `normalizeBrand`'s own `typeof === 'object'` unwrap
+// cannot see it — by then it is a string.
+//
+// Measured on prod 2026-07-28 over the 20 rows the ACP feed serves: 12 of 20
+// (60%) resolved to the literal `"[object Object]"` while the CLEAN value sat
+// further down the very same chain in `catalog_products.brand` ("Mediheal US",
+// "Anua", …), outranked by the garbage. Rejecting the sentinel lets the truth
+// win — this is a recovery, not a blanking.
+//
+// Scoped to the two DISPLAY normalizers on purpose. The shared `nonEmptyString`
+// also builds ids, `content_key` and `title`, where changing what counts as
+// "empty" could change which rows survive the `!/^sig_/` drop and so move the
+// live `get_product_entity_index_feed` row COUNT. Brand and category cannot: the
+// worst case here is the field falls through to '' exactly as it would have if
+// the poisoned candidate had been absent. The upstream helper is the real
+// defect and is filed separately; it feeds a 4,000-line module and many surfaces.
+const STRINGIFIED_OBJECT = '[object Object]';
+
+function withoutStringifiedObjects(values) {
+  return values.filter((v) => {
+    // Drop live objects WITHOUT coercing them. `nonEmptyString` short-circuits at
+    // the first non-empty candidate; a filter does not, so a `String(v)` here
+    // runs on EVERY candidate including ones the original chain would never have
+    // touched. A scraped JSON-LD blob carrying a non-callable `toString` key
+    // therefore threw on this branch where origin/main returned a good earlier
+    // value — a hard 500 on the public feed and on the live
+    // `get_product_entity_index_feed`. Testing the type first cannot throw, and
+    // an object can only ever coerce to the sentinel anyway.
+    // Arrays are deliberately let through: `nonEmptyString` renders ['Anua'] as
+    // 'Anua', which is a real value, not a coercion accident.
+    if (v && typeof v === 'object' && !Array.isArray(v)) return false;
+    // The actual defect: the object was ALREADY stringified upstream, so by the
+    // time it reaches here it is an ordinary string that wins the coalesce.
+    return typeof v !== 'string' || v.trim() !== STRINGIFIED_OBJECT;
+  });
+}
+
 function normalizeBrand(product, row, seedData, snapshot) {
-  const productBrand = product && typeof product.brand === 'object' ? product.brand.name : product?.brand;
+  const productBrand = product && typeof product.brand === 'object' ? product.brand?.name : product?.brand;
   return nonEmptyString(
+    ...withoutStringifiedObjects([
     productBrand,
     product?.vendor,
     row.brand,
@@ -112,12 +346,14 @@ function normalizeBrand(product, row, seedData, snapshot) {
     snapshot.brand,
     snapshot.brand_name,
     snapshot.vendor,
+    ]),
   );
 }
 
 function normalizeCategory(product, row, seedData, snapshot) {
   const categoryPath = Array.isArray(product?.category_path) ? product.category_path.join(' > ') : '';
   return nonEmptyString(
+    ...withoutStringifiedObjects([
     categoryPath,
     product?.category,
     product?.product_type,
@@ -126,6 +362,7 @@ function normalizeCategory(product, row, seedData, snapshot) {
     seedData.product_type,
     snapshot.category,
     snapshot.product_type,
+    ]),
   );
 }
 
@@ -144,7 +381,7 @@ function buildProductEntityIndexFeedItem(row, env = process.env) {
   );
   const productEntityId = nonEmptyString(row.product_entity_id, row.sellable_item_group_id);
   if (!/^sig_[a-z0-9]+$/i.test(productEntityId) || !sourceProductId) return null;
-  const title = nonEmptyString(product.title, product.name, row.product_name, row.title, seedData.title, snapshot.title);
+  const title = firstUsableTitle(product.title, product.name, row.product_name, row.title, seedData.title, snapshot.title);
   // Amount and currency must come from the same source: the joined best-offer
   // row when present, else the seed-derived product. No cross-source mixing
   // and no currency default (the INR-served-as-USD class).
@@ -502,8 +739,9 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         -- Shopping ingesters reject price-null items, so every feed item
         -- carries ONE representative offer's price: amount, currency, and
         -- availability from the SAME offer row (never mixed across rows),
-        -- cheapest in-market first. Currency is never defaulted — an offer
-        -- without a currency is not price-quotable and is skipped.
+        -- in-market first, then known-unavailable last, then cheapest. Unknown
+        -- availability shares the sellable tier. Currency is never defaulted:
+        -- an offer without a currency is not price-quotable and is skipped.
         LEFT JOIN LATERAL (
           SELECT
             COALESCE(o.merchant_effective_price, o.list_price) AS price_amount,
@@ -516,6 +754,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
             AND o.currency IS NOT NULL
           ORDER BY
             CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
+            ${OFFER_AVAILABILITY_TIER_SQL},
             COALESCE(o.merchant_effective_price, o.list_price) ASC,
             o.offer_id ASC
           LIMIT 1
@@ -613,7 +852,13 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 
 module.exports = {
   getProductEntityIndexFeed,
+  firstUsableTitle,
+  isUsableTitleText,
   buildProductEntityIndexFeedItem,
+  // Exported for the cursor-validation tests. `getProductEntityIndexFeed`
+  // itself needs a live DB, so the malformed-cursor guard is unreachable from
+  // the outside without this — and an unreachable guard is an untested one.
+  decodeCursor,
   connectionLayerForTrack,
   connectionLayerFieldEnabled,
   isMissingContentCanonicalElectionError,

@@ -41,6 +41,36 @@ function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) 
   const productId = firstNonEmpty(o.id, o.product_id, o.sku_id, o.external_product_id);
   const attributedUrl = firstNonEmpty(o.external_redirect_url, o.affiliate_url);
   const pdpUrl = productId && typeof buildPublicProductUrl === 'function' ? buildPublicProductUrl(productId) : undefined;
+  // Amount and currency are read from the SAME source, never mixed. Two
+  // independent `??` would let `{price: 12, price_currency: 'INR'}` emit
+  // `12 USD`-shaped output by pairing an amount from one shape with a currency
+  // from the other — literally the INR-served-as-USD class, and this repo
+  // already has a NAMED invariant against it one layer up
+  // (tests/product_entity_index_feed_election.node.test.cjs:229, "amount and
+  // currency still come from the SAME source — no cross-mixing").
+  //
+  // `!= null` rather than truthiness: an explicit `price: 0` is a real value
+  // that the gate must see and refuse, not a missing one to fall through from.
+  //
+  // WHY THE ALTERNATE SHAPE IS READ AT ALL: `isQuotableFeedItem` runs on the
+  // MAPPED item, so any money shape this mapper cannot see becomes
+  // `price: undefined` and the row is DROPPED. `toAcpFeedProduct`
+  // (services/acpFeedSource.js:116-117) already reads `price ?? price_amount`,
+  // so the two lanes disagreed about where money lives.
+  //
+  // HONEST SCOPE — this is PREVENTIVE, not a live repair. Neither lane can
+  // currently deliver `price_amount` here: the index lane's `toAcpFeedProduct`
+  // collapses it to a scalar one hop earlier, and the connected lane's producer
+  // is the Python backend's `_standard_to_shop_product`, which emits scalar
+  // `price`/`currency` only. No production row's fate changes today.
+  //
+  // NOT widened to `price_cents` or a nested `{amount, currency}`. Note the
+  // narrow reason: `price_cents` IS produced in this repo (services/servicesSearch
+  // .js:448,473 — the Seoul services surface), just never on the ACP feed path.
+  // Accepting shapes this path cannot deliver is untestable surface, not safety.
+  const hasScalarPrice = o.price != null;
+  const price = hasScalarPrice ? o.price : o.price_amount;
+  const currency = hasScalarPrice ? o.currency : o.price_currency;
   return {
     id: productId,
     title: o.title ?? o.name,
@@ -48,10 +78,31 @@ function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) 
     link: pdpUrl ?? attributedUrl ?? o.link ?? o.url,
     external_redirect_url: attributedUrl,
     image_link: o.image_link ?? o.image ?? o.image_url ?? (Array.isArray(o.images) ? o.images[0] : undefined),
-    price: o.price,
-    currency: o.currency,
+    price,
+    currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
-    brand: o.brand ?? o.merchant_id,
+    // NO `?? o.merchant_id` (#1851). A merchant id is not a brand, and this is
+    // a PUBLIC feed — `merch_obs_deadbeef` or `external_seed` would be indexed
+    // by an ingester as the manufacturer's name. An ABSENT brand is honest and
+    // is what the index lane's own projection already emits; a wrong one is not
+    // cheaper, because ingesters treat a missing optional field as missing and
+    // a garbage value as real.
+    //
+    // ⚠️ TWO CLAIMS I MADE HERE WERE WRONG; review caught both.
+    //
+    // (a) "an absent brand is what the index lane already emits" — it emits
+    //     `''`. `normalizeBrand` → `nonEmptyString` never returns null/undefined
+    //     and the SQL is `COALESCE(ranked.brand,'')`, so on the INDEX lane this
+    //     `??` could never fire and removing it is a strict no-op there.
+    //
+    // (b) "0 of 4,375 live rows had an empty brand, so this is hardening" — that
+    //     measurement answers only ONE way. It cannot distinguish "no brandless
+    //     rows exist" from "every brandless row already borrowed a merchant id
+    //     and so looked branded". The reachable lane is the CONNECTED one, whose
+    //     producer `_standard_to_shop_product` sets `merchant_id` and never sets
+    //     `brand` at all — meaning this fallback likely fired for 100% of that
+    //     lane's rows. Not hardening: a real fix on the lane that can serve it.
+    brand: o.brand,
     variants: o.variants,
     // ADR-018 (pivota-backend docs/adr): the connection layer and the execution
     // path are TWO fields, deliberately never collapsed into one "tier".

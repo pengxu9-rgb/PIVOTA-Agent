@@ -1,0 +1,5936 @@
+{
+ "_about": "No-deletion ratchet for tests/acceptance. Regenerate only with scripts/acceptance/update_eligible_baseline.cjs.",
+ "approved_removals": [
+  {
+   "at": "2026-09-17T03:19:53.820Z",
+   "reason": "baseline now measures SERVED rows (the route's rankAndServeBeautyRecallProducts: ranker, near-dup collapse, display dedupe, serving gate) instead of hard-constraint gate admission; rows the gate admitted but the route never served were never protected by anything real",
+   "removals": [
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|lip gloss",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|唇彩",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|染色唇漆唇彩",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|serum",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|lipstick",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|cleanser",
+     "product_id": "sig_5c94a5b9df92475bd55423469533b373"
+    },
+    {
+     "query": "SG|cleanser",
+     "product_id": "sig_833ce8dca0b24701074ff10776e73ba4"
+    },
+    {
+     "query": "SG|cleanser",
+     "product_id": "sig_99c048d5080f6f8e4391b13fa3d0ddea"
+    },
+    {
+     "query": "SG|cleanser",
+     "product_id": "sig_ea851ccddb9fb94e97f8c0575bc4e103"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_739ca31501a5e7b4c61042744519e6fb"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_e6a3a82a26b2078da809079f104f777e"
+    },
+    {
+     "query": "SG|moisturizer",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_739ca31501a5e7b4c61042744519e6fb"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_e6a3a82a26b2078da809079f104f777e"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|barrier lotion",
+     "product_id": "sig_f89f989d1bf4b16d4a346a89415d4318"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_1e243fe2e0af5d2885cc96485b5a7676"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_2fcb876b576a6ecd03f2084f2dbe8831"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_6956ec4b1a443b2ada09656a229c8b90"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_7025091fb841d3ea7fa8b6f76ff24a07"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_770296e8b9a9065650e5c9ce1a898181"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_c6d895152cefe7056e16b4da65d01c97"
+    },
+    {
+     "query": "SG|spf fluid oily skin",
+     "product_id": "sig_ec27447f286ccef0113dc926cbea3756"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_739ca31501a5e7b4c61042744519e6fb"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_e6a3a82a26b2078da809079f104f777e"
+    },
+    {
+     "query": "SG|lightweight moisturizer",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_739ca31501a5e7b4c61042744519e6fb"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_e6a3a82a26b2078da809079f104f777e"
+    },
+    {
+     "query": "SG|gel cream moisturizer",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_057e0cb7eef677d6b618bb61dd5f7e33"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_0a82e5235340b31ec9e9e013b652e011"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_0bb06c0b588b111f2bd72170a408caf5"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_0ff487b5ea6c67bbcec7356d738c9d8b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_1048376d3d07eac30afecf8e2247548b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_180c72ce2a61d92b1dd8bfc1685de992"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_1e0841b4a7fb3b0a32049d5911e55acf"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_216c14161113da3541537a712abe7f98"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2937e2102b696e83043914e561c61763"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_2b2c9f9f752891a76a46e45f52aa464e"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_376dc1f27c02d2e7c34c5575b30b8305"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_385a6f95a0e07c370b1a0003"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_3b20da2327204661f575a6572f7da8a5"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_3fc83882365b534c7fd19e872f046ea2"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_42aa222c5d69b9655523201a4a9752a5"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_4cea3e502ea06b09a385f606"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_4de08e0b42d4eaf4e2b15b3d"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_50a7c0b3586379bc404821dcb55cb6e8"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_5492a1df6f8ec7c92c86c1f04b1f148b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_57cd3194c3f9308a9cebd9cf4c128a9a"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_5936e5760faffd0a8e19ae353f62b5e7"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_5cda6b83bdcb9c50a3dca30b2239aa45"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_61456b1773f0c24624bb9f9991d12405"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_666ed5a50f388e9688afb905246507bd"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_6d6e1c749830f849de05431e0b9fe68c"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_7273d5c4cad7d00fbec00a6978c93983"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_78fa06be07d5b2c207437d57886bcace"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_7b79bd251025cbb504ad19dbacb8bbb6"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_8165443f3dd6f742a85b6299e596f936"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_8a8a892ae5ef603294f7acd811c2ea46"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_8c4386e9835aeb9dbc8e9f10cfd2e797"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_969e5c3f22bae18ed48877c672d76cd6"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_a8d501612f8f737da583260ec2642fb9"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_afd62a5e2b02dbd8fc350728a78d2d73"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_b990065eeb770a20b687880a2e8a920b"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c1b5edf5ed6c93776bdaae19ca97fc17"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c1fed36dfd1e1769c658650de49a221a"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c237593a7def965317f4502092d44571"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c63affa2749d9c9670ecfbefd0e4772a"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_c8ad5c1da4a2f0bfbe7baeb11371558f"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_ce6df8fa158039eefc371e8fdecc8702"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_d4ea5125fa2f8c17536de557"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e4499515e8876c055c8a8fbf25e7b004"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e5431ddef8ed78eac79f6adb5fa33165"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_e6a3a82a26b2078da809079f104f777e"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_eabee9d570d42c8b19d435b2044e46aa"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_f0d11099a21241518f77054b8f7e4ff1"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_f1906cd2c047a0d6db1603d4c46fbe41"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_f3e5246d66c20f7dd5bd07f7611c7d44"
+    },
+    {
+     "query": "SG|Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "product_id": "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+    },
+    {
+     "query": "SG|KP Bump Eraser Body Scrub 10% AHA",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "ext_15bb55ab25ad4c0439ea7a85"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "ext_78c0facfd07a3c0194625306"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "ext_7c2d0775d193f7d78e662d14"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_066fcc5db3ad10d48399e0a6"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_13bd62568c95a3f6b95ce7dcc4904038"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_15497995609b547c82f57e4922827057"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_1f9ab1c5a7284f8c7bc064f5"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_2b9f613bd7be99c7a285c024"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_3a8cac097b9cbfe7c1595296e641c895"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_6935e5be966706ad995fc78029d0f4a9"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_701b37ba729c6841e723273c"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_74248d2f7e7c24d37ed0e828"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_8c110e3d679f17efb685e8501802c827"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_a12af3ca4854d93b31377141b95d94c3"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_c53bca4b48d86866cdef9697f23ee8cc"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_d3be6c248d1758026506580f"
+    },
+    {
+     "query": "SG|PROPOWAX™ Antioxidant Conditioner 300ml",
+     "product_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "ext_15bb55ab25ad4c0439ea7a85"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "ext_78c0facfd07a3c0194625306"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "ext_7c2d0775d193f7d78e662d14"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_066fcc5db3ad10d48399e0a6"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_13bd62568c95a3f6b95ce7dcc4904038"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_15497995609b547c82f57e4922827057"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_1f9ab1c5a7284f8c7bc064f5"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_2b9f613bd7be99c7a285c024"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_3a8cac097b9cbfe7c1595296e641c895"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_6935e5be966706ad995fc78029d0f4a9"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_701b37ba729c6841e723273c"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_74248d2f7e7c24d37ed0e828"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_8c110e3d679f17efb685e8501802c827"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_a12af3ca4854d93b31377141b95d94c3"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_c53bca4b48d86866cdef9697f23ee8cc"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_d3be6c248d1758026506580f"
+    },
+    {
+     "query": "SG|Scalp Retreat Regenerating Shampoo",
+     "product_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_15efad534924435bca80407c3a147993"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_297b127281d545e530ba96696957f265"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_452a57ad75557a98d67dbafd9178b965"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_73243f247f83e62574fd1b95210f3048"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_d64ec9ac186ca0570b72fbc32343a4ff"
+    },
+    {
+     "query": "SG|Stay All Day® InkWear™ Liquid Eye Liner",
+     "product_id": "sig_ea3ee720854e7fee743153412cfd4710"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_1334c919ae09d6372a36ddddf196e577"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_1c7170b54ef953da427e2e9ffa93827a"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_562d2ef20f08bae346304bc3a0416584"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_63d1f4f960ad4c1ebd06e9737689aa24"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_6b3d995c967dc5f7653f724d171044f5"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_70627eb15d5fc36c9aed53704acebd36"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_716e36b06f38193f9b6dd7361d585700"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_75f18d34e166467d0ee97974a2486360"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_78ac68d74d6f54712575a4cd2c679da3"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_97ffed574b30165b00f6fabd0d18aedf"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_99fce82185e309189e7e85af94565b28"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_9c3fefc67b7830406ca52858fd4f1e8e"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_9e3039e79deaf1860585156c7fd1d3c1"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_c171b5b8c96709ad3df04d593a62cf5a"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_c91479898f929ea889a66300bc672a7a"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_cef6200022e629cf83f06e539bdf0644"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_cf1e055466a433186e8990142d33a86c"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_d44babbcc1c0f42292c1943e83d1948a"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_dc74f6609879a706ca1604b70cb51ddd"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_e0a0cde0ca51c36469b41b05df75658e"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_e1a035afbb4ed94b9a611c56e749b3bb"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_e85a90cf5994efdb1513a7068aed9ab6"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_eecbba24283bcce6ba07fc672c2aa714"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_f29dc3f67861c35c647cbc27f6511481"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_f2ebe252661eb4d387aa0bd1b875dd3d"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Concealer — #170",
+     "product_id": "sig_f74083492c6b47a1c5050990a789124d"
+    },
+    {
+     "query": "SG|Sunshift Bronzer + Lightshift Highlighter - Sample",
+     "product_id": "sig_1c7170b54ef953da427e2e9ffa93827a"
+    },
+    {
+     "query": "SG|Sunshift Bronzer + Lightshift Highlighter - Sample",
+     "product_id": "sig_c91479898f929ea889a66300bc672a7a"
+    },
+    {
+     "query": "SG|Sunshift Bronzer + Lightshift Highlighter - Sample",
+     "product_id": "sig_f29dc3f67861c35c647cbc27f6511481"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Setting Powder — Lavender",
+     "product_id": "sig_75f18d34e166467d0ee97974a2486360"
+    },
+    {
+     "query": "SG|Pro Filt'r Instant Retouch Setting Powder — Lavender",
+     "product_id": "sig_99fce82185e309189e7e85af94565b28"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|Vitamin Nourishing Lip Balm",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_11cbb8fd6eed3bf36d22e01fc758a685"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_2a9e1e43212eac552c76d1f6ef7f1b54"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_2ae90c687cc4eefa0db429ee"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_2b200b15cf223580a758f35726a9b2a5"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_383be5c369b4eebf7f0f724e3a8a98a4"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_395fa4fef1d3f6e0be52579b"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_3d6287236ed681a7b1fd2491a8d1e005"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_3e82475a6e27fde9f787179510eddcc1"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_4999b580ea0e9d05e15087ac594c1506"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_61276baaf39b7d7b28834f074e933165"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_705ecbc634f533441a2dc1f2"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_7c63bde08ba8f3dcd3c6ad894a8606dd"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_87d813cf5bca5688f077122de664ce1f"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_91b6d7170cdc7b821d60b815e2a989eb"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_98aa9644de95064ebe5b1f16db83b35b"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_9affea7366fed11b92c99071afd73150"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_9f8e6cb779e18c6f1337c58971f48342"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_a6fb364e94de7207fb561d3a06c55962"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_acbb1c4de1fee2143fb2454b"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_b823263cd62bd5832e23dc7096bcf805"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_c681c75182176d60af7fd90688c47af3"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_cfa988a2f38b546488f66f85fd43d6aa"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_d001d96b261c140181b538c92572dd99"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_d5cd2f05a2e1ccf4680857e42bf39a42"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_d7ceb4ad494213f3fb3e0c096bf794a8"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_e11c0836c19659a03be5576f17dda8b2"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_ed3246f5ecc498786fff80d868190869"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_eff22a9cea94fc77bf9616082e44362c"
+    },
+    {
+     "query": "SG|Joli Rouge",
+     "product_id": "sig_f086ed6949549d7a2b55a054dd48bdcb"
+    },
+    {
+     "query": "SG|Blue Balancing Foam Cleanser",
+     "product_id": "sig_5c94a5b9df92475bd55423469533b373"
+    },
+    {
+     "query": "SG|Blue Balancing Foam Cleanser",
+     "product_id": "sig_833ce8dca0b24701074ff10776e73ba4"
+    },
+    {
+     "query": "SG|Blue Balancing Foam Cleanser",
+     "product_id": "sig_99c048d5080f6f8e4391b13fa3d0ddea"
+    },
+    {
+     "query": "SG|Blue Balancing Foam Cleanser",
+     "product_id": "sig_ea851ccddb9fb94e97f8c0575bc4e103"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|Egg Vita Peeling Gel",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|Supergoop",
+     "product_id": "sig_a12af3ca4854d93b31377141b95d94c3"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|medicube serum",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_1e243fe2e0af5d2885cc96485b5a7676"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_2fcb876b576a6ecd03f2084f2dbe8831"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_6956ec4b1a443b2ada09656a229c8b90"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_7025091fb841d3ea7fa8b6f76ff24a07"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_c6d895152cefe7056e16b4da65d01c97"
+    },
+    {
+     "query": "SG|sunscreen",
+     "product_id": "sig_ec27447f286ccef0113dc926cbea3756"
+    },
+    {
+     "query": "SG|toner",
+     "product_id": "sig_ca0e74636c53485e925c687bd63e4179"
+    },
+    {
+     "query": "SG|toner",
+     "product_id": "sig_ed0ace766f6fe077dd6ec3c3fc90c643"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_15efad534924435bca80407c3a147993"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_1e9d45baa62e31d19798366b6747ffe4"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_297b127281d545e530ba96696957f265"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_452a57ad75557a98d67dbafd9178b965"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_49524d8f513d04b2905110c9e9a874c7"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_6a8a3f22b2a046e1cdf36f3a44f22962"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_73243f247f83e62574fd1b95210f3048"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_7bdd75d3709687a5d05a3bf48c266655"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_8e75b33897721261f0bad7a15522c64f"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_95f696a4770fc3a137f43f48b297005e"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_9c51b438f2a89121551ebc14ea14ea7d"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_9ef82ad67a6304de6b7cb42af2c7a096"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_a1bb07c1b166fdd899fd7ecc59b8b0b2"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_b1595ed527ccc2b647124b3cde787c55"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_c0df456411b1f854278e35558cd95c5f"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_c9ce9803240e60318bf918714767bbed"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_d64ec9ac186ca0570b72fbc32343a4ff"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_d9f2f3cfd5eb32f8b761687f04a04f2f"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_ea3ee720854e7fee743153412cfd4710"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_f0b22859847356a0b28347290012c265"
+    },
+    {
+     "query": "SG|mascara",
+     "product_id": "sig_ffed38dd50579373a89ebde06c18706b"
+    },
+    {
+     "query": "SG|blush",
+     "product_id": "sig_6b3d995c967dc5f7653f724d171044f5"
+    },
+    {
+     "query": "SG|blush",
+     "product_id": "sig_9e3039e79deaf1860585156c7fd1d3c1"
+    },
+    {
+     "query": "SG|blush",
+     "product_id": "sig_e0a0cde0ca51c36469b41b05df75658e"
+    },
+    {
+     "query": "SG|blush",
+     "product_id": "sig_f74083492c6b47a1c5050990a789124d"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_1334c919ae09d6372a36ddddf196e577"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_1c7170b54ef953da427e2e9ffa93827a"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_562d2ef20f08bae346304bc3a0416584"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_63d1f4f960ad4c1ebd06e9737689aa24"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_6b3d995c967dc5f7653f724d171044f5"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_70627eb15d5fc36c9aed53704acebd36"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_716e36b06f38193f9b6dd7361d585700"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_75f18d34e166467d0ee97974a2486360"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_78ac68d74d6f54712575a4cd2c679da3"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_97ffed574b30165b00f6fabd0d18aedf"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_99fce82185e309189e7e85af94565b28"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_9c3fefc67b7830406ca52858fd4f1e8e"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_9e3039e79deaf1860585156c7fd1d3c1"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_c171b5b8c96709ad3df04d593a62cf5a"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_c91479898f929ea889a66300bc672a7a"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_cef6200022e629cf83f06e539bdf0644"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_cf1e055466a433186e8990142d33a86c"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_d44babbcc1c0f42292c1943e83d1948a"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_dc74f6609879a706ca1604b70cb51ddd"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_e0a0cde0ca51c36469b41b05df75658e"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_e1a035afbb4ed94b9a611c56e749b3bb"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_e85a90cf5994efdb1513a7068aed9ab6"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_eecbba24283bcce6ba07fc672c2aa714"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_f29dc3f67861c35c647cbc27f6511481"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_f2ebe252661eb4d387aa0bd1b875dd3d"
+    },
+    {
+     "query": "SG|foundation",
+     "product_id": "sig_f74083492c6b47a1c5050990a789124d"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "ext_15bb55ab25ad4c0439ea7a85"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "ext_78c0facfd07a3c0194625306"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "ext_7c2d0775d193f7d78e662d14"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_066fcc5db3ad10d48399e0a6"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_13bd62568c95a3f6b95ce7dcc4904038"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_15497995609b547c82f57e4922827057"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_1f9ab1c5a7284f8c7bc064f5"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_2b9f613bd7be99c7a285c024"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_3a8cac097b9cbfe7c1595296e641c895"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_6935e5be966706ad995fc78029d0f4a9"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_701b37ba729c6841e723273c"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_74248d2f7e7c24d37ed0e828"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_8c110e3d679f17efb685e8501802c827"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_a12af3ca4854d93b31377141b95d94c3"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_c53bca4b48d86866cdef9697f23ee8cc"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_d3be6c248d1758026506580f"
+    },
+    {
+     "query": "SG|shampoo",
+     "product_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439"
+    },
+    {
+     "query": "SG|face mask",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|face mask",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|face mask",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|face mask",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_739ca31501a5e7b4c61042744519e6fb"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|eye cream",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_08c9726b6c27a52b544d1dd6e9ef3271"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_284b2cfb021881bb36f393bdf96c2371"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_2d1f8241ddafc59c58296e3c"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_3c098d68a45e52b939901c5d4bda5366"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_46fe9663301c296a2a46122f4c8d310e"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_5db0efc95ee724faf1e9a053"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_67e830fc4073b6cb46b6fa836b5a83b4"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_6c245fe8fe7f06458e762e1e12384617"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_72f7c4079ec7a514478bb60273866ebb"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_844a7f8f593aab9f3a6cd59fbecfc49b"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_bc5d7d3bc0ca12317748abf0ae02f1b7"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_ccfebfa17bac324ab32347f32e864be3"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_d6e9d058d1466eced6302a650352ac8e"
+    },
+    {
+     "query": "SG|Deep Vita C Capsule Cream",
+     "product_id": "sig_e996cf5b187f95af304c1518a19e9473"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|acne treatment for oily skin",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|hydrating serum for dry skin",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_1e243fe2e0af5d2885cc96485b5a7676"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_2fcb876b576a6ecd03f2084f2dbe8831"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_6956ec4b1a443b2ada09656a229c8b90"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_7025091fb841d3ea7fa8b6f76ff24a07"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_770296e8b9a9065650e5c9ce1a898181"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_c6d895152cefe7056e16b4da65d01c97"
+    },
+    {
+     "query": "SG|sunscreen for sensitive skin",
+     "product_id": "sig_ec27447f286ccef0113dc926cbea3756"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|精华",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_1e243fe2e0af5d2885cc96485b5a7676"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_2fcb876b576a6ecd03f2084f2dbe8831"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_6956ec4b1a443b2ada09656a229c8b90"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_7025091fb841d3ea7fa8b6f76ff24a07"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_c6d895152cefe7056e16b4da65d01c97"
+    },
+    {
+     "query": "SG|防晒",
+     "product_id": "sig_ec27447f286ccef0113dc926cbea3756"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|lipstick under 20",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_1e243fe2e0af5d2885cc96485b5a7676"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_2863e2708a9c815241d17670af246d2f"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_2fcb876b576a6ecd03f2084f2dbe8831"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_38efeaf77c64b58dfb7f956234009b5c"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_4201a0a267e8a01f64ad4921bdaa094e"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_6956ec4b1a443b2ada09656a229c8b90"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_7025091fb841d3ea7fa8b6f76ff24a07"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_770296e8b9a9065650e5c9ce1a898181"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_c6d895152cefe7056e16b4da65d01c97"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_c87d8a34968d0015885b0980e4c804b0"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_ec27447f286ccef0113dc926cbea3756"
+    },
+    {
+     "query": "SG|affordable korean sunscreen",
+     "product_id": "sig_ed29fb033181bd8d634da54e0a9b5c52"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|lip serum",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_0091ec42677c4a05b9247aa72294f469"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_03bf58ad5b10913b9506eaf1f2cc8e25"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_0b1e7339098379d9e5a1682861b987d7"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_1115415c4918c99c46497d164d9c48f1"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_1914f69da774177063a1e08e026a7094"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_1d4ded428279190936e3673821d60a6d"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_1f70879aec372c0e298ff0acc40cff06"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_20b5d20149007e0c02124cee2a8617fe"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_261fd5e7de52ca3ed25c056c877d20a3"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_2893a6060456099abca5c37cc2e9aaf9"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_295b5f7347c12cb047b9675eac4624d0"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_2ea1ab1896bfd2f5f14bc7152eb7e5a5"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_3b344484262d689cc46d9247a91a28e9"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_497bf057c990ebe91f079e95b4897a01"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_4a97d0f203895a02986085c4669c354c"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_58a49d92f706c34da0e3849b75f9b54b"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_602b2499d03b711bc4255e32d5565f66"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_6a40fd176d270798d75b34eb4e11740c"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_6e30875a4534e97e5e734b20cb0095f3"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_718ec6c6a32c33acbc710a73253d195e"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_726661a4c900b3809eb2af960942f167"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_7cd8b84e9457afd8725c929f7de41316"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_848c1275426e88473bf2fcb619573fce"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_896279851124fa20a47e28705a84eb86"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_8e0238c0d30c40da700d06052a7dff77"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_9ca72a5535be11af299125d749efe1fc"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_adecb2df46916dc2bd940ec36b119be3"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_b7b59459a6d91984c85340c6d5f62a42"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_bbbec6cd73764204b6e1f78b8859e7db"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_be5796dcc86131b882a9e68c5d76d42e"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_c8821b0987022b25f76a30478d949abd"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_c8a8b35f439d3e284cb5ad4bfcb14fbf"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_cd2abc5dfc8c8ccbebdc0719"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_d00a62cb89a59c402d3994ccb9a96c18"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_d377c9ac9a070611c5250f62e4c4c159"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_dba34b6a6baddf4ce15679234a6554af"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_ddb1344c6a1295324485c35751516018"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_ebdcee1ef449b86e0f5820ba47bac931"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_f34237a26be4fd9c2c8f0d99690545b4"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_fe40620aee015e212d709a9a3f1c0e38"
+    },
+    {
+     "query": "SG|vitamin c serum",
+     "product_id": "sig_fee4c0448a2e371bdf80b96362371c67"
+    },
+    {
+     "query": "SG|rose water toner",
+     "product_id": "sig_ca0e74636c53485e925c687bd63e4179"
+    },
+    {
+     "query": "SG|rose water toner",
+     "product_id": "sig_ed0ace766f6fe077dd6ec3c3fc90c643"
+    },
+    {
+     "query": "SG|green tea cleanser",
+     "product_id": "sig_5c94a5b9df92475bd55423469533b373"
+    },
+    {
+     "query": "SG|green tea cleanser",
+     "product_id": "sig_833ce8dca0b24701074ff10776e73ba4"
+    },
+    {
+     "query": "SG|green tea cleanser",
+     "product_id": "sig_99c048d5080f6f8e4391b13fa3d0ddea"
+    },
+    {
+     "query": "SG|green tea cleanser",
+     "product_id": "sig_ea851ccddb9fb94e97f8c0575bc4e103"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|red lipstick",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_2131b1cd99353c95c8769a3ed0359ed2"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_21629d4422dee47daf4ff3df11c297e6"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_69b5faa4fc8392dc26d264b5b2a64fe8"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_dfed0ced8dc0d5f653335c05c4c020fe"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_e06a9498f4bbee422ac270cf12fb8444"
+    },
+    {
+     "query": "SG|matte lipstick",
+     "product_id": "sig_e60da266ad51de04a5d7f786b76f1d7a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_047725a1c208479fb879e9ce43c9061b"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_05bde93c88a1933a7f804a0fbc8971a2"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_08160e2658c79baa5a428e50978da8b2"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_0a52323ebf82334597d7fe9568501cac"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_1334c919ae09d6372a36ddddf196e577"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_175c6d4eb6e785201f79e19c44f6e8d1"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_1a0779b4067372232a7325018d5d4ab4"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_1bcec2bce7792e458b8928063e61948e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_1c7170b54ef953da427e2e9ffa93827a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_231bfa32c1880449ea38b1c87f601f82"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_24f0cfdbe1757b77ade2d1208ef72389"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_25ec574276c78bbda4e225cadc2ce57e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_2772a1b1253a36f1aae9cd8f040c63e2"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_2afbc4ce41afbd1ed86e2e54a801d90e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_2d3e9017d6cb92fe202296e424906a08"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_3295c7fe51e7cb7f3dea1ec6ca1a33c2"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_3e3c026d22424361f639044899749f6e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_400becfe4374dc027b3ab9b7ba993f46"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_424402ad63e969803fb2db9dbb172155"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_4881d674242c8609916579fc30eaee41"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_4f77d1b13b888106cdd2b73fd2f1df13"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_4f798634319185084397856e02a453ae"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_5424cbd08c9e8f54e38dabebf86103d8"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_557962d35dabe7660d8a21e607be5a74"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_562d2ef20f08bae346304bc3a0416584"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_5b92063555cb5fad18174794af8141fd"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_613bb87fde2e0b69482a7d469159d7ed"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_63d1f4f960ad4c1ebd06e9737689aa24"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_6b3d995c967dc5f7653f724d171044f5"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_6f8b234a724d7c811a09e01410bc947c"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_70627eb15d5fc36c9aed53704acebd36"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_716e36b06f38193f9b6dd7361d585700"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_71a0b2c348fa1fd9ca2066d0aa454a17"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_75bf414f5eab639519ba5dd5682b24af"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_75f18d34e166467d0ee97974a2486360"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_76f35cea3e19d8982a2ad1589cbec7de"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_77a65e2f0f3bec547ce3f301baac6590"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_78763a264f5c38a87f8b8139680a6045"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_78ac68d74d6f54712575a4cd2c679da3"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_7ad8f07962c0b7da4fe25f060a295678"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_802b03010216c1422f06f37eafb4378f"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_8086107039563cd087f556db4c94101e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_858d88f4ae6e768aa941082d0893685a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_90013bfeed9c1a203cf04f7db66e0e0c"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_919e4afc85c348ee2dcbe5778a00fd12"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9307c56c4be28b4560cb2ed7e7d33ee7"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_975228d7a156f456d68b4985de9fd35f"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_97c984092e88c197e84ce61d56815830"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_97ffed574b30165b00f6fabd0d18aedf"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_99fce82185e309189e7e85af94565b28"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9b23bad0a8e003c50f2e5fceb6e1d379"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9c3fefc67b7830406ca52858fd4f1e8e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9e3039e79deaf1860585156c7fd1d3c1"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9eb77f284b55ea91ff03f3faba5c69e9"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_9fd5476294e343786411d29d0e5eda10"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_a9aa86dd70423d9d06eda93877301a5e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_b0a9b32a2397d87ca9419c3d20ffc6f6"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_b12ce9396cf13b2a7b67030a32cbfb11"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_b2b2cfd10502023afb80082aaf5315b7"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_b66f88966103b4c1fa9a5094f50d4011"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_baa0c47a80154a1c5977588c0557ba1c"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_be7edde62e99a798f0733ccea162820b"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_be80688ba01ceeb96ebaf812055da224"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_be9f7afb87bdbbaf059bc31efe3c53e6"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_c0e3a2d5e49e14876f5e80e0d8c46689"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_c171b5b8c96709ad3df04d593a62cf5a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_c4635345b13fb91a97453282135a62dd"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_c91479898f929ea889a66300bc672a7a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_ccbe6f5420df950f389ce7bb16e56007"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_cd11888376c49ab3e0ef3fc1f994b63c"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_ce69a0f3955f83069dbb27a382ecb0ca"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_cec0c63fa0d7eebbe8487c63c83a436f"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_cef6200022e629cf83f06e539bdf0644"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_cefc294f354ec732ea4c8c5e76335392"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_cf1e055466a433186e8990142d33a86c"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_d34252a56e2c08832c89acbeacd6502f"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_d44babbcc1c0f42292c1943e83d1948a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_dc74f6609879a706ca1604b70cb51ddd"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_e0a0cde0ca51c36469b41b05df75658e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_e1a035afbb4ed94b9a611c56e749b3bb"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_e230e90f27ef6b8eab48e47adba9e2a8"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_e53bc5b5fee374db8d44dc1b009d28d0"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_e85a90cf5994efdb1513a7068aed9ab6"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_ebae816ebd59a49fe83455457c13425a"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_eecbba24283bcce6ba07fc672c2aa714"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f1b8724baef25a41a5fd779c32f6d54d"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f29dc3f67861c35c647cbc27f6511481"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f2ebe252661eb4d387aa0bd1b875dd3d"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f43d67d896b1bd2814032aba2bea3a20"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f74083492c6b47a1c5050990a789124d"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_f9f572a95669d6aa42e367b9afb9c42e"
+    },
+    {
+     "query": "SG|tinted moisturizer spf",
+     "product_id": "sig_fac2759c2a23b4d79e78ea26f5ea96b0"
+    }
+   ]
+  },
+  {
+   "at": "2026-09-20T09:33:36.383Z",
+   "reason": "Meitu Metal Serum Gloss is a lip gloss; remove 15 unrelated skincare rows from each of three exact-name query results",
+   "removals": [
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|LIP-PRESSION Metal Serum Gloss",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|Metal Serum Gloss",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_0eeaf5531b5d030db7200103c6b4dd99"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_1a393588f1027838a40061dfdc9780f6"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_21e31e2bc4cb763ab5571478c054f9fd"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_27e4c24d94c4782860cc61b6aacd8b16"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_55e587e4488533b62e38d9129c1cdbfb"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_5663c3ce4b50a0ed4ed3561f18b4ed91"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_7497d08a068dfcff5b85cee968938df3"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_828494096e7479ef8766122935cad578"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_9f36092e036ab8b51851aff88d2770b7"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_a44d8bd7391de40ae0d6d0f8a7a0787e"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_af30012522e81d9958ffbb12dc4db929"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_b4f5158ad6a9d2236fb9ea46c0481d10"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_d497a03becbc747648bc2e1aa3dc78a6"
+    },
+    {
+     "query": "SG|metal serum gloss core drop",
+     "product_id": "sig_dceeaeecb573b4e85896241a0874f7da"
+    }
+   ]
+  }
+ ],
+ "eligible": {
+  "SG|JUNG SAEM MOOL": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|JUNGSAEMMOOL": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|jung saem mool": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|LIP-PRESSION Metal Serum Gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_969e5c3f22bae18ed48877c672d76cd6"
+  ],
+  "SG|JUNG SAEM MOOL LIP-PRESSION Metal Serum Gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|Metal Serum Gloss": [],
+  "SG|metal serum gloss core drop": [],
+  "SG|jung saem mool lip gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|lip gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_057e0cb7eef677d6b618bb61dd5f7e33",
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_0bb06c0b588b111f2bd72170a408caf5",
+   "sig_0ff487b5ea6c67bbcec7356d738c9d8b",
+   "sig_1048376d3d07eac30afecf8e2247548b",
+   "sig_180c72ce2a61d92b1dd8bfc1685de992",
+   "sig_1e0841b4a7fb3b0a32049d5911e55acf",
+   "sig_216c14161113da3541537a712abe7f98",
+   "sig_2937e2102b696e83043914e561c61763",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_385a6f95a0e07c370b1a0003",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_3fc83882365b534c7fd19e872f046ea2",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_4cea3e502ea06b09a385f606",
+   "sig_4de08e0b42d4eaf4e2b15b3d",
+   "sig_50a7c0b3586379bc404821dcb55cb6e8",
+   "sig_5492a1df6f8ec7c92c86c1f04b1f148b",
+   "sig_57cd3194c3f9308a9cebd9cf4c128a9a",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_61456b1773f0c24624bb9f9991d12405",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_6d6e1c749830f849de05431e0b9fe68c",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_78fa06be07d5b2c207437d57886bcace",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_8165443f3dd6f742a85b6299e596f936",
+   "sig_8a8a892ae5ef603294f7acd811c2ea46",
+   "sig_8c4386e9835aeb9dbc8e9f10cfd2e797",
+   "sig_969e5c3f22bae18ed48877c672d76cd6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73",
+   "sig_b990065eeb770a20b687880a2e8a920b",
+   "sig_c1b5edf5ed6c93776bdaae19ca97fc17",
+   "sig_c1fed36dfd1e1769c658650de49a221a",
+   "sig_c237593a7def965317f4502092d44571",
+   "sig_c63affa2749d9c9670ecfbefd0e4772a",
+   "sig_c8ad5c1da4a2f0bfbe7baeb11371558f",
+   "sig_ce6df8fa158039eefc371e8fdecc8702",
+   "sig_d4ea5125fa2f8c17536de557",
+   "sig_e4499515e8876c055c8a8fbf25e7b004",
+   "sig_e5431ddef8ed78eac79f6adb5fa33165",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eabee9d570d42c8b19d435b2044e46aa",
+   "sig_f0d11099a21241518f77054b8f7e4ff1",
+   "sig_f1906cd2c047a0d6db1603d4c46fbe41",
+   "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
+   "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+  ],
+  "SG|唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_057e0cb7eef677d6b618bb61dd5f7e33",
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_0bb06c0b588b111f2bd72170a408caf5",
+   "sig_0ff487b5ea6c67bbcec7356d738c9d8b",
+   "sig_1048376d3d07eac30afecf8e2247548b",
+   "sig_180c72ce2a61d92b1dd8bfc1685de992",
+   "sig_1e0841b4a7fb3b0a32049d5911e55acf",
+   "sig_216c14161113da3541537a712abe7f98",
+   "sig_2937e2102b696e83043914e561c61763",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_385a6f95a0e07c370b1a0003",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_3fc83882365b534c7fd19e872f046ea2",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_4cea3e502ea06b09a385f606",
+   "sig_4de08e0b42d4eaf4e2b15b3d",
+   "sig_50a7c0b3586379bc404821dcb55cb6e8",
+   "sig_5492a1df6f8ec7c92c86c1f04b1f148b",
+   "sig_57cd3194c3f9308a9cebd9cf4c128a9a",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_61456b1773f0c24624bb9f9991d12405",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_6d6e1c749830f849de05431e0b9fe68c",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_78fa06be07d5b2c207437d57886bcace",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_8165443f3dd6f742a85b6299e596f936",
+   "sig_8a8a892ae5ef603294f7acd811c2ea46",
+   "sig_8c4386e9835aeb9dbc8e9f10cfd2e797",
+   "sig_969e5c3f22bae18ed48877c672d76cd6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73",
+   "sig_b990065eeb770a20b687880a2e8a920b",
+   "sig_c1b5edf5ed6c93776bdaae19ca97fc17",
+   "sig_c1fed36dfd1e1769c658650de49a221a",
+   "sig_c237593a7def965317f4502092d44571",
+   "sig_c63affa2749d9c9670ecfbefd0e4772a",
+   "sig_c8ad5c1da4a2f0bfbe7baeb11371558f",
+   "sig_ce6df8fa158039eefc371e8fdecc8702",
+   "sig_d4ea5125fa2f8c17536de557",
+   "sig_e4499515e8876c055c8a8fbf25e7b004",
+   "sig_e5431ddef8ed78eac79f6adb5fa33165",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eabee9d570d42c8b19d435b2044e46aa",
+   "sig_f0d11099a21241518f77054b8f7e4ff1",
+   "sig_f1906cd2c047a0d6db1603d4c46fbe41",
+   "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
+   "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+  ],
+  "SG|染色唇漆唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_057e0cb7eef677d6b618bb61dd5f7e33",
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_0bb06c0b588b111f2bd72170a408caf5",
+   "sig_0ff487b5ea6c67bbcec7356d738c9d8b",
+   "sig_1048376d3d07eac30afecf8e2247548b",
+   "sig_180c72ce2a61d92b1dd8bfc1685de992",
+   "sig_1e0841b4a7fb3b0a32049d5911e55acf",
+   "sig_216c14161113da3541537a712abe7f98",
+   "sig_2937e2102b696e83043914e561c61763",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_385a6f95a0e07c370b1a0003",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_3fc83882365b534c7fd19e872f046ea2",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_4cea3e502ea06b09a385f606",
+   "sig_4de08e0b42d4eaf4e2b15b3d",
+   "sig_50a7c0b3586379bc404821dcb55cb6e8",
+   "sig_5492a1df6f8ec7c92c86c1f04b1f148b",
+   "sig_57cd3194c3f9308a9cebd9cf4c128a9a",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_61456b1773f0c24624bb9f9991d12405",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_6d6e1c749830f849de05431e0b9fe68c",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_78fa06be07d5b2c207437d57886bcace",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_8165443f3dd6f742a85b6299e596f936",
+   "sig_8a8a892ae5ef603294f7acd811c2ea46",
+   "sig_8c4386e9835aeb9dbc8e9f10cfd2e797",
+   "sig_969e5c3f22bae18ed48877c672d76cd6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73",
+   "sig_b990065eeb770a20b687880a2e8a920b",
+   "sig_c1b5edf5ed6c93776bdaae19ca97fc17",
+   "sig_c1fed36dfd1e1769c658650de49a221a",
+   "sig_c237593a7def965317f4502092d44571",
+   "sig_c63affa2749d9c9670ecfbefd0e4772a",
+   "sig_c8ad5c1da4a2f0bfbe7baeb11371558f",
+   "sig_ce6df8fa158039eefc371e8fdecc8702",
+   "sig_d4ea5125fa2f8c17536de557",
+   "sig_e4499515e8876c055c8a8fbf25e7b004",
+   "sig_e5431ddef8ed78eac79f6adb5fa33165",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eabee9d570d42c8b19d435b2044e46aa",
+   "sig_f0d11099a21241518f77054b8f7e4ff1",
+   "sig_f1906cd2c047a0d6db1603d4c46fbe41",
+   "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
+   "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+  ],
+  "SG|JUNG SAEM MOOL 唇彩": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|serum": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|lipstick": [
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73"
+  ],
+  "SG|cleanser": [
+   "sig_1e912fdeb544ccf33f3dbb7baded0211",
+   "sig_3b8a9156567cac4fbeab99cb338bcef3",
+   "sig_4d985b70e83a87322ad753703d5f4e1e",
+   "sig_6b75491cdc18dcddfd6fc3bad0518cb2",
+   "sig_8c55f4102550ce5ae990937c9763452e",
+   "sig_8ca20c31d3b828715c607128eef714db",
+   "sig_8efbabac80a39b9cd92ac2e9e6f2d91c",
+   "sig_a54bec469d296aa18003866e7248fb73",
+   "sig_e307b51b13faa6316f77094421fc2c55",
+   "sig_ead20465221d2c285949161e38f01f84"
+  ],
+  "SG|moisturizer": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318"
+  ],
+  "SG|barrier lotion": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_f6022896c9030487654f3ac10fb1b010"
+  ],
+  "SG|spf fluid oily skin": [
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77",
+   "sig_c87d8a34968d0015885b0980e4c804b0",
+   "sig_ed29fb033181bd8d634da54e0a9b5c52"
+  ],
+  "SG|lightweight moisturizer": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318"
+  ],
+  "SG|gel cream moisturizer": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318"
+  ],
+  "SG|IPSA Time Reset Aqua": [],
+  "SG|IPSA products": [],
+  "SG|Lipscreen SPF 40 Lip Gloss Sunscreen": [
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_770296e8b9a9065650e5c9ce1a898181"
+  ],
+  "SG|KP Bump Eraser Body Scrub 10% AHA": [
+   "sig_0091ec42677c4a05b9247aa72294f469",
+   "sig_03bf58ad5b10913b9506eaf1f2cc8e25",
+   "sig_0b1e7339098379d9e5a1682861b987d7",
+   "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672",
+   "sig_602b2499d03b711bc4255e32d5565f66",
+   "sig_6a40fd176d270798d75b34eb4e11740c",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_b7b59459a6d91984c85340c6d5f62a42",
+   "sig_bbbec6cd73764204b6e1f78b8859e7db",
+   "sig_d377c9ac9a070611c5250f62e4c4c159",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dba34b6a6baddf4ce15679234a6554af",
+   "sig_f34237a26be4fd9c2c8f0d99690545b4"
+  ],
+  "SG|EXCEPTIONAL RENDEZVOUS CHERRY BLOSSOM 155 ML / 5.24 OZ": [],
+  "SG|PROPOWAX™ Antioxidant Conditioner 300ml": [
+   "sig_00420798d50fb478ab123ec3",
+   "sig_01c2ff5b28e5d7ca45440810",
+   "sig_07c51b790240d22389ca6a1df32a884d",
+   "sig_0ab1781be3e500ce2ddfa6b3",
+   "sig_11e455afa98052a843e241b211ef319b",
+   "sig_137493920cc718428f38809c",
+   "sig_13a61dd738c25825ae63c99e",
+   "sig_15b81682a57d0f8a8ff130468c5f2dde",
+   "sig_1c011cdfd28536777bc8afa8",
+   "sig_2299a3f512d956ed5508587488db5dc3",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_2c3093a7fc5a822b1b633e8e37fd526c",
+   "sig_2c5729c0adc1a87f1265f2afcb2c984a",
+   "sig_2d36e01cd35fefa63d401319b26b167e",
+   "sig_2ddb403dd9f5e76b18bb5d7479ba608f",
+   "sig_2ea6fb8ab318e93cdca261ba2502df29",
+   "sig_36301a467cdbf02d3dcd395df60e29df",
+   "sig_367a5b6dccce182b6f7f791f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_434cdd2590700131bb2c2a82ccac3776",
+   "sig_526f460b238b874569dea40cfad2119a",
+   "sig_589eb4c4dc7c60a5d973f7d7d5c45ca0",
+   "sig_61d0c8c2d9e60a2646300f95",
+   "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+   "sig_642f65ef1069b074d0158aa5f2c9e5f7",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_745fb0840bc78619eb4bca2b",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_8042cf8061b0b322a4a901a09c14902b",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_894754155a35a4416d411a032faac816",
+   "sig_8a4e2f8a9c315f1c4b3d24f18b616880",
+   "sig_8e3da03c0f7b979852c70ca8390ad710",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_8feb33b2f0aa10a28b70c751762b0d4e",
+   "sig_907c97d46b7315de1a9a8a63",
+   "sig_921def9caa7ff5aa1f4a7a51",
+   "sig_98dd992c932f6f89265278e1a60027ee",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_b4ca7cbf75232b28bccb74b1351ada1f",
+   "sig_bacec7fffbd91403d5f5833d67162243",
+   "sig_d01f57e67ef03ab712d0b5fed9e9fe5e",
+   "sig_d2356f67b0d8fb76be821ef7346d7d73",
+   "sig_d66e49d5bff9f148d1b3aadd97a4346e",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_e895ab52a8e216447caa2a3e",
+   "sig_e959cbde356524d37aa4e7f7",
+   "sig_eb95e7c0c8055568f5eb8a1da8e9037f",
+   "sig_efc0bd760fb0b6807428271b4d914387",
+   "sig_f3ad512dabaf8d35bd111cbba2d61e8a",
+   "sig_f5a8e044af423318d3d3b66fcfd96eb7",
+   "sig_f9346b08d3bef186fcf96292f113e064",
+   "sig_fcfb9414f282b3bfcf5b08b774fe193d",
+   "sig_fd9692dcf1029b8786c6af82125154d9"
+  ],
+  "SG|Scalp Retreat Regenerating Shampoo": [
+   "sig_00420798d50fb478ab123ec3",
+   "sig_01c2ff5b28e5d7ca45440810",
+   "sig_07c51b790240d22389ca6a1df32a884d",
+   "sig_0ab1781be3e500ce2ddfa6b3",
+   "sig_11e455afa98052a843e241b211ef319b",
+   "sig_137493920cc718428f38809c",
+   "sig_13a61dd738c25825ae63c99e",
+   "sig_15b81682a57d0f8a8ff130468c5f2dde",
+   "sig_1c011cdfd28536777bc8afa8",
+   "sig_2299a3f512d956ed5508587488db5dc3",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_2c3093a7fc5a822b1b633e8e37fd526c",
+   "sig_2c5729c0adc1a87f1265f2afcb2c984a",
+   "sig_2d36e01cd35fefa63d401319b26b167e",
+   "sig_2ddb403dd9f5e76b18bb5d7479ba608f",
+   "sig_2ea6fb8ab318e93cdca261ba2502df29",
+   "sig_36301a467cdbf02d3dcd395df60e29df",
+   "sig_367a5b6dccce182b6f7f791f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_434cdd2590700131bb2c2a82ccac3776",
+   "sig_526f460b238b874569dea40cfad2119a",
+   "sig_589eb4c4dc7c60a5d973f7d7d5c45ca0",
+   "sig_61d0c8c2d9e60a2646300f95",
+   "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+   "sig_642f65ef1069b074d0158aa5f2c9e5f7",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_745fb0840bc78619eb4bca2b",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_8042cf8061b0b322a4a901a09c14902b",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_894754155a35a4416d411a032faac816",
+   "sig_8a4e2f8a9c315f1c4b3d24f18b616880",
+   "sig_8e3da03c0f7b979852c70ca8390ad710",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_8feb33b2f0aa10a28b70c751762b0d4e",
+   "sig_907c97d46b7315de1a9a8a63",
+   "sig_921def9caa7ff5aa1f4a7a51",
+   "sig_98dd992c932f6f89265278e1a60027ee",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_b4ca7cbf75232b28bccb74b1351ada1f",
+   "sig_bacec7fffbd91403d5f5833d67162243",
+   "sig_d01f57e67ef03ab712d0b5fed9e9fe5e",
+   "sig_d2356f67b0d8fb76be821ef7346d7d73",
+   "sig_d66e49d5bff9f148d1b3aadd97a4346e",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_e895ab52a8e216447caa2a3e",
+   "sig_e959cbde356524d37aa4e7f7",
+   "sig_eb95e7c0c8055568f5eb8a1da8e9037f",
+   "sig_efc0bd760fb0b6807428271b4d914387",
+   "sig_f3ad512dabaf8d35bd111cbba2d61e8a",
+   "sig_f5a8e044af423318d3d3b66fcfd96eb7",
+   "sig_f9346b08d3bef186fcf96292f113e064",
+   "sig_fcfb9414f282b3bfcf5b08b774fe193d",
+   "sig_fd9692dcf1029b8786c6af82125154d9"
+  ],
+  "SG|Supernova Celestial Skin Elixir": [],
+  "SG|Stay All Day® InkWear™ Liquid Eye Liner": [
+   "sig_0042e9e14ebb8f38c74cd3cbe46314bb",
+   "sig_0cc6c493cd5e497dafb787a48646b481",
+   "sig_48bc7b39d47ddb5f17523eb73d02764b",
+   "sig_68f4872805d1cd302d86989b431d42e8",
+   "sig_7ebb91211688ad683e3a09e4991a1ad4",
+   "sig_882eb3be6cd8d110e98e1e4b2a86a9c1",
+   "sig_9123a00a6a493e2a92e44d9bbcb5f37b",
+   "sig_a4393ab1839e51cbceb5cb0522eb6e46",
+   "sig_b5690243f07e391e3e65e119462f8f30",
+   "sig_df435e8036f9da2e68c6f9b2eb38135e"
+  ],
+  "SG|Kylash False Lashes": [],
+  "SG|Pro Filt'r Instant Retouch Concealer — #170": [
+   "sig_047725a1c208479fb879e9ce43c9061b",
+   "sig_05bde93c88a1933a7f804a0fbc8971a2",
+   "sig_08160e2658c79baa5a428e50978da8b2",
+   "sig_0a52323ebf82334597d7fe9568501cac",
+   "sig_175c6d4eb6e785201f79e19c44f6e8d1",
+   "sig_1a0779b4067372232a7325018d5d4ab4",
+   "sig_1bcec2bce7792e458b8928063e61948e",
+   "sig_1dcc0c5aac9985f7c954daddafebb49a",
+   "sig_231bfa32c1880449ea38b1c87f601f82",
+   "sig_24f0cfdbe1757b77ade2d1208ef72389",
+   "sig_25ec574276c78bbda4e225cadc2ce57e",
+   "sig_2772a1b1253a36f1aae9cd8f040c63e2",
+   "sig_2afbc4ce41afbd1ed86e2e54a801d90e",
+   "sig_2d3e9017d6cb92fe202296e424906a08",
+   "sig_3295c7fe51e7cb7f3dea1ec6ca1a33c2",
+   "sig_3dd066dd45314e25f30118fa0168e3d4",
+   "sig_3e3c026d22424361f639044899749f6e",
+   "sig_400becfe4374dc027b3ab9b7ba993f46",
+   "sig_424402ad63e969803fb2db9dbb172155",
+   "sig_4881d674242c8609916579fc30eaee41",
+   "sig_4f77d1b13b888106cdd2b73fd2f1df13",
+   "sig_4f798634319185084397856e02a453ae",
+   "sig_5424cbd08c9e8f54e38dabebf86103d8",
+   "sig_5439bab08878e33a2d70a966a8ed2f50",
+   "sig_557962d35dabe7660d8a21e607be5a74",
+   "sig_5b92063555cb5fad18174794af8141fd",
+   "sig_613bb87fde2e0b69482a7d469159d7ed",
+   "sig_6f8b234a724d7c811a09e01410bc947c",
+   "sig_71a0b2c348fa1fd9ca2066d0aa454a17",
+   "sig_75bf414f5eab639519ba5dd5682b24af",
+   "sig_7613508e98148dcb5afc30d5d7cbfae1",
+   "sig_7616b53852f461efc3c464cbd381463f",
+   "sig_76f35cea3e19d8982a2ad1589cbec7de",
+   "sig_77a65e2f0f3bec547ce3f301baac6590",
+   "sig_78763a264f5c38a87f8b8139680a6045",
+   "sig_7ad8f07962c0b7da4fe25f060a295678",
+   "sig_802b03010216c1422f06f37eafb4378f",
+   "sig_8086107039563cd087f556db4c94101e",
+   "sig_858d88f4ae6e768aa941082d0893685a",
+   "sig_90013bfeed9c1a203cf04f7db66e0e0c",
+   "sig_919e4afc85c348ee2dcbe5778a00fd12",
+   "sig_9307c56c4be28b4560cb2ed7e7d33ee7",
+   "sig_975228d7a156f456d68b4985de9fd35f",
+   "sig_97c984092e88c197e84ce61d56815830",
+   "sig_9b23bad0a8e003c50f2e5fceb6e1d379",
+   "sig_9eb77f284b55ea91ff03f3faba5c69e9",
+   "sig_9fd5476294e343786411d29d0e5eda10",
+   "sig_a9aa86dd70423d9d06eda93877301a5e",
+   "sig_b0a9b32a2397d87ca9419c3d20ffc6f6",
+   "sig_b12ce9396cf13b2a7b67030a32cbfb11",
+   "sig_b2b2cfd10502023afb80082aaf5315b7",
+   "sig_b66f88966103b4c1fa9a5094f50d4011",
+   "sig_baa0c47a80154a1c5977588c0557ba1c",
+   "sig_be7edde62e99a798f0733ccea162820b",
+   "sig_be80688ba01ceeb96ebaf812055da224",
+   "sig_be9f7afb87bdbbaf059bc31efe3c53e6",
+   "sig_c0e3a2d5e49e14876f5e80e0d8c46689",
+   "sig_c4635345b13fb91a97453282135a62dd",
+   "sig_ccbe6f5420df950f389ce7bb16e56007",
+   "sig_cd11888376c49ab3e0ef3fc1f994b63c",
+   "sig_ce69a0f3955f83069dbb27a382ecb0ca",
+   "sig_cebc4da6a7872f67e41c6557170286e2",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f",
+   "sig_cefc294f354ec732ea4c8c5e76335392",
+   "sig_d03db8cceaf1b7a7c81861ff68b83a8e",
+   "sig_d34252a56e2c08832c89acbeacd6502f",
+   "sig_d92abd529a7b935d21a1cb34aaf54118",
+   "sig_e230e90f27ef6b8eab48e47adba9e2a8",
+   "sig_e53bc5b5fee374db8d44dc1b009d28d0",
+   "sig_ebae816ebd59a49fe83455457c13425a",
+   "sig_f1b8724baef25a41a5fd779c32f6d54d",
+   "sig_f43d67d896b1bd2814032aba2bea3a20",
+   "sig_f9f572a95669d6aa42e367b9afb9c42e",
+   "sig_fac2759c2a23b4d79e78ea26f5ea96b0"
+  ],
+  "SG|Sunshift Bronzer + Lightshift Highlighter - Sample": [
+   "sig_2772a1b1253a36f1aae9cd8f040c63e2",
+   "sig_2afbc4ce41afbd1ed86e2e54a801d90e",
+   "sig_3e3c026d22424361f639044899749f6e",
+   "sig_4881d674242c8609916579fc30eaee41",
+   "sig_7613508e98148dcb5afc30d5d7cbfae1",
+   "sig_90013bfeed9c1a203cf04f7db66e0e0c",
+   "sig_9fd5476294e343786411d29d0e5eda10",
+   "sig_be80688ba01ceeb96ebaf812055da224",
+   "sig_cebc4da6a7872f67e41c6557170286e2",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f",
+   "sig_cefc294f354ec732ea4c8c5e76335392",
+   "sig_d92abd529a7b935d21a1cb34aaf54118",
+   "sig_fac2759c2a23b4d79e78ea26f5ea96b0"
+  ],
+  "SG|Pro Filt'r Instant Retouch Setting Powder — Lavender": [
+   "sig_0a52323ebf82334597d7fe9568501cac",
+   "sig_231bfa32c1880449ea38b1c87f601f82",
+   "sig_2772a1b1253a36f1aae9cd8f040c63e2",
+   "sig_4f798634319185084397856e02a453ae",
+   "sig_7ad8f07962c0b7da4fe25f060a295678",
+   "sig_8086107039563cd087f556db4c94101e",
+   "sig_90013bfeed9c1a203cf04f7db66e0e0c",
+   "sig_97c984092e88c197e84ce61d56815830",
+   "sig_9fd5476294e343786411d29d0e5eda10",
+   "sig_a9aa86dd70423d9d06eda93877301a5e",
+   "sig_b2b2cfd10502023afb80082aaf5315b7",
+   "sig_be7edde62e99a798f0733ccea162820b",
+   "sig_ccbe6f5420df950f389ce7bb16e56007",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f"
+  ],
+  "SG|Vitamin Nourishing Lip Balm": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_057e0cb7eef677d6b618bb61dd5f7e33",
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_0bb06c0b588b111f2bd72170a408caf5",
+   "sig_0ff487b5ea6c67bbcec7356d738c9d8b",
+   "sig_1048376d3d07eac30afecf8e2247548b",
+   "sig_180c72ce2a61d92b1dd8bfc1685de992",
+   "sig_1e0841b4a7fb3b0a32049d5911e55acf",
+   "sig_216c14161113da3541537a712abe7f98",
+   "sig_2937e2102b696e83043914e561c61763",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_385a6f95a0e07c370b1a0003",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_3fc83882365b534c7fd19e872f046ea2",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_4cea3e502ea06b09a385f606",
+   "sig_4de08e0b42d4eaf4e2b15b3d",
+   "sig_50a7c0b3586379bc404821dcb55cb6e8",
+   "sig_5492a1df6f8ec7c92c86c1f04b1f148b",
+   "sig_57cd3194c3f9308a9cebd9cf4c128a9a",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_61456b1773f0c24624bb9f9991d12405",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_6d6e1c749830f849de05431e0b9fe68c",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_78fa06be07d5b2c207437d57886bcace",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_8165443f3dd6f742a85b6299e596f936",
+   "sig_8a8a892ae5ef603294f7acd811c2ea46",
+   "sig_8c4386e9835aeb9dbc8e9f10cfd2e797",
+   "sig_969e5c3f22bae18ed48877c672d76cd6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73",
+   "sig_b990065eeb770a20b687880a2e8a920b",
+   "sig_c1b5edf5ed6c93776bdaae19ca97fc17",
+   "sig_c1fed36dfd1e1769c658650de49a221a",
+   "sig_c237593a7def965317f4502092d44571",
+   "sig_c63affa2749d9c9670ecfbefd0e4772a",
+   "sig_c8ad5c1da4a2f0bfbe7baeb11371558f",
+   "sig_ce6df8fa158039eefc371e8fdecc8702",
+   "sig_d4ea5125fa2f8c17536de557",
+   "sig_e4499515e8876c055c8a8fbf25e7b004",
+   "sig_e5431ddef8ed78eac79f6adb5fa33165",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eabee9d570d42c8b19d435b2044e46aa",
+   "sig_f0d11099a21241518f77054b8f7e4ff1",
+   "sig_f1906cd2c047a0d6db1603d4c46fbe41",
+   "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
+   "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+  ],
+  "SG|Joli Rouge": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_057e0cb7eef677d6b618bb61dd5f7e33",
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_0bb06c0b588b111f2bd72170a408caf5",
+   "sig_0ff487b5ea6c67bbcec7356d738c9d8b",
+   "sig_1048376d3d07eac30afecf8e2247548b",
+   "sig_180c72ce2a61d92b1dd8bfc1685de992",
+   "sig_1e0841b4a7fb3b0a32049d5911e55acf",
+   "sig_216c14161113da3541537a712abe7f98",
+   "sig_2937e2102b696e83043914e561c61763",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_376dc1f27c02d2e7c34c5575b30b8305",
+   "sig_385a6f95a0e07c370b1a0003",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_3fc83882365b534c7fd19e872f046ea2",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_4cea3e502ea06b09a385f606",
+   "sig_4de08e0b42d4eaf4e2b15b3d",
+   "sig_50a7c0b3586379bc404821dcb55cb6e8",
+   "sig_5492a1df6f8ec7c92c86c1f04b1f148b",
+   "sig_57cd3194c3f9308a9cebd9cf4c128a9a",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_61456b1773f0c24624bb9f9991d12405",
+   "sig_666ed5a50f388e9688afb905246507bd",
+   "sig_6d6e1c749830f849de05431e0b9fe68c",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_78fa06be07d5b2c207437d57886bcace",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_8165443f3dd6f742a85b6299e596f936",
+   "sig_8a8a892ae5ef603294f7acd811c2ea46",
+   "sig_8c4386e9835aeb9dbc8e9f10cfd2e797",
+   "sig_969e5c3f22bae18ed48877c672d76cd6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73",
+   "sig_b990065eeb770a20b687880a2e8a920b",
+   "sig_c1b5edf5ed6c93776bdaae19ca97fc17",
+   "sig_c1fed36dfd1e1769c658650de49a221a",
+   "sig_c237593a7def965317f4502092d44571",
+   "sig_c63affa2749d9c9670ecfbefd0e4772a",
+   "sig_c8ad5c1da4a2f0bfbe7baeb11371558f",
+   "sig_ce6df8fa158039eefc371e8fdecc8702",
+   "sig_d4ea5125fa2f8c17536de557",
+   "sig_e4499515e8876c055c8a8fbf25e7b004",
+   "sig_e5431ddef8ed78eac79f6adb5fa33165",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eabee9d570d42c8b19d435b2044e46aa",
+   "sig_f0d11099a21241518f77054b8f7e4ff1",
+   "sig_f1906cd2c047a0d6db1603d4c46fbe41",
+   "sig_f3e5246d66c20f7dd5bd07f7611c7d44",
+   "sig_fb21a0b6e0b1a37f3ed3d28352751813"
+  ],
+  "SG|Almond & Ginseng Cuticle Oil": [],
+  "SG|Sparkle Eye Bundle": [],
+  "SG|Blue Balancing Foam Cleanser": [
+   "sig_1e912fdeb544ccf33f3dbb7baded0211",
+   "sig_3b8a9156567cac4fbeab99cb338bcef3",
+   "sig_4d985b70e83a87322ad753703d5f4e1e",
+   "sig_6b75491cdc18dcddfd6fc3bad0518cb2",
+   "sig_8c55f4102550ce5ae990937c9763452e",
+   "sig_8ca20c31d3b828715c607128eef714db",
+   "sig_8efbabac80a39b9cd92ac2e9e6f2d91c",
+   "sig_a54bec469d296aa18003866e7248fb73",
+   "sig_e307b51b13faa6316f77094421fc2c55",
+   "sig_ead20465221d2c285949161e38f01f84"
+  ],
+  "SG|Hydra Vizor Refillable Case": [],
+  "SG|Egg Vita Peeling Gel": [
+   "sig_0b1e7339098379d9e5a1682861b987d7",
+   "sig_6a40fd176d270798d75b34eb4e11740c",
+   "sig_d377c9ac9a070611c5250f62e4c4c159",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6"
+  ],
+  "SG|[VELY VELY] Bakuchiol Super Biome Lifting Ampoule 100ml": [
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+  ],
+  "SG|Artist Vegan Eye Point Brush": [],
+  "SG|Medicube": [],
+  "SG|Dermalogica": [
+   "sig_6a40fd176d270798d75b34eb4e11740c",
+   "sig_d34252a56e2c08832c89acbeacd6502f"
+  ],
+  "SG|Olehenriksen": [
+   "sig_0334be49d81498a2683cdabcb036392a"
+  ],
+  "SG|Supergoop": [
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_770296e8b9a9065650e5c9ce1a898181"
+  ],
+  "SG|numbuzin": [],
+  "SG|medicube serum": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|fenty lipstick": [
+   "sig_7273d5c4cad7d00fbec00a6978c93983"
+  ],
+  "SG|dermalogica cleanser": [],
+  "SG|sunscreen": [
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77",
+   "sig_c87d8a34968d0015885b0980e4c804b0",
+   "sig_ed29fb033181bd8d634da54e0a9b5c52"
+  ],
+  "SG|toner": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_34c2b8d69ad827defe5745ea667b75d9",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3bb303e8479a000a52e695766c3685c8",
+   "sig_3e033972f2e7bf83461283e4439a498d",
+   "sig_3e8ac1ff9348217b2abe580b96a9e58c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_4232120b8f377d0b6ab9c85f8d92690c",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_433656665dfe84d8526374582b514fe9",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_54897f54f4008683981cd5d70b16299e",
+   "sig_5ec0b7dbe1698eb02045c82cb8c9010d",
+   "sig_662f30d8444fccff79716f2396fc592c",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_7fbb0d40368a620c0202117e4028579f",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_89c2afb349a14fab37159f14ede8fb24",
+   "sig_8c55f4102550ce5ae990937c9763452e",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a20049c82fe5efb766a96677a2833b86",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_b92ea964549f781d6395a7fc76ecdd3f",
+   "sig_c49927c00b8952a550f32ac19f7cd7c0",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eb7df4d9db85ee1a6c16ec16aed213a1",
+   "sig_f15d35090db822cba12e633b1eca7933",
+   "sig_f930f8d58fee81fed4050744af62b25b",
+   "sig_ff7b5b95daa2b1fbdf256d55512888ac"
+  ],
+  "SG|mascara": [
+   "sig_0042e9e14ebb8f38c74cd3cbe46314bb",
+   "sig_00655af7c2bb82b2b98d82648722bbed",
+   "sig_0334be49d81498a2683cdabcb036392a",
+   "sig_0cc6c493cd5e497dafb787a48646b481",
+   "sig_1f1c76f205206f94b7ea0e5d4f006868",
+   "sig_2139466d488d889bf919595b7feca46e",
+   "sig_37932fc557f1ef423e1bb2320cb23203",
+   "sig_3bcc3683ad91a440930b63e1a4de61be",
+   "sig_456d3179baa62b7ccb8fa509c11a8849",
+   "sig_4807c48fe8a79ed96bd6fd92f9cc5d35",
+   "sig_48bc7b39d47ddb5f17523eb73d02764b",
+   "sig_49c8b4a1a1523027c83f1f4dd569f49b",
+   "sig_68f4872805d1cd302d86989b431d42e8",
+   "sig_729bbc9b662465f635a4ad76545dd65e",
+   "sig_75acad9efd3615d8994fd6cf2adc1aa8",
+   "sig_7ebb91211688ad683e3a09e4991a1ad4",
+   "sig_882eb3be6cd8d110e98e1e4b2a86a9c1",
+   "sig_8ee3a9e5634fdaa1570a6d1a10aed287",
+   "sig_907798ed3d9bd90beb5bbe6dc24fdb0a",
+   "sig_9123a00a6a493e2a92e44d9bbcb5f37b",
+   "sig_99d6ff2dc2288cc2b2bb3f88ac42ccec",
+   "sig_a0c0ebf3b31015cbfef5146b951b7862",
+   "sig_a0fd3800b0b6a48ed199b1767412f705",
+   "sig_a42e94c303695bfbbb0cb99949e8eca7",
+   "sig_a4393ab1839e51cbceb5cb0522eb6e46",
+   "sig_af881ce6625ab790dfa261dedc3b561d",
+   "sig_b5690243f07e391e3e65e119462f8f30",
+   "sig_bc55012493b7cef9a607eb62227f62f1",
+   "sig_be007a7737e14beb26d01df844b16682",
+   "sig_be278563e2caa476eb81352932d1deb9",
+   "sig_d9e1512e239353dd971fbdcbe0f43093",
+   "sig_df435e8036f9da2e68c6f9b2eb38135e",
+   "sig_e157ab04a2eb89e92b37042207d9d324",
+   "sig_e465ffa9dd1c82f40216f96df1de5516",
+   "sig_e7ff7e8810aa076ccdf73dc9b46ff97c"
+  ],
+  "SG|blush": [
+   "sig_08160e2658c79baa5a428e50978da8b2",
+   "sig_613bb87fde2e0b69482a7d469159d7ed",
+   "sig_71a0b2c348fa1fd9ca2066d0aa454a17",
+   "sig_75bf414f5eab639519ba5dd5682b24af",
+   "sig_b66f88966103b4c1fa9a5094f50d4011",
+   "sig_c4635345b13fb91a97453282135a62dd",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f",
+   "sig_d03db8cceaf1b7a7c81861ff68b83a8e",
+   "sig_e230e90f27ef6b8eab48e47adba9e2a8"
+  ],
+  "SG|foundation": [
+   "sig_047725a1c208479fb879e9ce43c9061b",
+   "sig_05bde93c88a1933a7f804a0fbc8971a2",
+   "sig_08160e2658c79baa5a428e50978da8b2",
+   "sig_0a52323ebf82334597d7fe9568501cac",
+   "sig_175c6d4eb6e785201f79e19c44f6e8d1",
+   "sig_1a0779b4067372232a7325018d5d4ab4",
+   "sig_1bcec2bce7792e458b8928063e61948e",
+   "sig_1dcc0c5aac9985f7c954daddafebb49a",
+   "sig_231bfa32c1880449ea38b1c87f601f82",
+   "sig_24f0cfdbe1757b77ade2d1208ef72389",
+   "sig_25ec574276c78bbda4e225cadc2ce57e",
+   "sig_2772a1b1253a36f1aae9cd8f040c63e2",
+   "sig_2afbc4ce41afbd1ed86e2e54a801d90e",
+   "sig_2d3e9017d6cb92fe202296e424906a08",
+   "sig_3295c7fe51e7cb7f3dea1ec6ca1a33c2",
+   "sig_3dd066dd45314e25f30118fa0168e3d4",
+   "sig_3e3c026d22424361f639044899749f6e",
+   "sig_400becfe4374dc027b3ab9b7ba993f46",
+   "sig_424402ad63e969803fb2db9dbb172155",
+   "sig_4881d674242c8609916579fc30eaee41",
+   "sig_4f77d1b13b888106cdd2b73fd2f1df13",
+   "sig_4f798634319185084397856e02a453ae",
+   "sig_5424cbd08c9e8f54e38dabebf86103d8",
+   "sig_5439bab08878e33a2d70a966a8ed2f50",
+   "sig_557962d35dabe7660d8a21e607be5a74",
+   "sig_5b92063555cb5fad18174794af8141fd",
+   "sig_613bb87fde2e0b69482a7d469159d7ed",
+   "sig_6f8b234a724d7c811a09e01410bc947c",
+   "sig_71a0b2c348fa1fd9ca2066d0aa454a17",
+   "sig_75bf414f5eab639519ba5dd5682b24af",
+   "sig_7613508e98148dcb5afc30d5d7cbfae1",
+   "sig_7616b53852f461efc3c464cbd381463f",
+   "sig_76f35cea3e19d8982a2ad1589cbec7de",
+   "sig_77a65e2f0f3bec547ce3f301baac6590",
+   "sig_78763a264f5c38a87f8b8139680a6045",
+   "sig_7ad8f07962c0b7da4fe25f060a295678",
+   "sig_802b03010216c1422f06f37eafb4378f",
+   "sig_8086107039563cd087f556db4c94101e",
+   "sig_858d88f4ae6e768aa941082d0893685a",
+   "sig_90013bfeed9c1a203cf04f7db66e0e0c",
+   "sig_919e4afc85c348ee2dcbe5778a00fd12",
+   "sig_9307c56c4be28b4560cb2ed7e7d33ee7",
+   "sig_975228d7a156f456d68b4985de9fd35f",
+   "sig_97c984092e88c197e84ce61d56815830",
+   "sig_9b23bad0a8e003c50f2e5fceb6e1d379",
+   "sig_9eb77f284b55ea91ff03f3faba5c69e9",
+   "sig_9fd5476294e343786411d29d0e5eda10",
+   "sig_a9aa86dd70423d9d06eda93877301a5e",
+   "sig_b0a9b32a2397d87ca9419c3d20ffc6f6",
+   "sig_b12ce9396cf13b2a7b67030a32cbfb11",
+   "sig_b2b2cfd10502023afb80082aaf5315b7",
+   "sig_b66f88966103b4c1fa9a5094f50d4011",
+   "sig_baa0c47a80154a1c5977588c0557ba1c",
+   "sig_be7edde62e99a798f0733ccea162820b",
+   "sig_be80688ba01ceeb96ebaf812055da224",
+   "sig_be9f7afb87bdbbaf059bc31efe3c53e6",
+   "sig_c0e3a2d5e49e14876f5e80e0d8c46689",
+   "sig_c4635345b13fb91a97453282135a62dd",
+   "sig_ccbe6f5420df950f389ce7bb16e56007",
+   "sig_cd11888376c49ab3e0ef3fc1f994b63c",
+   "sig_ce69a0f3955f83069dbb27a382ecb0ca",
+   "sig_cebc4da6a7872f67e41c6557170286e2",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f",
+   "sig_cefc294f354ec732ea4c8c5e76335392",
+   "sig_d03db8cceaf1b7a7c81861ff68b83a8e",
+   "sig_d34252a56e2c08832c89acbeacd6502f",
+   "sig_d92abd529a7b935d21a1cb34aaf54118",
+   "sig_e230e90f27ef6b8eab48e47adba9e2a8",
+   "sig_e53bc5b5fee374db8d44dc1b009d28d0",
+   "sig_ebae816ebd59a49fe83455457c13425a",
+   "sig_f1b8724baef25a41a5fd779c32f6d54d",
+   "sig_f43d67d896b1bd2814032aba2bea3a20",
+   "sig_f9f572a95669d6aa42e367b9afb9c42e",
+   "sig_fac2759c2a23b4d79e78ea26f5ea96b0"
+  ],
+  "SG|shampoo": [
+   "sig_00420798d50fb478ab123ec3",
+   "sig_01c2ff5b28e5d7ca45440810",
+   "sig_07c51b790240d22389ca6a1df32a884d",
+   "sig_0ab1781be3e500ce2ddfa6b3",
+   "sig_11e455afa98052a843e241b211ef319b",
+   "sig_137493920cc718428f38809c",
+   "sig_13a61dd738c25825ae63c99e",
+   "sig_15b81682a57d0f8a8ff130468c5f2dde",
+   "sig_1c011cdfd28536777bc8afa8",
+   "sig_2299a3f512d956ed5508587488db5dc3",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_2c3093a7fc5a822b1b633e8e37fd526c",
+   "sig_2c5729c0adc1a87f1265f2afcb2c984a",
+   "sig_2d36e01cd35fefa63d401319b26b167e",
+   "sig_2ddb403dd9f5e76b18bb5d7479ba608f",
+   "sig_2ea6fb8ab318e93cdca261ba2502df29",
+   "sig_36301a467cdbf02d3dcd395df60e29df",
+   "sig_367a5b6dccce182b6f7f791f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_434cdd2590700131bb2c2a82ccac3776",
+   "sig_526f460b238b874569dea40cfad2119a",
+   "sig_589eb4c4dc7c60a5d973f7d7d5c45ca0",
+   "sig_61d0c8c2d9e60a2646300f95",
+   "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+   "sig_642f65ef1069b074d0158aa5f2c9e5f7",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_745fb0840bc78619eb4bca2b",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_8042cf8061b0b322a4a901a09c14902b",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_894754155a35a4416d411a032faac816",
+   "sig_8a4e2f8a9c315f1c4b3d24f18b616880",
+   "sig_8e3da03c0f7b979852c70ca8390ad710",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_8feb33b2f0aa10a28b70c751762b0d4e",
+   "sig_907c97d46b7315de1a9a8a63",
+   "sig_921def9caa7ff5aa1f4a7a51",
+   "sig_98dd992c932f6f89265278e1a60027ee",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_b4ca7cbf75232b28bccb74b1351ada1f",
+   "sig_bacec7fffbd91403d5f5833d67162243",
+   "sig_d01f57e67ef03ab712d0b5fed9e9fe5e",
+   "sig_d2356f67b0d8fb76be821ef7346d7d73",
+   "sig_d66e49d5bff9f148d1b3aadd97a4346e",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_e895ab52a8e216447caa2a3e",
+   "sig_e959cbde356524d37aa4e7f7",
+   "sig_eb95e7c0c8055568f5eb8a1da8e9037f",
+   "sig_efc0bd760fb0b6807428271b4d914387",
+   "sig_f3ad512dabaf8d35bd111cbba2d61e8a",
+   "sig_f5a8e044af423318d3d3b66fcfd96eb7",
+   "sig_f9346b08d3bef186fcf96292f113e064",
+   "sig_fcfb9414f282b3bfcf5b08b774fe193d",
+   "sig_fd9692dcf1029b8786c6af82125154d9"
+  ],
+  "SG|face mask": [
+   "sig_1914f69da774177063a1e08e026a7094",
+   "sig_1d4ded428279190936e3673821d60a6d",
+   "sig_2893a6060456099abca5c37cc2e9aaf9",
+   "sig_497bf057c990ebe91f079e95b4897a01",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_848c1275426e88473bf2fcb619573fce",
+   "sig_d00a62cb89a59c402d3994ccb9a96c18",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_fe40620aee015e212d709a9a3f1c0e38",
+   "sig_fee4c0448a2e371bdf80b96362371c67"
+  ],
+  "SG|eye cream": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318"
+  ],
+  "SG|nail polish": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss",
+   "sig_0b9d23782833ad5356ac276a",
+   "sig_11f5da9228ce8b04baf8b5142dff23df",
+   "sig_140a391c218848e70b1a3ec1",
+   "sig_2772a1b1253a36f1aae9cd8f040c63e2",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_2f868bdf765e7ba66c6d12b29748d26f",
+   "sig_2f9acb7f87ef84f04de0cafe",
+   "sig_334c164a037b883cdb4e9078",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3995bef348fc16e82bedefd6",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_535d06082afc854b6fc1f8bc7c586d57",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_74d339eebc76e6e9f058282763545414",
+   "sig_756e1899a6e9a4b3eb0f3f79",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_8870454e0f74a46b3fa24fa841d5151a",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_90013bfeed9c1a203cf04f7db66e0e0c",
+   "sig_94209714a811afb2feb7c730",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_9fd5476294e343786411d29d0e5eda10",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_a9ebc68595dfbda18c3efeb4",
+   "sig_b2f5179fa796c6ecabb126d6f9bc8c02",
+   "sig_c70797636025a034cb79f76b",
+   "sig_c93db881c7e27910aae8f539af898fbf",
+   "sig_cd95afe661bd760b2d89347bcfecf9ed",
+   "sig_cec0c63fa0d7eebbe8487c63c83a436f",
+   "sig_d592cfac4ecd2e3336cf9e7c",
+   "sig_d99b29e6ad8e33c0ab94cbed",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_e86eacac8d29e3f2ea6c369a"
+  ],
+  "SG|Deep Vita C Capsule Cream": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_739ca31501a5e7b4c61042744519e6fb",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318"
+  ],
+  "SG|Essential Skin Nuder Cushion": [],
+  "SG|acne treatment for oily skin": [
+   "sig_0b1e7339098379d9e5a1682861b987d7",
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_3b344484262d689cc46d9247a91a28e9",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_6a40fd176d270798d75b34eb4e11740c",
+   "sig_718ec6c6a32c33acbc710a73253d195e",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_896279851124fa20a47e28705a84eb86",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_be5796dcc86131b882a9e68c5d76d42e",
+   "sig_d377c9ac9a070611c5250f62e4c4c159",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|hydrating serum for dry skin": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|anti aging retinol": [],
+  "SG|sunscreen for sensitive skin": [
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77",
+   "sig_c87d8a34968d0015885b0980e4c804b0",
+   "sig_ed29fb033181bd8d634da54e0a9b5c52"
+  ],
+  "SG|brightening vitamin c": [],
+  "SG|唇膏": [],
+  "SG|精华": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|防晒": [
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77",
+   "sig_c87d8a34968d0015885b0980e4c804b0",
+   "sig_ed29fb033181bd8d634da54e0a9b5c52"
+  ],
+  "SG|lipstick under 20": [
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73"
+  ],
+  "SG|affordable korean sunscreen": [
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77"
+  ],
+  "SG|lip serum": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_828494096e7479ef8766122935cad578",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|vitamin c serum": [
+   "sig_0eeaf5531b5d030db7200103c6b4dd99",
+   "sig_1a393588f1027838a40061dfdc9780f6",
+   "sig_21e31e2bc4cb763ab5571478c054f9fd",
+   "sig_27e4c24d94c4782860cc61b6aacd8b16",
+   "sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+   "sig_55e587e4488533b62e38d9129c1cdbfb",
+   "sig_5663c3ce4b50a0ed4ed3561f18b4ed91",
+   "sig_7497d08a068dfcff5b85cee968938df3",
+   "sig_9f36092e036ab8b51851aff88d2770b7",
+   "sig_a44d8bd7391de40ae0d6d0f8a7a0787e",
+   "sig_af30012522e81d9958ffbb12dc4db929",
+   "sig_b4f5158ad6a9d2236fb9ea46c0481d10",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_dceeaeecb573b4e85896241a0874f7da"
+  ],
+  "SG|rose water toner": [
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_34c2b8d69ad827defe5745ea667b75d9",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3bb303e8479a000a52e695766c3685c8",
+   "sig_3e033972f2e7bf83461283e4439a498d",
+   "sig_3e8ac1ff9348217b2abe580b96a9e58c",
+   "sig_4201a0a267e8a01f64ad4921bdaa094e",
+   "sig_4232120b8f377d0b6ab9c85f8d92690c",
+   "sig_42aa222c5d69b9655523201a4a9752a5",
+   "sig_433656665dfe84d8526374582b514fe9",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_54897f54f4008683981cd5d70b16299e",
+   "sig_5ec0b7dbe1698eb02045c82cb8c9010d",
+   "sig_662f30d8444fccff79716f2396fc592c",
+   "sig_726661a4c900b3809eb2af960942f167",
+   "sig_770296e8b9a9065650e5c9ce1a898181",
+   "sig_7fbb0d40368a620c0202117e4028579f",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_89c2afb349a14fab37159f14ede8fb24",
+   "sig_8c55f4102550ce5ae990937c9763452e",
+   "sig_8ea39d944266db09c3c074d4c255d425",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a20049c82fe5efb766a96677a2833b86",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_b92ea964549f781d6395a7fc76ecdd3f",
+   "sig_c49927c00b8952a550f32ac19f7cd7c0",
+   "sig_d497a03becbc747648bc2e1aa3dc78a6",
+   "sig_e6a3a82a26b2078da809079f104f777e",
+   "sig_eb7df4d9db85ee1a6c16ec16aed213a1",
+   "sig_f15d35090db822cba12e633b1eca7933",
+   "sig_f930f8d58fee81fed4050744af62b25b",
+   "sig_ff7b5b95daa2b1fbdf256d55512888ac"
+  ],
+  "SG|green tea cleanser": [
+   "sig_1e912fdeb544ccf33f3dbb7baded0211",
+   "sig_3b8a9156567cac4fbeab99cb338bcef3",
+   "sig_4d985b70e83a87322ad753703d5f4e1e",
+   "sig_6b75491cdc18dcddfd6fc3bad0518cb2",
+   "sig_8c55f4102550ce5ae990937c9763452e",
+   "sig_8ca20c31d3b828715c607128eef714db",
+   "sig_8efbabac80a39b9cd92ac2e9e6f2d91c",
+   "sig_a54bec469d296aa18003866e7248fb73",
+   "sig_e307b51b13faa6316f77094421fc2c55",
+   "sig_ead20465221d2c285949161e38f01f84"
+  ],
+  "SG|red lipstick": [
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73"
+  ],
+  "SG|matte lipstick": [
+   "sig_0a82e5235340b31ec9e9e013b652e011",
+   "sig_2b2c9f9f752891a76a46e45f52aa464e",
+   "sig_3b20da2327204661f575a6572f7da8a5",
+   "sig_5936e5760faffd0a8e19ae353f62b5e7",
+   "sig_5cda6b83bdcb9c50a3dca30b2239aa45",
+   "sig_7273d5c4cad7d00fbec00a6978c93983",
+   "sig_7b79bd251025cbb504ad19dbacb8bbb6",
+   "sig_a8d501612f8f737da583260ec2642fb9",
+   "sig_afd62a5e2b02dbd8fc350728a78d2d73"
+  ],
+  "SG|tinted moisturizer spf": [
+   "sig_00655af7c2bb82b2b98d82648722bbed",
+   "sig_08c99bcd27eb79ceb29c6eb2d4baab53",
+   "sig_1dcc0c5aac9985f7c954daddafebb49a",
+   "sig_2863e2708a9c815241d17670af246d2f",
+   "sig_2ddb403dd9f5e76b18bb5d7479ba608f",
+   "sig_388881f6e11363e02a17008760f85bfc",
+   "sig_38efeaf77c64b58dfb7f956234009b5c",
+   "sig_3dd066dd45314e25f30118fa0168e3d4",
+   "sig_433656665dfe84d8526374582b514fe9",
+   "sig_4ee69407269d201d4c5f229220fcff2d",
+   "sig_5439bab08878e33a2d70a966a8ed2f50",
+   "sig_5800a2c39b46d326387873159a1137ae",
+   "sig_5c94a5b9df92475bd55423469533b373",
+   "sig_5ec0b7dbe1698eb02045c82cb8c9010d",
+   "sig_6bbdd740540f194acb1ad27218efa27a",
+   "sig_7613508e98148dcb5afc30d5d7cbfae1",
+   "sig_7616b53852f461efc3c464cbd381463f",
+   "sig_768b9d135f80fbdcb081cb1ef6f586a1",
+   "sig_7923df6f8c1d19afce3ed075eadb33db",
+   "sig_83d6e509417245fef75fbcec0b688dc5",
+   "sig_876b5cd0d6e2709407c4b4ccef41fccc",
+   "sig_8efbabac80a39b9cd92ac2e9e6f2d91c",
+   "sig_94e3f8cd9c07ad26e9f65c14a91d4a4b",
+   "sig_973f2a00b405b7e37ae4a5f9826edec4",
+   "sig_99c048d5080f6f8e4391b13fa3d0ddea",
+   "sig_a54bec469d296aa18003866e7248fb73",
+   "sig_b4542d465888787d41947edfa85a2b9a",
+   "sig_c0bfde6a7b3af0bb95f81b53c2b84b77",
+   "sig_c87d8a34968d0015885b0980e4c804b0",
+   "sig_cd2abc5dfc8c8ccbebdc0719",
+   "sig_cebc4da6a7872f67e41c6557170286e2",
+   "sig_d03db8cceaf1b7a7c81861ff68b83a8e",
+   "sig_d92abd529a7b935d21a1cb34aaf54118",
+   "sig_e3f76d1e7d51b05941c6492c3834218f",
+   "sig_e959cbde356524d37aa4e7f7",
+   "sig_ed29fb033181bd8d634da54e0a9b5c52",
+   "sig_f6022896c9030487654f3ac10fb1b010",
+   "sig_f89f989d1bf4b16d4a346a89415d4318",
+   "sig_f9346b08d3bef186fcf96292f113e064"
+  ]
+ }
+}

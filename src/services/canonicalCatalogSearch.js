@@ -40,8 +40,17 @@
  *     known category alias (matches the backend's
  *     `services/pdp_category_classifier.py:category_path_prefix_for_query`,
  *     e.g. "lipstick" → "beauty/makeup/lip/"). Pass `null`/`undefined` when
- *     there's no category match — the helper simply omits the category
- *     WHERE/score branches.
+ *     there's no category match.
+ *   - **Passing a prefix switches the helper into CATEGORY-BROWSE mode and
+ *     the query-text predicate is DROPPED from the WHERE clause** — recall
+ *     becomes "rows under the prefix", ranked, with `updated_at` as the
+ *     effective tie-break inside a bucket. That is correct for browse
+ *     surfaces and silently wrong for query-specific recall (the 2026-07-31
+ *     skincare release-gate red, PR #1889). Because the switch is invisible
+ *     at the call site, a caller passing a prefix MUST also declare
+ *     `categoryMode: 'category_browse'` — the helper throws otherwise.
+ *     `categoryMode` without a prefix is fine (text mode; browse intent
+ *     simply had no bucket to browse).
  *   - Set `verticalSearch=true` for ingredient-anchored queries (e.g.
  *     "niacinamide serum") to also match SKU `visible_option_labels` /
  *     `ingredient_ids`. Default `false` for category / brand queries.
@@ -49,13 +58,49 @@
 
 'use strict';
 
+const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
+const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
+// NOTE: when the name-evidence arm is armed (SEARCH_NAME_EVIDENCE_ADMISSION), both caps are exceeded
+// by exactly MAX_CARRIERS (searchNameEvidence.js): admitted rows take reserved slots so they never
+// evict a row the category recalls. The overrun is bounded and pinned by
+// tests/integration/search_name_evidence_admission_postgres.test.js.
 const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
+
+// How far past the caller's `limit` this query over-fetches, as env-tunable knobs. DEFAULTS ARE THE
+// HISTORICAL 4x/6x — read the next paragraph before lowering them.
+//
+// Measured on prod 2026-08-05: the beauty direct-recall lane asks for limit=48, which becomes 192
+// candidates and a 288-row cap; that query costs 1.9-5.5s and is 60-98% of the lane's 3.1-4.0s. Lowering
+// the multipliers looks like free latency. It is not, for two reasons found in review:
+//
+//   1. "ORDER BY rank_score DESC keeps the best rows" IS NOT TRUE ON THE LANES THAT MATTER. In
+//      category_browse mode the text predicate is dropped and categoryScore adds a flat +90 to every row
+//      in the bucket, so rank_score is near-constant and ordering degenerates to the `updated_at DESC`
+//      tie-break — see the 2026-07-30 restamp note above, which turned the release gate red by exactly
+//      this mechanism. Cutting candidates there keeps the most RECENTLY UPDATED rows, not the most
+//      relevant ones. Both production callers (beauty mainline, shopping non-beauty) use category_browse.
+//   2. THE ROW COUNT IS NOT THE CANDIDATE COUNT. The outer join fans out over skus/offers, so the observed
+//      234-288 rows come from 192 candidates. Those candidates then pass the caller's relevance gate at a
+//      measured ~30-35%, i.e. 192 -> 58-67 products for a 48-product page. Halve the candidates and the
+//      canonical leg supplies ~29-34 — it silently stops filling its own page, and the seed-leg merge
+//      hides the shortfall.
+//
+// So the safe unit of headroom is CANDIDATES SURVIVING THE GATE, not rows: hold
+// candidate_limit * survival >= the caller's limit. To cut cost without touching recall, reduce the row
+// fan-out (e.g. the unfiltered offer join) rather than the candidate depth.
+function multiplierFromEnv(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+const CANDIDATE_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_CANDIDATE_MULTIPLIER', 4);
+const ROW_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_ROW_MULTIPLIER', 6);
 
 // Generic words dropped from query token matching (tokenMatch mode) so they
 // don't dominate the token-overlap score / pull in irrelevant rows.
@@ -69,6 +114,583 @@ const TOKEN_STOPWORDS = new Set([
 function normalizeQuery(raw) {
   if (raw == null) return '';
   return String(raw).trim().toLowerCase();
+}
+
+// ADR-020 search-wiring slice: env-flag gate for the recall_doc match lane.
+// Read PER CALL (not at module load) so ops can flip the flag on a running
+// process without a restart. Default OFF — serving is byte-identical until
+// the flag is explicitly enabled.
+const RECALL_DOC_MATCH_FLAG_VALUES = new Set(['enabled', 'on', '1', 'true']);
+
+function isRecallDocMatchEnabled(env = process.env) {
+  return RECALL_DOC_MATCH_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_RECALL_DOC_MATCH || '').trim().toLowerCase(),
+  );
+}
+
+// Category-browse text UNION. A resolved category prefix used to REPLACE the
+// query-text predicate outright (`whereClause` below): recall became "rows
+// under the prefix", and the query the shopper typed contributed nothing to
+// either the WHERE or — under rank v1 — the ORDER BY. That is the defect
+// PR #1889 fixed on the ingredient-direct lane and never fixed on the
+// mainline, and it fails in BOTH directions the catalog actually exhibits:
+//
+//   sparse/mis-aimed bucket — beautyTaxonomy.js measured on prod 2026-08-04:
+//     "toner"   prefix beauty/skincare/tone/ -> BROWSE 0 rows, TEXT 48/48
+//     "shampoo" prefix beauty/hair/          -> BROWSE 0 rows, TEXT 48/48
+//     The bucket names a leaf the data does not use, so browse recalls
+//     NOTHING while the products sit in plain sight under a text match.
+//
+//   over-broad bucket — "hair care" resolves to the PARENT prefix `beauty/`
+//     (categoryPathParentPrefix of beauty/haircare), i.e. the whole beauty
+//     catalog. categoryScore is a flat +90 across every one of those rows, so
+//     rank_score is near-constant and the candidate cut keeps the most
+//     RECENTLY UPDATED rows, not the ones the shopper asked for. The caller's
+//     relevance gate then deletes all of them and the route answers
+//     "No products matched this search."
+//
+// The union addresses the FIRST case: text matches are admitted even when the
+// bucket is empty or mis-aimed. That is the half with prod measurements behind
+// it (toner/shampoo above), and it is where this change does real work.
+//
+// TWO HONEST LIMITS, both found in review and neither yet closed:
+//
+//   * The second case is only PARTLY addressed. `categoryBrowseTextScore` keys
+//     on $2, the whole lowered query, so for a multi-word browse query like
+//     "hair care" essentially no title contains the literal phrase and the arm
+//     contributes 0 — while the WHERE union adds nothing either, since every
+//     candidate is already inside `beauty/`. Only tokenScore (max 2x25=50,
+//     under the flat +90 category arm) differentiates there. The over-broad
+//     bucket therefore still ranks close to arbitrarily; a per-token arm would
+//     be the fix, and is deliberately not attempted here.
+//
+//   * "Additive to recall" is true of the WHERE and FALSE of the returned rows.
+//     The category arm is still there, OR'd, so the admitted set is a strict
+//     superset. But the candidate cut is a fixed LIMIT over a RE-RANKED
+//     superset (see the ORDER BY in the candidate CTE), so a row admitted only
+//     by a new arm can outscore and displace a bucket row that previously made
+//     the cut — e.g. a 4/4 token-overlap row at 100 over a zero-overlap bucket
+//     row at 90. This is a RERANKING change, not a pure recall add, and it
+//     wants the prod row-diff discipline applied elsewhere in this file before
+//     anyone calls it behaviour-preserving.
+//
+// SHIPS DARK (default OFF), like every other flag in this file — and not for
+// the usual reason. This one gates a DEFECT fix, so flag-off is the broken
+// behaviour and the instinct is to default it on. Review produced two reasons
+// not to, neither of which is answerable without prod:
+//
+//   1. UNMEASURED PLAN. Browse mode now emits the full plain disjunction,
+//      including two OR EXISTS on catalog_skus. This file's own prod EXPLAINs
+//      put that shape at 3.2-3.9s / ~262k buffers, and at 6.9s once an
+//      OR EXISTS forces the plan off the bitmap path. The candidate LIMIT sits
+//      AFTER the WHERE and ORDER BY, so it bounds output size, not scan cost.
+//      #1935 and #1900 both shipped on measured EXPLAINs; this lane serves most
+//      beauty search and this repo has a standing history of pool exhaustion
+//      from exactly this class of misestimate.
+//   2. POSSIBLY A NO-OP END TO END. The caller's hard-constraint gate uses
+//      `productMatchesCategoryPathPrefix` — byte-for-byte the same predicate as
+//      the SQL category arm — and drops any product whose category_path does
+//      not match as `category_mismatch`. That is precisely the set of rows this
+//      union newly admits. Until someone measures how many survive the gate,
+//      "shampoo returns shampoos" is a hypothesis, not a result.
+//
+// With the flag off the generated SQL is byte-identical to pre-union serving,
+// verified across 49,152 flag/argument combinations, so merging this is inert.
+//
+// TO TURN IT ON: run an EXPLAIN ANALYZE on the browse+union statement for a
+// prefix-resolving query, and run the toner/shampoo probes END TO END (not at
+// the SQL layer) to confirm rows survive the caller gate. Then set
+// CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=on. Read per call, so it can be
+// flipped on a running process and rolled back the same way.
+//
+// NOTE FOR WHOEVER FLIPS IT: the accompanying MCP-tier cache fix is live and
+// unconditional. It is what addresses the 8/8 cold zeros actually measured on
+// 2026-08-20; this flag addresses the separate never-rescuable class
+// (`shampoo`, `conditioner`, `hair care`), which that measurement did not
+// sample. Do not read a green zero-rate after the cache fix as evidence that
+// this flag is unnecessary.
+// Generous on BOTH sides, because this flag will be flipped by hand under time
+// pressure in both directions: on during a recall incident, off if the plan
+// regresses. Anything unrecognised (and unset, and blank) leaves it OFF.
+const CATEGORY_BROWSE_TEXT_UNION_ON_VALUES = new Set([
+  '1', 'true', 'yes', 'y', 'on', 'enabled', 'enable',
+]);
+
+function isCategoryBrowseTextUnionEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION ?? '').trim().toLowerCase();
+  return CATEGORY_BROWSE_TEXT_UNION_ON_VALUES.has(raw);
+}
+
+// ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
+// dominance over provenance) + the market-exemption fix for
+// pdp_scope='multi_merchant_canonical'. Same per-call read discipline as
+// CANONICAL_CATALOG_RECALL_DOC_MATCH above — read per call so ops can flip it
+// on a running process. Default OFF — flag-off SQL and params are
+// byte-identical to the pre-slice behaviour.
+const RANK_V2_FLAG_VALUES = new Set(['enabled', 'on', '1', 'true']);
+
+// Class 4 (recall-lane assessment): deterministic serving tie-break.
+// `updated_at DESC` as the rank tie-break means any bulk restamp of catalog
+// rows reshuffles serving order wherever rank_score ties are broad — which is
+// how the 2026-07-30 restamp of 3,824 skincare rows turned the release gate
+// red with no code change (category-bucket mode had near-constant rank_score,
+// so ordering degenerated to recency). Under this flag the tie-break becomes
+// `product_key` — arbitrary but FIXED, so data jobs can never reorder results
+// whose rank is equal. Freshness stops influencing equal-rank ordering by
+// design: that influence is the instability. Default off; flip alongside
+// CANONICAL_CATALOG_RANK_V2 (both reorder all canonical searches — soak as
+// one change).
+const DETERMINISTIC_TIEBREAK_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isDeterministicTiebreakEnabled(env = process.env) {
+  return DETERMINISTIC_TIEBREAK_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK || '').trim().toLowerCase(),
+  );
+}
+
+function isRankV2Enabled(env = process.env) {
+  return RANK_V2_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_RANK_V2 || '').trim().toLowerCase(),
+  );
+}
+
+// ADR-020 phase 1: product-form agreement.
+//
+// THE DEFECT, MEASURED ON PROD 2026-08-07. Token overlap counts tokens without
+// asking what any of them MEAN, so a match on the query's product-form noun is
+// worth exactly as much as a match on a generic material or attribute word.
+// For "lightweight gel moisturizer for acne-prone skin" only 13 live US rows
+// clear the token WHERE arm (overlap >= 3) and TWELVE of them tie at exactly
+// 75 — the real gel moisturizers tied with a facial toner, a sheet mask, a
+// cleanser and two bundles, all of which match {acne, prone, skin}. With the
+// score tied, product_key ASC picks the cut, and 4 of the 8 served rows were
+// the wrong kind of product.
+//
+// WHY NOT IDF. The obvious fix is to weight tokens by inverse document
+// frequency, and it was measured before being rejected: it does not help here
+// and mildly hurts. The rarest token in that query is "prone" (df=10) — half
+// of the attribute "acne-prone" and semantically worthless — while the form
+// noun "moisturizer" sits at df=192. IDF therefore promotes the sheet mask,
+// the bundle and the toner into positions 2-4. Measured relevant-in-top-8:
+// flat 5/8, IDF 5/8, form agreement 8/8.
+//
+// WHAT THIS ARM DOES. When the query names a product form, rows whose TITLE
+// carries that same form get +60 — enough to clear a two-token overlap
+// difference (50) but deliberately below the coverage (+80) and title-phrase
+// (+120) arms, so a genuine phrase match still wins.
+//
+// Default OFF. Note the #1933 lesson: a rank fix that rides an unrelated flag
+// sits dark in prod. This has its own flag and must be enabled explicitly.
+const FORM_AGREEMENT_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isFormAgreementEnabled(env = process.env) {
+  return FORM_AGREEMENT_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_FORM_AGREEMENT || '').trim().toLowerCase(),
+  );
+}
+
+// The FLAG-DERIVED params the buyable beauty mainline passes to
+// fetchCanonicalChainRows, which a replica lane (the recall-parity harness)
+// must mirror to measure the same thing. Read per call, like every other flag
+// here, so ops can flip a flag on a running process and the next measurement
+// reflects it.
+//
+// SCOPE — this does NOT make a caller equivalent to the mainline, and must not
+// be read as doing so. It carries only params fixed by configuration. The
+// mainline additionally passes QUERY-DERIVED params that no static config can
+// supply: categoryPathPrefix + categoryMode='category_browse' (which drops the
+// query text entirely and is the mode most beauty traffic takes),
+// verticalSearch, brandFilter, and includeSkuOffers. A harness spreading this
+// still measures TEXT mode; that divergence is real and documented in
+// reports/adr020_phase1_acceptance_rebaseline_2026-08-07.md rather than
+// papered over here.
+// The mainline's own parser, imported rather than re-implemented. Using this
+// file's RANK_V2_FLAG_VALUES here would be a different parser wearing the same
+// name: it accepts `enabled` (which parseBooleanEnv rejects) and rejects
+// `yes`/`y` (which parseBooleanEnv accepts). Since every sibling flag in THIS
+// file is spelled `enabled`, an operator setting
+// PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED=enabled would get a dark lane in
+// prod and a harness confidently stamping token_match:true — the instrument
+// defect this helper exists to prevent, inverted and self-certifying.
+const { parseBooleanEnv } = require('../api/gateway/access/invokeAuthEmergencyFallback');
+
+/**
+ * Did the product-form arm actually FIRE for this query?
+ *
+ * A bare flag stamp is not enough for this arm, unlike its siblings: it is
+ * query-conditional, so CANONICAL_CATALOG_FORM_AGREEMENT=enabled says only that
+ * it *could* fire. Three conditions must hold — the flag, rank v2 (which gates
+ * the whole v2 block, and whose absence would reproduce #1933: a rank change
+ * live but inert), and the query naming a form this lexicon covers. Stamping
+ * the flag alone would report true across the entire lane, and the soak could
+ * not be sliced to the requests actually reordered — the same failure the
+ * sargable stamp one lane over already warns about.
+ *
+ * Serving lanes should AND this with their own per-request conditions, the way
+ * canonical_sargable_text_where does.
+ */
+function formAgreementEffectiveFor(queryText, env = process.env) {
+  if (!isFormAgreementEnabled(env) || !isRankV2Enabled(env)) return false;
+  return queryFormTitlePatterns(buildSignificantTokens(normalizeQuery(queryText))).length > 0;
+}
+
+function mainlineLaneConfig(env = process.env) {
+  return {
+    // Same parser AND same fallback as src/server.js for each.
+    tokenMatch: parseBooleanEnv(env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED, false),
+    // #1935: the sargable text WHERE. Added here within hours of landing on the
+    // mainline, which is the point — this helper exists because that lag is
+    // where the instrument silently stops measuring the system. The sargable
+    // form DROPS three WHERE arms, so it changes recall, not just plan shape:
+    // a harness without it measures a different candidate set.
+    sargableTextWhere: parseBooleanEnv(
+      env.PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
+      false,
+    ),
+  };
+}
+
+// Product forms: QUERY token -> the patterns that identify that form in a
+// TITLE. The two sides are deliberately allowed to differ, because shoppers and
+// merchandisers do not use the same words.
+//
+// TEXTURE AND FORMAT WORDS ARE EXCLUDED (gel, cream, oil, balm, powder, mist,
+// stick, water, milk, foam, spray). They modify a form noun far more often than
+// they are one, and including them would defeat the arm: "gel" is in
+// "lightweight gel moisturizer", so a "Heartleaf Soothing Gel MASK" would
+// collect the boost — exactly the row this arm exists to demote.
+//
+// "FRAGRANCE" IS THE CASE THAT PROVES THE TWO SIDES MUST DIFFER. It is a
+// category word: real perfumes are titled "Eau de Parfum", while the titles
+// that literally contain "fragrance" are body mists and layering balms.
+// Measured on prod 2026-08-07 for "woody fragrance under $80": enabling
+// tokenMatch dropped this query from 3 relevant results to 0, because the
+// +25/token arm promoted five "Find Comfort Body & Hair Fragrance Mist" rows
+// over Tom Ford's Oud Wood / Tobacco Vanille / Black Orchid Eau de Parfum —
+// none of which contain the token "fragrance" at all. Mapping the query token
+// to parfum/cologne/perfume (and NOT to "fragrance") boosts the actual
+// perfumes and leaves the mists alone.
+//
+// UNDER-INCLUSION IS NOT FREE — an earlier version of this comment claimed it
+// was, and that was wrong in a way worth stating. A form absent from the map
+// means the arm never fires for that query, so ordering is unchanged: monotone
+// BETWEEN queries. But once the arm fires, every row whose title the patterns
+// miss is relatively demoted by 60. Measured over the 247 titles in the
+// acceptance corpus, 21% carry no form-vocabulary word at all — "1025 Dokdo
+// Cream", "Beauty of Joseon Dynasty Cream", "Plum Plump Hyaluronic Cream" are
+// real moisturizers with no form noun in the title, and the unlabelled cohort
+// is brand-correlated (K-beauty naming conventions). A narrow vocabulary
+// therefore ranks by merchandiser naming convention rather than by merit,
+// which is the defect class the neutrality note further down this file exists
+// to forbid.
+//
+// So: keep the TITLE side as wide as the evidence supports, and keep it in
+// step with FORM_PATTERNS in scripts/lib/adr020_recall_relevance.cjs, which is
+// the authoritative form vocabulary. Over-inclusion on the QUERY side is still
+// unsafe (see "gel" and "fragrance" above); the two sides are separate.
+const PRODUCT_FORM_TITLE_PATTERNS = new Map([
+  // SCOPE: only forms the acceptance corpus actually exercises. 18 further
+  // entries (toner, mask, essence, blush, primer, shampoo, ...) were removed
+  // rather than shipped unmeasured — this corpus cannot falsify them, and the
+  // one that was checked misfired: 'mask' boosted six TIRTIR cushion
+  // foundations, whose line is literally titled "Mask Fit Red Cushion". Adding
+  // a form here should come with a query that exercises it.
+  // skincare — query word and title word coincide
+  ['cleanser', ['cleanser']],
+  // Widened toward FORM_PATTERNS in the rubric: "1025 Dokdo Cream" and
+  // "Dynasty Cream" are moisturizers whose titles never say "moisturizer".
+  ['moisturizer', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
+  ['moisturiser', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
+  ['serum', ['serum', 'ampoule']],
+  // NOT 'spf': it is stamped across complexion titles ("Tinted Moisturizer
+  // SPF 30", "Flawless Foundation SPF 15"), so it would boost foundations for
+  // a sunscreen query. Per the monotonicity rule, under-include.
+  // 'spf' stays OUT (stamped across complexion titles), but the sun-care
+  // nouns the rubric recognises are in: "Airy Sun Stick SPF 50+" is a
+  // sunscreen whose title never says "sunscreen".
+  ['sunscreen', ['sunscreen', 'sun cream', 'sun stick', 'sun milk', 'sun fluid', 'uv protector', 'uv shield']],
+  // makeup
+  ['lipstick', ['lipstick']],
+  ['mascara', ['mascara']],
+  ['eyeshadow', ['eyeshadow', 'eye shadow']],
+  ['foundation', ['foundation']],
+  ['concealer', ['concealer', 'corrector']],
+  ['palette', ['palette']],
+  ['cushion', ['cushion']],
+  // fragrance — query vocabulary and title vocabulary diverge; see above
+  // 'perfume' is NOT a title pattern. Wearable fragrance is titled "Eau de
+  // Parfum"; the titles that literally say "Perfume" are a body-cream line and
+  // a reed diffuser ("Perfume Diffuser 3 set"). Including it ranked those
+  // above Tom Ford. Same lesson as 'fragrance', one level down.
+  ['fragrance', ['parfum', 'cologne']],
+  ['perfume', ['parfum', 'cologne']],
+  ['parfum', ['parfum', 'cologne']],
+  ['cologne', ['cologne', 'parfum']],
+  // hair / body
+]);
+
+// ADR-020 / issue #1927: multi-product set diversity.
+//
+// THE DEFECT, MEASURED ON PROD 2026-08-07. Every rank arm that carries text
+// signal needs a LITERAL match — the two phrase arms (+120 title, +60
+// recall_doc) need the WHOLE query contiguous, and the coverage arm (+80)
+// needs EVERY significant token. On a 5-6 token natural-language query none of
+// them fires for any candidate, so on the lanes that also run without
+// tokenMatch the ladder goes completely inert. Measured for "lightweight gel
+// moisturizer for acne-prone skin" (mainline lane params, rank v2 + recall_doc
+// on): all 192 candidates scored EXACTLY 20 — the flat
+// multi_merchant_canonical arm and nothing else. With the score constant,
+// every ordering decision falls to the tie-break, and the tie-break
+// (product_key ASC) knows nothing about what a row IS.
+//
+// WHY THAT SURFACES AS BUNDLES. product_key ASC is not a neutral sample of the
+// tied pool — it is alphabetical, and key-space is clustered by source, so the
+// cut lands in whichever corner sorts first. Measured on the same query: the
+// matched pool was 4,780 rows and 17.8% set_or_collection (the catalog base
+// rate), but the 192-row candidate cut came back 47% sets. The bundles did not
+// outrank anything; they won an arbitrary tie-break, and 43 candidate slots
+// that singles would have taken went to sets. Both singles named in #1927 were
+// in the matched pool and lost the cut.
+//
+// THE FIX IS TWO-PART, because the two symptoms have different causes:
+//   1. QUOTA AT THE CUT (SQL, below). Within a tie group, sets past
+//      `candidate_limit * SET_QUOTA_SHARE` sort behind everything else, so they
+//      lose the LIMIT $3 cut to singles. Restores the pool's own composition to
+//      the candidate set: 91/192 sets -> 48/192 on the measured query.
+//   2. WINDOW CAP AT THE HEAD (JS, applyMultiProductSetTopCap). The quota does
+//      not touch the FIRST sets, so the top-8 stayed at 4/8 sets after step 1
+//      alone. The cap holds sets to MULTI_PRODUCT_SET_TOP_CAP_MAX per rolling
+//      window of MULTI_PRODUCT_SET_TOP_CAP_WINDOW.
+//
+// NEITHER PART CAN OVERRIDE A REAL MATCH. Both are strictly TIE-GROUP SCOPED —
+// they only reorder rows whose rank_score is EQUAL, i.e. they replace an
+// arbitrary tie-break with an informed one and can never move a row past a row
+// that genuinely scored differently. When the ladder fires the way it is
+// supposed to ("gentle cleanser" -> [140] Water Bank Gentle Gel Cleanser) the
+// matching rows sit in higher tie groups and are untouched, set or not.
+//
+// AND NEITHER RUNS WHEN THE SHOPPER ASKED FOR A SET. queryWantsMultiProductSet
+// (the vocabulary already used by the serving-layer demotion in server.js —
+// same regex, one home) exempts "gift set", "starter kit", "discovery",
+// "routine". Note "easy to pack for travel" is a SIZE intent, not a
+// multi-product one, and is deliberately NOT in that vocabulary.
+//
+// Default OFF, per the ordering-change discipline this file already follows
+// for CANONICAL_CATALOG_RANK_V2 / _DETERMINISTIC_TIEBREAK: flag off emits
+// byte-identical SQL and returns the driver's rows untouched.
+const SET_DIVERSITY_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isSetDiversityEnabled(env = process.env) {
+  return SET_DIVERSITY_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_SET_DIVERSITY || '').trim().toLowerCase(),
+  );
+}
+
+// The family value that means "this row is several products sold together".
+// Written by the sync path and backfilled across the catalog by PR #1928
+// (prod 2026-08-07: 2,000 set_or_collection of 11,820 live external_referral
+// rows; 617 still unclassified).
+const MULTI_PRODUCT_SET_FAMILY = 'set_or_collection';
+
+// Share of the candidate budget sets may hold. 0.25 sits deliberately ABOVE
+// the 17.8% measured pool rate: the quota is a ceiling on the pathological
+// case, not a target, so on a normally-composed pool it never binds and the
+// candidate set is byte-identical to flag-off.
+const MULTI_PRODUCT_SET_QUOTA_SHARE = 0.25;
+
+// Rolling head cap: at most 2 sets in any 8 consecutive served rows.
+const MULTI_PRODUCT_SET_TOP_CAP_WINDOW = 8;
+const MULTI_PRODUCT_SET_TOP_CAP_MAX = 2;
+
+// Read product_family out of the payload JSON, in the same precedence order as
+// every other reader (server.js resolveCatalogProductRef, pdpBuilder.js,
+// pdpSchemaProfile.js). The two eps.seed_data fallbacks those readers also
+// consult need a join this query does not have; they are the last resort for a
+// row whose payload carries nothing, and a row with no family is simply not
+// treated as a set (fail-open — an unclassified row keeps today's ordering).
+//
+// STAYS IN JSON, NO MIGRATION. This expression appears ONLY in the candidate
+// CTE's projection and the window that orders it — never in a WHERE clause —
+// so it runs over rows the text predicate already admitted and no index on it
+// would be usable. Measured on prod (EXPLAIN ANALYZE, "lightweight gel
+// moisturizer for acne-prone skin"): planner cost 159,387 -> 159,723 (+0.2%),
+// execution 3,404ms -> 3,321ms. The plan already sorts the full matched set,
+// so the WindowAgg rides along free. Promoting product_family to an indexed
+// column becomes worth doing when something FILTERS on it — the user-facing
+// "Sets & Kits" facet — not for this.
+const PRODUCT_FAMILY_SQL = `COALESCE(
+          p.product_payload->>'external_seed_product_family',
+          p.product_payload->>'product_family',
+          p.product_payload->'external_seed_product_kind'->>'family',
+          ''
+        )`;
+
+/** Is this returned row a multi-product set? Mirrors PRODUCT_FAMILY_SQL. */
+function rowIsMultiProductSet(row) {
+  const raw = row && row.product_payload;
+  let payload = raw;
+  if (typeof raw === 'string') {
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return false;
+    }
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  const family =
+    payload.external_seed_product_family ||
+    payload.product_family ||
+    (payload.external_seed_product_kind && payload.external_seed_product_kind.family) ||
+    '';
+  return String(family).trim().toLowerCase() === MULTI_PRODUCT_SET_FAMILY;
+}
+
+function sameRankScore(left, right) {
+  const a = Number(left && left.rank_score);
+  const b = Number(right && right.rank_score);
+  if (Number.isFinite(a) && Number.isFinite(b)) return a === b;
+  return (left && left.rank_score) === (right && right.rank_score);
+}
+
+/**
+ * Hold multi-product sets to `maxPerWindow` per rolling window of
+ * `windowSize` served rows.
+ *
+ * DEMOTES, NEVER DROPS: every input row is in the output exactly once, so
+ * callers' counts and pagination are unchanged. Reordering happens strictly
+ * INSIDE a run of equal rank_score — a deferred set is swapped with a later
+ * single from its OWN tie group, so a row can never cross a genuine score
+ * boundary in either direction. A tie group with no singles left to promote
+ * emits its sets in the order it received them.
+ *
+ * Pure; exported for tests and the dry-run harness.
+ *
+ * @returns {{rows: object[], deferred_count: number}}
+ */
+function applyMultiProductSetTopCap(rows, options = {}) {
+  const windowSize = Math.max(1, Math.floor(Number(options.windowSize) || MULTI_PRODUCT_SET_TOP_CAP_WINDOW));
+  const maxPerWindow = Math.max(0, Math.floor(
+    Number.isFinite(Number(options.maxPerWindow))
+      ? Number(options.maxPerWindow)
+      : MULTI_PRODUCT_SET_TOP_CAP_MAX,
+  ));
+  const input = Array.isArray(rows) ? rows : [];
+  if (input.length < 2) return { rows: input, deferred_count: 0 };
+
+  const out = [];
+  let deferredCount = 0;
+  let groupStart = 0;
+  while (groupStart < input.length) {
+    let groupEnd = groupStart + 1;
+    while (groupEnd < input.length && sameRankScore(input[groupEnd], input[groupStart])) groupEnd += 1;
+    const pending = input.slice(groupStart, groupEnd);
+    while (pending.length > 0) {
+      // Window is counted over GLOBAL output positions, not per group — "at
+      // most 2 sets in the top 8" is a statement about the served page.
+      const setsInWindow = out
+        .slice(Math.max(0, out.length - (windowSize - 1)))
+        .filter(rowIsMultiProductSet).length;
+      let pick = 0;
+      if (rowIsMultiProductSet(pending[0]) && setsInWindow >= maxPerWindow) {
+        const alternative = pending.findIndex((row) => !rowIsMultiProductSet(row));
+        if (alternative > 0) {
+          pick = alternative;
+          deferredCount += 1;
+        }
+      }
+      out.push(pending.splice(pick, 1)[0]);
+    }
+    groupStart = groupEnd;
+  }
+  return { rows: out, deferred_count: deferredCount };
+}
+
+/**
+ * Query tokens -> the deduped TITLE patterns for whatever product forms they
+ * name. Empty when the query names no form (the arm then does not fire at all).
+ *
+ * buildSignificantTokens splits on whitespace only and does no stemming, so a
+ * raw Map lookup silently misses the most ordinary phrasings — measured:
+ * "moisturizer," (one comma) and "best moisturizers" (plural) both yielded no
+ * form. Strip non-letters and try a naive singular before giving up. This is
+ * deliberately local to the form lookup rather than a change to
+ * buildSignificantTokens, which is shared with the token WHERE and coverage
+ * arms and would alter recall if it started stripping punctuation.
+ */
+function queryFormTitlePatterns(tokens) {
+  const patterns = [];
+  for (const raw of Array.isArray(tokens) ? tokens : []) {
+    const token = String(raw || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!token) continue;
+    const hit =
+      PRODUCT_FORM_TITLE_PATTERNS.get(token) ||
+      (token.endsWith('es') ? PRODUCT_FORM_TITLE_PATTERNS.get(token.slice(0, -2)) : null) ||
+      (token.endsWith('s') ? PRODUCT_FORM_TITLE_PATTERNS.get(token.slice(0, -1)) : null);
+    if (hit) patterns.push(...hit);
+  }
+  return [...new Set(patterns)];
+}
+
+// Significant query tokens: length >= 3, stopwords dropped, deduped, capped
+// at 6. Shared by the tokenMatch lane (WHERE overlap + *25 rank bonus) and the
+// rank-v2 all-token-coverage arm so both see the same tokenization.
+function buildSignificantTokens(lowered) {
+  return Array.from(
+    new Set(
+      lowered
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !TOKEN_STOPWORDS.has(t)),
+    ),
+  ).slice(0, 6);
+}
+
+// Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
+// lane's cap discipline (the since-deleted findProductsExternalSeedDirectRetrieval
+// capped its variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+const RECALL_DOC_PATTERN_CAP = 16;
+
+/**
+ * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
+ * query. Pure function; mirrors the external-seed lane's approach
+ * (search_text LIKE ANY over token patterns — see
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js; its old
+ * caller derived patterns from injected tokenizers so it was not reusable here).
+ *
+ * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
+ *   1. the lowered full phrase,
+ *   2. adjacent-token bigrams over the raw token sequence (kept verbatim —
+ *      recall_doc is matched with LIKE, so a bigram must appear contiguously;
+ *      dropping stopwords first would build patterns that can never match),
+ *   3. single significant tokens of length >= 4 (stopwords excluded so
+ *      generic words like "best"/"cheap" don't fan out the recall set).
+ *
+ * recall_doc is stored lower()ed (migration 058), so every pattern is
+ * lowercased for a case-insensitive match without an ILIKE (which would
+ * defeat the trigram index's LIKE support).
+ */
+function buildRecallDocMatchPatterns(rawQuery) {
+  const lowered = normalizeQuery(rawQuery);
+  if (!lowered) return [];
+  const patterns = [];
+  const seen = new Set();
+  const push = (text) => {
+    const t = String(text || '').trim();
+    if (!t) return;
+    const pattern = `%${t}%`;
+    if (seen.has(pattern) || patterns.length >= RECALL_DOC_PATTERN_CAP) return;
+    seen.add(pattern);
+    patterns.push(pattern);
+  };
+  push(lowered);
+  const tokens = lowered.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  for (let i = 0; i + 1 < tokens.length; i += 1) {
+    push(`${tokens[i]} ${tokens[i + 1]}`);
+  }
+  for (const token of tokens) {
+    if (token.length >= 4 && !TOKEN_STOPWORDS.has(token)) push(token);
+  }
+  return patterns;
 }
 
 function clampLimit(value, fallback, min, max) {
@@ -157,8 +779,28 @@ function buildBrandFilterTerms(brandFilter) {
  *                                          filter on the external-seed-direct
  *                                          path (queryBeautyExternalSeedRowsFast
  *                                          in server.js: AND market = $1).
- * @param {number} [args.limit]            Final row cap (default 12).
+ * @param {number} [args.limit]            Recall depth (default 12). NOT a final row cap: it is
+ *                                         multiplied into candidate_limit and row_limit (see the
+ *                                         over-fetch note), and the outer join fans out over
+ *                                         skus/offers, so the returned row count routinely
+ *                                         exceeds it several times over.
+ * @param {boolean} [args.sargableTextWhere] Optional (tokenMatch callers only).
+ *                                          Opt the buyable (serving_eligible)
+ *                                          lane into the citable sargable text
+ *                                          WHERE: every disjunct trigram-
+ *                                          bitmap-able (title/brand/token/
+ *                                          recall_doc), dropping the
+ *                                          merchant_name, source_product_id,
+ *                                          and sku/vertical OR-EXISTS recall
+ *                                          arms (rank arms unaffected). See
+ *                                          the citableSargableLane comment for
+ *                                          the measured plans.
  * @param {function} [args.deps.query]     pg-style query function. Required.
+ * @param {object} [args.offerScope]      MAIN shopping constraints, applied before
+ *                                          candidate LIMIT and to the selected offer:
+ *                                          markets, inStockOnly, optional native
+ *                                          currency, priceRanges from budget policy.
+ *                                          Null preserves other callers' SQL behavior.
  * @returns {Promise<Array<object>>}
  */
 async function fetchCanonicalChainRows(args = {}) {
@@ -166,18 +808,34 @@ async function fetchCanonicalChainRows(args = {}) {
     query: queryText,
     merchantId = null,
     categoryPathPrefix = null,
+    categoryMode = null,
     verticalSearch = false,
     includeSkuOffers = false,
     brandFilter = null,
+    searchQualityContract = null,
     marketId = null,
     limit = DEFAULT_LIMIT,
     eligibility = 'serving_eligible',
     tokenMatch = false,
+    sargableTextWhere = false,
+    offerScope = null,
     deps = {},
   } = args;
   const { query: pgQuery } = deps;
   if (typeof pgQuery !== 'function') {
     throw new TypeError('canonicalCatalogSearch: deps.query is required');
+  }
+  // Contract guard: a category prefix silently flips this helper from
+  // query-text recall to category BROWSE (the text predicate is dropped from
+  // the WHERE clause — see `whereClause` below). Every caller that passes a
+  // prefix must therefore say so explicitly; an undeclared prefix is the exact
+  // shape of the 2026-07-31 skincare release-gate regression (PR #1889) and is
+  // rejected rather than silently honored. `categoryMode` without a prefix is
+  // allowed: browse intent with no resolvable bucket degrades to text mode.
+  if (categoryPathPrefix && categoryMode !== 'category_browse') {
+    throw new TypeError(
+      "canonicalCatalogSearch: categoryPathPrefix switches recall to category-browse mode; pass categoryMode: 'category_browse' to confirm, or drop the prefix for text recall. (Browse mode no longer DROPS the query-text predicate by default — it ORs the two, see isCategoryBrowseTextUnionEnabled — but it does change ranking, and with the union kill-switched the text predicate is dropped outright.)",
+    );
   }
   // The eligibility gate column. Default 'serving_eligible' (has a buyable offer
   // -> shopping). 'index_eligible' is the OFFER-FREE citable surface (ADR-007):
@@ -188,14 +846,37 @@ async function fetchCanonicalChainRows(args = {}) {
   const lowered = normalizeQuery(queryText);
   if (!lowered) return [];
 
+  // ADR-020 rank-recalibration slice. Read once per call; gates BOTH the rank
+  // v2 CASE and the market-exemption fix below so they ship/roll back as one.
+  const rankV2Enabled = isRankV2Enabled();
+  // Flag off emits the legacy recency tie-break byte-for-byte; flag on pins
+  // equal-rank ordering to product_key so bulk restamps cannot reshuffle it.
+  const deterministicTiebreak = isDeterministicTiebreakEnabled();
+  const innerTiebreakSql = deterministicTiebreak ? 'p.product_key ASC' : 'p.updated_at DESC';
+  const outerTiebreakSql = deterministicTiebreak
+    ? 'c.product_key ASC'
+    : 'c.product_updated_at DESC';
+  // Set diversity (#1927). Skipped wholesale — SQL and JS alike — when the
+  // shopper asked for a set, so bundle queries keep today's ordering exactly.
+  const setDiversityEnabled = isSetDiversityEnabled() && !queryWantsMultiProductSet(lowered);
+  // Same tie-break, expressed against the quota CTE's alias. `p.updated_at` is
+  // projected as `product_updated_at`, so the legacy form has to be remapped
+  // rather than string-substituted.
+  const quotaTiebreakSql = deterministicTiebreak ? 'm.product_key ASC' : 'm.product_updated_at DESC';
+
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
-    normalizedLimit * 4,
+    normalizedLimit * CANDIDATE_LIMIT_MULTIPLIER,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
   );
-  const rowLimit = clampLimit(normalizedLimit * 6, ROW_LIMIT_MIN, ROW_LIMIT_MIN, ROW_LIMIT_MAX);
+  const rowLimit = clampLimit(
+    normalizedLimit * ROW_LIMIT_MULTIPLIER,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MAX,
+  );
 
   // Build positional params alongside the SQL fragments. Order:
   //   $1 query_exact, $2 query_like, $3 candidate_limit, $4 row_limit,
@@ -219,6 +900,40 @@ async function fetchCanonicalChainRows(args = {}) {
     categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) THEN 90 ELSE 0 END`;
   }
 
+  // Whether this call runs the category-browse text union (see
+  // isCategoryBrowseTextUnionEnabled). Resolved HERE, before `recallDocWhere`
+  // is built below, because that arm's bind-emission is conditional on the
+  // text branch of `whereClause` actually being used.
+  const categoryBrowseTextUnion = Boolean(categoryBind) && isCategoryBrowseTextUnionEnabled();
+
+  // Text-match dominance inside the bucket. Weight 300 is chosen to clear the
+  // largest single competing arm — the flat +200 rank-v1 provenance bonus for
+  // pdp_scope='multi_merchant_canonical' (see canonicalScopeRankArms) — so a
+  // row the shopper's words actually match outranks a bucket row that merely
+  // carries canonical provenance, under rank v1 AND rank v2. Without this the
+  // union widens the WHERE but the candidate cut still throws the matches
+  // away. Browse mode only: in text mode every surviving row already matched
+  // some text arm, so a flat bonus there would be uniform and meaningless.
+  //
+  // SETS ARE EXCLUDED, for the same load-bearing reason the +60 form-agreement arm excludes them (see its
+  // comment): applyMultiProductSetTopCap can only swap a set with a single of EQUAL rank_score — it is
+  // tie-group scoped by construction — so any arm that lifts a set into a strictly HIGHER tie group makes
+  // it undemotable and re-opens the #1927 head-crowding this repo already fixed. An arm five times the
+  // size of the +60 one is five times the hazard, and sets are exactly the rows whose titles carry the
+  // bare category noun a browse query is made of ("Hydrating Moisturizer Duo" for "moisturizer").
+  // Demonstrated pre-fix: three sets tied at 90 were demotable; at 390 against singles at 90 the cap went
+  // inert and all three sat at the head.
+  //
+  // WEIGHT. It must exceed what a NON-text-matching bucket row can accumulate, which under rank v1 is
+  // provenance 200 + categoryScore 90 = 290 — not 200. The first version of this arm shipped 300, clearing
+  // the real threshold by 10; anything in 201..289 silently reverted the fix with every test green. 400
+  // leaves headroom that does not depend on either constant staying put, and the test asserts against the
+  // SUM parsed out of the SQL rather than against a literal.
+  const categoryBrowseTextScore = categoryBrowseTextUnion
+    ? `+ CASE WHEN (LOWER(COALESCE(p.title, '')) LIKE $2 OR LOWER(COALESCE(p.brand, '')) LIKE $2)
+              AND ${PRODUCT_FAMILY_SQL} IS DISTINCT FROM '${MULTI_PRODUCT_SET_FAMILY}' THEN 400 ELSE 0 END`
+    : '';
+
   // Market-aware recall. When the caller passes the user's market (e.g.
   // 'US'), exclude Path B mirrored rows whose source seed has a
   // non-matching market — mirrors the market filter on the
@@ -237,14 +952,27 @@ async function fetchCanonicalChainRows(args = {}) {
   // form was NULL-immune; a bare `platform != 'external_seed'` returns NULL
   // (not TRUE) for NULL-platform connected rows via SQL 3-valued logic, which
   // would silently drop them from market-scoped recall. Treat NULL as Path A.
+  // ADR-020 rank-recalibration slice (flag-gated): the unconditional
+  // pdp_scope='multi_merchant_canonical' exemption is the known cross-market
+  // hole — the sync stamps that scope on every graduated external row, so the
+  // market filter was a no-op for exactly the graduated population. Under
+  // CANONICAL_CATALOG_RANK_V2 the exemption tightens to rows whose
+  // recall_market is NULL (non-graduated multi-merchant canonicals keep the
+  // legacy pass-through) or matches the caller's market. Graduated rows carry
+  // recall_market (migration 058 projection) and become market-scopable; a
+  // graduated row can still surface cross-market via the eps.market EXISTS arm
+  // when its source seed genuinely matches the caller's market.
   let marketWhere = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     const marketBind = `$${params.length}`;
+    const canonicalScopeExemption = rankV2Enabled
+      ? `(p.pdp_scope = 'multi_merchant_canonical' AND (p.recall_market IS NULL OR p.recall_market = ${marketBind}))`
+      : `p.pdp_scope = 'multi_merchant_canonical'`;
     marketWhere = `
       AND (
         COALESCE(p.platform, '') <> 'external_seed'
-        OR p.pdp_scope = 'multi_merchant_canonical'
+        OR ${canonicalScopeExemption}
         OR EXISTS (
           SELECT 1 FROM external_product_seeds eps
           WHERE eps.external_product_id = p.source_product_id
@@ -253,7 +981,8 @@ async function fetchCanonicalChainRows(args = {}) {
       )`;
   }
 
-  const brandFilterTerms = buildBrandFilterTerms(brandFilter);
+  const brandFilterTerms = searchQualityContract?.target_domain === 'beauty' && searchQualityContract?.hard_constraints?.brand
+    ? [] : buildBrandFilterTerms(brandFilter);
   const brandTextSql = `
     lower(concat_ws(' ',
       p.brand,
@@ -379,18 +1108,47 @@ async function fetchCanonicalChainRows(args = {}) {
   // (serving_eligible, WS2c) keeps the plain form byte-identical — it must retain
   // merchant_name / source_product_id recall and doesn't have the same scan
   // profile. See the citable-supplement latency track / PR follow-up to #1755.
-  const citableSargableLane = tokenMatch && eligibilityColumn === 'index_eligible';
+  //
+  // sargableTextWhere (opt-in) extends the SAME sargable lane to a
+  // serving_eligible caller — not a new matcher variant; the caller elects the
+  // existing citable text-WHERE shape for the buyable population. Added for the
+  // strict ingredient-direct leg (class 5, budget incoherence): its plain-form
+  // statement scanned all ~7.9k serving-eligible products through the
+  // index_pipeline_state nested loop and post-filtered (prod EXPLAIN ANALYZE
+  // 2026-08-04: 3.2-3.9s, ~262k buffers), because merchant_name (cross-table),
+  // source_product_id (no trgm index), the two OR-EXISTS catalog_skus arms, and
+  // the opaque overlap arithmetic each block a bitmap plan. The sargable shape
+  // flips it to a trigram BitmapOr over title/brand/recall_doc: 0.7-1.5s.
+  //
+  // Row parity for the buyable opt-in HOLDS ONLY WITH THE recall_doc ARM
+  // PRESENT — it is scoped to flag state, not universal. Prod row-diffs with
+  // CANONICAL_CATALOG_RECALL_DOC_MATCH enabled returned identical rows +
+  // order on "vitamin c serum" / "salicylic acid serum" / "niacinamide" and
+  // (2026-08-04 review pass) bare "retinol" / "ceramide" / "glycerin" /
+  // "niacinamide". With the flag DISABLED the same probe lost 22/25 rows for
+  // bare "glycerin": catalog_skus.ingredient_ids / visible_option_labels ARE
+  // populated for part of the catalog, and for a single-significant-token
+  // query tokenWhere is empty, so the sargable WHERE would collapse to two
+  // title/brand LIKEs while main's vertical EXISTS arm was doing the
+  // recalling — recall_doc (populated on graduated seeds) is what covers
+  // those rows when the flag is on. Therefore the buyable opt-in only takes
+  // effect when the recall_doc arm will be emitted; flag-off callers fall
+  // back to the plain WHERE (complete recall, pre-#1900 plan profile). The
+  // citable index_eligible lane is unaffected: its callers never pass
+  // verticalSearch, so the dropped fragments are empty strings there.
+  const citableSargableLane =
+    tokenMatch &&
+    (eligibilityColumn === 'index_eligible' ||
+      (sargableTextWhere === true && isRecallDocMatchEnabled()));
   let tokenWhere = '';
+  // The non-sargable token arm, kept separately so `plainTextWhereClause` below
+  // is the plain clause in EVERY respect. Identical to `tokenWhere` whenever the
+  // sargable lane is not elected; the two diverge only when it is, and the union
+  // must take this one (see the whereClause comment).
+  let plainTokenWhere = '';
   let tokenScore = '';
   if (tokenMatch) {
-    const tokens = Array.from(
-      new Set(
-        lowered
-          .split(/\s+/)
-          .map((t) => t.trim())
-          .filter((t) => t.length >= 3 && !TOKEN_STOPWORDS.has(t)),
-      ),
-    ).slice(0, 6);
+    const tokens = buildSignificantTokens(lowered);
     if (tokens.length >= 2) {
       const tokenBinds = [];
       const overlapParts = tokens.map((t) => {
@@ -402,14 +1160,167 @@ async function fetchCanonicalChainRows(args = {}) {
       const overlapSql = overlapParts.join(' + ');
       const minTokens = Math.max(2, Math.ceil(tokens.length * 0.5));
       tokenScore = `+ ((${overlapSql}) * 25)`;
+      plainTokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
       if (citableSargableLane) {
         const anyTokenSql = tokenBinds
           .map((b) => `LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b}`)
           .join(' OR ');
         tokenWhere = `OR ((${anyTokenSql}) AND ((${overlapSql}) >= ${minTokens}))`;
       } else {
-        tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
+        tokenWhere = plainTokenWhere;
       }
+    }
+  }
+
+  // ADR-020 rank-recalibration slice (flag-gated): rank v2. The legacy CASE
+  // grants +200 for pdp_scope='multi_merchant_canonical' — a pure provenance
+  // bonus that every graduated external row carries (the sync stamps it
+  // unconditionally), so external systematically outranked internal. Under
+  // CANONICAL_CATALOG_RANK_V2 that arm is replaced with match-quality
+  // dominance (source-neutral: text-match quality outranks provenance):
+  //   +120  lowered query phrase appears in the title ($2 = '%phrase%')
+  //   + 80  ALL significant query tokens covered across title/brand
+  //   + 60  recall_doc phrase hit (projected seed searchable text, mig 058)
+  //   + 20  multi_merchant_canonical (structural bonus, scaled down 200 -> 20)
+  // Every other existing arm (identity exacts 105/100/90/80, category 90,
+  // vertical 20/15, token overlap *25, sku identity 120/110) keeps its current
+  // weight — none is a provenance bonus exceeding the new dominant terms.
+  // NOTE: the old +10 internal_merchant offer bonus no longer exists in this
+  // helper (removed by the P0.3 neutrality firewall — ownership is not a
+  // ranking signal); rank v2 deliberately does NOT reintroduce it.
+  // Flag OFF emits the legacy arm byte-for-byte and pushes no binds.
+  let canonicalScopeRankArms =
+    "CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END";
+  if (rankV2Enabled) {
+    const v2Arms = [
+      `CASE WHEN LOWER(COALESCE(p.title, '')) LIKE $2                 THEN 120 ELSE 0 END`,
+    ];
+    const v2Tokens = buildSignificantTokens(lowered);
+    if (v2Tokens.length > 0) {
+      const coverageSql = v2Tokens
+        .map((t) => {
+          params.push(`%${t}%`);
+          const b = `$${params.length}`;
+          return `(LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b})`;
+        })
+        .join(' AND ');
+      v2Arms.push(`CASE WHEN (${coverageSql})                          THEN  80 ELSE 0 END`);
+    }
+    // Product-form agreement (+60). Only fires when the query itself names a
+    // form, and matches on TITLE only — a brand called "Mask" says nothing
+    // about what the product is. See PRODUCT_FORM_TOKENS for why texture words
+    // are excluded.
+    if (isFormAgreementEnabled()) {
+      const formPatterns = queryFormTitlePatterns(v2Tokens);
+      if (formPatterns.length > 0) {
+        // WORD-BOUNDED REGEX, NOT LIKE '%...%'. Unanchored substring matching
+        // is wrong here in a way that is invisible to the acceptance harness
+        // (whose rubric is already \b-bounded, so it cannot falsify the SQL):
+        //   '%mask%'    matches "DaMASK Rose Hydrating Toner"  (a toner)
+        //   '%perfume%' matches "PERFUMEd Body Lotion"         (a lotion)
+        // Postgres \y is the word boundary. Patterns are module-owned literals
+        // ([a-z ] only), never user input, so alternation is safe to build.
+        params.push(`\\y(${formPatterns.join('|')})\\y`);
+        const formBind = `$${params.length}`;
+        // Applicators are excluded outright: a "Foundation Brush" carries the
+        // form word but is a tool, and "Cushion Puff Applicator" likewise. The
+        // relevance rubric has a dedicated `tool` form for exactly these; this
+        // is its SQL counterpart.
+        // Excluded outright: implements, and anything for a surface other than
+        // the face. Both mirror suppression rules the relevance rubric already
+        // applies (`tool`, and NON_FACE_FORMS); the SQL arm had neither, so it
+        // scored "TIELA Perfume Nourishing Body Cream" at token 25 + form 60 =
+        // 85 against Tom Ford "Lost Cherry Eau de Parfum" at 60 — ranking body
+        // cream ABOVE the eau de parfum on a perfume query. Plurals matter:
+        // "Foundation Brushes Set" collected the boost while "Foundation
+        // Brush" did not.
+        params.push(
+          `\\y(brushe?s?|applicators?|sponges?|puffs?|tweezers?|gua ?sha|massagers?|spatulas?|mirrors?|tools?)\\y`,
+        );
+        const toolBind = `$${params.length}`;
+        params.push(`\\y(body|hand|hands|foot|feet|hair|beard|scalp|shower)\\y`);
+        const surfaceBind = `$${params.length}`;
+        // MULTI-PRODUCT SETS ARE EXCLUDED, and this is load-bearing rather than
+        // tidy. #1927's head cap (applyMultiProductSetTopCap) can only swap a
+        // set with a single of EQUAL rank_score — it is tie-group scoped by
+        // construction. A set whose title carries the form noun ("Moisturizer
+        // Duo", "Lipstick Trio") would take +60, land in a strictly higher tie
+        // group, and become undemotable: the exact head-crowding #1927 shipped
+        // to prevent, reintroduced through a channel that cap cannot see.
+        // Boosting them would also contradict the relevance rubric, which caps
+        // every set at PARTIAL because a set may contain the right product but
+        // is not it.
+        const setExclusion = `AND ${PRODUCT_FAMILY_SQL} IS DISTINCT FROM 'set_or_collection'`;
+        v2Arms.push(
+          `CASE WHEN LOWER(COALESCE(p.title, '')) ~ ${formBind}\n` +
+            `            AND LOWER(COALESCE(p.title, '')) !~ ${toolBind}\n` +
+            `            AND LOWER(COALESCE(p.title, '')) !~ ${surfaceBind}\n` +
+            `            ${setExclusion}  THEN  60 ELSE 0 END`,
+        );
+      }
+    }
+    v2Arms.push(
+      `CASE WHEN p.recall_doc IS NOT NULL AND p.recall_doc LIKE $2    THEN  60 ELSE 0 END`,
+    );
+    v2Arms.push(
+      `CASE WHEN p.pdp_scope = 'multi_merchant_canonical'             THEN  20 ELSE 0 END`,
+    );
+    canonicalScopeRankArms = v2Arms.join(' +\n          ');
+  }
+
+  // ADR-020 search-wiring slice: flag-gated recall_doc match lane. When
+  // CANONICAL_CATALOG_RECALL_DOC_MATCH is enabled, the candidate WHERE gains
+  // an OR-arm over catalog_products.recall_doc (migration 058: lower()ed
+  // \n-joined projection of the external-seed searchable text, partial trgm
+  // GIN index WHERE recall_doc IS NOT NULL — the IS NOT NULL conjunct below
+  // keeps the predicate aligned with that partial index). Patterns are the
+  // lowered phrase + bigrams + long tokens (see buildRecallDocMatchPatterns).
+  //
+  // Market scoping (recall-doc lane ONLY — the existing marketWhere behaviour
+  // is untouched in this slice): rows matched via recall_doc must also satisfy
+  // (recall_market IS NULL OR recall_market = $market) when a marketId is
+  // provided. Without this, the recall_doc arm would resurface cross-market
+  // seeds through the known pdp_scope='multi_merchant_canonical' market
+  // exemption in marketWhere (full fix is a later slice).
+  //
+  // Binds are captured at params.push time (params.length), same as every
+  // other optional arm in this function, so appending here never renumbers an
+  // existing $n placeholder.
+  //
+  // IMPORTANT: only build (and bind) this arm when the text branch of
+  // whereClause will actually be used. When categoryPathPrefix is provided,
+  // whereClause takes the category branch and discards textWhereClause — if we
+  // pushed the recall-doc binds anyway, the statement would declare fewer $n
+  // placeholders than supplied params (Postgres 08P01) and every category-lane
+  // query would fail. The category lane simply doesn't get recall-doc matching
+  // in this slice.
+  //
+  // Under the category-browse text union the text branch IS used, so the arm
+  // (and its binds) belong in the statement exactly as in text mode; the 08P01
+  // hazard the paragraph above describes only exists when the text branch is
+  // discarded.
+  let recallDocWhere = '';
+  // Binds referenced ONLY inside the text WHERE arm, with their SQL types. The
+  // search-quality contract below may REPLACE the default WHERE; a bind left in
+  // params but absent from the statement fails the whole query with 42P18.
+  const textArmOnlyBinds = [];
+  if ((!categoryBind || categoryBrowseTextUnion) && isRecallDocMatchEnabled()) {
+    const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
+    if (recallDocPatterns.length > 0) {
+      params.push(recallDocPatterns);
+      const recallDocPatternsBind = `$${params.length}`;
+      textArmOnlyBinds.push({ bind: recallDocPatternsBind, type: 'text[]' });
+      let recallDocMarketGuard = '';
+      if (marketId) {
+        params.push(String(marketId).toUpperCase());
+        textArmOnlyBinds.push({ bind: `$${params.length}`, type: 'text' });
+        recallDocMarketGuard = `
+          AND (p.recall_market IS NULL OR p.recall_market = $${params.length})`;
+      }
+      recallDocWhere = `OR (
+          p.recall_doc IS NOT NULL
+          AND p.recall_doc LIKE ANY(${recallDocPatternsBind}::text[])${recallDocMarketGuard}
+        )`;
     }
   }
 
@@ -419,26 +1330,173 @@ async function fetchCanonicalChainRows(args = {}) {
   // title/brand predicates. Both dropped arms are near-dead for natural-language
   // citation queries (a merchant is ~never named the full query; source_product_id
   // is an opaque platform id). Every other lane keeps the full clause verbatim.
-  const textWhereClause = citableSargableLane
-    ? `
-        LOWER(COALESCE(p.title, '')) LIKE $2
-        OR LOWER(COALESCE(p.brand, '')) LIKE $2
-        ${skuTextWhere}
-        ${verticalWhere}
-        ${tokenWhere}
-  `
-    : `
+  //
+  // The sku/vertical OR-EXISTS arms are likewise excluded from the sargable
+  // WHERE: a single OR-EXISTS disjunct forces the whole disjunction off the
+  // bitmap path (prod EXPLAIN 2026-08-04: keeping them, the "sargable" form ran
+  // 6.9s — WORSE than the 3.2s plain form). For citable callers this is a
+  // no-op (they don't pass verticalSearch, so both fragments are empty). For
+  // the buyable sargableTextWhere caller the recall these arms provide is
+  // covered by the recall_doc arm the lane now requires (see the
+  // citableSargableLane gate above — without it, bare "glycerin" lost 22/25
+  // rows that only the vertical EXISTS arm recalled). The verticalScore /
+  // skuIdentityScore RANK arms — which do carry signal (+35 moved 6
+  // niacinamide rows across the candidate cut) — are unaffected: they are
+  // correlated EXISTS subqueries in the candidate CTE's projection (an index
+  // probe on catalog_skus(product_key) per WHERE-surviving row, feeding the
+  // ORDER BY), outside the WHERE disjunction, so they don't block the bitmap
+  // plan; their cost scales with WHERE breadth, not with the candidate cap.
+  //
+  // recallDocArm carries its own leading newline+indent so that with the flag
+  // off (recallDocWhere === '') the interpolation contributes zero bytes and
+  // the generated SQL is byte-identical to the pre-recall-doc output (no stray
+  // blank line where the arm would sit).
+  const recallDocArm = recallDocWhere ? `\n        ${recallDocWhere}` : '';
+  const plainTextWhereClause = `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         OR LOWER(COALESCE(m.merchant_name, '')) LIKE $2
         ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
         ${verticalWhere}
-        ${tokenWhere}
+        ${plainTokenWhere}${recallDocArm}
   `;
-  const whereClause = categoryBind
-    ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
-    : `(${textWhereClause})`;
+  // THE UNION'S OWN TEXT ARM — deliberately NARROWER than plainTextWhereClause.
+  //
+  // The union shipped taking the plain clause, on the reasoning that the sargable form DROPS recall arms
+  // and a recall fix should not drop recall. Then it was measured on prod (2026-08-20, flag flipped on):
+  // cold prefix-resolving queries that return rows went from a 7.0-7.5s baseline to 9.3s / 9.5s / 14.2s /
+  // 18.6s. A query holding a pool connection for 18s is the shape that has wedged this service before, so
+  // the trade was wrong in that direction too.
+  //
+  // WHAT COMES OUT, and why each one is safe to lose HERE specifically:
+  //   * the two `OR EXISTS` on catalog_skus (skuTextWhere, verticalWhere) — the decisive ones. This file
+  //     already measured that a single OR-EXISTS disjunct forces the whole disjunction off the bitmap path
+  //     (prod EXPLAIN: 6.9s vs 3.2s for the same rows). They are also the least relevant arm for browse:
+  //     they match variant labels and ingredient ids, whereas the union exists to recover rows whose TITLE
+  //     matches a category word the bucket misfiled.
+  //
+  //     BUT DO NOT EXPECT A PLAN FLIP — the win here is PER-ROW FILTER COST, not a switch to a bitmap
+  //     scan, and the difference matters for whoever measures this next. A BitmapOr needs EVERY disjunct
+  //     indexable and two of them are not: `plainTokenWhere` is opaque CASE arithmetic that bypasses the
+  //     title/brand trigram GINs (see its own comment, ~2.8s for that leg alone), and the category arm
+  //     cannot use idx_catalog_products_category_path_active either, because that index is PARTIAL on
+  //     `catalog_track = 'internal_merchant' AND truth_tier = 'primary'` and this predicate carries
+  //     neither conjunct. So the plan stays scan-and-filter. What actually goes away is two correlated
+  //     EXISTS subplans that ran on every row the category arm did NOT already satisfy — OR
+  //     short-circuits, so bucket rows skipped them and the non-bucket majority did not. That is very
+  //     plausibly most of the 7.5 -> 18.6s delta, but "back to 7.0-7.5s" is a hypothesis, not a
+  //     prediction: re-measure the four flip queries AND at least one multi-token prefix-resolving query.
+  //   * `m.merchant_name` — a cross-table predicate that defeats a catalog_products-only index, and a
+  //     merchant is ~never named by a category query like "shampoo".
+  //   * `p.source_product_id` — a leading-wildcard LIKE with no trigram index, over an opaque platform id.
+  //
+  // WHAT STAYS: title, brand, the token-overlap arm, and the recall_doc arm. That is exactly the set the
+  // measured win depends on — `toner` (BROWSE 0 / TEXT 48/48) and `shampoo` (BROWSE 0 / TEXT 48/48) are
+  // TITLE matches, and the six queries the flip actually fixed on prod all recovered through title/brand.
+  //
+  // This is the same shape citableSargableLane uses, but it is NOT that variable, and the difference
+  // matters: this arm applies whenever the union runs, independently of PIVOT_BEAUTY_MAINLINE_SARGABLE_
+  // TEXT_WHERE_ENABLED and of the recall_doc flag. Routing through citableSargableLane would make the
+  // union's recall silently depend on two unrelated flags — with recall_doc off, `recallDocArm` is empty
+  // and the arm degrades to title/brand/token, which is still the core of the win rather than a surprise.
+  //
+  // ONE CARVE-OUT: the ingredient arm comes back when the token arm is EMPTY.
+  //
+  // `plainTokenWhere` is only built at 2+ significant tokens (see buildSignificantTokens), so a BARE
+  // ingredient query collapses this arm to title/brand alone — and bare ingredient queries are exactly the
+  // ones that reach here with `verticalSearch` on. Measured: `niacinamide` resolves the prefix
+  // beauty/skincare/treat/ AND sets verticalSearch, is 1 token, and with recall_doc off the whole union arm
+  // becomes two LIKEs. The sibling lane already refuses the identical narrowing for this reason —
+  // citableSargableLane will not drop these arms unless the recall_doc arm is present, because bare
+  // "glycerin" measured 22/25 rows lost without it. recall_doc does not close the gap either: migration 058
+  // projects EXTERNAL-SEED text only, so internal_merchant rows have recall_doc IS NULL and get no cover.
+  //
+  // The cost is bounded, and the shape is what makes it safe: the sku arms match the WHOLE `$2` phrase,
+  // which for a multi-word query never appears in an ingredient-id array — they are near-dead there. So
+  // they can only do useful work in precisely the case this carve-out restores them for. Keeping them at
+  // 1 token and dropping them at 2+ is therefore both the recall-correct and the latency-correct rule,
+  // not a compromise between the two.
+  //
+  // skuTextWhere (sku code / variant title / source_variant_id) is deliberately NOT restored: those fields
+  // carry identifiers and variant labels, not ingredient names, so it is the arm with the cost and none of
+  // the measured recall.
+  const unionIngredientArm = plainTokenWhere ? '' : verticalWhere;
+  const unionTextWhereClause = `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2${unionIngredientArm}
+        ${plainTokenWhere}${recallDocArm}
+  `;
+  const textWhereClause = citableSargableLane
+    ? `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        ${tokenWhere}${recallDocArm}
+  `
+    : plainTextWhereClause;
+  // `AND $2::text IS NOT NULL` in the legacy category branch is a no-op that
+  // exists only to keep the $2 bind referenced once the text predicate is
+  // gone. It is retained verbatim on the kill-switch path so flag-off SQL
+  // stays byte-identical to pre-union serving.
+  const categoryPredicate = categoryBind
+    ? `p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind})`
+    : '';
+  // Carry the leading newline+indent INSIDE the fragment so that with the union off the interpolation
+  // contributes zero bytes and the generated SQL is byte-identical to pre-union output — the same
+  // technique recallDocArm uses above, and the reason its comment spells it out. The first version
+  // interpolated on its own line and added 11 bytes to every non-browse and every kill-switched
+  // statement, quietly falsifying the byte-identity claim below.
+  const categoryBrowseTextArm = categoryBrowseTextScore ? `\n          ${categoryBrowseTextScore}` : '';
+  let whereClause;
+  if (!categoryBind) {
+    whereClause = `(${textWhereClause})`;
+  } else if (categoryBrowseTextUnion) {
+    // THE PLAIN FORM, NEVER THE SARGABLE ONE, on the union's text arm.
+    //
+    // `sargableTextWhere` picks a NARROWER text clause: it drops the
+    // merchant_name, source_product_id and sku/vertical OR-EXISTS arms in
+    // exchange for a trigram-bitmap-able plan (#1935). That trade was measured
+    // on the text-only lane, where the recall it gives up is covered by the
+    // recall_doc arm. It was a provable no-op in browse mode only because
+    // browse discarded the text clause outright — which is precisely the
+    // invariant tests/find_products_multi_mainline_sargable.test.js pins.
+    //
+    // Routing the union through `textWhereClause` would silently extend an
+    // unmeasured plan-and-recall change to every prefix-resolving query, and
+    // would do it by DROPPING recall arms inside a fix whose whole purpose is
+    // to recover recall. So the union takes the plain form and #1935's
+    // byte-identity invariant survives intact.
+    whereClause = `((${categoryPredicate})
+        OR (${unionTextWhereClause}))`;
+  } else {
+    whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
+  }
+  const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
+    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
+  // Same idiom as `$2::text IS NOT NULL`: keep a typed, always-true reference to
+  // every text-arm bind the contract's WHERE no longer contains. Params cannot be
+  // removed instead — later binds (brand identity, offer scope) are numbered after them.
+  whereClause = qualityScope.where + textArmOnlyBinds
+    .filter(({ bind }) => !new RegExp(`\\${bind}(?!\\d)`).test(qualityScope.where))
+    .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
+    .join('');
+  brandWhere = qualityScope.brandWhere;
+  // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
+  // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
+  //  * the carrier count is a CTE, counted once;
+  //  * admitted rows are ranked +95 and MARKED, so the gate and ranker read the SQL's decision;
+  //  * the candidate and row limits grow by the most rows that can be admitted, so an
+  //    admitted row takes an extra slot instead of evicting a row the category recalls. This
+  //    deliberately exceeds CANDIDATE_LIMIT_MAX / ROW_LIMIT_MAX by exactly MAX_CARRIERS.
+  const nameEvidence = qualityScope.nameEvidence || null;
+  const nameEvidenceRankArm = nameEvidence ? `\n          ${nameEvidence.rankSql}` : '';
+  const nameEvidenceCteSql = nameEvidence ? `${nameEvidence.cteSql},\n    ` : '';
+  const nameEvidenceProjectionSql = nameEvidence ? `\n        ${nameEvidence.admittedSql} AS name_evidence_admitted,` : '';
+  const nameEvidenceOuterColumnSql = nameEvidence ? '\n      c.name_evidence_admitted,' : '';
+  if (nameEvidence) {
+    params[2] = candidateLimit + nameEvidence.extraCandidates;
+    params[3] = rowLimit + nameEvidence.extraCandidates;
+  }
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
@@ -471,42 +1529,103 @@ async function fetchCanonicalChainRows(args = {}) {
           )
         )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
-  // Price presence is part of the serving contract even when the caller skips
-  // the SKU/offer fan-out: shopping ingesters reject price-null items. When
-  // not fanning out, surface ONE representative offer's price via a no-fanout
-  // LATERAL — amount, currency, and availability MUST come from the same offer
-  // row (never mixed across rows), cheapest in-market first, and currency is
-  // never defaulted: an offer without a currency is not price-quotable.
+  // Price presence is part of the serving contract on BOTH branches: shopping
+  // ingesters reject price-null items. Either way this surfaces ONE
+  // representative offer via a LATERAL — amount, currency and availability MUST
+  // come from the same offer row (never mixed across rows), in-market first,
+  // then known-unavailable last, then cheapest. Currency is never defaulted:
+  // an offer without a currency is not price-quotable. The branches differ
+  // only in whether the sku columns ride along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
-  if (!joinSkuOffers && marketId) {
+  if (marketId) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
+  // Match #2240: unknown availability shares the sellable ranking tier. An
+  // explicit inStockOnly filter below is stricter: it requires positive stock
+  // evidence and never treats an unknown/null signal as an affirmative match.
+  const bestOfferAvailabilityOrder = `${OFFER_AVAILABILITY_TIER_SQL},`;
+  // The MAIN shopping route elects an offer scope. Require a matching live
+  // offer BEFORE the candidate LIMIT, then select from that identical set in
+  // the lateral. Filtering only the chosen cheapest offer afterward loses a
+  // valid sibling (or an entire lower-ranked affordable product).
+  // Other surfaces retain their existing unscoped SQL contract.
+  const offerScopeClauses = [];
+  const bindOfferValue = value => { params.push(value); return `$${params.length}`; };
+  if (offerScope) {
+    offerScopeClauses.push("upper(trim(coalesce(o.currency, ''))) ~ '^[A-Z]{3}$'");
+    const allowedMarkets = [...new Set((Array.isArray(offerScope.markets) ? offerScope.markets : [])
+      .map(value => String(value || '').trim().toUpperCase()).filter(Boolean))];
+    if (allowedMarkets.length) {
+      const bind = bindOfferValue(allowedMarkets);
+      // A declared different offer market is not eligible. Legacy unmarked
+      // offers still rely on the existing product-market gate; no shipping
+      // destination is inferred from currency, domain or retailer identity.
+      offerScopeClauses.push(`(nullif(upper(trim(coalesce(o.market, ''))), '') IS NULL OR upper(trim(o.market)) = ANY(${bind}::text[]))`);
+    }
+    if (offerScope.inStockOnly === true) {
+      const normalizedAvailability = "regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g')";
+      offerScopeClauses.push(`(CASE
+        WHEN ${normalizedAvailability} IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false', 'discontinued') THEN FALSE
+        WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0
+        WHEN ${normalizedAvailability} IN ('instock', 'available', 'true') THEN TRUE
+        ELSE NULL
+      END) IS TRUE`);
+    }
+    if (offerScope.currency) {
+      offerScopeClauses.push(`upper(trim(o.currency)) = ${bindOfferValue(String(offerScope.currency).trim().toUpperCase())}`);
+    }
+    if (Array.isArray(offerScope.priceRanges)) {
+      const price = 'COALESCE(o.merchant_effective_price, o.list_price)';
+      const ranges = offerScope.priceRanges.map(range => {
+        // Validate BEFORE binding: an abandoned currency bind is a 42P18 (see seedSearchOfferScope).
+        if (['min', 'max'].some(field => range[field] != null && !Number.isFinite(Number(range[field])))) return 'FALSE';
+        const parts = [];
+        if (range.currency) parts.push(`upper(trim(o.currency)) = ${bindOfferValue(String(range.currency).trim().toUpperCase())}`);
+        for (const [field, operator] of [['min', '>='], ['max', '<=']]) {
+          if (range[field] == null) continue;
+          parts.push(`${price} ${operator} ${bindOfferValue(Number(range[field]))}`);
+        }
+        return parts.length ? `(${parts.join(' AND ')})` : 'FALSE';
+      });
+      offerScopeClauses.push(`(${ranges.join(' OR ') || 'FALSE'})`);
+    }
+  }
+  const scopedOfferWhere = offerScopeClauses.length ? `AND ${offerScopeClauses.join('\n        AND ')}` : '';
+  const candidateOfferWhere = offerScope ? `
+        AND EXISTS (
+          SELECT 1 FROM catalog_offers o
+          ${joinSkuOffers ? 'JOIN catalog_skus scoped_sku ON scoped_sku.sku_key = o.sku_key AND scoped_sku.suppressed_at IS NULL' : ''}
+          WHERE ${joinSkuOffers ? 'scoped_sku.product_key' : 'o.product_key'} = p.product_key
+            AND o.suppressed_at IS NULL
+            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+            ${scopedOfferWhere}
+        )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
-      s.sku_key,
-      s.source_variant_id,
-      s.sku,
-      s.barcode,
-      s.title                    AS sku_title,
-      s.visible_attributes,
-      s.visible_option_labels,
-      s.ingredient_ids,
-      s.image_url                AS sku_image_url,
-      o.offer_id,
-      o.catalog_track            AS offer_catalog_track,
-      o.truth_tier               AS offer_truth_tier,
-      o.readiness_tier           AS offer_readiness_tier,
-      o.offer_mode,
-      o.availability,
-      o.inventory_quantity,
-      o.currency,
-      o.list_price,
-      o.merchant_effective_price,
-      o.estimated_best_price,
-      o.price_confidence,
-      o.source_system            AS offer_source_system,
-      o.offer_payload,
+      best_sku_offer.sku_key,
+      best_sku_offer.source_variant_id,
+      best_sku_offer.sku,
+      best_sku_offer.barcode,
+      best_sku_offer.sku_title,
+      best_sku_offer.visible_attributes,
+      best_sku_offer.visible_option_labels,
+      best_sku_offer.ingredient_ids,
+      best_sku_offer.sku_image_url,
+      best_sku_offer.offer_id,
+      best_sku_offer.offer_catalog_track,
+      best_sku_offer.offer_truth_tier,
+      best_sku_offer.offer_readiness_tier,
+      best_sku_offer.offer_mode,
+      best_sku_offer.availability,
+      best_sku_offer.inventory_quantity,
+      best_sku_offer.currency,
+      best_sku_offer.list_price,
+      best_sku_offer.merchant_effective_price,
+      best_sku_offer.estimated_best_price,
+      best_sku_offer.price_confidence,
+      best_sku_offer.offer_source_system,
+      best_sku_offer.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
       -- internal_merchant offer must NOT outrank an equally-relevant
       -- third-party offer for the same product — ownership is not a ranking
@@ -538,10 +1657,119 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
+  // SUPPRESSION GUARD — measured, and the measurement is the point. (Written when the sku/offer
+  // branch was still a bare fan-out pair of LEFT JOINs; both branches are LATERALs now, and both
+  // still carry the `suppressed_at IS NULL` filters this describes.)
+  //
+  // These two joins were bare while the best_offer LATERAL below (the other half of this same function)
+  // has always required `suppressed_at IS NULL`. That asymmetry looks alarming because the row mapper
+  // reads price straight off the joined row, and 7,294 of 22,161 offers table-wide are suppressed —
+  // step5_test_rig_retirement (4,295), demo_retired_2026_07 (2,457), source_currency_or_channel_defect
+  // (466) — of which 7,208 still carry a positive price and a currency, so they look servable.
+  //
+  // But within the population this query can actually REACH — serving_eligible joined on content_key, plus
+  // activeCatalogProductSourceWhere, which already excludes test/demo merchants — the count of suppressed
+  // offers on prod 2026-08-05 was ZERO of 11,236. The scary cohort is 92.6% test-rig and demo rows whose
+  // PRODUCTS are excluded upstream, so they never fan out here.
+  //
+  // So this filter removes no rows today: no latency win, no live mispricing corrected. What it buys is a
+  // closed latent hole, and the hole WAS sharp — suppressing a row is itself a write, so 7,090 of the 7,294
+  // suppressed offers have updated_at >= suppressed_at, and the outer ORDER BY then ended
+  // `s.updated_at DESC, o.updated_at DESC`, so a suppressed offer attaching to a serving-eligible product
+  // would not merely be present, it would sort ahead of its live siblings and take the price. The
+  // recency tie-break is gone now (one row per product, chosen cheapest-priced-first), so that specific
+  // edge is closed twice over — but the filter stays: without it a suppressed offer would still be a
+  // CANDIDATE in the LATERAL, and the likeliest instance is a source_currency_or_channel_defect row on a
+  // live product — a wrong-currency amount which, being wrong, may well also be the cheapest and win.
+  //
+  // catalog_skus carries the same suppressed_at / suppression_reason / suppression_metadata columns and was
+  // joined just as bare, so the same latent hole existed one join up and is closed here too.
+  //
+  // ON clause, never WHERE: these are LEFT JOINs and a WHERE would silently make them INNER, dropping every
+  // product with no live sku/offer. In ON, such a product keeps its row with NULL columns and is judged by
+  // the serving gate on its merits. A test asserts the outer query has no WHERE at all.
+  //
+  // ONE ROW PER PRODUCT, BOTH BRANCHES. The sku/offer branch used to be a bare
+  // pair of LEFT JOINs that FANNED OUT — one row per (product, sku, offer) —
+  // and the row mapper builds one product per ROW. Measured on prod 2026-08-05:
+  // 15,961 rows for 9,289 serving-eligible products, i.e. 6,672 surplus rows;
+  // 3,542 products emitted 2+ rows and one emitted 82. Three consequences, all
+  // live:
+  //
+  //   * 727 products were served at MULTIPLE DISTINCT PRICES at once and 16
+  //     under multiple currencies, because each duplicate row carried its own
+  //     offer's price and nothing collapsed them.
+  //   * The outer ORDER BY ended `s.updated_at DESC, o.updated_at DESC`, and
+  //     Postgres DESC defaults to NULLS FIRST — so a sku carrying NO offer
+  //     sorted AHEAD of the same product's priced rows. Verified on the server.
+  //     Both consuming lanes dedupe first-wins (mergeCanonicalChainProductsWithSeedProducts)
+  //     or not at all, so the price-less row WON: 2,816 products had an unpriced
+  //     first row while a priced row existed further down. That is the sharp
+  //     edge the PR #1921 comment predicted, already firing on the sku join.
+  //   * The outer LIMIT counts ROWS, so duplicates ate the caller's budget and
+  //     a request for N products returned fewer than N distinct ones.
+  //
+  // Collapsing to a LATERAL fixes all three at the source and makes the price
+  // contract identical on both branches: the row carries the best in-market
+  // PRICED offer by availability tier and price, with amount, currency and
+  // availability from that ONE offer row. Safe to collapse because nothing downstream groups these
+  // rows back into variants — of the sku/offer columns only `sku_image_url` is
+  // read by the mapper, and it now describes the variant actually being priced.
+  //
+  // A product with no priced offer still returns its row with NULL offer
+  // columns (LEFT JOIN LATERAL ... ON TRUE), emits no price, and is dropped by
+  // the serving gate on its merits — the same 13 products either way.
   const skuOfferJoinSql = joinSkuOffers
     ? `
-    LEFT JOIN catalog_skus s ON s.product_key = c.product_key
-    LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
+    LEFT JOIN LATERAL (
+      SELECT
+        s.sku_key,
+        s.source_variant_id,
+        s.sku,
+        s.barcode,
+        s.title           AS sku_title,
+        s.visible_attributes,
+        s.visible_option_labels,
+        s.ingredient_ids,
+        s.image_url       AS sku_image_url,
+        o.offer_id,
+        o.catalog_track   AS offer_catalog_track,
+        o.truth_tier      AS offer_truth_tier,
+        o.readiness_tier  AS offer_readiness_tier,
+        o.offer_mode,
+        o.availability,
+        o.inventory_quantity,
+        o.currency,
+        o.list_price,
+        o.merchant_effective_price,
+        o.estimated_best_price,
+        o.price_confidence,
+        o.source_system   AS offer_source_system,
+        o.offer_payload
+      FROM catalog_skus s
+      JOIN catalog_offers o
+        ON o.sku_key = s.sku_key
+       AND o.suppressed_at IS NULL
+      WHERE s.product_key = c.product_key
+        AND s.suppressed_at IS NULL
+        AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+        AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
+      ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
+        COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        -- At the SAME price a real variant beats the synthetic product-level sku (\`<pk>::canonical\`,
+        -- whose source_variant_id is the product key). The hashed offer_id alone picked between them at
+        -- random, and a card carrying the synthetic id cannot be matched to the store's variant:
+        -- liveMerchantSearchPrice reported variant_missing on 4 of 17 bluemercury.com cards (2026-09-25).
+        -- Also the placeholder ids the backend derives when a store gives no variant id ('default',
+        -- '<id>-default'; services/variant_identity.py): none of them names a variant the store sells.
+        CASE WHEN s.sku_key LIKE '%::canonical' OR s.source_variant_id IS NULL OR s.source_variant_id = s.product_key
+               OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
+          THEN 1 ELSE 0 END ASC,
+        o.offer_id ASC
+      LIMIT 1
+    ) best_sku_offer ON TRUE`
     : `
     LEFT JOIN LATERAL (
       SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
@@ -550,19 +1778,70 @@ async function fetchCanonicalChainRows(args = {}) {
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
       LIMIT 1
     ) best_offer ON TRUE`;
-  const skuOfferOrderSql = joinSkuOffers ? ', s.updated_at DESC, o.updated_at DESC' : '';
+  // No sku/offer tie-break: there is exactly one row per product now, and the
+  // `s.updated_at DESC, o.updated_at DESC` that used to be here is precisely
+  // what sorted price-less rows first (DESC => NULLS FIRST).
+  const skuOfferOrderSql = '';
+
+  // Set-diversity quota at the candidate cut (#1927 part 1 — see the
+  // MULTI_PRODUCT_SET_* block at the top of this file for the prod
+  // measurements). Flag off (or a set-seeking query) contributes ZERO bytes:
+  // the statement keeps its single `candidate_products` CTE carrying its own
+  // ORDER BY / LIMIT $3, exactly as before.
+  //
+  // Flag on, the CTE splits: `matched_products` computes rank over everything
+  // the WHERE admitted (no ordering, no cut), and `candidate_products` applies
+  // the cut with the quota in its ORDER BY. The window is PARTITIONed BY
+  // rank_score so a set is only ever ranked against sets it is TIED with, and
+  // `set_quota_demoted` sorts after rank_score for the same reason: a demoted
+  // set still outranks every row in a lower tie group.
+  const setDiversityProjectionSql = setDiversityEnabled
+    ? `\n        (${PRODUCT_FAMILY_SQL} = '${MULTI_PRODUCT_SET_FAMILY}') AS is_multi_product_set,`
+    : '';
+  let setDiversityCteSql = '';
+  let innerOrderLimitSql = `
+      ORDER BY rank_score DESC, ${innerTiebreakSql}
+      LIMIT $3`;
+  if (setDiversityEnabled) {
+    const setQuota = Math.max(1, Math.ceil(candidateLimit * MULTI_PRODUCT_SET_QUOTA_SHARE));
+    params.push(setQuota);
+    const setQuotaBind = `$${params.length}`;
+    innerOrderLimitSql = '';
+    setDiversityCteSql = `,
+    candidate_products AS (
+      SELECT
+        m.*,
+        CASE
+          WHEN m.is_multi_product_set
+           AND row_number() OVER (
+                 PARTITION BY m.rank_score, m.is_multi_product_set
+                 ORDER BY ${quotaTiebreakSql}
+               ) > ${setQuotaBind}
+          THEN 1 ELSE 0
+        END AS set_quota_demoted
+      FROM matched_products m
+      ORDER BY rank_score DESC, set_quota_demoted ASC, ${quotaTiebreakSql}
+      LIMIT $3
+    )`;
+  }
+  const candidateCteName = setDiversityEnabled ? 'matched_products' : 'candidate_products';
 
   // Rank score weights mirror pivot_query_service.py exactly so canonical
   // recall ranks identically across the backend's HTTP API and this gateway
   // helper. Drift here would surface as inconsistent top-N between the two.
-  // The +200 multi_merchant_canonical bonus is the dominant term.
+  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
+  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
+  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
+  // the gateway intentionally diverges from the backend's legacy weights.
   const sql = `
-    WITH candidate_products AS (
+    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
       SELECT
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
@@ -602,15 +1881,15 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,
+        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}${nameEvidenceProjectionSql}
         (
           ${skuIdentityScore}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
-          CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END
-          ${categoryScore}
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${nameEvidenceRankArm}
+          ${canonicalScopeRankArms}
+          ${categoryScore}${categoryBrowseTextArm}
           ${verticalScore}
           ${tokenScore}
         ) AS rank_score
@@ -622,12 +1901,11 @@ async function fetchCanonicalChainRows(args = {}) {
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
         ${externalSeedUnavailableWhere}
+        ${candidateOfferWhere}
       ${merchantClause}
       ${marketWhere}
-      ${brandWhere}
-      ORDER BY rank_score DESC, p.updated_at DESC
-      LIMIT $3
-    )
+      ${brandWhere}${innerOrderLimitSql}
+    )${setDiversityCteSql}
     SELECT
       c.merchant_id,
       c.merchant_name,
@@ -662,22 +1940,68 @@ async function fetchCanonicalChainRows(args = {}) {
       c.size_guide,
       c.size_guide_source,
       c.size_guide_confidence,
-      c.product_updated_at,
+      c.product_updated_at,${nameEvidenceOuterColumnSql}
       ${skuOfferColumns}
     FROM candidate_products c
     ${skuOfferJoinSql}
-    ORDER BY rank_score DESC, c.product_updated_at DESC${skuOfferOrderSql}
+    ORDER BY rank_score DESC, ${outerTiebreakSql}${skuOfferOrderSql}
     LIMIT $4
   `;
 
   const result = await pgQuery(sql, params);
-  return Array.isArray(result?.rows) ? result.rows : [];
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  // #1927 part 2 — the head cap. The quota above changes WHICH rows survive the
+  // cut; it deliberately leaves the first `setQuota` sets in their natural
+  // positions, so on the measured query the top-8 was still 4/8 sets after the
+  // quota alone. This is the part the shopper sees. Applied here rather than in
+  // the outer ORDER BY because there is exactly one row per product (both
+  // LATERAL branches) and row_limit >= candidate_limit always, so the array is
+  // the full candidate set — reordering it in JS and in SQL are equivalent, and
+  // this form is directly unit-testable.
+  return setDiversityEnabled ? applyMultiProductSetTopCap(rows).rows : rows;
 }
 
 module.exports = {
   fetchCanonicalChainRows,
+  // Exported so buyable sargableTextWhere callers can stamp the EFFECTIVE
+  // sargable state into telemetry: the opt-in is honored only while the
+  // recall_doc arm is on (see citableSargableLane), so a literal `true`
+  // stamp would lie in flag-off environments.
+  isRecallDocMatchEnabled,
+  // Exported so a browse-mode caller can stamp into telemetry whether the
+  // union actually ran, rather than asserting the intent — the same reason
+  // isRecallDocMatchEnabled is exported above.
+  isCategoryBrowseTextUnionEnabled,
+  // Exported so callers whose lane preserves recall order (the
+  // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
+  // into telemetry, the same way isRecallDocMatchEnabled is used above.
+  isSetDiversityEnabled,
+  // Exported for the same telemetry reason as the two above, and so the
+  // recall-parity harness can stamp the lane config it actually measured.
+  isFormAgreementEnabled,
+  // Exported so serving lanes can stamp whether the arm actually fired for a
+  // given request, not merely whether the flag is set.
+  formAgreementEffectiveFor,
+  // THE LANE CONFIG THE BUYABLE BEAUTY MAINLINE SERVES WITH.
+  //
+  // Every optional param of fetchCanonicalChainRows defaults to OFF, and each
+  // caller opts in differently. Any measurement harness that restates those
+  // params instead of reading them measures a lane nobody serves — which is
+  // exactly what happened: scripts/audit-recall-lane-parity.cjs never passed
+  // tokenMatch, so ADR-020's designated parity instrument ran with the
+  // +25/token arm dark from its first run until 2026-08-07. Catalog-lane
+  // precision@8 over the in-domain corpus read 59.8% that way and 75.0%
+  // configured as prod serves. #1933 changed the mainline's params without
+  // touching the harness; nothing failed, the numbers just quietly meant
+  // something else.
+  //
+  // Callers that need to REPLICATE the mainline lane should spread this rather
+  // than listing params, so a new flag reaches them by construction.
+  mainlineLaneConfig,
   // Exposed for tests so the upper bounds can be asserted.
   __internal: {
+    PRODUCT_FORM_TITLE_PATTERNS,
+    queryFormTitlePatterns,
     DEFAULT_LIMIT,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
@@ -687,5 +2011,19 @@ module.exports = {
     clampLimit,
     normalizeBrandFilterTerm,
     buildBrandFilterTerms,
+    RECALL_DOC_PATTERN_CAP,
+    isRecallDocMatchEnabled,
+    isCategoryBrowseTextUnionEnabled,
+    buildRecallDocMatchPatterns,
+    isRankV2Enabled,
+    isDeterministicTiebreakEnabled,
+    buildSignificantTokens,
+    isSetDiversityEnabled,
+    applyMultiProductSetTopCap,
+    rowIsMultiProductSet,
+    MULTI_PRODUCT_SET_FAMILY,
+    MULTI_PRODUCT_SET_QUOTA_SHARE,
+    MULTI_PRODUCT_SET_TOP_CAP_WINDOW,
+    MULTI_PRODUCT_SET_TOP_CAP_MAX,
   },
 };

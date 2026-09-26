@@ -102,13 +102,65 @@ function pdpUrl(p, base) {
   const canonical = str(p.pivota_canonical_url);
   return canonical && PIVOTA_HOST_RE.test(canonical) ? canonical : null;
 }
-function priceOf(p) {
-  const amount = finiteNum(p.price);
-  const currency = str(p.currency);
-  if (amount == null) return null;
-  return compact({ amount, currency });
+// An ISO-4217 alpha code or nothing. Seed-lane currency keys are raw firstNonEmptyString chains over
+// scraped snapshots, so '$', 'usd', or worse can arrive here; a wrong or ambiguous currency label
+// fabricates a price just as surely as a missing one. Uppercase the honest spellings, refuse the rest
+// (the UCP shaper's priceOf enforces the same rule).
+function currencyCodeOf(v) {
+  const s = str(v);
+  if (s == null) return null;
+  const code = s.toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
 }
+function priceOf(p) {
+  // amount and currency travel together or not at all (the same invariant projectGetAlternatives enforces):
+  // a bare amount invites the reader to assume a currency, which fabricates a price when they differ. The
+  // upstream row union is multi-producer and spells the pair three ways — flat price/currency (plus
+  // currency_code on merchant payloads), seed-lane price_amount/price_currency, and a self-contained
+  // price:{amount,currency} object — so each spelling is read as a PAIR, never amount from one price and
+  // currency from another:
+  //   * a stated-but-unparseable flat price never falls through to price_amount (that substitutes a
+  //     different number under the stated price's currency);
+  //   * price_currency may complete a flat price only when no price_amount competes for it (rows carry the
+  //     pair as sibling DB columns, but when both spellings coexist price_currency belongs to price_amount);
+  //   * a zero or negative amount is withheld: 0 is this repo's not-buyable / transaction-hold sentinel
+  //     (resolveCanonicalOfferDerivedPrice; applyTransactionHoldToVariant), not a price.
+  // When the pair cannot be completed honestly, the price is withheld — never served half-dressed.
+  if (isObj(p.price)) {
+    const amount = finiteNum(p.price.amount);
+    const currency = currencyCodeOf(p.price.currency);
+    if (amount != null && amount > 0 && currency != null) return { amount, currency };
+    // An incomplete price object does not price the row by itself; the builders that emit it write
+    // price_amount/currency beside it, so fall through to the flat spellings.
+  }
+  const flatPrice = isObj(p.price) ? null : p.price;
+  const flatPriceStated = flatPrice != null && flatPrice !== '';
+  const amount = flatPriceStated ? finiteNum(flatPrice) : finiteNum(p.price_amount);
+  if (amount == null || amount <= 0) return null;
+  const currency = flatPriceStated
+    ? currencyCodeOf(p.currency)
+      ?? currencyCodeOf(p.currency_code)
+      ?? (p.price_amount == null ? currencyCodeOf(p.price_currency) : null)
+    : currencyCodeOf(p.price_currency) ?? currencyCodeOf(p.currency) ?? currencyCodeOf(p.currency_code);
+  if (currency == null) return null;
+  return { amount, currency };
+}
+const AVAILABILITY_IN_STOCK = new Set(['in_stock', 'in stock', 'instock', 'available']);
+const AVAILABILITY_OUT_OF_STOCK = new Set([
+  'out_of_stock', 'out of stock', 'outofstock', 'oos', 'sold out', 'sold_out', 'unavailable', 'discontinued',
+]);
 function availabilityOf(p) {
+  // Prefer the row's availability STRING over the in_stock boolean. The two
+  // fields are derived independently upstream and can disagree on the same
+  // row: `availability` projects from the offer/recall chain while `in_stock`
+  // aggregates per-variant booleans captured at seed-scrape time — verified
+  // stale on prod 2026-08-01, where rows with only in-stock offers served
+  // `availability: "in_stock", in_stock: false` and surfaced here as
+  // out_of_stock. When the string is absent or unrecognized (e.g. "unknown"),
+  // the boolean still carries signal, so fall back to it.
+  const text = typeof p.availability === 'string' ? p.availability.trim().toLowerCase() : '';
+  if (AVAILABILITY_IN_STOCK.has(text)) return 'in_stock';
+  if (AVAILABILITY_OUT_OF_STOCK.has(text)) return 'out_of_stock';
   if (p.in_stock === true) return 'in_stock';
   if (p.in_stock === false) return 'out_of_stock';
   return 'unknown';
@@ -142,19 +194,36 @@ function ingredientsOf(p) {
   return strList(src, 60, 80);
 }
 
+function commerceVerificationOf(p) {
+  const verification = isObj(p.commerce_verification) ? p.commerce_verification : null;
+  if (!verification) return null;
+  return compact({
+    required: typeof verification.required === "boolean" ? verification.required : null,
+    status: clamp(verification.status, 80),
+    price_trusted: typeof verification.price_trusted === "boolean" ? verification.price_trusted : null,
+    availability_trusted:
+      typeof verification.availability_trusted === "boolean" ? verification.availability_trusted : null,
+  });
+}
+
 // ---- product summary (search rows + get_product base) ----------------------------------------------------
 
 function productSummary(p, base) {
   if (!isObj(p)) return null;
   // No identifying content at all → not a real product row (drop from search, signals not-found for detail).
   if (!publicProductId(p) && !str(p.title) && !str(p.brand)) return null;
+  const commerceVerification = commerceVerificationOf(p);
+  const verificationRequired = commerceVerification?.required === true;
+  const priceTrusted = commerceVerification?.price_trusted !== false;
+  const availabilityTrusted = commerceVerification?.availability_trusted !== false;
   return compact({
     product_id: publicProductId(p),
     brand: clamp(p.brand, 120),
     title: clamp(p.title, 200),
     category: clamp(p.category || p.product_type, 80),
-    price: priceOf(p),
-    availability: availabilityOf(p),
+    price: verificationRequired || !priceTrusted ? null : priceOf(p),
+    availability: verificationRequired || !availabilityTrusted ? 'unknown' : availabilityOf(p),
+    commerce_verification: commerceVerification,
     image_url: imagesOf(p)[0] || null,
     key_actives: activesOf(p),
     pivota_url: pdpUrl(p, base),
@@ -206,7 +275,37 @@ function claimsFrom(raw) {
 
 // ---- per-tool projectors ---------------------------------------------------------------------------------
 
-function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit } = {}) {
+// WHY AN EMPTY PAGE IS EMPTY — the note is a factual claim, so it has to be true.
+//
+// "No products matched this search." asserts something about the CATALOG, and an LLM agent relays it to the
+// shopper as "no such products exist". This tier can produce an empty page three different ways and only one
+// of them justifies that sentence:
+//
+//   no_match          — the upstream lane ran and genuinely matched nothing. The sentence is true.
+//   filtered_out      — the upstream MATCHED, and this tier's own post-hoc filters (first-party sourcing,
+//                       chain-resolvability) removed every row. The products exist; this tier will not show
+//                       them. Saying "no products matched" here is a false negative the shopper acts on.
+//   upstream_degraded — the lane did not answer successfully (ok:false / error envelope). Nothing was
+//                       learned about the catalog at all.
+//
+// The reason is also emitted as a machine-readable `empty_reason` so an agent does not have to parse prose
+// to tell a coverage gap from an absence.
+const EMPTY_SEARCH_NOTES = {
+  no_match: 'No products matched this search.',
+  filtered_out:
+    'Products matched this search, but none can be shown on this tier: every match was removed by the '
+    + 'first-party sourcing and product-page resolvability filters. This is a coverage limit of this '
+    + 'surface, not evidence that no such products exist.',
+  upstream_degraded:
+    'This search could not be completed — the catalog service returned a degraded response. No conclusion '
+    + 'about the catalog can be drawn from this result; retry shortly.',
+};
+
+function emptySearchNote(emptyReason) {
+  return EMPTY_SEARCH_NOTES[emptyReason] || EMPTY_SEARCH_NOTES.no_match;
+}
+
+function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit, emptyReason } = {}) {
   const r = isObj(raw) ? raw : {};
   const cap = Math.min(
     MAX_SEARCH_RESULTS,
@@ -226,7 +325,12 @@ function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit } = {}) {
     page_size: cap,
     returned: products.length,
     ...(total != null ? { total } : {}),
-    ...(products.length === 0 ? { note: 'No products matched this search.' } : {}),
+    ...(products.length === 0
+      ? {
+          note: emptySearchNote(emptyReason),
+          empty_reason: EMPTY_SEARCH_NOTES[emptyReason] ? emptyReason : 'no_match',
+        }
+      : {}),
   };
 }
 
@@ -282,6 +386,7 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
       const related = isObj(v.related) ? v.related : {};
       const e = isObj(sig.evidence) ? sig.evidence : {};
       const priceAmt = finiteNum(related.price);
+      const priceCurrency = str(related.currency);
       const ratio = isObj(v.price_comparison) ? finiteNum(v.price_comparison.price_ratio) : null;
       const productId = str(related.ref) || null;
       return compact({
@@ -289,7 +394,10 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
         brand: clamp(related.brand, 120),
         title: clamp(related.title, 200),
         relation: str(v.relation),
-        price: priceAmt != null ? compact({ amount: priceAmt, currency: str(related.currency) }) : null,
+        // amount and currency travel together or not at all: a bare amount invites the reader to assume
+        // the anchor's currency, which fabricates a price when they differ. The currency-free comparison
+        // survives as price_vs_anchor.
+        price: priceAmt != null && priceCurrency ? { amount: priceAmt, currency: priceCurrency } : null,
         price_vs_anchor: ratio != null ? formatRatio(ratio) : null,
         why: clamp(v.why, TEXT_MAX),
         tradeoffs: strList(v.tradeoffs, MAX_LIST_ITEMS),
@@ -368,6 +476,7 @@ function findLeakedFields(value, denylist = DENYLIST_FIELDS, path = '$') {
 
 export {
   projectPublicReadResult,
+  EMPTY_SEARCH_NOTES,
   projectSearchCatalog,
   projectGetProduct,
   projectGetIntel,

@@ -1,6 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const {
   buildExternalSeedRecallDoc,
   buildExternalSeedRecallLikePredicate,
+  buildExternalSeedSearchTextGateSql,
   resolveExternalSeedRecallDoc,
 } = require('../../src/services/externalSeedRecall');
 
@@ -484,25 +487,54 @@ describe('externalSeedRecall', () => {
     }
   });
 
-  test('builds recall-first SQL with raw seed fallback only at the end', () => {
+  test('builds search_text-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
-    expect(predicate).toMatch(/retrieval_title/);
-    expect(predicate).toMatch(/retrieval_summary/);
-    expect(predicate).toMatch(/brand_name/);
-    expect(predicate).toMatch(/vendor/);
-    expect(predicate).toMatch(/ingredient_tokens/);
-    expect(predicate).toMatch(/alias_tokens/);
+    expect(predicate).toMatch(/search_text LIKE ANY\(\$3::text\[\]\)/);
     expect(predicate).toMatch(/seed_data::text/);
-    expect(predicate.indexOf('retrieval_title')).toBeLessThan(predicate.indexOf('seed_data::text'));
+    expect(predicate.indexOf('search_text')).toBeLessThan(predicate.indexOf('seed_data::text'));
+
+    const noFallback = buildExternalSeedRecallLikePredicate('$3');
+    expect(noFallback).toMatch(/search_text LIKE ANY\(\$3::text\[\]\)/);
+    expect(noFallback).not.toMatch(/seed_data::text/);
+
+    expect(buildExternalSeedSearchTextGateSql('$7')).toBe("search_text LIKE ANY($7::text[])");
   });
 
-  test('authority alias SQL reads refreshed raw seed aliases before legacy fallback', () => {
-    const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
+  test('materialized search_text covers every field the recall predicate used to scan', () => {
+    // The predicate now searches the trigger-maintained search_text column
+    // (migration 057). That column must stay a superset of the old OR-arm
+    // fields, otherwise the gate silently drops rows an arm would match.
+    const migrationSql = fs.readFileSync(
+      path.join(__dirname, '../../src/db/migrations/057_eps_search_text_column.sql'),
+      'utf8',
+    );
+    for (const expected of [
+      "coalesce(p_title, '')",
+      "coalesce(p_domain, '')",
+      "coalesce(p_canonical_url, '')",
+      "coalesce(p_destination_url, '')",
+      "->>'retrieval_title'",
+      "->>'retrieval_summary'",
+      "->>'retrieval_body'",
+      "->>'brand'",
+      "p_seed_data->>'brand_name'",
+      "p_seed_data->>'vendor'",
+      "->>'category'",
+      "->>'product_type'",
+      "'{derived,recall,ingredient_tokens}'",
+      "'{derived,recall,alias_tokens}'",
+      "'{search_aliases}'",
+      "'{snapshot,search_aliases}'",
+      "'{snapshot,product,aliases}'",
+    ]) {
+      expect(migrationSql).toContain(expected);
+    }
 
-    expect(predicate).toMatch(/seed_data#>>'\{derived,recall,alias_tokens\}'/);
-    expect(predicate).toMatch(/seed_data#>>'\{search_aliases\}'/);
-    expect(predicate).toMatch(/seed_data#>>'\{snapshot,search_aliases\}'/);
-    expect(predicate.indexOf("seed_data#>>'{search_aliases}'")).toBeLessThan(predicate.indexOf('seed_data::text'));
+    // idx_eps_active_alias_chain_trgm must stay byte-equivalent (modulo
+    // whitespace) to the aliasTokens arm or the planner cannot use it.
+    const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('../../src/services/externalSeedRecall');
+    const squash = (value) => value.replace(/\s+/g, '');
+    expect(squash(migrationSql)).toContain(squash(EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens));
   });
 
   test('expands alias tokens for punctuation and SPF-normalized recall matching', () => {

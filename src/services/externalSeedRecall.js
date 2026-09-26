@@ -1,3 +1,9 @@
+// Strict mode so a write to a frozen object THROWS. In sloppy CJS it fails
+// silently, which made a 'deep-freeze the inputs and assert no throw' purity
+// test pass with a planted mutation. Verified nothing here relies on sloppy
+// semantics.
+'use strict';
+
 const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
 const { buildRecoAuthorityAliasTokens } = require('./recoAlternativesAuthority');
 const {
@@ -266,6 +272,14 @@ function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
 }
 
 function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title = '', textCandidates = [] } = {}) {
+  if (String(row.external_product_id || '').trim() === 'jungsaemmool:615e47aee567b863'
+      && String(row.domain || '').trim().toLowerCase().replace(/^www\./, '') === 'jsmbeauty.sg'
+      && normalizeRecallLeafCategory(seedData.category) === 'Lip Gloss'
+      && normalizeRecallLeafCategory(snapshot.category) === 'Lip Gloss'
+      && /\blip[-\s]*pression\b.*\bgloss\b/i.test(title)
+      && !/[+&]|\band\b|\b(?:set|kit|bundle|duo|trio)\b/i.test(title)) {
+    return 'Lip Gloss';
+  }
   const titleLeaf = inferRecallLeafCategoryFromText(title);
   if (titleLeaf) return titleLeaf;
 
@@ -839,14 +853,30 @@ function readStoredRecallDoc(seedData) {
   return ensureJsonObject(ensureJsonObject(seedData).derived?.recall);
 }
 
-function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } = {}) {
+// `buildDoc` is an injected seam in a SECOND parameter, matching the
+// `queryFn` / `searchFn` convention used elsewhere in this codebase. Second
+// parameter rather than a key on the first: the first is built from row data,
+// and a `{ ...rowContext }` spread carrying a `buildDoc` key would otherwise
+// shadow the builder.
+//
+// It exists because the duplicate build this function used to do has no other
+// observable signature -- the second call was to the local binding, so it cannot
+// be spied through the export. Counting calls through the seam is NOT sufficient
+// on its own: a mutant that restores the original local-binding call is not
+// counted at all. The test also tags the injected builder's output and asserts
+// the tag survives into the returned doc, which is what proves the returned
+// spread came from the counted build.
+function resolveExternalSeedRecallDoc(
+  { row = {}, seedData = {}, snapshot = {} } = {},
+  { buildDoc = buildExternalSeedRecallDoc } = {},
+) {
   const stored = readStoredRecallDoc(seedData);
   if (
     normalizeNonEmptyString(stored.retrieval_title) ||
     normalizeNonEmptyString(stored.retrieval_summary) ||
     normalizeNonEmptyString(stored.retrieval_body)
   ) {
-    const fallback = buildExternalSeedRecallDoc({ row, seedData, snapshot });
+    const fallback = buildDoc({ row, seedData, snapshot });
     const brand = firstNonEmptyString(stored.brand, fallback.brand);
     const category = resolveStoredRecallCategory(stored, fallback);
     const retrievalTitle =
@@ -879,7 +909,12 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
     });
 
     return {
-      ...buildExternalSeedRecallDoc({ row, seedData, snapshot }),
+      // `fallback` above is this exact call with these exact arguments, and the
+      // function is pure. Calling it again rebuilt the whole doc a second time
+      // per row -- every text scan, every token pass -- for a byte-identical
+      // result. It doubled the cost of the quadratic stripper before #2153 and
+      // it still doubles the residual.
+      ...fallback,
       ...stored,
       retrieval_title: retrievalTitle,
       retrieval_summary: retrievalSummary,
@@ -897,7 +932,7 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
       suppression_flags: protection.suppression_flags,
     };
   }
-  return buildExternalSeedRecallDoc({ row, seedData, snapshot });
+  return buildDoc({ row, seedData, snapshot });
 }
 
 const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
@@ -918,36 +953,43 @@ const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
     "coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', '')",
   vertical: "lower(coalesce(seed_data->'derived'->'recall'->>'vertical', ''))",
   ingredientTokens: "lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', ''))",
-  aliasTokens: `lower(concat_ws(' ',
-    coalesce(seed_data#>>'{derived,recall,alias_tokens}', ''),
-    coalesce(seed_data#>>'{search_aliases}', ''),
-    coalesce(seed_data#>>'{searchAliases}', ''),
-    coalesce(seed_data#>>'{aliases}', ''),
-    coalesce(seed_data#>>'{product,search_aliases}', ''),
-    coalesce(seed_data#>>'{product,searchAliases}', ''),
-    coalesce(seed_data#>>'{product,aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,search_aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,searchAliases}', ''),
-    coalesce(seed_data#>>'{snapshot,aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,search_aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,searchAliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,aliases}', '')
+  // ||-concatenation instead of concat_ws: identical output (coalesce makes
+  // every arg non-null), but textcat is IMMUTABLE where concat_ws is only
+  // STABLE, so migration 057's idx_eps_active_alias_chain_trgm can index this
+  // exact expression. Keep the two byte-equivalent or the planner drops the index.
+  aliasTokens: `lower((
+    coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')
+    || ' ' || coalesce(seed_data#>>'{search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,aliases}', '')
   ))`,
 });
 
+// external_product_seeds.search_text (migration 057) materializes every arm of
+// the historical OR-of-LIKE predicate — title/domain/urls plus the
+// EXTERNAL_SEED_RECALL_SQL_FIELDS text projections — lower()ed, one field per
+// E'\n'-separated line, trigger-maintained, with a trigram GIN index partial on
+// status = 'active'. A single LIKE over it recalls exactly the union of the old
+// arms (a pattern cannot span two fields across the \n) without detoasting
+// seed_data per arm per row. Any new searchable field must be added to the
+// migration's external_product_seeds_search_text() before a predicate here may
+// rely on it.
+function buildExternalSeedSearchTextGateSql(bind) {
+  return `search_text LIKE ANY(${bind}::text[])`;
+}
+
 function buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback = false } = {}) {
   return `(
-    lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalBody} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    ${buildExternalSeedSearchTextGateSql(bind)}
     ${includeLegacyFallback ? `OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])` : ''}
   )`;
 }
@@ -1005,6 +1047,7 @@ module.exports = {
   normalizeSuppressionFlags,
   resolveExternalSeedProtectionContract,
   buildExternalSeedRecallLikePredicate,
+  buildExternalSeedSearchTextGateSql,
   classifyExternalSeedRecallMatchSource,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
   BROAD_RECALL_CATEGORY_KEYS,

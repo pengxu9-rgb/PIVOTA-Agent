@@ -1,6 +1,9 @@
 const brandDictionaryCache = require('./brandDictionaryCache');
+// Meitu roster and catalog spellings: reviewed aliases, not guessed short brand tokens.
+const MEITU_BRAND_ALIASES = require('../../data/beauty/meitu_brand_aliases.json');
 
 const STATIC_BRAND_ALIASES = Object.freeze({
+  ...MEITU_BRAND_ALIASES,
   tom_ford: ['tom ford', 'tomford', 'tf'],
   jo_malone: ['jo malone london', 'jo malone', 'jomalone', 'jomalonelondon'],
   byredo: ['byredo'],
@@ -92,6 +95,7 @@ const STATIC_BRAND_ALIASES = Object.freeze({
 });
 
 const BEAUTY_BRAND_ALIAS_KEYS = new Set([
+  ...Object.keys(MEITU_BRAND_ALIASES),
   'tom_ford',
   'jo_malone',
   'byredo',
@@ -204,7 +208,9 @@ function normalizeBrandText(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
-    .replace(/[`’'".,!?()[\]{}|/\\:+_*#~]/g, ' ')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[`’'".·•,!？?()[\]{}|/\\:+_*#~]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -248,15 +254,47 @@ function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
     );
   }
 
-  const compactText = text.replace(/\s+/g, '');
-  const compactAlias = alias.replace(/\s+/g, '');
-  return (
+  // Token-boundary matches only. A bare `text.includes(alias)` lets a
+  // multi-word alias span the gap between OTHER words' characters: the
+  // "r co" of r_and_co is a substring of "hai[r co]nditioner", so every
+  // "<word ending in r> conditioner" query resolved the R+Co brand — and a
+  // compacted `includes` ("rco" in "hairconditioner") has the same hole.
+  if (
     text === alias ||
     text.includes(` ${alias} `) ||
     text.startsWith(`${alias} `) ||
-    text.endsWith(` ${alias}`) ||
-    text.includes(alias) ||
-    (compactAlias && compactText.includes(compactAlias))
+    text.endsWith(` ${alias}`)
+  ) {
+    return true;
+  }
+
+  // Compact form ("tomford" for "tom ford", "randco" for "r and co"): a
+  // contiguous run of whole text tokens, joined without spaces, must equal
+  // the compacted alias — never a substring of the middle of a token run.
+  const compactAlias = alias.replace(/\s+/g, '');
+  if (!compactAlias) return false;
+  const textTokens = tokenizeBrandText(text);
+  for (let start = 0; start < textTokens.length; start += 1) {
+    let joined = '';
+    for (let end = start; end < textTokens.length; end += 1) {
+      joined += textTokens[end];
+      if (joined.length > compactAlias.length) break;
+      if (joined === compactAlias) return true;
+    }
+  }
+  return false;
+}
+
+function matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias) {
+  const query = normalizeBrandText(normalizedQuery);
+  const alias = normalizeBrandText(normalizedAlias);
+  if (!query || !alias) return false;
+
+  const articleElidedAlias = alias.replace(/^(?:the|a|an)\s+/, '').trim();
+  return (
+    articleElidedAlias !== alias &&
+    articleElidedAlias.length >= 5 &&
+    query === articleElidedAlias
   );
 }
 
@@ -300,7 +338,10 @@ function detectBrandByStaticAliases(normalizedQuery) {
     for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
-      if (matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) {
+      if (
+        matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias) ||
+        matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias)
+      ) {
         matchedAlias = normalizedAlias;
         break;
       }
@@ -313,6 +354,117 @@ function detectBrandByStaticAliases(normalizedQuery) {
     }
   }
   return Array.from(new Set(matches));
+}
+
+// Single-word catalog beauty brands that are also ordinary English words. Read
+// as a brand only when the query IS the brand ("Bubble"); "bubble bath",
+// "whipped body butter", "benefits of niacinamide" keep their plain meaning.
+// Reviewed 2026-09-25 against all 164 single-token keys that qualify as catalog
+// beauty brands in prod; a new brand that collides with a word must be added here.
+const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
+  'aida',
+  'benefit',
+  'boto',
+  'bubble',
+  'catkin',
+  'hersteller',
+  'inertia',
+  // KISS (lashes/nails) is an onboarded US brand (2026-09-25) with no rows yet; once it has
+  // 3, "kiss proof lipstick" would otherwise become a KISS brand filter.
+  'kiss',
+  'lagom',
+  'merit',
+  'organist',
+  'rhode',
+  'tsubaki',
+  'whipped',
+]);
+
+// Suffix-stripped catalog brand names that are also ordinary words or phrases. The
+// stripped name is only ever matched when the query IS the name, but a buyer typing
+// "first aid", "self" or "flower" alone is not asking for First Aid Beauty, Self Beauty
+// or Flower Beauty. Reviewed 2026-09-25 against all 55 stripped names prod's 335
+// qualifying brands produce; a new collision must be added here.
+const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
+  'aya',
+  'benefit',
+  'first aid',
+  'flower',
+  'lime',
+  'note',
+  'rare',
+  'self',
+  'sigma',
+  'terra',
+]);
+
+// The query's own words, minus framing ("shop", "products") and brand suffixes
+// ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
+function coreBrandQueryTokens(normalizedQuery) {
+  return tokenizeBrandText(normalizedQuery).filter(
+    (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
+  );
+}
+
+// "Danessa Myricks" for the catalog brand "Danessa Myricks Beauty"
+// (GATEWAY_CATALOG_BRAND_LONG_TAIL, default OFF -> always null). Brand-only by
+// construction: the WHOLE core query must equal the stripped name.
+function matchStrippedCatalogBeautyBrand(normalizedQuery) {
+  const coreTokens = coreBrandQueryTokens(normalizedQuery);
+  const core = coreTokens.join(' ');
+  if (!core) return null;
+  // The name alone first; then (GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY) a multi-token
+  // stripped name leading the query with more words after it ("Danessa Myricks blush").
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedName(core) ||
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedLeadingSpan(coreTokens);
+  if (!hit) return null;
+  const alias = normalizeBrandText(hit.alias);
+  if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(alias) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(alias)) {
+    return null;
+  }
+  return hit;
+}
+
+// A brand the static lexicon does not list, recognised because the catalog
+// stocks it as predominantly beauty (brandDictionaryCache.matchCatalogBeautyBrand;
+// GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF -> always null).
+function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}) {
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery, {
+      isWeakRegularKey: (key) => AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(key),
+    }) ||
+    matchStrippedCatalogBeautyBrand(normalizedQuery);
+  if (!hit) return null;
+  const queryTokens = tokenizeBrandText(normalizedQuery);
+  const aliasTokens = new Set(tokenizeBrandText(hit.alias));
+  const brandTokens = new Set(tokenizeBrandText(hit.brand));
+  const meaningfulRemainder = queryTokens.filter(
+    (token) =>
+      !aliasTokens.has(token) &&
+      !brandTokens.has(token) &&
+      !BRAND_STOP_TOKENS.has(token) &&
+      !BRAND_SUFFIX_TOKENS.has(token),
+  );
+  const brandOnly = meaningfulRemainder.length === 0;
+  const brandKeyTokens = tokenizeBrandText(hit.brand);
+  if (!brandOnly && brandKeyTokens.length === 1 && AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(brandKeyTokens[0])) {
+    return null;
+  }
+  return {
+    matched: true,
+    brand_like: true,
+    // One key per catalog brand whatever spelling matched ("roundlab" and
+    // "round lab" both resolve to catalog:round lab), so two resolutions of the
+    // same brand compare equal.
+    brand_key: `catalog:${hit.brand}`,
+    brand: toCanonicalBrandLabel(hit.brand),
+    alias: normalizeBrandText(hit.alias),
+    explicit_category: hasExplicitCategoryHint(queryText, options?.intent || null),
+    brand_only: brandOnly,
+    detection_mode: 'catalog_beauty',
+    contract: 'brand_browse',
+  };
 }
 
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
@@ -337,7 +489,12 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
     for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
-      if (!matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) continue;
+      if (
+        !matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias) &&
+        !matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias)
+      ) {
+        continue;
+      }
       matches.push({
         brand_key: brandKey,
         brand: toCanonicalBrandLabel(aliases[0]),
@@ -348,6 +505,8 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   }
 
   if (!matches.length) {
+    const catalogBeauty = resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options);
+    if (catalogBeauty) return catalogBeauty;
     return {
       matched: false,
       brand_like: Boolean(detectBrandEntities(queryText, options).brand_like),
@@ -369,6 +528,11 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   const meaningfulRemainder = remainingTokens.filter(
     (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
   );
+  // A compact alias such as "jungsaemmool" consumes the whole query even when
+  // the matched canonical alias is spaced ("jung saem mool"). The token-set
+  // subtraction above cannot see that match and otherwise invents a remainder.
+  const exactCompactedAlias =
+    normalizedQuery.replace(/\s+/g, '') === best.alias.replace(/\s+/g, '');
 
   return {
     matched: true,
@@ -377,7 +541,7 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
     brand: best.brand,
     alias: best.alias,
     explicit_category: explicitCategory,
-    brand_only: meaningfulRemainder.length === 0,
+    brand_only: exactCompactedAlias || meaningfulRemainder.length === 0,
     detection_mode: 'static_beauty',
     contract: 'brand_browse',
   };
@@ -511,10 +675,165 @@ function buildBrandQueryVariants(queryText, brands = []) {
   return variants.slice(0, 8);
 }
 
+
+// Request-framing words that carry NO retrieval intent of their own.
+//
+// A brand query in a chat UI is almost never the bare token. Users type "show me Murad products",
+// and until this list existed that phrasing was a different query class from "Murad": the bare form
+// took the verbatim path below and returned 12 Murad products, while the natural form kept "show",
+// "me" and "products" as content tokens and returned a LIZUSH bath bomb whose title happens to end
+// "bath & body products". "Murad products" returned nothing at all. Measured live on agent.pivota.cc
+// 2026-08-31 against gateway-00081-lay, with /internal/diag/brand-dict confirming the brand WAS
+// detected on every one of those phrasings — the detection was never the problem.
+//
+// Membership rule, so this list stays safe to extend: a token belongs here only if dropping it can
+// never change WHICH products answer. Request verbs ("show", "find"), function words ("me", "for",
+// "a") and generic container nouns ("products", "items", "collection") qualify. Words that steer
+// retrieval do NOT, however filler they sound: "new" (new arrivals), "best"/"top" (ranking),
+// "cheap"/"sale" (price), and every category noun. When in doubt, leave it out — a token left here
+// only preserves today's behaviour, while a wrong one silently deletes a constraint the user typed.
+const BRAND_QUERY_FILLER_TOKENS = new Set([
+  // articles, pronouns, copulas
+  'a', 'an', 'the', 'i', 'im', 'me', 'my', 'we', 'us', 'our', 'you', 'your', 'it', 'is', 'am', 'are',
+  // request verbs
+  'show', 'find', 'get', 'give', 'see', 'want', 'need', 'looking', 'look', 'search', 'searching',
+  'browse', 'buy', 'shop', 'shopping', 'list', 'display', 'have', 'has', 'got',
+  // function words
+  'for', 'of', 'from', 'by', 'at', 'in', 'on', 'to', 'with', 'and', 'some', 'any', 'all', 'please',
+  // generic container nouns — "which products", not "which kind of product"
+  'product', 'products', 'item', 'items', 'thing', 'things', 'stuff', 'range', 'lineup', 'catalog',
+  'catalogue', 'selection', 'collection', 'option', 'options',
+]);
+
+// Unicode-aware, and deliberately identical to the token normalization the bare-brand guard in
+// findProductsMulti/policy.js used before it delegated here, so the `bare` verdict is unchanged.
+function normalizeBrandGuardToken(token) {
+  return String(token || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Classify a query against the brands detected in it, and — when the only non-brand words are
+ * filler — hand back the query with that filler removed.
+ *
+ * @param {string} queryText   the user's query, verbatim
+ * @param {string[]} brands    detected brand spans (detectBrandEntities().brands)
+ * @returns {null | { bare: boolean, fillerOnly: boolean, query: string }}
+ *   `bare`       — the query is nothing but the brand (today's behaviour, unchanged)
+ *   `fillerOnly` — every non-brand token is filler, so this IS a bare brand query in disguise
+ *   `query`      — the brand tokens AS THE USER TYPED THEM, in their original order and case.
+ *                  Never synthesised from the brand entity: the entity is a normalized catalog span,
+ *                  and echoing a normalization back as the user's query is how a search starts
+ *                  answering a question nobody asked.
+ *   null when no brand token is present at all.
+ */
+function reduceBrandOnlyQuery(queryText, brands = []) {
+  const brandTokenSet = new Set(
+    (Array.isArray(brands) ? brands : [])
+      .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
+      .map(normalizeBrandGuardToken)
+      .filter(Boolean),
+  );
+  if (!brandTokenSet.size) return null;
+
+  const kept = [];
+  const dropped = [];
+  for (const token of String(queryText || '').split(/\s+/)) {
+    const normalized = normalizeBrandGuardToken(token);
+    if (!normalized) continue;
+    if (brandTokenSet.has(normalized)) kept.push(token);
+    else dropped.push(normalized);
+  }
+  if (!kept.length) return null;
+
+  return {
+    bare: dropped.length === 0,
+    fillerOnly:
+      dropped.length > 0 && dropped.every((token) => BRAND_QUERY_FILLER_TOKENS.has(token)),
+    query: kept.join(' '),
+  };
+}
+
+
+// Result-side brand scoping: when the user named a brand and that brand is IN the page, put it first.
+//
+// Retrieval carrying the brand (see reduceBrandOnlyQuery and the semantic-owner preservation) fixes
+// the QUERY. It does not make the brand a constraint on the ANSWER: `brandQueryDetected` only ever
+// relaxed gates — min-recall floor, ambiguity clarify — and `brand_query_variants` is computed in
+// policy.js and read by nobody. The one real brand-scoped retrieval path,
+// resolvePublicBrandScopeForDiscovery -> getDiscoveryFeed in server.js, returns [] for any caller
+// that is not a public search rail, so the chat rail the agent UI uses has never had one.
+//
+// HOIST, NEVER TRUNCATE. This reorders and returns every product it was given. That is the whole
+// safety argument, and it is deliberate rather than timid:
+//   - A false-positive brand detection can cost ranking position. It can never empty a page. The
+//     catalog dictionary is 338 entries built from live rows, and a single-token brand that collides
+//     with an ordinary word is exactly the shape it is most likely to get wrong.
+//   - "Murad cleanser" legitimately wants other cleansers BELOW the Murad ones — truncating would
+//     delete the alternatives that make the answer useful.
+//   - A page with zero on-brand rows is left completely alone. Returning nothing would be a more
+//     honest answer to "show me Murad" than twelve competitors, but it is a product decision about
+//     what an empty result means, not something a reordering pass should decide by itself.
+//
+// Matching is on the brand/vendor FIELDS, never the title: "CeraVe dupe" is a competitor's product,
+// and a title is where that sentence gets written. A row carrying no brand data is therefore never
+// hoisted — it keeps its position, which costs ranking rather than visibility. The matcher is the
+// same matchesBrandAliasInNormalizedText the detector uses, so a brand that detection recognises in
+// a query is recognised here in a row; a local twin of it is how this class of bug regressed before.
+function productMatchesDetectedBrand(product, normalizedBrandAliases = []) {
+  if (!product || typeof product !== 'object') return false;
+  const brandText = normalizeBrandText(
+    [product.brand, product.vendor, product.brand_name, product.brandName]
+      .map((value) => String(value || '').trim())
+      .find(Boolean) || '',
+  );
+  if (!brandText) return false;
+  return normalizedBrandAliases.some((alias) => matchesBrandAliasInNormalizedText(brandText, alias));
+}
+
+/**
+ * Stable partition that lifts the detected brand's products to the front of the page.
+ *
+ * @returns {{ products: any[], matched: number, applied: boolean }}
+ *   `applied` is false whenever the order is unchanged — no brands, nothing matched, everything
+ *   matched, or nothing to reorder — so a gate trace cannot claim work that did not happen.
+ */
+function hoistDetectedBrandProducts(products, brands = []) {
+  const list = Array.isArray(products) ? products : [];
+  const normalizedBrandAliases = (Array.isArray(brands) ? brands : [])
+    .map((brand) => normalizeBrandText(brand))
+    .filter(Boolean);
+  // A pure short-circuit, deliberately behaviour-neutral: with no aliases nothing can match and the
+  // partition below would return the list untouched anyway. A mutant that deletes this line stays
+  // green on purpose — it is a cheap early return, not a correctness boundary, and no test should be
+  // written to pin it.
+  if (!normalizedBrandAliases.length || list.length < 2) {
+    return { products: list, matched: 0, applied: false };
+  }
+
+  const onBrand = [];
+  const rest = [];
+  for (const product of list) {
+    if (productMatchesDetectedBrand(product, normalizedBrandAliases)) onBrand.push(product);
+    else rest.push(product);
+  }
+
+  // Nothing to say: the brand is absent from the page, or the page is already all of it.
+  if (onBrand.length === 0 || rest.length === 0) {
+    return { products: list, matched: onBrand.length, applied: false };
+  }
+  return { products: [...onBrand, ...rest], matched: onBrand.length, applied: true };
+}
+
 module.exports = {
   detectBrandEntities,
+  hoistDetectedBrandProducts,
+  productMatchesDetectedBrand,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,
+  reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
+  BRAND_QUERY_FILLER_TOKENS,
 };

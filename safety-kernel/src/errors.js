@@ -14,7 +14,11 @@ export const ERROR_CATALOG = Object.freeze({
   QUOTE_REQUIRED:         { retriable: false, recovery: 'call pivota_quote first',                 userMessage: 'I need a fresh price quote before placing this order.' },
   QUOTE_NOT_FOUND:        { retriable: false, recovery: 're-quote',                                 userMessage: 'That quote is no longer available. Let me get a new price.' },
   QUOTE_EXPIRED:          { retriable: false, recovery: 're-quote, re-confirm',                     userMessage: 'The price quote expired. Let me refresh it.' },
-  QUOTE_ALREADY_USED:     { retriable: false, recovery: 're-quote for a new order',                 userMessage: 'This checkout was already completed. Let me start a fresh order.' },
+  // Fires when a locked quote has already been turned into an ORDER (INV-1 single-use) — which is NOT the
+  // same as "paid". The order may be unpaid (a post-create failure, an abandoned charge), so claiming the
+  // checkout "was already completed" told buyers money had moved when it had not. Say what is actually
+  // true: the session is spent and a fresh quote is needed.
+  QUOTE_ALREADY_USED:     { retriable: false, recovery: 're-quote for a new order',                 userMessage: 'This checkout session was already used to place an order, so it can\'t be used again. Let me start a fresh order.' },
   PRICE_CHANGED:          { retriable: false, recovery: 'show new quote, re-confirm',               userMessage: 'The price changed since you confirmed. Here is the updated total.' },
   OUT_OF_STOCK:           { retriable: false, recovery: 're-quote remaining items',                 userMessage: 'An item just went out of stock. Let me re-quote what is available.' },
   CONFIRMATION_REQUIRED:  { retriable: false, recovery: 'render confirmation card',                 userMessage: 'Please confirm the order details to continue.' },

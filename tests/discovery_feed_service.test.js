@@ -133,6 +133,7 @@ describe('discovery feed service', () => {
       PIVOTA_AGENT_API_KEY: process.env.PIVOTA_AGENT_API_KEY,
       AGENT_API_KEY: process.env.AGENT_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
+      DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED: process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
       DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS: process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
@@ -147,7 +148,9 @@ describe('discovery feed service', () => {
     };
     resetDiscoveryMetricsForTest();
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     _internals.resetBrowseCatalogCountCache();
+    _internals.resetProductsSearchBreaker();
     _internals.resetDiscoveryDependencyProbeCache();
     _internals.resetProductIntelKbStoreCache();
     nock.cleanAll();
@@ -325,6 +328,13 @@ describe('discovery feed service', () => {
     delete process.env.PIVOTA_API_KEY;
     delete process.env.DATABASE_URL;
 
+    // The `discovery feed built` line is where an operator reads these, so the log payload is
+    // asserted as well as the snapshot: dropping phase_ms from the log alone otherwise passes.
+    const builtLogPayloads = [];
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation((payload, message) => {
+      if (message === 'discovery feed built') builtLogPayloads.push(payload);
+    });
+
     const internalSpy = jest.fn(async () => []);
     const externalSpy = jest.fn(async ({ queries }) =>
       Array.from({ length: 12 }, (_, idx) =>
@@ -373,6 +383,29 @@ describe('discovery feed service', () => {
     expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(externalCall.queries).toEqual(['lip balm']);
+
+    // Phase timings, asserted on a feed that demonstrably did the work (12 products above).
+    // getDiscoveryFeed reported ONE latency_ms, so a p50 of 1.6s could not be attributed: the
+    // provider breakdown accounted for ~0ms of it and the database, measured live, for under
+    // 500ms. The phases must add up to the number operators already see, and whatever the marks
+    // do not cover must surface as `unattributed` rather than vanish.
+    // getLastDiscoverySnapshot() with no argument returns a map keyed by surface.
+    const phaseSnapshot = getLastDiscoverySnapshot('browse_products');
+    expect(Object.keys(phaseSnapshot.phase_ms).sort()).toEqual(
+      ['assemble', 'hydrate', 'identity_dedupe', 'recall', 'recall_brand_direct', 'recall_catalog',
+        'recall_graph', 'recall_setup', 'select', 'setup', 'stable_count_wait', 'unattributed'].sort(),
+    );
+    for (const value of Object.values(phaseSnapshot.phase_ms)) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+    }
+    expect(Object.values(phaseSnapshot.phase_ms).reduce((a, b) => a + b, 0)).toBe(
+      phaseSnapshot.latency_ms,
+    );
+
+    infoSpy.mockRestore();
+    expect(builtLogPayloads).toHaveLength(1);
+    expect(builtLogPayloads[0].phase_ms).toEqual(phaseSnapshot.phase_ms);
     expect(recallSummaryText).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
@@ -2115,10 +2148,37 @@ describe('discovery feed service', () => {
     const dbQueryMock = jest.fn(async (sql, params) => {
       const text = String(sql || '');
       if (text.includes('FROM external_product_seeds')) {
-        if (text.includes('EXISTS')) return { rows: [] };
-        expect(text).toContain('regexp_replace');
-        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
-        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        // The backfill lane's candidate-id statement, identified by the title expression it matches
+        // on. It used to be identified by its EXISTS/unnest subquery, which the indexed rewrite
+        // replaced with one LIKE per alias; that lane still binds the space-separated normalized
+        // alias.
+        if (text.includes('title_seed_ids')) {
+          expect(params[2]).toBe('la roche posay %');
+          return { rows: [] };
+        }
+        // The brand lane's candidate-id statement. It binds brand IDENTITY keys (accent-folded,
+        // alphanumerics only) — the same value the brand-identity index stores — for both the
+        // equality and the prefix arm. The old $3 normalized-alias / $4 prefix-pattern / $6
+        // compact-alias triple is gone.
+        if (text.includes('brand_seed_ids')) {
+          expect(text).toContain('regexp_replace');
+          // "la roche posay" is 14 spaced characters, so it gets a PREFIX arm on the brand chain and
+          // therefore no equality arm there — the prefix already matches `larocheposay` itself. The
+          // prefix is bound as an identity range: $3 the key, $4 the key plus U+10FFFF. $5 is the
+          // domain chain's identity array, which is equality only.
+          expect(params[2]).toBe('larocheposay');
+          expect(params[3]).toBe('larocheposay\u{10FFFF}');
+          expect(params[4]).toEqual(expect.arrayContaining(['larocheposay']));
+          expect(text).toContain('~>=~ $3::text');
+          expect(text).toContain('~<~ $4::text');
+          expect(text).toContain('= ANY($5::text[])');
+          expect(text).not.toMatch(/LIKE ANY\(/);
+          return { rows: [{ id: 'eps_lrp_anthelios' }] };
+        }
+        // The by-key fetch, which carries the serving gate and is bound only to the ids the
+        // candidate statement returned.
+        expect(text).toContain('eps.id = ANY($1::text[])');
+        expect(params[0]).toEqual(['eps_lrp_anthelios']);
         return {
           rows: [
             {
@@ -2253,6 +2313,7 @@ describe('discovery feed service', () => {
 
     const compactPage = await fetchFeed(12);
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     const standardPage = await fetchFeed(24);
 
     expect(compactPage.total).toBe(standardPage.total);
@@ -2621,6 +2682,105 @@ describe('discovery feed service', () => {
     expect(recommendCalls).toBe(0);
   });
 
+  describe('products_search on a brand-only page whose brand pool is empty', () => {
+    const productsSearchCalls = (spy) =>
+      spy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search')).length;
+    const brandOnlyRequest = (extra = {}) => ({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      debug: true,
+      scope: { brand_names: ['Meebak'] },
+      query: { text: 'Meebak' },
+      context: { locale: 'en-US' },
+      ...extra,
+    });
+    const setUpSearch = () => {
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+      process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+      delete process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED;
+      delete process.env.DATABASE_URL;
+      nock('http://discovery-catalog.test').persist().get('/agent/v1/products/search').query(true).reply(200, { products: [] });
+      return jest.spyOn(axios, 'get');
+    };
+    const products = (n, prefix) =>
+      Array.from({ length: n }, (_, index) =>
+        makeProduct({ merchant_id: 'external_seed', product_id: `${prefix}_${index + 1}`, title: `Meebak ${prefix} ${index + 1}`,
+          brand: 'Meebak', category: 'Serum', product_type: 'Serum' }));
+
+    test('a clean empty pool skips products_search and reports the brand as having no products', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.products).toEqual([]);
+      expect(response.metadata.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.route_health.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: 'products_search', attempted: true, skipped: true, skip_reason: 'brand_direct_pool_empty' }),
+        ]),
+      );
+    });
+
+    test('a pool whose fetcher swallowed a failure still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async ({ failures }) => {
+          failures.push('canonical');
+          return [];
+        },
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a pool that threw still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => {
+          throw new Error('pool timeout');
+        },
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('brand plus other query text still calls products_search: the pool is not the primary source', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest({ query: { text: 'vitamin c serum' } }), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a brand pool with products never reaches products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async ({ limit }) => products(20, 'direct').slice(0, limit),
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    });
+
+    test('DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true calls it for a clean empty pool too', async () => {
+      const axiosGetSpy = setUpSearch();
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([expect.objectContaining({ provider: 'products_search', skipped: false })]),
+      );
+    });
+  });
+
   test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -2652,7 +2812,11 @@ describe('discovery feed service', () => {
         },
       },
       {
-        brandFallbackFetchInternalCandidatesFn: async () => [],
+        // The brand pool really fails, as a statement timeout would: an empty pool is a different case
+        // (see the products_search tests below).
+        brandFallbackFetchInternalCandidatesFn: async () => {
+          throw new Error('canceling statement due to statement timeout');
+        },
         brandFallbackFetchExternalCandidatesFn: async () => [],
         brandFallbackRecommendFn: async () => {
           recommendCalls += 1;
@@ -11252,6 +11416,220 @@ describe('discovery feed service', () => {
           }),
         ]),
       );
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  // Regression: a starved corpus never reaches `minimumRowsForServing`, so the
+  // indexed ladder runs in full on EVERY browse request. When it awaited one
+  // statement per (value, tool_scope) that was 6 verticals + 33 categories x 2
+  // scopes = 78 sequential round trips at ~700ms each, and prod browse took
+  // ~56s to return 9 products while the grid timed out at 15s. The ladder must
+  // stay batched: one statement per axis, with the loop's priority order moved
+  // into `array_position`.
+  test('starved generic browse batches the indexed ladder into one statement per axis', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-ladder-batch-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+
+    const makeSeedRow = (id, vertical = 'skincare', category = 'Skincare') => ({
+      id,
+      external_product_id: `seed_${id}`,
+      destination_url: `https://example.com/products/${id}`,
+      canonical_url: `https://example.com/products/${id}`,
+      title: `${category} Product ${id}`,
+      tool: 'creator_agents',
+      seed_data: {
+        title: `${category} Product ${id}`,
+        snapshot: {
+          title: `${category} Product ${id}`,
+          brand: 'Alpha',
+          category,
+          product_type: category,
+          description: `${category} ${id}`,
+          destination_url: `https://example.com/products/${id}`,
+          canonical_url: `https://example.com/products/${id}`,
+          image_url: `https://example.com/images/${id}.jpg`,
+          price_amount: 24,
+          price_currency: 'USD',
+          availability: 'in_stock',
+        },
+        derived: {
+          recall: {
+            retrieval_title: `${category} Product ${id}`,
+            retrieval_summary: `${category} ${id}`,
+            brand: 'Alpha',
+            category,
+            vertical,
+          },
+        },
+      },
+    });
+
+    // The ladder is the only shape that orders by `array_position` over a value
+    // array; the curated head still binds a single value per statement.
+    const isLadderSql = (sql) => sql.includes('array_position($3::text[]');
+    const ladderCalls = [];
+    let curatedHeadId = 500;
+    const dbQueryMock = jest.fn((sql, params) => {
+      const text = String(sql || '');
+      if (text.includes('information_schema.columns')) {
+        return Promise.resolve({ rows: requiredColumns });
+      }
+      if (text.includes('pg_indexes')) {
+        return Promise.resolve({ rows: requiredIndexes });
+      }
+      if (isLadderSql(text)) {
+        ladderCalls.push({ sql: text, params });
+        // Rows must actually flow through the batched path, in the order SQL
+        // would return them, or the JS re-assembly that consumes that order is
+        // unconstrained — reversing the group loop would pass on an empty mock.
+        if (String(params?.[2]?.[0] || '') === 'skincare') {
+          curatedHeadId += 1;
+          const skincareRow = makeSeedRow(curatedHeadId, 'skincare', 'Skincare');
+          curatedHeadId += 1;
+          const makeupRow = makeSeedRow(curatedHeadId, 'makeup', 'Makeup');
+          return Promise.resolve({
+            rows: [
+              { ...skincareRow, ladder_match_value: 'skincare', ladder_tool_scope: 'creator_agents' },
+              { ...makeupRow, ladder_match_value: 'makeup', ladder_tool_scope: 'creator_agents' },
+            ],
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes("'generic_browse_curated_head'::text AS match_stage")) {
+        // Starved: one row per rail, far below `minimumRowsForServing`.
+        curatedHeadId += 1;
+        return Promise.resolve({ rows: [makeSeedRow(curatedHeadId)] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const { _internals: freshInternals } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 60,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: { hasInterestSignals: false },
+        queries: ['niacinamide serum'],
+        limit: 120,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      // One statement for the vertical axis, one for the category axis.
+      expect(ladderCalls).toHaveLength(2);
+
+      const [verticalLadder, categoryLadder] = ladderCalls;
+      // Each batches every value of its axis into a single bind, rather than
+      // issuing one statement per value.
+      expect(verticalLadder.sql).toContain('= ANY($3::text[])');
+      expect(verticalLadder.params[2]).toEqual(
+        expect.arrayContaining(['skincare', 'makeup', 'haircare', 'fragrance']),
+      );
+      expect(categoryLadder.params[2].length).toBeGreaterThan(20);
+      // Tool scopes collapse into one bind too, and priority order is preserved
+      // in SQL rather than by statement sequencing.
+      expect(categoryLadder.sql).toContain('tool = ANY($2::text[])');
+      expect(categoryLadder.sql).toContain('array_position($2::text[], tool) ASC');
+
+      // The sequential ladder was value-major and tool-minor: it walked every
+      // tool scope for value[0] before touching value[1]. The batched form only
+      // reproduces that if the VALUE array is the leading sort key. Swapping the
+      // two array_position clauses silently reorders the whole result.
+      for (const ladder of ladderCalls) {
+        const valueRank = ladder.sql.indexOf('array_position($3::text[]');
+        const toolRank = ladder.sql.indexOf('array_position($2::text[], tool)');
+        expect(valueRank).toBeGreaterThan(-1);
+        expect(toolRank).toBeGreaterThan(-1);
+        expect(valueRank).toBeLessThan(toolRank);
+      }
+
+      // The per-iteration LIMIT was `safeLimit - rows.length`, so the batched
+      // statement must also ask only for the REMAINING capacity. `LIMIT
+      // safeLimit` would over-fetch and, once rows are already collected, let a
+      // later axis overrun the window the caller sized.
+      const curatedHeadRows = 6; // one row per vertical rail, from the mock above
+      const verticalLimit = verticalLadder.params[verticalLadder.params.length - 1];
+      expect(typeof verticalLimit).toBe('number');
+      expect(verticalLimit).toBe(120 - curatedHeadRows);
+
+      // Rows already collected are excluded in SQL as well as in JS. Dropping the
+      // exclusion still dedupes (seenRowKeys keys on id first) but makes every
+      // later statement re-read and discard rows it already has.
+      expect(verticalLadder.sql).toContain('id <> ALL(');
+      const seenIds = verticalLadder.params.find(
+        (param) => Array.isArray(param) && param.every((value) => /^\d+$/.test(String(value))),
+      );
+      expect(seenIds).toBeDefined();
+      expect(seenIds.length).toBe(curatedHeadRows);
+
+      // The batched statement returns skincare before makeup, so the stage
+      // metrics — which are appended in group-iteration order — must preserve
+      // that. Reversing the group loop destroys the value-major ordering the
+      // SQL assertions above spend eight lines pinning, and an empty-row mock
+      // would never notice.
+      // Scoped to the ladder's own tool scope: the curated head above also
+      // reports on the `vertical` axis, but under the primary scope ('*').
+      const ladderStages = result.recallSummary[0].external_seed_stage_counts.filter(
+        (stage) =>
+          stage.match_axis === 'vertical' &&
+          stage.raw_rows > 0 &&
+          stage.tool_scope === 'creator_agents',
+      );
+      expect(ladderStages.map((stage) => stage.match_value)).toEqual(['skincare', 'makeup']);
+
+      // The mutant this kills: reverting to a per-(value, tool_scope) loop puts
+      // this well past 70 even on a corpus this small.
+      expect(dbQueryMock.mock.calls.length).toBeLessThanOrEqual(12);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;

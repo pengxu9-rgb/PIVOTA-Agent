@@ -320,7 +320,7 @@ test('Path-C minted row stays PUBLIC with the gate off (what prod does today)', 
   const res = await decisionFor(mintedRow(), { renderableGate: undefined });
   assert.equal(res.decision, 'public');
   assert.ok(!res.reasons.includes('PDP_ROUTE_UNRESOLVABLE'));
-  assert.equal(res.policyVersion, 'c1.v0.5');
+  assert.equal(res.policyVersion, 'c1.v0.7');
 });
 
 test('a producer that never learned the column keeps c1.v0.4 output exactly', async () => {
@@ -432,19 +432,111 @@ test('both product joins compile the c1.v0.5 seed-route EXISTS, not TRUE', () =>
   }
 });
 
-test('the three trust suites are actually wired into `npm run test:node`', () => {
-  // These files are `.cjs`, which jest.config.js testMatch
-  // ('**/tests/**/*.test.(js|ts)') does NOT match. They therefore run ONLY if
-  // listed explicitly in the test:node script. All three sat in the repo
-  // collecting zero executions, which is how the c1.v0.5 mutations above
-  // survived. Assert the wiring so a future suite cannot go dead silently.
-  const pkg = require('../package.json');
-  const script = String(pkg.scripts['test:node'] || '');
-  for (const f of [
-    'tests/catalog_trust_policy.node.test.cjs',
-    'tests/pdp_renderability.node.test.cjs',
-    'tests/catalog_row_trust_upserter.node.test.cjs',
+test('both product joins compile the c1.v0.6 priced-offer EXISTS, per product_key', () => {
+  // MUTATION PIN (d): drop this column from either join and the policy input
+  // goes null, the tri-state gate never fires, and 4 price-less PDPs go back to
+  // 'public' while every row-level unit test above still passes.
+  //
+  // The correlation assert is the one that matters. `co.product_key =
+  // cp.product_key` is what makes this a PER-ROW answer; correlate it to
+  // cp.content_key instead and you have rebuilt the exact content-grained leak
+  // this gate exists to close — a priced sibling would launder the price-less
+  // row all over again.
+  const { PRODUCT_JOIN_SQL } = require('../src/services/catalogRowTrustUpserter');
+  const { PRODUCT_DRIVER_SQL } = require('../scripts/backfill-catalog-row-trust.cjs');
+  const { pricedOfferExistsSql } = require('../src/services/pricedOfferSql');
+
+  const fragment = pricedOfferExistsSql('cp.product_key');
+
+  for (const [name, sql] of [
+    ['PRODUCT_JOIN_SQL', PRODUCT_JOIN_SQL],
+    ['PRODUCT_DRIVER_SQL', PRODUCT_DRIVER_SQL],
   ]) {
-    assert.ok(script.includes(f), `${f} is not listed in the test:node script — it never runs`);
+    assert.ok(
+      sql.includes(fragment),
+      `${name} must embed pricedOfferExistsSql('cp.product_key') verbatim`,
+    );
+    assert.ok(
+      sql.includes('AS row_has_priced_offer'),
+      `${name} must alias the priced-offer EXISTS as row_has_priced_offer`,
+    );
+    assert.ok(
+      sql.includes('co.product_key = cp.product_key'),
+      `${name} must correlate the offer EXISTS to the ROW, not the content_key`,
+    );
+  }
+});
+
+test('the five identity/trust suites are actually discovered by the gate', () => {
+  // These files are `.cjs`, which jest.config.js testMatch
+  // ('**/tests/**/*.test.(js|ts)') does NOT match. They therefore run only if the
+  // node:test gate picks them up. All three sat in the repo collecting zero
+  // executions, which is how the c1.v0.5 mutations above survived.
+  //
+  // REWRITTEN 2026-09-10. This assertion used to read the `test:node` npm script
+  // and check that it contained these five literal paths. That pinned an
+  // ALLOWLIST, and an allowlist is exactly what let the suites go dead in the
+  // first place — so the guard reproduced the defect it was written to catch, one
+  // level up. It also protected only these five, and it protected them into a list
+  // (`test:node`) that no workflow invokes — so the assertion passed while the suites
+  // it named still never ran. When the allowlists were finally measured, 208 of 295
+  // `.node.test.cjs` suites had never run in any CI job.
+  //
+  // Discovery is now a glob over tests/*.node.test.cjs minus a shrink-only quarantine,
+  // so the property worth asserting is DISCOVERED. Quarantine membership is deliberately
+  // not asserted here: it is transient state that the runner already ratchets — it
+  // executes quarantined suites and fails the job if one passes, so a suite that gets
+  // fixed cannot stay excluded. Asserting it here would duplicate that ratchet and, at
+  // the moment of writing, assert something false: this very file is quarantined, over
+  // an unrelated pre-existing failure ("Path-C minted row stays PUBLIC").
+  const {
+    discoverSuites,
+  } = require('../scripts/run_node_test_suites.cjs');
+  const discovered = new Set(discoverSuites());
+
+  for (const f of [
+    'catalog_trust_policy.node.test.cjs',
+    'pdp_renderability.node.test.cjs',
+    'catalog_row_trust_upserter.node.test.cjs',
+    'priced_offer_sql.node.test.cjs',
+    'merge_tool_election_anchor.node.test.cjs',
+  ]) {
+    assert.ok(discovered.has(f), `${f} is not discovered by the node:test gate — it never runs`);
+  }
+});
+
+
+test('both product joins select the c1.v0.7 canonical-election input', () => {
+  // MUTATION PIN (e): drop this column from either join and the policy input
+  // goes null, the tri-state gate never fires, and 121 duplicate PDPs go back to
+  // being independently promoted while every row-level unit test still passes.
+  //
+  // The correlation asserts are what make it a PER-ROW answer about the RIGHT
+  // pair of facts: the election is looked up by content_key, but compared
+  // against THIS row's signature. Compare against anything else and the gate
+  // either shadows everything or nothing.
+  const { PRODUCT_JOIN_SQL } = require('../src/services/catalogRowTrustUpserter');
+  const { PRODUCT_DRIVER_SQL } = require('../scripts/backfill-catalog-row-trust.cjs');
+
+  for (const [name, sql] of [
+    ['PRODUCT_JOIN_SQL', PRODUCT_JOIN_SQL],
+    ['PRODUCT_DRIVER_SQL', PRODUCT_DRIVER_SQL],
+  ]) {
+    assert.ok(
+      sql.includes('AS row_is_elected_canonical'),
+      `${name} must alias the election lookup as row_is_elected_canonical`,
+    );
+    assert.ok(
+      sql.includes('FROM content_canonical_election cce'),
+      `${name} must read content_canonical_election`,
+    );
+    assert.ok(
+      sql.includes('cce.content_key = cp.content_key'),
+      `${name} must look the election up by content_key`,
+    );
+    assert.ok(
+      sql.includes('cce.canonical_sig_id = cp.pivota_signature_id'),
+      `${name} must compare the elected sig against THIS row's signature`,
+    );
   }
 });

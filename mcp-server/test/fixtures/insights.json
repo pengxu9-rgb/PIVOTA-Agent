@@ -1,0 +1,654 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pivota.cc/ucp/schemas/insights.json",
+  "title": "cc.pivota.insights — Pivota Insights (UCP vendor capability)",
+  "description": "Vendor capability published by Pivota on its UCP seller door (https://commerce.mcp.pivota.cc/ucp/mcp). Three read-only MCP tools over the Universal Commerce Protocol transport: get_alternatives, get_offers, get_intel. Each takes `{ meta, insights: { id, ... } }` where `insights.id` is a Pivota product id obtained from dev.ucp.shopping.catalog.search / catalog.lookup, and answers Pivota's decision layer for that product. Spec: https://pivota.cc/ucp/insights",
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "description": "UCP request meta, required on every tools/call (carries ucp-agent.profile). Members are the platform's business.",
+      "additionalProperties": true
+    },
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A Pivota product id, e.g. sig_…, as returned by search_catalog / get_product."
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "product",
+            "offer"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Provenance for a signal. `grade` is Pivota's evidence grade (A strongest).",
+      "properties": {
+        "grade": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "description": "Provenance refs, e.g. {type:'product_intel_kb', ref:'…'}; claim citations carry their own source_refs URLs.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "signal_base": {
+      "type": "object",
+      "required": [
+        "signal_type",
+        "subject",
+        "value"
+      ],
+      "properties": {
+        "signal_type": {
+          "type": "string"
+        },
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "freshness": {
+          "type": "object",
+          "properties": {
+            "observed_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "fresh_until": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "review_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visibility": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "alternative_signal": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/signal_base"
+        }
+      ],
+      "properties": {
+        "signal_type": {
+          "type": "string",
+          "enum": [
+            "alternative",
+            "related"
+          ],
+          "description": "Dupes arrive as `alternative` with value.relation = 'dupe'."
+        },
+        "value": {
+          "type": "object",
+          "required": [
+            "related",
+            "relation"
+          ],
+          "properties": {
+            "related": {
+              "type": "object",
+              "description": "The candidate product.",
+              "properties": {
+                "ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "brand": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "price": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "Major units of `currency`."
+                },
+                "currency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "image_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "relation": {
+              "type": "string",
+              "enum": [
+                "competitive_alternative",
+                "niche_specialist",
+                "related_product",
+                "dupe"
+              ]
+            },
+            "score": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Similarity / relationship strength."
+            },
+            "price_comparison": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "Cross-product price comparison (e.g. price_ratio = candidate / anchor).",
+              "additionalProperties": true
+            },
+            "tradeoffs": {
+              "type": "array",
+              "items": {}
+            },
+            "watchouts": {
+              "type": "array",
+              "items": {}
+            },
+            "why": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "offer_signal": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/signal_base"
+        }
+      ],
+      "properties": {
+        "signal_type": {
+          "const": "offer"
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "merchant_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "merchant_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Major units of `currency`."
+            },
+            "currency": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "availability": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "is_primary": {
+              "type": "boolean"
+            },
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "affiliate_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Attributed link when the offer is an external retailer; send buyers through it."
+            },
+            "seller_trust": {
+              "type": [
+                "object",
+                "string",
+                "null"
+              ],
+              "description": "Seller trust signal when Pivota has one."
+            },
+            "purchase_route": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "How the buyer reaches this offer (e.g. internal_checkout, affiliate_outbound)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "decision_signal": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/signal_base"
+        }
+      ],
+      "properties": {
+        "signal_type": {
+          "const": "decision"
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "why_it_stands_out": {
+              "type": "array",
+              "description": "Reviewed reasons this product stands out. Each entry is an object.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "headline": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "best_for": {
+              "type": "array",
+              "description": "Who the product suits. Each entry is an object; `tag` may be null.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "tag": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "evidence_profile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "evidence": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/evidence"
+            }
+          ],
+          "properties": {
+            "claims": {
+              "type": "array",
+              "description": "Public-safe grounded claims with citations. Cite them as 'per Pivota Insights'.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "claim_text": {
+                    "type": "string"
+                  },
+                  "evidence_grade": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source_refs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "concern": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "get_alternatives_request": {
+      "type": "object",
+      "required": [
+        "meta",
+        "insights"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "$ref": "#/$defs/meta"
+        },
+        "insights": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/product_id"
+            },
+            "relation": {
+              "type": "string",
+              "enum": [
+                "competitive_alternative",
+                "niche_specialist",
+                "related_product",
+                "dupe"
+              ],
+              "description": "Restrict to one relation."
+            },
+            "include_dupes": {
+              "type": "boolean",
+              "description": "Include cheaper similar products. Off unless asked."
+            },
+            "market": {
+              "type": "string"
+            },
+            "max_price_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Cap candidate/anchor price ratio; 1.0 = equal or cheaper."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            }
+          }
+        }
+      }
+    },
+    "get_alternatives_response": {
+      "type": "object",
+      "required": [
+        "subject",
+        "signals",
+        "metadata"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alternative_signal"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "relation_types, anchor_ref_count, edge_count — or `reason` when empty."
+        }
+      },
+      "additionalProperties": true
+    },
+    "get_offers_request": {
+      "type": "object",
+      "required": [
+        "meta",
+        "insights"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "$ref": "#/$defs/meta"
+        },
+        "insights": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/product_id"
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 preference."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          }
+        }
+      }
+    },
+    "get_offers_response": {
+      "type": "object",
+      "required": [
+        "subject",
+        "best_offer",
+        "signals",
+        "metadata"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "best_offer": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/offer_signal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/offer_signal"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "offer_count, product_group_id — or `reason` when empty."
+        }
+      },
+      "additionalProperties": true
+    },
+    "get_intel_request": {
+      "type": "object",
+      "required": [
+        "meta",
+        "insights"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "$ref": "#/$defs/meta"
+        },
+        "insights": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/product_id"
+            }
+          }
+        }
+      }
+    },
+    "get_intel_response": {
+      "type": "object",
+      "required": [
+        "subject",
+        "signals",
+        "metadata"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "signals": {
+          "type": "array",
+          "description": "Zero or one decision signal. EMPTY rather than fabricated when no reviewed intelligence exists.",
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/decision_signal"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "kb_key, source — or `reason` when empty."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "properties": {
+    "get_alternatives": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/get_alternatives_request"
+        },
+        "response": {
+          "$ref": "#/$defs/get_alternatives_response"
+        }
+      }
+    },
+    "get_offers": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/get_offers_request"
+        },
+        "response": {
+          "$ref": "#/$defs/get_offers_response"
+        }
+      }
+    },
+    "get_intel": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/get_intel_request"
+        },
+        "response": {
+          "$ref": "#/$defs/get_intel_response"
+        }
+      }
+    }
+  },
+  "version": "2026-08-19"
+}

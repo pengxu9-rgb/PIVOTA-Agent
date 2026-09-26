@@ -47,6 +47,10 @@
 // list, and a rig excluded everywhere but here is precisely the bug this gate
 // closes. testMerchantPolicy.js has no imports of its own, so there is no cycle.
 const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
+const {
+  isExternalSeedLaneProduct,
+  isObservedSellerMerchantId,
+} = require('./externalSeedLane');
 
 // Worked example 2 — the test-merchant gate, 2026-07-27. It adds a NEW arm to
 // deriveServingDecision (a real logic change), but the arm sits after the
@@ -57,7 +61,31 @@ const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
 // split-brain window for a change no row can currently observe. The version
 // bumps the day a rig row would actually reach 'public', not the day the
 // backstop is installed.
-const POLICY_VERSION = 'c1.v0.5';
+// Worked example 3 — the per-row price gate, 2026-07-31. This one DOES bump.
+// OFFER_PRICE_MISSING flips 4 real decisions from 'public' to 'blocked' — rows
+// CAN observe it, which is exactly the condition the versioning rule names.
+//
+// 🚨 SHIPS SECOND, RIGHT BEHIND pivota-backend#1649. The backend carries the
+// same gate and the same bump; until BOTH are deployed the twins disagree and
+// the 4 rows flap. Merge order: backend, then this.
+//
+// PARITY REPAIR, 2026-07-31, NO BUMP — the index gate learned to fail closed on
+// a missing IPS row for EVERY lane, matching what the Python twin has done
+// since c1.v0.5. It is a real logic change, so the rule says measure before
+// deciding. Measured on prod the day it landed: the gap set — rows with no
+// index_pipeline_state row that are NOT external-seed content — is 20 rows, all
+// merch_efbc46b4619cfbdf (a KNOWN_TEST_MERCHANT_IDS rig) with content_key NULL,
+// and all 20 are ALREADY blocked by BOTH twins via ROW_TOMBSTONED, which
+// returns from the hard-block arm well before the index gate is reached. So
+// every decision AND every reason code is byte-identical on all ~14k rows, and
+// the same no-bump reasoning as P3 and the test-merchant gate applies: bumping
+// would cost a full rewrite and re-open the split-brain window for a change no
+// row can currently observe. The version bumps the day a first-party row
+// actually reaches the gate.
+// Worked example 4 — the canonical-election gate, 2026-07-31. Bumps: it moves
+// 121 measured prod rows from 'public' to 'shadow'. Pairs with pivota-backend,
+// backend first.
+const POLICY_VERSION = 'c1.v0.8';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -75,6 +103,32 @@ const POLICY_VERSION = 'c1.v0.5';
 //   IDENTITY_LIVE_READ_DISABLED — identity_status='approved' but
 //     live_read_enabled=false. First-party sources are exempt.
 //   FRESHNESS_UNVERIFIED — never observed a verification timestamp.
+//   NON_CANONICAL_DUPLICATE — c1.v0.7 (2026-07-31). This row is NOT the elected
+//     canonical for its content_key (content_canonical_election, mig 181): a
+//     SIBLING row holds the one URL the sitemap advertises and that this row's
+//     own PDP names in <link rel="canonical">. The row is real and renderable,
+//     it is simply not the copy that represents this physical product publicly.
+//
+//     SHADOW, DELIBERATELY NOT BLOCKED, and the distinction is load-bearing.
+//     The two surfaces read different tables: the PDP RENDERER gates on
+//     index_pipeline_state.serving_eligible (content grain, unchanged here),
+//     while public recall / discovery / the entity feed gate on
+//     catalog_row_trust.serving_decision='public' (row grain — see
+//     catalogServingIndex.fetchCatalogServingEligibleSourceSet in THIS repo).
+//     Shadow drops the duplicate out of public promotion while its page KEEPS
+//     ANSWERING 200 with its rel=canonical intact. Blocking would 404 URLs
+//     Google may already have indexed AND destroy the canonical signal that
+//     consolidates them onto the winner — strictly worse than the duplicate,
+//     the same trap services/content_canonical_election documents.
+//
+//     THE GRAIN BRIDGE. index_pipeline_state is keyed by content_key and stores
+//     ONE row's state; catalog_row_trust is keyed by product_key. Nothing
+//     connected the two, so a non-elected sibling inherited the content verdict
+//     and was promoted as if canonical. Measured on prod 2026-07-31: 121 of
+//     6,814 trust-public rows, ALL on multi-row content_keys.
+//
+//     TRI-STATE: only an explicit false shadows. 32 multi-row content_keys have
+//     no election yet and MUST NOT be demoted on absence.
 //
 // Advisory (does not flip decision):
 //   IDENTITY_NOT_APPLICABLE_FIRST_PARTY — c1.v0.3+. Marks rows where the
@@ -96,6 +150,36 @@ const POLICY_VERSION = 'c1.v0.5';
 //   EXTERNAL_SEED_INACTIVE           — external_product_seeds.status != 'active'.
 //   MERCHANT_STORE_INACTIVE          — merchant_stores.status != 'active'.
 //   INDEX_NOT_SERVING_ELIGIBLE       — index_pipeline_state.serving_eligible=false.
+//   OFFER_PRICE_MISSING              — 2026-07-31. THIS product_key carries no
+//     unsuppressed catalog_offers row with a price > 0 (src/services/pricedOfferSql,
+//     byte-identical twin of pivota-backend services/priced_offer_sql.py).
+//     Evaluated right after the index gate, so a row already blocked upstream
+//     keeps its real reason and only a row that would otherwise reach
+//     public/shadow is reclassified.
+//
+//     WHY IT CANNOT BE READ OFF ips.serving_eligible, which is the obvious
+//     objection: index_pipeline_state is keyed by CONTENT_KEY (migration 098)
+//     and both upserters join it 'ips.content_key = cp.content_key', but trust
+//     is keyed by PRODUCT_KEY and every product_key mints its own
+//     pivota_signature_id — its own public PDP. pivota-backend's
+//     index_pipeline_state_service 'has_price' is per-row and always was
+//     correct; its _select_content_key_state then stores the BEST row's state
+//     for the whole content_key, so a price-less row sharing a content_key with
+//     a priced sibling inherits serving_eligible=true and publishes a
+//     price-less page. Measured on prod 2026-07-31: 4 Tom Ford fragrance PDPs,
+//     each with exactly one unsuppressed offer whose list_price,
+//     merchant_effective_price and estimated_best_price were ALL NULL, sitting
+//     at trust 'public' behind a priced tomfordbeauty.com sibling. This gate
+//     asks the price question of the row it is actually deciding.
+//
+//     TRI-STATE, like PDP_ROUTE_UNRESOLVABLE: only an explicit false blocks. A
+//     producer that does not compute row_has_priced_offer is byte-identical to
+//     c1.v0.5. NOT env-gated, unlike the renderable gate: its entire blast
+//     radius measured on prod is those 4 rows, because the 2,535 other rows
+//     lacking a priced offer of their own are ALREADY blocked upstream.
+//
+//     ⚠️ SAME TWIN-SYMMETRY RULE AS PDP_ROUTE_UNRESOLVABLE BELOW. This landed
+//     as the mirror of pivota-backend#1649 — backend first, this repo second.
 //   PUBLISH_STATE_NOT_PUBLIC         — catalog_products.publish_state != 'public'.
 //   IDENTITY_CONFLICT                — identity_status='conflict'.
 //   OFFER_SUPPRESSED                 — subject_type='offer' with offer.suppression_reason set.
@@ -139,6 +223,8 @@ const REASON_CODES = Object.freeze({
   OFFER_SUPPRESSED: 'OFFER_SUPPRESSED',
   PDP_ROUTE_UNRESOLVABLE: 'PDP_ROUTE_UNRESOLVABLE',
   TEST_MERCHANT_EXCLUDED: 'TEST_MERCHANT_EXCLUDED',
+  OFFER_PRICE_MISSING: 'OFFER_PRICE_MISSING',
+  NON_CANONICAL_DUPLICATE: 'NON_CANONICAL_DUPLICATE',
 });
 
 const VALID_SUBJECT_TYPES = new Set(['product', 'offer', 'listing', 'content_key']);
@@ -239,6 +325,15 @@ function deriveTrust(inputs) {
   const override = inputs.override || null;
   const pdpRouteResolvable =
     inputs.pdp_route_resolvable == null ? null : Boolean(inputs.pdp_route_resolvable);
+  // Same tri-state contract. true = this product_key has its own unsuppressed
+  // priced offer, false = it does not, null/absent = not computed and the
+  // OFFER_PRICE_MISSING gate stays silent.
+  const rowHasPricedOffer =
+    inputs.row_has_priced_offer == null ? null : Boolean(inputs.row_has_priced_offer);
+  // Tri-state. true = this row IS its content_key's elected canonical,
+  // false = a sibling holds the canonical URL, null = no election exists.
+  const rowIsElectedCanonical =
+    inputs.row_is_elected_canonical == null ? null : Boolean(inputs.row_is_elected_canonical);
   const activeQuarantines = Array.isArray(inputs.active_quarantines)
     ? inputs.active_quarantines
     : [];
@@ -273,6 +368,8 @@ function deriveTrust(inputs) {
     sourceLifecycle,
     identityDecision,
     pdpRouteResolvable,
+    rowHasPricedOffer,
+    rowIsElectedCanonical,
     reasons,
   });
 
@@ -362,13 +459,28 @@ function deriveSourceLifecycle({ product, externalSeed, merchantStore, activeQua
   return { state: 'unknown' };
 }
 
+// Bare host: trimmed, lowercased, no leading `www.`. Byte-equivalent to the
+// Python twin `services/source_quarantine.bare_domain` and to the SQL
+// `sql_bare_domain`, and it MUST stay that way: both this file and the Python
+// `catalog_trust_policy` write `catalog_row_trust` for the same rows (Node via
+// scripts/sync-external-seeds-to-catalog.cjs, Python via the trust cron), so a
+// normalisation split makes `serving_decision` FLAP — last writer wins.
+//
+// Before this existed, a `www.mintree.us` quarantine blocked a `mintree.us` row
+// on the Python side and not here, so every external-seed sync flipped it back
+// to `public`. See pivota-backend#1639.
+function bareDomain(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  return text.startsWith('www.') ? text.slice(4) : text;
+}
+
 function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines, now }) {
   if (!activeQuarantines.length) return false;
   const nowMs = (now instanceof Date ? now : new Date()).getTime();
 
-  const domain = String(
+  const domain = bareDomain(
     product?.source_domain ?? externalSeed?.domain ?? merchantStore?.domain ?? ''
-  ).toLowerCase();
+  );
   const merchantId = product?.merchant_id ?? merchantStore?.merchant_id ?? null;
   const platform = product?.platform ?? merchantStore?.platform ?? null;
   const sourceSystem = product?.source_system ?? null;
@@ -378,9 +490,17 @@ function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines
     if (q.state !== 'active') continue;
     if (q.expires_at && new Date(q.expires_at).getTime() <= nowMs) continue;
 
-    if (q.match_type === 'domain' && domain &&
-        String(q.match_value).toLowerCase() === domain) {
-      return true;
+    if (q.match_type === 'domain' && domain) {
+      // Both sides through bareDomain.
+      //
+      // The `wanted &&` guard is belt-and-braces HERE — the enclosing `&& domain`
+      // already makes a blank unreachable on this path, so no test can kill it.
+      // It is kept because the Python twin's `quarantine_matches_source` has NO
+      // such enclosing guard and DID match every domain-less row against a blank
+      // match_value; keeping the two shaped alike is what stops the next reader
+      // "simplifying" one of them back apart.
+      const wanted = bareDomain(q.match_value);
+      if (wanted && wanted === domain) return true;
     }
     if (q.match_type === 'merchant_platform' && merchantId && platform &&
         q.match_value === `${merchantId}:${platform}`) {
@@ -485,7 +605,12 @@ function deriveFreshness({ product, ips, externalSeed, now }) {
 
 function deriveVerificationSource(product) {
   if (!product) return null;
-  if (product.merchant_id === 'external_seed') return 'external_seed_scrape';
+  // ADR-009: this labels HOW the row's facts were obtained. It tested the
+  // retired sentinel seller, which no row carries any more, so scraped supply
+  // silently began reporting itself as a merchant sync — the platform arms
+  // below catch it first. Ask the lane instead: a crawled row is a scrape
+  // whatever seller it now sits under, and whatever platform it mirrors.
+  if (isExternalSeedLaneProduct(product)) return 'external_seed_scrape';
   if (product.platform === 'shopify') return 'shopify_sync';
   if (product.platform === 'wix') return 'wix_sync';
   return 'merchant_sync';
@@ -501,6 +626,8 @@ function deriveServingDecision({
   sourceLifecycle,
   identityDecision,
   pdpRouteResolvable = null,
+  rowHasPricedOffer = null,
+  rowIsElectedCanonical = null,
   reasons,
 }) {
   // Offer-specific block: suppressed offers never surface.
@@ -526,9 +653,33 @@ function deriveServingDecision({
   // ips=null pass on the assumption "no IPS opinion = no reason to block",
   // but Phase 3c parity found 80 external_seed catalog products with public
   // trust + no IPS row — i.e., shipping content that the index pipeline
-  // hasn't quality-gated yet. First-party rows (MOYU/GR/PawStyle/etc.) keep
-  // the legacy behavior since first-party merchants are the source of truth
-  // for their own content and IPS coverage is sparse there by design.
+  // hasn't quality-gated yet.
+  //
+  // c1.v0.5 (2026-07-29), PARITY REPAIR LANDED HERE 2026-07-31: a missing IPS
+  // row now fails CLOSED for EVERY lane, not only external-seed content. The
+  // first-party carve-out this replaces let ips=null fall through to public on
+  // the theory that "first-party merchants are the source of truth and IPS
+  // coverage there is sparse by design". Both halves of that theory failed the
+  // first time a real merchant-sync row arrived:
+  //
+  //   * Measured 2026-07-29 (Wix pilot merch_e68c20b0189746d0): 20 rows synced
+  //     with content_key NULL — structurally incapable of ever having an IPS
+  //     row — and every one went trust-public with NO quality gate, no scoring,
+  //     no eligibility. Only the gateway's own fail-closed eligibility lookup
+  //     kept them from serving, and public_not_renderable went red (20 > 0)
+  //     within the hour.
+  //   * "Sparse by design" described a corpus where every first-party merchant
+  //     was a retired test rig whose rows were already blocked upstream.
+  //
+  // An unscored row must not be public. The correct lifecycle for a fresh sync
+  // is blocked -> scored -> eligible -> public, and rows without a content_key
+  // stay blocked until identity is repaired.
+  //
+  // The Python twin has enforced this since 2026-07-29; this repo did not, so
+  // the two disagreed in CODE. It fires on ZERO prod rows today (measured
+  // 2026-07-31, see the PARITY REPAIR note above the version constant), which
+  // is why it carries no POLICY_VERSION bump — it is the backstop for the next
+  // uncovered first-party row, not a live demotion.
   // ADR-009 observed-seller trust tier (docs/adr009_observed_seller_trust_decision.md,
   // Option C). Classify by content SOURCE, not the legacy merchant_id='external_seed'
   // string: external seeds now mirror under per-brand observed sellers (merch_obs_…).
@@ -538,14 +689,24 @@ function deriveServingDecision({
   //     its own content, so exempt from the identity-COVERAGE shadow gates (below)
   //     like a first-party merchant — but NOT from the index/quality gate.
   const _merchantId = product ? String(product.merchant_id || '') : '';
-  const _platform = product ? String(product.platform || '').toLowerCase() : '';
+  // The lane predicate adds the source_system and seed-id arms this hand-rolled
+  // trio lacked, so a mirrored row whose platform is its upstream's (the minted
+  // lane) is no longer missed.
+  //
+  // BE PRECISE ABOUT WHAT THIS GATES — an earlier version of this comment said
+  // "the index/quality gate", which is wrong. This flag has exactly ONE
+  // consumer, isIdentityCoverageExempt below; the index/quality gate (`!ips` ->
+  // blocked, and ipsEligible) never reads it. So widening does not gate more
+  // rows on quality — it strips the identity-COVERAGE exemption, i.e. public ->
+  // shadow. Safe for exposure, but a live serving demotion, which is why it
+  // needs a POLICY_VERSION bump and the Python twin moving with it.
+  // Measured on prod 2026-08-17: the new arms catch ZERO rows the old trio did
+  // not, so today's demotion blast radius is 0.
   const isExternalSeedContent =
-    _platform === 'external_seed' ||
-    _merchantId === 'external_seed' ||
-    _merchantId.startsWith('merch_obs_');
-  const isObservedSeller = _merchantId.startsWith('merch_obs_');
+    isExternalSeedLaneProduct(product) || isObservedSellerMerchantId(_merchantId);
+  const isObservedSeller = isObservedSellerMerchantId(_merchantId);
   if (product) {
-    if (isExternalSeedContent && !ips) {
+    if (!ips) {
       reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);
       return { decision: 'blocked' };
     }
@@ -564,6 +725,21 @@ function deriveServingDecision({
     const syncStatus = String(product.sync_status ?? '').toLowerCase();
     if (syncStatus && syncStatus !== 'live') {
       reasons.push(REASON_CODES.PUBLISH_STATE_NOT_PUBLIC);
+      return { decision: 'blocked' };
+    }
+
+    // PER-ROW price gate. Immediately after the index gate on purpose: the
+    // index gate answers for the CONTENT_KEY, this one answers for the
+    // PRODUCT_KEY being decided, and a row that fails the coarse gate must keep
+    // reporting INDEX_NOT_SERVING_ELIGIBLE rather than being relabelled. See the
+    // OFFER_PRICE_MISSING entry in the reason-code vocabulary above for the
+    // grain argument and the measured 4-row blast radius.
+    //
+    // Tri-state: only an explicit false blocks. `=== false` and not
+    // `!rowHasPricedOffer` — the difference IS the contract, since null must
+    // fall through untouched.
+    if (rowHasPricedOffer === false) {
+      reasons.push(REASON_CODES.OFFER_PRICE_MISSING);
       return { decision: 'blocked' };
     }
   }
@@ -650,10 +826,22 @@ function deriveServingDecision({
     }
   }
 
+  // c1.v0.7: a row that is not its content_key's elected canonical is a
+  // duplicate of a sibling that holds the public URL. It SHADOWS — see the
+  // NON_CANONICAL_DUPLICATE entry above for why shadow and not blocked, and for
+  // the 121-row measured blast radius.
+  //
+  // `=== false` and not `!rowIsElectedCanonical`: null means no election exists
+  // for this content_key, which must leave the decision untouched.
+  if (rowIsElectedCanonical === false) {
+    reasons.push(REASON_CODES.NON_CANONICAL_DUPLICATE);
+  }
+
   const shadow =
     identityDecision.status === 'review_required' ||
     reasons.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL) ||
     reasons.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED) ||
+    reasons.includes(REASON_CODES.NON_CANONICAL_DUPLICATE) ||
     (identityDecision.status === 'unknown' && !isIdentityCoverageExempt);
 
   if (shadow) {

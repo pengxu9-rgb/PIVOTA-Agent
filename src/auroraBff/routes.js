@@ -1,5 +1,12 @@
+const { recommendationIdentityConflict, sameRecommendationProduct } = require('../shared/recoProductIdentity');
 const vertexGemini = require('../llm/vertexGemini');
+const { servedMarkets } = require('../services/servedMarkets');
 const axios = require('axios');
+// SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
+// BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
+// attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
+// ucpBuyerAgentClient but the axios transport is deliberately kept.
+const { createPublicUrlFetch, createPublicHostCheck, parsePublicHttpUrl } = require('../services/publicUrlFetch');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -9,14 +16,23 @@ const path = require('path');
 const { z } = require('zod');
 const db = require('../db');
 const photoBackendClient = require('../photoBackendClient');
-const runDbQuery = (...args) => db.query(...args);
+// Callers that pass a `timeoutMs` get the pool-safe path: a checkout bounded by
+// the caller's own budget, and a connection destroyed rather than returned when
+// its statement outlives that budget. Everything else keeps `db.query`.
+const runDbQuery = (sql, params, options) => (
+  Number(options?.timeoutMs) > 0
+    ? db.queryWithBudget(sql, params, options)
+    : db.query(sql, params)
+);
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('../services/externalSeedProducts');
+const { isExternalSeedLaneProduct } = require('../services/externalSeedLane');
 const {
   buildExternalSeedRecallLikePredicate,
+  buildExternalSeedSearchTextGateSql,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('../services/externalSeedRecall');
 const {
@@ -91,6 +107,11 @@ const {
 const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
+const { getCatalogSearchOwnership } = require('./findProductsIntent');
+// A price/budget constraint in the extracted catalog query. Only products can answer it, so it is
+// what separates "show me niacinamide under $10" (shopping) from "show me MCI" (ingredient science).
+const CATALOG_QUERY_SHOPPING_CONSTRAINT_RE =
+  /(?:\bunder\b|\bbelow\b|\bless\s+than\b|\bmax\b|\bbudget\b|\bcheaper\s+than\b)\s*\$?\s?\d|\$\s?\d/i;
 const {
   createBeautyChatMainlineEnvelopeRuntime,
 } = require('./beautyChatMainlineEnvelope');
@@ -165,6 +186,7 @@ const {
   getRecoRecallFilledRoleIds,
   getRecoRecallSelectedCount,
   isRecoRecallFrameworkCoverageSatisfied,
+  isRecoRecallInternalLaneEnabled,
   shouldRunRecoRecallStage,
 } = require('./recoRecallStagePolicy');
 const {
@@ -219,6 +241,10 @@ const {
 } = require('./skinLlmGateway');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 const {
+  isProduction: platformIsProduction,
+  isTestRuntime: platformIsTestRuntime,
+} = require('../config/platform');
+const {
   classifyPhotoQuality,
   inferDetectorConfidence,
   summarizeRoutineConfidenceSignals,
@@ -238,6 +264,8 @@ const {
   normalizeRecommendationProductCard,
   buildRecommendationCardContext,
 } = require('./chatCardFactory');
+const { formatPromptPriceLabel } = require('./priceLabelFormat');
+const { parsePriceAmount, inferCurrencyFromPriceText: inferCurrencyTokenFromPriceText } = require('./priceAmountText');
 const {
   VisionUnavailabilityReason,
   classifyVisionAvailability,
@@ -308,6 +336,7 @@ const {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,
@@ -379,7 +408,30 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
+const {
+  normalizeRecoPriceCeiling,
+  applyRecoPriceCeilingPreference,
+  shouldSendPriceCeilingOnQueryArm,
+} = require('./recoPriceCeiling');
+const {
+  DEFAULT_BUYER_REGION,
+  resolveBuyerRegion,
+  isRejectedBuyerRegionInput,
+  currencyForBuyerRegion,
+  buyerRegionFromContext,
+} = require('./buyerRegion');
+const {
+  buildServedPriceRegionCensus,
+  pickServedPriceRegionCensusEventFields,
+} = require('./servedPriceRegionCensus');
+const {
+  buildRecoRecallPoolCacheKey,
+  isRecoRecallPoolCacheEnabled,
+  shouldServeRecoRecallPoolCacheEntry,
+  shouldRevalidateRecoRecallPoolCacheEntry,
+  createRecoRecallPoolCache,
+} = require('./recoRecallPoolCache');
 const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -417,6 +469,36 @@ const AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = (() => {
 
 const AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED || 'false').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+// Kill switch for the direct-lane pre-LLM recall. Default ON: with it OFF the direct lane goes back to
+// prompting the LLM with an empty candidate pool, which is the defect this exists to fix.
+const AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED || 'true').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(6, v));
+})();
+
+// A fluent LLM answer that grounds to ZERO products is not a success — it is the archetype failure the
+// caller sees. Default ON; one recovery attempt, never a loop.
+// DEPTH on the constrained arm. The upstream applies `price_max` as a hard filter, so a request
+// limit of 6 leaves it almost nothing to keep: live 2026-08-21 the conforming arm came back with a
+// single KNOWN-conforming candidate, and viable.slice(0,3) then had to fill two slots from the
+// unconstrained legs. More conforming supply is the precondition for a strict shortlist.
+const AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT || 18);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 18;
+  return Math.max(6, Math.min(48, v));
+})();
+
+const AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED || 'true').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
@@ -606,7 +688,7 @@ const {
   resolveIngredientRecallProfile,
   stabilizeIngredientRecallProducts,
 } = require('../services/ingredientProductRecall');
-const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
+const { parseMultipart, rmrf } = require('../lib/multipart');
 const {
   createArtifactId,
   createPlanId,
@@ -701,20 +783,74 @@ const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
 const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
+// The SAME lane, asked a wider question. reco_main_v1_2 bounds the planner to skincare
+// ("Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare"), which is right
+// for the Aurora consumer chat lane and wrong for the `recommend_products` agent door, whose
+// advertised vertical is beauty: a bronzer need came back as a barrier serum at fit 'high' with the
+// exclusion stated in warnings (#2155, measured 2026-09-08).
+//
+// The two callers therefore select DIFFERENT templates instead of one being widened under the
+// other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
+// v1_3.
+//
+// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup, fragrance and
+// haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
+// answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
+// `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
+// serving lane would trade a wrong answer for an empty one, not for a right one.
+//
+// DEFAULT OFF SINCE 2026-09-09. The template id is NOT a local filename: formatAuroraPromptQuery
+// puts `PROMPT_TEMPLATE_ID=<id>` into the query sent to AURORA_DECISION_BASE_URL, and that service
+// VALIDATES it. Deployed as 8ed132e95233 (rev gateway-00131-jel), every LLM leg of the agent door
+// answered "Upstream status 400" — zero such errors in the 40 minutes before, zero after the
+// rollback. Registering an id there is not done in this repo.
+//
+// The failure is SILENT to the caller: with the LLM leg dead the lane answers from its catalog
+// path, so a partner sees products rather than an error. Nothing here could have caught it —
+// every test in this repo stops at the prompt builder and none calls the decision service.
+//
+// So the default is the NARROW template: v1_3 ships, stays tested, and stays inert. Setting this env
+// var to 'reco_main_v1_3' arms it, and must not be done until a live probe shows the decision service
+// accepting the id. It is a CODE default rather than a live env pin because a Cloud Run deploy has
+// wiped this service's env vars before (2026-08-30) — with the default armed, the next wipe would
+// silently re-break the lane.
+//
+// It defaults to RECO_MAIN_PROMPT_TEMPLATE_ID, not to the literal 'reco_main_v1_2' — the same shape
+// RECO_INGREDIENT_PROMPT_TEMPLATE_ID uses above, and for the same reason. With a literal, the two
+// ids agree only while a human keeps them in sync: repointing the CHAT lane's template (an ordinary
+// operation that has nothing to do with this door) would leave the wide id on the literal, making it
+// DIFFER from the narrow one and arming wide_template_active below — a 'beauty recommendation plan'
+// task line wrapped around a skincare-only system prompt. Inheriting makes "off" true by
+// construction instead of by coincidence.
+const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
+).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
+// The only value that widens the lane. Anything else — '', 'skincare', a typo, an object — is the
+// narrow default, so a mistake upstream cannot silently widen the chat lane.
+const RECO_PROMPT_DOMAIN_SCOPE_BEAUTY = 'beauty';
+function isWideRecoPromptDomainScope(scope) {
+  // typeof-checked, not coerced: String(['beauty']) === 'beauty', so a bare String() here would let a
+  // one-element array widen the lane. Caught by the token test.
+  if (typeof scope !== 'string') return false;
+  return scope.trim().toLowerCase() === RECO_PROMPT_DOMAIN_SCOPE_BEAUTY;
+}
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
+/**
+ * SAFETY GUARD: gates USE_AURORA_BFF_MOCK (mock upstreams must never serve prod traffic)
+ * and the shared-truth self-base default, and is reported in the reco debug payloads.
+ *
+ * Was `NODE_ENV==='production' || RAILWAY_ENVIRONMENT==='production' || VERCEL_ENV==='production'`.
+ * Production sets no NODE_ENV, so RAILWAY_ENVIRONMENT was the load-bearing arm, and it is
+ * unset on Cloud Run. Routed through the platform shim so the guard survives the move.
+ */
 function isProductionLikeAuroraBffEnv() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
-  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
-  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+  return platformIsProduction();
 }
 function isTestLikeAuroraBffEnv() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const nodeTestContext = String(process.env.NODE_TEST_CONTEXT || '').trim();
-  return nodeEnv === 'test' || Boolean(nodeTestContext);
+  return platformIsTestRuntime();
 }
 const REQUESTED_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK =
@@ -1015,12 +1151,10 @@ const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(12, v));
 })();
-const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
-  const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
+// External offers are part of the catalog recall universe. Preserve the
+// legacy symbol for call-site compatibility without allowing an environment
+// switch to remove an otherwise eligible source.
+const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = true;
 const AURORA_DISCOVERY_CARD_IN_LIST_ENABLED = (() => {
   const raw = String(process.env.AURORA_DISCOVERY_CARD_IN_LIST_ENABLED || 'true')
     .trim()
@@ -1266,6 +1400,26 @@ const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
   return Math.max(300, Math.min(6000, v));
 })();
+// The ON-REQUEST probe above is capped at 6000ms and defaults to 1500ms, against a dependency whose
+// COLD latency is 9-18.6s. It can therefore never succeed, so the circuit could not close on its own:
+// it stayed open, was re-opened by its own failing probe, and recall plus the grounding pass were
+// skipped for as long as traffic kept arriving. The repair is to probe OFF the request path with a
+// timeout that can actually clear a cold search.
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS || 20000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 20000;
+  return Math.max(5000, Math.min(60000, v));
+})();
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY || '').trim();
+  return raw || 'moisturizer';
+})();
 const RECO_CATALOG_SEARCH_BASE_URLS = String(
   process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS ||
   process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS ||
@@ -1352,7 +1506,12 @@ const RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS = (() => {
 const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS || 5000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
-  return Math.max(300, Math.min(8000, v));
+  // Clamp max 12000, aligned with normalizedTimeoutCap: the 8000 clamp silently defeated the env on
+  // 2026-08-20 when the search union flag pushed cold-prefix latency to 9-18.6s — recalls timed out at
+  // exactly 8000ms with the env set higher, every slot came back empty, and the reco lanes answered
+  // with ungrounded archetypes (no product, no price). A knob whose clamp sits INSIDE the dependency's
+  // real latency distribution is a recall kill-switch wearing a tuning knob's name.
+  return Math.max(300, Math.min(12000, v));
 })();
 const RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS || 65000);
@@ -1441,6 +1600,7 @@ const {
   buildRecoPayloadFromBeautyMainlineHandoff,
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
+  buildConfidenceNoticeCardPayload,
   looksLikeRecommendationRequest,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
@@ -1902,6 +2062,18 @@ async function buildChatIntentContract(body) {
         language,
       })
     : null;
+  // Consume the SAME canonicalized `message` every sibling guard in this function reads — NOT the raw
+  // payload. getCatalogSearchOwnership also reads `query` and `user_message`, and `message` above
+  // (built from message/text/reply_text/messages[]) does not. Passing the payload therefore let these
+  // arms fire in a state where `hasMessage` is FALSE, which is exactly the state in which every
+  // `hasMessage && …` guard below is structurally dark — including the pregnancy/lactation safety
+  // guard. `query` is a first-class field of V1ChatRequestSchema and the v1 mainline treats it as the
+  // user message (extractPrimaryChatRequestMessage), so this was reachable, not theoretical:
+  //   POST /v1/chat {"query":"can i buy tretinoin while pregnant"}
+  // resolved match_type 'explicit' and delegated to catalog search with the safety guard skipped.
+  // Reading the canonicalized message also puts these arms behind canonicalizeGenericConcernQuery,
+  // whose whole purpose is rewriting generic asks so the reco lane owns them.
+  const catalogSearchOwnership = hasMessage ? getCatalogSearchOwnership({ message }) : null;
 
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
@@ -2066,6 +2238,47 @@ async function buildChatIntentContract(body) {
       reply_mode: 'ingredient_advice',
     };
   }
+  // ONE gate for both match types. The ingredient carve-out was originally on the `bare` arm only,
+  // which made this PR's own "known ingredient aliases such as MCI stay on their specialist paths"
+  // claim false for the explicit phrasing of the same ask: `show me MCI`, `show me retinol` and
+  // `where can i buy tretinoin` all resolve 'explicit', and the existing MCI regression test only
+  // covers the BARE body, so it stayed green through that.
+  //
+  // The three lane checks below are the lanes this block sits IN FRONT OF and would otherwise
+  // swallow whole. Verified against the shipped extractor: every EN phrasing in the diagnosis
+  // allowlist (`analyze my skin`, `scan my face`, `skin assessment`) and both progress phrasings
+  // (`check my progress`, `track my progress`) are `bare` catalog matches, and the reco-continuation
+  // cues (`under $30`, `what should i buy next`) match too. A catalog-search router must not be the
+  // thing that decides a skin scan is a product query.
+  //
+  // The ingredient carve-out keys on the EXTRACTED catalog query carrying a shopping constraint, not
+  // on which template matched. `shouldKeepV1ChatOnLegacyIngredientPath` returns true for any message
+  // naming a known ingredient, so applying it flatly would also block `show me niacinamide under $10`
+  // — a real shopping ask with a budget, and one this PR deliberately routes to catalog search. The
+  // distinction is not explicit-vs-bare, it is "bare ingredient name" vs "ingredient plus a
+  // constraint you can only satisfy by looking at products": `show me MCI` is a question about a
+  // preservative with no purchasable SKU, `show me niacinamide under $10` is shopping.
+  const catalogQueryHasShoppingConstraint = CATALOG_QUERY_SHOPPING_CONSTRAINT_RE.test(
+    (catalogSearchOwnership && catalogSearchOwnership.query) || '',
+  );
+  const catalogSearchLaneBlocked =
+    !catalogSearchOwnership ||
+    contextualRecoContinuationKeepsV1Mainline ||
+    looksLikeDiagnosisStart(message) ||
+    looksLikeProgressCheckRequest(message, actionId) ||
+    (!catalogQueryHasShoppingConstraint && await shouldKeepV1ChatOnLegacyIngredientPath(payload));
+  if (!catalogSearchLaneBlocked) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'catalog_search',
+      request_class: 'catalog_search',
+      delegate_target: 'v2',
+      should_search: true,
+      reply_mode: 'product_search',
+      primary_lane: 'shop.find_products',
+    };
+  }
   if (
     hasMessage &&
     (
@@ -2209,11 +2422,28 @@ async function shouldDelegateV1ChatToV2(body) {
   return chatIntentContract?.delegate_target === 'v2';
 }
 
+/**
+ * Does this request lock onto the beauty mainline before identity resolution?
+ *
+ * This reads the intent contract and nothing else, and deliberately takes NO action id. Action ownership is
+ * already decided, once, in `buildChatIntentContract`: `canDelegateActionToV2` sends the chips v2 owns to
+ * `delegate_target: 'v2'` / `request_class: 'action_delegate'`, and travel/weather intents go to `v1`. None of
+ * those reach the `beauty_mainline` + `beauty_discovery` pair required below, so a chip another surface owns
+ * cannot be locked here — the contract filtered it out upstream.
+ *
+ * This function used to accept `normalizedActionPayload`, `actionId` and `actionLabel` and read none of them.
+ * They were removed rather than wired up: re-deriving ownership here would mean a second list of action ids
+ * beside the one in `buildChatIntentContract`, and two lists that must agree are a drift bug waiting to
+ * happen. The contract is the single owner of that decision; if a chip is ever locked that should not be, the
+ * fix belongs there, next to the allowlist, not in a shadow copy here.
+ *
+ * Note the remaining text dependency is intentional, not an oversight: an action id the contract does not
+ * recognise falls through to a text decision (see the `!canDelegateActionToV2` branch), so a beauty-reco
+ * continuation chip like `chip.clarify.budget` or `chip.action.reco_routine` keeps the mainline on its
+ * reply_text. That is why this cannot simply refuse every request carrying an action.
+ */
 function shouldEarlyLockBeautyOwnedChatReco({
   ingressChatIntentContract = null,
-  normalizedActionPayload = null,
-  actionId = '',
-  actionLabel = '',
   message = '',
   canonicalIntent = null,
 } = {}) {
@@ -4508,6 +4738,7 @@ function pickFirstNarrativeRecoCopy(...values) {
 }
 
 function normalizeRecoCatalogProduct(raw) {
+  if (recommendationIdentityConflict(raw)) return null;
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
   const sanitizeRecoCatalogBrand = (value) => {
@@ -5060,7 +5291,45 @@ const recoCatalogFailFastState = {
   last_reason: null,
   last_failed_at: 0,
   last_probe_started_at: 0,
+  off_request_probe_timer: null,
+  off_request_probe_in_flight: false,
+  last_off_request_probe_ok_at: 0,
+  last_off_request_probe_failed_at: 0,
 };
+
+// One shared, lazily created cache handle. `db.query` is the canonical gateway accessor and returns a
+// sentinel NO_DATABASE error when DATABASE_URL is unset, which the cache swallows -- so a deployment
+// without a database behaves exactly as it does today.
+// Per-key single-flight for stale-pool revalidation (see the guard at the hit_stale path). In-process
+// on purpose: coalescing only needs to hold within one instance, and a bounded Set cannot leak — the
+// cap is a backstop far above the ~dozens-string recall vocabulary.
+const recoRecallPoolRevalidationInFlight = new Set();
+const RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT = 64;
+
+// True = the caller owns the refresh for this key and MUST call endRecoRecallPoolRevalidation when it
+// settles. False = another refresh already owns the key (or the backstop cap is reached): serve the
+// stale row and schedule nothing.
+function beginRecoRecallPoolRevalidation(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return false;
+  if (recoRecallPoolRevalidationInFlight.has(key)) return false;
+  if (recoRecallPoolRevalidationInFlight.size >= RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT) return false;
+  recoRecallPoolRevalidationInFlight.add(key);
+  return true;
+}
+
+function endRecoRecallPoolRevalidation(cacheKey) {
+  recoRecallPoolRevalidationInFlight.delete(String(cacheKey || ''));
+}
+
+let recoRecallPoolCacheInstance = null;
+function getRecoRecallPoolCache() {
+  if (!isRecoRecallPoolCacheEnabled()) return null;
+  if (!recoRecallPoolCacheInstance) {
+    recoRecallPoolCacheInstance = createRecoRecallPoolCache({ query: (sql, params) => db.query(sql, params) });
+  }
+  return recoRecallPoolCacheInstance;
+}
 
 const recoGuardrailCircuitStateByMode = new Map();
 
@@ -5155,6 +5424,13 @@ function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
     last_probe_started_at: lastProbeStartedAt || 0,
     can_probe_while_open: canProbeWhileOpen,
     next_probe_in_ms: nextProbeInMs,
+    off_request_probe_enabled: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED,
+    off_request_probe_timeout_ms: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS,
+    off_request_probe_in_flight: Boolean(recoCatalogFailFastState.off_request_probe_in_flight),
+    last_off_request_probe_ok_at: Number(recoCatalogFailFastState.last_off_request_probe_ok_at || 0),
+    last_off_request_probe_failed_at: Number(
+      recoCatalogFailFastState.last_off_request_probe_failed_at || 0,
+    ),
   };
 }
 
@@ -5174,14 +5450,72 @@ function markRecoCatalogFailFastFailure(reason, nowMs = Date.now()) {
   if (recoCatalogFailFastState.consecutive_failures >= RECO_CATALOG_FAIL_FAST_THRESHOLD) {
     recoCatalogFailFastState.open_until_ms = nowMs + RECO_CATALOG_FAIL_FAST_COOLDOWN_MS;
     recoCatalogFailFastState.last_probe_started_at = nowMs;
+    scheduleRecoCatalogFailFastOffRequestProbe();
   }
 }
 
 function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   if (!RECO_CATALOG_FAIL_FAST_ENABLED) return false;
+  // With the off-request probe running, a REQUEST must never be conscripted as a probe: the on-request
+  // probe timeout is capped at 6s against a 9-18.6s cold search, so it could only ever fail, re-open
+  // the circuit, and make the caller pay for the privilege.
+  if (RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return false;
   const snapshot = getRecoCatalogFailFastSnapshot(nowMs);
   if (!snapshot.open || !snapshot.can_probe_while_open) return false;
   recoCatalogFailFastState.last_probe_started_at = nowMs;
+  return true;
+}
+
+// Off-request probe: a single unref'd timer, never more than one in flight, that runs a real search
+// with a timeout long enough to clear a cold query. Unref'd so it cannot hold the process open, and
+// self-cancelling once the circuit closes.
+async function runRecoCatalogFailFastOffRequestProbe() {
+  recoCatalogFailFastState.off_request_probe_timer = null;
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED || !RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return;
+  const snapshot = getRecoCatalogFailFastSnapshot(Date.now());
+  if (!snapshot.open) return;
+  if (recoCatalogFailFastState.off_request_probe_in_flight) return;
+  recoCatalogFailFastState.off_request_probe_in_flight = true;
+  recoCatalogFailFastState.last_probe_started_at = Date.now();
+  let healthy = false;
+  try {
+    const result = await searchInternalProductsPrimitive({
+      query: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY,
+      limit: 1,
+      logger: null,
+      timeoutMs: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS,
+      catalogSurface: 'beauty',
+    });
+    healthy = Boolean(result && result.ok === true);
+  } catch (_err) {
+    healthy = false;
+  } finally {
+    recoCatalogFailFastState.off_request_probe_in_flight = false;
+  }
+  if (healthy) {
+    // Close the circuit directly. markRecoCatalogFailFastSuccess also clears the failure counter, so a
+    // recovered dependency starts from a clean slate rather than one failure below the threshold.
+    markRecoCatalogFailFastSuccess();
+    recoCatalogFailFastState.last_off_request_probe_ok_at = Date.now();
+    return;
+  }
+  recoCatalogFailFastState.last_off_request_probe_failed_at = Date.now();
+  // Do NOT call markRecoCatalogFailFastFailure here: the probe failing is not new evidence about
+  // request traffic, and counting it would extend the cooldown indefinitely (the metastable shape this
+  // whole change exists to remove). Just try again after the probe interval, while still open.
+  scheduleRecoCatalogFailFastOffRequestProbe();
+}
+
+function scheduleRecoCatalogFailFastOffRequestProbe(delayMs = RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS) {
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED || !RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return false;
+  if (recoCatalogFailFastState.off_request_probe_timer) return false;
+  const timer = setTimeout(() => {
+    runRecoCatalogFailFastOffRequestProbe().catch(() => {
+      recoCatalogFailFastState.off_request_probe_timer = null;
+    });
+  }, Math.max(250, Math.trunc(Number(delayMs) || 5000)));
+  if (typeof timer.unref === 'function') timer.unref();
+  recoCatalogFailFastState.off_request_probe_timer = timer;
   return true;
 }
 
@@ -5539,6 +5873,18 @@ async function searchInternalProductsPrimitive({
   }
 }
 
+// How many rows to ask the upstream for.
+//
+// The shared cap is 12. A request that carries a price ceiling is the ONLY one allowed past it,
+// because it is the only one whose rows the upstream is about to hard-filter: at a cap of 12 a
+// constrained query can come back with almost nothing, which is how the live run reached selection
+// with a single known-conforming candidate.
+function resolveRecoSearchRequestLimit(limit, priceCeiling) {
+  const cap = normalizeRecoPriceCeiling(priceCeiling) ? AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT : 12;
+  const requested = Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6;
+  return Math.max(1, Math.min(cap, requested));
+}
+
 async function searchPivotaBackendProducts({
   query,
   limit = 6,
@@ -5568,6 +5914,7 @@ async function searchPivotaBackendProducts({
   merchantId = '',
   merchantIds = [],
   externalSeedOnly = undefined,
+  priceCeiling = null,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -5601,7 +5948,8 @@ async function searchPivotaBackendProducts({
   const forceGenericOnly =
     effectiveTransportPolicy.force_generic_only === true ||
     strictSingleOwnerSelfProxyMainPath;
-  const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const normalizedPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
+  const normalizedLimit = resolveRecoSearchRequestLimit(limit, normalizedPriceCeiling);
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const hasSemanticContract =
     semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract);
@@ -5674,6 +6022,18 @@ async function searchPivotaBackendProducts({
   if (normalizedTargetStepFamily) params.target_step_family = normalizedTargetStepFamily;
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
+  // The buyer's structured ceiling, made visible to the upstream that owns the price data. This lane
+  // has no FX rates, so the currency rides along and an unrecognized one disables the ceiling upstream
+  // (normalizeRecoPriceCeiling returns null) rather than being read in an assumed unit.
+  //
+  // The CALLER decides which arms carry it (see shouldSendPriceCeilingOnQueryArm): the local mainline
+  // treats max_price as a HARD drop (filterFindProductsMultiDirectProductsByBudget, src/server.js
+  // ~34580), so constraining every arm would turn "nothing conforms" into zero results — the exact
+  // failure this work exists to prevent.
+  if (normalizedPriceCeiling) {
+    params.price_max = normalizedPriceCeiling.limit;
+    params.price_currency = normalizedPriceCeiling.currency;
+  }
   if (productOnly !== undefined) params.product_only = productOnly === true;
   if (localMainlineChild === true) params.local_mainline_child = true;
   if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
@@ -8059,6 +8419,47 @@ function recordCatalogFallbackAttemptsToProductAnchorSpine(spine, attempts = [])
   }
 }
 
+// ADR-009 phase 0 — the seed-lane predicate plus the ONE shape
+// src/services/externalSeedLane.js is deliberately NOT defined over.
+//
+// The product-anchor sites below accept a seed row either on the row itself or
+// on a NESTED `canonical_product_ref`, and treated a sentinel merchant in
+// either position identically. The adapter is row-shaped, so the nesting is
+// unwrapped HERE rather than by teaching `readSeedLaneFields` a new alias
+// SOURCE: that would be a widening applied to every adapter caller
+// (productGroundingResolver.isExternalProduct, RecommendationEngine's
+// isExternalProduct and its candidate stamp, guidanceFastpath's ordering
+// tiebreak, hasConcernFrameworkExternalSeedAuthority) — none of which read this
+// shape, and each of which would silently gain a new way to be routed into the
+// seed lane. Blast radius of doing it here instead: exactly these call sites.
+//
+// A canonical ref is itself product-like (`{product_id, merchant_id}`), so the
+// SAME row-shaped predicate answers it; nothing about the adapter changes.
+//
+// The `canonicalProductRef` camelCase alias is included because
+// isExternalRecoAlternativesSeedProduct already read it, and one definition
+// beats two — a widening of the snake_case-only sites, in the fail-closed
+// direction (it routes a row INTO the seed lane, where the gates are stricter).
+function isExternalSeedLaneProductOrCanonicalRef(productLike) {
+  if (isExternalSeedLaneProduct(productLike)) return true;
+  const row = isPlainObject(productLike) ? productLike : null;
+  if (!row) return false;
+  // Read the nested refs the way the adapter reads every field: ignore a value that could ONLY have
+  // come from a polluted Object.prototype. A bare `row.canonical_product_ref` reintroduces exactly the
+  // hole externalSeedLane's own() guard exists to close — and this predicate is a SERVING branch
+  // (recoAlternativesRouteHandler routes /v1/reco/alternatives on it), so pollution would send every
+  // request down the external-seed compare path and drop personalization.
+  //
+  // Deliberately NOT a bare Object.hasOwn: that would also drop a ref on a LEGITIMATE prototype
+  // (a class instance, an Object.create row) and misclassify a real seed row as internal.
+  const nested = (key) => {
+    if (Object.hasOwn(row, key)) return row[key];
+    return Object.hasOwn(Object.prototype, key) ? undefined : row[key];
+  };
+  return isExternalSeedLaneProduct(nested('canonical_product_ref'))
+    || isExternalSeedLaneProduct(nested('canonicalProductRef'));
+}
+
 async function resolveOpenWorldExternalProductMatchForProductInput({
   inputText = '',
   inputUrl = '',
@@ -8093,13 +8494,7 @@ async function resolveOpenWorldExternalProductMatchForProductInput({
 
   const attempts = [];
   let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
-  if (
-    parsedProductObj &&
-    (
-      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
-      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-    )
-  ) {
+  if (parsedProductObj && isExternalSeedLaneProductOrCanonicalRef(parsedProductObj)) {
     parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
   }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
@@ -8346,7 +8741,12 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
   const productRef = buildProductAnchorRefFromProductLike(row);
   const merchantId = pickFirstTrimmed(row?.merchant_id, row?.merchantId, productRef?.merchant_id);
   const productId = pickFirstTrimmed(row?.product_id, row?.productId, row?.sku_id, row?.skuId, productRef?.product_id);
-  if (!productId || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  // The gate the CALLERS' gate is useless without: migrating only the four call
+  // sites would admit a re-keyed row into this function and then bail here, so
+  // the evidence load stayed dead for exactly the rows the migration is for.
+  // productRef is asked separately because it may be the normalizeRecoCatalogProduct
+  // projection of the row, which resolves merchant aliases the raw row does not.
+  if (!productId || !(isExternalSeedLaneProductOrCanonicalRef(row) || isExternalSeedLaneProduct(productRef))) return null;
   try {
     const res = await runDbQuery(
       `
@@ -8387,7 +8787,13 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
       productRef ||
       {
         product_id: productId,
-        merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+        // NOT the sentinel literal: this gate now admits re-keyed `merch_obs_…`
+        // rows, and stamping `external_seed` here would hand a downstream reader
+        // a merchant the row does not have. Shaped like
+        // buildProductAnchorRefFromProductLike so an empty merchant is omitted
+        // rather than emitted blank. (Unreachable in practice — productRef is
+        // non-null whenever productId is; kept correct rather than deleted.)
+        ...(merchantId ? { merchant_id: merchantId } : {}),
       };
     return {
       ...hydrated,
@@ -8479,12 +8885,17 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
     // path: it is slow in production and can recall polluted non-authority text.
     return buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback: false });
   }
+  // The search_text gate drives the trigram index; the per-field arms then
+  // restrict recall to the lean authority fields on the few candidate rows.
   return `(
-    ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    ${buildExternalSeedSearchTextGateSql(bind)}
+    AND (
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    )
   )`;
 }
 
@@ -9034,6 +9445,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
         if (!fieldClauses.length) return '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND ${buildExternalSeedSearchTextGateSql(patternBind)}
           AND (
             ${fieldClauses.join('\n            OR ')}
           )
@@ -9124,6 +9536,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
           : '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND ${buildExternalSeedSearchTextGateSql(patternBind)}
           AND (
             ${fieldClauses.join('\n            OR ')}
           )
@@ -9145,29 +9558,32 @@ function buildLocalExternalSeedSupportStageDefinitions({
   }
 
   if (!hasLeanAuthorityStage && Array.isArray(patterns) && patterns.length > 0) {
+    // Each stage keeps its per-field arm (staged scoring depends on which field
+    // matched) but is gated on the indexed search_text superset column, so the
+    // arm's jsonb extraction only runs on the gate's candidate rows.
+    const buildGatedFieldWhereSql = (fieldSql) => (bind) => {
+      const patternBind = bind(patterns);
+      return `(${buildExternalSeedSearchTextGateSql(patternBind)} AND ${fieldSql} LIKE ANY(${patternBind}::text[]))`;
+    };
     addStage({
       stage: 'support_recall_title',
       score: 48,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle),
     });
     addStage({
       stage: 'support_alias_tokens',
       score: 44,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens),
     });
     addStage({
       stage: 'support_recall_summary',
       score: 40,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary),
     });
     addStage({
       stage: 'support_raw_title',
       score: 36,
-      buildWhereSql: (bind) =>
-        `lower(coalesce(title, '')) LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(`lower(coalesce(title, ''))`),
     });
   }
 
@@ -9438,8 +9854,26 @@ function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = 
     }));
 }
 
+// Headroom for the outer stage race so the db layer's own budget — the one that
+// hands the pool slot back — expires first on the real transport.
+const LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS = 250;
+
+// `pool_acquire` means the stage never ran: it sat in the checkout queue until
+// its budget expired. That is a pool-capacity signal and reads nothing like
+// `query`, which means the statement itself was too slow. Before this split both
+// arrived as a bare `timeout: true`, and the acne-recall starvation of
+// 2026-09-08 was misread as a slow query for exactly that reason.
+function classifyLocalExternalSeedStageTimeoutCause(error) {
+  const code = String(error?.code || '').trim();
+  if (code === db.DB_BUDGET_ACQUIRE_TIMEOUT) return 'pool_acquire';
+  if (code === db.DB_BUDGET_QUERY_TIMEOUT) return 'query';
+  if (code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT') return 'stage_budget';
+  return '';
+}
+
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
+  logger = null,
   q,
   patterns = [],
   role = null,
@@ -9491,6 +9925,10 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   const overallStartedAt = Date.now();
   const effectiveTimeoutMs = Math.max(
     250,
+    // THIS clamp is the only thing holding the primary ladder at 4s — the 18,000ms
+    // constant is inert above it. `tests/recall_primary_role_budget.test.js`
+    // asserts the effective band and fails if this is lifted; removing an
+    // accidental bound is otherwise an invisible regression.
     Math.min(4000, Number.isFinite(Number(queryTimeoutMs)) ? Math.trunc(Number(queryTimeoutMs)) : 1600),
   );
   const stageStopRowFloor = Math.max(
@@ -9520,7 +9958,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         '${definition.stage}'::text AS match_stage
       FROM external_product_seeds
       WHERE status = 'active'
-        AND market = $1
+        AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
     `;
@@ -9549,6 +9987,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: true,
+        timeout_cause: 'stage_budget',
       });
       return {
         rows: stagedRows,
@@ -9559,15 +9998,25 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       };
     }
     let res = null;
+    // Filled in by the db layer with the split timings, pool census, connection
+    // age and timer lag for THIS stage. Recorded on the fast path too: a slow
+    // stage only means something next to a fast one from the same turn.
+    const stageDbDiagnostics = {};
     try {
+      // The budget goes to the db layer so an expired stage releases its pool
+      // slot instead of abandoning a query that keeps it. `withTimeout` stays as
+      // a backstop for injected `queryFn`s (tests, callers with their own
+      // transport), which do not honour `timeoutMs`; the grace keeps the inner,
+      // slot-releasing path the one that normally fires.
       // eslint-disable-next-line no-await-in-loop
       res = await withTimeout(
-        Promise.resolve().then(() => runQuery(sql, params)),
-        remainingMs,
+        Promise.resolve().then(() => runQuery(sql, params, { timeoutMs: remainingMs, diagnostics: stageDbDiagnostics })),
+        remainingMs + LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS,
         'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT',
       );
     } catch (error) {
-      const timedOut = error?.code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT';
+      const timeoutCause = classifyLocalExternalSeedStageTimeoutCause(error);
+      const timedOut = Boolean(timeoutCause);
       stageDebug.push({
         stage: definition.stage,
         row_count: 0,
@@ -9578,7 +10027,24 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: timedOut,
+        ...(timeoutCause ? { timeout_cause: timeoutCause } : {}),
+        ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       });
+      if (timedOut) {
+        // Into jsonPayload, not just the debug response body: the stalls worth
+        // attributing are intermittent, and nobody is holding a debug request
+        // open when one happens.
+        logger?.warn?.(
+          {
+            stage: definition.stage,
+            query: q,
+            role_id: role?.role_id || null,
+            timeout_cause: timeoutCause || null,
+            db: { ...stageDbDiagnostics },
+          },
+          'local_external_seed_stage_timeout',
+        );
+      }
       if (timedOut) {
         return {
           rows: stagedRows,
@@ -9601,6 +10067,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       ...(queryCap !== Number(definition.cap || safeLimit) ? { query_cap: queryCap } : {}),
       ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
       sequential_query: true,
+      ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
       ...(continueAfterPreciseStage === true && definition.stage === 'support_query_precise' ? { continued_after_precise_stage: true } : {}),
     });
@@ -9876,21 +10343,47 @@ async function searchLocalExternalSeedProducts({
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const rowCap = Math.max(18, Math.min(80, safeLimit * 8));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
     queryTimeoutMs != null &&
     Number.isFinite(Number(queryTimeoutMs)) &&
     Number(queryTimeoutMs) > 0;
+  // Which budget a role gets is a question about whether it is THE PRIMARY, not
+  // about its rank number. `roleRank > 1` assumed the primary always ranks 1;
+  // the concern planner emits spaced ranks (11 / 20 / 30 for the acne
+  // framework), so `> 1` was true for every role and the primary always fell to
+  // the support tier -- 1600ms against a query measured at 1720-1800ms in prod.
+  // It therefore ALWAYS overran, and whether rows came back was a race between
+  // the query resolving and the deadline firing. Rank is kept only as a fallback
+  // for target contexts that carry no `primary_role_id`.
+  //
+  // The constant is 18,000ms but the staged search clamps to
+  // `Math.min(4000, ...)`, so the effective budget here is 4,000ms — roughly 2.2x
+  // the measured query cost, and the worst-case pool-slot hold this raise can
+  // cause is 4s, not 18s.
+  // Lowercased on BOTH sides: every other comparison of these two ids in this
+  // codebase does (`beautyChatMainlineEntry.js:263,280,335`, `routes.js:24131,
+  // 26690,28215`). Trim-only would make `isPrimaryRole` false for EVERY role in a
+  // lane carrying a differently-cased primary id — the prior-reco continuation
+  // lane does — silently restoring the 1600ms race with every test still green.
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim().toLowerCase();
+  const roleId = String(role?.role_id || '').trim().toLowerCase();
+  const isPrimaryRole = primaryRoleId && roleId
+    ? roleId === primaryRoleId
+    : !(Number.isFinite(roleRank) && roleRank > 1);
   const effectiveQueryTimeoutMs = explicitQueryTimeoutMs
     ? Math.trunc(Number(queryTimeoutMs))
-    : (Number.isFinite(roleRank) && roleRank > 1 ? 1600 : RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+    : (isPrimaryRole ? RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS : 1600);
 
   try {
     if (leanSql) {
       const staged = await searchLocalExternalSeedProductsViaSupportStages({
         runQuery,
+        logger,
         q,
         patterns,
         role,
@@ -9957,7 +10450,7 @@ async function searchLocalExternalSeedProducts({
           ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND market = $1
+          AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
@@ -10070,7 +10563,9 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   }
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
@@ -10095,6 +10590,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   try {
     const staged = await searchLocalExternalSeedProductsViaSupportStages({
       runQuery,
+      logger,
       q,
       patterns,
       role,
@@ -10881,6 +11377,16 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   let bestSearchCandidate = null;
   for (const stage of Array.isArray(searchRecallPlan?.stages) ? searchRecallPlan.stages : []) {
     const sourceScope = String(stage?.source_scope || 'internal').trim().toLowerCase();
+    if (sourceScope === 'internal' && !isRecoRecallInternalLaneEnabled()) {
+      searchStageResults.push({
+        stage_id: stage.stage_id,
+        picked_candidate: false,
+        transient_only: false,
+        skipped: true,
+        skip_reason: 'internal_lane_disabled',
+      });
+      continue;
+    }
     if (sourceScope === 'external_seed' && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED !== true) {
       searchStageResults.push({
         stage_id: stage.stage_id,
@@ -12289,41 +12795,22 @@ function normalizeCurrencyCode(value, fallback = '') {
   return fb.length === 3 ? fb : '';
 }
 
+// Delegates the token reading to priceAmountText.js so the card infers exactly the same currency from
+// exactly the same text; the fallback contract stays here, where its callers expect it.
 function inferCurrencyFromPriceText(value, fallback = '') {
-  const text = String(value || '').trim();
-  if (!text) return normalizeCurrencyCode(fallback, '');
-  if (/[$]|usd|us\$/i.test(text)) return 'USD';
-  if (/[€]|eur/i.test(text)) return 'EUR';
-  if (/[£]|gbp/i.test(text)) return 'GBP';
-  if (/[¥]|cny|rmb/i.test(text)) return 'CNY';
-  if (/jpy|円/i.test(text)) return 'JPY';
-  return normalizeCurrencyCode(fallback, '');
+  return inferCurrencyTokenFromPriceText(value) || normalizeCurrencyCode(fallback, '');
 }
 
-function toPositiveNumberOrNull(value) {
-  if (value == null) return null;
-  if (typeof value === 'string') {
-    const text = String(value).trim();
-    if (!text) return null;
-    const compact = text.replace(/\s+/g, '');
-    const direct = Number(compact.replace(/,/g, ''));
-    if (Number.isFinite(direct) && direct > 0) return Number(direct.toFixed(2));
-    const numeric = compact.replace(/[^0-9.,-]/g, '');
-    if (!numeric) return null;
-    let normalized = numeric;
-    const commaCount = (numeric.match(/,/g) || []).length;
-    const dotCount = (numeric.match(/\./g) || []).length;
-    if (commaCount && !dotCount) normalized = numeric.replace(',', '.');
-    normalized = normalized.replace(/,(?=\d{3}\b)/g, '');
-    const parsed = Number(normalized);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return Number(parsed.toFixed(2));
-  }
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Number(n.toFixed(2));
+// A price is a positive, finite amount, rounded to cents. Not-a-number, an overflow, zero and
+// negatives are all "no price" rather than something to coerce.
+function toRoundedPositiveOrNull(amount) {
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Number(amount.toFixed(2));
 }
 
+// A money string and nothing else: digits with `.`/`,` between them, each separator followed by
+// digits, optionally ending in a bare separator (`5.`, `1.299,`). A doubled separator, an exponent
+// or any letter fails this, and then there is no price to read.
 function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
   if (rawPrice == null) return null;
   if (typeof rawPrice === 'number' || typeof rawPrice === 'string') {
@@ -12358,75 +12845,153 @@ function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
       rawPrice.offerPrice,
   );
   if (directAmount != null) {
+    // `price_currency` belongs in this list. It is the spelling this repo's own rows use --
+    // LOCAL_EXTERNAL_SEED_SELECT_FIELDS selects `price_amount, price_currency`, server.js emits
+    // that pair, and every OTHER currency reader here already accepts it
+    // (readRecoCandidateRowCurrency, extractProductPriceFromJsonLd,
+    // RECO_PLAN_PRICE_CARRYING_KEYS, extractRecoAlternativeVisiblePrice). Omitting it here meant a
+    // row-shaped element inside `offers[]` had its stated currency dropped and the amount stamped
+    // `fallbackCurrency` -- the same defect #2065 fixed one level up, still live one level down.
     const directCurrency = normalizeCurrencyCode(
       rawPrice.currency ??
         rawPrice.currency_code ??
         rawPrice.currencyCode ??
+        rawPrice.price_currency ??
         rawPrice.priceCurrency ??
         nestedPrice?.currency ??
         nestedPrice?.currencyCode ??
+        nestedPrice?.price_currency ??
         nestedPrice?.priceCurrency,
       fallbackCurrency,
     );
     return { amount: directAmount, currency: directCurrency || 'USD', unknown: false };
   }
 
-  const usd = toPositiveNumberOrNull(rawPrice.usd ?? rawPrice.price_usd ?? rawPrice.priceUsd);
+  // Same scoped rule as the row-level reads: these name ONE amount in ONE currency, so a list is
+  // malformed here too. Without this the split the helper exists to close was still live one level
+  // down — `{offers: [{price_usd: [5]}]}` priced at $5 while `{price_usd: [5]}` did not.
+  const usd = readRowScalarPriceOrNull(rawPrice.usd ?? rawPrice.price_usd ?? rawPrice.priceUsd);
   if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
-  const cny = toPositiveNumberOrNull(rawPrice.cny ?? rawPrice.price_cny ?? rawPrice.priceCny);
+  const cny = readRowScalarPriceOrNull(rawPrice.cny ?? rawPrice.price_cny ?? rawPrice.priceCny);
   if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
   return null;
+}
+
+// The SCALAR price fields on a product row — price_usd, price_cny and their aliases. Each names one
+// amount in one stated currency, so a list is malformed there, unlike the `price`/`offers` carriers
+// below where a list is an ordinary shape and is unwrapped deliberately. This is where the
+// `price_usd: [5]` divergence is closed: Number([5]) is 5 while Number([5, 6]) is NaN, so a
+// one-element list priced a product and a two-element one did not. Scoped to these fields rather
+// than pushed down into toPositiveNumberOrNull, because that helper also reads crawled offer
+// objects, where rejecting lists silently loses real prices.
+function readRowScalarPriceOrNull(value) {
+  if (Array.isArray(value)) return null;
+  return toPositiveNumberOrNull(value);
+}
+
+// The currency a row DECLARES in a sibling field, for the readers that hand normalizePriceObject a
+// bare scalar amount — the amount carries no unit of its own, so without this the declaration is
+// discarded and the price stamped USD, relabelling 88 GBP as 88 USD (#2065). Module-level rather
+// than a closure because two lanes need the same answer: extractCatalogCandidatePrice (the catalog
+// leg) and normalizeAlternativesSelectorCandidate (the raw request-row leg), which are the two
+// branches that write alternatives[].product.price.
+function declaredPriceCurrencyOf(holder, fallback) {
+  if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return fallback;
+  const found = [holder.currency, holder.currency_code, holder.currencyCode, holder.price_currency, holder.priceCurrency]
+    .find((value) => normalizeCurrencyCode(value, ''));
+  return normalizeCurrencyCode(found, fallback);
+}
+
+// Price text is parsed in priceAmountText.js, shared with the chat card, so the two surfaces cannot
+// read one row two ways. What stays HERE is this lane's policy: a zero, a negative or an overflow is
+// "no price". The card deliberately keeps a declared 0 and renders it, which is the one difference
+// between the lanes that is a decision rather than an accident.
+function toPositiveNumberOrNull(value) {
+  return toRoundedPositiveOrNull(parsePriceAmount(value));
 }
 
 function extractCatalogCandidatePrice(rawProduct) {
   const base = rawProduct && typeof rawProduct === 'object' && !Array.isArray(rawProduct) ? rawProduct : null;
   if (!base) return null;
 
+  // The ROW's own currency, used as the fallback for every seed below.
+  //
+  // Most seeds are SCALARS (price_amount, offer_price, sale_price, ...) and a scalar carries no
+  // currency of its own, so without this the row's sibling `currency` was discarded and the price was
+  // stamped USD. That relabels a real price rather than losing it: 88 GBP served as 88 USD. It fires
+  // on the recall pool cache round trip, which flattens an object price into exactly this shape
+  // (price_amount + currency -- see sanitizeRecoRecallPoolCandidate), so every non-USD product served
+  // from a cached pool was relabelled. Downstream, classifyRecoCandidateAgainstPriceCeiling compares
+  // by unit and is documented to return 'unknown' for a foreign currency precisely because this lane
+  // holds no FX rates; a USD relabel defeated that and produced a fabricated conforming/over verdict.
+  //
+  // This is a FALLBACK, never an override: normalizePriceObject still prefers a currency carried by
+  // the seed itself, and inferCurrencyFromPriceText still wins for a string like '£88'. An
+  // unrecognized token normalizes away and the historical USD default stands.
+  // normalizeCurrencyCode validates to a 3-letter code and falls back to USD, so an unrecognized or
+  // absent declaration keeps the historical default. It is re-validated inside normalizePriceObject,
+  // so this call is for readability at the seam rather than a second gate.
+  const rowCurrency = declaredPriceCurrencyOf(base, 'USD');
+
+  // A NESTED carrier that declares its own currency keeps it; otherwise it inherits the row's. Without
+  // this, {subject: {price: 88, currency: 'GBP'}} lost the GBP exactly as the row-level shape did --
+  // the same defect one level down, because the seed handed to normalizePriceObject is the bare
+  // scalar `88` and the carrier's sibling currency is never seen.
+  const nested = (key) => {
+    const holder = base[key];
+    if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return { price: null, offers: null, currency: rowCurrency };
+    return { price: holder.price, offers: holder.offers, currency: declaredPriceCurrencyOf(holder, rowCurrency) };
+  };
+  const subject = nested('subject');
+  const sku = nested('sku');
+  const product = nested('product');
+
+  // [value, currencyForThisSeed]
   const seeds = [
-    base.price,
-    base.price_amount,
-    base.priceAmount,
-    base.price_value,
-    base.priceValue,
-    base.offer_price,
-    base.offerPrice,
-    base.sale_price,
-    base.salePrice,
-    base.list_price,
-    base.listPrice,
-    base.min_price,
-    base.minPrice,
-    base.max_price,
-    base.maxPrice,
-    base.pricing,
-    base.price_info,
-    base.priceInfo,
-    base.offer,
-    base.offers,
-    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.price : null,
-    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.offers : null,
-    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.price : null,
-    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.offers : null,
-    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.price : null,
-    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.offers : null,
+    [base.price, rowCurrency],
+    [base.price_amount, rowCurrency],
+    [base.priceAmount, rowCurrency],
+    [base.price_value, rowCurrency],
+    [base.priceValue, rowCurrency],
+    [base.offer_price, rowCurrency],
+    [base.offerPrice, rowCurrency],
+    [base.sale_price, rowCurrency],
+    [base.salePrice, rowCurrency],
+    [base.list_price, rowCurrency],
+    [base.listPrice, rowCurrency],
+    [base.min_price, rowCurrency],
+    [base.minPrice, rowCurrency],
+    [base.max_price, rowCurrency],
+    [base.maxPrice, rowCurrency],
+    [base.pricing, rowCurrency],
+    [base.price_info, rowCurrency],
+    [base.priceInfo, rowCurrency],
+    [base.offer, rowCurrency],
+    [base.offers, rowCurrency],
+    [subject.price, subject.currency],
+    [subject.offers, subject.currency],
+    [sku.price, sku.currency],
+    [sku.offers, sku.currency],
+    [product.price, product.currency],
+    [product.offers, product.currency],
   ];
 
-  for (const seed of seeds) {
+  for (const [seed, seedCurrency] of seeds) {
     if (seed == null) continue;
     if (Array.isArray(seed)) {
       for (const item of seed) {
-        const parsed = normalizePriceObject(item, { fallbackCurrency: 'USD' });
+        const parsed = normalizePriceObject(item, { fallbackCurrency: seedCurrency });
         if (parsed) return parsed;
       }
       continue;
     }
-    const parsed = normalizePriceObject(seed, { fallbackCurrency: 'USD' });
+    const parsed = normalizePriceObject(seed, { fallbackCurrency: seedCurrency });
     if (parsed) return parsed;
   }
 
-  const usd = toPositiveNumberOrNull(base.price_usd ?? base.priceUsd ?? base.usd);
+  const usd = readRowScalarPriceOrNull(base.price_usd ?? base.priceUsd ?? base.usd);
   if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
-  const cny = toPositiveNumberOrNull(base.price_cny ?? base.priceCny ?? base.cny);
+  const cny = readRowScalarPriceOrNull(base.price_cny ?? base.priceCny ?? base.cny);
   if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
   return null;
 }
@@ -12508,7 +13073,27 @@ function extractProductPriceFromHtml(html) {
     text.match(/"priceCurrency"\s*:\s*"([A-Za-z]{3})"/i)?.[1] || '',
     metaCurrency,
   );
-  const inlineAmount = toPositiveNumberOrNull(text.match(/"price"\s*:\s*"?([0-9]+(?:\.[0-9]{1,2})?)"?/i)?.[1]);
+  // The captured number must END where the match ends, and a comma is only taken when it sits in a
+  // real thousands position. `[0-9]+(?:\.[0-9]{1,2})?` matched a PREFIX and stopped at the first
+  // character it did not recognise, so `"price":"1,299.00"` was read as $1 — three orders of
+  // magnitude under, for a shape that is ordinary in embedded product JSON. `"price":"1e999"` was
+  // read as $1 the same way.
+  //
+  // The grouping alternation is not cosmetic. toPositiveNumberOrNull's fast path does
+  // `Number(compact.replace(/,/g, ''))`, i.e. it strips EVERY comma as a separator, so a capture
+  // of `[0-9][0-9,]*` would hand it `19,99` — an ordinary EU/LatAm decimal comma — and get 1999
+  // back. Inflating a price 100x is worse than the truncation being fixed. Requiring `,[0-9]{3}`
+  // means a comma is only consumed where it can only be grouping; `19,99` matches nothing here and
+  // falls through to the meta and on-page readers, which is the honest answer for a locale this
+  // leg cannot determine.
+  //
+  // Every trailing guard is keyed on a DIGIT following, not on the punctuation alone. An unquoted
+  // JSON number is ordinarily followed by a comma (`"price": 19.99,`) and a price in prose by a
+  // full stop (`"price": 19.99. Free shipping`), so rejecting on `,` or `.` outright threw away
+  // real prices. `.`/`e`/`E`/`,` only mean "the number continued" when a digit follows them.
+  const inlineAmount = toPositiveNumberOrNull(
+    text.match(/"price"\s*:\s*"?([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)(?![0-9])(?![.eE][0-9])(?!,[0-9])"?/i)?.[1],
+  );
   if (inlineAmount != null) {
     return {
       amount: inlineAmount,
@@ -12520,7 +13105,13 @@ function extractProductPriceFromHtml(html) {
 
   const plainText = stripHtmlToText(text).replace(/\s+/g, ' ').trim();
   if (plainText) {
-    const prefixed = /(?:\b(USD|EUR|GBP|CNY|JPY)\b|([$€£¥]))\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gi;
+    // Grouped thousands, and the number must end where the match ends. `[0-9]{1,4}(?:[.,][0-9]{1,2})?`
+    // is the same prefix defect fixed in the inline leg above: `$1,299.00` matched `1,29` and was
+    // reported as $129. This leg now takes MORE traffic, because rejecting a fabricated JSON-LD
+    // price falls through to here. (Not addressed: `€35,30` still reads as 3530, because
+    // toPositiveNumberOrNull's fast path strips every comma. Pre-existing on both sides of this
+    // change and independent of it — a decimal-comma locale needs its own fix.)
+    const prefixed = /(?:\b(USD|EUR|GBP|CNY|JPY)\b|([$€£¥]))\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{1,4}(?:[.,][0-9]{1,2})?)(?![0-9])/gi;
     let mPrefixed;
     while ((mPrefixed = prefixed.exec(plainText))) {
       const rawCurrency = mPrefixed[1] || mPrefixed[2] || '';
@@ -12535,7 +13126,7 @@ function extractProductPriceFromHtml(html) {
       };
     }
 
-    const suffixed = /([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(USD|EUR|GBP|CNY|JPY)\b/gi;
+    const suffixed = /([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{1,4}(?:[.,][0-9]{1,2})?)(?![0-9])\s*(USD|EUR|GBP|CNY|JPY)\b/gi;
     let mSuffixed;
     while ((mSuffixed = suffixed.exec(plainText))) {
       const amount = toPositiveNumberOrNull(mSuffixed[1]);
@@ -15756,6 +16347,12 @@ function buildUrlFetchFailureCode(attempts = []) {
     .map((item) => String(item?.error_code || '').trim().toLowerCase())
     .filter(Boolean);
 
+  // FIRST, ahead of the challenge/status branches. In the DEFAULT config the precheck is only reachable
+  // AFTER a 403/406/429 or a challenge — that is what lets the vendor run at all — so checking statuses
+  // first meant a refused address reported `url_fetch_forbidden_403` and the `url_forbidden_address`
+  // dial stayed silent for exactly the case it was added to count. An address we refused is the more
+  // important fact about the request than the status that preceded it.
+  if (errorCodes.some((code) => code.startsWith('pivota_ssrf'))) return 'url_forbidden_address';
   if (challengeTypes.includes('cloudflare_challenge')) return 'url_fetch_challenge_cloudflare';
   if (challengeTypes.includes('access_denied_page')) return 'url_fetch_access_denied';
   if (statuses.includes(403)) return 'url_fetch_forbidden_403';
@@ -15838,6 +16435,12 @@ async function fetchViaZenRows({
   }
 }
 
+// One pinned transport for the whole product-URL lane. Built once: it only wraps agents and closures.
+const fetchPublicProductUrl = createPublicUrlFetch({ axiosInstance: axios });
+// The vendor lane never opens our socket, so the transport fence cannot speak for it. This answers the
+// same address question ahead of that call. Built once, beside the transport it complements.
+const checkPublicProductHost = createPublicHostCheck();
+
 async function runSingleUrlFetchAttempt({
   strategy,
   provider = 'native',
@@ -15881,7 +16484,14 @@ async function runSingleUrlFetchAttempt({
   }
 
   try {
-    const resp = await axios.get(productUrl, {
+    // NOT `axios.get`. This is the SSRF sink: a bare axios.get here followed a merchant's
+    // `302 -> http://127.0.0.1:PORT` all the way onto loopback, because axios defaults to
+    // maxRedirects: 5 and nothing in this chain ever checked an address. `fetchPublicProductUrl`
+    // refuses non-public literals before a request is built, dials through a public-only DNS
+    // resolver, and re-applies both to EVERY redirect hop. Everything else below — the decoded-byte
+    // cap, gzip negotiation, the text decoding, `validateStatus`, and the `resp.headers` shape that
+    // detectBotChallengePage reads — is unchanged, which is why the axios adapter was kept.
+    const resp = await fetchPublicProductUrl(productUrl, {
       timeout: timeoutMs,
       maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
       maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
@@ -15954,6 +16564,39 @@ async function fetchProductHtmlWithUnblockChain({
     };
   }
 
+  // Refuse a non-public URL ONCE, here, instead of three times at the sink. This is an optimisation and
+  // a partial vendor guard, NOT the fence: runSingleUrlFetchAttempt refuses independently, and deleting
+  // this block leaves the lane just as closed — verified by mutation (reverting the sink to a bare
+  // axios.get IS caught; neutering this block is not, because the sink's own refusal now produces the
+  // same failure_code). No test pins this block, deliberately: there is no behaviour left to pin once
+  // the sink refuses.
+  //
+  // What it adds is (a) refusing before three identical attempts, and (b) PARTIAL cover for the zenrows
+  // branch, which never reaches the fenced transport — it hands `productUrl` to a paid vendor as a query
+  // parameter. "Partial" is exact: this gate is parsePublicHttpUrl, which sees LITERALS only. A hostname
+  // whose DNS answer is private passes it, fails the three direct attempts, and is still handed to the
+  // vendor when AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED is false (it defaults true). Low impact — zenrows
+  // fetches from its own network, not ours — but the guard is not the whole door.
+  try {
+    parsePublicHttpUrl(urlText);
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      html: '',
+      attempts: [{
+        strategy: 'input_validation',
+        provider: 'native',
+        error_code: String(err?.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      }],
+      final_strategy: 'none',
+      failure_code: 'url_forbidden_address',
+      unblock_attempted: false,
+      unblock_failed: false,
+      used_unblock_vendor: false,
+    };
+  }
+
   const attemptTimeoutMs = Math.max(
     700,
     Math.min(URL_UNBLOCK_TIMEOUT_MS, Number(timeoutMs) || PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS),
@@ -16005,6 +16648,11 @@ async function fetchProductHtmlWithUnblockChain({
       timeoutMs: Math.max(700, Math.min(attemptTimeoutMs, totalDeadline - Date.now())),
       headers: plan.headers,
     });
+    // Tagged with WHICH url produced it. The evidence guard below must not treat a refusal on the
+    // `www.` host VARIANT as evidence about `urlText` — they are different hosts, and a merchant whose
+    // www label CNAMEs into private space would otherwise lose the vendor fallback for a perfectly
+    // public canonical URL. Measured: that false positive withheld the vendor for https://cosrx.com/p/x.
+    out.attempt.__url = plan.url;
     if (out.ok) {
       return {
         ok: true,
@@ -16021,10 +16669,93 @@ async function fetchProductHtmlWithUnblockChain({
     attempts.push(out.attempt);
   }
 
-  const shouldRunVendor =
+  /*
+   * THE VENDOR IS FENCED TOO, and it needs its own gate because it is the one path where OUR socket is
+   * never opened: `fetchViaZenRows` hands `productUrl` to api.zenrows.com as a query parameter and the
+   * vendor fetches it from ITS network, so `fetchPublicProductUrl` and every guard inside it are simply
+   * not on this code path.
+   *
+   * Reachability, stated precisely rather than dramatically: `shouldTryUnblockVendor` fires only on a
+   * `challenge_type` or a 403/406/429, and an address refusal carries NEITHER (verified live in prod:
+   * `attempts: [{error_code: 'pivota_ssrf_refused'}]`, no status). So under the DEFAULT
+   * AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED=true the vendor already does not run for a refused address.
+   * Set that one flag false — URL_UNBLOCK_ENABLED defaults true, provider defaults zenrows — and the
+   * gate vanishes. Measured on unfixed main in exactly that config: `http://localhost:8080/admin` was
+   * handed to the vendor TWICE (http and js_render). One env flag is not a security boundary.
+   *
+   * Two INDEPENDENT refusals, neither load-bearing alone:
+   *   (a) evidence already held — a direct attempt was refused by the fence, so the address is known bad
+   *       and no lookup is needed; and
+   *   (b) a direct check that does not depend on attempt bookkeeping at all, covering the case where the
+   *       direct attempts never ran (the deadline can break that loop before the first one) and there is
+   *       no evidence to read.
+   * A test kills each separately.
+   */
+  const fenceRefusedAddress = attempts.some(
+    (attempt) => attempt?.__url === urlText
+      && String(attempt?.error_code || '').trim().toLowerCase().startsWith('pivota_ssrf'),
+  );
+
+  let shouldRunVendor =
+    !fenceRefusedAddress &&
     URL_UNBLOCK_ENABLED &&
     URL_UNBLOCK_PROVIDER === 'zenrows' &&
     (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
+
+  // The exact string the vendor will be sent. Set by the precheck to the NORMALISED href, so the URL we
+  // judged is the URL we transmit — see below.
+  let vendorUrl = urlText;
+
+  if (shouldRunVendor) {
+    // Only here, so the happy path never pays for a lookup: this runs only when a vendor call — far more
+    // expensive than a resolve — is about to happen anyway. Measured: a 200 on the first direct attempt
+    // performs zero lookups through this path.
+    //
+    // BOUNDED, because a bare `await` here sits OUTSIDE the deadline this function was given: measured,
+    // a stalling resolver returned at 4006 ms against a declared 900 ms budget, and the deadline is only
+    // consulted on the next statement. It also holds a libuv threadpool slot. A lookup that outlives the
+    // budget is treated as "not proven bad" rather than "bad" — same direction as `unresolved` below,
+    // and the direct attempts have already resolved this name anyway.
+    // Wrapped, because an unexpected throw would otherwise escape fetchProductHtmlWithUnblockChain
+    // entirely; a failure to CHECK must never become a failure to serve, but it must not open the door
+    // either, so it fails closed. UNTESTED AND UNPINNED, deliberately stated: nothing reachable makes
+    // this reject today (the only throwing shape is the wrong-arity `createPublicHostCheck({lookup})`,
+    // and the single call site passes no args), and the lookup reference is captured at module load, so
+    // a spy cannot reach it without fighting the require order. It is defence against a future edit, not
+    // a guard with coverage — do not read the catch as evidence of a tested path.
+    const remainingMs = Math.max(0, totalDeadline - Date.now());
+    let vendorHostCheck;
+    try {
+      vendorHostCheck = await Promise.race([
+        checkPublicProductHost(urlText),
+        new Promise((resolve) => setTimeout(
+          () => resolve({ ok: true, code: null, reason: 'unresolved', url: null }),
+          Math.max(150, Math.min(1500, remainingMs)),
+        )),
+      ]);
+    } catch {
+      vendorHostCheck = { ok: false, code: 'pivota_ssrf_refused', reason: 'address_refused', url: null };
+    }
+    if (!vendorHostCheck.ok) {
+      shouldRunVendor = false;
+      attempts.push({
+        strategy: 'vendor_precheck',
+        provider: 'zenrows',
+        error_code: String(vendorHostCheck.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      });
+    } else if (vendorHostCheck.url) {
+      /*
+       * SEND THE STRING WE VALIDATED, not the one the caller typed. Our own fetches already go out
+       * normalised (`parsePublicHttpUrl(...).toString()` inside the pinned transport); the vendor was
+       * getting the raw input, and the two can disagree about the HOST. Measured:
+       * `http://cosrx.com\@127.0.0.1/` is host `cosrx.com` to Node's WHATWG parser (backslash is a path
+       * delimiter for special schemes) and host `127.0.0.1` to Python's urllib. We do not control the
+       * vendor's parser, so handing it anything other than the form we judged is validating one string
+       * and transmitting another.
+       */
+      vendorUrl = vendorHostCheck.url;
+    }
+  }
 
   if (shouldRunVendor && Date.now() < totalDeadline) {
     const vendorPlans = [
@@ -16039,7 +16770,7 @@ async function fetchProductHtmlWithUnblockChain({
       const out = await runSingleUrlFetchAttempt({
         strategy: plan.strategy,
         provider: plan.provider,
-        productUrl: urlText,
+        productUrl: vendorUrl,
         timeoutMs: Math.max(700, Math.min(URL_UNBLOCK_TIMEOUT_MS, totalDeadline - Date.now())),
         jsRender: plan.jsRender,
       });
@@ -17314,7 +18045,10 @@ async function maybeSyncRepairLowCoverageCompetitors({
 function extractExternalSeedSnapshotEvidence(parsedProduct = null) {
   const product = isPlainObject(parsedProduct) ? parsedProduct : null;
   if (!product) return null;
-  if (String(product.merchant_id || '').trim() !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  // Runs on the SAME object the loadExternalSeedEvidenceProduct gate just
+  // admitted, so it has to admit the same rows or the evidence is loaded and
+  // then thrown away for every re-keyed row.
+  if (!isExternalSeedLaneProductOrCanonicalRef(product)) return null;
 
   const captureStatus =
     product.pdp_field_capture_status && typeof product.pdp_field_capture_status === 'object' && !Array.isArray(product.pdp_field_capture_status)
@@ -17399,13 +18133,7 @@ async function buildProductAnalysisFromUrlIngredients({
   }
 
   let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
-  if (
-    parsedProductObj &&
-    (
-      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
-      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-    )
-  ) {
+  if (parsedProductObj && isExternalSeedLaneProductOrCanonicalRef(parsedProductObj)) {
     parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
   }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
@@ -20088,7 +20816,96 @@ function buildRecoGoalDrivenQueryItems({ profileSummary, lang } = {}) {
   return items.slice(0, 6);
 }
 
-function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {}) {
+// Boilerplate that shows up in every reco ask ("recommend a few products for ...") and carries no
+// retrieval signal. Dropping it is what turns a raw need sentence into a query the catalog can match.
+const RECO_NEED_SEED_STOPWORDS = new Set([
+  'a', 'an', 'and', 'any', 'are', 'around', 'as', 'at', 'be', 'below', 'best', 'budget', 'but', 'buy',
+  'can', 'cheap', 'could', 'do', 'find', 'for', 'from', 'get', 'give', 'good', 'great', 'have', 'help',
+  'i', 'im', 'in', 'is', 'it', 'just', 'like', 'looking', 'me', 'my', 'need', 'of', 'on', 'or', 'please',
+  'product', 'products', 'recommend', 'recommendation', 'recommendations', 'she', 'should', 'some',
+  'something', 'suggest', 'that', 'the', 'their', 'they', 'this', 'to', 'under', 'use', 'want', 'what',
+  'which', 'with', 'would', 'you', 'your',
+]);
+
+// Strips currency/price tails so "under $40" never becomes part of a text query. The price constraint
+// is carried structurally elsewhere; leaving it in the text only dilutes the match.
+function stripRecoNeedPriceTokens(value) {
+  return String(value || '')
+    .replace(/[$€£¥₩]\s*\d[\d,.]*/g, ' ')
+    .replace(/\b\d[\d,.]*\s*(usd|eur|gbp|jpy|cny|rmb|dollars?|bucks?)\b/gi, ' ')
+    .replace(/\b(under|below|less than|no more than|up to|within|至多|低于|以内)\b/gi, ' ')
+    .replace(/\d+\s*(元|円|块)/g, ' ');
+}
+
+// Need-derived catalog queries for the generic (non step-aware) recall ladder.
+//
+// The generic ladder is otherwise seeded from the STATIC ['cleanser','moisturizer','sunscreen'] base,
+// which cannot retrieve anything for a need the base does not name. `maxQueries` is deliberately small:
+// this runs BEFORE the LLM on the direct lane, so every query is latency the caller pays.
+function buildRecoNeedSeedQueries(needSeedText, { lang = 'EN', maxQueries = 2 } = {}) {
+  const rawText = String(needSeedText || '').trim();
+  if (!rawText) return [];
+  const bounded = Math.max(0, Math.min(4, Math.trunc(Number(maxQueries) || 0)));
+  if (bounded === 0) return [];
+
+  const priceStripped = stripRecoNeedPriceTokens(rawText);
+  const hasLatinWords = /[a-z]{2,}/i.test(priceStripped);
+  const out = [];
+  const push = (value) => {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return;
+    if (normalized.length < 3) return;
+    const key = normalized.toLowerCase();
+    if (out.some((item) => item.toLowerCase() === key)) return;
+    out.push(normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized);
+  };
+
+  if (!hasLatinWords) {
+    // CJK asks do not whitespace-tokenize; the cleaned sentence is the most honest query available.
+    push(priceStripped.replace(/[，。！？、,.!?]/g, ' '));
+    return out.slice(0, bounded);
+  }
+
+  const tokens = priceStripped
+    .toLowerCase()
+    .replace(/[^a-z0-9+\-\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => token.length > 1)
+    .filter((token) => !RECO_NEED_SEED_STOPWORDS.has(token));
+
+  const meaningful = [];
+  for (const token of tokens) {
+    if (meaningful.includes(token)) continue;
+    meaningful.push(token);
+    if (meaningful.length >= 6) break;
+  }
+  if (!meaningful.length) return [];
+
+  push(meaningful.join(' '));
+
+  // A second, broader query. A 4+ token phrase can under-recall, so pair the product-type token the
+  // caller actually used (NOT the canonical family name — "exfoliant", not "treatment") with its
+  // nearest modifier, keeping the order they appeared in so the phrase arm still has something to hit.
+  if (bounded > 1 && meaningful.length >= 3) {
+    const stepTokenIndex = meaningful.findIndex((token) => Boolean(normalizeRecoTargetStep(token)));
+    const modifierIndex = meaningful.findIndex(
+      (token, index) =>
+        index !== stepTokenIndex && !normalizeRecoTargetStep(token) && token !== 'skin',
+    );
+    const pair = [stepTokenIndex, modifierIndex]
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)
+      .map((index) => meaningful[index]);
+    if (pair.length === 2) push(pair.join(' '));
+    else push(meaningful.slice(0, 2).join(' '));
+  }
+
+  return out.slice(0, bounded);
+}
+
+function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext, needSeedText = '', maxQueries = 0 } = {}) {
   const raw = RECO_CATALOG_GROUNDED_QUERIES;
   const fromEnv = raw
     ? raw
@@ -20160,6 +20977,24 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     }
   }
 
+  // Need-derived queries go in FRONT of every static/profile seed: they are the only entries that can
+  // retrieve for a need the static base (cleanser/moisturizer/sunscreen) does not name.
+  const needSeedQueries = buildRecoNeedSeedQueries(needSeedText, {
+    lang,
+    maxQueries: 2,
+  });
+  for (const query of [...needSeedQueries].reverse()) {
+    const needStep = normalizeRecoTargetStep(extractRecoTargetStepFromText(query) || '');
+    items.unshift({
+      query,
+      step: (needStep && stepLabels[needStep]) || stepLabels.treatment,
+      slot: 'other',
+    });
+  }
+
+  const boundedMaxQueries = Number.isFinite(Number(maxQueries)) && Number(maxQueries) > 0
+    ? Math.max(1, Math.min(8, Math.trunc(Number(maxQueries))))
+    : 8;
   const deduped = [];
   const seen = new Set();
   for (const item of items) {
@@ -20171,7 +21006,7 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push({ query, step, slot: slot || 'other' });
-    if (deduped.length >= 8) break;
+    if (deduped.length >= boundedMaxQueries) break;
   }
 
   return deduped;
@@ -20184,7 +21019,52 @@ function buildRecoCatalogQueryLevels({
   recommendationTaskContext = null,
   lang,
   seedTerms = [],
+  needSeedText = '',
+  maxGenericQueries = 0,
 } = {}) {
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch sets allow_external_seed from its stage plan; the other two branches set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // FROM THE RESOLVED STEP AND NOTHING ELSE. The first attempt read the step OR `needSeedText`, and
+  // put the supplement on the GENERIC branch. Both were wrong, in opposite directions and at the
+  // same time: `step_aware_intent` is set whenever a step resolves, so a makeup ask never reaches
+  // the generic branch and got no supplement, while a skincare ask whose text said "fragrance-free"
+  // resolved as fragrance through the seed-text fallback and got one. Measured live: bronzer,
+  // lipstick and eau-de-toilette all took the step-aware branch with source_scope undefined; the
+  // only need that reached the generic branch with a beauty domain was "a fragrance-free
+  // moisturizer".
+  const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
+  const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
+  // BOTH FIELDS, BECAUSE THE TWO COLLECTORS READ DIFFERENT ONES. An earlier version of this comment
+  // said `source_scope` decides and `allow_external_seed` is a no-op; a review traced it and the
+  // truth is the other way round on the path this ladder actually takes.
+  //   - collectRecoCandidatesFromQueryLevels -> runQueryLevelEntry OVERWRITES source_scope from
+  //     `allowExternalSeed && entry.allow_external_seed`, so `allow_external_seed` is what decides
+  //     and any scope set here is discarded.
+  //   - executeRecoRecallPlanEntry reads entry.source_scope directly.
+  // Setting one and not the other yields a ladder that looks external-eligible in a trace and goes
+  // out internal-only on whichever collector runs. Do not drop either.
+  //
+  // NOTE that the query-levels path rewrites the scope to 'external_seed', not 'hybrid' -- so on
+  // that path the request uses the external-seed direct transport and fast mode. External seeds
+  // SUPPLEMENT rather than replace only via external_seed_strategy, which is why it is pinned here.
+  //
+  // `preferred_step` is emitted alongside `step` because the outbound external-seed arm derives
+  // targetStepFamily from `preferred_step` alone; the step-aware ladder only ever set `step`, so the
+  // makeup category never reached the backend's own category resolution.
+  const withExternalSeedSupplement = (entry) => (externalSeedEligible
+    ? {
+      ...entry,
+      source_scope: 'hybrid',
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+      preferred_step: pickFirstTrimmed(entry?.preferred_step, entry?.step) || '',
+    }
+    : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
       mode: 'framework_generic',
@@ -20230,11 +21110,12 @@ function buildRecoCatalogQueryLevels({
     const recallPlan = buildRecoRecallPlan({
       mode: 'step_aware',
       queryLevels: stepQueryLevels,
+      targetStepToken: targetContext?.resolved_target_step_token || '',
     });
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
-      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => withExternalSeedSupplement({
         query: String(entry?.query || '').trim(),
         step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
         slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
@@ -20243,30 +21124,42 @@ function buildRecoCatalogQueryLevels({
       })),
     })).filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
   }
-  const queries = buildRecoCatalogQueries({ profileSummary, lang, ingredientContext });
-  return queries.length
+  const queries = buildRecoCatalogQueries({
+    profileSummary,
+    lang,
+    ingredientContext,
+    needSeedText,
+    maxQueries: maxGenericQueries,
+  });
+  // NOT withExternalSeedSupplement HERE. This branch is only reached when no step resolved (a
+  // resolved step at high or medium confidence sets step_aware_intent and takes the branch above),
+  // and externalSeedEligible is derived from the resolved step -- so the call was dead code whose
+  // comment implied otherwise. The eligibility test above is the whole rule.
+  const generalQueries = queries;
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
 }
 
-function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null } = {}) {
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null, allowPrimaryMissingSupportRoutine = false } = {}) {
   return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext, allowPrimaryMissingSupportRoutine })
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
+        priceCeiling,
       });
 }
 
-function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate, { requestedStep = '' } = {}) {
   if (!isPlainObject(candidate)) return { rejected: false, reason: null };
-  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  const scopeClassification = classifyConcernScopeCandidate(candidate, { requestedStep });
   if (scopeClassification?.hard_reject === true) {
     return {
       rejected: true,
@@ -20317,6 +21210,7 @@ async function executeRecoRecallPlanEntry({
   queryTotal = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const sourceScope = (() => {
     const normalizedSourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase();
@@ -20410,6 +21304,21 @@ async function executeRecoRecallPlanEntry({
     preferredStep: normalizedPreferredStep,
     sourceScope,
   };
+  // ONE arm carries the ceiling. See shouldSendPriceCeilingOnQueryArm: the upstream may treat
+  // price_max as a hard filter, so the remaining arms stay unconstrained and the pool can never be
+  // emptied by the ceiling alone.
+  if (shouldSendPriceCeilingOnQueryArm({ queryIndex })) {
+    const normalizedEntryPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
+    if (normalizedEntryPriceCeiling) {
+      runSearchParams.priceCeiling = normalizedEntryPriceCeiling;
+      // Deeper ONLY on the arm that carries the ceiling: the upstream hard-filters this one, so it
+      // needs headroom before the filter to return anything. Never narrows an arm.
+      runSearchParams.limit = Math.max(
+        Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 0,
+        AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT,
+      );
+    }
+  }
   if (sourceScope === 'external_seed') {
     runSearchParams.catalogSurface = 'beauty';
     if (normalizedPreferredStep) runSearchParams.targetStepFamily = normalizedPreferredStep;
@@ -20576,6 +21485,7 @@ async function collectRecoCandidatesFromRecallPlan({
   traceId = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const rawCandidates = [];
   const boundaryRejects = [];
@@ -20585,6 +21495,7 @@ async function collectRecoCandidatesFromRecallPlan({
   let candidateState = buildRecoCandidateStateFromRawCandidates([], {
     targetContext,
     recommendationTaskContext,
+    priceCeiling,
   });
   let stopLevel = null;
   let plannerStopReason = 'plan_exhausted';
@@ -20628,6 +21539,7 @@ async function collectRecoCandidatesFromRecallPlan({
       queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
       authHeaders,
       searchFn,
+      priceCeiling,
     });
   };
   const buildStageAggregate = () => ({
@@ -20685,7 +21597,9 @@ async function collectRecoCandidatesFromRecallPlan({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -20772,6 +21686,7 @@ async function collectRecoCandidatesFromRecallPlan({
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
           recommendationTaskContext,
+          priceCeiling,
         });
         if (shouldStopRecallStageOnViableMatch(stage, stageRows.length)) break;
       }
@@ -20799,6 +21714,7 @@ async function collectRecoCandidatesFromRecallPlan({
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
+      priceCeiling,
     });
 
     const stageSelectedCount = getRecoRecallSelectedCount(candidateState);
@@ -20885,6 +21801,9 @@ function buildConcernFrameworkSummary({
   const primaryRoleId = String(targetContext.primary_role_id || '').trim();
   const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
   const recommendationList = Array.isArray(recommendations) ? recommendations : [];
+  const primaryRoleFilled = recommendationList.some(
+    (item) => String(item?.matched_role_id || item?.matchedRoleId || '').trim() === primaryRoleId,
+  );
   const primaryReco = recommendationList.find((item) => {
     const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
     return matchedRoleId && matchedRoleId === primaryRoleId;
@@ -20912,7 +21831,14 @@ function buildConcernFrameworkSummary({
   const topPickRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === topPickRoleId) || null;
   return {
     concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
-    headline: primaryRole
+    // "Start with X" is an instruction to use a product that is not in the card
+    // when the primary role went unfilled. Derived from the recommendations in
+    // hand rather than a new parameter, so it cannot drift from what shipped.
+    headline: primaryRole && !primaryRoleFilled && recommendationList.length > 0
+      ? (String(language || '').toUpperCase() === 'CN'
+        ? `暂未确认 ${primaryRole.label}，以下仅为可搭配的支持步骤`
+        : `I could not confirm a ${primaryRole.label} — these are the supporting steps to pair with one`)
+      : primaryRole
       ? (String(language || '').toUpperCase() === 'CN'
         ? `先围绕 ${primaryRole.label} 建立护理框架，再补充其它支持步骤`
         : `Start with ${primaryRole.label}, then layer the supporting roles`)
@@ -21085,8 +22011,12 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
-function classifyConcernScopeCandidate(row) {
-  return classifyConcernScopeCandidatePolicy(row);
+// A PASS-THROUGH THAT DROPPED THE OPTIONS IS A SILENT UNTHREADING. This wrapper sits between the
+// mainline boundary and the policy module; forwarding `row` alone meant the step reached the policy
+// on the two call sites that use the policy directly and nowhere else, and the boundary went on
+// deleting the category it had just searched for.
+function classifyConcernScopeCandidate(row, options = {}) {
+  return classifyConcernScopeCandidatePolicy(row, options);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
@@ -22604,6 +23534,12 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ? asStringArray(selectionNotesByProductId[productId], 3)
       : [];
     const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
+    // The prose-budget path parses "under $40" out of the request text and holds no structured
+    // priceCeiling, so NOTHING downstream -- not recoPriceCeiling, not the agent bridge's
+    // markPriceUnverifiable -- ever attaches an unverifiable marker to these rows. This is the only
+    // place that can say it, so it says it in words on the card rather than only in a debug field.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(picked);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language });
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(picked?.alternatives_count))
@@ -22681,8 +23617,14 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       alternatives_count: alternativesCount,
       see_more: true,
       ...(Array.isArray(picked?.alternatives) ? { alternatives: picked.alternatives.filter((row) => isPlainObject(row)).slice(0, 8) } : {}),
+      ...(budgetCheckMarker
+        ? { budget_check: budgetCheckNote ? { ...budgetCheckMarker, note: budgetCheckNote } : budgetCheckMarker }
+        : {}),
       sku: picked,
+      // The budget note goes FIRST, and outside buildFrameworkRecommendationNotes' own slice(3): a role
+      // blurb must never be the reason the buyer is not told the budget could not be checked.
       notes: [
+        budgetCheckNote,
         ...buildFrameworkRecommendationNotes({
           language,
           role: matchedRole,
@@ -22824,6 +23766,16 @@ function buildRecoRowsFromMainlineProducts(products, {
       { requireMerchant: true, allowOpaqueProductId: false },
     );
     const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
+    // The SECOND card builder for the same selected rows. `products` here is
+    // effectiveCandidateState.selected_recommendations (routes.js, buildBeautyMainlineLocalSearchResult),
+    // i.e. the very rows addSelectedCandidate marked -- and isBeautyOwnedChatRecoRequest routes every
+    // request with framework_roles down this path, so this is where most marked rows actually land.
+    // This object is an allowlist literal, not a spread, so without these two lines the marker is
+    // built during selection and thrown away one function later, leaving the buyer with a GBP 88 card
+    // against a "$40" ask and no disclosure -- exactly the silent admission this change exists to
+    // close. Kept byte-identical to buildConcernRecommendationsFromSelectedCandidates on purpose.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(picked);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language });
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(picked?.alternatives_count))
@@ -22914,8 +23866,12 @@ function buildRecoRowsFromMainlineProducts(products, {
             ...(Array.isArray(picked?.alternatives) ? { alternatives: picked.alternatives.filter((row) => isPlainObject(row)).slice(0, 8) } : {}),
           }
         : {}),
+      ...(budgetCheckMarker
+        ? { budget_check: budgetCheckNote ? { ...budgetCheckMarker, note: budgetCheckNote } : budgetCheckMarker }
+        : {}),
       sku: picked,
       notes: [
+        budgetCheckNote,
         ...(debug
           ? [String(language || '').toUpperCase() === 'CN'
             ? '来自 Pivota 商品库（beauty mainline）'
@@ -23088,6 +24044,8 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     primary_role_matched: candidateState?.primary_role_matched === true,
     primary_missing_authoritative_support_selected:
       candidateState?.primary_missing_authoritative_support_selected === true,
+    primary_missing_support_routine_surfaced:
+      candidateState?.primary_missing_support_routine_surfaced === true,
     viable_pool_strength: String(candidateState?.viable_pool_strength || '').trim().toLowerCase() || 'empty',
     weak_viable_pool: candidateState?.weak_viable_pool === true,
     candidate_drop_stage: pickFirstTrimmed(candidateState?.candidate_drop_stage) || null,
@@ -24359,6 +25317,12 @@ async function runBeautyMainlineLocalHandoffSearch({
     : 0;
 
   const collectedBase = await collectRecoCandidatesFromQueryLevels({
+    // The only production caller of this lane is
+    // `handoffRecoToBeautyMainlineSearch`, whose only caller is the beauty chat
+    // mainline entry -- the one surface that renders the
+    // `primary_step_unconfirmed` notice. Opting in anywhere else would surface a
+    // routine missing the requested step with nothing saying so.
+    allowPrimaryMissingSupportRoutine: true,
     queryLevels: effectiveLocalHandoffQueryLevels,
     targetContext,
     recommendationTaskContext,
@@ -24691,8 +25655,40 @@ async function runBeautyMainlineLocalHandoffSearch({
               ),
             };
           }
+          // Primary roles run the LOCAL external-seed authority search FIRST, same as
+          // support roles above. The backend-authority hop below routes through the
+          // self-proxy (prefer_self_proxy_first, single attempt, no failover), whose
+          // find_products_multi run costs ~5.5-6s against a ~5.4s stage budget — a
+          // guaranteed-loss race that burned the whole stage whenever the backend
+          // internal lane (products_cache) had no beauty inventory. Local seeds answer
+          // in ~1-2.5s from external_product_seeds; the backend hop stays as fallback.
+          if (isPrimaryRole && typeof localExternalSeedSearchFn === 'function') {
+            localPrimaryAuthorityFirstOut = await runLocalExternalSeedAuthoritySearch({
+              skipReason: 'primary_local_authority_first',
+            });
+            const localPrimaryProducts = Array.isArray(localPrimaryAuthorityFirstOut?.products)
+              ? localPrimaryAuthorityFirstOut.products
+              : [];
+            // Hit or miss, do NOT fall through to the backend race: a miss here
+            // burns the whole remaining stage budget on the doomed self-proxy
+            // attempt and starves the ladder's later (often better-matching)
+            // queries. Returning the miss lets the ladder advance immediately;
+            // the post-mainline recovery lane is still the recall safety net.
+            return {
+              ...localPrimaryAuthorityFirstOut,
+              primary_external_seed_authority_local_primary: true,
+              primary_external_seed_authority_backend_skipped: true,
+              primary_external_seed_authority_backend_skip_reason: localPrimaryProducts.length > 0
+                ? 'primary_local_authority_hit'
+                : 'primary_local_authority_miss',
+              local_external_seed_search_mode: pickFirstTrimmed(
+                localPrimaryAuthorityFirstOut?.local_external_seed_search_mode,
+                'primary_local_authority_first',
+              ),
+            };
+          }
           if (typeof backendExternalSeedAuthoritySearchFn !== 'function') {
-            return localSupportAuthorityFirstOut || await runLocalExternalSeedAuthoritySearch({
+            return localSupportAuthorityFirstOut || localPrimaryAuthorityFirstOut || await runLocalExternalSeedAuthoritySearch({
               skipReason: 'backend_external_seed_authority_unavailable',
             });
           }
@@ -24712,6 +25708,10 @@ async function runBeautyMainlineLocalHandoffSearch({
               'stage_planned',
             ) || 'stage_planned',
             catalogSurface: 'beauty',
+            // NOT migrated: this is a SEARCH FILTER sent to the backend, not a read of a local row —
+            // it is part of backendExternalSeedAuthoritySearchFn's contract, so changing it is a
+            // cross-repo change with its own PR. It DOES stop matching after the phase-3 re-key;
+            // tracked as a phase-3 prerequisite rather than silently left.
             merchantId: 'external_seed',
             externalSeedOnly: true,
             fastMode: true,
@@ -24938,7 +25938,15 @@ async function runBeautyMainlineLocalHandoffSearch({
       ),
       deadlineAtMs: hydrationDeadlineMs || deadlineMs,
     });
-    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext });
+    // Both adoption sites are guarded by `selected_recommendations.length > 0`,
+    // so an empty re-finalize is DISCARDED rather than adopted -- dropping the
+    // flag here does not return nothing, it loses the hydration/rerank
+    // enrichment for this state. (An earlier comment here claimed the opposite,
+    // and also called this the redundant pair: hydration runs whenever
+    // `isFrameworkLocalHandoff && rawCandidates.length > 0`, so there is no
+    // non-hydrating path for this state and it is the collector's opt-in that is
+    // covered by the walk.)
+    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
     if (
       Array.isArray(hydratedFrameworkState?.selected_recommendations)
       && hydratedFrameworkState.selected_recommendations.length > 0
@@ -24963,7 +25971,7 @@ async function runBeautyMainlineLocalHandoffSearch({
           deadlineAtMs: hydrationDeadlineMs || deadlineMs,
         },
       );
-      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
       if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
         effectiveCandidateState = mergeConcernFrameworkRerankedState(
           effectiveCandidateState,
@@ -25861,6 +26869,17 @@ function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidat
       ? { primary_recommendation_id: pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id) }
       : {}),
     ...(typeof reranked.terminal_success === 'boolean' ? { terminal_success: reranked.terminal_success } : {}),
+    // These two travel WITH `selected_recommendations`, for the same reason
+    // `terminal_success` does. Taking the products from the reranked state while
+    // leaving these on `...base` ships a support-only routine with the base's
+    // `primary_role_matched: true` and no notice -- products presented as a
+    // complete answer, which is the exact harm this PR exists to prevent.
+    ...(typeof reranked.primary_role_matched === 'boolean'
+      ? { primary_role_matched: reranked.primary_role_matched }
+      : {}),
+    ...(typeof reranked.primary_missing_support_routine_surfaced === 'boolean'
+      ? { primary_missing_support_routine_surfaced: reranked.primary_missing_support_routine_surfaced }
+      : {}),
     ...(typeof reranked.comparison_fill_applied === 'boolean'
       ? { comparison_fill_applied: reranked.comparison_fill_applied }
       : {}),
@@ -25924,6 +26943,35 @@ function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
   return false;
 }
 
+// "Does this candidate carry external-seed authority?" — the concern-framework
+// scorers below grant seed-lane rows a role-fit preservation that
+// merchant-synced rows do not get.
+//
+// Two legs, deliberately:
+//   * retrieval_source — a RUNTIME label stamped by whichever retriever
+//     produced the candidate. Unaffected by the ADR-009 re-key, but absent on
+//     candidates that came back through the catalog_products lane (those carry
+//     retrieval_source = 'catalog_products').
+//   * seed-lane membership — the DATA answer, shared with pdpRenderability.
+//     Its merchant_id leg keeps matching un-re-keyed rows; its
+//     platform/source_system legs are what keep the already-re-keyed
+//     `merch_obs_…` rows scoring identically instead of quietly losing their
+//     role-fit preservation the moment phase 3 runs.
+//
+// NOTE: the merchant_id comparison is now case-sensitive (it matches the
+// canonical predicate in pdpRenderability, which already governs PDP serving
+// for these same rows) where the four inlined copies this replaces lowercased
+// first. merchant ids are machine-generated lowercase, so this is a
+// normalization, not a behaviour change.
+function hasConcernFrameworkExternalSeedAuthority(product) {
+  if (!isPlainObject(product)) return false;
+  const retrievalSource = String(product?.retrieval_source || product?.retrievalSource || '')
+    .trim()
+    .toLowerCase();
+  if (retrievalSource === 'external_seed') return true;
+  return isExternalSeedLaneProduct(product);
+}
+
 function shouldPreserveConcernFrameworkExternalSeedRetrievalRoleScore({
   row = null,
   roleScore = null,
@@ -25933,9 +26981,7 @@ function shouldPreserveConcernFrameworkExternalSeedRetrievalRoleScore({
   const product = isPlainObject(row) ? row : null;
   const scoreObj = isPlainObject(roleScore) ? roleScore : null;
   if (!product || !scoreObj || scoreObj.retrieval_role_matched !== true) return false;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || product?.retrievalSource || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   if (!externalSeedAuthority) return false;
   const score = Number(roleFitScore);
   if (!Number.isFinite(score) || score < 0.6) return false;
@@ -25989,9 +27035,7 @@ function buildConcernFrameworkExternalSeedRetrievalRoleScore({
   const roleId = String(retrievalRoleId || '').trim();
   if (!product || !roleId) return null;
   if (roleId === 'daily_sunscreen_finish_fit') return null;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || product?.retrievalSource || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   if (!externalSeedAuthority) return null;
   const score = Number(roleFitScore);
   if (!Number.isFinite(score) || score < 0.6) return null;
@@ -26077,9 +27121,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     matchedRoleId !== ''
     && currentRoleId !== ''
     && matchedRoleId === currentRoleId;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   const sunscreenPrimaryIdentityMatched =
     hasConcernSunscreenPrimaryIdentitySignal(product)
     || (
@@ -26176,8 +27218,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     semanticFit &&
     score >= 0.48 &&
     (
-      String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
-      String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed'
+      hasConcernFrameworkExternalSeedAuthority(product)
     )
   ) {
     return true;
@@ -26344,13 +27385,47 @@ function shouldAllowConcernFrameworkComparisonFill() {
   return false;
 }
 
+// ADR-024 Phase 1. The ceiling's currency, when the input does NOT declare one.
+//
+// THE RULE, pinned here and in tests/reco_buyer_region_dimension.node.test.cjs:
+//   A DECLARATION ALWAYS WINS. The region-derived currency fills a hole; it never overrides something
+//   the caller or the buyer actually said. That is the same rule PR #2065 restored on the read side,
+//   where discarding a row's declared currency and stamping USD read 1,172 offers as falsely
+//   conforming -- the defect this repo has now shipped in four separate layers.
+//
+// Concretely: a GB buyer who types "under $40" gets a ceiling of 40 USD, because the `$` is a
+// declaration and we do not get to reinterpret it as £40. A GB buyer who types "under 40" gets 40 GBP,
+// because nothing was declared and the request's resolved region is the only honest source. A region
+// we do not price for keeps USD -- today's value -- rather than acquiring a unit we cannot serve.
+//
+// KNOWN LIMITATION, deliberately not guessed at: `$` is ambiguous across the dollar family (AUD, CAD,
+// SGD, HKD all write it). Phase 1 reads a bare `$` as USD-as-written for every region rather than
+// inferring the buyer's local dollar from their region -- resolving it the other way would be an
+// inference layered on top of a declaration, which is the exact move that produced defects 1-4.
+function resolveConcernFrameworkBudgetCeilingRegionCurrency(targetContext = null) {
+  // NEVER inferred from language, from the candidate pool's currencies, or from the ceiling text: the
+  // request's resolved buyer_region is the only source (ADR-024 commitment 4). Absent -> US -> USD,
+  // which is byte-for-byte what this function returned before region existed.
+  const region = isPlainObject(targetContext) ? targetContext.buyer_region : '';
+  return currencyForBuyerRegion(region) || currencyForBuyerRegion(DEFAULT_BUYER_REGION);
+}
+
+// A budget written in prose DECLARES its unit when the matched text carries a currency marker -- the
+// `$` symbol, or a literal "usd" token, which are the only two the regexes below can match.
+function concernFrameworkBudgetProseDeclaresCurrency(matchedText) {
+  return /\$|usd/i.test(String(matchedText || ''));
+}
+
 function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
+  const regionCurrency = resolveConcernFrameworkBudgetCeilingRegionCurrency(targetContext);
   const directBudget = isPlainObject(targetContext?.budget_ceiling) ? targetContext.budget_ceiling : null;
   const directAmount = Number(directBudget?.amount);
   if (Number.isFinite(directAmount) && directAmount > 0) {
+    // A DECLARED currency on the structured budget still wins outright -- normalizeCurrencyCode's
+    // first argument is tried before the fallback. Only an undeclared one now follows the region.
     return {
       amount: directAmount,
-      currency: normalizeCurrencyCode(directBudget.currency, 'USD') || 'USD',
+      currency: normalizeCurrencyCode(directBudget.currency, regionCurrency) || regionCurrency,
       exclusive: directBudget.exclusive_upper_bound === true,
     };
   }
@@ -26365,23 +27440,182 @@ function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
     text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
   const amount = match ? Number(match[1]) : null;
   if (!Number.isFinite(amount) || amount <= 0) return null;
+  const matchedText = String(match[0] || '');
   return {
     amount,
-    currency: 'USD',
-    exclusive: /\b(?:under|below|less than)\b/i.test(String(match[0] || '')),
+    // "under $40" and "under usd 40" declare USD; "under 40" declares nothing and follows the region.
+    currency: concernFrameworkBudgetProseDeclaresCurrency(matchedText) ? 'USD' : regionCurrency,
+    exclusive: /\b(?:under|below|less than)\b/i.test(matchedText),
   };
 }
 
-function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+// 'no_budget' | 'no_price' | 'conforming' | 'over' | 'unverifiable_currency'.
+//
+// The gate below drops ONLY 'over'. A candidate priced in a currency other than the budget's is
+// 'unverifiable_currency' -- never 'over' -- because this lane holds no FX rates, the same refusal
+// classifyRecoCandidateAgainstPriceCeiling and the agent bridge's checkPriceMax already make. Reading
+// 88 GBP as 88 USD to call it "over $40" fabricates a verdict in both directions: it also dropped a
+// 4500 JPY item (about 30 USD) that HONOURED the budget.
+//
+// That refusal only became reachable here with #2065. Before it, extractCatalogCandidatePrice stamped
+// every scalar-priced row USD, so a declared currency never reached this comparison and every foreign
+// row was silently judged in the wrong unit. #2065 fixed the reader, which turned a fabricated 'over'
+// into an honest 'cannot compare' -- and, because the gate answers a BOOLEAN, an honest 'cannot
+// compare' read as "not over budget", i.e. admitted with nothing on screen saying so. That silent
+// loosening is what the marker below closes: the row is still SHOWN (suppressing it would re-introduce
+// the JPY defect from the other side), but it is shown MARKED.
+//
+// Measured 2026-08-21 over the live catalog search this lane recalls from. Across a broad 66-query
+// sweep ~1.3% of recalled rows declare a non-USD currency, but the incidence is CONCENTRATED, not
+// uniform: 0/24 on single-word category queries (serum, moisturizer) and 4-5/24 (17-21%) on
+// multi-word natural/organic phrasings -- "organic face cream", "natural face oil", "gentle cleanser
+// for sensitive skin" -- which is exactly the phrasing that also carries a prose budget. Re-measured
+// on a sample weighted to those phrasings it is 10.4% of rows / 13.8% of PRICED rows, so the global
+// figure is a floor, not the number that matters here. Of 17 distinct non-USD rows, 3 exceed a $40
+// prose budget numerically and 9 exceed a $20 one: those are the rows that flip dropped -> shown.
+//
+// A row with NO declared currency is a different case and is NOT affected: measured over 144 rows,
+// every PRICED row declared a currency (0 priced-but-currency-less), and the unpriced rows classify
+// 'no_price' above, so they are never compared to a budget at all.
+function classifyConcernFrameworkCandidateAgainstBudget(candidate = null, targetContext = null) {
   const budget = resolveConcernFrameworkBudgetCeiling(targetContext);
-  if (!budget) return false;
+  if (!budget) return { status: 'no_budget', budget: null, price: null };
   const price = extractCatalogCandidatePrice(candidate) || extractCatalogCandidatePrice(candidate?.sku) || null;
-  if (!price || price.unknown === true) return false;
+  if (!price || price.unknown === true) return { status: 'no_price', budget, price: null };
   const amount = Number(price.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (!Number.isFinite(amount) || amount <= 0) return { status: 'no_price', budget, price: null };
+  // Both sides are already normalized to a 3-letter code with a USD fallback (normalizeCurrencyCode
+  // never returns a falsy value for either), so the old `currency && budget.currency &&` guards could
+  // not fire; dropping them changes no verdict.
   const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
-  if (currency && budget.currency && currency !== budget.currency) return false;
-  return budget.exclusive ? amount >= budget.amount : amount > budget.amount;
+  if (currency !== budget.currency) {
+    return { status: 'unverifiable_currency', budget, price: { amount, currency } };
+  }
+  const over = budget.exclusive ? amount >= budget.amount : amount > budget.amount;
+  return { status: over ? 'over' : 'conforming', budget, price: { amount, currency } };
+}
+
+function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+  return classifyConcernFrameworkCandidateAgainstBudget(candidate, targetContext).status === 'over';
+}
+
+// Stable conforming-first partition, brought to the PROSE budget path.
+//
+// applyRecoPriceCeilingPreference (src/auroraBff/recoPriceCeiling.js) already makes exactly this
+// partition -- "Stable conforming-first partition: conforming > unknown > over", nothing ever
+// removed, relevance order preserved WITHIN each bucket -- and recommendProducts.js states the
+// doctrine in prose: a slot never goes to an item known to breach the ceiling while one that honours
+// it is waiting. That module runs from recommendationSharedStack.js only when a STRUCTURED
+// priceCeiling exists. This lane's ceiling is parsed out of the request text ("one serum under $40")
+// and never becomes one, so until now NOTHING ordered these rows against the budget at all: a pool of
+// [GBP 88, EUR 60, AUD 54, USD 12, USD 19] spent all three cards on the three rows whose currency
+// could not be compared, while a conforming $12 and $19 sat unused. The buyer asked for under $40 and
+// got three cards, none of which could be checked against it. That is not a #2070 regression -- the
+// order was identical before it; #2070 only made it visible by disclosing what could not be checked.
+//
+// THREE buckets, the same three: conforming > unknown > over. 'no_price' and 'unverifiable_currency'
+// share the middle for the reason recoPriceCeiling gives for merging them into 'unknown' -- neither is
+// a KNOWN breach, so neither may be ranked below the other on evidence this lane does not hold --
+// while 'over' is a certain violation nothing downstream can rescue.
+//
+// The third bucket is NOT decoration on top of the fix, and it is not free of behaviour. 'over' is
+// this lane's only hard drop, so it never occupies a card either way; but addRoutineSupportCandidates
+// reads a support role's bucket with `find`, takes the FIRST unused row, and adds at most ONE row per
+// role. An 'over' row at the head of that bucket therefore consumes the role's only pick, fails the
+// drop, and the role surfaces NOTHING -- while an admissible row sat behind it. Verified against this
+// file before the change: a support bucket of [USD 99, GBP 70] under a $40 budget selected the primary
+// alone. Ranking a certain violation ahead of a checkable unknown was never defensible, and here it
+// silently cost a card. Nothing is dropped that was not already dropped; a row is un-starved.
+//
+// The partition is the OUTER key, so it also reorders across a same-role spread
+// (buildConcernFrameworkFinishFitSpreadPrimaryBucket) -- deliberately: that spread decides which
+// tradeoffs to contrast, and contrasting two rows that cannot be checked against a stated budget over
+// one that can is the same defect in a narrower lane. Its ordering survives within each bucket.
+//
+// TWO BOUNDED CONSEQUENCES, both measured and both pinned in the suite rather than left to be found:
+//   - Being the outer key means it also overrides the spread's DEFERRALS. That spread pushes tinted
+//     rows and lower-coverage moisturizer-SPF hybrids to the very end when dedicated sunscreens could
+//     fill the cards; a CONFORMING hybrid now jumps them and can take the lead card, so "which daily
+//     sunscreen, under $40" can be answered by an SPF-30 moisturizer. It only happens when no
+//     DEDICATED conforming row exists, and the alternative is leading with a price we cannot check
+//     against the budget the buyer just stated -- but it is a judgement, not a derivation.
+//   - usedProductIds is keyed by product_id while the pool dedup key is product+retrieval_role, so one
+//     product recalled for TWO roles can have its primary slot taken by this reorder and leave the
+//     support role with nothing, costing a card. Measured over 4,000 randomised pools with an
+//     artificially high id-collision rate: 8 card losses against 138 card gains, and in every loss the
+//     surviving card was the only conforming one. Avoiding it needs cross-role lookahead, which is a
+//     scheduling change and not a reordering one.
+//
+// With no budget the input array is returned BY REFERENCE, not re-partitioned into an equal copy.
+// Every row would classify 'no_budget' into one bucket and the order would match anyway; the early
+// return is here because classifyConcernFrameworkCandidateAgainstBudget re-parses the request text
+// per row, and this runs once per role bucket per fill pass on every framework request, budget or not.
+function applyConcernFrameworkBudgetConformingFirst(items, targetContext = null) {
+  if (!resolveConcernFrameworkBudgetCeiling(targetContext)) return items;
+  const conforming = [];
+  const unknown = [];
+  const over = [];
+  for (const item of items) {
+    const { status } = classifyConcernFrameworkCandidateAgainstBudget(item, targetContext);
+    if (status === 'conforming') conforming.push(item);
+    else if (status === 'over') over.push(item);
+    else unknown.push(item);
+  }
+  return [...conforming, ...unknown, ...over];
+}
+
+// The marker a currency-unverifiable row carries from selection to the card and the prompt.
+//
+// Selection holds no language, so this stays STRUCTURED ONLY. The user-facing sentence is formatted
+// once, in the card builder, which is the only place that knows EN/CN -- and the prompt then reads
+// that same sentence back off the card rather than re-deriving it, so the card and the assistant text
+// can never disagree about what was checked.
+function buildConcernFrameworkBudgetCheckMarker(verdict = null) {
+  if (!isPlainObject(verdict) || verdict.status !== 'unverifiable_currency') return null;
+  const budget = isPlainObject(verdict.budget) ? verdict.budget : null;
+  const price = isPlainObject(verdict.price) ? verdict.price : null;
+  if (!budget || !price) return null;
+  return {
+    status: 'unverifiable_currency',
+    requested_amount: budget.amount,
+    requested_currency: budget.currency,
+    price_currency: price.currency,
+  };
+}
+
+// ONE CARD, ONE DIALECT -- and on this lane that dialect is the ISO code, not the glyph.
+//
+// #2069 split price rendering in two (formatDisplayPriceLabel for a person, formatPromptPriceLabel
+// for a model), and the obvious reading is that a card sentence should take the display half. It must
+// not, HERE: this lane sets the card's own `price_label` with formatRecoAssistantPromptPriceLabel,
+// and normalizeRecommendationProductCard KEEPS a price_label the row already carries
+// (chatCardFactory.js: `...(asString(row.price_label) ? {price_label: ...} : {})`, only computing the
+// display form when the field is absent). So the buyer sees `GBP 88` for the product price, and a
+// budget rendered `\u00a340` beside it would print two currency dialects on one card. The budget label
+// is a price on the same card as the product price, so it uses the same renderer the card already
+// uses -- which also makes the card and the prompt agree for free, since they now share one string.
+function formatConcernFrameworkBudgetCheckNote(marker = null, { language = 'EN' } = {}) {
+  if (!isPlainObject(marker) || marker.status !== 'unverifiable_currency') return '';
+  const currency = normalizeCurrencyCode(marker.price_currency, '');
+  const amount = Number(marker.requested_amount);
+  const budgetCurrency = normalizeCurrencyCode(marker.requested_currency, '');
+  if (!currency || !budgetCurrency || !Number.isFinite(amount) || amount <= 0) return '';
+  const budgetLabel = formatRecoAssistantPromptPriceLabel({ amount, currency: budgetCurrency })
+    || `${budgetCurrency} ${amount}`;
+  return String(language || '').trim().toUpperCase() === 'CN'
+    ? `该商品以 ${currency} 计价，无法与你的 ${budgetLabel} 预算直接比较。`
+    : `Priced in ${currency}; we could not check it against your ${budgetLabel} budget.`;
+}
+
+// TOP LEVEL ONLY, deliberately. Both readers see the marker there: the card builder reads the
+// selected candidate, which is where addSelectedCandidate wrote it, and the prompt reads the CARD --
+// including after normalizeRecommendationProductCard rebuilds it as a canonical display row, which
+// spreads the raw row and so carries the field through. A `sku`/`product` fallback here would be a
+// branch no call site can reach, and an unreachable branch is a mutant no test can kill.
+function pickConcernFrameworkBudgetCheckMarker(row = null) {
+  if (!isPlainObject(row)) return null;
+  const marker = row.budget_check;
+  return isPlainObject(marker) && String(marker.status || '').trim() ? marker : null;
 }
 
 function hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext = null) {
@@ -26613,7 +27847,17 @@ function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = ''
   ];
 }
 
-function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
+// `allowPrimaryMissingSupportRoutine` is opt-in for one reason: surfacing a
+// support-only routine is only honest where the caller also renders the
+// "primary step unconfirmed" notice. This selector feeds nine call sites across
+// six modules, each with its own card, and only the beauty mainline entry
+// discloses. Defaulting to false means every other surface keeps returning
+// nothing rather than quietly showing a routine that is missing the step the
+// user asked about.
+function finalizeConcernFrameworkCandidatePools(
+  rawCandidates,
+  { targetContext, allowPrimaryMissingSupportRoutine = false } = {},
+) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
   const seen = new Set();
@@ -26646,6 +27890,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     explicit_face_skincare: 0,
     explicit_non_face_supportive: 0,
     explicit_non_skincare: 0,
+    // Without its own bucket the new class fell into `ambiguous`, so the telemetry said the pool was
+    // full of rows the gate could not place — the opposite of what threading the step achieved.
+    explicit_requested_beauty_category: 0,
     ambiguous: 0,
   };
   for (const role of roles) {
@@ -26655,8 +27902,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
+  const frameworkRequestedStep = pickFirstTrimmed(targetContext?.resolved_target_step) || '';
   for (const row of deduped) {
-    const scopeClassification = classifyConcernScopeCandidate(row);
+    const scopeClassification = classifyConcernScopeCandidate(row, { requestedStep: frameworkRequestedStep });
     if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
       scopeClassificationStats[scopeClassification.classification] += 1;
     } else {
@@ -26912,9 +28160,16 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) return false;
     const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
     if (!productId || usedProductIds.has(productId)) return false;
-    if (isConcernFrameworkCandidateOverBudget(item, targetContext)) return false;
+    const budgetVerdict = classifyConcernFrameworkCandidateAgainstBudget(item, targetContext);
+    if (budgetVerdict.status === 'over') return false;
+    // ADMIT, MARKED -- not suppress. Suppressing a currency we cannot convert would re-create the
+    // defect from the other side (a 4500 JPY item, about 30 USD, dropped as "over $40"), and this lane
+    // reports 'unknown' rather than guessing everywhere else. But admitting it SILENTLY is a budget
+    // filter loosened with nothing on screen: the buyer asked for under $40 and gets a GBP 88 card.
+    // The marker rides on the selected row so the card and the prompt both see it.
+    const budgetCheck = buildConcernFrameworkBudgetCheckMarker(budgetVerdict);
     usedProductIds.add(productId);
-    selected.push(item);
+    selected.push(budgetCheck ? { ...item, budget_check: budgetCheck } : item);
     return true;
   };
   const addRoutineSupportCandidates = (maxAdds = Number.POSITIVE_INFINITY) => {
@@ -26924,7 +28179,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       const roleId = String(role?.role_id || '').trim();
       if (roleId && roleId === primaryRoleId) continue;
       if (roleId && selected.some((item) => String(item?.matched_role_id || '').trim() === roleId)) continue;
-      const bucket = roleBuckets.get(String(role?.role_id || '').trim()) || [];
+      const bucket = applyConcernFrameworkBudgetConformingFirst(
+        roleBuckets.get(String(role?.role_id || '').trim()) || [],
+        targetContext,
+      );
       const picked = bucket.find((item) => {
         const productId = pickFirstString(item.product_id, item.productId, item.id);
         if (!productId || usedProductIds.has(productId)) return false;
@@ -26951,9 +28209,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 
   const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
-  const primarySelectionBucket = finishFitSameRoleComparison
-    ? buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket, targetContext)
-    : primaryBucket;
+  const primarySelectionBucket = applyConcernFrameworkBudgetConformingFirst(
+    finishFitSameRoleComparison
+      ? buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket, targetContext)
+      : primaryBucket,
+    targetContext,
+  );
   const roleCoverageFirst = shouldUseConcernFrameworkRoleCoverageFirst(targetContext, orderedRoles);
   const primaryPreSupportLimit = roleCoverageFirst ? 1 : 3;
   for (const item of primarySelectionBucket) {
@@ -26999,12 +28260,38 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  // With no primary pick, the default is still to surface nothing: one orphan
+  // support product answers a concern question worse than saying we could not
+  // confirm options, which is why that rule exists.
+  //
+  // A routine is the exception. When two or more DISTINCT support roles are
+  // filled, what is on the table is a coherent partial answer -- "no acne
+  // treatment confirmed, but here is the moisturiser and the sunscreen to pair
+  // with one" -- and discarding it loses real, already-scored candidates. On
+  // 2026-09-08 the acne turn threw away 10 viable rows across two support roles
+  // (moisturiser 6 @ 0.82, sunscreen 4 @ 0.86) to return nothing at all.
+  //
+  // The caller must not read this as a full routine: `primary_role_matched`
+  // stays false and `primary_missing_support_routine_surfaced` says the primary
+  // step is the one that is missing.
+  const supportOnlySelected = primaryRoleMatched
+    ? []
+    : selected.filter((item) => {
+      const roleId = String(item?.matched_role_id || '').trim();
+      return Boolean(roleId && roleId !== primaryRoleId);
+    });
+  const distinctSupportRoleCount = new Set(
+    supportOnlySelected.map((item) => String(item?.matched_role_id || '').trim()),
+  ).size;
+  const primaryMissingSupportRoutineSurfaced = allowPrimaryMissingSupportRoutine === true
+    && !primaryRoleMatched
+    && distinctSupportRoleCount >= 2;
   const surfacedRecommendations = primaryRoleMatched
     ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
         targetContext,
         primaryRole,
       })
-    : [];
+    : (primaryMissingSupportRoutineSurfaced ? supportOnlySelected : []);
   const primarySelectedRecommendations = surfacedRecommendations.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const comparisonFillCount = surfacedRecommendations.filter((item) => item?.comparison_fill === true).length;
   const routineSupportFillCount = surfacedRecommendations.filter((item) => {
@@ -27036,6 +28323,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
+    primary_missing_support_routine_surfaced: primaryMissingSupportRoutineSurfaced,
     best_available_role_id: pickFirstTrimmed(
       bestAvailableRecommendation?.matched_role_id,
       bestAvailableRecommendation?.matchedRoleId,
@@ -27095,7 +28383,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: surfacedRecommendations.length > 0,
+    // A routine missing the step the user asked for is not a terminal success.
+    // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`,
+    // so claiming success here would silently disable them for exactly the state
+    // that most needs them.
+    terminal_success: surfacedRecommendations.length > 0 && !primaryMissingSupportRoutineSurfaced,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: hasWeakViablePool,
     late_conflict_without_override: hasWeakViablePool,
@@ -27296,6 +28588,7 @@ async function executeRecoRecallPlanEntryWithWallClockGuard({
   queryTotal = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const { remainingDeadlineMs, queryTimeoutMs, normalizedDeadlineMs } = resolveRecoWallClockTimeoutBudget(
     entry,
@@ -27335,6 +28628,7 @@ async function executeRecoRecallPlanEntryWithWallClockGuard({
           queryTotal,
           authHeaders,
           searchFn,
+          priceCeiling,
         }),
       ),
       queryTimeoutMs,
@@ -27376,6 +28670,8 @@ async function collectRecoCandidatesFromQueryLevels({
   searchFn = null,
   initialRawCandidates = [],
   initialSearchResults = [],
+  priceCeiling = null,
+  allowPrimaryMissingSupportRoutine = false,
 } = {}) {
   const rawCandidates = (Array.isArray(initialRawCandidates) ? initialRawCandidates : [])
     .map((candidate) => normalizeRecoCatalogProduct(candidate))
@@ -27400,7 +28696,9 @@ async function collectRecoCandidatesFromQueryLevels({
   );
   let candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
     targetContext,
+    allowPrimaryMissingSupportRoutine,
     recommendationTaskContext,
+    priceCeiling,
   });
   let stopLevel = null;
   let plannerStopReason = 'query_levels_exhausted';
@@ -27514,6 +28812,7 @@ async function collectRecoCandidatesFromQueryLevels({
       queryTotal: flattenedQueryEntries.length,
       authHeaders,
       searchFn,
+      priceCeiling,
     });
   };
   const accumulateQueryLevelRow = (stageId, row, aggregate) => {
@@ -27562,7 +28861,9 @@ async function collectRecoCandidatesFromQueryLevels({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -27641,17 +28942,23 @@ async function collectRecoCandidatesFromQueryLevels({
     let runnableQueries = [];
     const querySkipReasons = [];
     for (const queryEntry of queries) {
+      const queryAllowExternalSeed =
+        allowExternalSeed === true
+        && queryEntry?.allow_external_seed === true;
+      const internalLaneDisabledSkip =
+        !queryAllowExternalSeed
+        && hasFrameworkTargetContext
+        && !isRecoRecallInternalLaneEnabled();
       const queryPrimaryExternalSkip = shouldSkipFrameworkPrimaryExternalSeedQuery(queryEntry, candidateState, {
         targetContext,
       });
       const supportSkipReason = resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState);
-      if (queryPrimaryExternalSkip || supportSkipReason) {
-        const queryAllowExternalSeed =
-          allowExternalSeed === true
-          && queryEntry?.allow_external_seed === true;
-        const runtimeSkipReason = queryPrimaryExternalSkip
-          ? 'skipped_primary_already_satisfied'
-          : supportSkipReason;
+      if (internalLaneDisabledSkip || queryPrimaryExternalSkip || supportSkipReason) {
+        const runtimeSkipReason = internalLaneDisabledSkip
+          ? 'internal_lane_disabled'
+          : queryPrimaryExternalSkip
+            ? 'skipped_primary_already_satisfied'
+            : supportSkipReason;
         querySkipReasons.push(runtimeSkipReason);
         searchResults.push({
           ...queryEntry,
@@ -27686,9 +28993,11 @@ async function collectRecoCandidatesFromQueryLevels({
             ? 'external_seed'
             : 'internal',
         skipped: true,
-        skip_reason: querySkipReasons.includes('primary_role_unmatched')
-          ? 'primary_role_unmatched'
-          : 'skipped_support_role_already_satisfied',
+        skip_reason: querySkipReasons.length > 0 && querySkipReasons.every((reason) => reason === 'internal_lane_disabled')
+          ? 'internal_lane_disabled'
+          : querySkipReasons.includes('primary_role_unmatched')
+            ? 'primary_role_unmatched'
+            : 'skipped_support_role_already_satisfied',
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
         actual_http_attempt_count: 0,
@@ -27773,7 +29082,9 @@ async function collectRecoCandidatesFromQueryLevels({
         }
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
+          priceCeiling,
         });
       } else {
         for (const queryEntry of primaryExternalLeadQueries) {
@@ -27787,7 +29098,9 @@ async function collectRecoCandidatesFromQueryLevels({
           accumulateQueryLevelRow(stageId, row, levelAggregate);
           candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
             targetContext,
+            allowPrimaryMissingSupportRoutine,
             recommendationTaskContext,
+            priceCeiling,
           });
           if (shouldStopQueryLevelOnViableMatch(level, primaryExternalLeadQueries, levelResults.length)) break;
         }
@@ -27838,7 +29151,9 @@ async function collectRecoCandidatesFromQueryLevels({
         accumulateQueryLevelRow(stageId, row, levelAggregate);
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
+          priceCeiling,
         });
         if (shouldStopQueryLevelOnViableMatch(level, runnableQueries, levelResults.length)) break;
       }
@@ -27863,7 +29178,9 @@ async function collectRecoCandidatesFromQueryLevels({
     attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
+      allowPrimaryMissingSupportRoutine,
       recommendationTaskContext,
+      priceCeiling,
     });
     stageResults.push({
       stage_id: stageId,
@@ -28104,22 +29421,53 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     },
     { requireMerchant: true, allowOpaqueProductId: false },
   );
-  const mergedReasons = uniqCaseInsensitiveStrings(
-    [
-      ...normalizeRecoPlanStringArray(plan.reasons, 3),
-      ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
-    ],
-    4,
-  );
+  const sameProduct = sameRecommendationProduct(planItem, normalizedProduct);
+  // Grounding can substitute a different catalog product. Carry only the requested slot/category,
+  // not the old product's URL, identity, notes, formula claims, or nested evidence bundles.
+  // Same-identity rationale may survive; all identity and catalog fields still come from the candidate.
+  const planning = {
+    slot: plan.slot,
+    step: plan.step,
+    product_type: plan.product_type,
+    query_terms: sameProduct ? plan.query_terms : [],
+    score: sameProduct ? plan.score : null,
+    ...(sameProduct
+      ? (plan.__pivota_score_basis ? { __pivota_score_basis: plan.__pivota_score_basis } : {})
+      : { __pivota_score_basis: 'catalog_rebound' }),
+  };
+  const rationale = sameProduct ? {
+    use_case: plan.use_case,
+    concern_match: plan.concern_match,
+    skin_fit: plan.skin_fit,
+    constraint_notes: plan.constraint_notes,
+    warnings: plan.warnings,
+    notes: plan.notes,
+  } : {};
+  const mergedReasons = uniqCaseInsensitiveStrings([
+    ...(sameProduct ? normalizeRecoPlanStringArray(plan.reasons, 3) : []),
+    ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
+  ], 4);
+  // PRICE FOLLOWS IDENTITY. The identity fields below all come from the grounded candidate, so the
+  // price has to come from the SAME candidate -- otherwise a row carries product A's name and product
+  // B's price and a buyer is quoted a number no merchant will honour. When the candidate carries no
+  // price the row carries none either: a missing price is honest, a mismatched one is not.
+  // normalizeRecoCatalogProduct only sets `price` when extractCatalogCandidatePrice produced a
+  // POSITIVE finite amount, so presence is the whole test here -- a test pins that so this stays true.
+  const groundedPrice = isPlainObject(normalizedProduct.price) ? normalizedProduct.price : null;
   return {
-    ...plan,
+    ...planning,
+    ...rationale,
+    ...normalizedProduct,
+    ...buildRecoVisibleProductFields(normalizedProduct),
+    price: groundedPrice,
+    currency: groundedPrice && groundedPrice.currency ? groundedPrice.currency : null,
     grounding_status: 'grounded',
-    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId, plan.product_id),
-    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId, plan.merchant_id),
-    brand: pickFirstTrimmed(normalizedProduct.brand, plan.brand),
-    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title, plan.name),
-    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name, plan.title),
-    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name, plan.display_name),
+    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId),
+    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId),
+    brand: pickFirstTrimmed(normalizedProduct.brand),
+    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title),
+    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name),
+    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name),
     category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
     retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
     retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
@@ -28184,7 +29532,10 @@ async function groundRecoRecommendationsFromCatalog({
   }
 
   const failFastSnapshot = getRecoCatalogFailFastSnapshot(Date.now());
-  if (failFastSnapshot && failFastSnapshot.open) {
+  const groundingPoolCache = getRecoRecallPoolCache();
+  const failFastOpen = Boolean(failFastSnapshot && failFastSnapshot.open);
+  if (failFastOpen) scheduleRecoCatalogFailFastOffRequestProbe();
+  if (failFastOpen && !groundingPoolCache) {
     return {
       recommendations: recs,
       grounding_status: 'ungrounded',
@@ -28205,6 +29556,7 @@ async function groundRecoRecommendationsFromCatalog({
   }
 
   const usedProductIds = new Set();
+  let poolCacheServedItemCount = 0;
   const next = [];
   let queryCount = 0;
   let candidateCountBeforeFilter = 0;
@@ -28234,16 +29586,69 @@ async function groundRecoRecommendationsFromCatalog({
     const recallPlan = buildRecoRecallPlan({
       mode: 'step_aware',
       queryLevels: stepQueryLevels,
+      // itemTargetContext, not the request-level context: the grounding pass resolves a step PER LLM
+      // ITEM, and `targetContext` is not even in scope in this function.
+      targetStepToken: itemTargetContext?.resolved_target_step_token || '',
     });
-    const collected = await collectRecoCandidatesFromRecallPlan({
-      recallPlan,
-      targetContext: itemTargetContext,
-      logger,
-      timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
-      limit: 6,
-      usePurchasableFallback: false,
-      authHeaders: ctx?.backend_auth_headers || null,
-    });
+    const itemPoolCacheKey = groundingPoolCache
+      ? buildRecoRecallPoolCacheKey({
+          queries: collectRecoRecallPlanQueryTexts({ recallPlan, queryLevels: stepQueryLevels }),
+          stepFamily: itemTargetContext?.resolved_target_step || '',
+          lang: ctx && ctx.lang ? ctx.lang : 'EN',
+          catalogSurface: 'beauty',
+          plannerMode: 'step_aware',
+          // ADR-024 Phase 1. This is a SHARED GLOBAL table: without the region dimension a GB buyer's
+          // pool and a US buyer's pool collide on one row for 24h, and whichever landed first serves
+          // both -- a silent cross-region leak with no error anywhere. Defaulted to US, so a request
+          // with no region keys exactly as it does today.
+          region: buyerRegionFromContext(ctx),
+        })
+      : null;
+    const itemCachedEntry = itemPoolCacheKey ? await groundingPoolCache.read(itemPoolCacheKey) : null;
+    const itemCacheServable =
+      Boolean(itemCachedEntry) && shouldServeRecoRecallPoolCacheEntry(itemCachedEntry, Date.now());
+
+    let collected;
+    if (failFastOpen) {
+      // While the circuit is open the grounding pass used to be skipped WHOLESALE, which is what turns
+      // a 15s dependency blip into "every recommendation is an archetype". Serve the durable pool
+      // instead; an item with no cached pool simply stays ungrounded, as it would have anyway.
+      if (!itemCacheServable) {
+        next.push(rec);
+        continue;
+      }
+      poolCacheServedItemCount += 1;
+      collected = buildRecoCollectedFromCachedPool(itemCachedEntry.pool, { targetContext: itemTargetContext });
+    } else if (itemCacheServable) {
+      poolCacheServedItemCount += 1;
+      collected = buildRecoCollectedFromCachedPool(itemCachedEntry.pool, { targetContext: itemTargetContext });
+    } else {
+      collected = await collectRecoCandidatesFromRecallPlan({
+        recallPlan,
+        targetContext: itemTargetContext,
+        logger,
+        timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+        limit: 6,
+        usePurchasableFallback: false,
+        authHeaders: ctx?.backend_auth_headers || null,
+      });
+      if (itemPoolCacheKey) {
+        const itemPool = extractRecoRecallPoolForCache(collected);
+        if (Array.isArray(itemPool)) {
+          setImmediate(() => {
+            groundingPoolCache
+              .write(itemPoolCacheKey, {
+                pool: itemPool,
+                stepFamily: itemTargetContext?.resolved_target_step || '',
+                lang: ctx && ctx.lang ? ctx.lang : 'EN',
+                catalogSurface: 'beauty',
+                plannerMode: 'step_aware',
+              })
+              .catch(() => null);
+          });
+        }
+      }
+    }
     const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
     const poolState = isPlainObject(collected.candidateState) ? collected.candidateState : finalizeRecommendationCandidatePools([], { targetContext: itemTargetContext });
     queryCount += Number.isFinite(Number(collected?.executedQueryCount)) ? Number(collected.executedQueryCount) : results.length;
@@ -28304,8 +29709,8 @@ async function groundRecoRecommendationsFromCatalog({
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,
     mainline_status: mainlineStatus,
-    catalog_skip_reason: null,
-    telemetry_reason: timeoutCount > 0 ? 'timeout_degraded' : null,
+    catalog_skip_reason: failFastOpen ? 'fail_fast_open_served_from_pool_cache' : null,
+    telemetry_reason: timeoutCount > 0 ? 'timeout_degraded' : failFastOpen ? 'timeout_degraded' : null,
     debug: {
       enabled: true,
       query_count: queryCount,
@@ -28317,6 +29722,8 @@ async function groundRecoRecommendationsFromCatalog({
       same_family_viable_count: sameFamilyViableCount,
       soft_mismatch_count: softMismatchCount,
       hard_reject_count: hardRejectCount,
+      pool_cache_served_item_count: poolCacheServedItemCount,
+      fail_fast_open: failFastOpen,
       step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     },
@@ -28835,6 +30242,64 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
+// The query strings the plan is about to execute. This is the cache key material: it is the ONLY
+// thing that determines which catalog rows come back, so two requests with the same plan are
+// interchangeable regardless of who made them.
+function collectRecoRecallPlanQueryTexts({ recallPlan = null, queryLevels = [] } = {}) {
+  const out = [];
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (query) out.push(query);
+  };
+  for (const entry of Array.isArray(recallPlan?.entries) ? recallPlan.entries : []) push(entry?.query);
+  if (!out.length) {
+    for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
+      for (const entry of Array.isArray(level?.queries) ? level.queries : []) push(entry?.query);
+    }
+  }
+  return out;
+}
+
+// Shape a cached pool like a `collected` result so the rest of buildRecoGenerateFromCatalog does not
+// need to know where the candidates came from. Selection is re-run against THIS request's target
+// context: only recall is cached, never the ranking.
+function buildRecoCollectedFromCachedPool(pool, { targetContext = null, recommendationTaskContext = null, priceCeiling = null } = {}) {
+  const rawCandidates = Array.isArray(pool) ? pool.slice(0, 24) : [];
+  const frameworkMode = Boolean(
+    targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0,
+  );
+  const candidateState = frameworkMode
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    : finalizeRecommendationCandidatePools(rawCandidates, {
+        targetContext,
+        recoContext: recommendationTaskContext,
+        priceCeiling,
+      });
+  return {
+    searchResults: [],
+    rawCandidates,
+    candidateState,
+    executedQueryCount: 0,
+    executedUpstreamAttemptCount: 0,
+    actualHttpAttemptCount: 0,
+    stageTimeoutCounts: {},
+    stageResults: [],
+    transportPolicyMode: 'pool_cache',
+    plannerStopReason: 'pool_cache_hit',
+  };
+}
+
+// What to persist from a live recall. Returns null when the recall produced no OK result at all --
+// caching a pool assembled from timeouts would pin a transient failure into a durable store.
+function extractRecoRecallPoolForCache(collected) {
+  if (!isPlainObject(collected)) return null;
+  const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+  const okCount = results.filter((r) => r && r.ok === true).length;
+  if (results.length > 0 && okCount === 0) return null;
+  const rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates : [];
+  return rawCandidates.slice(0, 24);
+}
+
 async function buildRecoGenerateFromCatalog({
   ctx,
   profileSummary,
@@ -28843,10 +30308,17 @@ async function buildRecoGenerateFromCatalog({
   targetContext = null,
   externalSeedStrategyOverride = '',
   allowStepAwareAdjacentFamilyFallback = true,
+  needSeedText = '',
+  maxGenericQueries = 0,
+  priceCeiling = null,
   debug,
   logger,
 } = {}) {
   const startedAt = Date.now();
+  // Normalized ONCE at the entry to the recall path: everything below (transport, selection, cache
+  // key) reads this value, so a malformed or unrecognized ceiling degrades to "no ceiling" in all
+  // three places at the same time instead of in two of them.
+  const normalizedRecallPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
@@ -28872,12 +30344,18 @@ async function buildRecoGenerateFromCatalog({
   if (!RECO_CATALOG_GROUNDED_ENABLED) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'disabled', total_ms: Date.now() - startedAt } };
   }
+  // The fail-fast decision is DEFERRED until the recall plan exists, because the persistent pool is
+  // keyed on that plan: while the circuit is open we want to serve the cached pool, not nothing.
+  let failFastOpenSkip = false;
   if (failFastBefore.open) {
     probeWhileOpen = beginRecoCatalogFailFastProbe(startedAt);
     if (!probeWhileOpen) {
-      return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
+      failFastOpenSkip = true;
+      // Make sure a probe is actually pending. Cheap and idempotent: a no-op when one is scheduled.
+      scheduleRecoCatalogFailFastOffRequestProbe();
+    } else {
+      searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
     }
-    searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
   const sameFamilyQueryLevels =
@@ -28899,6 +30377,7 @@ async function buildRecoGenerateFromCatalog({
       ? buildRecoRecallPlan({
           mode: 'step_aware',
           queryLevels: sameFamilyQueryLevels,
+          targetStepToken: targetContext?.resolved_target_step_token || '',
         })
       : null;
   const semanticContract = recallPlan
@@ -28949,36 +30428,145 @@ async function buildRecoGenerateFromCatalog({
     ingredientContext,
     recommendationTaskContext,
     lang: ctx && ctx.lang ? ctx.lang : 'EN',
+    needSeedText,
+    maxGenericQueries,
   });
   if (!queryLevels.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
 
-  const collected = recallPlan
-    ? await collectRecoCandidatesFromRecallPlan({
-        recallPlan,
-        targetContext,
-        recommendationTaskContext,
-        logger,
-        timeoutMs: searchTimeoutEffectiveMs,
-        limit: 6,
-        usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
-        semanticContract,
-        traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
-        authHeaders: ctx?.backend_auth_headers || null,
-      })
-    : await collectRecoCandidatesFromQueryLevels({
-        queryLevels,
-        targetContext,
-        recommendationTaskContext,
-        logger,
-        timeoutMs: searchTimeoutEffectiveMs,
-        limit: 6,
-        usePurchasableFallback: useParallelSupplementedSearch,
-        allowExternalSeed: allowExternalSeedSupplement,
+  const runLiveRecall = () =>
+    recallPlan
+      ? collectRecoCandidatesFromRecallPlan({
+          recallPlan,
+          targetContext,
+          recommendationTaskContext,
+          logger,
+          timeoutMs: searchTimeoutEffectiveMs,
+          limit: 6,
+          usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
+          semanticContract,
+          traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
+          authHeaders: ctx?.backend_auth_headers || null,
+          priceCeiling: normalizedRecallPriceCeiling,
+        })
+      : collectRecoCandidatesFromQueryLevels({
+          queryLevels,
+          targetContext,
+          recommendationTaskContext,
+          logger,
+          timeoutMs: searchTimeoutEffectiveMs,
+          limit: 6,
+          usePurchasableFallback: useParallelSupplementedSearch,
+          allowExternalSeed: allowExternalSeedSupplement,
+          externalSeedStrategy: effectiveExternalSeedStrategy,
+          authHeaders: ctx?.backend_auth_headers || null,
+          priceCeiling: normalizedRecallPriceCeiling,
+        });
+
+  const poolCache = getRecoRecallPoolCache();
+  const poolCacheKey = poolCache
+    ? buildRecoRecallPoolCacheKey({
+        queries: collectRecoRecallPlanQueryTexts({ recallPlan, queryLevels }),
+        stepFamily: targetContext?.resolved_target_step || '',
+        lang: ctx && ctx.lang ? ctx.lang : 'EN',
+        catalogSurface: 'beauty',
+        plannerMode: recallPlan?.mode || 'generic',
         externalSeedStrategy: effectiveExternalSeedStrategy,
-        authHeaders: ctx?.backend_auth_headers || null,
+        priceCeiling: normalizedRecallPriceCeiling,
+        // ADR-024 Phase 1 -- see the grounding-lane key above. Same shared table, same leak.
+        region: buyerRegionFromContext(ctx),
+      })
+    : null;
+  const poolCacheDims = {
+    stepFamily: targetContext?.resolved_target_step || '',
+    lang: ctx && ctx.lang ? ctx.lang : 'EN',
+    catalogSurface: 'beauty',
+    plannerMode: recallPlan?.mode || 'generic',
+  };
+  const cachedEntry = poolCacheKey ? await poolCache.read(poolCacheKey) : null;
+  const cacheServable = Boolean(cachedEntry) && shouldServeRecoRecallPoolCacheEntry(cachedEntry, Date.now());
+
+  let collected;
+  let poolCacheOutcome = poolCacheKey ? 'miss' : 'disabled';
+  if (failFastOpenSkip) {
+    // The circuit is open. Serving the durable pool is the whole point: without it recall returns
+    // NOTHING and the grounding pass is skipped too, so the caller gets archetypes for 15s at a time.
+    if (cacheServable) {
+      poolCacheOutcome = 'served_while_circuit_open';
+      collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, {
+        targetContext,
+        recommendationTaskContext,
+        priceCeiling: normalizedRecallPriceCeiling,
       });
+    } else {
+      return {
+        structured: null,
+        debug: {
+          ...debugInfo,
+          skipped_reason: 'fail_fast_open',
+          pool_cache_outcome: poolCacheKey ? 'miss_while_circuit_open' : 'disabled',
+          total_ms: Date.now() - startedAt,
+        },
+      };
+    }
+  } else if (cacheServable) {
+    poolCacheOutcome = 'hit';
+    // The context is NOT optional here. Shipped in #2049 as `buildRecoCollectedFromCachedPool(pool)`,
+    // this branch finalized every cache hit against targetContext=null: no step filtering, no reco
+    // context, so a cleanser request served the cached toner too (measured: selected p1,p2 instead of
+    // p1, exact_step_viable_count 0). Only the circuit-open sibling twelve lines up passed it.
+    collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, {
+      targetContext,
+      recommendationTaskContext,
+      priceCeiling: normalizedRecallPriceCeiling,
+    });
+    if (shouldRevalidateRecoRecallPoolCacheEntry(cachedEntry, Date.now())) {
+      // SINGLE-FLIGHT, per key. A popular need means MANY concurrent requests land on the same stale
+      // key in the same tick, and without this guard each of them schedules its own runLiveRecall —
+      // a thundering herd of full live-search fan-outs against the exact slow dependency this cache
+      // exists to shield, which is the same shape as the ensure_database_ready wedge this repo has
+      // already lived through. One refresh per key at a time; everyone else just serves the stale row.
+      if (beginRecoRecallPoolRevalidation(poolCacheKey)) {
+        poolCacheOutcome = 'hit_stale_revalidating';
+        // OFF the request path. The caller already has an answer; a refresh must never extend its
+        // latency, and a failed refresh must never surface as a request error.
+        setImmediate(() => {
+          runLiveRecall()
+            .then((fresh) => {
+              const freshPool = extractRecoRecallPoolForCache(fresh);
+              if (!Array.isArray(freshPool) || freshPool.length === 0) return null;
+              return poolCache.write(poolCacheKey, { pool: freshPool, ...poolCacheDims });
+            })
+            .catch(() => null)
+            .finally(() => endRecoRecallPoolRevalidation(poolCacheKey));
+        });
+      } else {
+        poolCacheOutcome = 'hit_stale_revalidation_coalesced';
+      }
+    }
+  } else {
+    collected = await runLiveRecall();
+    if (poolCacheKey) {
+      const livePool = extractRecoRecallPoolForCache(collected);
+      if (Array.isArray(livePool)) {
+        // An EMPTY pool is written too, but the read side gives it only a 60s window (see
+        // getEmptyServeMaxAgeMs): worth absorbing a burst, worthless after that.
+        poolCacheOutcome = livePool.length > 0 ? 'miss_written' : 'miss_written_negative';
+        setImmediate(() => {
+          poolCache
+            .write(poolCacheKey, { pool: livePool, ...poolCacheDims })
+            .then(() => (Math.random() < 0.02 ? poolCache.purgeExpired({ maxRows: 200 }) : null))
+            .catch(() => null);
+        });
+      } else {
+        poolCacheOutcome = 'miss_not_written_transient';
+      }
+    }
+  }
+  debugInfo.pool_cache_outcome = poolCacheOutcome;
+  debugInfo.price_ceiling = normalizedRecallPriceCeiling;
+  debugInfo.pool_cache_age_ms = cachedEntry ? Number(cachedEntry.age_ms || 0) : null;
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
   if (frameworkMode && rawCandidates.length > 0) {
@@ -28991,7 +30579,11 @@ async function buildRecoGenerateFromCatalog({
       ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
       : isPlainObject(collected.candidateState)
         ? collected.candidateState
-        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+        : finalizeRecommendationCandidatePools([], {
+            targetContext,
+            recoContext: recommendationTaskContext,
+            priceCeiling: normalizedRecallPriceCeiling,
+          });
   const verifiedContextCandidates = buildVerifiedRecoContextCandidates({
     recoContext: ingredientContext,
     targetContext,
@@ -29021,6 +30613,7 @@ async function buildRecoGenerateFromCatalog({
         : finalizeRecommendationCandidatePools(rawCandidates, {
             targetContext: effectiveTargetContext,
             recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
+            priceCeiling: normalizedRecallPriceCeiling,
           });
   }
   if (frameworkMode && Array.isArray(candidateState?.viable_candidate_pool) && candidateState.viable_candidate_pool.length > 1) {
@@ -29700,7 +31293,11 @@ async function callGeminiJsonObjectViaRest({
   thinkingLevel = undefined,
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
-  if (!apiKey) {
+  // Vertex-aware availability: on Vertex the key pool is legitimately empty
+  // (prod authenticates via ADC and restTarget mints the OAuth header), so a
+  // bare !apiKey bail would report unavailable exactly where the credentials
+  // work. Mirrors auroraGeminiGlobalClient's REST guard.
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return {
       ok: false,
       reason: 'gemini_client_unavailable',
@@ -30400,7 +31997,14 @@ async function callGeminiJsonObject({
   const forceRestExecutor =
     normalizedRoute === 'aurora_reco_assistant_rewrite' ||
     normalizedRoute === 'aurora_reco_alternatives_open_world';
-  if (normalizedThinkingLevel || forceRestExecutor) {
+  // A finite thinkingBudget forces the REST executor: the pinned @google/genai
+  // 0.7.0 serializer (thinkingConfigToVertex/ToMldev) forwards ONLY
+  // includeThoughts and silently drops thinkingBudget, so on the SDK path the
+  // model keeps thinking at its dynamic default — observed in prod as the
+  // concern planner's thoughts eating the 1400-token output budget and
+  // returning PARSE_TRUNCATED_JSON. The REST body builder below maps the
+  // budget correctly.
+  if (normalizedThinkingLevel || forceRestExecutor || Number.isFinite(thinkingBudget)) {
     return callGeminiJsonObjectViaRest({
       resolvedModel,
       requestedModel,
@@ -30584,7 +32188,11 @@ async function callGeminiTextResponseViaRest({
   thinkingBudget = undefined,
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
-  if (!apiKey) {
+  // Vertex-aware availability: on Vertex the key pool is legitimately empty
+  // (prod authenticates via ADC and restTarget mints the OAuth header), so a
+  // bare !apiKey bail would report unavailable exactly where the credentials
+  // work. Mirrors callGeminiJsonObjectViaRest's guard.
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return {
       ok: false,
       reason: 'gemini_client_unavailable',
@@ -34994,7 +36602,10 @@ function mergePhotoFindingsIntoAnalysis({ analysis, diagnosisV1, language, profi
     const subtype = typeof raw.subtype === 'string' ? raw.subtype.trim() : '';
     if (!issueType) return null;
     const severity = Number.isFinite(raw.severity) ? Math.max(0, Math.min(4, Math.round(raw.severity))) : 0;
-    const confidence = Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0;
+    // F4: an unmeasured finding confidence stays null. Defaulting to 0 asserted
+    // zero confidence — a claim, not an absence — and deriveConcernConfidence
+    // then read that 0 as a measured value for the whole concern.
+    const confidence = Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : null;
     return {
       issue_type: issueType,
       subtype: subtype || null,
@@ -35020,7 +36631,9 @@ function mergePhotoFindingsIntoAnalysis({ analysis, diagnosisV1, language, profi
       source,
       issue_type: typeof raw.issue_type === 'string' && raw.issue_type.trim() ? raw.issue_type.trim() : null,
       text,
-      confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0.5,
+      // F4: a takeaway whose confidence was never measured is reported as
+      // unmeasured, not as a precise-looking midpoint 0.5.
+      confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : null,
     };
   };
 
@@ -35097,7 +36710,9 @@ function normalizePlanTakeaway(raw, { language } = {}) {
     source,
     issue_type: typeof raw.issue_type === 'string' && raw.issue_type.trim() ? raw.issue_type.trim() : null,
     text,
-    confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0.55,
+    // F4: same as normalizeFinding — an unmeasured takeaway confidence stays
+    // null rather than becoming an invented 0.55.
+    confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : null,
     linked_finding_ids: Array.isArray(raw.linked_finding_ids)
       ? raw.linked_finding_ids.filter((item) => typeof item === 'string' && item.trim()).slice(0, 8)
       : [],
@@ -35375,7 +36990,10 @@ function buildExecutablePlanForAnalysis({
       issue_type: issueType,
       subtype: typeof finding.subtype === 'string' && finding.subtype.trim() ? finding.subtype.trim() : null,
       severity: Number.isFinite(finding.severity) ? Math.max(0, Math.min(4, Math.round(finding.severity))) : 0,
-      confidence: Number.isFinite(finding.confidence) ? Math.max(0, Math.min(1, Number(finding.confidence))) : 0,
+      // F4: the second normalizer on this path used to re-fabricate an
+      // unmeasured confidence as an explicit 0 — a confident claim of zero,
+      // which is worse than the 0.5 it replaced upstream. Stay null.
+      confidence: Number.isFinite(finding.confidence) ? Math.max(0, Math.min(1, Number(finding.confidence))) : null,
       evidence: typeof finding.evidence === 'string' ? finding.evidence.trim() : '',
       computed_features: finding.computed_features && typeof finding.computed_features === 'object' ? finding.computed_features : {},
       geometry: geometryStats.geometry,
@@ -37000,6 +38618,13 @@ function confidenceLevelFromScoreV1(score) {
   return 'high';
 }
 
+// F4: Number(null) === 0, so a bare Number()/isFinite() check reads an ABSENT
+// score as an explicit rock-bottom one. Route every confidence-score coercion
+// through this helper: null/undefined/non-numeric in, null out.
+function toFiniteScoreOrNull(value) {
+  return value != null && Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
 function normalizeArtifactSourceMix(sources) {
   const out = [];
   const seen = new Set();
@@ -37015,11 +38640,15 @@ function normalizeArtifactSourceMix(sources) {
 }
 
 function buildArtifactConfidence(score, rationale) {
-  const n = Number(score);
-  const safe = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  // F4: `!= null` before Number(). deriveConcernConfidence now returns null for
+  // a concern nothing measured, and Number(null) === 0 would stamp it with an
+  // explicit zero confidence. An unmeasured node keeps a conservative 'low'
+  // level but no score; the artifact serializers already omit a null score.
+  const n = score != null ? Number(score) : null;
+  const safe = n != null && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
   return {
     score: safe,
-    level: confidenceLevelFromScoreV1(safe),
+    level: safe != null ? confidenceLevelFromScoreV1(safe) : 'low',
     rationale: Array.from(
       new Set(
         (Array.isArray(rationale) ? rationale : [])
@@ -37070,10 +38699,17 @@ function deriveConcernConfidence({ issueType, analysis, defaultScore } = {}) {
     if (!finding || typeof finding !== 'object') continue;
     const token = String(finding.issue_type || '').trim().toLowerCase();
     if (!token || token !== String(issueType || '').trim().toLowerCase()) continue;
+    // F4: `!= null` before Number() — findings may now carry a null confidence,
+    // and Number(null) === 0 would return an unmeasured finding as a confident
+    // rock-bottom 0.
+    if (finding.confidence == null) continue;
     const c = Number(finding.confidence);
     if (Number.isFinite(c)) return Math.max(0, Math.min(1, c));
   }
-  return Number.isFinite(Number(defaultScore)) ? Math.max(0, Math.min(1, Number(defaultScore))) : 0.58;
+  // Nothing measured this concern. Previously this returned an invented 0.58;
+  // the concern now carries no score and the artifact serializers omit it.
+  if (defaultScore == null) return null;
+  return Number.isFinite(Number(defaultScore)) ? Math.max(0, Math.min(1, Number(defaultScore))) : null;
 }
 
 function deriveConcernsFromAnalysis({ analysis, profileSummary, usedPhotos, analysisSource } = {}) {
@@ -37162,16 +38798,21 @@ function deriveArtifactOverallConfidence({
   baseParts.push(goalsPresent ? 0.76 : 0);
   const base = baseParts.reduce((sum, value) => sum + value, 0) / Math.max(1, baseParts.length);
 
+  // F4: average only the concerns whose confidence was actually measured —
+  // Number(null) === 0 read an unmeasured score as a measured rock-bottom
+  // one, deflating the boost and shifting borderline artifacts toward 'low'.
+  const measuredConcernScores = (Array.isArray(concerns) ? concerns : [])
+    .map((item) => {
+      const node = item && typeof item === 'object' ? item.confidence : null;
+      return toFiniteScoreOrNull(node && typeof node === 'object' ? node.score : null);
+    })
+    .filter((value) => value != null);
   const concernBoost =
-    Array.isArray(concerns) && concerns.length
+    measuredConcernScores.length > 0
       ? Math.min(
           0.1,
-          concerns.reduce((sum, item) => {
-            const node = item && typeof item === 'object' ? item.confidence : null;
-            const score = node && typeof node === 'object' ? Number(node.score) : 0;
-            return sum + (Number.isFinite(score) ? score : 0);
-          }, 0) /
-            concerns.length *
+          measuredConcernScores.reduce((sum, value) => sum + value, 0) /
+            measuredConcernScores.length *
             0.12,
         )
       : 0;
@@ -37403,8 +39044,9 @@ function buildConfidenceNoticeCardPayload({
       .map((value) => sanitizeRecoClientVisibleToken(value, { allowDefault: true }))
       .filter(Boolean)
     : [];
-  const score = Number(confidence && confidence.score);
-  const level = String(confidence && confidence.level || '').trim().toLowerCase() || confidenceLevelFromScoreV1(score);
+  const score = toFiniteScoreOrNull(confidence != null ? confidence.score : null);
+  const level = String(confidence && confidence.level || '').trim().toLowerCase()
+    || (score != null ? confidenceLevelFromScoreV1(score) : 'low');
   const normalizedReason = sanitizeRecoClientVisibleToken(reason, { allowDefault: true }) || 'default';
   const messageByReason = {
     artifact_missing:
@@ -37423,6 +39065,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '检测到可能的医疗风险信号，已停止商品推荐。'
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    primary_step_unconfirmed:
+      lang === 'CN'
+        ? '这轮没有找到可信的主步骤商品，以下只是可以搭配的辅助步骤。'
+        : 'I could not confirm a product for the main step of this routine, so these are the supporting steps only — pair them with a treatment for your main concern.',
     timeout_degraded:
       lang === 'CN'
         ? '这轮商品匹配没有在时限内完成。请稍后重试，或补充当前护肤流程/想找的步骤后我再继续缩窄。'
@@ -37499,7 +39145,7 @@ function buildConfidenceNoticeCardPayload({
     reason: normalizedReason,
     severity,
     confidence: {
-      score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0,
+      score: score != null ? Math.max(0, Math.min(1, score)) : null,
       level,
       rationale,
     },
@@ -39431,12 +41077,20 @@ function normalizeProgressLlmOutput(raw, { hasPhoto = false } = {}) {
     if (deltas.length >= 6) break;
   }
   if (deltas.length === 0) return null;
-  const confidenceRaw = Number(raw.confidence);
+  // F4: `confidence` is optional in the progress LLM output (only the deltas
+  // and a recommendation are required), so an omitted confidence used to become
+  // a precise-looking midpoint 0.5 on the client's progress card. The `!= null`
+  // guard matters too: Number(null) === 0 would read an absent confidence as an
+  // explicit rock-bottom one.
+  const confidenceRaw = raw.confidence != null ? Number(raw.confidence) : null;
   const checkinsAnalyzedRaw = Number(raw.checkins_analyzed || raw.checkinsAnalyzed);
   const normalized = {
     overall_trend: trend,
     concern_deltas: deltas,
-    confidence: Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, Number(confidenceRaw.toFixed(2)))) : 0.5,
+    confidence:
+      confidenceRaw != null && Number.isFinite(confidenceRaw)
+        ? Math.max(0, Math.min(1, Number(confidenceRaw.toFixed(2))))
+        : null,
     checkins_analyzed: Number.isFinite(checkinsAnalyzedRaw) ? Math.max(0, Math.trunc(checkinsAnalyzedRaw)) : 0,
     improvements: normalizeArrayOfStrings(raw.improvements, { max: 4, maxLen: 200 }),
     regressions: normalizeArrayOfStrings(raw.regressions, { max: 4, maxLen: 200 }),
@@ -39680,7 +41334,9 @@ function buildSkinProgressCard({ ctx, baseline, progress, language } = {}) {
           title_zh: '和上次诊断相比的变化',
           overall_trend: progress && progress.overall_trend ? progress.overall_trend : 'stable',
           concern_deltas: Array.isArray(progress && progress.concern_deltas) ? progress.concern_deltas : [],
-          confidence: Number.isFinite(Number(progress && progress.confidence)) ? Number(progress.confidence) : 0,
+          // F4: `!= null` before Number() — an unmeasured progress confidence
+          // must stay null on the card, not become an explicit 0.
+          confidence: toFiniteScoreOrNull(progress ? progress.confidence : null),
           checkins_analyzed: Number.isFinite(Number(progress && progress.checkins_analyzed))
             ? Number(progress.checkins_analyzed)
             : 0,
@@ -40130,6 +41786,11 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
+  // NOTE: HTTP status is deliberately NOT classified here. This function is shared with
+  // legacyChatRecoExecution's rethrow guard and two beauty-handoff sites, and axios sets
+  // `.status` on any error carrying a response — so classifying it here silently changed how
+  // those three lanes treat a 5xx, and both of their suites stub this function, so nothing
+  // would have shown it. The reco LLM leg classifies status itself; see classifyRecoLlmLegFailure.
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -40138,8 +41799,31 @@ function classifyRecoUpstreamFailureCode(err) {
   return '';
 }
 
+// THE RECO LLM LEG'S OWN CLASSIFICATION. Scoped to this leg rather than to the shared classifier
+// above, and deliberately TOTAL: every throw gets a non-empty code.
+//
+// `''` was the old answer for an HTTP rejection, and it is also the answer for
+// AURORA_NOT_CONFIGURED and for any error whose code this repo does not recognise. A blank code
+// means the failure leaves the telemetry dimension entirely rather than moving within it — on the
+// tree before this, a decision service that was DOWN produced null upstream_failure_code, null
+// failure_class and products in the response, which reads as success.
+function classifyRecoLlmLegFailure(err) {
+  const shared = classifyRecoUpstreamFailureCode(err);
+  if (shared) return shared;
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  if (code === 'AURORA_NOT_CONFIGURED') return 'NOT_CONFIGURED';
+  return 'UPSTREAM_ERROR';
+}
+
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
+  // 5xx is the upstream having a bad moment; 4xx is not worth retrying on the same request. (429
+  // lands here too, which is not "a request we built wrong" as an earlier version of this comment
+  // put it — postWithRetry does not retry it either, so the classification matches the behaviour.)
+  const httpStatus = /^HTTP_(\d{3})$/.exec(token);
+  if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
     token === 'ECONNRESET' ||
     token === 'EPIPE' ||
@@ -44404,11 +46088,27 @@ function buildRecoRequestedEventData({
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
+    // NOT the same as `source` above, which is source_mode — a presentation label with its own
+    // fallback ladder that can read 'step_aware_mainline' on a turn the LLM actually answered.
+    // This one is derived from structuredSource, so it says which path produced the answer.
+    ...(pickFirstTrimmed(meta.confidence_basis) ? { confidence_basis: pickFirstTrimmed(meta.confidence_basis) } : {}),
     ...(pickFirstTrimmed(meta.owner_source) ? { owner_source: pickFirstTrimmed(meta.owner_source) } : {}),
     ...(pickFirstTrimmed(meta.final_outcome_owner) ? { final_outcome_owner: pickFirstTrimmed(meta.final_outcome_owner) } : {}),
     ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
     ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
     ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
+    // ADR-024 Phase 1. Projected from recommendation_meta, which the consumer lane stamps -- so the
+    // region reaches the reco_requested event through the SAME surface every other dimension here
+    // uses, rather than a parallel channel. A lane that does not stamp it (chat, agent-signals) emits
+    // neither field, so its events are unchanged.
+    ...(pickFirstTrimmed(meta.buyer_region) ? { buyer_region: pickFirstTrimmed(meta.buyer_region) } : {}),
+    ...(pickFirstTrimmed(meta.region_source) ? { region_source: pickFirstTrimmed(meta.region_source) } : {}),
+    // ADR-024's tripwire, projected the same way and from the same surface as the region above -- the
+    // counts are only readable NEXT TO the region they were counted against, so they must not travel
+    // on a different channel or through a different lane's stamp. All three or none: a lane that does
+    // not take the census (chat, the agent-signals door) emits no census fields and its events are
+    // unchanged, and a half-stamped meta emits nothing rather than a numerator with no denominator.
+    ...pickServedPriceRegionCensusEventFields(meta),
   };
   return data;
 }
@@ -44441,7 +46141,7 @@ function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = ''
   return value;
 }
 
-function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
+function resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope = '' } = {}) {
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const ingredientMode = Boolean(
     normalizedIngredientContext &&
@@ -44456,9 +46156,22 @@ function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
         (Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length > 0)
       ),
   );
-  const templateId = ingredientMode ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID;
+  // Ingredient mode wins: it has its own template and its own contract, and the wide scope has
+  // nothing to say about an ingredient lookup. Widening is only ever the plain goal-based path.
+  const domainWide = !ingredientMode && isWideRecoPromptDomainScope(promptDomainScope);
+  const templateId = ingredientMode
+    ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID
+    : (domainWide ? RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID);
   return {
     ingredient_mode: ingredientMode,
+    // Reported, not inferred downstream: the template id alone cannot say whether the wide lane was
+    // ASKED for (an operator may point both env vars at one file), and telemetry needs the ask.
+    domain_scope: domainWide ? RECO_PROMPT_DOMAIN_SCOPE_BEAUTY : 'skincare',
+    // Whether the ask was actually GRANTED. With the wide id pinned back to the narrow template
+    // these differ, and the prompt TEXT must follow this one — otherwise the query carries a
+    // "beauty recommendation plan" task line wrapped around v1_2's skincare-only system prompt:
+    // half-applied, and worse than either end state.
+    wide_template_active: domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID,
     llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
     template_id: templateId,
     schema_file: `${templateId}.user_schema.json`,
@@ -47128,6 +48841,9 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
 
 function buildRoutineFitSummaryCard(fitResult, requestId) {
   const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
+  // F4: fit_score follows the dimensions — a null/absent one is unmeasured
+  // (null), never an explicit 0 (the Number(null) trap) or an invented 0.5.
+  const fitScore = toFiniteScoreOrNull(fit.fit_score);
   const overallFitRaw = String(fit.overall_fit || '').trim().toLowerCase();
   const overallFit =
     overallFitRaw === 'good_match' || overallFitRaw === 'partial_match' || overallFitRaw === 'needs_adjustment'
@@ -47138,25 +48854,32 @@ function buildRoutineFitSummaryCard(fitResult, requestId) {
     type: 'routine_fit_summary',
     payload: {
       overall_fit: overallFit,
-      fit_score: Number.isFinite(Number(fit.fit_score)) ? Math.max(0, Math.min(1, Number(fit.fit_score))) : 0.5,
+      fit_score: fitScore != null ? Math.max(0, Math.min(1, fitScore)) : null,
       summary: String(fit.summary || '').trim(),
       highlights: Array.isArray(fit.highlights) ? fit.highlights.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
       concerns: Array.isArray(fit.concerns) ? fit.concerns.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
-      dimension_scores: (() => {
+      // Fabrication-belt F4: an unmeasured dimension used to be stamped with a
+      // precise-looking 0.5, which then ranked as the routine's WEAKEST axis in
+      // the user-facing prose (collectRoutineFitLowDimensions sorts ascending).
+      // validateRoutineFitStructuredPayload deliberately accepts partial
+      // dimension sets, so this is a live path, not a defensive branch: the
+      // system knows the dimension is missing and said "50%" anyway. Unmeasured
+      // dimensions are now omitted and named in `unmeasured_dimensions`.
+      ...(() => {
         const dims = fit.dimension_scores && typeof fit.dimension_scores === 'object' ? fit.dimension_scores : {};
-        const normalize = (d) => {
-          const obj = d && typeof d === 'object' ? d : {};
-          return {
-            score: Number.isFinite(Number(obj.score)) ? Math.max(0, Math.min(1, Number(obj.score))) : 0.5,
-            note: String(obj.note || '').trim(),
-          };
-        };
-        return {
-          ingredient_match: normalize(dims.ingredient_match),
-          routine_completeness: normalize(dims.routine_completeness),
-          conflict_risk: normalize(dims.conflict_risk),
-          sensitivity_safety: normalize(dims.sensitivity_safety),
-        };
+        const measured = {};
+        const unmeasured = [];
+        for (const key of ROUTINE_FIT_DIMENSION_KEYS) {
+          const obj = dims[key] && typeof dims[key] === 'object' ? dims[key] : null;
+          const rawScore = toFiniteScoreOrNull(obj ? obj.score : null);
+          const score = rawScore != null ? Math.max(0, Math.min(1, rawScore)) : null;
+          if (score == null) {
+            unmeasured.push(key);
+            continue;
+          }
+          measured[key] = { score, note: String(obj.note || '').trim() };
+        }
+        return { dimension_scores: measured, unmeasured_dimensions: unmeasured };
       })(),
       next_questions: Array.isArray(fit.next_questions) ? fit.next_questions.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
     },
@@ -47210,7 +48933,11 @@ function buildSkinAnalysisContextForPrefix(profile) {
     const lowDimensionSummary = lowDimensions.length
       ? lowDimensions.map((item) => `${item.key}=${Math.round(item.score * 100)}%`).join(', ')
       : '';
-    parts.push(`Routine fit: ${routineFit.overall_fit || 'partial_match'} (${Math.round(Number(routineFit.fit_score || 0.5) * 100)}%)`);
+    // F4: render the percentage only when a fit_score was measured; the old
+    // `|| 0.5` also read a genuine 0 as "50%".
+    const routineFitScore = toFiniteScoreOrNull(routineFit.fit_score);
+    const routineFitScorePart = routineFitScore != null ? ` (${Math.round(routineFitScore * 100)}%)` : '';
+    parts.push(`Routine fit: ${routineFit.overall_fit || 'partial_match'}${routineFitScorePart}`);
     if (lowDimensionSummary) parts.push(`Lowest routine-fit dimensions: ${lowDimensionSummary}`);
     if (Array.isArray(routineFit.concerns) && routineFit.concerns.length) {
       parts.push(`Routine concerns: ${routineFit.concerns.slice(0, 3).join('; ')}`);
@@ -47733,17 +49460,23 @@ function getRoutineFitPayloadFromLastAnalysis(lastAnalysis) {
 function collectRoutineFitLowDimensions(routineFit, { max = 2 } = {}) {
   const payload = isPlainObject(routineFit) ? routineFit : {};
   const dims = isPlainObject(payload.dimension_scores) ? payload.dimension_scores : {};
+  // F4: this used to substitute 0.5 for an unmeasured dimension and then sort
+  // ascending, so a dimension nobody scored was reported as the routine's
+  // lowest — displacing a real low score. A dimension that was never measured
+  // cannot be ranked; drop it instead of inventing a value for it.
   return ROUTINE_FIT_DIMENSION_KEYS
     .map((key) => {
       const value = isPlainObject(dims[key]) ? dims[key] : {};
-      const rawScore = Number(value.score);
-      const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(1, rawScore)) : 0.5;
+      const rawScore = toFiniteScoreOrNull(value.score);
+      const score = rawScore != null ? Math.max(0, Math.min(1, rawScore)) : null;
+      if (score == null) return null;
       return {
         key,
         score,
         note: String(value.note || '').trim(),
       };
     })
+    .filter(Boolean)
     .sort((a, b) => a.score - b.score)
     .slice(0, Math.max(0, Math.trunc(Number(max) || 0)));
 }
@@ -58673,14 +60406,18 @@ function inferRecoAssistantRequestMode(userRequestText) {
   return 'generic';
 }
 
+// Rendering lives in priceLabelFormat.js, shared with the card formatter, so the two cannot drift
+// again -- they already had: this one emitted 'JPY 4500' while the card printed '$4500' for the very
+// same price. The prompt table is USD-symbol-only on purpose (see that module); this function's own
+// output is unchanged, and null still means "no price to state" rather than a zero.
 function formatRecoAssistantPromptPriceLabel(rawPrice) {
   const price = normalizePriceObject(rawPrice, { fallbackCurrency: 'USD' });
-  if (!price || price.unknown === true || !Number.isFinite(Number(price.amount))) return null;
-  const amount = Number(price.amount);
-  const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
-  const amountLabel = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
-  if (currency === 'USD') return `$${amountLabel}`;
-  return `${currency} ${amountLabel}`;
+  if (!price || price.unknown === true) return null;
+  // The `|| null` is unreachable for the same reason as the card's fallback (see chatCardFactory.js):
+  // normalizePriceObject yields null or a finite positive amount. It matters if that ever changes --
+  // callers spread this into the prompt payload, where '' would state an empty price rather than omit
+  // one -- so it stays, documented, with its precondition pinned by the card/prompt agreement tests.
+  return formatPromptPriceLabel(price.amount, price.currency) || null;
 }
 
 function buildRecoAssistantPromptPriceDiagnostics(items = []) {
@@ -58698,6 +60435,9 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
     })
     .filter(Boolean)
     .sort((left, right) => {
+      // Unreachable once the mixed-currency guard below returns early -- a list that gets here holds a
+      // single currency. Kept so the sort stays total if that guard is ever relaxed; an equivalent
+      // mutant, documented rather than covered by a test that cannot fail.
       if (left.currency !== right.currency) return left.currency.localeCompare(right.currency);
       if (left.amount !== right.amount) return left.amount - right.amount;
       return left.index - right.index;
@@ -58707,6 +60447,25 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
   const uniquePriceKeys = new Set(
     knownPrices.map((entry) => `${entry.currency}:${entry.amount.toFixed(2)}`),
   );
+  // A position is a COMPARISON, and this lane holds no FX rates. The sort below breaks ties on the
+  // currency code first, so a mixed-currency list would rank alphabetically and then label by
+  // position: [EUR 200, GBP 5, USD 50] made EUR 200 the "lowest" and GBP 5 the "middle". That reaches
+  // the buyer as price_order_summary, price_position and a "Lower-priced same-slot option"
+  // tradeoff_hint. It is the same fabricated cross-currency verdict that recoPriceCeiling and the
+  // agent bridge both refuse -- when they cannot compare, they say 'unknown' rather than guess.
+  //
+  // Reachable before this change through an OBJECT price that declared its currency, and reachable on
+  // the common path after it, since a scalar price beside a sibling currency now keeps its unit too.
+  // With more than one currency in play, emit no positions at all: no claim beats a false one.
+  const distinctCurrencies = new Set(knownPrices.map((entry) => entry.currency));
+  if (knownPrices.length > 0 && distinctCurrencies.size > 1) {
+    return {
+      known_price_count: knownPrices.length,
+      price_position_by_index: pricePositionByIndex,
+      price_order_summary: [],
+      price_comparison_skipped_reason: 'mixed_currency',
+    };
+  }
   if (knownPrices.length > 0) {
     if (uniquePriceKeys.size <= 1) {
       for (const entry of knownPrices) pricePositionByIndex.set(entry.index, 'similar');
@@ -59637,6 +61396,11 @@ function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
         same_role_peer_count: Number.isFinite(Number(item?.same_role_peer_count)) ? Number(item.same_role_peer_count) : null,
         price_label: compactRecoAssistantPromptField(item?.price_label, { maxLen: 40 }),
         price_position: compactRecoAssistantPromptField(item?.price_position, { maxLen: 24 }),
+        // This object is an ALLOWLIST REBUILD, not a spread: a field the caller sets and this map does
+        // not name never reaches the model. The budget disclosure has to be named here or the prompt
+        // silently loses it while the card still carries it.
+        budget_check_status: compactRecoAssistantPromptField(item?.budget_check_status, { maxLen: 32 }),
+        budget_check_note: compactRecoAssistantPromptField(item?.budget_check_note, { maxLen: 120 }),
         description_snippet: compactRecoAssistantPromptField(item?.description_snippet, { maxLen: 92 }),
         why_this_one: compactRecoAssistantPromptField(item?.why_this_one, { maxLen: 82 }),
         key_features: asStringArray(item?.key_features, 2).map((value) =>
@@ -59667,6 +61431,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   retryInstruction = null,
   allowPriceComparisonHints = true,
   enforceFinishFitPrimerCalibration = false,
+  hasUnverifiableBudgetRow = false,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -59692,6 +61457,13 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'Keep cosmetic evidence conservative: do not say a product regulates sebum production, repairs skin, counteracts dryness, treats acne, or prevents irritation; use phrasing like "supports visible shine control", "barrier-support", or "for dryness-prone routines" when the record only supports product-fit evidence.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
+  // Only when a selected row actually carries the disclosure. This prompt runs under a size budget
+  // (a suite pins same-role payloads under 8000 chars), and the marker fires on a small, concentrated
+  // slice of requests -- roughly 1% of recalled rows overall -- so an unconditional line would spend
+  // its bytes on every request that has nothing to disclose.
+  if (hasUnverifiableBudgetRow) {
+    lines.push('If a selected_product_details entry has budget_check_status "unverifiable_currency", never state or imply that product meets the stated budget: it is priced in another currency and was not converted. Use its budget_check_note wording if you mention the budget at all.');
+  }
   if (enforceFinishFitPrimerCalibration) {
     lines.push('Do not say a sunscreen doubles as, acts as, works as, or serves as a primer. Translate soft-focus cues into smoother under-makeup wear without implying primer replacement.');
     lines.push('For finish-fit sunscreen comparisons, keep every reason on wear, texture, finish, white-cast, sensitivity, or richer-versus-lighter tradeoffs; avoid generic SPF utility phrasing like "for AM UV protection" or "for daily protection" unless that tradeoff is explicit.');
@@ -59998,12 +61770,19 @@ function buildRecoAssistantRewritePrompt({
         : effectiveItem.framework_semantic_fit === false || effectiveItem.sku?.framework_semantic_fit === false
           ? false
           : null;
+    // Rendered from the CARD'S OWN marker, so the answer text and the card can never disagree about
+    // what was checked. One dialect for both (see formatConcernFrameworkBudgetCheckNote), so this is
+    // byte-identical to the card's sentence rather than a second rendering of it.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(effectiveItem);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language: lang });
     return {
       name: pickFirstTrimmed(effectiveItem.display_name, effectiveItem.displayName, effectiveItem.name, effectiveItem.title, effectiveItem.sku?.display_name, effectiveItem.sku?.name),
       brand: pickFirstTrimmed(effectiveItem.brand, effectiveItem.sku?.brand),
       category: pickFirstTrimmed(effectiveItem.category, effectiveItem.step, effectiveItem.sku?.category, effectiveItem.sku?.product_type),
       price,
       price_label: formatRecoAssistantPromptPriceLabel(price),
+      budget_check_status: budgetCheckMarker ? String(budgetCheckMarker.status || '') || null : null,
+      budget_check_note: budgetCheckNote || null,
       short_description: promptShortDescription || null,
       description_snippet: formatRecoRoleAnchoredVisibleNarrative(
         cleanRecoNarrativeForRoleVisibleUse(descriptionSnippet, {
@@ -60137,6 +61916,11 @@ function buildRecoAssistantRewritePrompt({
   const suppressPriceComparisonHints =
     (selectedProductRoleMix === 'same_role_comparison' || selectedProductRoleMix === 'routine_mix') &&
     !priceComparisonRequested;
+  // Deliberately NOT stripped here alongside price/price_label/price_position: budget_check_* is not a
+  // price-comparison hint, it is a disclosure that a constraint the buyer stated could not be checked.
+  // Suppressing it would leave the model free to claim the budget was met on the very rows where the
+  // card says it could not be verified. (`under $40` does not match the price-comparison detector, so
+  // a routine_mix or same_role_comparison answer to a budgeted request lands in exactly this branch.)
   const promptSelectedProductDetails = suppressPriceComparisonHints
     ? selectedProductDetails.map((item) => ({
         ...item,
@@ -60265,6 +62049,12 @@ function buildRecoAssistantRewritePrompt({
     retryInstruction,
     allowPriceComparisonHints: priceComparisonRequested,
     enforceFinishFitPrimerCalibration: finishFitPrimerCalibration,
+    // Read off promptSelectedProductDetails, not selectedProductDetails: those are the rows the model
+    // is actually handed, so the rule can never be emitted for a disclosure the Context dropped, nor
+    // dropped for one it kept.
+    hasUnverifiableBudgetRow: promptSelectedProductDetails.some(
+      (item) => String(item?.budget_check_status || '').trim() === 'unverifiable_currency',
+    ),
   });
   lines.push(`Context: ${JSON.stringify(context)}`);
   return lines.join('\n');
@@ -69047,6 +70837,9 @@ function isLowOrMediumConfidenceLevelToken(raw) {
 }
 
 function isLowOrMediumConfidenceScore(raw) {
+  // Number(null) === 0, which would read an ABSENT score as an explicit
+  // rock-bottom one (F4: uncomputed confidence is null, never a number).
+  if (raw == null) return false;
   const score = Number(raw);
   if (!Number.isFinite(score)) return false;
   return score <= MEDIUM_CONFIDENCE_UPPER_BOUND;
@@ -69074,7 +70867,7 @@ function envelopeRequiresConservativeRecoGuard(envelope) {
     if (type === 'recommendations') {
       const hasExplicitRecommendationConfidence =
         pickFirstTrimmed(payload.recommendation_confidence_level) ||
-        Number.isFinite(Number(payload.recommendation_confidence_score));
+        toFiniteScoreOrNull(payload.recommendation_confidence_score) != null;
       if (hasExplicitRecommendationConfidence) {
         if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
         if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
@@ -69109,11 +70902,13 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
     const type = String(card.type || '').trim().toLowerCase();
     if (type === 'recommendations') {
       const explicitLevel = pickFirstTrimmed(payload.recommendation_confidence_level);
-      const explicitScoreRaw = Number(payload.recommendation_confidence_score);
-      const explicitScore = Number.isFinite(explicitScoreRaw) ? explicitScoreRaw : null;
+      const explicitScore = toFiniteScoreOrNull(payload.recommendation_confidence_score);
       if (isLowOrMediumConfidenceLevelToken(explicitLevel) || isLowOrMediumConfidenceScore(explicitScore)) {
+        // F4: when only the LEVEL is known, the score stays null — substituting
+        // LOW_CONFIDENCE_THRESHOLD re-invented a number one reader downstream
+        // of the writers that were just taught to emit null.
         return {
-          score: explicitScore != null ? explicitScore : LOW_CONFIDENCE_THRESHOLD,
+          score: explicitScore,
           level: explicitLevel || (explicitScore != null && explicitScore <= LOW_CONFIDENCE_THRESHOLD ? 'low' : 'medium'),
           rationale: ['recommendation_confidence_contract'],
         };
@@ -69126,7 +70921,8 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
       return payload.confidence;
     }
   }
-  return { score: LOW_CONFIDENCE_THRESHOLD, level: 'medium', rationale: ['low_medium_reco_policy'] };
+  // F4: the policy fallback is a categorical judgment, not a measurement.
+  return { score: null, level: 'medium', rationale: ['low_medium_reco_policy'] };
 }
 
 function buildConservativeRecoNoticeCard({ ctx, language, confidence, details } = {}) {
@@ -69532,6 +71328,72 @@ function normalizeRecoPromptContraindications(profile) {
   return uniqCaseInsensitiveStrings(out, 8);
 }
 
+// F4: an unknown price is null, never a fabricated zero.
+//
+// `Number.isFinite(Number(x))` alone does NOT say "x is a number": Number() maps null, '',
+// '   ', false and [] all to 0, and 0 IS finite. Any of those "no price" shapes therefore used
+// to serialize into the reco prompt as `"price_usd": 0`, which tells the LLM the product is
+// free. (`true` was worse still — it priced the product at $1.) It also cost real prices, not
+// just missing ones: `{price_usd: null, price: 62}` overwrote a stated $62 with that same zero,
+// because the null passed the finite check and the `price` leg was never consulted.
+//
+// These are real inputs, not hypotheticals. normalizeRecoPromptCandidates is fed from two
+// places, and only one of them normalizes price: the catalog leg goes through
+// normalizeRecoCatalogProduct, which omits a falsy price outright, but the ingredient leg takes
+// `ingredient_context.product_candidates[]` straight off the request body —
+// normalizeIngredientRecoContextValue only drops non-objects and slices, and
+// V1ChatRequestSchema types `session` as a permissive record — so whatever a caller sends for
+// `price` arrives here untouched.
+//
+// A missing price stays null, the same rule a broken offer row follows: store no price rather
+// than a fabricated zero.
+// Allowlist, not denylist: a price is a finite number, or a string that trims to one. Everything
+// else — null, undefined, booleans, arrays, objects (including a boxed String or anything with a
+// numeric valueOf, e.g. a Date) — is "no price". Enumerating the bad shapes instead would need a
+// new line every time a caller invents one; this way an unanticipated shape defaults to null.
+function toRecoPromptPriceOrNull(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+}
+
+// F4b: the catalog leg could never deliver a price at all.
+//
+// normalizeRecoCatalogProduct emits price as an OBJECT — `price: { amount, currency, unknown }`,
+// built by extractCatalogCandidatePrice — and never a scalar `price_usd`. Both legs above read
+// scalars, and `Number({ amount: 62, currency: 'USD' })` is NaN, so the price fell through to
+// null for EVERY catalog-sourced candidate. Verified against HEAD: a raw row stating
+// `price_usd: 41.5` normalized to `price: {amount:41.5,...}` and reached the prompt as
+// `"price_usd": null`. Pre-existing — the old `Number(item.price)` was NaN here too — but it
+// means the model has been doing budget and value-framing reasoning with no prices in front of it.
+//
+// USD ONLY, deliberately. This lane holds no FX rates, the same reason recoPriceCeiling.js
+// refuses cross-currency comparisons rather than fabricating a verdict. Publishing a 4500 JPY
+// amount under a field named `price_usd` would read to the model as $4500, which is a worse
+// failure than the null it replaces. A non-USD price therefore stays null: no price beats a
+// wrong one.
+//
+// `unknown === true` is normalizePriceObject's own "we could not read a price" marker; it is
+// honoured here rather than reinterpreted. A currency that is not a 3-letter code — including a
+// missing one — is not USD, so it fails the check too.
+function toRecoPromptUsdPriceFromObjectOrNull(value) {
+  // The Array.isArray arm is belt-and-braces: an array carries no `currency`, so the check below
+  // already rejects it, and a mutant that deletes this arm survives the suite for that reason. Kept
+  // because `typeof [] === 'object'` is the trap this whole family of defects is made of, and every
+  // other object guard in this file spells it out the same way.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.unknown === true) return null;
+  const currency = normalizeCurrencyCode(
+    value.currency ?? value.currency_code ?? value.currencyCode ?? value.priceCurrency,
+    '',
+  );
+  if (currency !== 'USD') return null;
+  return toRecoPromptPriceOrNull(value.amount ?? value.value ?? value.price_amount ?? value.priceAmount);
+}
+
 function normalizeRecoPromptCandidates(candidates, region) {
   const out = [];
   const seen = new Set();
@@ -69554,11 +71416,12 @@ function normalizeRecoPromptCandidates(candidates, region) {
       name: name || null,
       display_name: pickFirstTrimmed(item.display_name, item.displayName, name) || null,
       category: pickFirstTrimmed(item.category) || 'other',
-      price_usd: Number.isFinite(Number(item.price_usd))
-        ? Number(item.price_usd)
-        : Number.isFinite(Number(item.price))
-          ? Number(item.price)
-          : null,
+      // An unknown price is null here, never 0 — see toRecoPromptPriceOrNull. The object leg is
+      // last and USD-gated: it can only turn a null into a stated price, never change one of the
+      // scalar answers above — see toRecoPromptUsdPriceFromObjectOrNull.
+      price_usd: toRecoPromptPriceOrNull(item.price_usd)
+        ?? toRecoPromptPriceOrNull(item.price)
+        ?? toRecoPromptUsdPriceFromObjectOrNull(item.price),
       keyActives: uniqCaseInsensitiveStrings(
         Array.isArray(item.keyActives) ? item.keyActives : Array.isArray(item.key_actives) ? item.key_actives : [],
         10,
@@ -69586,6 +71449,7 @@ function buildRecoMainPromptPayload({
   ingredientContext,
   promptSpec,
 } = {}) {
+  const domainWide = Boolean(promptSpec && promptSpec.wide_template_active);
   const fallbackSchema = {
     meta: { lang: 'EN', intent: 'reco_products', region: 'US', no_clarify: true },
     profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
@@ -69638,7 +71502,15 @@ function buildRecoMainPromptPayload({
     },
     hard_rules: [
       'Do not ask clarifying questions.',
-      'Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.',
+      // Scope-aware on purpose. This branch runs only when the template FILE is unreadable, and a
+      // hardcoded skincare-only rule here would re-narrow the wide door with no trace in the diff.
+      ...(domainWide
+        ? [
+          'Recommend skincare (including body care), makeup and fragrance only. Haircare is staged and not covered yet: answer it empty, like a tool request. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.',
+          'Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.',
+          'If the requested category cannot be served — any tool, brush or device request included — return recommendations: [] and explain in missing_info.',
+        ]
+        : ['Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.']),
       'Do not output routines or AM/PM plans.',
       'Do not invent purchase links, product ids, or availability.',
       'Use candidates[] only as optional grounding hints, not as a hard restriction.',
@@ -69727,13 +71599,21 @@ function buildRecoMainPromptPayload({
   return payload;
 }
 
-function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext } = {}) {
-  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext });
+function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' } = {}) {
+  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope });
+  const domainWide = Boolean(promptSpec.wide_template_active);
   const fallbackSystemPrompt = [
-    'You are a precision skincare recommendation planner.',
+    domainWide
+      ? 'You are a precision beauty recommendation planner.'
+      : 'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
-    'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
+    ...(domainWide
+      ? [
+        'Recommend skincare (including body care), makeup and fragrance. Haircare is staged and not covered yet. Never beauty tools, brushes, sponges or devices; never supplements, ingestibles or medication.',
+        'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served — a tool or brush request included — return an empty list and say so in missing_info.',
+      ]
+      : ['Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.']),
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',
     'Return fewer recommendations instead of weak guesses.',
@@ -69762,7 +71642,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     userPayload: payload,
   });
   return {
-    query: `Task: Generate a user-adaptive skincare recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
+    query: `Task: Generate a user-adaptive ${domainWide ? 'beauty' : 'skincare'} recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
     prompt_spec: promptSpec,
     user_payload: payload,
     system_prompt: systemPrompt,
@@ -69771,8 +71651,9 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
   };
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' }) {
   return buildAuroraProductRecommendationsPromptBundle({
+    promptDomainScope,
     profile,
     requestText,
     lang,
@@ -69785,6 +71666,21 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
 const CONCERN_SEMANTIC_PLAN_JSON_ROUTE = 'aurora_concern_semantic_plan_json';
 const CONCERN_SEMANTIC_PLAN_JSON_MAX_OUTPUT_TOKENS = 1400;
+// 0 = no thinking (see the call site for the measured latency account).
+// Env-overridable so ops can re-enable thinking without a deploy if plan
+// quality ever measurably needs it.
+const CONCERN_SEMANTIC_PLAN_THINKING_BUDGET = (() => {
+  const n = Number(process.env.AURORA_CONCERN_PLANNER_THINKING_BUDGET);
+  return Number.isFinite(n) && n >= 0 ? Math.min(4096, Math.trunc(n)) : 0;
+})();
+// With thinking pinned off the call answers in ~2.8s when the transport is
+// healthy, so 8s of first-attempt budget only prolongs the failure path on the
+// calls that will never make it; keep the cap env-tunable for ops.
+const CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CONCERN_PLANNER_FIRST_ATTEMPT_TIMEOUT_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
+  return Math.max(1000, Math.min(15000, v));
+})();
 const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
@@ -69995,12 +71891,10 @@ async function runConcernSemanticPlanner({
       envSource: 'AURORA_CONCERN_PLANNER_GEMINI_MODEL',
       callPath: 'aurora_concern_semantic_planner_primary',
     });
-    const retryModel = resolveAuroraGeminiMainlineModel({
-      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL', 'AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI', 'GEMINI_MODEL']).value,
-      fallbackModel: 'gemini-3-pro-preview',
-      envSource: 'AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL',
-      callPath: 'aurora_concern_semantic_planner_retry',
-    });
+    // Single enrichment attempt by design: on failure the deterministic
+    // mainline below is the trusted fast path, and a second LLM attempt is
+    // not worth its added tail latency on the chat critical path (under the
+    // unified model override it would hit the same model again anyway).
     const plannerAttempts = [
       {
         provider: 'gemini',
@@ -70008,24 +71902,12 @@ async function runConcernSemanticPlanner({
         structured_contract: 'json_object',
         model_policy: primaryModel,
       },
-      {
-        provider: 'gemini',
-        model: retryModel.effective_model,
-        structured_contract: 'json_object',
-        model_policy: retryModel,
-      },
-    ].filter((attempt, index, attempts) => {
-      const key = `${String(attempt.provider || '').trim().toLowerCase()}:${String(attempt.model || '').trim().toLowerCase()}`;
-      return index === attempts.findIndex((row) => (
-        `${String(row.provider || '').trim().toLowerCase()}:${String(row.model || '').trim().toLowerCase()}` === key
-      ));
-    });
-    let lastSemanticPlan = { ...fallbackPlan };
+    ];
     let lastPlannerResponse = null;
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      const defaultAttemptTimeoutMs = index === 0 ? 8000 : 10000;
+      const defaultAttemptTimeoutMs = CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS;
       const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
         ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
         : null;
@@ -70071,6 +71953,15 @@ async function runConcernSemanticPlanner({
             responseSchema: CONCERN_SEMANTIC_PLAN_JSON_SCHEMA,
             route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
             ignoreForceModel: true,
+            // Without an explicit budget, gemini-2.5-flash spends its dynamic
+            // thinking allowance on this call (measured on the prod Vertex
+            // project: ~690 thought tokens, 7.1s total — straddling the 8s
+            // attempt budget, which is why prod planner enrichment timed out
+            // on effectively every chat and always fell back to the
+            // deterministic mainline). A JSON role-plan needs no
+            // chain-of-thought: with the budget pinned to 0 the same call
+            // returns valid schema-conforming JSON in ~2.8s.
+            thinkingBudget: CONCERN_SEMANTIC_PLAN_THINKING_BUDGET,
           })),
           effectiveAttemptTimeoutMs,
           'GEMINI_UPSTREAM_TIMEOUT',
@@ -70086,7 +71977,10 @@ async function runConcernSemanticPlanner({
           provider: 'gemini',
           requested_model: attempt.model,
           effective_model: attempt.model,
-          selection_source: 'local_gemini_rest_direct',
+          // The attempt failed before callGeminiJsonObject reported which
+          // executor it picked, so the transport is unknown here — label the
+          // failure stage instead of guessing REST vs SDK.
+          selection_source: /TIMEOUT/i.test(String(classified.reason || '')) ? 'attempt_timeout' : 'attempt_error',
           meta: normalizeQaTimeoutMeta(
             err && err.meta && typeof err.meta === 'object' ? err.meta : {},
             {
@@ -70157,7 +72051,6 @@ async function runConcernSemanticPlanner({
             ),
           ).replace(/\s+/g, ' ').slice(0, 400)
         : '';
-      lastSemanticPlan = semanticPlan;
       const providerReason = pickFirstTrimmed(plannerResponse?.reason) || null;
       if (/TIMEOUT/i.test(String(providerReason || ''))) anyTimeout = true;
       const attemptTrace = {
@@ -70206,7 +72099,6 @@ async function runConcernSemanticPlanner({
         return { semanticPlan, trace, upstream: plannerResponse };
       }
       if (
-        index === 0 &&
         isPlainObject(deterministicMainlinePlan) &&
         Array.isArray(deterministicMainlinePlan.core_roles) &&
         deterministicMainlinePlan.core_roles.length > 0
@@ -70325,7 +72217,16 @@ function buildConcernSelectorDisplayCandidates(recommendations = []) {
           : null,
         retrieval_source: pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source),
         category: pickFirstTrimmed(row.category, row.product_type, row.step),
-        price_label: formatRecoAssistantPromptPriceLabel(row.price) || null,
+        // Read the price the way every other lane reads it. Passing the RAW `row.price` sent a bare
+        // scalar into normalizePriceObject with a flat 'USD' fallback, so a row that declared its
+        // currency in a sibling field had it discarded and the price relabelled: 88 GBP was stated to
+        // the model as "$88", and 4500 JPY as "$4500". That is the defect #2065 closed for the
+        // catalog reader, at the one call site that never used that reader. extractCatalogCandidatePrice
+        // resolves the row's declared currency across its ~26 price seeds, so this also stops the
+        // selector missing prices carried as price_amount / offer_price / offers[] rather than `price`.
+        price_label: formatRecoAssistantPromptPriceLabel(
+          extractCatalogCandidatePrice(row) || extractCatalogCandidatePrice(row.sku),
+        ) || null,
         short_description: pickFirstTrimmed(row.short_description, row.shortDescription),
         why_this_one: pickFirstTrimmed(row.why_this_one, row.whyThisOne),
         key_features: asStringArray(row.key_features || row.keyFeatures, 4),
@@ -76311,11 +78212,48 @@ function normalizeAlternativesSelectorCandidate(row, { index = 0 } = {}) {
     ? String(idMaterial).trim()
     : `cand_${stableHashBase36(`${name || ''}|${brand || ''}|${pdpUrl || ''}|${index}`).slice(0, 18)}`;
   if (!id || !name) return null;
+  // Same fabricated-zero family as the reco prompt (see toRecoPromptPriceOrNull): a bare
+  // `Number.isFinite(Number(x))` accepted null, '', false and [] as prices, because Number()
+  // maps all of them to 0 and 0 is finite — so a row carrying no price was published as a FREE
+  // product, and `price_usd: true` as a $1 one.
+  //
+  // Reachable from the request body, not latent. `normalized` falls back to the RAW row whenever
+  // normalizeRecoCatalogProduct returns null, which it does for any row without a string
+  // product_id/productId/id. buildRecoAlternativesCandidatePool reads product.candidates[],
+  // product.alternatives[], product.competitors.candidates[] and five more lists straight off
+  // `productObj`, and that is the caller's own `product` — RecoAlternativesRequestSchema types it
+  // `z.record(z.string(), z.any())`, as DupeSuggestRequestSchema does for `original`. Reproduced
+  // through the real pool builder: `{ name: 'X', price_usd: null }` came back as
+  // `{ amount: 0, currency: 'USD' }`.
+  //
+  // Blast radius is the RESPONSE, not the prompt: buildRecoAlternativesPromptPayload projects
+  // candidates down to seven fields and price is not one of them, but
+  // mapSelectorCandidatesToAlternatives copies this object into `alternatives[].product.price`,
+  // so a client renders the fabricated $0. (recoPriceCeiling already coalesces amount <= 0 with
+  // null into 'unknown', so ranking is unaffected either way.)
+  const scalarPriceUsd = toRecoPromptPriceOrNull(normalized.price_usd);
+  // The object leg keeps #2068's passthrough semantics — a stated amount is a stated price,
+  // including 0 — but a MISSING unit is filled from what the row declares. #2065 fixed that discard
+  // inside extractCatalogCandidatePrice, i.e. for the CATALOG leg, so it never reached here.
+  // '' and not 'USD' as the fallback on BOTH reads: this fills in a unit the row actually declared
+  // and otherwise leaves the object exactly as it arrived. Defaulting to USD would stamp a currency
+  // onto prices where nothing anywhere stated one, adding a key the response never carried and
+  // making a previously-unevaluable price evaluable by a ceiling reader. The "does it declare its
+  // own?" test uses the SAME alias list as the fill — testing only `.currency` let a price
+  // declaring GBP as currency_code/currencyCode/price_currency/priceCurrency be overwritten with
+  // USD, which then WON downstream, reintroducing the very relabel #2065 removed.
   const priceObj = normalized.price && typeof normalized.price === 'object' && !Array.isArray(normalized.price)
-    ? normalized.price
-    : Number.isFinite(Number(normalized.price_usd))
-      ? { amount: Number(normalized.price_usd), currency: 'USD' }
-      : null;
+    // ...and only onto an object that actually states an amount. Filling `{}`, `{unknown: true}` or
+    // `{amount: true}` would attach a unit to a non-price — harmless downstream today, but it is a
+    // key the response never carried.
+    ? (normalizePriceObject(normalized.price, { fallbackCurrency: 'USD' }) == null
+      || declaredPriceCurrencyOf(normalized.price, '')
+      || !declaredPriceCurrencyOf(normalized, '')
+      ? normalized.price
+      : { ...normalized.price, currency: declaredPriceCurrencyOf(normalized, '') })
+    : scalarPriceUsd == null
+      ? null
+      : { amount: scalarPriceUsd, currency: 'USD' };
   return {
     id: String(id).trim().slice(0, 120),
     product_id: productId || null,
@@ -77823,20 +79761,23 @@ function isExternalRecoAlternativesSeedProduct(product) {
       : {};
   const matchState = String(metadata.match_state || metadata.matchState || '').trim().toLowerCase();
   const pdpPath = String(pdpOpen.path || '').trim().toLowerCase();
-  const merchantId = pickFirstTrimmed(
-    row.merchant_id,
-    row.merchantId,
-    sku.merchant_id,
-    sku.merchantId,
-    canonicalRef.merchant_id,
-    canonicalRef.merchantId,
-  );
   const productId = pickFirstTrimmed(row.product_id, row.productId, sku.product_id, sku.productId, canonicalRef.product_id, canonicalRef.productId);
   const source = String(pickFirstTrimmed(row.retrieval_source, row.source, sku.retrieval_source, sku.source) || '').trim().toLowerCase();
+  // The merchant_id leg is now the shared lane predicate. It replaces a pick
+  // over row/sku/canonical_product_ref, so the nested `sku` is asked separately
+  // — the adapter is row-shaped and does not read it. The four NON-merchant
+  // legs (llm_seed, pdp_open.path, retrieval_source, `ext_` id) are untouched,
+  // per the adapter's SCOPE note: this predicate answers lane membership only,
+  // and each site keeps its own broader notion of "external" ORed alongside.
+  //
+  // Without this, a catalog-sourced re-keyed row — retrieval_source
+  // 'catalog_products', slug id, no external pdp_open path — has NO leg left to
+  // match on and silently leaves the external-alternatives lane at phase 3.
   return (
     matchState === 'llm_seed' ||
     pdpPath === 'external' ||
-    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isExternalSeedLaneProductOrCanonicalRef(row) ||
+    isExternalSeedLaneProduct(sku) ||
     source === 'external_seed' ||
     String(productId || '').trim().toLowerCase().startsWith('ext_')
   );
@@ -79293,8 +81234,16 @@ function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
 function classifyRecoAuthorityHitSource(candidate) {
   const normalized = normalizeRecoCatalogProduct(candidate);
   if (!normalized) return '';
+  // Asked of the RAW candidate as well as the normalized projection:
+  // normalizeRecoCatalogProduct drops `platform` and `source_system` entirely,
+  // so on the normalized object the only surviving lane evidence after the
+  // re-key would be none at all, and every re-keyed row would be relabelled
+  // 'internal_hit' — corrupting the per-seller attribution signal ADR-009
+  // exists to build. The normalized object is still asked because it resolves
+  // merchant aliases (`merchant.merchant_id`) the raw row may only carry nested.
   if (
-    String(normalized.merchant_id || '').trim().toLowerCase() === String(EXTERNAL_SEED_MERCHANT_ID || '').trim().toLowerCase() ||
+    isExternalSeedLaneProduct(candidate) ||
+    isExternalSeedLaneProduct(normalized) ||
     String(normalized.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
     String(normalized.source || '').trim().toLowerCase().includes('external')
   ) {
@@ -79303,6 +81252,21 @@ function classifyRecoAuthorityHitSource(candidate) {
   return 'internal_hit';
 }
 
+// ADR-009 phase 0 — KNOWN RESIDUAL, deliberately not migrated.
+//
+// The only input here is a canonical product ref, and the resolver's contract
+// for that ref is literally `{merchant_id, product_id}` (src/server.js:23913),
+// re-normalized through normalizeCanonicalProductRef, which keeps nothing else.
+// There is no `platform` / `source_system` to migrate onto, so routing this
+// through isExternalSeedLaneProduct would be a no-op dressed up as a fix.
+//
+// Consequence, stated rather than hidden: after phase 3 this emits
+// 'internal_hit' for a re-keyed row that resolved through the seed lane. It is
+// a telemetry label (`authority_presence_class` / `catalog_grounding_resolver_source`)
+// — never a serving or eligibility gate — and it has an independent
+// `metadata.sources` leg below. Fixing it properly means teaching
+// resolveRecoPdpByLocalResolver to surface the resolved row's lane fields,
+// which is a resolver contract change and belongs in its own PR.
 function summarizeResolverAuthoritySource(resolved) {
   const canonicalRef =
     normalizeCanonicalProductRef(resolved?.canonicalProductRef, {
@@ -82603,6 +84567,9 @@ function buildRecoLlmPromptState({
   globalStatus = null,
   ingredientContext = null,
   candidates = [],
+  // Which domain the CALLER is entitled to. Chat never sets it and keeps reco_main_v1_2; the
+  // agent-door bridge sets 'beauty' (#2155). See RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID.
+  promptDomainScope = '',
 } = {}) {
   const promptBundle = buildAuroraProductRecommendationsPromptBundle({
     profile: profileSummary || {},
@@ -82611,6 +84578,7 @@ function buildRecoLlmPromptState({
     globalStatus: isPlainObject(globalStatus) ? globalStatus : {},
     candidates: Array.isArray(candidates) ? candidates : [],
     ingredientContext,
+    promptDomainScope,
   });
   const query = `${prefix}${promptBundle.query}`;
   const llmTraceCoverage = buildRecoInputCoverage({
@@ -82629,6 +84597,8 @@ function buildRecoLlmPromptState({
   });
   llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
   llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
+  llmTraceSeed.prompt_domain_scope = String(promptBundle.prompt_spec.domain_scope || '').trim() || null;
+  llmTraceSeed.wide_template_active = Boolean(promptBundle.prompt_spec.wide_template_active);
   llmTraceSeed.candidate_count = Array.isArray(candidates) ? candidates.length : 0;
   const promptContractBase = validateRecoPromptContract({
     query,
@@ -82671,6 +84641,9 @@ async function runRecoLlmPrimary({
   let llmStructuredSource = null;
   let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
   let llmInvoked = false;
+  // Set only when the upstream call actually threw. Kept separate from llmFailureClass,
+  // which feeds the contract/status derivation and is deliberately left alone here.
+  let llmUpstreamError = null;
 
   if (!promptContract.ok) {
     llmLatencyMs = 0;
@@ -82707,7 +84680,12 @@ async function runRecoLlmPrimary({
       llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      llmUpstreamError = {
+        code: classifyRecoLlmLegFailure(err),
+        status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
+        not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
+      };
+      upstreamFailureCode = llmUpstreamError.code;
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
         llmFailureClass = 'timeout';
@@ -82761,18 +84739,52 @@ async function runRecoLlmPrimary({
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
-    } else if (!llmFailureClass && llmInvoked) {
+    } else if (!llmFailureClass && llmInvoked && !llmUpstreamError) {
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    } else if (llmUpstreamError) {
+      // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
+      // catch already set (upstream_timeout / upstream_dependency_failure) rather than
+      // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // NOT gated on `!llmFailureClass`. It was, and that made this branch unreachable for a 5xx:
+      // the catch sets llmFailureClass = 'timeout' for transient codes, so a 503 recorded NO
+      // main-stage metric at all — it went from the wrong bucket to no bucket, and the
+      // `upstream_timeout` token added to the allowlist alongside it was dead on arrival.
+      //
+      // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
+      // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
+      // incident would have been indistinguishable from an unrecognised token. This branch DOES
+      // fire for a 5xx — it used to be gated on `!llmFailureClass`, and the catch sets
+      // llmFailureClass = 'timeout' for transient codes, which is exactly what made a 503 record
+      // nothing at all. Ungating it is what put `upstream_timeout` on the wire.
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
 
+  // WHAT HAPPENED TO THE LLM LEG, as a fact rather than an inference. Every other field here
+  // describes the ANSWER; none of them said whether the model was reached at all, so a dead
+  // leg and a model that declined were the same record — and the recovery path below strips
+  // `error_class`, which was the only surviving hint. This one is not stripped.
+  const llmLegOutcome = !promptContract.ok
+    ? 'prompt_contract_mismatch'
+    : !llmInvoked
+      ? 'not_invoked'
+      : llmUpstreamError
+        ? (llmUpstreamError.not_configured ? 'not_configured' : (llmUpstreamError.code || 'upstream_error').toLowerCase())
+        : (llmFailureClass || 'ok');
   const llmTrace = {
     ...llmTraceSeed,
     latency_ms: llmLatencyMs,
     cache_hit: false,
     prompt_contract_ok: promptContract.ok,
+    llm_leg: {
+      invoked: Boolean(llmInvoked),
+      outcome: llmLegOutcome,
+      upstream_status: llmUpstreamError ? llmUpstreamError.status : null,
+      latency_ms: llmLatencyMs,
+    },
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };
@@ -82812,6 +84824,7 @@ const {
   resolveRecommendationTargetContext,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
+  buyerRegionFromContext,
   normalizeRecoEffectiveFailureClass,
   normalizeRecoFailureClass,
   normalizeRecoFailureOrigin,
@@ -82850,6 +84863,7 @@ const {
   shouldUseRecoCatalogTransientFallback,
   buildRecoCatalogTransientFallbackStructured,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   groundRecoRecommendationsFromCatalog,
   coerceRecoItemForUi,
   normalizeRecoGenerate,
@@ -82883,6 +84897,9 @@ const {
   RECO_PDP_LIGHT_ENRICH_ENABLED,
   AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED,
   AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
+  AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED,
+  AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
+  AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED,
   CONCERN_SEMANTIC_PLAN_VERSION,
   CONCERN_SELECTOR_RACE_VERSION,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
@@ -84245,6 +86262,19 @@ function getRequiredRouteContractsHealth() {
   return requiredRouteContractsHealth;
 }
 
+// Marks a request that is ALREADY running inside the v1 mainline because the v2 chat router proxied it here.
+// A Symbol, not a header: it must be un-forgeable from outside, and it must not survive onto a real HTTP hop.
+//
+// It exists to break a mutual delegation. The v2 router proxies a request in here; the mainline's intent
+// contract can independently classify that same request as `delegate_target: 'v2'` and hand it straight back
+// (see the handleChatV2 branch below); the v2 router then proxies it in again. That cycle pinned a CPU at 100%
+// and never answered — and the `withTimeoutCode` bound around the proxy call could not stop it, because the
+// recursion is a chain of promise continuations, so the microtask queue never drains and the timeout's timer
+// never gets a turn. One concrete instance is fixed at its source in recoOwnershipPolicy, but the shape is
+// general: any future disagreement between the two routers would reproduce it. So the second hop is refused
+// structurally rather than left to whichever classifier blinks first.
+const V1_MAINLINE_IN_PROCESS = Symbol('aurora.v1ChatMainlineInProcess');
+
 async function runV1ChatMainlineInProcess({ req, body } = {}) {
   if (typeof runMountedV1ChatHandlerImpl !== 'function') {
     throw new Error('v1_chat_mainline_handler_unmounted');
@@ -84252,6 +86282,7 @@ async function runV1ChatMainlineInProcess({ req, body } = {}) {
   const baseReq = req && typeof req === 'object' ? req : {};
   const headers = baseReq.headers && typeof baseReq.headers === 'object' ? { ...baseReq.headers } : {};
   const mockReq = Object.create(baseReq);
+  mockReq[V1_MAINLINE_IN_PROCESS] = true;
   mockReq.body = body && typeof body === 'object' ? body : {};
   mockReq.headers = headers;
   mockReq.method = 'POST';
@@ -87610,10 +89641,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const descriptorAnchorBase = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
       const descriptorAnchor =
-        descriptorAnchorBase && (
-          pickFirstTrimmed(descriptorAnchorBase.merchant_id, descriptorAnchorBase.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-          || pickFirstTrimmed(descriptorAnchorBase.canonical_product_ref?.merchant_id, descriptorAnchorBase.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-        )
+        descriptorAnchorBase && isExternalSeedLaneProductOrCanonicalRef(descriptorAnchorBase)
           ? (await loadExternalSeedEvidenceProduct(descriptorAnchorBase, { logger })) || descriptorAnchorBase
           : descriptorAnchorBase;
       const productUrlForIngredientAnalysis = String(
@@ -89483,6 +91511,9 @@ function mountAuroraBffRoutes(app, { logger }) {
     normalizeRecoGroundingStatus,
     attachRecoContractMeta,
     restorePlanOnlyRecommendations,
+    resolveBuyerRegion,
+    isRejectedBuyerRegionInput,
+    buildServedPriceRegionCensus,
     logger,
   });
 
@@ -97036,14 +99067,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       const earlyNormalizedActionPayload = ingressSignalSnapshot.normalizedActionPayload;
-      const earlyActionLabelFromPayload = ingressSignalSnapshot.actionLabel;
       const earlyExplicitActionId = ingressSignalSnapshot.explicitActionId;
       const earlyMessage = ingressSignalSnapshot.message;
       const earlyCanonicalIntent = ingressSignalSnapshot.canonicalIntent;
       const earlyLatestRecoContextFromSession = ingressSignalSnapshot.latestRecoContextFromSession;
+      // Order is precedence: later sources overwrite earlier ones. The best-effort scrape goes FIRST, as the
+      // baseline it is, and the ingress overlay lands on top — that overlay already ranks its own sources
+      // (session < free text < request context < action), and the action patch has to stay at the top of that
+      // stack because it is the newest thing the user said this turn.
+      //
+      // It used to be the other way round, which was harmless only while the scrape came back empty here.
+      // `extractProfilePatchFromRequestContextPayload` then learned to descend into `session`, so a request
+      // carrying `chip.start.reco_products` with `profile_patch: { skin_type: 'oily' }` over a session profile
+      // of `combination` had the user's just-stated "im oily skin" overwritten by the stale stored value, and
+      // the beauty mainline recommended against the wrong skin type. Session is not a missing source here —
+      // the overlay already reads it, correctly ranked below the action.
       const earlyProfileForBeautyMainline = extractAnalysisProfileContextOverlay(
-        ingressSignalSnapshot.profileOverlay,
         rawProfilePatchFromRequestContext,
+        ingressSignalSnapshot.profileOverlay,
       );
       const earlyIncludeAlternatives = ingressSignalSnapshot.includeAlternatives;
       const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
@@ -97083,21 +99124,41 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {}),
         },
       };
-      const pivotBeautyEarlyChatEnvelope = buildPivotBeautyChatContractEnvelope({
-        message: earlyMessage,
-        session: pivotBeautySessionForContract,
-        source: 'ingress_fast_path',
-      });
+      // The contract is resolved BEFORE the Beauty Pivot fast path below, which needs its verdict. It still runs
+      // ahead of the v2 delegation, so dbbf4169's ordering — contract handling before intent/v2 routing — holds.
+      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
+      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
+      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
+
+      // The fast path reads free text and session shape and never the action, yet it answers before the v2
+      // delegation below — so a chip belonging to another surface got a beauty answer instead of its own.
+      // `chip.start.travel` carrying a stored `session.profile.travel_plan` matched here and returned a beauty
+      // envelope while the travel skill never ran; the same chip with no stored plan routed correctly.
+      //
+      // The skip is therefore narrow: an explicit action whose contract says v2 owns it. Skipping on the mere
+      // PRESENCE of an action would be far too broad — the beauty mainline owns plenty of chips, and this fast
+      // path is what answers them. `chip.start.reco_products` on a session carrying
+      // `safety_flags: ['pregnancy_avoid_retinoids']` is answered here with the retinoid warning; blanket-skipping
+      // replaced that with "I need a bit more context before narrowing products", which is a safety answer traded
+      // for a slot-filling stall. Ownership stays where it is already decided, in `buildChatIntentContract`.
+      const pivotBeautyEarlyChatEnvelope =
+        earlyExplicitActionId && ingressChatIntentContract?.delegate_target === 'v2'
+          ? null
+          : buildPivotBeautyChatContractEnvelope({
+            message: earlyMessage,
+            session: pivotBeautySessionForContract,
+            source: 'ingress_fast_path',
+          });
       if (pivotBeautyEarlyChatEnvelope) {
         return sendChatEnvelope(pivotBeautyEarlyChatEnvelope);
       }
 
-      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
-      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
-      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
       if (
         effectiveChatFlags.skill_router_v2 &&
-        ingressChatIntentContract?.delegate_target === 'v2'
+        ingressChatIntentContract?.delegate_target === 'v2' &&
+        // …unless the v2 router is what proxied this request into the mainline. Handing it back would ask the
+        // router to make the same decision that sent it here, forever. See V1_MAINLINE_IN_PROCESS.
+        !req?.[V1_MAINLINE_IN_PROCESS]
       ) {
         const { handleChat: handleChatV2 } = require('./routes/chat');
         return handleChatV2(req, res);
@@ -97121,9 +99182,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const shouldEarlyBeautyRecoHardLockAtIngress = !shouldSkipEarlyBeautyLockForTravelHandoffAtIngress && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract,
-        normalizedActionPayload: earlyNormalizedActionPayload,
-        actionId: earlyExplicitActionId,
-        actionLabel: earlyActionLabelFromPayload,
         message: earlyMessage,
         canonicalIntent: earlyCanonicalIntent,
       });
@@ -98819,9 +100877,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const shouldEarlyBeautyRecoHardLock = !shouldSkipEarlyBeautyLockForTravelHandoff && !travelBeautyAdviceRequest && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract: effectiveIngressChatIntentContract,
-        normalizedActionPayload,
-        actionId,
-        actionLabel,
         message,
         canonicalIntent,
       });
@@ -100031,7 +102086,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : null;
             const remoteMerchantId = String(resolvedRemoteProduct?.merchant_id || '').trim();
 
-            if (resolvedRemoteProduct && remoteMerchantId && remoteMerchantId !== 'external_seed') {
+            // Lane membership, not the merchant literal: after the ADR-009 phase-3 re-key a seed row
+            // carries `merch_obs_*`, so `!== 'external_seed'` would flip to TRUE and start preferring
+            // the REMOTE resolution for rows that used to fall through to the local resolver. The
+            // remoteMerchantId presence check is kept — an unattributed remote row is still skipped.
+            if (
+              resolvedRemoteProduct
+              && remoteMerchantId
+              && !isExternalSeedLaneProductOrCanonicalRef(resolvedRemoteProduct)
+            ) {
               products = [resolvedRemoteProduct];
               availabilityResolvedVia = 'products_resolve';
             } else if (resolvedLocalProduct) {
@@ -101654,6 +103717,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          // COUNTED: the routine lane answers a recommendation request without entering the reco
+          // lane, from its own synthesized routine query — the user's text never reaches the
+          // upstream. Budget-flow branch.
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeAssistantMessage(
@@ -101744,6 +103811,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        // COUNTED: the other routine-lane branch. Its trigger is a substring match on the message
+        // (`routine`, `am/pm`, and the Chinese equivalents), so it is broad live traffic.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
@@ -103471,6 +105541,17 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  // Exported so the platform-guard suite can drive them directly. These are the env
+  // predicates that gate USE_AURORA_BFF_MOCK and the shared-truth self-base default;
+  // before the shim they read RAILWAY_ENVIRONMENT, which is unset on Cloud Run, and
+  // nothing in the tree could observe whether they still fire.
+  isProductionLikeAuroraBffEnv,
+  isTestLikeAuroraBffEnv,
+  isAuroraBeautySharedTruthSelfBaseEnabled,
+  // ADR-024 Phase 1. Exported so the buyer-region suite can drive the ceiling resolver directly:
+  // its only production caller is isConcernFrameworkCandidateOverBudget, several hundred lines of
+  // candidate scoring away, and a currency defect there is invisible through that seam.
+  resolveConcernFrameworkBudgetCeiling,
   runV1ChatMainlineInProcess,
   hasMountedV1ChatMainlineHandler() {
     return typeof runMountedV1ChatHandlerImpl === 'function';
@@ -103488,6 +105569,13 @@ const __internal = {
   getRecoCatalogSearchSourceHealthSnapshot,
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
+  hasConcernFrameworkExternalSeedAuthority,
+  // ADR-009 phase 0 reader-parity surface — see
+  // tests/external_seed_lane_reader_parity.node.test.cjs §6.
+  isExternalSeedLaneProductOrCanonicalRef,
+  extractExternalSeedSnapshotEvidence,
+  isExternalRecoAlternativesSeedProduct,
+  classifyRecoAuthorityHitSource,
   buildExternalSeedDirectSearchTransportPolicy,
   routeCandidates,
   routeCompetitorCandidatePools,
@@ -103563,13 +105651,48 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  classifyBeautyMainlineBoundaryRejectCandidate,
+  extractCatalogCandidatePrice,
+  buildRecoCatalogQueries,
+  buildRecoNeedSeedQueries,
+  collectRecoRecallPlanQueryTexts,
+  getRecoCatalogFailFastSnapshot,
+  markRecoCatalogFailFastFailure,
+  markRecoCatalogFailFastSuccess,
+  beginRecoCatalogFailFastProbe,
+  recoCatalogFailFastState,
+  buildRecoAssistantPromptPriceDiagnostics,
+  buildRecoGenerateFromCatalog,
+  groundRecoRecommendationsFromCatalog,
+  mergeRecoPlanWithGroundedCandidate,
+  buildRecoCollectedFromCachedPool,
+  extractRecoRecallPoolForCache,
+  getRecoRecallPoolCache,
+  scheduleRecoCatalogFailFastOffRequestProbe,
+  runRecoCatalogFailFastOffRequestProbe,
+  beginRecoRecallPoolRevalidation,
+  endRecoRecallPoolRevalidation,
   hasConcernFrameworkFinishFitSameRoleTradeoffCoverage,
   shouldStopConcernFrameworkFinishFitPrimaryExternalEarly,
   runConcernSelectorRace,
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
+  buildBeautyMainlineLocalCandidatePoolSummary,
+  mergeConcernFrameworkRerankedState,
+  buildConcernFrameworkSummary,
+  resolveConcernFrameworkBudgetCeiling,
+  classifyConcernFrameworkCandidateAgainstBudget,
+  isConcernFrameworkCandidateOverBudget,
+  applyConcernFrameworkBudgetConformingFirst,
+  buildConcernFrameworkBudgetCheckMarker,
+  formatConcernFrameworkBudgetCheckNote,
+  pickConcernFrameworkBudgetCheckMarker,
+  buildConcernRecommendationsFromSelectedCandidates,
+  buildStrictSelectedOnlyRecoAssistantPromptContext,
   collectRecoCandidatesFromRecallPlan,
+  executeRecoRecallPlanEntry,
+  resolveRecoSearchRequestLimit,
   collectRecoCandidatesFromQueryLevels,
   resolveRecoQueryEntryTimeoutMs,
   runBeautyMainlineLocalHandoffSearch,
@@ -103605,6 +105728,8 @@ const __internal = {
   resolveProductIntelKbKeyQuality,
   extractProductPriceFromHtml,
   normalizePriceObject,
+  formatRecoAssistantPromptPriceLabel,
+  buildConcernSelectorDisplayCandidates,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
@@ -103619,6 +105744,10 @@ const __internal = {
   buildRuleBasedSkinAnalysis,
   normalizeSkinAnalysisFromLLM,
   mergePhotoFindingsIntoAnalysis,
+  normalizeProgressLlmOutput,
+  buildSkinProgressCard,
+  deriveConcernConfidence,
+  buildArtifactConfidence,
   hasRenderableCards,
   inferCardGuardReasonFromEvents,
   ensureNonEmptyChatCardsEnvelope,
@@ -103677,6 +105806,7 @@ const __internal = {
   buildAuroraProductRecommendationsPromptBundle,
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
+  buildAuroraProductRecommendationsPromptBundle,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,
@@ -103687,6 +105817,7 @@ const __internal = {
   buildRecoAlternativesCandidatePool,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
+  buildRecoGenerateUserAsk,
   resolveIngredientReferenceRuntimeMatch,
   resolveIngredientSignalRuntimeMatch,
   extractIngredientLookupTargetFromText,
@@ -103806,6 +105937,7 @@ const __internal = {
   enrichPhotoModulesCardWithIngredientProductsBounded,
   isTreatmentLikeRecommendationForLowConfidence,
   applyLowConfidenceRecoGuard,
+  deriveArtifactOverallConfidence,
   envelopeRequiresConservativeRecoGuard,
   applyLowOrMediumRecoGuardToEnvelope,
   applyRecoContractToRecoRequestedEvents,

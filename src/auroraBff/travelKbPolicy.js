@@ -21,7 +21,9 @@ function confidenceLevelToScore(level) {
 
 function inferConfidenceScore(confidenceNode) {
   const node = isPlainObject(confidenceNode) ? confidenceNode : {}
-  const numeric = Number(node.score)
+  // F4: `!= null` before Number() — a null score falls through to the
+  // level-derived value instead of reading as an explicit 0.
+  const numeric = node.score != null ? Number(node.score) : NaN
   if (Number.isFinite(numeric)) {
     if (numeric <= 1) return Math.max(0, Math.min(1, numeric))
     if (numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))

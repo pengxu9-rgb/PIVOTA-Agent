@@ -23,10 +23,22 @@
  */
 
 const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
+const {
+  getMerchantPurchasabilityClient,
+  createMerchantPurchasabilityClient,
+} = require('./merchantPurchasabilityClient');
 const defaultWarmHandoffMetrics = require('../observability/ucpWarmHandoffMetrics');
+// Shared with ucpOrderWebhookReceiver: undici hides the real network reason on `.cause`. See that module.
+const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
 
 const WARM_HANDOFF_DISPOSITION = 'warm_handoff';
 const FLAG_ENV = 'UCP_WARM_HANDOFF_ENABLED';
+
+// The observability label for a handoff the merchant-purchasability gate declined. A MODULE-LOCAL string, not a
+// new FAILURE_REASON member: that enum is the H1 taxonomy shared with classifyUcpFailure and the receipt
+// vocabulary, and widening a shared vocabulary needs its own measured no-change invariant. `reason` reaches the
+// metric through cleanLabel, which takes any string, so nothing needs widening for this to be visible.
+const PURCHASABILITY_DECLINED_REASON = 'merchant_not_purchasable';
 
 // H1 resilience defaults (all overridable). Bounded so a slow brand can't hang the handoff — any breach falls
 // back to the cold redirect.
@@ -41,6 +53,9 @@ const DEFAULT_TOTAL_BUDGET_MS = 9000; // total discover->cart(->preview) wall-cl
 // also fetches a create_checkout PRICED preview (synthetic address, no PII) to enrich the result with
 // { item, shipping_options, tax, total, currency, continue_url }. It NEVER completes checkout or pays.
 const INCHAT_PREVIEW_FLAG_ENV = 'UCP_INCHAT_PREVIEW_ENABLED';
+// Below this there is no point starting a create_checkout at all — it would time out inside the
+// remaining window and cost the shopper the wait for nothing.
+const MIN_PREVIEW_BUDGET_MS = 400;
 
 function isPlainObject(v) {
   return Boolean(v && typeof v === 'object' && !Array.isArray(v));
@@ -137,6 +152,9 @@ function hostOf(origin) {
  *   negativeTtlMs?: number,     // negative (unreachable) cache TTL (default 60s, shorter — re-check sooner).
  *   cacheMaxEntries?: number,   // bounded cache cap (default 500).
  *   now?: () => number,         // injectable clock for tests.
+ *   shouldOfferPurchase?: Function, // merchant-purchasability gate override ({domain, market}) -> {offer, source}.
+ *                                   // Default: the shared merchantPurchasabilityClient (own env switch, own
+ *                                   // bounded 5-min cache, fails OPEN). Tests inject this instead of a transport.
  * }} [deps]
  */
 function createWarmHandoffService(deps = {}) {
@@ -165,6 +183,51 @@ function createWarmHandoffService(deps = {}) {
     : isInchatPreviewEnabled(deps && deps.env ? deps.env : process.env);
   // Explicit, bounded, TTL'd endpoint cache. Value = { mcpEndpoint: string|null, reachable, reason }.
   const endpointCache = createTtlCache({ maxEntries: cacheMaxEntries, now });
+  // The merchant-purchasability gate. Injectable so a test can drive the decision without a transport;
+  // the default is the shared client (its own env switch, its own bounded 5-minute cache, its own
+  // fail-open). Bound to this service instance, never re-read per call, so the cache is process-wide.
+  // ONE client per service instance (not per call): a client built per call would build a fresh cache per
+  // call, so every checkout would be a cache MISS and the 5-minute bound would be decorative.
+  //
+  // `deps.purchasability` forwards construction options (env, fetchImpl, clock, TTLs) to that client, so a
+  // test can drive the REAL decision path with a stubbed transport rather than only stubbing the decision.
+  // Supplying either it or `deps.env` opts out of the process singleton — a test must not write into a cache
+  // the next test reads.
+  // ⚠️ THE PRECEDENCE HERE WAS A LIVE DEFECT. The first cut read
+  // `getMerchantPurchasabilityClient(opts || isPlainObject(deps.env) ? {...} : undefined)`,
+  // which groups as `(opts || isPlainObject(env)) ? {...} : undefined` — so on the PROD
+  // shape, where neither is supplied, it passed `undefined` and the singleton was built
+  // with no logger at all. Both production construction sites reach here that way
+  // (`checkoutHandoffResolver.js` and `ucpWarmHandoffInternalRoute.js`, the latter passing
+  // `logger: deps.logger || null`), so every event in the client — including the
+  // `error`-level misordered-arming alarm — was written to nothing. Reproduced against
+  // `{tier:'browse_only', enforced:true, sweep_enabled:false}`: no alarm fired.
+  //
+  // Written as statements rather than a nested ternary, because the whole bug was a
+  // ternary that read correctly and grouped differently.
+  const purchasabilityOptions = isPlainObject(deps.purchasability) ? deps.purchasability : null;
+  const purchasabilityIsolated = Boolean(purchasabilityOptions) || isPlainObject(deps.env);
+  let purchasabilityClient = null;
+  if (typeof deps.shouldOfferPurchase !== 'function') {
+    if (purchasabilityIsolated) {
+      // A test (or any caller with its own env/transport/clock) gets its OWN client, so it
+      // can never write into the cache the rest of the process reads.
+      purchasabilityClient = createMerchantPurchasabilityClient({
+        env: isPlainObject(deps.env) ? deps.env : process.env,
+        logger,
+        ...(purchasabilityOptions || {}),
+      });
+    } else {
+      // THE PROD SHAPE. One shared, bounded cache for the process — and a logger when this
+      // service has one. When it does not (the click lane passes null), the key is omitted
+      // ENTIRELY so the client falls back to its own module-logger default rather than
+      // being handed an explicit `null`, which it honours as "stay silent".
+      purchasabilityClient = getMerchantPurchasabilityClient(logger ? { logger } : undefined);
+    }
+  }
+  const shouldOfferPurchaseFn = typeof deps.shouldOfferPurchase === 'function'
+    ? deps.shouldOfferPurchase
+    : (args) => purchasabilityClient.shouldOfferPurchase(args);
   // Hosts that have EVER resolved reachable in this process — used to detect reachability drift (a brand that
   // used to expose UCP starts failing discovery). PII-free (host only).
   const everReachable = new Set();
@@ -192,15 +255,26 @@ function createWarmHandoffService(deps = {}) {
     let entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
     try {
       const disco = await client.discoverEndpoint(origin);
+      const status = disco && Number(disco.status);
       if (disco && disco.mcpEndpoint) {
         entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true, reason: null };
+      } else if (status >= 300 && status < 400) {
+        // The client refuses a redirected profile (UCP MUST NOT follow) and hands the 3xx back as its
+        // status. That is NOT "the brand exposes no UCP" — it is a merchant that put a redirect in front of
+        // its profile, which someone can go fix — so it gets its own reason (a taxonomy/metric label of its
+        // own, not folded into not_ucp_reachable) and a WARN, not the info line the highest-volume
+        // no-profile path uses. Classified on the STATUS, never on any error wording.
+        entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.PROFILE_REDIRECTED };
+        note('warn', 'ucp_warm_handoff_profile_redirected', { origin, status });
       } else {
         entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
         note('info', 'ucp_warm_handoff_not_reachable', { origin, status: disco && disco.status });
       }
     } catch (err) {
       entry = { mcpEndpoint: null, reachable: false, reason: classifyUcpFailure({ thrown: err, phase: 'discovery' }) };
-      note('warn', 'ucp_warm_handoff_discovery_error', { origin, message: err && err.message, reason: entry.reason });
+      note('warn', 'ucp_warm_handoff_discovery_error', {
+        origin, message: err && err.message, ...fetchCauseDetail(err), reason: entry.reason,
+      });
     }
 
     if (entry.reachable) {
@@ -228,6 +302,12 @@ function createWarmHandoffService(deps = {}) {
    * @param {{
    *   brandDomain: string,      // the brand storefront host/URL (e.g. cosrx.com)
    *   variantGid: string,       // resolved Shopify variant GID (gid://shopify/ProductVariant/<n>)
+   *   market?: string,          // the REQUEST'S buyer market (ISO 3166-1 alpha-2), for the purchasability
+   *                             // gate only. Absent => no fact can be read: under backend enforcement that is
+   *                             // a decline (cold redirect), otherwise the previous behaviour.
+   *                             // NEVER defaulted to a served/egress market: the fact is about the
+   *                             // buyer's market, and a positive fact from another vantage is evidence for a
+   *                             // human, not permission for the door.
    *   quantity?: number,
    *   attribution?: object,     // optional UCP attribution passthrough (NOT payment)
    *   context?: object,         // optional cart context passthrough
@@ -252,6 +332,46 @@ function createWarmHandoffService(deps = {}) {
     }
     const brandLabel = hostOf(origin);
 
+    // ---- MERCHANT PURCHASABILITY GATE (pivota-backend WP6 / #2240) -------------------------------------
+    //
+    // THE SEAM. This is the one line in the gateway where a merchant×market stops being offered as a
+    // PURCHASE. Everything below it — discovery, create_cart, the in-chat priced preview whose
+    // `checkout_status` is the `ready_for_complete` the incident record cites — exists to hand a shopper a
+    // pre-built cart on that merchant's own checkout. A `null` from here is not an error: it is the
+    // COLD-REDIRECT fallback every other failure path in this function already returns, and both callers
+    // (checkoutHandoffResolver's `maybeResolveWarmHandoff` and the internal click route) already treat it
+    // as "send the shopper to the product page instead". That is the browse/referral behaviour the gate
+    // falls back TO, unchanged, and it is why the gate sits here rather than in either caller.
+    //
+    // PLACED BEFORE DISCOVERY ON PURPOSE: a merchant we will not offer purchase for should not be
+    // contacted at all for a cart we are not going to use.
+    //
+    // FAILS OPEN BY CONSTRUCTION. `shouldOfferPurchase` never throws and never refuses on a failure — the
+    // backend already fails closed, and a second fail-closed layer turns one backend blip into a
+    // catalogue-wide outage. `offer: false` is reachable only when the backend answered 200 AND is
+    // enforcing: `source: 'gate'` (it said browse_only for this merchant × market) or
+    // `source: 'unkeyable_enforced'` (no market on this request, so no fact can exist for it — backend
+    // #2352). Both are taken HERE, by the one `offer === false` test, and neither is re-derived from
+    // `source`.
+    //
+    // BOUNDED BY WHAT IS LEFT OF THE CALLER'S BUDGET, not by the client's own ceiling.
+    // Measured: the click lane runs on a 2000 ms total budget inside the backend's 2.5 s
+    // `wait_for`, while the client's default per-call ceiling is 1500 ms and its hard cap
+    // 2000 ms. Unclamped, a slow-but-not-dead backend would spend the ENTIRE click budget
+    // here and the cart below would never be built — fail-open in name, cold redirect in
+    // fact, for every merchant at once. Below the client's floor the gate is skipped
+    // outright. Same shape as `buildPreview`'s `previewRemainingMs` further down.
+    const gateBudgetMs = totalBudgetMs - (now() - startedAt);
+    const gateDecision = await shouldOfferPurchaseFn({
+      domain: brandLabel, market: params.market, budgetMs: gateBudgetMs,
+    });
+    if (gateDecision && gateDecision.offer === false) {
+      note('warn', 'ucp_warm_handoff_merchant_not_purchasable', {
+        origin, brand_domain: brandLabel, market: params.market || null, source: gateDecision.source,
+      });
+      return fallback(PURCHASABILITY_DECLINED_REASON, brandLabel);
+    }
+
     const detailed = await discoverBrandEndpointDetailed(origin);
     if (!detailed || !detailed.mcpEndpoint) {
       return fallback((detailed && detailed.reason) || FAILURE_REASON.NOT_UCP_REACHABLE, brandLabel);
@@ -274,7 +394,9 @@ function createWarmHandoffService(deps = {}) {
       });
     } catch (err) {
       const reason = classifyUcpFailure({ thrown: err, phase: 'create_cart' });
-      note('warn', 'ucp_warm_handoff_create_cart_error', { origin, message: err && err.message, reason });
+      note('warn', 'ucp_warm_handoff_create_cart_error', {
+        origin, message: err && err.message, ...fetchCauseDetail(err), reason,
+      });
       return fallback(reason, brandLabel);
     }
 
@@ -312,11 +434,20 @@ function createWarmHandoffService(deps = {}) {
 
     // PHASE 1 in-chat PRICED PREVIEW enrichment. Only when the SEPARATE flag is ON. Flag OFF => `result` above is
     // returned unchanged (byte-identical to today's warm handoff). Any preview failure is swallowed so the warm
-    // handoff still succeeds with just the continue_url. Skipped if the total budget is already spent. HARD BOUND:
-    // create_checkout preview only — no payment, no completion, the continue_url is never opened.
+    // handoff still succeeds with just the continue_url. HARD BOUND: create_checkout preview only — no payment,
+    // no completion, the continue_url is never opened.
+    //
+    // BOUNDED BY WHAT IS LEFT, not by "the budget is not yet spent". The old check was a START GATE: it let the
+    // preview begin at budget-minus-1ms and then take its own full per-call ceiling on top. Measured against a
+    // 2000ms click budget: 1954ms without the preview, 3455ms with it — past the BACKEND caller's hard 2.5s
+    // `asyncio.wait_for`, which aborts to a COLD redirect. So enabling the flag did not degrade to cart-only as
+    // designed; it threw the whole warm handoff away. The shopper is waiting on a 302 for this.
+    const previewRemainingMs = totalBudgetMs - (now() - startedAt);
     if (previewEnabled && cartId && typeof client.createCheckoutPreview === 'function'
-      && now() - startedAt <= totalBudgetMs) {
-      const preview = await buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin });
+      && previewRemainingMs >= MIN_PREVIEW_BUDGET_MS) {
+      const preview = await buildPreview({
+        mcpEndpoint, cartId, variantGid, quantity, origin, budgetMs: previewRemainingMs,
+      });
       if (preview) result.preview = preview;
     }
 
@@ -327,11 +458,14 @@ function createWarmHandoffService(deps = {}) {
   }
 
   /** Fetch + normalize the create_checkout priced preview. Never throws; returns null on any failure. */
-  async function buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin }) {
+  async function buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin, budgetMs }) {
     try {
       const pv = await client.createCheckoutPreview(mcpEndpoint, {
         cartId,
         lineItems: [{ item: { id: variantGid }, quantity }],
+        // The caller's REMAINING window, so this call cannot outlive the budget it was admitted
+        // under. Without it the per-call ceiling applied on top of an almost-exhausted budget.
+        ...(Number.isFinite(budgetMs) ? { timeoutMs: Math.max(1, Math.floor(budgetMs)) } : {}),
       });
       if (!pv || !pv.ok || !pv.priced) {
         note('info', 'ucp_inchat_preview_unavailable', { origin, status: pv && pv.status });
@@ -347,13 +481,19 @@ function createWarmHandoffService(deps = {}) {
         currency: p.currency || null,
         // The shopper still pays on the merchant storefront; this is the same handoff URL, surfaced for display.
         continue_url: p.continue_url || null,
+        // THE HOP THAT ACTUALLY DELIVERS IT. This whitelist — not the client's normalized
+        // object — is what `ucpWarmHandoffInternalRoute` receives as `handoff.preview`, so a
+        // field lifted in `normalizePricedCheckout` and omitted here reaches the route as
+        // `undefined` and is published as a constant `null`. Lifting the id without this line
+        // is a no-op with a green test suite, which is exactly how it was first written.
+        checkout_id: p.checkout_id || null,
         checkout_status: p.status || null,
         // True when the merchant still needs a delivery address / payment entered on the STOREFRONT to finalize.
         requires_escalation: Boolean(pv.requires_escalation),
         messages: Array.isArray(p.messages) ? p.messages : [],
       };
     } catch (err) {
-      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message });
+      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message, ...fetchCauseDetail(err) });
       return null;
     }
   }

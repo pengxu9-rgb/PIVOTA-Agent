@@ -330,12 +330,70 @@ test('external_seed: IPS row present + serving_eligible=false → blocked (uncha
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
 });
 
-test('first-party: no IPS row → public (c1.v0.4 keeps the c1.v0.3 carve-out)', () => {
-  // MOYU/GR/PawStyle case — first-party merchants don't get IPS coverage, but
-  // the merchant is the source of truth, so absence of IPS does not block.
+test('first-party: no IPS row → BLOCKED (c1.v0.5 fails closed for every lane)', () => {
+  // This assertion was inverted on 2026-07-31, bringing this repo in line with
+  // the Python twin, which has failed closed here since 2026-07-29. It used to
+  // read "no IPS row → public" on the c1.v0.3 carve-out.
+  //
+  // The carve-out ("IPS coverage is sparse for first-party merchants by
+  // design") described a corpus where every first-party merchant was a retired
+  // test rig, already blocked upstream. The first REAL merchant-sync arrival
+  // (the 2026-07-29 Wix pilot) synced 20 rows with content_key NULL — rows that
+  // can structurally never have an IPS row — and every one went trust-public
+  // with no quality gate; public_not_renderable went red within the hour, and
+  // only the gateway's own fail-closed lookup kept them off the wire.
+  //
+  // An unscored row must not be public. The lifecycle for a fresh sync is
+  // blocked -> scored -> eligible -> public. If this assertion is being flipped
+  // back to 'public', that lifecycle is being reopened AND this repo is being
+  // put back into disagreement with the Python twin over one shared table —
+  // measure the blast radius first.
   const trust = call({ ips: null });
-  assert.equal(trust.serving_decision, 'public');
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('the index gate fails closed on a missing IPS row for EVERY lane', () => {
+  // The gap the repair closes was lane-shaped: external-seed content already
+  // failed closed here, first-party and merchant-synced content did not. Pin
+  // all three lanes so a future edit cannot reintroduce a per-lane carve-out
+  // without saying so out loud.
+  for (const [lane, trust] of [
+    ['first-party', call({ ips: null })],
+    ['external_seed', callExternalSeed({ ips: null })],
+    ['observed_seller', callObservedSeller({ ips: null })],
+  ]) {
+    assert.equal(trust.serving_decision, 'blocked', `${lane} must block on a missing IPS row`);
+    assert.ok(
+      trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE),
+      `${lane} must report INDEX_NOT_SERVING_ELIGIBLE`,
+    );
+  }
+});
+
+test('a missing IPS row does not mask an earlier hard block', () => {
+  // Ordering pin, and the reason the repair measured ZERO prod rows: all 20
+  // rows in the gap set on 2026-07-31 were tombstoned rig rows, and the
+  // lifecycle hard-block returns before the index gate is ever reached. If this
+  // ordering flips, those rows start reporting INDEX_NOT_SERVING_ELIGIBLE and
+  // the reason-code histogram stops being diagnostic.
+  const trust = call({
+    ips: null,
+    product: activeMerchantProduct({ suppression_reason: 'demo_retired_2026_07' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
   assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('an IPS row with serving_eligible=false is NOT the same as a missing one', () => {
+  // `!ips` must mean "no row", not "no opinion". The upserter builds the ips
+  // object only when serving_eligible is non-null, so a present-but-false row
+  // has to keep flowing through the eligibility branch below — that is what
+  // makes the INDEX_ELIGIBLE_READ widening reachable at all.
+  const trust = call({ ips: eligibleIps({ serving_eligible: false }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
 });
 
 test('first-party: IPS row present + serving_eligible=false STILL blocks (unchanged)', () => {
@@ -691,7 +749,26 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // every test green. Bump it here AND in pivota-backend
   // services/catalog_trust_policy.py, and merge the two PRs back to back
   // (backend first).
-  assert.equal(POLICY_VERSION, 'c1.v0.5');
+  //
+  // c1.v0.5 -> c1.v0.6 on 2026-07-31 for the OFFER_PRICE_MISSING gate, which
+  // flips 4 measured prod rows 'public' -> 'blocked' and so is a real logic
+  // change by the versioning rule.
+  //
+  // c1.v0.6 -> c1.v0.7 same day for the canonical-election gate
+  // (NON_CANONICAL_DUPLICATE), which moves 121 measured prod rows
+  // 'public' -> 'shadow'. This repo is the SECOND half of that pair —
+  // pivota-backend#1649 is the first. Until both deploy, the twins disagree.
+  //
+  // c1.v0.7 -> c1.v0.8 on 2026-08-17 (ADR-009): both seed-lane predicates here
+  // stopped naming the retired sentinel seller. deriveVerificationSource tested
+  // it and so labelled scraped rows 'shopify_sync'; isExternalSeedContent was a
+  // hand-rolled trio missing the source_system and seed-id arms, so a mirrored
+  // row on its UPSTREAM's platform (the minted lane) skipped the
+  // identity-coverage gate. Measured on prod: the widened arms catch ZERO rows
+  // the old trio did not, so the serving blast radius is 0 — the bump is for
+  // the DERIVATION change the twin has to agree with. This repo is again the
+  // SECOND half: pivota-backend adr009/trust-policy-lane-parity merges FIRST.
+  assert.equal(POLICY_VERSION, 'c1.v0.8');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
@@ -780,4 +857,320 @@ test('rig in the shadow lane is blocked', () => {
   });
   assert.equal(trust.serving_decision, 'blocked');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
+});
+
+// --- domain normalisation parity with the Python twin -----------------------
+// Both this file and services/catalog_trust_policy.py write catalog_row_trust
+// for the SAME rows (Node via scripts/sync-external-seeds-to-catalog.cjs,
+// Python via the trust cron), so a normalisation split makes serving_decision
+// FLAP — last writer wins. Before pivota-backend#1639 a `www.mintree.us`
+// quarantine blocked a `mintree.us` row on the Python side and not here, and
+// every external-seed sync flipped it back to public.
+const DOMAIN_FORMS = ['mintree.us', 'www.mintree.us', 'MINTREE.US', 'WWW.MinTree.US', '  mintree.us  '];
+
+test('quarantine matches across every www./case/whitespace form, both sides', () => {
+  for (const rowDomain of DOMAIN_FORMS) {
+    for (const matchValue of DOMAIN_FORMS) {
+      const trust = call({
+        product: activeMerchantProduct({ source_domain: rowDomain }),
+        merchant_store: activeMerchantStore({ domain: rowDomain }),
+        active_quarantines: [
+          { match_type: 'domain', match_value: matchValue, state: 'active', expires_at: null },
+        ],
+      });
+      assert.ok(
+        trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+        `row=${JSON.stringify(rowDomain)} match_value=${JSON.stringify(matchValue)} not quarantined`,
+      );
+    }
+  }
+});
+
+// Blanks are unreachable on this path (the `&& domain` short-circuit fires
+// first), so this test documents the real reason they are safe rather than
+// claiming the bareDomain guard is what protects them. The Python twin's
+// quarantine_matches_source has no such short-circuit and DID match every
+// domain-less row against a blank match_value — fixed in the same PR set.
+test('a blank match_value quarantines nobody', () => {
+  for (const blank of ['', '   ', null, undefined]) {
+    const trust = call({
+      product: activeMerchantProduct({ source_domain: null }),
+      merchant_store: activeMerchantStore({ domain: null }),
+      active_quarantines: [
+        { match_type: 'domain', match_value: blank, state: 'active', expires_at: null },
+      ],
+    });
+    assert.ok(
+      !trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+      `blank match_value ${JSON.stringify(blank)} quarantined a domain-less row`,
+    );
+  }
+});
+
+test('lookalike domains are not over-blocked', () => {
+  for (const rowDomain of ['notmintree.us', 'shop.mintree.us', 'mintree.us.evil.com']) {
+    const trust = call({
+      product: activeMerchantProduct({ source_domain: rowDomain }),
+      merchant_store: activeMerchantStore({ domain: rowDomain }),
+      active_quarantines: [
+        { match_type: 'domain', match_value: 'mintree.us', state: 'active', expires_at: null },
+      ],
+    });
+    assert.ok(
+      !trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+      `${rowDomain} was over-blocked`,
+    );
+  }
+});
+
+
+// ---- c1.v0.6: OFFER_PRICE_MISSING -------------------------------------------
+//
+// Mirror of pivota-backend#1649. The gap it closes is GRAIN, not a wrong
+// predicate. pivota-backend's index_pipeline_state 'has_price' was always right
+// — it asked about an unsuppressed, priced catalog_offers row belonging to the
+// catalog_products row in front of it. But index_pipeline_state is keyed by
+// CONTENT_KEY and stores the best sibling's state, while trust is keyed by
+// PRODUCT_KEY and every product_key mints its own pivota_signature_id — its own
+// public PDP. A price-less row sharing a content_key with a priced sibling
+// therefore read the sibling's serving_eligible=true and published a price-less
+// page.
+//
+// Measured on prod 2026-07-31: exactly 4 rows, all Tom Ford fragrances, each
+// with one unsuppressed offer whose list_price, merchant_effective_price and
+// estimated_best_price were ALL NULL — drained by the 2026-07-30 currency
+// remediation without being suppressed. 2,535 further rows also lack a priced
+// offer of their own and every one is already blocked upstream, which is why
+// this gate ships ungated: its entire blast radius is those 4 rows.
+
+test('price gate blocks a row with no priced offer of its own', () => {
+  const trust = call({ row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate leaves a priced row public', () => {
+  const trust = call({ row_has_priced_offer: true });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate is inert when the input is absent', () => {
+  // Tri-state, and the reason it must be. Only the upserter and the backfill
+  // driver compute this input. Reading an ABSENT input as "not priced" would
+  // mass-demote the catalog the first time any other producer called
+  // deriveTrust.
+  const trust = call();
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate ignores a null input rather than treating it as falsy', () => {
+  // `=== false`, not `!rowHasPricedOffer`. null must fall through.
+  const trust = call({ row_has_priced_offer: null });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate does not mask an earlier block reason', () => {
+  // Ordering: the index gate answers for the content_key and runs FIRST, so a
+  // row already blocked there keeps reporting INDEX_NOT_SERVING_ELIGIBLE. If
+  // this ever flips, the reason-code histogram collapses onto the newest gate
+  // and the two grains become indistinguishable in the data.
+  const trust = call({
+    ips: eligibleIps({ serving_eligible: false }),
+    row_has_priced_offer: false,
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate applies to external_seed supply', () => {
+  // The 4 prod rows are external-seed mirror rows, so the lane that actually
+  // regressed must be covered — not just the first-party fixture.
+  const trust = callExternalSeed({ row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('OFFER_PRICE_MISSING is in the reason vocabulary', () => {
+  assert.equal(REASON_CODES.OFFER_PRICE_MISSING, 'OFFER_PRICE_MISSING');
+});
+
+
+// ---- c1.v0.7: NON_CANONICAL_DUPLICATE (the grain bridge) --------------------
+//
+// index_pipeline_state is keyed by content_key and stores ONE row's state;
+// catalog_row_trust is keyed by product_key. content_canonical_election (mig
+// 181) elects the ONE sig per content_key that the sitemap advertises and that
+// every sibling's PDP names in <link rel="canonical">. Nothing connected the
+// two, so a non-elected sibling inherited the content-grained verdict and was
+// promoted as though it were the canonical.
+//
+// Measured on prod 2026-07-31: 121 of 6,814 trust-public rows, ALL on multi-row
+// content_keys. The 4 Tom Ford rows behind OFFER_PRICE_MISSING were 4 of them —
+// the election had already picked the priced tomfordbeauty.com row correctly in
+// every case, which is why this is the general rule and the price gate is now a
+// backstop beneath it.
+
+test('a non-elected duplicate SHADOWS rather than blocking', () => {
+  // Shadow, not blocked, and the distinction is the whole design. The PDP
+  // RENDERER gates on index_pipeline_state.serving_eligible (content grain);
+  // public recall/discovery/feed gate on serving_decision='public' (row grain,
+  // catalogServingIndex). Shadow drops the duplicate out of promotion while its
+  // page keeps answering 200 with rel=canonical intact. Blocking would 404 URLs
+  // Google may already have indexed and destroy the canonical signal.
+  const trust = call({ row_is_elected_canonical: false });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+test('the elected canonical stays public', () => {
+  const trust = call({ row_is_elected_canonical: true });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+test('an absent election never demotes', () => {
+  // 32 multi-row content_keys still have NO election row and the join
+  // legitimately yields NULL. Unlike the other tri-states here, null is a NORMAL
+  // production value — reading it as "not canonical" would shadow every
+  // uncovered row.
+  assert.equal(call().serving_decision, 'public');
+  assert.equal(call({ row_is_elected_canonical: null }).serving_decision, 'public');
+});
+
+test('a non-elected duplicate does not mask a hard block', () => {
+  // The election gate lives in the SHADOW block, reached only after every hard
+  // block has passed. A tombstoned duplicate keeps reporting ROW_TOMBSTONED.
+  const trust = call({
+    row_is_elected_canonical: false,
+    product: activeMerchantProduct({ suppression_reason: 'demo_retired_2026_07' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
+});
+
+test('the price gate still BLOCKS a non-elected duplicate', () => {
+  // Defence in depth. OFFER_PRICE_MISSING is a hard block and runs first, so a
+  // duplicate that is also price-less stays blocked rather than being softened
+  // to shadow. If this ever inverts, the 4 Tom Ford rows quietly return to a
+  // rendering state with no price.
+  const trust = call({ row_is_elected_canonical: false, row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('NON_CANONICAL_DUPLICATE applies to external_seed supply', () => {
+  const trust = callExternalSeed({ row_is_elected_canonical: false });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+// ---------------------------------------------------------------------------
+// ADR-009 — trust classification follows the seed LANE, not the retired seller.
+//
+// Three readers here asked about the sentinel merchant or retyped the
+// observed-seller prefix. The A9-4 re-key moved scraped supply onto per-brand
+// observed sellers, so `merchant_id === 'external_seed'` is now permanently
+// false for every catalog row and `deriveVerificationSource` began reporting
+// SCRAPED rows as merchant syncs — it falls through to the platform arms.
+//
+// NOTE for whoever edits these: `verification_source` names whichever freshness
+// SIGNAL is newest, not the row's class — so each fixture makes the product's
+// own sync the most recent, or `identity_resolver` wins and the test measures
+// the picker instead of the classifier. That mistake cost a red run here.
+// ---------------------------------------------------------------------------
+
+test('verification_source: a re-keyed mirror row is still a SCRAPE, not a sync', () => {
+  // The row mirrors a shopify storefront, so the platform arm below would claim
+  // 'shopify_sync' — which is exactly what shipped after the re-key.
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_obs_7f3a2b1c9d4e5f60',
+      platform: 'shopify',
+      source_system: 'external_product_seeds_mirror_v1',
+      last_seen_in_sync_at: NOW,
+    }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('verification_source: the MINTED lane is a scrape too (no ext_ id, shopify platform)', () => {
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_obs_7f3a2b1c9d4e5f60',
+      platform: 'shopify',
+      source_system: 'catalog_enrichment_agent_v1',
+      source_product_id: 'ilia-the-spf-and-go-makeup-edit',
+      last_seen_in_sync_at: NOW,
+    }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('PRESERVATION: the retired sentinel lump is still a scrape', () => {
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds',
+      last_seen_in_sync_at: NOW,
+    }),
+  });
+  assert.equal(trust.verification_source, 'external_seed_scrape');
+});
+
+test('CONTROL: a genuinely connected shopify merchant still reports a sync', () => {
+  // Without this, every assertion above would pass on a function that returned
+  // 'external_seed_scrape' unconditionally.
+  const trust = call({
+    product: activeMerchantProduct({ last_seen_in_sync_at: NOW }),
+    ips: eligibleIps({ last_extracted_at: daysAgo(5), quality_scored_at: daysAgo(5) }),
+  });
+  assert.equal(trust.verification_source, 'shopify_sync');
+});
+
+test('seed content is recognised by its LANE even under a seller that is neither the sentinel nor merch_obs_', () => {
+  // The arm the hand-rolled trio lacked. 54 such rows exist on prod: seed-routed
+  // supply whose merchant is neither the retired lump nor an observed seller.
+  // Classified by merchant alone they read as FIRST-PARTY and skip the
+  // identity-coverage gate, i.e. scraped content would serve as brand-official.
+  // (Uses a real such seller from that cohort. NOT the retired rig id, which
+  // short-circuits on TEST_MERCHANT_EXCLUDED before this gate is reached.)
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_924da2be8503e5f7',
+      // platform is the UPSTREAM's, not 'external_seed' — that is the whole
+      // point. An earlier version of this fixture used platform:'external_seed',
+      // which the old hand-rolled trio already matched, so it never exercised
+      // the arms this test claims to cover and the narrowing mutant survived.
+      platform: 'shopify',
+      source_system: 'external_product_seeds_mirror_v1',
+    }),
+    identity: approvedIdentity({ identity_confidence: null }),
+  });
+  assert.ok(
+    trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL),
+    `expected the coverage gate to apply; got ${JSON.stringify(trust.serving_reason_codes)}`,
+  );
+  assert.ok(
+    !trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY),
+    'scraped supply must not be exempted as first-party',
+  );
+});
+
+test('CONTROL: a genuinely first-party merchant IS exempt from the coverage gate', () => {
+  // Proves the assertion above discriminates rather than always holding.
+  const trust = call({
+    product: activeMerchantProduct(),
+    identity: approvedIdentity({ identity_confidence: null }),
+  });
+  assert.ok(
+    trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY),
+    `expected first-party exemption; got ${JSON.stringify(trust.serving_reason_codes)}`,
+  );
 });

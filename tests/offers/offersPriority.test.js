@@ -6,7 +6,7 @@ const {
 } = require('../../src/offers/offersPriority');
 
 describe('offers priority', () => {
-  test('prioritizeOffers: internal > external > generic', () => {
+  test('prioritizeOffers does not rank by checkout transport', () => {
     const offers = [
       { purchase_route: 'affiliate_outbound', affiliate_url: 'https://example.com/a' },
       { url: 'https://example.com/misc' },
@@ -15,10 +15,7 @@ describe('offers priority', () => {
     ];
 
     const out = prioritizeOffers(offers);
-    expect(out[0].purchase_route).toBe('internal_checkout');
-    expect(out[1].purchase_route).toBe('affiliate_outbound');
-    expect(out[2].purchase_route).toBe('affiliate_outbound');
-    expect(out[3].url).toBe('https://example.com/misc');
+    expect(out).toEqual(offers);
   });
 
   test('prioritizeOffersResolveResponse: sorts top-level offers', () => {
@@ -31,10 +28,10 @@ describe('offers priority', () => {
     };
     const out = prioritizeOffersResolveResponse(input);
     expect(out).not.toBe(input);
-    expect(out.offers[0].purchase_route).toBe('internal_checkout');
-    expect(out.offers[0].commerce_mode).toBe('merchant_embedded_checkout');
+    expect(out.offers[0].purchase_route).toBe('affiliate_outbound');
+    expect(out.offers[0].commerce_mode).toBe('links_out');
     expect(out.offers[0].order_system_of_record).toBe('merchant_store_platform');
-    expect(out.metadata.commerce_modes).toEqual(['merchant_embedded_checkout', 'links_out']);
+    expect(out.metadata.commerce_modes).toEqual(['links_out', 'merchant_embedded_checkout']);
   });
 
   test('prioritizeOffersResolveResponse: sorts nested data.offers', () => {
@@ -49,8 +46,8 @@ describe('offers priority', () => {
     };
     const out = prioritizeOffersResolveResponse(input);
     expect(out).not.toBe(input);
-    expect(out.data.offers[0].purchase_route).toBe('internal_checkout');
-    expect(out.data.offers[0].checkout_handoff).toBe('embedded');
+    expect(out.data.offers[0].purchase_route).toBe('affiliate_outbound');
+    expect(out.data.offers[0].checkout_handoff).toBe('redirect');
     expect(out.metadata.seller_of_record).toBe('merchant');
   });
 

@@ -135,7 +135,6 @@ function sanitizeInternalProductsSearchRequest(
   const limit = normalizeNonNegativeInteger(input.limit, { min: 1, max: 50 });
   const offset = normalizeNonNegativeInteger(input.offset, { min: 0 });
   const inStockOnly = parseBooleanLike(input.in_stock_only);
-  const allowExternalSeed = parseBooleanLike(input.allow_external_seed);
   const fastMode = parseBooleanLike(input.fast_mode);
   const productOnly = parseBooleanLike(input.product_only);
   const normalized = pruneEmptyFields({
@@ -155,10 +154,10 @@ function sanitizeInternalProductsSearchRequest(
       ? { catalog_surface: firstNonEmptyString(input.catalog_surface).toLowerCase() }
       : {}),
     ...(inStockOnly !== undefined ? { in_stock_only: inStockOnly } : {}),
-    ...(allowExternalSeed !== undefined ? { allow_external_seed: allowExternalSeed } : {}),
-    ...(firstNonEmptyString(input.external_seed_strategy)
-      ? { external_seed_strategy: firstNonEmptyString(input.external_seed_strategy).toLowerCase() }
-      : {}),
+    // Compatibility fields remain accepted, but recall no longer separates
+    // catalog sources. Every eligible offer competes in one relevance pool.
+    allow_external_seed: true,
+    external_seed_strategy: 'unified_relevance',
     ...(fastMode !== undefined ? { fast_mode: fastMode } : {}),
     ...(firstNonEmptyString(input.target_step_family)
       ? { target_step_family: firstNonEmptyString(input.target_step_family).toLowerCase() }

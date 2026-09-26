@@ -27,6 +27,25 @@ import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import { PivotaCommerceError } from '../errors.js';
 import { PIVOTA_TO_ACP_STATUS } from '../acpAp2.js';
 import { sanitizeResult } from './resultSanitizer.js';
+import { delegatedPaymentRefusalAcpResponse } from './delegatedPaymentRefusal.js';
+// The SHARED intake rules (attested-wins precedence, the required-address field set, default-variant
+// resolution). They used to live in this file; they MOVED to buyerIntake.js when the MCP door turned out to
+// have the same three defects, so that there is ONE definition rather than two that can drift. Behaviour here
+// is unchanged — every refusal keeps its code, its `detail.reason` and its message.
+import {
+  assertNoUnresolvedVariants,
+  createDefaultVariantResolver,
+  joinName,
+  normalizeAttestedBuyer,
+  normalizeCartItems,
+  pickCompleteAddress,
+  resolveBuyerEmail,
+  resolveBuyerName,
+  surfaceableIntakeRefusal,
+} from './buyerIntake.js';
+
+// This adapter IS the ACP door; every ctx it builds says so, which scopes the delegated-PSP-token lane.
+const ACP_PROTOCOL_NAME = 'acp';
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
 const CREATE_DEDUP_TTL_MS = 15 * 60 * 1000; // window over which a replayed (buyer, idempotency_key) create dedupes
@@ -71,9 +90,12 @@ export function verifyAcpSignature({ signature, timestamp, rawBody, secret, maxS
  *   sessionStore: { get, set },              // KV: acpSid -> { quote_id, order_id, user_ref }
  *   signingSecret?: string,                  // for the built-in HMAC verifier
  *   authenticate?: (req) => Promise<void>,   // custom auth (overrides built-in); MUST throw on failure
- *   resolveUserRef: (req) => Promise<string|undefined>,  // verified per-buyer identity (NEVER from body)
+ *   resolveUserRef: (req) => Promise<string|{user_ref:string,customer_email?:string,customer_name?:string}|undefined>,
+ *                                            // verified per-buyer identity (NEVER from body). The object form
+ *                                            // carries ATTESTED buyer fields; see requireBuyer.
  *   getProducts?: (query) => Promise<Array>, // product feed source
  *   mapFeedItem?: (product) => object,       // product -> ACP feed item
+ *   variantResolutionTimeoutMs?: number,     // bound on the door's default-variant resolution (see below)
  *   maxClockSkewMs?: number,
  *   now?: () => number,
  * }} deps
@@ -95,10 +117,21 @@ export function createAcpRestAdapter(deps = {}) {
       });
 
   // Resolve the verified buyer; checkout ops are user-scoped so a missing buyer fails closed.
+  //
+  // `resolveUserRef` may return EITHER the historical bare `user_ref` string OR a buyer-identity object
+  // `{ user_ref, customer_email?, customer_name? }` carrying fields ATTESTED by the buyer credential the
+  // integrator verified (see identity/userTokenVerifier.js `attestedBuyerFromClaims`). Both shapes are
+  // supported so every existing wiring keeps working unchanged; the object form is what lets an attested
+  // email beat a caller-asserted one (see mapItemsToQuote). Ownership is unchanged either way: `user_ref`
+  // is still whatever the injected resolver derived, and NOTHING here reads identity from the body.
   async function requireBuyer(req) {
-    const user_ref = await resolveUserRef(req);
-    if (!nonEmpty(user_ref)) throw new PivotaCommerceError('USER_AUTH_REQUIRED', { reason: 'no_verified_buyer' });
-    return user_ref.trim();
+    const resolved = await resolveUserRef(req);
+    const identity = isPlainObject(resolved) ? resolved : { user_ref: resolved };
+    if (!nonEmpty(identity.user_ref)) throw new PivotaCommerceError('USER_AUTH_REQUIRED', { reason: 'no_verified_buyer' });
+    return {
+      user_ref: identity.user_ref.trim(),
+      ...normalizeAttestedBuyer(identity),
+    };
   }
 
   // Load a session the requester OWNS (bound to their buyer at creation). A leaked/guessed id from another
@@ -130,14 +163,22 @@ export function createAcpRestAdapter(deps = {}) {
     return parsed;
   }
 
+  // ---- default-variant resolution ---------------------------------------------------------------------------
+  //
+  // The rule (resolve, never forge; refuse when ambiguous/impossible/mis-identified) and the load bounds live
+  // in buyerIntake.js, shared with the MCP door. This door only supplies the executor and its own deadline.
+  const resolveDefaultVariants = createDefaultVariantResolver({ executor, timeoutMs: deps.variantResolutionTimeoutMs });
+
   // ---- handlers -------------------------------------------------------------------------------------------
 
   async function createCheckoutSession(req) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
-      const quote = mapItemsToQuote(trustedBody(req)); // priced from the SIGNED bytes (validates non-empty items)
+      const buyer = await requireBuyer(req);
+      const { user_ref } = buyer;
+      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant)
+      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
       // of minting a new one — no quote/inventory-hold amplification. (Concurrent first-time creates with the
@@ -150,11 +191,11 @@ export function createAcpRestAdapter(deps = {}) {
       if (!claimed) {
         const prior = await sessionStore.get(createKey);
         const stored = await ownedSession(prior.acp_session_id, user_ref);
-        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id });
+        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
         return { status: 200, body: acpSessionBody(prior.acp_session_id, session, stored) };
       }
 
-      const ctx = { user_ref, acp_session_id: minted };
+      const ctx = { user_ref, acp_session_id: minted, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('create_checkout_session', { idempotency_key, quote }, ctx);
       await sessionStore.set(minted, { quote_id: session.session_id, order_id: null, user_ref });
       return { status: 201, body: acpSessionBody(minted, session) };
@@ -165,11 +206,15 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const buyer = await requireBuyer(req);
+      const { user_ref } = buyer;
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const quote = mapItemsToQuote(trustedBody(req));
-      const ctx = { user_ref, acp_session_id };
+      // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
+      // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
+      // intake again, exactly as create did. Anything it omits is not "kept", it is DROPPED.
+      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
       await sessionStore.set(acp_session_id, { ...stored, quote_id: session.session_id });
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
@@ -179,10 +224,10 @@ export function createAcpRestAdapter(deps = {}) {
   async function getCheckoutSession(req) {
     return guard(async () => {
       await auth(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, ctx);
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
     });
@@ -192,11 +237,11 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const body = trustedBody(req);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const out = await executor.execute('complete_checkout_session', {
         idempotency_key,
         session_id: stored.quote_id,
@@ -214,10 +259,10 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       await executor.execute('cancel_checkout_session', { idempotency_key, session_id: stored.quote_id, order_id: stored.order_id ?? undefined }, ctx);
       return { status: 200, body: { id: acp_session_id, object: 'checkout_session', status: 'canceled' } };
     });
@@ -231,8 +276,19 @@ export function createAcpRestAdapter(deps = {}) {
       if (typeof getProducts !== 'function') throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_feed_source' });
       // For an AUTHENTICATED feed, the filter query must come from the SIGNED body, not an unsigned parsed body
       // (Codex round-2 #1). For a public feed there is no signature, so the unsigned body/params are expected.
+      // `req.query` here is the caller's ALLOW-LISTED pagination (limit/cursor/
+      // page) built in src/server.js — never Express's raw `req.query`.
+      //
+      // Ordering is deliberate and backward-compatible: a body `query` still
+      // wins, so every existing caller raising the limit via a JSON body on a
+      // GET keeps working unchanged. The query string is the new, discoverable
+      // path for crawlers that issue a plain GET.
+      //
+      // The AUTHENTICATED branch is untouched: its filter must come from the
+      // SIGNED body, and letting an unsigned query string contribute there
+      // would reopen exactly the hole the signed-body rule closes.
       const query = publicFeed
-        ? (req?.body?.query ?? req?.params ?? {})
+        ? (req?.body?.query ?? req?.query ?? req?.params ?? {})
         : (nonEmpty(req?.rawBody) ? (trustedBody(req).query ?? {}) : {});
       const products = await getProducts(query);
       const items = (Array.isArray(products) ? products : []).map((p) => (mapFeedItem ? mapFeedItem(p) : defaultFeedItem(p)));
@@ -244,7 +300,30 @@ export function createAcpRestAdapter(deps = {}) {
   return {
     createCheckoutSession, updateCheckoutSession, getCheckoutSession,
     completeCheckoutSession, cancelCheckoutSession, productFeed,
+    delegatePayment,
   };
+}
+
+/**
+ * POST /agentic_commerce/delegate_payment — PERMANENT refusal.
+ *
+ * NOT a handler in the usual sense: it is a CONSTANT. It ignores its argument entirely.
+ *
+ *  - No body parse. An ACP delegate_payment body carries raw cardholder data — `payment_method.number` and
+ *    `cvc`. Parsing it would put a PAN and a CVC into this process's heap for no purpose whatsoever.
+ *  - No signature verification, deliberately. `verifyAcpSignature` HMACs `rawBody`, i.e. it must READ the
+ *    cardholder bytes to authenticate them. Authenticating a request we will refuse regardless is a pure
+ *    liability, so the refusal is answered before auth. This also means no unauthenticated caller can learn
+ *    anything from it: the answer is a fixed string that is true for everyone.
+ *  - No logging, no echo of any request field. The response is built from module constants only.
+ *  - Not behind any flag. A refusal is not a capability; the answer is identical in every configuration
+ *    because it is an architectural fact, not a rollout stage.
+ *
+ * Exported OUTSIDE createAcpRestAdapter's closure so it needs no executor, kernel, store or secret — nothing
+ * it could reach even in principle.
+ */
+export function delegatePayment() {
+  return delegatedPaymentRefusalAcpResponse();
 }
 
 // ---- request helpers --------------------------------------------------------------------------------------
@@ -260,33 +339,95 @@ const pathId = (req) => {
   return id.trim();
 };
 
-// ACP items -> canonical quote request, by ALLOWLIST (a caller-set amount/total/currency never reaches pricing).
-// Requires a non-empty items array with a scalar product/SKU id and a positive safe-integer quantity each, so a
-// `{}` / `{items:[]}` body can't drive a default/zero-item quote on a loose backend (Codex P2).
-function mapItemsToQuote(body) {
+// ---- intake validation (P1-P3) ----------------------------------------------------------------------------
+//
+// Everything below refuses AT INTAKE (create/update) what the ORDER lane hard-requires, so an agent learns
+// which field is missing from the door it is talking to instead of from an opaque 400 several calls later —
+// after it has already presented a payment credential. All three refusals were verified against
+// pivota-backend origin/main `routes/agent_v2.py`, which is the lane this gateway's create_order calls:
+//
+//   - customer_email : `agent_v2.py` -> `if not customer_email: 400 INVALID_BUYER_CONTEXT`. UNCONDITIONAL.
+//   - shipping addr  : `_coerce_shipping_address` -> 400 INVALID_BUYER_CONTEXT + `missing_fields`, requiring
+//                      name, address_line1, city, postal_code, country. UNCONDITIONAL at order creation.
+//   - variant_id     : the shared `buildQuotePreviewV2Body` SYNTHESISES `variant_id = variant_id || sku ||
+//                      product_id` and DROPS any item with no product_id. That builder is shared with other
+//                      lanes and is deliberately NOT changed here — this door RESOLVES the variant instead,
+//                      so the forging fallback is never what fills the field on this lane (see below).
+//
+// The refusal bodies below name FIELDS, never VALUES: a buyer email is PII and must not reach an error body
+// or a log line, so nothing here ever echoes the address it rejected.
+//
+// ---- WHERE THE RULES LIVE ----------------------------------------------------------------------------------
+//
+// The three rules themselves — attested-wins email precedence, the required-address field set, and
+// default-variant resolution (resolve, never forge; refuse when ambiguous, impossible or mis-identified) —
+// plus the per-cart load bounds and every refusal message live in ./buyerIntake.js, which is shared with the
+// MCP commerce door. Read that file for WHY each rule is what it is; this file only maps ACP's body shapes
+// onto it.
+
+// ACP body -> canonical quote request. Every RULE here is imported from ./buyerIntake.js; what this function
+// owns is the ACP body SHAPE — where ACP puts the merchant, the buyer, the address and the discount codes.
+// A caller-set amount/total/currency never reaches pricing, because nothing here copies one.
+//
+// `buyer` is the VERIFIED identity from requireBuyer, not anything read from the body.
+//
+// `resolveDefaultVariants` is the closure-bound resolver above; it is the ONLY step in here that talks to
+// another service, and it runs LAST — after every cheap refusal — so a request that was going to be refused
+// anyway never costs an upstream read.
+async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   const b = isPlainObject(body) ? body : {};
-  const rawItems = Array.isArray(b.items) ? b.items : [];
-  if (rawItems.length === 0) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'no_items' });
-  const items = rawItems.map((it) => {
-    const item = pick(it, ['product_id', 'sku_id', 'variant_id', 'quantity']);
-    if (!nonEmpty(item.product_id) && !nonEmpty(item.sku_id)) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'item_missing_product_id' });
-    if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'item_bad_quantity' });
-    return item;
-  });
+  const items = normalizeCartItems(b.items);
   const quote = { merchant_id: str(b.merchant_id) ?? str(b.merchant?.id), items };
   const codes = Array.isArray(b.discount_codes) ? b.discount_codes.filter((c) => typeof c === 'string') : undefined;
   if (codes && codes.length) quote.discount_codes = codes;
   const addr = mapAddress(b);
   if (addr) quote.shipping_address = addr;
+
+  // PRECEDENCE IS THE POINT — enforced in resolveBuyerEmail: the attested address is read FIRST, so a body
+  // value can only ever fill a gap and can never override what the verified buyer credential asserted.
+  //
+  // ACP's two body spellings collapse with `??` BEFORE normalization, deliberately: a PRESENT-but-malformed
+  // `buyer.email` is the caller's error and must be refused, not silently papered over by a `customer_email`
+  // sitting beside it.
+  const acpBuyer = isPlainObject(b.buyer) ? b.buyer : {};
+  // Reaches the kernel's buyer_context via kernel.js buyerContextFromQuotePayload (quote.customer_email /
+  // quote.customer_name), which is what the order lane's buyer_context is built from.
+  quote.customer_email = resolveBuyerEmail(buyer.attested_email, [acpBuyer.email ?? b.customer_email], {
+    acceptedBodyFields: ['buyer.email', 'customer_email'],
+  });
+  const customer_name = resolveBuyerName(buyer.attested_name, [joinName(acpBuyer.first_name, acpBuyer.last_name), b.customer_name]);
+  if (customer_name) quote.customer_name = customer_name;
+
+  // LAST: resolve a default variant for every item that arrived without one (items are mutated in place, so
+  // the resolved id is what reaches `quote.items` and therefore pricing). Deliberately after the buyer/address
+  // refusals — those are free, this one is a network read — and deliberately before the caller's
+  // `preview_quote`, so a refused request never prices anything or takes an inventory hold.
+  //
+  // DEAD TODAY, KEPT ON PURPOSE: both call sites (create/update) always pass the closure, so the fail-closed
+  // branch is unreachable through the adapter. It is defence in depth against a future call site —
+  // mapItemsToQuote is a plain module-level function and nothing forces the third argument.
+  if (typeof resolveDefaultVariants !== 'function') assertNoUnresolvedVariants(items);
+  else await resolveDefaultVariants(items, quote.merchant_id, { user_ref: buyer.user_ref });
   return quote;
 }
 
+// Which ACP body field carries the address is ACP's business; that it must be COMPLETE IF PRESENT is the
+// shared rule (buyerIntake.js pickCompleteAddress), because the five required fields come from
+// pivota-backend `_coerce_shipping_address` and are the same for every door.
+//
+// Optional, because ACP permits an address-less create (an agent prices first, the buyer picks a destination
+// after) and this door HAS an update op that genuinely re-maps the address: update re-runs mapItemsToQuote
+// and the executor's create/update both go through kernel.previewQuote, minting a fresh snapshot whose
+// buyer_context carries the new address. Requiring one at create would refuse a spec-legal request that the
+// protocol expects to succeed.
 function mapAddress(body) {
   const a = isPlainObject(body?.fulfillment_address) ? body.fulfillment_address
     : isPlainObject(body?.shipping_address) ? body.shipping_address
     : isPlainObject(body?.address) ? body.address : null;
   if (!a) return undefined;
-  return pick(a, ['country', 'city', 'state', 'postal_code', 'address_line1', 'address_line2', 'recipient_name', 'phone']);
+  // Name the concrete REST endpoint: an ACP client reads this out of `body.message`, and 'the update op'
+  // does not tell it where to send one.
+  return pickCompleteAddress(a, { updateHint: 'POST /checkout_sessions/{checkout_session_id}' });
 }
 
 // ACP `payment_data` is the delegated-token / credential envelope; opaque to the kernel, VERIFIED by the
@@ -308,6 +449,11 @@ function toAcpSession(id, session, stored) {
     line_items: session.line_items,
     totals: session.totals,
     expires_at: session.expires_at,
+    // The AP2 binding JWT the wallet must hash. Allowlisted responses drop anything not named
+    // here, so omitting it left AP2 unusable on this door even with the flag on. It is minted
+    // over `id` (the ACP session id) — see attachAp2CheckoutJwt — and survives the sanitizer by
+    // key+shape; see AP2_CHECKOUT_JWT_KEYS in resultSanitizer.js.
+    ap2_checkout_jwt: session.ap2_checkout_jwt,
     order: stored?.order_id ? { id: stored.order_id } : undefined,
   };
 }
@@ -347,7 +493,10 @@ function defaultFeedItem(p) {
     price: o.price,
     currency: o.currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
-    brand: o.brand ?? o.merchant_id,
+    brand: o.brand /* NOT `?? o.merchant_id` — see src/acpFeedItem.js (#1851). A
+       merchant id is not a brand, and this adapter is reused verbatim by every
+       caller, including productionWiring.js which constructs it with NO
+       mapFeedItem and therefore lands here. */,
     variants: o.variants,
   };
 }
@@ -382,12 +531,26 @@ const STATUS_BY_CODE = Object.freeze({
 
 // Run a handler, mapping any throw to an ACP error response. PivotaCommerceError → its code + curated
 // userMessage; anything else → a generic 500 (a raw error message is NEVER surfaced).
+//
+// The `detail` block is EXPLICIT OPT-IN via `detail.acp_detail` (buyerIntake.js intakeRefusal), matching the shape the
+// delegate_payment refusal already emits: `{ type, code, message, detail }`. Ordinary PivotaCommerceError
+// detail — which carries ids, session ids and internal reasons — is still never surfaced, and by
+// construction an acp_detail block names FIELDS only, never a value taken from the request (no PII).
 async function guard(fn) {
   try {
     return await fn();
   } catch (err) {
     if (err instanceof PivotaCommerceError) {
-      return { status: STATUS_BY_CODE[err.code] ?? 400, body: { type: 'error', code: err.code, message: err.userMessage } };
+      // The opt-in read lives in buyerIntake.js so both doors decide "is this refusal safe to surface?" the
+      // same way, rather than each hand-inspecting the detail block.
+      const surfaceable = surfaceableIntakeRefusal(err);
+      const body = {
+        type: 'error',
+        code: err.code,
+        message: surfaceable ? surfaceable.message : err.userMessage,
+      };
+      if (surfaceable) body.detail = surfaceable.detail;
+      return { status: STATUS_BY_CODE[err.code] ?? 400, body };
     }
     return { status: 500, body: { type: 'error', code: 'INTERNAL_ERROR', message: 'The request could not be completed.' } };
   }
@@ -395,15 +558,6 @@ async function guard(fn) {
 
 // ---- small utilities --------------------------------------------------------------------------------------
 
-function pick(src, keys) {
-  const out = {};
-  if (!isPlainObject(src)) return out;
-  for (const k of keys) {
-    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
-    if (Object.prototype.hasOwnProperty.call(src, k) && src[k] !== undefined) out[k] = src[k];
-  }
-  return out;
-}
 function safeClone(v, depth = 0) {
   if (v === null || typeof v !== 'object') return v;
   if (depth > 32) return null;

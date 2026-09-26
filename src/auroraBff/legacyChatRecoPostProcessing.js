@@ -319,9 +319,13 @@ function createLegacyChatRecoPostProcessingRuntime(deps = {}) {
           const asyncRecoCount = Array.isArray(asyncMatcherPayload?.recommendations)
             ? asyncMatcherPayload.recommendations.length
             : 0;
+          // F4: `!= null` before Number() — the matcher now emits a null score
+          // when nothing was measured, and Number(null) === 0 would log an
+          // unmeasured confidence as an explicit rock-bottom one.
           const asyncMatcherConfidence =
             asyncMatcherBundle &&
             asyncMatcherBundle.confidence &&
+            asyncMatcherBundle.confidence.score != null &&
             Number.isFinite(Number(asyncMatcherBundle.confidence.score))
               ? Number(asyncMatcherBundle.confidence.score)
               : null;

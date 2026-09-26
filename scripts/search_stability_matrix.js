@@ -11,6 +11,7 @@ const {
 } = require('./lib/commerce_invoke_contract');
 const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
 const { loadProdGateCases } = require('./lib/commerce_shared_acceptance_corpus');
+const { titleMatchesForm } = require('../src/services/beautyRelevanceGate');
 
 function timestamp() {
   const now = new Date();
@@ -85,6 +86,39 @@ function normalizeText(input) {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+
+// Token semantics for `must_return_one_of_title_token_sets`:
+//   "niacinamide"  -> substring match (ingredients are literal; stay strict)
+//   "form:serum"   -> synonym-aware product-form match via the shared beauty
+//                     vocabulary (serum|essence|ampoule|...)
+//
+// The `form:` prefix exists because naive substring scoring is wrong for
+// synonym-rich categories and invents phantom regressions: measured live
+// 2026-08-04, substring scoring called toner precision 3/10 when the true
+// value was 9/10 ("Pixi Glow Tonic" is a toner). A gate that mis-measures is
+// worse than no gate — it burns real investigation on nothing, and it can go
+// red on healthy serving.
+function titleMatchesTokenSet(title, tokenSet) {
+  const normalizedTitle = normalizeText(title);
+  return tokenSet.every((rawToken) => {
+    const token = String(rawToken || '').trim();
+    if (!token) return false;
+    if (/^form:/i.test(token)) return titleMatchesForm(title, token.slice(5));
+    const normalizedToken = normalizeText(token);
+    return normalizedToken ? normalizedTitle.includes(normalizedToken) : false;
+  });
+}
+
+function normalizeTokenSets(rawSets) {
+  return (Array.isArray(rawSets) ? rawSets : [])
+    .map((tokenSet) =>
+      (Array.isArray(tokenSet) ? tokenSet : [tokenSet])
+        .map((token) => String(token || '').trim())
+        .filter(Boolean),
+    )
+    .filter((tokenSet) => tokenSet.length > 0);
 }
 
 function normalizeCurrency(value, fallback = '') {
@@ -199,6 +233,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_return_titles: [],
       must_return_one_of_titles: [],
       must_return_one_of_title_token_sets: [],
+      min_title_token_set_match_ratio: null,
       must_respect_budget: false,
       must_have_reason_codes: [],
       must_equal_metadata: {},
@@ -254,6 +289,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
           )
           .filter((tokenSet) => tokenSet.length > 0)
       : [],
+    min_title_token_set_match_ratio: (() => {
+      const parsed = Number(rawCase?.min_title_token_set_match_ratio);
+      return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : null;
+    })(),
     must_respect_budget: rawCase?.must_respect_budget === true,
     must_have_reason_codes: Array.isArray(rawCase?.must_have_reason_codes)
       ? rawCase.must_have_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
@@ -531,21 +570,37 @@ function evaluateCase(row) {
     ? spec.must_return_one_of_title_token_sets
     : [];
   if (mustReturnOneOfTitleTokenSets.length > 0) {
-    const hasAllowedTokenSet = mustReturnOneOfTitleTokenSets.some((tokenSet) => {
-      const normalizedTokens = (Array.isArray(tokenSet) ? tokenSet : [])
-        .map((token) => normalizeText(token))
-        .filter(Boolean);
-      if (normalizedTokens.length === 0) return false;
-      return titles.some((title) => {
-        const normalizedTitle = normalizeText(title);
-        return normalizedTokens.every((token) => normalizedTitle.includes(token));
-      });
-    });
+    const hasAllowedTokenSet = normalizeTokenSets(mustReturnOneOfTitleTokenSets).some((tokenSet) =>
+      titles.some((title) => titleMatchesTokenSet(title, tokenSet)),
+    );
     if (!hasAllowedTokenSet) {
       const serializedTokenSets = mustReturnOneOfTitleTokenSets
         .map((tokenSet) => (Array.isArray(tokenSet) ? tokenSet.join(' & ') : ''))
         .filter(Boolean);
       reasons.push(`missing_required_title_tokens:${serializedTokenSets.join(' | ')}`);
+    }
+
+    // Precision floor, opt-in per case. The any-title check above is a 1-of-N
+    // floor: 19 junk results plus one literal match passes. That is exactly
+    // the shape the 2026-07-31 ingredient-lane regression took while it was
+    // still partial — mostly-junk responses stayed green until degradation
+    // hit 100%. min_title_token_set_match_ratio requires that at least this
+    // fraction of returned titles match one of the token sets, so partial
+    // degradation trips the gate too.
+    const minMatchRatio = Number(spec.min_title_token_set_match_ratio);
+    if (Number.isFinite(minMatchRatio) && minMatchRatio > 0 && titles.length > 0) {
+      const normalizedSets = normalizeTokenSets(mustReturnOneOfTitleTokenSets);
+      if (normalizedSets.length > 0) {
+        const matchedCount = titles.filter((title) =>
+          normalizedSets.some((tokenSet) => titleMatchesTokenSet(title, tokenSet)),
+        ).length;
+        const ratio = matchedCount / titles.length;
+        if (ratio < minMatchRatio) {
+          reasons.push(
+            `title_token_match_ratio_below_floor:${ratio.toFixed(2)}<${minMatchRatio} (${matchedCount}/${titles.length})`,
+          );
+        }
+      }
     }
   }
 

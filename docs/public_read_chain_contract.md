@@ -177,5 +177,9 @@ python3 conformance/check.py
   404 stays a retriable outage on `preview_quote` / `create_order` / `submit_payment`
 - `tests/public_read_chain_resolvability.node.test.cjs` — the drop/keep decision with no DB, including the
   fallback-ref shape as an explicit regression against mass over-drop
-- `tests/public_read_chain_seed_routed_probe.node.test.cjs` — pins the seed-routed probe, and fails loudly if
-  `MERCHANT_SYNCED_LANE_RENDERABLE` flips (which would otherwise silently delete every shopify row from search)
+- `tests/public_read_chain_seed_routed_probe.node.test.cjs` — pins that the chain filter asks
+  `isSeedRoutedLane` (lane MEMBERSHIP), never the renderability verdict. The 2026-07-29 per-platform flip
+  (`MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM.wix = true`) was exactly the event the old seedRouteOk-pinned
+  probe could not survive: the pin would have read wix merchant rows as seed-routed and silently deleted
+  every wix product from search. The filter now has its own lane test and the probe pins both the split and
+  the wix-survives-the-chain regression end-to-end.

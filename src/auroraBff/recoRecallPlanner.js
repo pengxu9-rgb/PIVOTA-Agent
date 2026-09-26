@@ -262,7 +262,7 @@ function buildFrameworkSemanticContract({ targetContext } = {}) {
   };
 }
 
-function buildStepAwareSemanticContract({ targetContext, queryLevels } = {}) {
+function buildStepAwareSemanticContract({ targetContext, queryLevels, targetStepToken = '' } = {}) {
   const targetStepFamily = normalizeSemanticStepFamily(
     targetContext?.resolved_target_step ||
     queryLevels?.[0]?.queries?.[0]?.step,
@@ -278,6 +278,11 @@ function buildStepAwareSemanticContract({ targetContext, queryLevels } = {}) {
     planner_mode: 'step_aware',
     request_class: targetStepFamily === 'sunscreen' ? 'sunscreen' : 'routine_followup',
     target_step_family: targetStepFamily,
+    // The surface token the buyer wrote, carried as CONTRACT data so the query pack can lead with it.
+    // Null unless it says more than the family label -- resolveRecommendationTargetContext drops it
+    // otherwise, which is what keeps every existing pack byte-identical.
+    target_step_token:
+      normalizeConcernQueryToken(targetStepToken || targetContext?.resolved_target_step_token) || null,
     primary_role_id: primaryRoleId,
     support_role_ids: [],
     semantic_family: normalizeConcernQueryToken(
@@ -881,8 +886,8 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
   });
 }
 
-function buildStepAwareRecallPlan({ targetContext = null, queryLevels } = {}) {
-  const semanticContract = buildStepAwareSemanticContract({ targetContext, queryLevels });
+function buildStepAwareRecallPlan({ targetContext = null, queryLevels, targetStepToken = '' } = {}) {
+  const semanticContract = buildStepAwareSemanticContract({ targetContext, queryLevels, targetStepToken });
   return buildBeautyMainlineRecallPlan({
     mode: 'step_aware',
     semanticContract,
@@ -932,13 +937,17 @@ function buildProductGroundingExactRecallPlan({ queries } = {}) {
   };
 }
 
-function buildRecoRecallPlan({ mode, targetContext = null, queryLevels = null, queries = null } = {}) {
+function buildRecoRecallPlan({ mode, targetContext = null, queryLevels = null, queries = null, targetStepToken = '' } = {}) {
   const normalizedMode = String(mode || '').trim().toLowerCase();
   if (normalizedMode === 'framework_generic') {
     return buildFrameworkGenericRecallPlan({ targetContext });
   }
   if (normalizedMode === 'step_aware') {
-    return buildStepAwareRecallPlan({ targetContext, queryLevels });
+    // ONLY the token is threaded, never the whole targetContext. The step-aware contract also reads
+    // targetContext for aligned framework roles, the semantic family and ingredient hypotheses, and
+    // every step_aware call site passes it as undefined today -- handing it over here would silently
+    // change all three derivations along with the one this fix is about.
+    return buildStepAwareRecallPlan({ targetContext, queryLevels, targetStepToken });
   }
   if (normalizedMode === 'product_grounding_exact') {
     return buildProductGroundingExactRecallPlan({ queries });

@@ -2,6 +2,12 @@
 
 const { query: defaultQuery } = require('../db');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('./catalogEntityResolutionSqlTag');
+const {
+  RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,
+  productGroupRefKeyMatchSql,
+  refKeyMatchSql,
+} = require('./relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('../auroraBff/productRelationshipGraphSources');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
@@ -192,6 +198,15 @@ function buildRelationshipGraphDisplaySnapshot(row = {}) {
     payloadSnapshot.price_amount,
     payloadSnapshot.price,
   );
+  // The price's currency, from the same payload the price came from — a price must never travel without
+  // its currency (key precedence mirrors the pdp identity readers: price_currency, then currency).
+  const currency = firstNonEmptyString(
+    productPayload.price_currency,
+    productPayload.priceCurrency,
+    productPayload.currency,
+    payloadSnapshot.price_currency,
+    payloadSnapshot.currency,
+  );
   return {
     ...(canonicalEntityId ? { id: canonicalEntityId, product_id: canonicalEntityId, canonical_entity_id: canonicalEntityId } : {}),
     ...(sourceProductId
@@ -213,6 +228,7 @@ function buildRelationshipGraphDisplaySnapshot(row = {}) {
     ...(merchantCanonicalUrl && merchantCanonicalUrl !== publicUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
+    ...(currency ? { currency } : {}),
   };
 }
 
@@ -397,6 +413,13 @@ function buildCatalogGroupMember(row, canonicalSigId) {
     content_key: firstNonEmptyString(row?.content_key) || undefined,
     internal_product_group_id: firstNonEmptyString(row?.internal_product_group_id, row?.product_group_id) || undefined,
     is_primary: row?.is_primary === true,
+    // ADDITIVE, and read by the PDP's group rescue: a member's serving stage decides whether it may
+    // be shown as a seller at all. The SELECT has always carried it (it ranks the primary pick);
+    // only the projection dropped it. Prod 2026-09-17: of 348 catalog rows sharing a content_key
+    // with another row, 172 are `candidate`, 56 `draft`, 32 `validated` and 85 `published` — so a
+    // consumer that cannot see this field cannot avoid serving a withheld listing.
+    pdp_lifecycle_stage: firstNonEmptyString(row?.pdp_lifecycle_stage) || undefined,
+    sync_status: firstNonEmptyString(row?.sync_status) || undefined,
     source_payload: sourcePayload,
   };
 }
@@ -517,6 +540,15 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             raw.ordinality
           FROM unnest($1::text[]) WITH ORDINALITY AS raw(input_ref, ordinality)
         ),
+        -- One indexed equality branch per key column (see relationshipGraphRefKeySql.js). UNION keeps each
+        -- (ref, product) pair once, as the single OR'd join did; the wide row is read by primary key after.
+        ref_key_matches AS (
+          ${RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map((column) => `
+          SELECT i.ordinality, cp_key.product_key
+          FROM input_refs i
+          JOIN catalog_products cp_key ON ${refKeyMatchSql(column, 'cp_key', 'i.ref_key')}`).join(`
+          UNION`)}
+        ),
         catalog_matches AS (
           SELECT
             i.input_ref,
@@ -553,13 +585,9 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             ), '') AS product_family_id,
             pgm.product_group_id,
             COALESCE(pgm.is_primary, false) AS is_primary
-          FROM input_refs i
-          JOIN catalog_products cp
-            ON lower(cp.source_product_id) = i.ref_key
-            OR lower(cp.product_key) = i.ref_key
-            OR lower(cp.pivota_signature_id) = i.ref_key
-            OR lower(cp.canonical_url) = i.ref_key
-            OR lower(cp.pivota_canonical_url) = i.ref_key
+          FROM ref_key_matches rkm
+          JOIN input_refs i ON i.ordinality = rkm.ordinality
+          JOIN catalog_products cp ON cp.product_key = rkm.product_key
           LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
           LEFT JOIN product_group_members pgm
             ON pgm.merchant_id = cp.merchant_id
@@ -606,7 +634,7 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             COALESCE(pgm.is_primary, false) AS is_primary
           FROM input_refs i
           JOIN product_group_members pgm
-            ON lower(pgm.product_group_id) = i.ref_key
+            ON ${productGroupRefKeyMatchSql('pgm', 'i.ref_key')}
           JOIN catalog_products cp
             ON cp.merchant_id = pgm.merchant_id
            AND cp.platform = pgm.platform
@@ -718,16 +746,15 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
 
   if (!targetClauses.length) return null;
 
+  // offer_count is computed PER candidate row (LATERAL, via idx_catalog_skus_product_key and
+  // idx_catalog_offers_sku_key), not by a CTE that grouped EVERY catalog_skus x catalog_offers row.
+  // That CTE ran on every get_pdp_v2 signature resolve: pg_stat_statements 2026-09-15 recorded
+  // ~57,600 calls at 1.25-1.33s mean (min ~0.6s) - pure CPU on the 2-vCPU pivota-pg, and under
+  // ~10x PDP traffic it pinned the instance and starved the gateway pool. Same value: a product
+  // with no SKUs was NULL (then COALESCE -> 0); COUNT over zero rows is 0.
   const sql = `
-    WITH offer_stats AS (
-      SELECT
-        s.product_key,
-        COUNT(DISTINCT o.offer_id)::int AS offer_count
-      FROM catalog_skus s
-      LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
-      GROUP BY s.product_key
-    ),
-    target AS (
+    ${CANONICAL_ENTITY_GROUP_SQL_TAG}
+    WITH target AS (
       SELECT
         cp.content_key,
         cp.product_key,
@@ -754,6 +781,33 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
         cp.pivota_signature_minted_at ASC NULLS LAST,
         cp.updated_at DESC NULLS LAST
       LIMIT 1
+    ),
+    -- The group's members, gathered through three INDEXED lookups instead of one OR across three
+    -- IN-subqueries on the outer query, which PostgreSQL could only answer by scanning every
+    -- catalog_products row (~0.8-1.0s per get_pdp_v2 on a 120k-product fixture; ~245ms mean in prod
+    -- after #2208). Same membership: a row belongs if it shares the target's content_key
+    -- (idx_catalog_products_content_key), or its product_group_members row carries the target's
+    -- group (idx_product_group_members_group_id, joined back on the SAME merchant/platform/source
+    -- condition the outer LEFT JOIN uses; that join is 1:1 by product_group_members_pkey), or it IS
+    -- the target row (catalog_products_pkey). UNION de-duplicates like the IN list did.
+    candidate_keys AS (
+      SELECT same_content.product_key
+      FROM target
+      JOIN catalog_products same_content ON same_content.content_key = target.content_key
+      WHERE target.content_key IS NOT NULL
+      UNION
+      SELECT same_group_product.product_key
+      FROM target
+      JOIN product_group_members same_group ON same_group.product_group_id = target.product_group_id
+      JOIN catalog_products same_group_product
+        ON same_group_product.merchant_id = same_group.merchant_id
+       AND same_group_product.platform = same_group.platform
+       AND same_group_product.source_product_id = same_group.platform_product_id
+      WHERE target.product_group_id IS NOT NULL
+      UNION
+      SELECT target.product_key
+      FROM target
+      WHERE target.product_key IS NOT NULL
     )
     SELECT
       cp.product_key,
@@ -770,6 +824,10 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       cp.image_url AS product_image_url,
       cp.product_payload,
       cp.pdp_lifecycle_stage,
+      -- Projected for the PDP group rescue: a member may only be served as a seller when the
+      -- CATALOG is serving it, and every other serving lane in this repo pairs the lifecycle
+      -- stage with sync_status = 'live'. (No backticks in here: this SQL is a template literal.)
+      cp.sync_status,
       cp.pivota_signature_id,
       cp.pivota_canonical_url,
       cp.pivota_signature_minted_at,
@@ -785,12 +843,13 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       ON pgm.merchant_id = cp.merchant_id
      AND pgm.platform = cp.platform
      AND pgm.platform_product_id = cp.source_product_id
-    LEFT JOIN offer_stats ON offer_stats.product_key = cp.product_key
-    WHERE (
-      cp.content_key IN (SELECT content_key FROM target WHERE content_key IS NOT NULL)
-      OR pgm.product_group_id IN (SELECT product_group_id FROM target WHERE product_group_id IS NOT NULL)
-      OR cp.product_key IN (SELECT product_key FROM target WHERE product_key IS NOT NULL)
-    )
+    LEFT JOIN LATERAL (
+      SELECT COUNT(DISTINCT o.offer_id)::int AS offer_count
+      FROM catalog_skus s
+      LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
+      WHERE s.product_key = cp.product_key
+    ) offer_stats ON TRUE
+    WHERE cp.product_key IN (SELECT product_key FROM candidate_keys)
       AND cp.pivota_signature_id IS NOT NULL
       AND ${activeCatalogProductSourceWhere('cp', 'cm')}
     ORDER BY
@@ -815,6 +874,75 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
     if (looksLikeRelationMissing(err)) return null;
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// sig_ -> the merchant's OWN platform product id, for the merchant-scoped detail lane.
+//
+// `search_catalog` hands every row back with its Pivota signature as the top-level `product_id`, and
+// `get_product`'s schema REQUIRES a merchant_id — so the argument pair an agent naturally forms from a
+// search result is (merchant_id, sig_...). That pair could not be served: merchant-scoped detail goes to
+// the Python per-merchant catalog, which is keyed by the PLATFORM product id and knows nothing about
+// signatures. It misses the cache, misses the 500-row catalog slice, and then hands the sig to Shopify
+// Admin as if it were a numeric product id (`/admin/api/…/products/sig_… .json`). Shopify answers a
+// non-404, so the backend raises 502 SHOPIFY_PRODUCT_FETCH_FAILED and the gateway's error mapping —
+// which has no arm for that code — lands on MERCHANT_UNAVAILABLE / retriable:true. Measured live on prod
+// 2026-08-31 against a healthy merchant: three identical calls, three "the merchant is temporarily
+// unreachable", and three wasted Shopify Admin round trips. Read the header of
+// services/commerceKernelErrorMapping.js: this is the SAME defect it was extracted for (#1829), still
+// live on the one lane that fix did not cover.
+//
+// So translate the id instead of teaching two more systems about signatures.
+//
+// MERCHANT-EXACT, and only that. The canonical group this signature belongs to is cross-merchant by
+// construction; answering a merchant-SCOPED question with a sibling merchant's listing would open a
+// different seller's product under the caller's own scope. Only a row carrying BOTH the signature and
+// the requested merchant_id can translate, which is why this is its own narrow query rather than a
+// filter over resolveCanonicalCatalogEntityGroup's 100-row group.
+//
+// EXACTLY ONE, OR REFUSE. Two distinct source ids under one merchant for one signature is a tie this
+// function has no basis to break, and picking either could open the wrong listing. LIMIT 2 makes the
+// ambiguity visible at the cost of one extra row.
+//
+// The shared active-source gate applies, deliberately. Every other catalog read in this module carries
+// it; a translation that skipped it would be the one path through which a test/demo rig's signature
+// reaches a per-merchant detail read (see the header of services/testMerchantPolicy.js for what that
+// costs). A gated-out signature simply keeps today's behaviour.
+//
+// FAIL-OPEN, which lands on the honest answer: on a DB error the caller falls through to the untranslated
+// upstream call, and "the merchant is temporarily unreachable / retriable" is then TRUE — the database
+// this gateway needs really is unreachable. Never throw: a detail read must not become a 500 because an
+// id could not be rewritten.
+async function resolveMerchantScopedSourceProductId({ productId, merchantId, queryFn } = {}) {
+  const runQuery = queryFn || defaultQuery;
+  if (!process.env.DATABASE_URL || typeof runQuery !== 'function') return null;
+  const sig = asString(productId);
+  const merchant = asString(merchantId);
+  if (!isSigId(sig) || !merchant) return null;
+
+  const sql = `
+    SELECT DISTINCT cp.source_product_id
+    FROM catalog_products cp
+    LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+    WHERE cp.pivota_signature_id = $1
+      AND cp.merchant_id = $2
+      AND coalesce(nullif(trim(cp.source_product_id), ''), '') <> ''
+      AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+    LIMIT 2
+  `;
+
+  let rows;
+  try {
+    rows = normalizeRows(await runQuery(sql, [sig, merchant]));
+  } catch {
+    return null;
+  }
+
+  const candidates = Array.from(
+    new Set(rows.map((row) => asString(row && row.source_product_id)).filter(Boolean)),
+  ).filter((id) => id !== sig && !isSigId(id) && !id.includes('::'));
+
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -991,6 +1119,7 @@ async function applyCanonicalAnchorRefs(products, { queryFn } = {}) {
 
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
+  resolveMerchantScopedSourceProductId,
   resolveRelationshipGraphRefsToCanonicalEntities,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,

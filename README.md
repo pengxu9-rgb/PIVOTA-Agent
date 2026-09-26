@@ -103,16 +103,11 @@ Accepts operations:
 
 See [API Mapping Documentation](docs/pivota-api-mapping.md) for details.
 
-### Look Replicator Endpoints (agent task)
+### Look Replicator (removed)
 
-These endpoints support the `pengxu9-rgb/look-replicate-share` frontend:
-
-- `POST /uploads/signed-url` (signed direct uploads for 1–10MB images)
-- `POST /look-jobs` (create job; expects `referenceImageUrl` and optional `selfieImageUrl`)
-- `GET /look-jobs/:jobId` (poll)
-- `GET /shares/:shareId` (share landing payload)
-
-Configure env vars in `env.example` under `LOOK_REPLICATOR_*`. In production, set `LOOK_REPLICATOR_API_KEY` and require callers to send `Authorization: Bearer ...`.
+The Look Replicator demo agent and its endpoints (`/look-jobs`, `/shares`,
+`/uploads/signed-url`, `/api/look-replicate/*`) were removed on 2026-08-11 —
+legacy demo, retired together with the `look-replicate-share` frontend.
 
 ## LLM Integration Guides
 

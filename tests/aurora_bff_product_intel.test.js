@@ -30,6 +30,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_KB_SERVE_POLICY = 'strict';
     process.env.AURORA_PRODUCT_GUARDRAIL_MODE = 'enforce';
     process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'true';
+    // The internal recall lane defaults to disabled (guaranteed-empty products_cache);
+    // most grounding tests here exercise the internal search leg, so opt the suite in.
+    // Tests asserting the disabled default delete this var themselves.
+    process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
   });
 
   afterEach(() => {
@@ -46,6 +50,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_KB_SERVE_POLICY;
     delete process.env.AURORA_PRODUCT_GUARDRAIL_MODE;
     delete process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER;
+    delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
     delete process.env.AURORA_ROUTINE_AUTOSCAN_ANCHOR_GUARD_MODE;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_MAX_CANDIDATES;
@@ -218,7 +223,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -328,7 +333,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,
@@ -668,6 +673,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'shopping-agent';
+    // Exercise the upstream 504 contract, not the production deadline race on CI.
+    process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS = '12000';
+    process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS = '8000';
     jest.resetModules();
 
     nock('https://probe.example')
@@ -677,7 +685,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         '<html><body><h1>Lab Series All-in-One Defense Lotion</h1><p>Ingredients: Water, Glycerin, Niacinamide, Panthenol.</p></body></html>',
         { 'Content-Type': 'text/html' },
       );
-    nock('http://catalog.test')
+    const catalogFailure = nock('http://catalog.test')
       .persist()
       .get(/\/agent\/v1\/(?:beauty\/)?products\/search/)
       .query(true)
@@ -692,6 +700,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
     });
 
+    expect(catalogFailure.isDone()).toBe(true);
     expect(out).toBeTruthy();
     const payload = out.payload || {};
     expect(payload.provenance).toBeTruthy();
@@ -1230,8 +1239,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1284,6 +1293,96 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     }
   });
 
+  test('resolveCatalogProductForProductInput skips the internal grounding search by default and goes straight to external seed', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    // Default posture: the internal recall lane is disabled because pivota-backend
+    // serves it only from products_cache, which holds no real inventory.
+    delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    const dbModule = require('../src/db');
+    const originalDbQuery = dbModule.query;
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setResolveProductRefForTest(async () => ({
+      resolved: false,
+      reason: 'no_candidates',
+      metadata: { sources: [] },
+    }));
+
+    nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .times(3)
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    // If the internal stage ran, this exact-name internal candidate would win as
+    // catalog_search_exact before the external seed stage ever executed. With the
+    // lane disabled it must stay unconsumed.
+    const internalSearchScope = nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'internal_uv_filters_45',
+            brand: 'The Ordinary',
+            name: 'UV Shield SPF 45 Serum',
+            display_name: 'The Ordinary UV Shield SPF 45 Serum',
+            category: 'sunscreen',
+          },
+        ],
+      });
+
+    dbModule.query = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'seed_ext_uv_filters_45',
+          external_product_id: 'ext_uv_filters_45',
+          destination_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
+          canonical_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
+          domain: 'theordinary.com',
+          title: 'The Ordinary UV Shield SPF 45 Serum',
+          image_url: 'https://example.com/uv-filters.jpg',
+          price_amount: '24',
+          price_currency: 'USD',
+          availability: 'in_stock',
+          seed_data: {
+            brand: 'The Ordinary',
+            category: 'Sunscreen',
+            search_aliases: ['The Ordinary UV Shield SPF 45 Serum'],
+            benefit_tags: ['daily sunscreen', 'uv filters'],
+            snapshot: {
+              title: 'The Ordinary UV Shield SPF 45 Serum',
+              canonical_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
+              destination_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
+            },
+          },
+        },
+      ],
+    }));
+
+    try {
+      const out = await __internal.resolveCatalogProductForProductInput({
+        inputText: 'The Ordinary UV Shield SPF 45 Serum',
+        lang: 'EN',
+        logger: { warn: jest.fn(), info: jest.fn() },
+      });
+
+      expect(out.ok).toBe(true);
+      expect(out.decision_source).toBe('external_seed_search_exact');
+      expect(out.product?.product_id).toBe('ext_uv_filters_45');
+      expect(internalSearchScope.isDone()).toBe(false);
+      expect(out.attempts.some((attempt) => attempt?.mode === 'search_internal')).toBe(false);
+    } finally {
+      dbModule.query = originalDbQuery;
+      __internal.__resetResolveProductRefForTest();
+    }
+  });
+
   test('resolveCatalogProductForProductInput prefers a stronger external seed exact match over a weaker internal result', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
@@ -1310,8 +1409,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .get('/agent/v1/products/search')
       .query((query) =>
         Number(query.limit) === 8 &&
-        String(query.allow_external_seed || '') === 'false' &&
-        String(query.external_seed_strategy || '') === 'legacy',
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'unified_relevance',
       )
       .times(3)
       .reply(200, {
@@ -1447,7 +1546,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     nock('http://catalog.test')
       .get('/agent/v1/products/search')
-      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
       .times(3)
       .reply(200, {
         ok: true,

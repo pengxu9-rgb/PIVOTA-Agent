@@ -1,3 +1,5 @@
+const { commitSha } = require('../config/platform');
+
 const RESULT_TYPE_VALUES = Object.freeze(['product_list', 'clarify', 'strict_empty']);
 const REASON_CODE_VALUES = Object.freeze([
   'CACHE_HIT',
@@ -363,9 +365,7 @@ function buildSearchDebugBundle({
     build_sha:
       String(
         process.env.BUILD_SHA ||
-          process.env.RAILWAY_GIT_COMMIT_SHA ||
-          process.env.GIT_COMMIT_SHA ||
-          process.env.SOURCE_VERSION ||
+          commitSha() ||
           process.env.AURORA_GIT_SHA ||
           process.env.VERCEL_GIT_COMMIT_SHA ||
           '',

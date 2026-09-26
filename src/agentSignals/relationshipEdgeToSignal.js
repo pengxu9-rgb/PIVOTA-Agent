@@ -42,8 +42,16 @@ function relationshipEdgeToSignal(edge, { anchorId = null } = {}) {
         ref: edge.candidate_product_ref || null,
         title: snapshot.title || null,
         brand: snapshot.brand || null,
-        price: snapshot.price != null ? snapshot.price : null,
-        currency: snapshot.currency || null,
+        // COERCED, not passed through: the snapshot is a raw DB row spread and node-pg returns NUMERIC
+        // as a string, which would break the published `number|null` contract (offerToSignal already
+        // coerces for the same reason).
+        price: Number.isFinite(Number(snapshot.price)) && snapshot.price !== null && snapshot.price !== ''
+          ? Number(snapshot.price)
+          : null,
+        // Same raw-spread reason as price: the snapshot's currency key varies by producer (`currency` in
+        // products_cache payloads, `price_currency` in seed/PDP payloads), so a one-key read here is how a
+        // stored amount sheds its currency on the agent surface.
+        currency: snapshot.currency || snapshot.price_currency || snapshot.priceCurrency || null,
         image_url: snapshot.image_url || null,
       },
       relation,

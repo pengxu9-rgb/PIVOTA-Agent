@@ -152,7 +152,10 @@ function defaultSessionContext(req, authResult) {
   const verified = authResult?.sessionContext ?? req?.sessionContext ?? req?.authInfo ?? {};
   const out = {};
   if (nonEmpty(verified.user_ref)) out.user_ref = verified.user_ref.trim();
-  else if (isPlainObject(verified.claims)) out.claims = verified.claims;
+  // Claims alongside user_ref, not instead of it — an `else if` here drops the attested buyer email on
+  // every signed-in request, letting a model-asserted customer_email win. The gateway passes an explicit
+  // resolveSessionContext today, but this is the adapter's documented DEFAULT.
+  if (isPlainObject(verified.claims)) out.claims = verified.claims;
   if (nonEmpty(verified.acp_session_id)) out.acp_session_id = verified.acp_session_id.trim();
   if (nonEmpty(verified.agent_id)) out.agent_id = verified.agent_id.trim();
   return out;

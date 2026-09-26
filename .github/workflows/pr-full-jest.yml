@@ -17,9 +17,22 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/**"
+      # The two ESM packages the node:test suites reach into — the safety kernel and the MCP
+      # commerce surface, i.e. the money path. Without these a PR that touched ONLY them ran NO gate at all:
+      # #2018 (mcp-server/src/ucpArgumentAdapter.js + its test, the "file that matters most" per the note
+      # below) produced a single green "CI Entrypoint" that had correctly computed "nothing expected". A
+      # green that means "nothing ran" is the failure mode this whole file is about; do not narrow this back.
+      - "mcp-server/**"
+      - "safety-kernel/**"
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"
+      # The LLM prompts are behaviour, not assets. prompts/reco_main_v1_2.system.txt bounds the Aurora
+      # chat lane to skincare and reco_main_v1_3 opens the agent door to beauty; either file is one
+      # editable line away from re-narrowing a door or widening the chat surface, and
+      # tests/reco_widen_lane_domain_scope.node.test.cjs asserts on both. Without this a prompt-only PR
+      # would have run NO gate at all — the same "green that means nothing ran" this file exists to stop.
+      - "prompts/**"
       # ANY workflow change, not just this file's. The workflow-hygiene gate in
       # tests/ polices `.github/workflows/**`, and a PR that ADDS a workflow
       # touches nothing else — so without this the gate could not fire on the
@@ -35,21 +48,31 @@ concurrency:
 jobs:
   # THE SUITES JEST STRUCTURALLY CANNOT SEE. jest.config.js testMatch is
   # `**/tests/**/*.test.(js|ts)`, so every `*.node.test.cjs` file is invisible to
-  # the shard matrix below — including tests written specifically to pin
-  # behaviour that had already broken production once. #1829's
-  # `commerce_kernel_error_body` has never run in CI; #1837's
-  # `commerce_kernel_error_mapping` would have joined it.
+  # the shard matrix below — including tests written specifically to pin behaviour
+  # that had already broken production once.
   #
-  # DELIBERATELY A SHORT ALLOWLIST, which the header above rightly forbids for
-  # jest. The repo has ~45 `.node.test.cjs` files listed in `npm run test:node`
-  # and no workflow runs any of them; sweeping them all in here without first
-  # confirming each is green would trade a silent gap for a permanently red gate.
-  # This starts with the shared error taxonomy — the money-path classification —
-  # and should grow file by file as each is confirmed.
+  # This job used to be a 1,100-line hand-maintained allowlist, added to file by
+  # file, on the reasoning that sweeping every suite in "without first confirming
+  # each is green would trade a silent gap for a permanently red gate". The caution
+  # was sound; the allowlist was not. Measured on 2026-09-10 against 205e9f1cd it
+  # named 87 of 295 suites. A second list in the `test:node` npm script named 66
+  # more — but no workflow invokes `npm run test:node`, so those never ran either,
+  # which is easy to miss because the list looks like coverage. 208 suites had never
+  # executed in CI. 163 of them were passing, gating nothing, purely because nobody
+  # had typed their names. Among the rest was `aurora_undefined_symbol_guard`, red
+  # over a live ReferenceError in src/server.js (`crossMerchantCacheRouteDebug`,
+  # referenced at two points outside the scope of its `let`) that no gate could see.
+  #
+  # So discovery is now a GLOB, and the list is a list of EXCLUSIONS
+  # (tests/node_suite_quarantine.txt) that may only shrink: the runner executes the
+  # quarantined suites too and FAILS if one of them passes, telling you to delete
+  # its line. The original caution is preserved — the 45 suites red on main are
+  # still excluded — but the default is inverted. A suite added tomorrow is gated
+  # tomorrow, with nobody remembering anything.
   node-tests:
-    name: node:test (allowlist)
+    name: node:test (glob + quarantine)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,8 +88,6 @@ jobs:
       # checkout — including this runner and `git archive` — starts with a
       # DANGLING link. On a dev box it silently resolves to a populated tree, so
       # "this test needs no deps" verifies as true locally and is false in CI.
-      # commerce_kernel_error_body pulls in the axios/pino side of src/; only the
-      # mapping test is genuinely dependency-free.
       - name: Install
         run: |
           for attempt in 1 2 3; do
@@ -78,29 +99,12 @@ jobs:
           echo "npm ci failed after 3 attempts" >&2
           exit 1
 
-      # ADDED 2026-07-27: the three ACP feed-lane suites. Jest's testMatch is
-      # `**/tests/**/*.test.(js|ts)`, so `*.node.test.cjs` is STRUCTURALLY
-      # invisible to the sharded jest job below — landing them without this
-      # entry would mean the only tests for the feed's flag gates, price gate and
-      # rig exclusion run in no CI job at all. In a repo that has shipped "a test
-      # that cannot fail" four times in three days, that is the same wound.
-      # CORRECTION to an earlier version of this comment: these files do NOT run
-      # dependency-free. `product_entity_index_feed_election` reaches
-      # src/services/productEntityIndexFeed -> ../db -> ../logger and fails with
-      # `Cannot find module 'pino'` on a checkout without node_modules. The job
-      # is green because `npm ci` runs above, NOT because the files are leaves.
-      # Green here proves the job passes; it does not prove the reason. Said
-      # plainly so nobody relies on the wrong one.
+      # The same command a developer runs. `test:node` is this script plus the
+      # preflight guard; invoking the script directly keeps the guard's cwd-name
+      # check (which wants the checkout to be named PIVOTA-Agent) from deciding
+      # whether the suites run.
       - name: Run node:test suites
-        run: |
-          node --test \
-            tests/commerce_kernel_error_body.node.test.cjs \
-            tests/commerce_kernel_error_mapping.node.test.cjs \
-            tests/asserted_privilege_observation.node.test.cjs \
-            tests/acp_feed_item.node.test.cjs \
-            tests/acp_feed_source.node.test.cjs \
-            tests/product_entity_index_feed_election.node.test.cjs
-
+        run: node scripts/run_node_test_suites.cjs
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -149,3 +153,37 @@ jobs:
             --maxWorkers=1 \
             --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
+
+  canonical-main-postgres:
+    name: Canonical main SQL + HTTP (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gateway_review
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gateway_review -d gateway_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then exit 0; fi
+            sleep $((attempt * 15))
+          done
+          exit 1
+      - name: Execute canonical primary SQL through HTTP without rescue
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/canonical_offer_availability_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js tests/integration/find_products_multi_prod_flags_bind_types_postgres.test.js tests/integration/catalog_entity_group_offer_count_postgres.test.js tests/integration/catalog_entity_group_membership_postgres.test.js tests/integration/discovery_brand_seed_scan_postgres.test.js tests/integration/external_seed_brand_fastpath_postgres.test.js tests/integration/aurora_activity_keyset_postgres.test.js tests/integration/relationship_graph_ref_resolution_postgres.test.js tests/integration/canonical_brand_match_postgres.test.js tests/integration/search_name_evidence_admission_postgres.test.js tests/integration/search_name_evidence_acceptance_postgres.test.js tests/integration/find_products_multi_buyer_market_postgres.test.js

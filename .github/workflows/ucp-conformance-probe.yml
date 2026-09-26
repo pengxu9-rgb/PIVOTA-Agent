@@ -1,0 +1,128 @@
+name: UCP Conformance Probe
+
+# Standing check on the LIVE seller UCP surface (`/.well-known/ucp` + the doors it advertises).
+#
+# WHY A SCHEDULE AND NOT A CI GATE. The invariants this asserts are about a DEPLOYMENT, not a commit:
+# a stale deploy, a kill-switch left dark, a metadata document that stops naming its own door. None of
+# those are visible to a PR gate, and all of them have happened this month. The probe's own unit tests
+# run in the PR gate (`node:test` allowlist in pr-full-jest.yml); this runs the probe itself.
+#
+# WHY GITHUB ACTIONS AND NOT A RAILWAY CRON. Railway cron is the right home for the relgraph job — it
+# needs prod DATABASE_URL, runs for an hour, and writes a DB ledger. This is the opposite: no secrets,
+# no dependencies, ~2 seconds of external HTTP against a public surface. A dedicated Railway service
+# would buy a second thing to maintain plus a scheduler-log blind spot, to save a few seconds of runner
+# time an hour. The "no paid Actions" doctrine in this repo is real but scoped to the money-path RELEASE
+# gates (.github/scripts/check-agent-checkout-rollout-gates.mjs enforces it against three named files);
+# ten scheduled workflows already run here, eight of them against production.
+#
+# NO `npm ci`. The probe has zero requires beyond one in-repo constant, so checkout + node is the whole
+# job — unlike aurora_rollout_probe.yml, which needs an install.
+#
+# NO `environment:`. A required-reviewer environment leaves scheduled runs pending forever: an inert
+# no-op wearing a green tick, which is the failure mode this whole probe exists to avoid.
+#
+# EXIT CODES the job branches on: 0 = every invariant held; 1 = the SURFACE is wrong (page someone);
+# 2 = the probe could not run (a broken harness or a network blip — surfaced, but distinguishable).
+
+on:
+  schedule:
+    # Hourly. The surface changes on deploy, not continuously, and every failure this would have caught
+    # persisted for hours. A tighter cadence would buy minutes of detection latency for 12x the runs.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "UCP seller base URL"
+        required: false
+        default: "https://commerce.mcp.pivota.cc"
+
+concurrency:
+  group: ucp-conformance-probe
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: UCP conformance (live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.UCP_SELLER_BASE_URL || 'https://commerce.mcp.pivota.cc' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # `--json` so the report is machine-readable in the log and in the artifact; the human summary is
+      # rendered below from the same document, so the two can never disagree.
+      - name: Probe the live UCP surface
+        id: probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/probe-ucp-conformance.cjs --base "$BASE_URL" --json | tee /tmp/ucp-conformance.json
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      # Always attach the report — a red run whose evidence has to be reconstructed by hand is why the
+      # previous approach (diff a captured document) was abandoned.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ucp-conformance-report
+          path: /tmp/ucp-conformance.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [[ ! -s /tmp/ucp-conformance.json ]]; then
+            echo "### UCP conformance probe: no report produced" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### UCP conformance probe"
+            echo ""
+            echo "- base: \`$(jq -r '.base' /tmp/ucp-conformance.json)\`"
+            echo "- status: **$(jq -r '.status' /tmp/ucp-conformance.json)**"
+            echo "- advertised version: \`$(jq -r '.profile.version // "n/a"' /tmp/ucp-conformance.json)\` (build pins \`$(jq -r '.pinned_version' /tmp/ucp-conformance.json)\`)"
+            echo "- capabilities: $(jq -r '(.profile.capabilities // []) | length' /tmp/ucp-conformance.json)"
+            echo ""
+            jq -r '(.findings // [])[] | "- **\(.level) \(.code)**\(if .since then " (\(.since))" else "" end): \(.message)"' /tmp/ucp-conformance.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only pages when the SURFACE is wrong (exit 1). A probe that could not run (exit 2) still fails the
+      # job and is visible in the run list, but does not wake anyone: that distinction is the reason the
+      # exit codes were separated in the first place.
+      - name: Notify on-call webhook (surface failure only)
+        if: failure() && steps.probe.outputs.exit_code == '1'
+        shell: bash
+        env:
+          ONCALL_WEBHOOK_URL: ${{ secrets.UCP_CONFORMANCE_ONCALL_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ONCALL_WEBHOOK_URL:-}" ]]; then
+            echo "SKIP: UCP_CONFORMANCE_ONCALL_WEBHOOK_URL not configured"
+            exit 0
+          fi
+          codes="$(jq -r '[(.findings // [])[] | select(.level=="FAIL") | .code] | join(",")' /tmp/ucp-conformance.json)"
+          payload="$(jq -n \
+            --arg title 'ucp_conformance_probe_failed' \
+            --arg base "$(jq -r '.base' /tmp/ucp-conformance.json)" \
+            --arg codes "$codes" \
+            --arg repo '${{ github.repository }}' \
+            --arg run_url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+            '{title:$title, base:$base, failing_checks:$codes, repo:$repo, run_url:$run_url}')"
+          curl -sS -X POST "$ONCALL_WEBHOOK_URL" -H 'Content-Type: application/json' --data "$payload" >/dev/null
+          echo "PASS: on-call webhook notified"

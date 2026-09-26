@@ -80,6 +80,17 @@ test('POST /public/mcp rejects oversized bodies (Content-Length path)', async ()
     .expect(413);
 });
 
+// Did a chunked probe get stopped by the cap? Either the guard answered 413 before the parser ran, or it
+// destroyed the request and the client saw the socket die mid-write.
+//
+// The error verdict carries the CODE rather than a flat 'reset'. A bare `resolve('reset')` on any error
+// makes the assertion pass for reasons that have nothing to do with the cap — a wrong port, a server torn
+// down early, a refused connection all surface as errors, and every one of them would read as "capped" on
+// a build where the cap had been deleted outright. Only the two codes a mid-body destroy actually produces
+// count: ECONNRESET (peer closed while we waited) and EPIPE (peer closed while we were still writing).
+const CAPPED_VERDICTS = new Set([413, 'error:ECONNRESET', 'error:EPIPE']);
+const isCapped = (verdict) => CAPPED_VERDICTS.has(verdict);
+
 test('POST /public/mcp rejects oversized CHUNKED bodies (no Content-Length)', async () => {
   // Raw request that writes chunks without setting Content-Length → Node uses chunked transfer-encoding, so
   // the route's header check can't catch it and the early STREAM guard must. Accept 413 or a connection
@@ -94,13 +105,82 @@ test('POST /public/mcp rejects oversized CHUNKED bodies (no Content-Length)', as
       { port, path: '/public/mcp', method: 'POST', headers: { 'Content-Type': 'application/json' } },
       (res) => { res.resume(); resolve(res.statusCode); }
     );
-    req.on('error', () => resolve('reset'));
+    req.on('error', (err) => resolve(`error:${err.code || err.message}`));
     req.write(big.slice(0, 40000));
     req.write(big.slice(40000));
     req.end();
   });
   server.close();
-  assert.ok(outcome === 413 || outcome === 'reset', `expected 413 or reset, got ${outcome}`);
+  assert.ok(isCapped(outcome), `expected 413 or a mid-body connection destroy, got ${outcome}`);
+});
+
+// Express routes case-insensitively and tolerates a trailing slash (caseSensitive/strict default off), so
+// `/MCP`, `/mcp/`, `/PUBLIC/MCP` and `/public/mcp/` all reach the public read handler. The early body-cap
+// middleware must recognize them too. It has to be driven CHUNKED to mean anything: with a Content-Length,
+// the route's own header check (handlePublicReadMcp) answers 413 for every spelling, so a Content-Length
+// test would pass even with the cap bypassed. Chunked is the case only the middleware can see.
+function postChunked(port, { path, host, body }) {
+  const http = require('http');
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        port,
+        path,
+        method: 'POST',
+        // Fresh socket per probe: the cap DESTROYS the request, and a pooled keep-alive socket carrying
+        // that reset would fail the next probe for a reason that has nothing to do with what it asserts.
+        agent: false,
+        headers: { 'Content-Type': 'application/json', ...(host ? { Host: host } : {}) },
+      },
+      (res) => { res.resume(); resolve(res.statusCode); }
+    );
+    req.on('error', (err) => resolve(`error:${err.code || err.message}`));
+    // Two writes with no Content-Length → Node uses Transfer-Encoding: chunked.
+    const half = Math.ceil(body.length / 2);
+    req.write(body.slice(0, half));
+    req.write(body.slice(half));
+    req.end();
+  });
+}
+
+const PUBLIC_MCP_PATH_SPELLINGS = [
+  { path: '/public/mcp' },
+  { path: '/PUBLIC/MCP' },
+  { path: '/public/mcp/' },
+  { path: '/mcp', host: 'mcp.pivota.cc' },
+  { path: '/MCP', host: 'mcp.pivota.cc' },
+  { path: '/mcp/', host: 'mcp.pivota.cc' },
+];
+
+test('every Express spelling of the public MCP paths caps oversized CHUNKED bodies', async () => {
+  const http = require('http');
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, r));
+  const { port } = server.address();
+  const big = JSON.stringify(rpc('tools/list', { padding: 'z'.repeat(64 * 1024) }, 20));
+  const small = JSON.stringify(rpc('tools/list', undefined, 21));
+  const results = [];
+  try {
+    for (const spelling of PUBLIC_MCP_PATH_SPELLINGS) {
+      results.push({
+        path: spelling.path,
+        // Premise check: this spelling really does reach the public handler, so a capped verdict below is
+        // the cap firing and not a 404. 429 also counts — it comes from the route, i.e. past the cap.
+        reached: await postChunked(port, { ...spelling, body: small }),
+        // The cap itself: 413 from the header-less stream guard, or a mid-body destroy (see isCapped —
+        // only genuine reset-class codes count, so a probe that fails to connect cannot read as capped).
+        capped: await postChunked(port, { ...spelling, body: big }),
+      });
+    }
+  } finally {
+    server.close();
+  }
+  // Report EVERY spelling in one run rather than aborting on the first — the bypass is per-spelling, so
+  // which ones leak is the finding.
+  const unreached = results.filter((r) => r.reached !== 200 && r.reached !== 429);
+  assert.deepEqual(unreached, [], `these spellings did not reach the public read handler: ${JSON.stringify(unreached)}`);
+  const leaked = results.filter((r) => !isCapped(r.capped));
+  assert.deepEqual(leaked, [], `these spellings accepted a ${big.length}B chunked body past the 32KB cap: ${JSON.stringify(leaked)}`);
 });
 
 test('rate limiter keys on the trusted (right-most) XFF hop, not the spoofable left-most', async () => {
@@ -115,4 +195,35 @@ test('rate limiter keys on the trusted (right-most) XFF hop, not the spoofable l
     if (res.status === 429) { sawLimit = true; break; }
   }
   assert.ok(sawLimit, 'rotating the forged left-most XFF should not bypass the per-client limit');
+});
+
+test('slow tools/call heartbeats through the REAL route: 200 committed, leading bytes, body still parses', async () => {
+  // The guard exists because the Railway edge resets any response whose first BODY byte is later than ~13s
+  // (services/publicReadMcpHeartbeat). Force the commit with a 1ms delay so every real tools/call is "slow",
+  // and observe the actual wire: heartbeat whitespace first, then a JSON-RPC body that still parses.
+  // Fresh right-most XFF hop: the previous test intentionally drained the shared client's rate bucket.
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS = '1';
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS = '5';
+  try {
+    const resp = await supertest(app)
+      .post('/public/mcp')
+      .set('X-Forwarded-For', '10.9.9.9, 198.51.100.42')
+      .send(rpc('tools/call', { name: 'search_catalog', arguments: { query: 'heartbeat wire probe' } }, 9))
+      .buffer(true)
+      .parse((res, cb) => {
+        let raw = '';
+        res.on('data', (c) => { raw += c; });
+        res.on('end', () => cb(null, raw));
+      })
+      .expect(200);
+    const raw = resp.body;
+    assert.match(raw, /^\s/, 'expected heartbeat whitespace before the JSON body');
+    const parsed = JSON.parse(raw);
+    assert.equal(parsed.jsonrpc, '2.0');
+    assert.equal(parsed.id, 9);
+    assert.ok(parsed.result || parsed.error, 'expected a JSON-RPC result or error body');
+  } finally {
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS;
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS;
+  }
 });

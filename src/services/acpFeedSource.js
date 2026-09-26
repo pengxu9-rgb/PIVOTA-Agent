@@ -72,13 +72,13 @@
 // link to the MERCHANT's own destination, and settlement is the merchant's.
 
 const { isTestMerchantId } = require('./testMerchantPolicy');
+const { gatePublicFeedRows, isLinkableFeedProduct, PIVOTA_SIGNATURE_ID } = require('./publicFeedGate');
 const { isQuotableFeedItem } = require('../acpFeedItem');
 
 // The ONLY id shape the public PDP route resolves. Verified against live prod:
 //   /products/sig_1b4d53ca07835e10cdaada553bc26ed6  -> 200
 //   /products/ext_0feb1c58f18d9f6694955e7e          -> 500 (same as a bogus id)
 // An `ext_*` source_product_id is indistinguishable from garbage to that route.
-const PIVOTA_SIGNATURE_ID = /^sig_[a-z0-9]+$/i;
 
 /**
  * Project a PRODUCT-ENTITY-INDEX-FEED item into the shape `buildAcpFeedItem`
@@ -140,17 +140,6 @@ function toAcpFeedProduct(item) {
   };
 }
 
-/**
- * Would this item produce a PDP link that actually resolves?
- *
- * Sibling to `isQuotableFeedItem`. A price gate without a link gate protects
- * the cheaper of the two failure modes: a mispriced item is one bad row, a
- * dead link is a dead row that also burns crawl budget and trust.
- */
-function isLinkableFeedProduct(product) {
-  const id = String((product && product.id) || '').trim();
-  return PIVOTA_SIGNATURE_ID.test(id);
-}
 
 const ENV_TRUE = new Set(['1', 'true', 'yes', 'on']);
 
@@ -167,6 +156,69 @@ const ACP_FEED_SOURCE_INDEX = 'index_feed';
 
 function isIndexFeedSourceEnabled(env = process.env) {
   return String(env?.[ACP_FEED_SOURCE_ENV] || '').trim().toLowerCase() === ACP_FEED_SOURCE_INDEX;
+}
+
+// ══ THE COUPLING, NOW ENFORCED IN CODE RATHER THAN IN A COMMENT ══════════════
+//
+// The header above states the precondition — `ACP_FEED_SOURCE=index_feed` must
+// never be set without `INDEX_FEED_ELECTED_CANONICAL=1` — and until this commit
+// that statement was the ENTIRE mechanism. Nothing read the second flag on this
+// path. The two flags happened to agree in prod, so the correct behaviour was
+// the operator's, not the code's, and the code would have gone on working "by
+// luck" until the day someone unset one of them.
+//
+// What is lost when they disagree is not a ranking nicety. Of 600 sampled prod
+// rows, 9 are `serving_eligible: true` AND `renderable: false` — well-formed
+// sigs that pass this lane's own join and are nevertheless dead pages, i.e.
+// ~1.5% of the feed. In 9 of those 9 the ELECTED canonical resolves 200. The
+// election preference IS the mitigation for the dead-link class, so a lane
+// running without it publishes known-dead links under our name on a public,
+// externally-ingested surface.
+//
+// Hence: source-selected + election-off is not a degraded mode, it is a mode
+// this lane refuses. `isIndexFeedLaneServable` is what a caller asks; the throw
+// inside `fetchIndexFeedProducts` is the belt to that braces.
+//
+// BE HONEST ABOUT WHAT THE THROW DOES, because the first version of this comment
+// was not. It is unreachable from the ACP feed today: `server.js` checks
+// `isIndexFeedLaneServable()` against the same `process.env` one frame earlier
+// and falls through to the connected lane, so the refused state is answered
+// there, with a WARN, as an empty 200. The throw exists for the SECOND caller —
+// whoever next wires this lane up and reaches for `fetchIndexFeedProducts`
+// directly, as the module header invites them to.
+//
+// And if it ever does fire it is NOT loud: `createAcpRestAdapter`'s `guard()`
+// catches any non-`PivotaCommerceError` and returns a bare 500 with no logging,
+// so the route's own `logger.error` and its 503 body never run and this
+// message's flag name never reaches an operator. Fixing that belongs to the
+// adapter's error taxonomy, not here. Do not write a comment claiming a 503.
+//
+// KNOWN GAP, stated so nobody reads more into this gate than it gives: it
+// enforces that the OPERATOR SET BOTH FLAGS, not that the election is actually
+// being applied. `productEntityIndexFeed` also ANDs in a process-lifetime latch
+// (`CONTENT_CANONICAL_ELECTION_TABLE_MISSING`) that silently disables the
+// election if the table is ever missing for a single query. In that state this
+// gate still returns true and the lane serves the very dead-link class it is
+// written to refuse. The table is live in prod (seeded 2026-07-27), so this is
+// a hardening follow-up, not a merge-time risk — but it is a real hole.
+const INDEX_FEED_ELECTED_CANONICAL_ENV = 'INDEX_FEED_ELECTED_CANONICAL';
+
+// NOTE ON WHICH env THIS READS. `productEntityIndexFeed` reads
+// `process.env.INDEX_FEED_ELECTED_CANONICAL` DIRECTLY and cannot be injected;
+// this helper honours the injected `env` so the gate stays unit-testable. In
+// production the caller passes no `env`, so both default to the same
+// `process.env` object and the gate provably describes the lane it guards. A
+// caller that injects a DIFFERENT env is testing, not serving.
+function isElectedCanonicalEnabled(env = process.env) {
+  return ENV_TRUE.has(String(env?.[INDEX_FEED_ELECTED_CANONICAL_ENV] || '').trim().toLowerCase());
+}
+
+// The predicate a caller must ask before serving this lane. Deliberately NOT
+// folded into `isIndexFeedSourceEnabled`: that one answers "which source did the
+// operator name?", which is also what the mis-configuration warning needs to
+// distinguish from "no source named at all".
+function isIndexFeedLaneServable(env = process.env) {
+  return isIndexFeedSourceEnabled(env) && isElectedCanonicalEnabled(env);
 }
 
 // The feed's market. Non-US offers are correctly LABELLED (measured: 0 offers
@@ -210,6 +262,23 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
     throw new Error('fetchIndexFeedProducts requires getProductEntityIndexFeed');
   }
 
+  // Fail CLOSED on the one misconfiguration the header names (see
+  // `isIndexFeedLaneServable`, and read its note on what this throw does and
+  // does not achieve). Scoped to the mis-wired combination only —
+  // source-selected AND election-off — so a caller that drives this lane
+  // directly with neither flag set (every existing unit test, and the live
+  // `get_product_entity_index_feed` operation) is unaffected, while the state
+  // that would republish ~1.5% dead links cannot serve at all.
+  // A throw rather than an empty list so that a caller which has NOT made the
+  // server.js fall-through decision cannot mistake "refused" for "nothing here".
+  if (isIndexFeedSourceEnabled(env) && !isElectedCanonicalEnabled(env)) {
+    throw new Error(
+      `acp feed: ${ACP_FEED_SOURCE_ENV}=${ACP_FEED_SOURCE_INDEX} requires ${INDEX_FEED_ELECTED_CANONICAL_ENV}=1 `
+        + '(the elected canonical is the mitigation for serving_eligible-but-unrenderable rows; '
+        + 'without it ~1.5% of feed links are dead). Set both flags, or neither.',
+    );
+  }
+
   const result = await getProductEntityIndexFeed(
     {
       limit: clampLimit(query?.limit),
@@ -243,55 +312,67 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   // NOT catch a demo store re-connected under an unknown merchant_id. Closing
   // that would mean projecting source_domain onto the item; noted rather than
   // done, because for THIS lane the SQL domain leg is in play and verified.
-  const withoutRigs = products.filter((p) => !isTestMerchantId(p?.merchant_id, env));
-  if (withoutRigs.length !== products.length && logger?.info) {
-    logger.info(
-      { dropped: products.length - withoutRigs.length, surface: 'acp_public_feed', source: 'index_feed' },
-      'acp feed: excluded test/demo merchant products',
-    );
-  }
 
-  // THE PRICE GATE IS APPLIED HERE, not left to the caller.
+  // THE GATE IS APPLIED HERE, not left to the caller.
   //
   // It has to be: the lane's best-offer join is a LEFT JOIN LATERAL, so a row
   // with no priced, currency-bearing, unsuppressed offer comes back with
   // `price: null` rather than being dropped. This module advertises itself as
-  // "the whole swap minus one line" and the server.js integration as a single
-  // call substitution — so if the gate lived in the caller, an integrator doing
-  // exactly what the handoff says would ship price-null items to ChatGPT/Google.
-  // That is the precise failure this lane exists to prevent, and a documented
-  // requirement is not a gate.
-  // Project into the ACP shape BEFORE gating, so both gates see what the feed
-  // will actually emit rather than what the lane happens to return.
-  const projected = withoutRigs.map(toAcpFeedProduct);
+  // "the whole swap minus one line", so if the gate lived in the caller, an
+  // integrator doing exactly what the handoff says would ship price-null items
+  // to ChatGPT/Google. A documented requirement is not a gate.
+  //
+  // Both lanes now call the SAME `gatePublicFeedRows` (issue #1847): the policy
+  // — which gates, in what order — is no longer a per-lane hand-assembled chain
+  // that can silently differ. This lane keeps its own PROJECTION, because
+  // `toAcpFeedProduct` reads `product_entity_id` where the connected lane's
+  // mapper reads `id`; same target shape, different sources.
+  const { items } = gatePublicFeedRows(products, {
+    project: toAcpFeedProduct,
+    logger,
+    lane: 'index_feed',
+    env,
+  });
+  return items;
+}
 
-  const linkable = projected.filter(isLinkableFeedProduct);
-  if (linkable.length !== projected.length && logger?.warn) {
-    // warn, not info: a lane row without a resolvable signature is a data
-    // problem upstream, not routine filtering.
-    logger.warn(
-      { dropped: projected.length - linkable.length, surface: 'acp_public_feed', reason: 'unresolvable_pdp_id' },
-      'acp feed: dropped items whose PDP link would not resolve',
-    );
-  }
 
-  const quotable = linkable.filter(isQuotableFeedItem);
-  if (quotable.length !== linkable.length && logger?.info) {
-    logger.info(
-      { dropped: linkable.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
-      'acp feed: dropped items with no quotable price',
-    );
-  }
-  return quotable;
+/**
+ * The query the CONNECTED fallback lane sends upstream to `find_products`.
+ *
+ * Extracted from `src/server.js` so the WIRING is assertable, not just the
+ * clamp. Review round 3 showed why: with the clamp inline, four mutants that
+ * broke it survived — reverting the argument to `query || {}`, wrapping it in
+ * parens, re-adding `limit: query?.limit` after the clamp — because the only
+ * assertion was a source-text match on a literal. It died when a string changed
+ * and lived when behaviour changed, which is exactly backwards.
+ *
+ * Clamps `limit` with the SAME `clampLimit` the index lane uses (one rule, one
+ * implementation), and touches nothing else: `page` and `cursor` pass through
+ * verbatim because this lane has no paging contract to translate them into.
+ * A query with no `limit` is returned structurally unchanged.
+ */
+function buildConnectedLaneQuery(query) {
+  const out = { ...(query || {}) };
+  if (out.limit != null) out.limit = clampLimit(out.limit);
+  return out;
 }
 
 module.exports = {
   ACP_FEED_SOURCE_ENV,
+  INDEX_FEED_ELECTED_CANONICAL_ENV,
   PIVOTA_SIGNATURE_ID,
   toAcpFeedProduct,
   isLinkableFeedProduct,
   ACP_FEED_SOURCE_INDEX,
   isIndexFeedSourceEnabled,
+  isElectedCanonicalEnabled,
+  isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
+  // Exported so the CONNECTED fallback lane in src/server.js clamps with the
+  // SAME function this lane does, rather than a second inline copy of the
+  // predicate. Two drifting copies of one rule is the failure ADR-012 names.
+  clampLimit,
+  buildConnectedLaneQuery,
 };

@@ -1,7 +1,6 @@
 const axios = require('axios');
 const logger = require('../logger');
 const { getCreatorConfig } = require('../creatorConfig');
-const { getAllPromotions } = require('../promotionStore');
 const { getTaxonomyView } = require('./taxonomyStore');
 const { query } = require('../db');
 const {
@@ -875,184 +874,6 @@ function buildCategoryTree(indexedProducts) {
   return { roots, categoryMap };
 }
 
-function isPromoActive(promo, nowTs) {
-  const start = new Date(promo.startAt).getTime();
-  const end = new Date(promo.endAt).getTime();
-  return nowTs >= start && nowTs <= end && !promo.deletedAt;
-}
-
-function allowedForCreator(promo, creatorId) {
-  if (!creatorId) {
-    return promo.exposeToCreators !== false;
-  }
-  if (promo.exposeToCreators === false) return false;
-  if (promo.allowedCreatorIds && promo.allowedCreatorIds.length > 0) {
-    return promo.allowedCreatorIds.includes(creatorId);
-  }
-  return true;
-}
-
-function matchesScope(promo, product) {
-  const scope = promo.scope || {};
-  if (scope.global) return true;
-
-  const pid = String(product.product_id || product.id || '');
-  if (scope.productIds && scope.productIds.includes(pid)) return true;
-
-  const category = (product.category || product.product_type || '').toLowerCase();
-  if (
-    scope.categoryIds &&
-    scope.categoryIds.some((c) => category && category.includes(String(c).toLowerCase()))
-  ) {
-    return true;
-  }
-
-  const brand = (product.vendor || product.brand || '').toLowerCase();
-  if (
-    scope.brandIds &&
-    scope.brandIds.some((b) => brand && brand.includes(String(b).toLowerCase()))
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function findApplicablePromotionsForProduct(product, now, promotions, creatorId) {
-  const nowTs = now.getTime();
-  const productMerchant = String(product.merchant_id || product.merchantId || '');
-  return promotions.filter(
-    (promo) =>
-      isPromoActive(promo, nowTs) &&
-      (!promo.merchantId || !productMerchant || String(promo.merchantId) === productMerchant) &&
-      matchesScope(promo, product) &&
-      Array.isArray(promo.channels) &&
-      promo.channels.includes(CHANNEL_CREATOR) &&
-      allowedForCreator(promo, creatorId)
-  );
-}
-
-function computeUrgency(endAt) {
-  if (!endAt) return 'LOW';
-  const end = new Date(endAt).getTime();
-  const now = Date.now();
-  const diffMs = end - now;
-  if (diffMs <= 0) return 'LOW';
-  const diffHours = diffMs / (1000 * 60 * 60);
-  if (diffHours <= 1) return 'HIGH';
-  if (diffHours <= 24) return 'MEDIUM';
-  return 'LOW';
-}
-
-function promotionToDealPayload(promo, productPrice) {
-  const base = {
-    id: promo.id,
-    type: promo.type,
-    label: promo.humanReadableRule || promo.name || 'Deal',
-  };
-
-  if (promo.config?.kind === 'FLASH_SALE') {
-    const flashPrice = promo.config.flashPrice || null;
-    const originalPrice =
-      promo.config.originalPrice || productPrice || (productPrice === 0 ? 0 : null);
-    const discountPercent =
-      originalPrice && originalPrice > 0 && flashPrice
-        ? Math.round((1 - flashPrice / originalPrice) * 100)
-        : undefined;
-
-    return {
-      ...base,
-      discount_percent: discountPercent,
-      flash_price: flashPrice || undefined,
-      end_at: promo.endAt,
-      urgency_level: computeUrgency(promo.endAt),
-    };
-  }
-
-  if (promo.config?.kind === 'MULTI_BUY_DISCOUNT') {
-    return {
-      ...base,
-      discount_percent: promo.config.discountPercent,
-      threshold_quantity: promo.config.thresholdQuantity,
-      end_at: promo.endAt,
-      urgency_level: computeUrgency(promo.endAt),
-    };
-  }
-
-  return base;
-}
-
-function computeHumanReadableRule(promo) {
-  if (promo.humanReadableRule) return promo.humanReadableRule;
-  if (promo.config?.kind === 'MULTI_BUY_DISCOUNT') {
-    const t = promo.config.thresholdQuantity;
-    const d = promo.config.discountPercent;
-    if (t && d) return `Buy ${t}, get ${d}% off`;
-    return 'Bundle & save';
-  }
-  if (promo.config?.kind === 'FLASH_SALE') {
-    const fp = promo.config.flashPrice;
-    if (fp) return 'Flash deal';
-    return 'Flash deal';
-  }
-  return promo.name || 'Deal';
-}
-
-async function getActivePromotions(now = new Date()) {
-  let promos = [];
-  try {
-    promos = await getAllPromotions();
-  } catch (err) {
-    logger.error({ err: err.message }, 'Failed to load promotions in category service');
-    promos = [];
-  }
-
-  return promos
-    .filter((p) => !p.deletedAt)
-    .map((p) => ({
-      ...p,
-      humanReadableRule: computeHumanReadableRule(p),
-    }));
-}
-
-function enrichProductsWithDeals(products, promotions, now = new Date(), creatorId = null) {
-  if (!Array.isArray(products) || !products.length) return products;
-  return products.map((product) => {
-    const applicablePromos = findApplicablePromotionsForProduct(
-      product,
-      now,
-      promotions,
-      creatorId
-    );
-    const allDeals = applicablePromos.map((p) =>
-      promotionToDealPayload(p, product.price || product.price_cents || product.unit_price)
-    );
-
-    let bestDeal = null;
-    if (allDeals.length) {
-      bestDeal = allDeals.reduce((best, current) => {
-        if (!best) return current;
-        const bestDiscount = best.discount_percent || 0;
-        const currentDiscount = current.discount_percent || 0;
-        if (currentDiscount > bestDiscount) return current;
-        if (currentDiscount === bestDiscount) {
-          const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 };
-          const bestUrgency = rank[best.urgency_level || 'LOW'];
-          const currentUrgency = rank[current.urgency_level || 'LOW'];
-          return currentUrgency > bestUrgency ? current : best;
-        }
-        return best;
-      }, null);
-    }
-
-    return {
-      ...product,
-      best_deal: bestDeal || product.best_deal || null,
-      all_deals: allDeals.length ? allDeals : product.all_deals,
-    };
-  });
-}
-
 async function loadCreatorProducts(creatorId) {
   const config = getCreatorConfig(creatorId);
   if (!config) {
@@ -1185,97 +1006,6 @@ async function loadCreatorProducts(creatorId) {
     );
     return { indexedProducts: [], merchantIds };
   }
-}
-
-function computeCategoryDeals(indexedProducts, categoryMap, promotions, now, creatorId) {
-  const promoToCategoryIds = new Map();
-
-  const promoIndex = new Map();
-  for (const promo of promotions) {
-    promoIndex.set(promo.id, promo);
-  }
-
-  for (const item of indexedProducts) {
-    const applicable = findApplicablePromotionsForProduct(
-      item.product,
-      now,
-      promotions,
-      creatorId
-    );
-    if (!applicable.length || !item.leafId) continue;
-
-    for (const promo of applicable) {
-      let set = promoToCategoryIds.get(promo.id);
-      if (!set) {
-        set = new Set();
-        promoToCategoryIds.set(promo.id, set);
-      }
-      set.add(item.leafId);
-    }
-  }
-
-  // Attach deals to categories (and their ancestors) and compute priorities.
-  for (const [promoId, catSet] of promoToCategoryIds.entries()) {
-    const promo = promoIndex.get(promoId);
-    if (!promo) continue;
-
-    for (const catId of catSet) {
-      let node = categoryMap.get(catId);
-      while (node) {
-        if (!Array.isArray(node.category.deals)) {
-          node.category.deals = [];
-        }
-        if (!node.category.deals.includes(promoId)) {
-          node.category.deals.push(promoId);
-        }
-        const parentId = node.category.parentId;
-        node = parentId ? categoryMap.get(parentId) : null;
-      }
-    }
-  }
-
-  for (const node of categoryMap.values()) {
-    const dealsCount = Array.isArray(node.category.deals) ? node.category.deals.length : 0;
-    node.category.priority = node.category.productCount + dealsCount * 5;
-  }
-
-  const hotDeals = [];
-  for (const [promoId, catSet] of promoToCategoryIds.entries()) {
-    const promo = promoIndex.get(promoId);
-    if (!promo) continue;
-    if (!catSet.size) continue;
-
-    const type =
-      promo.config?.kind === 'FLASH_SALE' || promo.type === 'FLASH_SALE'
-        ? 'FLASH_SALE'
-        : 'MULTI_BUY_DISCOUNT';
-
-    const label = promo.humanReadableRule || computeHumanReadableRule(promo);
-
-    hotDeals.push({
-      id: promo.id,
-      label,
-      type,
-      categoryIds: Array.from(catSet),
-    });
-  }
-
-  return hotDeals;
-}
-
-function filterTreeByDeals(nodes) {
-  const result = [];
-  for (const node of nodes) {
-    const filteredChildren = filterTreeByDeals(node.children || []);
-    const hasDeals = Array.isArray(node.category.deals) && node.category.deals.length > 0;
-    if (hasDeals || filteredChildren.length > 0) {
-      result.push({
-        category: node.category,
-        children: filteredChildren,
-      });
-    }
-  }
-  return result;
 }
 
 function stripCounts(nodes) {
@@ -1499,54 +1229,9 @@ async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
       }
     }
 
-    const now = new Date();
-    const promotions = await getActivePromotions(now);
-
-    // Attach deals to categories based on product membership.
-    const promoToCategoryIds = new Map();
-    for (const { product, categoryId } of assigned) {
-      const applicable = findApplicablePromotionsForProduct(product, now, promotions, creatorId);
-      if (!applicable.length) continue;
-      for (const promo of applicable) {
-        let set = promoToCategoryIds.get(promo.id);
-        if (!set) {
-          set = new Set();
-          promoToCategoryIds.set(promo.id, set);
-        }
-        set.add(categoryId);
-      }
-    }
-
+    // Promotions lane deleted (ADR-022): no deals attach to categories.
     const dealsByCategory = new Map();
-    for (const [promoId, catSet] of promoToCategoryIds.entries()) {
-      for (const catId of catSet) {
-        for (const anc of ancestorsOf(catId)) {
-          let arr = dealsByCategory.get(anc);
-          if (!arr) {
-            arr = [];
-            dealsByCategory.set(anc, arr);
-          }
-          if (!arr.includes(promoId)) arr.push(promoId);
-        }
-      }
-    }
-
     const hotDeals = [];
-    for (const [promoId, catSet] of promoToCategoryIds.entries()) {
-      const promo = promotions.find((p) => p.id === promoId);
-      if (!promo) continue;
-      const type =
-        promo.config?.kind === 'FLASH_SALE' || promo.type === 'FLASH_SALE'
-          ? 'FLASH_SALE'
-          : 'MULTI_BUY_DISCOUNT';
-      const label = promo.humanReadableRule || computeHumanReadableRule(promo);
-      hotDeals.push({
-        id: promo.id,
-        label,
-        type,
-        categoryIds: Array.from(catSet),
-      });
-    }
 
     function toNode(id) {
       const base = taxonomy.byId.get(id);
@@ -1627,7 +1312,8 @@ async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
       (a, b) => (b.category.priority ?? 0) - (a.category.priority ?? 0),
     );
     if (dealsOnly) {
-      finalRoots = filterTreeByDeals(finalRoots);
+      // Promotions lane deleted (ADR-022): a deals-only view is honestly empty.
+      finalRoots = [];
     }
 
     return {
@@ -1652,19 +1338,17 @@ async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
   }
 
   const { roots, categoryMap } = buildCategoryTree(indexedProducts);
-  const now = new Date();
-  const promotions = await getActivePromotions(now);
-  const hotDeals = computeCategoryDeals(
-    indexedProducts,
-    categoryMap,
-    promotions,
-    now,
-    creatorId
-  );
+  // Preserve the legacy-path priority contract (previously assigned inside the
+  // deleted computeCategoryDeals): with no deals, priority is productCount.
+  for (const node of categoryMap.values()) {
+    node.category.priority = node.category.productCount;
+  }
+  const hotDeals = [];
 
   let finalRoots = roots;
   if (dealsOnly) {
-    finalRoots = filterTreeByDeals(roots);
+    // Promotions lane deleted (ADR-022): a deals-only view is honestly empty.
+    finalRoots = [];
   }
   if (!includeCounts) {
     stripCounts(finalRoots);
@@ -1960,9 +1644,7 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
       .filter((p) => targetIds.has(p.categoryId))
       .map((p) => p.product);
 
-    const now = new Date();
-    const promotions = await getActivePromotions(now);
-    const enriched = enrichProductsWithDeals(productsForCategory, promotions, now, creatorId);
+    const enriched = productsForCategory;
 
     const total = enriched.length;
     const startIdx = (page - 1) * limit;
@@ -2021,9 +1703,7 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
     }
   }
 
-  const now = new Date();
-  const promotions = await getActivePromotions(now);
-  const enriched = enrichProductsWithDeals(productsForCategory, promotions, now, creatorId);
+  const enriched = productsForCategory;
 
   const total = enriched.length;
   const startIdx = (page - 1) * limit;

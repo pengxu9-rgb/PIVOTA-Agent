@@ -155,13 +155,24 @@ function normalizeEventTypeList(input) {
   return out;
 }
 
+// The activity_id tiebreak, in UTF-8 BYTE order — exactly the order PostgreSQL gives
+// `activity_id COLLATE "C"`, which is what the keyset query below sorts and filters on.
+//
+// It must be byte order, and it must be the SAME function for sorting and for the cursor filter.
+// The database collation is en_US.UTF8, which does not order '_' and '-' the way localeCompare does,
+// and activity_id is mixed-format in production (`act_<base36>_<rand>` from memoryStore,
+// `act_<uuid>` from here, `artifact:<id>` for synthetic items). If SQL and JS disagree on the order
+// of two ids with the same timestamp, a page boundary that falls inside that tie skips or repeats
+// rows. UTF-8 byte order is the one both sides can compute identically.
+function compareActivityIdBytes(a, b) {
+  return Buffer.compare(Buffer.from(String(a || ''), 'utf8'), Buffer.from(String(b || ''), 'utf8'));
+}
+
 function compareEventsDesc(a, b) {
   const aTs = Number(a && a.occurred_at_ms || 0);
   const bTs = Number(b && b.occurred_at_ms || 0);
   if (aTs !== bTs) return bTs - aTs;
-  const aId = String(a && a.activity_id || '');
-  const bId = String(b && b.activity_id || '');
-  return bId.localeCompare(aId);
+  return compareActivityIdBytes(b && b.activity_id, a && a.activity_id);
 }
 
 function encodeCursor(cursor) {
@@ -197,7 +208,34 @@ function eventAfterCursor(event, cursor) {
   const ts = Number(event && event.occurred_at_ms || 0);
   if (ts < cursor.occurred_at_ms) return true;
   if (ts > cursor.occurred_at_ms) return false;
-  return String(event && event.activity_id || '').localeCompare(String(cursor.activity_id || '')) < 0;
+  return compareActivityIdBytes(event && event.activity_id, cursor.activity_id) < 0;
+}
+
+// A cursor may arrive encoded (this module's own base64url token) or already decoded by the caller
+// (the /v1/activity route decodes its own token). Both reduce to the same { occurred_at_ms,
+// activity_id } pair.
+function normalizeCursorInput(cursor) {
+  if (cursor && typeof cursor === 'object') {
+    const ts = Number(cursor.occurred_at_ms);
+    if (!Number.isFinite(ts)) return null;
+    return { occurred_at_ms: Math.max(0, Math.trunc(ts)), activity_id: String(cursor.activity_id || '') };
+  }
+  return decodeCursor(cursor);
+}
+
+// Identity scope shared by every read of aurora_activity_events, so the list and the artifact
+// lookup below can never disagree about which rows belong to a caller.
+function pushIdentityWhere(identity, params, where) {
+  if (identity.userId && identity.auroraUid) {
+    params.push(identity.userId, identity.auroraUid);
+    where.push(`(user_id = $${params.length - 1} OR aurora_uid = $${params.length})`);
+  } else if (identity.userId) {
+    params.push(identity.userId);
+    where.push(`user_id = $${params.length}`);
+  } else {
+    params.push(identity.auroraUid);
+    where.push(`aurora_uid = $${params.length}`);
+  }
 }
 
 function mapRow(row) {
@@ -402,7 +440,7 @@ async function listActivityForIdentity({
   if (!identity.auroraUid && !identity.userId) return { items: [], next_cursor: null };
 
   const n = parseListLimit(limit);
-  const cursorObj = decodeCursor(cursor);
+  const cursorObj = normalizeCursorInput(cursor);
   const normalizedTypes = normalizeEventTypeList(eventTypes);
   const localRows = mergeLocalEventsForIdentity(identity);
 
@@ -417,28 +455,35 @@ async function listActivityForIdentity({
   try {
     const params = [];
     const where = [];
-    if (identity.userId && identity.auroraUid) {
-      params.push(identity.userId, identity.auroraUid);
-      where.push(`(user_id = $${params.length - 1} OR aurora_uid = $${params.length})`);
-    } else if (identity.userId) {
-      params.push(identity.userId);
-      where.push(`user_id = $${params.length}`);
-    } else {
-      params.push(identity.auroraUid);
-      where.push(`aurora_uid = $${params.length}`);
-    }
+    pushIdentityWhere(identity, params, where);
     if (normalizedTypes.length) {
       params.push(normalizedTypes);
       where.push(`event_type = ANY($${params.length}::text[])`);
     }
-    params.push(Math.max(200, n * 6));
+    // The cursor is applied HERE, as a keyset predicate, not only in JS afterwards. Applying it only
+    // in JS over a fixed newest-first window meant a cursor past that window filtered every row out:
+    // the page came back empty with next_cursor null, and history silently ended at the window.
+    if (cursorObj) {
+      params.push(cursorObj.occurred_at_ms);
+      const tsIdx = params.length;
+      params.push(cursorObj.activity_id);
+      const idIdx = params.length;
+      where.push(
+        `(occurred_at_ms < $${tsIdx} OR (occurred_at_ms = $${tsIdx} AND activity_id COLLATE "C" < $${idIdx}))`,
+      );
+    }
+    // One page plus one row is enough, and exactly enough, to fill the page and decide whether there
+    // is more — even after merging the in-memory rows below. Any row that belongs on the page either
+    // is an in-memory row (merged in full) or is among the first n+1 database rows past the cursor:
+    // if it were not, n+1 database rows would rank above it and it could not be on a page of n.
+    params.push(n + 1);
     const limitIdx = params.length;
     const res = await query(
       `
         SELECT activity_id, aurora_uid, user_id, event_type, payload, deeplink, source, occurred_at_ms, created_at
         FROM aurora_activity_events
         WHERE ${where.join(' AND ')}
-        ORDER BY occurred_at_ms DESC, activity_id DESC
+        ORDER BY occurred_at_ms DESC, activity_id COLLATE "C" DESC
         LIMIT $${limitIdx}
       `,
       params,
@@ -473,6 +518,57 @@ async function listActivityForIdentity({
         eventTypes: normalizedTypes,
       });
     }
+    throw err;
+  }
+}
+
+// Which of `artifactIds` an explicit skin_analysis event already references, anywhere in this
+// identity's history. The /v1/activity route hides a synthetic artifact item when an explicit event
+// references the same artifact; it used to check only the explicit events it happened to have
+// fetched, which was the whole history only while that history fit in one window. Paging by cursor
+// fetches one page at a time, so the check has to ask the store instead of the page.
+async function listExplicitArtifactIdsForIdentity({ auroraUid, userId, artifactIds } = {}) {
+  const identity = {
+    auroraUid: normalizeIdentityValue(auroraUid),
+    userId: normalizeIdentityValue(userId),
+  };
+  const wanted = Array.from(new Set(
+    (Array.isArray(artifactIds) ? artifactIds : []).map((id) => String(id || '').trim()).filter(Boolean),
+  ));
+  const found = new Set();
+  if ((!identity.auroraUid && !identity.userId) || !wanted.length) return found;
+
+  const wantedSet = new Set(wanted);
+  for (const row of mergeLocalEventsForIdentity(identity)) {
+    if (normalizeEventType(row && row.event_type) !== 'skin_analysis') continue;
+    const id = String(row && row.payload && row.payload.artifact_id || '').trim();
+    if (id && wantedSet.has(id)) found.add(id);
+  }
+  if (persistenceDisabled()) return found;
+
+  try {
+    const params = [];
+    const where = [];
+    pushIdentityWhere(identity, params, where);
+    params.push(wanted);
+    const idsIdx = params.length;
+    const res = await query(
+      `
+        SELECT DISTINCT btrim(payload->>'artifact_id') AS artifact_id
+        FROM aurora_activity_events
+        WHERE ${where.join(' AND ')}
+          AND event_type = 'skin_analysis'
+          AND btrim(payload->>'artifact_id') = ANY($${idsIdx}::text[])
+      `,
+      params,
+    );
+    for (const row of res.rows || []) {
+      const id = String(row && row.artifact_id || '').trim();
+      if (id) found.add(id);
+    }
+    return found;
+  } catch (err) {
+    if (isStorageUnavailableError(err)) return found;
     throw err;
   }
 }
@@ -602,12 +698,15 @@ async function getActivityDetail(activityId) {
 module.exports = {
   appendActivityForIdentity,
   listActivityForIdentity,
+  listExplicitArtifactIdsForIdentity,
   getActivityEventByIdForIdentity,
   upsertActivityDetail,
   getActivityDetail,
   __internal: {
     decodeCursor,
     encodeCursor,
+    compareActivityIdBytes,
+    compareEventsDesc,
     ephemeral,
   },
 };

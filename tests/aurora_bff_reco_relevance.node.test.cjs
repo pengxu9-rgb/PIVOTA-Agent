@@ -1,7 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
+// The runtime stable-alias registry ships empty (merchant hardcodes were removed);
+// stable-alias tests in this suite rely on the shared fixture, same as the
+// beauty mainline handoff suite.
+process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
+  __dirname,
+  'fixtures',
+  'product_grounding_stable_aliases.test.json',
+);
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_BFF_RECO_CATALOG_GROUNDED = 'true';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
@@ -37,6 +46,19 @@ const {
 
 const staleFallbackPlannerTest =
   process.env.AURORA_RUN_STALE_FALLBACK_PLANNER_TESTS === 'true' ? test : test.skip;
+
+function withInternalRecallLaneEnabled(fn) {
+  return async (...args) => {
+    const original = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
+    try {
+      return await fn(...args);
+    } finally {
+      if (original === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+      else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = original;
+    }
+  };
+}
 
 function loadRoutesFresh() {
   delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
@@ -6423,6 +6445,8 @@ test('__internal: local external seed single-query recall includes attached auth
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
+  const originalInternalLaneMode = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+  process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
   const observedQueries = [];
   axios.get = async (url, config) => {
     observedQueries.push(String(config?.params?.query || ''));
@@ -6479,12 +6503,16 @@ test('__internal: framework recall exhausts primary planned sources before suppo
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|gel cream|daily sunscreen|spf fluid/i.test(query)), false);
   } finally {
     axios.get = originalGet;
+    if (originalInternalLaneMode === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = originalInternalLaneMode;
   }
 });
 
 test('__internal: framework recall skips support stages when primary external stage fully times out after empty primary internal recall', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
+  const originalInternalLaneMode = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+  process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
   const observedQueries = [];
   let callCount = 0;
   axios.get = async (url, config) => {
@@ -6548,6 +6576,75 @@ test('__internal: framework recall skips support stages when primary external st
     assert.ok(['plan_exhausted', 'primary_transient_timeout'].includes(out.plannerStopReason));
     assert.ok(['no_recall_from_planned_sources', 'upstream_timeout_primary_role'].includes(out.candidateDropStage));
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|oil control sunscreen/i.test(query)), false);
+  } finally {
+    axios.get = originalGet;
+    if (originalInternalLaneMode === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = originalInternalLaneMode;
+  }
+});
+
+test('__internal: framework recall skips internal-lane stages by default and goes straight to external seed recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config) => {
+    observedQueries.push(String(config?.params?.query || ''));
+    return {
+      status: 200,
+      data: { items: [] },
+    };
+  };
+
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'oil balance serum', 'mattifying serum'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        query_terms: ['lightweight moisturizer'],
+      },
+    ],
+  };
+
+  try {
+    const out = await __internal.collectRecoCandidatesFromRecallPlan({
+      recallPlan: __internal.buildRecoRecallPlan({
+        mode: 'framework_generic',
+        targetContext,
+      }),
+      targetContext,
+      logger: null,
+      timeoutMs: 300,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+
+    const internalStageRows = out.stageResults.filter(
+      (row) => String(row?.source_scope || '').trim().toLowerCase() === 'internal',
+    );
+    assert.ok(internalStageRows.length > 0);
+    for (const row of internalStageRows) {
+      assert.equal(row.skipped, true);
+      assert.equal(row.skip_reason, 'internal_lane_disabled');
+      assert.equal(row.executed_query_count, 0);
+    }
+    const primaryExternalRow = out.stageResults.find(
+      (row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed',
+    );
+    assert.ok(primaryExternalRow);
+    assert.equal(primaryExternalRow.skipped, false);
+    assert.ok(Number(primaryExternalRow.executed_query_count) > 0);
+    assert.equal(out.primaryStageTimeoutClass, '');
   } finally {
     axios.get = originalGet;
   }
@@ -8603,7 +8700,7 @@ test('__internal: beauty mainline does not use soft-mismatch comparison fill for
   );
 });
 
-test('__internal: soft-mismatch rows do not skip primary external authority recall', async () => {
+test('__internal: soft-mismatch rows do not skip primary external authority recall', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const startedQueries = [];
   const targetContext = {
@@ -8754,7 +8851,7 @@ test('__internal: soft-mismatch rows do not skip primary external authority reca
       item?.product_id === 'internal_soft_barrier_treatment'),
     false,
   );
-});
+}));
 
 test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {
   const { __internal } = loadRoutesFresh();
@@ -8929,7 +9026,7 @@ test('__internal: beauty mainline handoff payload preserves viable support role 
   assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
-test('__internal: beauty local handoff support external stage uses local authority without backend fallback', async () => {
+test('__internal: beauty local handoff support external stage uses local authority without backend fallback', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9189,9 +9286,9 @@ test('__internal: beauty local handoff support external stage uses local authori
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
-});
+}));
 
-test('__internal: beauty local handoff external stage uses local authority peer after backend timeout', async () => {
+test('__internal: beauty local handoff primary external stage uses local authority first and skips the backend race', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9267,8 +9364,15 @@ test('__internal: beauty local handoff external stage uses local authority peer 
       (Array.isArray(out.products) ? out.products : []).map((item) => item?.product_id),
       ['local_oil_control_1'],
     );
+    // Primary roles now run the LOCAL authority search FIRST (2026-07-30):
+    // the backend-authority hop routed through the self-proxy, whose
+    // find_products_multi run (~5.5-6s) always lost the race against the
+    // ~5.4s stage budget once the backend internal lane went empty — the
+    // 2026-07-29 chat-latency regression. On a local hit the backend hop is
+    // skipped entirely, so this scenario no longer reaches the timing-out
+    // backend at all.
     assert.ok(
-      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'shine control serum'),
+      !calls.some((call) => call.kind === 'backend_external_seed'),
       JSON.stringify(calls),
     );
     assert.ok(
@@ -9278,10 +9382,9 @@ test('__internal: beauty local handoff external stage uses local authority peer 
     const attempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) => entry?.query === 'shine control serum' && entry?.source_scope === 'external_seed') || null;
     assert.ok(attempt);
-    assert.equal(attempt.external_seed_authority_backend_primary, true);
-    assert.equal(attempt.external_seed_authority_backend_reason, 'upstream_timeout');
-    assert.equal(attempt.external_seed_authority_peer_used, true);
-    assert.equal(attempt.local_external_seed_authority_peer, true);
+    assert.equal(attempt.primary_external_seed_authority_local_primary, true);
+    assert.equal(attempt.primary_external_seed_authority_backend_skipped, true);
+    assert.equal(attempt.primary_external_seed_authority_backend_skip_reason, 'primary_local_authority_hit');
     assert.equal(attempt.primary_transport_owner, 'local_external_seed_search');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
@@ -9385,7 +9488,7 @@ test('__internal: stable alias authority resolves oil-control role query variant
   }
 });
 
-test('__internal: beauty local handoff keeps same-role sunscreen authority open through under-makeup query', async () => {
+test('__internal: beauty local handoff keeps same-role sunscreen authority open through under-makeup query', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9552,7 +9655,7 @@ test('__internal: beauty local handoff keeps same-role sunscreen authority open 
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
-});
+}));
 
 test('__internal: beauty local handoff does not backend-fallback same-role sunscreen after local primary miss', async () => {
   const { __internal } = loadRoutesFresh();
@@ -14172,7 +14275,7 @@ test('__internal: framework reject preview includes product title for live diagn
   assert.equal(state.hard_reject_preview[0]?.title, 'The Ordinary Niacinamide 10% + Zinc 1%');
 });
 
-test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
+test('__internal: framework reco query collection runs per-level catalog searches concurrently', withInternalRecallLaneEnabled(async () => {
   const originalGet = axios.get;
   let inFlight = 0;
   let maxInFlight = 0;
@@ -14258,7 +14361,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
   } finally {
     axios.get = originalGet;
   }
-});
+}));
 
 staleFallbackPlannerTest('__internal: collectRecoCandidatesFromQueryLevels drops explicit non-skincare pollution at beauty boundary', async () => {
   const { __internal } = loadRoutesFresh();
@@ -14340,7 +14443,84 @@ staleFallbackPlannerTest('__internal: collectRecoCandidatesFromQueryLevels drops
   );
 });
 
-test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', async () => {
+test('__internal: collectRecoCandidatesFromQueryLevels skips framework internal-lane queries by default', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observed = [];
+  const targetContext = {
+    framework_id: 'framework_oily_skin_v1',
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+      },
+    ],
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+  };
+  const queryLevels = [
+    {
+      level_index: 0,
+      ladder_level: 'framework_stage_a_primary_internal',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_a_primary_internal', role_id: 'oil_control_treatment' },
+        { query: 'shine control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_a_primary_internal', role_id: 'oil_control_treatment' },
+      ],
+    },
+    {
+      level_index: 1,
+      ladder_level: 'framework_stage_b_primary_external_seed',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_b_primary_external_seed', role_id: 'oil_control_treatment', allow_external_seed: true },
+      ],
+    },
+  ];
+
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 800,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: true,
+    externalSeedStrategy: 'supplement_internal_first',
+    searchFn: async (args) => {
+      observed.push({
+        query: String(args?.query || ''),
+        allowExternalSeed: args?.allowExternalSeed === true,
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].allowExternalSeed, true);
+  const internalRows = out.searchResults.filter(
+    (row) => String(row?.ladder_level || '').trim() === 'framework_stage_a_primary_internal',
+  );
+  assert.equal(internalRows.length, 2);
+  for (const row of internalRows) {
+    assert.equal(row.skipped_runtime, true);
+    assert.equal(row.reason, 'internal_lane_disabled');
+    assert.equal(row.actual_http_attempt_count, 0);
+  }
+  const internalStageRow = out.stageResults.find(
+    (row) => String(row?.stage_id || '').trim() === 'framework_stage_a_primary_internal',
+  );
+  assert.ok(internalStageRow);
+  assert.equal(internalStageRow.skipped, true);
+  assert.equal(internalStageRow.skip_reason, 'internal_lane_disabled');
+  assert.equal(internalStageRow.executed_query_count, 0);
+});
+
+test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const observed = [];
   const targetContext = {
@@ -14398,9 +14578,9 @@ test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout 
     assert.ok(row.timeoutMs <= 360);
     assert.ok(row.deadlineMs > 0);
   }
-});
+}));
 
-test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock when search hangs', async () => {
+test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock when search hangs', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
     framework_id: 'framework_oily_skin_v1',
@@ -14447,7 +14627,7 @@ test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock whe
     assert.equal(row.timeout_guard, 'caller_wall_clock');
     assert.deepEqual(row.products, []);
   }
-});
+}));
 
 test('__internal: collectRecoCandidatesFromQueryLevels caps support external seed timeout below stage wall clock budget', async () => {
   const originalSupportTimeout = process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS;
@@ -15980,7 +16160,10 @@ test('/v1/chat: beauty-owned hard path uses stable authority before legacy plann
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
-    assert.equal(response.body?.assistant_message, null);
+    // Deterministic beauty visible reply is backfilled into assistant_message
+    // even without an LLM rewrite (beautyExpertV1 attach).
+    assert.equal(response.body?.assistant_message?.role, 'assistant');
+    assert.match(String(response.body?.assistant_message?.content || ''), /current lead|oily|oil.control/i);
   } finally {
     axios.get = originalGet;
     harness.restore();
@@ -16060,7 +16243,13 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
     assert.equal(String(notice.reason || ''), 'upstream_empty_recommendations');
-    assert.equal(response.body?.assistant_message, null);
+    // Fail-closed still attaches the deterministic "need more context" visible
+    // reply as assistant_message (beautyExpertV1 attach) — no product picks though.
+    assert.equal(response.body?.assistant_message?.role, 'assistant');
+    assert.match(
+      String(response.body?.assistant_message?.content || ''),
+      /more context|not required to continue/i,
+    );
     assert.match(
       String(notice.message || ''),
       /not showing product picks|not forcing product picks|could not confirm|不展示商品推荐/i,
@@ -16612,7 +16801,7 @@ staleFallbackPlannerTest('/v1/chat: greasy-by-noon free text stays on the beauty
   }
 });
 
-test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, async () => {
+test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, withInternalRecallLaneEnabled(async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -16767,8 +16956,11 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
       const assistantText = String(
         response.body?.assistant_message?.content || response.body?.assistant_text || '',
       );
-      assert.equal(response.body?.assistant_message ?? null, null, testCase.label);
-      assert.equal(assistantText, '', testCase.label);
+      // With the LLM rewrite disabled the deterministic beauty visible reply is
+      // still backfilled into assistant_message (beautyExpertV1 attach), while
+      // rewrite meta keeps recording that no LLM ran.
+      assert.equal(response.body?.assistant_message?.role, 'assistant', testCase.label);
+      assert.match(assistantText, /niacinamide/i, testCase.label);
       assert.equal(payload.recommendation_meta?.assistant_rewrite_llm_used, false, testCase.label);
       assert.equal(payload.recommendation_meta?.assistant_rewrite_reason, 'rewrite_disabled', testCase.label);
 
@@ -16798,7 +16990,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
     harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     harness.restore();
   }
-});
+}));
 
 staleFallbackPlannerTest('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
   const originalGet = axios.get;
@@ -18097,4 +18289,700 @@ staleFallbackPlannerTest('/v1/analysis/skin -> /v1/session/bootstrap keeps lates
     if (prevRetention === undefined) delete process.env.AURORA_BFF_RETENTION_DAYS;
     else process.env.AURORA_BFF_RETENTION_DAYS = prevRetention;
   }
+});
+
+test('__internal: local external seed stage hands its remaining budget to the db layer', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedOptions = [];
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      observedOptions.push(options);
+      return { rows: [] };
+    },
+  });
+
+  assert.ok(out);
+  assert.ok(observedOptions.length > 0);
+  // Without this the db layer cannot bound the checkout, and an expired stage
+  // goes back to abandoning a query that keeps its pool slot.
+  assert.ok(Number(observedOptions[0]?.timeoutMs) > 0);
+});
+
+test('__internal: a starved checkout is recorded as pool_acquire, not as a slow query', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async () => {
+      const err = new Error('Timed out waiting for a pooled connection');
+      err.code = 'DB_BUDGET_ACQUIRE_TIMEOUT';
+      throw err;
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  // The distinction the 2026-09-08 fallback lacked: this stage never ran, so the
+  // remedy is pool capacity, not a faster query.
+  assert.equal(stage?.timeout_cause, 'pool_acquire');
+});
+
+test('__internal: the stage ledger carries the db diagnostics that attribute a stall', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // Stand in for the db layer, which is what fills this object in prod.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 3,
+        query_ms: 5,
+        pool_total: 6,
+        pool_idle: 0,
+        pool_waiting: 2,
+        conn_age_ms: 91000,
+        event_loop_lag_ms: 4,
+      });
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.ok(stage?.db, 'stage debug should carry the db diagnostics');
+  // acquire vs query is the split that says whether the pool or the statement
+  // owned the wait; pool_waiting and timer_lag say which pressure caused it.
+  assert.equal(stage.db.acquire_ms, 3);
+  assert.equal(stage.db.query_ms, 5);
+  assert.equal(stage.db.pool_waiting, 2);
+  assert.equal(stage.db.conn_age_ms, 91000);
+  assert.equal(stage.db.event_loop_lag_ms, 4);
+});
+
+test('__internal: a timed-out stage records the diagnostics and logs them outside the debug response', async () => {
+  const { __internal } = loadRoutesFresh();
+  const warnings = [];
+  const logger = { warn: (fields, message) => warnings.push({ fields, message }), info: () => {}, error: () => {} };
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    logger,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // What the db layer throws when a statement outruns its budget.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 2,
+        query_ms: 3998,
+        pool_waiting_at_request: 0,
+        conn_age_ms: 240000,
+        conn_use_count: 17,
+        event_loop_lag_ms: 3,
+        timer_lag_ms: 1,
+      });
+      const err = new Error('Query exceeded its budget');
+      err.code = 'DB_BUDGET_QUERY_TIMEOUT';
+      err.diagnostics = { ...options.diagnostics };
+      throw err;
+    },
+  });
+
+  // The timeout path is the only one this instrumentation exists for, so it is
+  // the one that must carry the fields.
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'query');
+  assert.ok(stage?.db, 'a timed-out stage must carry the db diagnostics');
+  assert.equal(stage.db.query_ms, 3998);
+  assert.equal(stage.db.event_loop_lag_ms, 3);
+  assert.equal(stage.db.conn_age_ms, 240000);
+
+  // The ledger only ever travels in a debug response. A stall nobody was
+  // watching has to be attributable afterwards, which means jsonPayload.
+  const timeoutLog = warnings.find((row) => row.message === 'local_external_seed_stage_timeout');
+  assert.ok(timeoutLog, 'a timed-out stage must be logged, not only returned');
+  assert.equal(timeoutLog.fields?.timeout_cause, 'query');
+  assert.equal(timeoutLog.fields?.db?.query_ms, 3998);
+  assert.equal(timeoutLog.fields?.db?.event_loop_lag_ms, 3);
+});
+
+test('__internal: the ledger keeps a snapshot, so a still-running call cannot rewrite a recorded stage', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    // `queryTimeoutMs` is the real knob; `timeoutMs` is not a parameter here and
+    // is silently ignored.
+    queryTimeoutMs: 200,
+    // Ignores the budget, so the OUTER stage race fires first and the ledger
+    // entry is pushed while this call is still in flight — then it writes into
+    // the same diagnostics object, exactly as the db layer does on that path.
+    queryFn: async (sql, params, options) => {
+      Object.assign(options.diagnostics, { acquire_ms: 1 });
+      await new Promise((resolve) => { setTimeout(resolve, 700); });
+      options.diagnostics.late_write = 'must_not_reach_the_ledger';
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'stage_budget');
+
+  // Wait past the late write before judging: a live reference would only be
+  // wrong AFTER the in-flight call gets there.
+  await new Promise((resolve) => { setTimeout(resolve, 800); });
+  assert.equal(
+    stage?.db?.late_write,
+    undefined,
+    'a recorded stage must not be mutated by the call that outlived it',
+  );
+});
+
+const ACNE_MISSING_PRIMARY_TARGET_CONTEXT = {
+  framework_id: 'recofw_test_acne_primary_missing',
+  primary_role_id: 'acne_clogged_pore_treatment',
+  framework_roles: [
+    {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 1,
+      preferred_step: 'treatment',
+      alternate_steps: ['serum'],
+      label: 'Acne / clogged pore treatment',
+      query_terms: ['salicylic acid treatment', 'salicylic acid serum clogged pores'],
+      fit_keywords: ['salicylic', 'bha', 'clogged', 'pore', 'acne', 'blemish'],
+    },
+    {
+      role_id: 'lightweight_moisturizer',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      label: 'Lightweight moisturizer',
+      query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+      fit_keywords: ['lightweight moisturizer', 'gel cream', 'breathable hydration', 'oil free'],
+    },
+    {
+      role_id: 'daily_sunscreen',
+      rank: 3,
+      preferred_step: 'sunscreen',
+      label: 'Daily sunscreen',
+      query_terms: ['daily sunscreen', 'lightweight sunscreen oily skin'],
+      fit_keywords: ['spf', 'broad spectrum', 'uv filters', 'sunscreen'],
+    },
+  ],
+};
+
+const ACNE_MISSING_PRIMARY_MOISTURIZER_ROW = {
+  product_id: 'ext_support_moist_1',
+  merchant_id: 'external_seed',
+  brand: 'Good Molecules',
+  name: 'Oil-Free Gel Cream Moisturizer',
+  display_name: 'Oil-Free Gel Cream Moisturizer',
+  category: 'moisturizer',
+  product_type: 'moisturizer',
+  retrieval_source: 'external_seed',
+  retrieval_query: 'lightweight moisturizer oily skin',
+  retrieval_step: 'moisturizer',
+  retrieval_role_id: 'lightweight_moisturizer',
+  benefit_tags: ['lightweight', 'oil free'],
+  short_description: 'A lightweight oil-free gel cream that gives breathable hydration.',
+};
+
+const ACNE_MISSING_PRIMARY_SUNSCREEN_ROW = {
+  product_id: 'ext_support_spf_1',
+  merchant_id: 'external_seed',
+  brand: 'Beauty of Joseon',
+  name: 'Relief Sun Broad Spectrum SPF 50',
+  display_name: 'Relief Sun Broad Spectrum SPF 50',
+  category: 'sunscreen',
+  product_type: 'sunscreen',
+  retrieval_source: 'external_seed',
+  retrieval_query: 'lightweight sunscreen oily skin',
+  retrieval_step: 'sunscreen',
+  retrieval_role_id: 'daily_sunscreen',
+  benefit_tags: ['spf', 'broad spectrum'],
+  short_description: 'A lightweight broad spectrum SPF 50 sunscreen for daily use.',
+};
+
+test('__internal: two filled support roles surface as a partial routine when the primary is missing', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+
+  // The primary really is missing and must keep saying so — this is a partial
+  // answer, not a routine that happens to lack its lead product.
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.primary_missing_support_routine_surfaced, true);
+  assert.equal(state.selected_candidate_count, 2);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item.matched_role_id).sort(),
+    ['daily_sunscreen', 'lightweight_moisturizer'],
+  );
+  // Nothing may be passed off as filling the primary slot.
+  assert.equal(
+    state.selected_recommendations.some((item) => item.matched_role_id === 'acne_clogged_pore_treatment'),
+    false,
+  );
+  assert.equal(state.primary_recommendation_id ?? null, null);
+});
+
+test('__internal: a single filled support role still surfaces nothing when the primary is missing', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+
+  // One orphan support product answers a concern question worse than admitting
+  // we could not confirm options. Only a routine earns the exception.
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.primary_missing_support_routine_surfaced, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(state.selected_recommendations.length, 0);
+});
+
+test('__internal: a support routine without the primary step is not a terminal success', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+
+  assert.equal(state.selected_candidate_count, 2);
+  // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`, so
+  // counting a routine missing the requested step as a success would switch them
+  // off for exactly the state that needs them.
+  assert.equal(state.terminal_success, false);
+});
+
+test('__internal: a caller that cannot disclose the missing step surfaces nothing', async () => {
+  const { __internal } = loadRoutesFresh();
+  // Same rows, no opt-in. This selector feeds nine call sites across six modules
+  // and only the beauty mainline entry renders the notice; everywhere else must
+  // keep returning nothing rather than a routine missing the step asked about.
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+  );
+
+  assert.equal(state.primary_missing_support_routine_surfaced, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(state.selected_recommendations.length, 0);
+});
+
+test('__internal: the surfaced flag reaches candidate_pool_summary, which is what renders the notice', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+  // The entry reads this flag off candidate_pool_summary, not off the state. The
+  // handoff test hand-feeds it into stubbed metadata, so deleting this plumbing
+  // left every suite green while the notice silently stopped rendering.
+  const summary = __internal.buildBeautyMainlineLocalCandidatePoolSummary({ candidateState: state });
+  assert.equal(summary.primary_missing_support_routine_surfaced, true);
+  assert.equal(summary.primary_role_matched, false);
+});
+
+test('__internal: the primary-step-unconfirmed notice has its own copy, not the generic fallback line', async () => {
+  const { __internal } = loadRoutesFresh();
+  for (const language of ['EN', 'CN']) {
+    const payload = __internal.buildConfidenceNoticeCardPayload({
+      language,
+      reason: 'primary_step_unconfirmed',
+      severity: 'info',
+      confidence: { score: 0.45, level: 'medium', rationale: ['beauty_mainline_support_routine_without_primary'] },
+      actions: ['retry_recommendations'],
+    });
+    // Deleting the copy entry falls through to the generic "did not converge, so
+    // I am not showing product picks yet" — shown next to a card that IS showing
+    // products. The reason alone does not catch that; the sentence has to.
+    assert.match(
+      payload.message,
+      language === 'CN' ? /主步骤/ : /supporting steps only/i,
+      `${language} notice fell through to the default copy`,
+    );
+    assert.doesNotMatch(payload.message, /not showing product picks/i);
+  }
+});
+
+test('__internal: the real handoff lane surfaces a support routine when the primary comes back empty', async () => {
+  const { __internal } = loadRoutesFresh();
+  // The wiring test. Every other test here hands the flag or the rows straight to
+  // the selector, so deleting the production opt-in stayed green everywhere while
+  // the live lane surfaced nothing. This walks the lane the chat entry actually
+  // calls: empty primary, viable supports, and asserts products come out.
+  const supportRow = (id, title, category, step) => ({
+    product_id: id,
+    merchant_id: 'external_seed',
+    brand: 'Test Brand',
+    name: title,
+    display_name: title,
+    title,
+    category,
+    product_type: category,
+    retrieval_source: 'external_seed',
+    retrieval_step: step,
+    candidate_step: step,
+    short_description: `A lightweight ${category} for oily skin that absorbs quickly.`,
+  });
+
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({ ok: true, products: [] }),
+      searchExternalSeedAuthorityProducts: async () => ({ ok: true, products: [] }),
+      searchLocalExternalSeedProducts: async ({ query, role }) => {
+        const roleId = String(role?.role_id || '');
+        // The primary role finds nothing; the supports do. This is the shape the
+        // prod acne turn shows: viable 10, acne bucket 0.
+        if (!roleId || roleId === 'acne_clogged_pore_treatment') return { ok: false, products: [], reason: 'empty' };
+        if (roleId === 'lightweight_moisturizer') {
+          return { ok: true, products: [supportRow('ext_m1', 'Oil-Free Gel Cream Moisturizer', 'moisturizer', 'moisturizer')] };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return { ok: true, products: [supportRow('ext_s1', 'Invisible Daily Sunscreen SPF 50', 'sunscreen', 'sunscreen')] };
+        }
+        return { ok: false, products: [], reason: 'empty', query };
+      },
+    });
+
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { request_id: 'req_wiring', trace_id: 'trace_wiring', lang: 'EN' },
+      logger: null,
+      targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+      timeoutMs: 8000,
+      deadlineMs: Date.now() + 20000,
+    });
+
+    const summary = out?.metadata?.candidate_pool_summary || {};
+    // Products reach the caller...
+    assert.ok(
+      (out?.products || []).length >= 2,
+      `expected a support routine from the real lane, got ${(out?.products || []).length}`,
+    );
+    // ...and the state still says the primary step is the missing one.
+    assert.equal(summary.primary_role_matched, false);
+    assert.equal(summary.primary_missing_support_routine_surfaced, true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});
+
+test('__internal: a rerank cannot ship the routine while leaving the disclosure behind', async () => {
+  const { __internal } = loadRoutesFresh();
+  // `selected_recommendations` and `terminal_success` are carried from the
+  // reranked state. If the two disclosure fields are not, a rerank that flips
+  // role classification ships a support-only routine carrying the BASE's
+  // `primary_role_matched: true` and no notice — products presented as a
+  // complete answer.
+  const merged = __internal.mergeConcernFrameworkRerankedState(
+    {
+      selected_recommendations: [],
+      primary_role_matched: true,
+      primary_missing_support_routine_surfaced: false,
+      terminal_success: true,
+    },
+    {
+      selected_recommendations: [{ product_id: 'm1' }, { product_id: 's1' }],
+      primary_role_matched: false,
+      primary_missing_support_routine_surfaced: true,
+      terminal_success: false,
+    },
+    { candidateCount: 2 },
+  );
+
+  assert.equal(merged.selected_recommendations.length, 2);
+  assert.equal(merged.primary_role_matched, false);
+  assert.equal(merged.primary_missing_support_routine_surfaced, true);
+  assert.equal(merged.terminal_success, false);
+});
+
+test('__internal: the card headline does not tell you to start with a product that is not there', async () => {
+  const { __internal } = loadRoutesFresh();
+  const summaryFor = (recommendations) => __internal.buildConcernFrameworkSummary({
+    targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+    recommendations,
+    language: 'EN',
+  });
+
+  // Primary filled: the normal instruction stands.
+  assert.match(
+    summaryFor([{ product_id: 'a', matched_role_id: 'acne_clogged_pore_treatment' }]).headline,
+    /^Start with /,
+  );
+  // Support-only: "Start with <role>" would name a product the card does not show.
+  const supportOnly = summaryFor([
+    { product_id: 'm', matched_role_id: 'lightweight_moisturizer' },
+    { product_id: 's', matched_role_id: 'daily_sunscreen' },
+  ]);
+  assert.doesNotMatch(supportOnly.headline, /^Start with /);
+  assert.match(supportOnly.headline, /could not confirm/i);
+  assert.equal(supportOnly.primary_recommendation_name ?? null, null);
+});
+
+
+// The envelope-level walk. The selector-level assertion above pins
+// `finalizeConcernFrameworkCandidatePools`, but the SHIPPED payload is rebuilt
+// twice after that (`applyRecoCanonicalSearchResultToPayload` →
+// `applyRecoFinalSelectionContractToPayload`, `routes.js:59825-59829`, sets
+// `primary_recommendation_id` to `selected_product_ids[0]` with no role check),
+// so only an assertion on the card payload catches a support product being
+// named as the primary pick.
+const ACNE_MISSING_PRIMARY_SEMANTIC_PLAN = {
+  intent_mode: 'generic_concern',
+  comparison_mode: 'routine_build',
+  selection_owner_state: 'trusted',
+  primary_role_id: ACNE_MISSING_PRIMARY_TARGET_CONTEXT.primary_role_id,
+  core_roles: ACNE_MISSING_PRIMARY_TARGET_CONTEXT.framework_roles,
+  support_roles: [],
+};
+
+function buildAcneMissingPrimaryWalkRow(productId, title, category, step) {
+  return {
+    product_id: productId,
+    merchant_id: 'external_seed',
+    brand: 'Test Brand',
+    name: title,
+    display_name: title,
+    title,
+    category,
+    product_type: category,
+    retrieval_source: 'external_seed',
+    retrieval_step: step,
+    candidate_step: step,
+    short_description: `A lightweight ${category} for oily skin that absorbs quickly.`,
+  };
+}
+
+// Real chat entry -> real handoff -> real local handoff search -> real payload
+// builder. Only the backend search primitives are faked.
+async function driveAcneMissingPrimaryChatWalk({ primaryFills }) {
+  const { __internal } = loadRoutesFresh();
+  const walkTargetContext = {
+    ...ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+    entry_type: 'chat',
+    intent_mode: 'generic_concern',
+    semantic_plan: ACNE_MISSING_PRIMARY_SEMANTIC_PLAN,
+  };
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({ ok: true, products: [] }),
+      searchExternalSeedAuthorityProducts: async () => ({ ok: true, products: [] }),
+      searchLocalExternalSeedProducts: async ({ role }) => {
+        const roleId = String(role?.role_id || '');
+        if (!roleId) return { ok: false, products: [], reason: 'empty' };
+        if (roleId === 'acne_clogged_pore_treatment') {
+          return primaryFills
+            ? {
+              ok: true,
+              products: [buildAcneMissingPrimaryWalkRow(
+                'ext_p1',
+                'Salicylic Acid 2% Clogged Pore Treatment',
+                'treatment',
+                'treatment',
+              )],
+            }
+            : { ok: false, products: [], reason: 'empty' };
+        }
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ok: true,
+            products: [buildAcneMissingPrimaryWalkRow(
+              'ext_m1',
+              'Oil-Free Gel Cream Moisturizer',
+              'moisturizer',
+              'moisturizer',
+            )],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ok: true,
+            products: [buildAcneMissingPrimaryWalkRow(
+              'ext_s1',
+              'Invisible Daily Sunscreen SPF 50',
+              'sunscreen',
+              'sunscreen',
+            )],
+          };
+        }
+        return { ok: false, products: [], reason: 'empty' };
+      },
+    });
+
+    const runtime = createBeautyChatMainlineEntryRuntime({
+      RECO_CATALOG_GROUNDED_ENABLED: true,
+      RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: 26000,
+      AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS: 4500,
+      BEAUTY_DISCOVERY_MAINLINE_OWNER: 'shopping_agent_beauty_mainline',
+      // The production units under test.
+      handoffRecoToBeautyMainlineSearch: __internal.handoffRecoToBeautyMainlineSearch,
+      buildRecoPayloadFromBeautyMainlineHandoff: __internal.buildRecoPayloadFromBeautyMainlineHandoff,
+      buildConfidenceNoticeCardPayload: __internal.buildConfidenceNoticeCardPayload,
+      extractRecoFinalSelectionContract: (value) =>
+        value?.metadata?.final_selection
+        || value?.metadata?.search_stage_ledger?.final_selection
+        || value?.final_selection
+        || null,
+      // Everything outside the walk is stubbed. The selector deps are omitted on
+      // purpose so the LLM selector is skipped and the ordering under test is the
+      // lane's own.
+      resolveRecommendationTargetContext: () => walkTargetContext,
+      runConcernSemanticPlanner: async () => ({
+        semanticPlan: ACNE_MISSING_PRIMARY_SEMANTIC_PLAN,
+        trace: { planner_used: true, planner_fallback_used: false },
+      }),
+      buildConcernTargetContextFromSemanticPlan: () => ({
+        ...walkTargetContext,
+        mainline_fallback_policy: 'strict_no_runtime_fallback',
+        semantic_planner_required: true,
+      }),
+      summarizeProfileForContext: (profile) => profile,
+      mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+      appendLatestRecoContextToSessionPatch: () => {},
+      maybeRewriteRecoAssistantTextWithLlm: async () => ({
+        llm_used: false,
+        text: '',
+        reason: 'disabled_in_test',
+      }),
+      makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+      buildEnvelope: (_ctx, envelope) => envelope,
+      makeEvent: (_ctx, kind, data) => ({ kind, data }),
+      applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+      buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+      normalizeRecoSourceDetail: (value) => value,
+      stateChangeAllowed: () => false,
+      classifyBeautyMainlineHandoffFallback: () => ({ reason: 'unreachable' }),
+      buildBeautyMainlineHandoffFallbackEnvelope: () => ({ cards: [] }),
+      looksLikeRecommendationRequest: () => true,
+      sendChatEnvelope: async () => null,
+    });
+
+    const result = await runtime.maybeHandleBeautyOwnedChatReco({
+      ctx: {
+        request_id: `req_primary_missing_walk_${primaryFills ? 'healthy' : 'support_only'}`,
+        trace_id: 'trace_primary_missing_walk',
+        lang: 'EN',
+        trigger_source: 'chat',
+      },
+      logger: null,
+      message: 'my skin keeps breaking out with clogged pores. what should i buy?',
+      recoEntrySourceDetail: 'typed_reco',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['clear breakouts'],
+      },
+    });
+    const cards = Array.isArray(result?.envelope?.cards) ? result.envelope.cards : [];
+    return {
+      result,
+      cards,
+      payload: cards.find((card) => card?.type === 'recommendations')?.payload || null,
+      noticeCard: cards.find((card) => card?.type === 'confidence_notice') || null,
+    };
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+}
+
+test('the shipped card never names a support product as the primary pick when the primary step is missing', async () => {
+  const supportOnly = await driveAcneMissingPrimaryChatWalk({ primaryFills: false });
+
+  assert.equal(supportOnly.result?.handled, true);
+  // The support routine is what we agreed to ship for this state.
+  assert.deepEqual(
+    (supportOnly.payload?.recommendations || []).map((item) => item.product_id),
+    ['ext_m1', 'ext_s1'],
+  );
+  assert.equal(supportOnly.payload?.primary_role_matched, false);
+  assert.equal(supportOnly.payload?.primary_role_id, 'acne_clogged_pore_treatment');
+  // ...with the disclosure card beside it.
+  assert.ok(supportOnly.noticeCard, 'expected the primary_step_unconfirmed notice card');
+  assert.match(supportOnly.noticeCard.payload?.message || '', /supporting steps only/i);
+  // The one that matters: this lane's visible prose is written from this payload,
+  // so a support product named here is presented to the user as the pick for the
+  // concern they asked about.
+  assert.equal(
+    supportOnly.payload?.primary_recommendation_id ?? null,
+    null,
+    `primary_recommendation_id must stay null while primary_role_matched is false, got ${JSON.stringify(supportOnly.payload?.primary_recommendation_id)}`,
+  );
+  assert.equal(supportOnly.payload?.framework_summary?.primary_recommendation_name ?? null, null);
+});
+
+test('the shipped card still names the primary product when the primary step is filled', async () => {
+  const healthy = await driveAcneMissingPrimaryChatWalk({ primaryFills: true });
+
+  assert.equal(healthy.result?.handled, true);
+  assert.deepEqual(
+    (healthy.payload?.recommendations || []).map((item) => item.product_id),
+    ['ext_p1', 'ext_m1', 'ext_s1'],
+  );
+  assert.equal(healthy.payload?.primary_role_matched, true);
+  assert.equal(healthy.payload?.primary_recommendation_id, 'ext_p1');
+  assert.match(String(healthy.payload?.framework_summary?.headline || ''), /^Start with /);
+  assert.equal(
+    healthy.cards.some((card) => card?.type === 'confidence_notice'),
+    false,
+    'the healthy path must not carry the primary_step_unconfirmed notice',
+  );
 });

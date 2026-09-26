@@ -316,9 +316,10 @@ test('support role query variants prioritize finish-fit sunscreen queries before
 
   assert.deepEqual(
     queries,
-    ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+    ['sunscreen oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin', 'matte sunscreen'],
   );
   assert.equal(queries.includes('oil control sunscreen'), false);
+  assert.equal(queries.includes('sunscreen'), false);
 });
 
 test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {

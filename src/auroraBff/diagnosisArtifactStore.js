@@ -71,6 +71,9 @@ function touchMap(map, key, value) {
 }
 
 function toConfidenceScore(value) {
+  // F4: Number(null) === 0 — an absent score must stay null through
+  // persistence (and read-back), never become an explicit rock-bottom 0.
+  if (value == null) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   if (n <= 0) return 0;
@@ -82,7 +85,9 @@ function normalizeConfidenceLevel(level, score) {
   const token = String(level || '').trim().toLowerCase();
   if (token === 'low' || token === 'medium' || token === 'high') return token;
   const s = toConfidenceScore(score);
-  if (!Number.isFinite(Number(s))) return null;
+  // Preserves the old outputs exactly: an explicitly-null score has always
+  // read as 'low'; undefined/non-numeric has always read as unknown.
+  if (s == null) return score === null ? 'low' : null;
   if (s < 0.55) return 'low';
   if (s <= 0.75) return 'medium';
   return 'high';

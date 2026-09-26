@@ -86,10 +86,44 @@
         color: #6b7280;
         padding: 0 16px 8px;
       }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .key-area {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 400;
+        font-size: 12px;
+      }
+      .key-area input {
+        width: 200px;
+        padding: 4px 6px;
+        border-radius: 6px;
+        border: 1px solid #374151;
+        background: #1f2937;
+        color: #f9fafb;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
-    <header>Pivota Shopping Agent (Internal)</header>
+    <header>
+      <span>Pivota Shopping Agent (Internal)</span>
+      <!--
+        /ui/chat requires PIVOTA_UI_CHAT_INTERNAL_KEY (services/uiChatAccessGuard.js). A browser
+        cannot set a header from a plain page load, so the operator pastes the key here and it is
+        sent as X-Internal-Key on each turn. sessionStorage, not localStorage, and never a query
+        parameter — a key in a URL ends up in edge logs and Referer headers.
+      -->
+      <label class="key-area">
+        Internal key
+        <input id="internalKey" type="password" autocomplete="off" placeholder="X-Internal-Key" />
+      </label>
+    </header>
     <div class="container">
       <div id="messages" class="messages"></div>
       <div class="status" id="status"></div>
@@ -107,6 +141,28 @@
       const inputEl = document.getElementById("input");
       const sendBtn = document.getElementById("send");
       const statusEl = document.getElementById("status");
+      const keyEl = document.getElementById("internalKey");
+
+      // Survives a reload of this tab and nothing more.
+      //
+      // Both calls are guarded: sessionStorage THROWS (not returns null) when storage is blocked for
+      // the site — "block all cookies" in Chrome, the Firefox/Safari equivalents, a sandboxed iframe
+      // without allow-same-origin. This is module top-level code and the send/keydown listeners are
+      // registered below it, so an unguarded throw here would abort the module and leave a page that
+      // renders perfectly and whose Send button does nothing, with the only evidence in the console.
+      // Persistence is a convenience; losing it must never cost the operator the console.
+      try {
+        keyEl.value = sessionStorage.getItem("pivotaUiChatInternalKey") || "";
+      } catch {
+        /* storage blocked — the operator retypes the key each load */
+      }
+      keyEl.addEventListener("change", () => {
+        try {
+          sessionStorage.setItem("pivotaUiChatInternalKey", keyEl.value.trim());
+        } catch {
+          /* see above */
+        }
+      });
 
       /** 本地维护的对话消息数组（不包含 system） */
       const conversation = [];
@@ -131,12 +187,27 @@
         statusEl.textContent = "Thinking (calling GPT + Pivota)...";
 
         try {
+          const headers = { "Content-Type": "application/json" };
+          const internalKey = keyEl.value.trim();
+          if (internalKey) headers["X-Internal-Key"] = internalKey;
+
           const res = await fetch("/ui/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ messages: conversation }),
           });
 
+          if (res.status === 401) {
+            throw new Error(
+              "Rejected: set the internal key above to the service's PIVOTA_UI_CHAT_INTERNAL_KEY."
+            );
+          }
+          if (res.status === 404) {
+            throw new Error(
+              "This host does not serve /ui/chat. It is off on the public read tier " +
+                "(mcp.pivota.cc) by design, and off anywhere PIVOTA_UI_CHAT_INTERNAL_KEY is unset."
+            );
+          }
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(
@@ -161,10 +232,7 @@
           }
         } catch (e) {
           console.error(e);
-          appendMessage(
-            "assistant",
-            "Sorry, something went wrong calling the agent. Check server logs."
-          );
+          appendMessage("assistant", e.message || "Sorry, something went wrong calling the agent.");
         } finally {
           sendBtn.disabled = false;
           statusEl.textContent = "";

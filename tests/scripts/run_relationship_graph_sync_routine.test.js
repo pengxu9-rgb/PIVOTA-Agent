@@ -3,11 +3,13 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN } = require('../../scripts/run-relationship-graph-routine-job');
+const { APPLY_CONFIRM_TOKEN: RENEWAL_CONFIRM_TOKEN } = require('../../scripts/renew-relationship-ai-approved-labels');
 const {
   DEFAULT_FAIL_REASONS,
   SYNC_CONFIRM_TOKEN,
   WRAPPER_CONFIRM_TOKEN,
   buildSyncRoutineSteps,
+  formatRoutineFailure,
   parseArgs,
   runSyncRoutine,
 } = require('../../scripts/run-relationship-graph-sync-routine');
@@ -27,6 +29,9 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(options.applySync).toBe(false);
     expect(options.applyBuild).toBe(false);
     expect(options.applyReview).toBe(false);
+    expect(options.applyRenewal).toBe(false);
+    expect(options.skipRenewal).toBe(false);
+    expect(options.renewalWindowDays).toBe(14);
     expect(options.dbLock).toBe(true);
     expect(options.lockStaleAfterMinutes).toBe(180);
     expect(options.dbLockHeartbeatMs).toBe(30000);
@@ -149,17 +154,26 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const { steps, artifacts } = buildSyncRoutineSteps(options);
 
-    expect(steps.map((step) => step.id)).toEqual(['catalog_sync', 'relationship_graph_routine']);
+    expect(steps.map((step) => step.id)).toEqual(['ai_approval_renewal', 'catalog_sync', 'relationship_graph_routine']);
     expect(artifacts.affected_products).toBe('/tmp/relgraph-sync-routine/affected-products.json');
+    expect(artifacts.ai_renewal).toBe('/tmp/relgraph-sync-routine/ai_renewal.json');
 
-    const syncArgs = steps[0].args.join(' ');
+    const renewalArgs = steps[0].args.join(' ');
+    expect(renewalArgs).toContain('renew-relationship-ai-approved-labels.js');
+    expect(renewalArgs).toContain('--window-days 14');
+    expect(renewalArgs).not.toContain('--apply');
+    // Renewal must be non-fatal and timeboxed so it can never take down the routine.
+    expect(steps[0].optional).toBe(true);
+    expect(steps[0].timeoutMs).toBe(9 * 60 * 1000);
+
+    const syncArgs = steps[1].args.join(' ');
     expect(syncArgs).toContain('sync-external-seeds-to-catalog.cjs');
     expect(syncArgs).toContain('--external-product-ids seed_1,seed_2');
     expect(syncArgs).toContain('--affected-products-out /tmp/relgraph-sync-routine/affected-products.json');
     expect(syncArgs).toContain('--dry-run');
     expect(syncArgs).not.toContain('--apply');
 
-    const routineArgs = steps[1].args.join(' ');
+    const routineArgs = steps[2].args.join(' ');
     expect(routineArgs).toContain('run-relationship-graph-routine-job.js');
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
     expect(routineArgs).toContain('--db-lock');
@@ -185,7 +199,7 @@ describe('run-relationship-graph-sync-routine', () => {
     ], { now: NOW });
 
     const { steps } = buildSyncRoutineSteps(options);
-    const routineArgs = steps[0].args.join(' ');
+    const routineArgs = steps.find((step) => step.id === 'relationship_graph_routine').args.join(' ');
 
     expect(options.skipNeedNodes).toBe(true);
     expect(routineArgs).toContain('--skip-need-nodes');
@@ -211,18 +225,18 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const { steps, artifacts } = buildSyncRoutineSteps(options);
 
-    expect(steps.map((step) => step.id)).toEqual(['affected_product_selector', 'relationship_graph_routine']);
+    expect(steps.map((step) => step.id)).toEqual(['ai_approval_renewal', 'affected_product_selector', 'relationship_graph_routine']);
     expect(artifacts.affected_product_selector).toBe('/tmp/relgraph-sync-routine/affected-products.json');
     expect(artifacts.catalog_sync).toBeNull();
 
-    const selectorArgs = steps[0].args.join(' ');
+    const selectorArgs = steps[1].args.join(' ');
     expect(selectorArgs).toContain('select-relationship-graph-affected-products.js');
     expect(selectorArgs).toContain('--updated-since 2026-06-07T00:00:00Z');
     expect(selectorArgs).toContain('--sources catalog_products');
     expect(selectorArgs).toContain('--limit 50');
     expect(selectorArgs).toContain('--allow-empty-selection');
 
-    const routineArgs = steps[1].args.join(' ');
+    const routineArgs = steps[2].args.join(' ');
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
     expect(routineArgs).toContain('--step-timeout-ms 2500');
     expect(routineArgs).toContain('--allow-empty-build');
@@ -242,8 +256,8 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const { steps } = buildSyncRoutineSteps(options);
 
-    expect(steps.map((step) => step.id)).toEqual(['relationship_graph_routine']);
-    const routineArgs = steps[0].args.join(' ');
+    expect(steps.map((step) => step.id)).toEqual(['ai_approval_renewal', 'relationship_graph_routine']);
+    const routineArgs = steps[1].args.join(' ');
     expect(routineArgs).toContain('--affected-products-file /tmp/affected-products.json');
     expect(routineArgs).toContain('--apply-build');
     expect(routineArgs).toContain(`--confirm ${ROUTINE_CONFIRM_TOKEN}`);
@@ -263,13 +277,69 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const { steps } = buildSyncRoutineSteps(options);
 
-    const syncArgs = steps[0].args.join(' ');
+    const syncArgs = steps.find((step) => step.id === 'catalog_sync').args.join(' ');
     expect(syncArgs).toContain('--apply');
     expect(syncArgs).toContain(`--confirm ${SYNC_CONFIRM_TOKEN}`);
 
-    const routineArgs = steps[1].args.join(' ');
+    const routineArgs = steps.find((step) => step.id === 'relationship_graph_routine').args.join(' ');
     expect(routineArgs).toContain('--apply-build');
     expect(routineArgs).toContain(`--confirm ${ROUTINE_CONFIRM_TOKEN}`);
+  });
+
+  test('apply-renewal requires wrapper confirmation and passes the renewal confirm token', () => {
+    expect(() => parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--apply-renewal',
+    ], { now: NOW })).toThrow(/write-mode sync routine jobs require/);
+
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--apply-renewal',
+      '--renewal-window-days',
+      '21',
+      '--confirm',
+      WRAPPER_CONFIRM_TOKEN,
+    ], { now: NOW });
+
+    const { steps } = buildSyncRoutineSteps(options);
+    const renewal = steps.find((step) => step.id === 'ai_approval_renewal');
+    const renewalArgs = renewal.args.join(' ');
+    expect(renewalArgs).toContain('--window-days 21');
+    expect(renewalArgs).toContain('--apply');
+    expect(renewalArgs).toContain(`--confirm ${RENEWAL_CONFIRM_TOKEN}`);
+
+    // The child has to stop itself before the parent SIGKILLs it, with room
+    // left to apply what it verified and write its report — on 2026-08-12 the
+    // kill landed first and the run renewed nothing and reported nothing.
+    const deadlineMs = Number(renewal.args[renewal.args.indexOf('--deadline-ms') + 1]);
+    expect(deadlineMs).toBeGreaterThan(0);
+    expect(deadlineMs).toBeLessThan(renewal.timeoutMs);
+    expect(renewal.timeoutMs - deadlineMs).toBeGreaterThanOrEqual(60 * 1000);
+
+    // Renewal apply never leaks into build/review apply.
+    const routineArgs = steps.find((step) => step.id === 'relationship_graph_routine').args.join(' ');
+    expect(routineArgs).not.toContain('--apply-build');
+    expect(routineArgs).not.toContain('--apply-review');
+  });
+
+  test('skip-renewal removes the renewal step and artifact', () => {
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--skip-renewal',
+    ], { now: NOW });
+
+    const { steps, artifacts } = buildSyncRoutineSteps(options);
+    expect(steps.map((step) => step.id)).toEqual(['catalog_sync', 'relationship_graph_routine']);
+    expect(artifacts.ai_renewal).toBeNull();
   });
 
   test('runSyncRoutine records steps and writes a summary artifact', async () => {
@@ -287,8 +357,8 @@ describe('run-relationship-graph-sync-routine', () => {
     const summary = await runSyncRoutine(options, { runner, now: NOW });
 
     expect(summary.ok).toBe(true);
-    expect(summary.steps.map((step) => step.id)).toEqual(['catalog_sync', 'relationship_graph_routine']);
-    expect(runner).toHaveBeenCalledTimes(2);
+    expect(summary.steps.map((step) => step.id)).toEqual(['ai_approval_renewal', 'catalog_sync', 'relationship_graph_routine']);
+    expect(runner).toHaveBeenCalledTimes(3);
     expect(fs.existsSync(path.join(outDir, 'sync_routine_summary.json'))).toBe(true);
   });
 
@@ -352,10 +422,49 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'sync_routine_summary.json'), 'utf8'));
     expect(summary.ok).toBe(false);
+    // The optional renewal step fails without aborting; the run fails at catalog_sync.
     expect(summary.steps[0]).toEqual(expect.objectContaining({
+      id: 'ai_approval_renewal',
+      status: 'failed',
+      optional: true,
+    }));
+    expect(summary.warnings).toEqual([expect.stringContaining('ai_approval_renewal')]);
+    expect(summary.steps[1]).toEqual(expect.objectContaining({
       id: 'catalog_sync',
       status: 'failed',
     }));
+  });
+
+  // An optional step aborts nothing, so this warning is the only place its
+  // output is ever read. "(exit 124)" with the stderr dropped is what made the
+  // 2026-08-12 renewal timeout undiagnosable.
+  test('an optional step warning carries that step stderr, not just its exit code', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--out-dir',
+      outDir,
+    ], { now: NOW });
+    const runner = jest.fn(async (_command, args) => (
+      args.join(' ').includes('renew-relationship-ai-approved-labels.js')
+        ? {
+          exitCode: 124,
+          stdout: '',
+          stderr: 'renewal progress {"phase":"scan","batch":7,"scanned_rows":3500}\nstep timed out after 1200000ms; sent SIGTERM',
+        }
+        : { exitCode: 0, stdout: '{}', stderr: '' }
+    ));
+
+    await runSyncRoutine(options, { runner, now: NOW, ledgerRecorder: async () => ({ run_id: 'r', status: 'ok' }) });
+
+    const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'sync_routine_summary.json'), 'utf8'));
+    const warning = summary.warnings.join('\n');
+    expect(warning).toContain('exit 124');
+    expect(warning).toContain('"batch":7');
+    expect(warning).toContain('step timed out after 1200000ms');
   });
 
   test('runSyncRoutine records failed run ledger before throwing child step errors', async () => {
@@ -422,5 +531,149 @@ describe('run-relationship-graph-sync-routine', () => {
         }),
       }),
     });
+  });
+});
+
+describe('formatRoutineFailure', () => {
+  // Every field asserted below is sentinel-filled: the old formatter printed
+  // `err.message` and the summary path, so a test that asserted only on values
+  // which happen to be absent (or on the message itself) would pass against the
+  // broken version too. Each sentinel is a string the old output could not
+  // contain by construction.
+  function failureError({ steps, failedStep = 'relationship_graph_routine', extra = {} } = {}) {
+    const err = new Error('relationship graph sync routine failed at step: relationship_graph_routine');
+    err.summary = {
+      ok: false,
+      failed_step: failedStep,
+      summary_path: '/tmp/relgraph/sync_routine_summary.json',
+      steps,
+      ...extra,
+    };
+    return err;
+  }
+
+  const FAILED_STEP = {
+    id: 'relationship_graph_routine',
+    status: 'failed',
+    command: '/usr/local/bin/node',
+    args: ['/app/scripts/run-relationship-graph-routine.js', '--market', 'US'],
+    started_at: '2026-08-10T10:37:47.000Z',
+    completed_at: '2026-08-10T10:37:49.000Z',
+    exit_code: 3,
+    stdout_tail: 'STDOUT_SENTINEL_LAST_LINE',
+    stderr_tail: 'Error: STDERR_SENTINEL_ROOT_CAUSE\n    at Object.<anonymous> (/app/scripts/x.js:1:1)',
+  };
+
+  test('prints the failing step stderr, which is the only durable record of why a run died', () => {
+    const text = formatRoutineFailure(failureError({ steps: [FAILED_STEP] }));
+
+    // The point of the whole change: without this line a Railway operator sees
+    // a step name and nothing else.
+    expect(text).toContain('STDERR_SENTINEL_ROOT_CAUSE');
+    expect(text).toContain('exit_code=3');
+    expect(text).toContain('STDOUT_SENTINEL_LAST_LINE');
+    expect(text).toContain('/app/scripts/run-relationship-graph-routine.js');
+    expect(text).toContain('started_at=2026-08-10T10:37:47.000Z');
+    // Preserved from the old behaviour.
+    expect(text).toContain('relationship graph sync routine failed at step');
+    expect(text).toContain('/tmp/relgraph/sync_routine_summary.json');
+  });
+
+  test('reports a timeout kill distinctly from a non-zero exit', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [{
+        ...FAILED_STEP,
+        exit_code: 124,
+        signal: 'SIGKILL',
+        timed_out: true,
+        timeout_ms: 1200000,
+        stderr_tail: 'step timed out after 1200000ms',
+      }],
+    }));
+
+    expect(text).toContain('timed_out=true');
+    expect(text).toContain('timeout_ms=1200000');
+    expect(text).toContain('signal=SIGKILL');
+  });
+
+  test('surfaces optional-step warnings, which abort nothing and are otherwise invisible', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [FAILED_STEP],
+      extra: { warnings: ['optional step failed: ai_renewal (exit 9)'] },
+    }));
+
+    expect(text).toContain('optional step failed: ai_renewal (exit 9)');
+  });
+
+  test('appends the ledger error when the run also failed to record itself', () => {
+    const err = failureError({ steps: [FAILED_STEP] });
+    err.ledger_error = new Error('LEDGER_SENTINEL_UNAVAILABLE');
+
+    expect(formatRoutineFailure(err)).toContain('LEDGER_SENTINEL_UNAVAILABLE');
+  });
+
+  test('reports the step named by failed_step, not merely the last one', () => {
+    const text = formatRoutineFailure(failureError({
+      failedStep: 'catalog_sync',
+      steps: [
+        { ...FAILED_STEP, id: 'catalog_sync', stderr_tail: 'CHOSEN_BY_NAME' },
+        { ...FAILED_STEP, id: 'relationship_graph_routine', status: 'passed', stderr_tail: 'NOT_THIS_ONE' },
+      ],
+    }));
+
+    expect(text).toContain('CHOSEN_BY_NAME');
+    expect(text).not.toContain('NOT_THIS_ONE');
+  });
+
+  test('keeps the END of an oversized stderr, where the error actually is', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [{
+        ...FAILED_STEP,
+        stderr_tail: `${'x'.repeat(50000)}\nError: TAIL_SENTINEL_AT_THE_END`,
+      }],
+    }), { stderrChars: 200 });
+
+    expect(text).toContain('TAIL_SENTINEL_AT_THE_END');
+    expect(text.length).toBeLessThan(5000);
+  });
+
+  test('falls back to the stack when the error carries no summary', () => {
+    const err = new Error('BOOT_SENTINEL_FAILURE');
+    expect(formatRoutineFailure(err)).toContain('BOOT_SENTINEL_FAILURE');
+    expect(formatRoutineFailure(err)).toContain('run_relationship_graph_sync_routine.test.js');
+  });
+
+  test('does not throw when the summary carries no step records', () => {
+    const text = formatRoutineFailure(failureError({ steps: undefined }));
+    expect(text).toContain('no step record captured');
+    expect(text).toContain('relationship_graph_routine');
+  });
+
+  // The tests above build the error by hand, so they would still pass if
+  // runSyncRoutine named these fields differently. This one drives the real
+  // failure path and formats whatever it actually throws.
+  test('formats the error runSyncRoutine really throws, not a hand-built one', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-fmt-'));
+    const options = parseArgs([
+      '--cutoff', CUTOFF,
+      '--external-product-ids', 'seed_1',
+      '--out-dir', outDir,
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({
+      exitCode: 42,
+      stdout: 'REAL_STDOUT_SENTINEL',
+      stderr: 'Error: REAL_STDERR_SENTINEL_ROOT_CAUSE',
+    }));
+
+    const err = await runSyncRoutine(options, { runner, now: NOW }).catch((e) => e);
+    const text = formatRoutineFailure(err);
+
+    expect(text).toContain('REAL_STDERR_SENTINEL_ROOT_CAUSE');
+    expect(text).toContain('exit_code=42');
+    expect(text).toContain('REAL_STDOUT_SENTINEL');
+    expect(text).toContain('failed step: catalog_sync');
+    // The optional renewal step failed too; it aborts nothing, so this line is
+    // the only place an operator would ever see it.
+    expect(text).toContain('ai_approval_renewal');
   });
 });

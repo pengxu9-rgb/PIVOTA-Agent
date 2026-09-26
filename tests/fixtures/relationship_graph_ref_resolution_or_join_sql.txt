@@ -1,0 +1,211 @@
+
+        WITH input_refs AS (
+          SELECT
+            raw.input_ref,
+            lower(raw.input_ref) AS normalized_ref,
+            regexp_replace(lower(raw.input_ref), '^[a-z][a-z0-9_+-]*:', '') AS ref_key,
+            raw.ordinality
+          FROM unnest($1::text[]) WITH ORDINALITY AS raw(input_ref, ordinality)
+        ),
+        catalog_matches AS (
+          SELECT
+            i.input_ref,
+            i.normalized_ref,
+            i.ref_key,
+            i.ordinality,
+            0 AS match_rank,
+            cp.product_key,
+            cp.merchant_id,
+            cp.platform,
+            cp.source_product_id,
+            cp.title,
+            cp.brand,
+            cp.category,
+            cp.product_type,
+            cp.canonical_url,
+            cp.image_url,
+            cp.product_payload,
+            NULLIF(cp.product_payload->>'variant_title', '') AS variant_title,
+            NULLIF(cp.product_payload->>'variant_detail_label', '') AS variant_detail_label,
+            cp.pdp_lifecycle_stage,
+            cp.pivota_signature_id,
+            cp.pivota_canonical_url,
+            cp.pivota_signature_minted_at,
+            cp.updated_at,
+            NULLIF(COALESCE(
+              to_jsonb(cp)->>'product_family_id',
+              cp.product_payload->>'product_family_id',
+              cp.product_payload->>'productFamilyId',
+              cp.product_payload->>'product_line_id',
+              cp.product_payload->>'productLineId',
+              cp.product_payload->>'variant_of',
+              cp.product_payload->>'variantOf'
+            ), '') AS product_family_id,
+            pgm.product_group_id,
+            COALESCE(pgm.is_primary, false) AS is_primary
+          FROM input_refs i
+          JOIN catalog_products cp
+            ON lower(cp.source_product_id) = i.ref_key
+            OR lower(cp.product_key) = i.ref_key
+            OR lower(cp.pivota_signature_id) = i.ref_key
+            OR lower(cp.canonical_url) = i.ref_key
+            OR lower(cp.pivota_canonical_url) = i.ref_key
+          LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+          LEFT JOIN product_group_members pgm
+            ON pgm.merchant_id = cp.merchant_id
+           AND pgm.platform = cp.platform
+           AND pgm.platform_product_id = cp.source_product_id
+          WHERE 
+    (
+      
+    (
+      cp.merchant_id NOT IN ('merch_efbc46b4619cfbdf', 'merch_shopify_0584b37f7a8be00a5223', 'merch_shopify_00d4a720d67d96c5dcba', 'merch_bbd34645bc1950cc', 'merch_shopify_b20b5797f4181983c177', 'merch_test_ownist_001')
+      AND coalesce(cp.source_domain, '') NOT LIKE 'pivota-review-demo%'
+    )
+  
+      AND (
+      cp.merchant_id = 'external_seed'
+      OR (
+        -- 'observed' is the ADR-009 observed-seller-of-record status
+        -- (merch_obs_… merchants minted by ensure_observed_seller). External
+        -- seeds now live under those sellers instead of the legacy
+        -- 'external_seed' bucket above, and ADR-009 (unblock merch_obs_ trust
+        -- + serving) intends them to serve — so admit 'observed' alongside
+        -- 'active'. Without this, every merch_obs_-keyed external seed is
+        -- filtered out of the citable/category recall lane no matter its
+        -- index_eligible/serving_eligible state.
+        lower(coalesce(cm.status, 'active')) IN ('active', 'observed')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_any_source
+            WHERE ms_any_source.merchant_id = cp.merchant_id
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_active_source
+            WHERE ms_active_source.merchant_id = cp.merchant_id
+              AND lower(coalesce(ms_active_source.status, '')) = 'active'
+              AND coalesce(nullif(trim(ms_active_source.domain), ''), '') <> ''
+              AND (
+                lower(coalesce(nullif(trim(cp.platform), ''), '')) = ''
+                OR lower(coalesce(ms_active_source.platform, '')) = lower(coalesce(nullif(trim(cp.platform), ''), ''))
+              )
+          )
+        )
+      )
+      )
+    )
+  
+
+          UNION ALL
+
+          SELECT
+            i.input_ref,
+            i.normalized_ref,
+            i.ref_key,
+            i.ordinality,
+            10 AS match_rank,
+            cp.product_key,
+            cp.merchant_id,
+            cp.platform,
+            cp.source_product_id,
+            cp.title,
+            cp.brand,
+            cp.category,
+            cp.product_type,
+            cp.canonical_url,
+            cp.image_url,
+            cp.product_payload,
+            NULLIF(cp.product_payload->>'variant_title', '') AS variant_title,
+            NULLIF(cp.product_payload->>'variant_detail_label', '') AS variant_detail_label,
+            cp.pdp_lifecycle_stage,
+            cp.pivota_signature_id,
+            cp.pivota_canonical_url,
+            cp.pivota_signature_minted_at,
+            cp.updated_at,
+            NULLIF(COALESCE(
+              to_jsonb(cp)->>'product_family_id',
+              cp.product_payload->>'product_family_id',
+              cp.product_payload->>'productFamilyId',
+              cp.product_payload->>'product_line_id',
+              cp.product_payload->>'productLineId',
+              cp.product_payload->>'variant_of',
+              cp.product_payload->>'variantOf'
+            ), '') AS product_family_id,
+            pgm.product_group_id,
+            COALESCE(pgm.is_primary, false) AS is_primary
+          FROM input_refs i
+          JOIN product_group_members pgm
+            ON lower(pgm.product_group_id) = i.ref_key
+          JOIN catalog_products cp
+            ON cp.merchant_id = pgm.merchant_id
+           AND cp.platform = pgm.platform
+           AND cp.source_product_id = pgm.platform_product_id
+          LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+          WHERE 
+    (
+      
+    (
+      cp.merchant_id NOT IN ('merch_efbc46b4619cfbdf', 'merch_shopify_0584b37f7a8be00a5223', 'merch_shopify_00d4a720d67d96c5dcba', 'merch_bbd34645bc1950cc', 'merch_shopify_b20b5797f4181983c177', 'merch_test_ownist_001')
+      AND coalesce(cp.source_domain, '') NOT LIKE 'pivota-review-demo%'
+    )
+  
+      AND (
+      cp.merchant_id = 'external_seed'
+      OR (
+        -- 'observed' is the ADR-009 observed-seller-of-record status
+        -- (merch_obs_… merchants minted by ensure_observed_seller). External
+        -- seeds now live under those sellers instead of the legacy
+        -- 'external_seed' bucket above, and ADR-009 (unblock merch_obs_ trust
+        -- + serving) intends them to serve — so admit 'observed' alongside
+        -- 'active'. Without this, every merch_obs_-keyed external seed is
+        -- filtered out of the citable/category recall lane no matter its
+        -- index_eligible/serving_eligible state.
+        lower(coalesce(cm.status, 'active')) IN ('active', 'observed')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_any_source
+            WHERE ms_any_source.merchant_id = cp.merchant_id
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_active_source
+            WHERE ms_active_source.merchant_id = cp.merchant_id
+              AND lower(coalesce(ms_active_source.status, '')) = 'active'
+              AND coalesce(nullif(trim(ms_active_source.domain), ''), '') <> ''
+              AND (
+                lower(coalesce(nullif(trim(cp.platform), ''), '')) = ''
+                OR lower(coalesce(ms_active_source.platform, '')) = lower(coalesce(nullif(trim(cp.platform), ''), ''))
+              )
+          )
+        )
+      )
+      )
+    )
+  
+        )
+        SELECT DISTINCT ON (normalized_ref)
+          input_ref, normalized_ref, ref_key, product_key, merchant_id, platform,
+          source_product_id, title, brand, category, product_type, canonical_url,
+          image_url, product_payload, variant_title, variant_detail_label,
+          pdp_lifecycle_stage, pivota_signature_id,
+          pivota_canonical_url, pivota_signature_minted_at, updated_at,
+          product_family_id, product_group_id, is_primary
+        FROM catalog_matches
+        ORDER BY
+          normalized_ref,
+          match_rank ASC,
+          CASE WHEN is_primary = true THEN 0 ELSE 1 END,
+          CASE pdp_lifecycle_stage
+            WHEN 'published' THEN 0
+            WHEN 'validated' THEN 1
+            WHEN 'candidate' THEN 2
+            WHEN 'draft' THEN 3
+            ELSE 9
+          END,
+          pivota_signature_minted_at ASC NULLS LAST,
+          updated_at DESC NULLS LAST,
+          product_key ASC
+      

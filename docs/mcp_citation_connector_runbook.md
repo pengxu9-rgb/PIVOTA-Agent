@@ -71,7 +71,9 @@ server (built + tested, flag-gated by `MCP_OAUTH_ENABLED`). The Authorization Se
 `pb-oauth-as`** — already MCP-purpose-built (DCR / PKCE-S256 / RFC 8707 / RS256+JWKS / consent). **No
 external vendor.** See [`adr_mcp_oauth_authorization_server.md`](adr_mcp_oauth_authorization_server.md).
 
-**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`):
+**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`) — note `pb-oauth-as` is the AS **module inside
+`pivota-backend`**, not a separate repo or service, so "deploy" here means set the `MCP_OAUTH_AS_*` env on
+Railway service `web` and deploy that app:
 
 ```text
 MCP_OAUTH_AS_ENABLED=1
@@ -85,13 +87,28 @@ MCP_OAUTH_AS_LOGIN_URL=<buyer login URL>                  # else unauthenticated
 
 ```text
 MCP_OAUTH_ENABLED=1
-MCP_OAUTH_RESOURCE=https://pivota-agent-production.up.railway.app/mcp
+MCP_OAUTH_RESOURCE=https://commerce.mcp.pivota.cc/mcp
 MCP_OAUTH_AUTHORIZATION_SERVERS=https://api.pivota.cc
 MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pivota.cc/.well-known/jwks.json","algs":["RS256"]}]
 ```
 
-`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints (pb-oauth-as already pins
-this value in its tests), or audience verification fails closed. Note **RS256**, not ES256.
+`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints, or audience verification
+fails closed. Note **RS256**, not ES256.
+
+> **2026-08-13:** this value moved from `https://pivota-agent-production.up.railway.app/mcp` to the branded
+> host above (verified live 2026-08-14). Changing it again spans two services, and it defines **two**
+> identifiers: the UCP door's is derived from this one's origin as `${origin}/ucp/mcp` and is separately
+> advertised, so treat them as a pair or the charge-capable UCP door is left behind. The AS
+> (`pb-oauth-as`, the AS module inside the `pivota-backend` repo, deployed on Railway service `web`) gates
+> **`/oauth/authorize`** on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list **both**
+> before the switch, or clients get `invalid_target`. It does NOT gate minting: refresh grants store the
+> resource they were issued for and re-mint with it unchecked, and because rotation rewrites the 30-day
+> TTL each time, an actively-refreshing client keeps that audience indefinitely — removing an entry is not
+> a kill switch and cannot be waited out (source-verified in `services/mcp_oauth_flow.py` 2026-08-14).
+> Changing the HOST is a forced re-authorization: `MCP_OAUTH_RESOURCE` is single-valued, so connected
+> clients 401 and re-run OAuth rather than overlapping. This value is also the third and last derivable origin for the UCP buyer-agent profile
+> URL, but only when `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on —
+> production sets that variable explicitly, so today that coupling is latent.
 
 **Note for read-only:** because discovery tools need no `user_ref`, you do **not** need
 `PAYMENT_ISSUERS_JSON`, and the `acp_session_id` binding review item (open item #1 in the OAuth front-door
@@ -105,7 +122,9 @@ unauthenticated `GET /mcp` → **401 + `WWW-Authenticate`** and `GET /.well-know
 
 ## Phase 4 — publish one connector
 
-1. Point a **Claude connector** (or ChatGPT MCP app) at `https://pivota-agent-production.up.railway.app/mcp`.
+1. Point a **Claude connector** (or ChatGPT MCP app) at `https://commerce.mcp.pivota.cc/mcp` — the
+   OAuth-protected commerce door. Do **not** use `https://mcp.pivota.cc/mcp`: that host is the anonymous
+   public read tier, so a client would get a 200 there and never discover that auth exists.
    The client auto-discovers the AS from the protected-resource metadata, runs DCR + consent, gets a
    token, then `tools/list` → `get_intel` / `search_catalog` / `get_product` / `get_alternatives`.
 2. **End-to-end citation check:** from the connected client, ask about the pilot product and confirm the

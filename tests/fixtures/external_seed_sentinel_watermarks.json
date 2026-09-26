@@ -1,0 +1,17 @@
+{
+ "catalog_products:external_product_seeds_mirror_v1": {
+  "watermark": 50,
+  "mode": "enforce",
+  "note": "FLOOR: the A9-4 flip completed 2026-08-14 (verifier verdict OK at 11,099 moved); only the 50 excluded test-rig rows (jwx893-fz.myshopify.com) remain. Goes to 0 with the rig-suppression step; any growth above 50 is a NEW sentinel writer."
+ },
+ "catalog_products:catalog_enrichment_agent_v1": {
+  "watermark": 0,
+  "mode": "enforce",
+  "note": "FLOOR: lane fully drained by the A9-4 flip (empty since 2026-08-13, verifier-confirmed). Any row here is a NEW sentinel writer \u2014 this lane must never grow again."
+ },
+ "seeds_missing_seller_ref": {
+  "watermark": 2,
+  "mode": "enforce",
+  "note": "external_product_seeds rows with NULL seller_ref. A9-3 wired derivation for new writes; growth means a seed writer bypasses it."
+ }
+}

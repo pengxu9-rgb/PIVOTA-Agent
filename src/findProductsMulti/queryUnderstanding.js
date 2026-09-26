@@ -22,6 +22,29 @@ const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
 ]);
 
 const CATEGORY_ALIAS_RULES = Object.freeze([
+  // Self-tan. MEASURED GAP, 2026-09-24: `self tanner` (even with
+  // category=beauty/body/tanning) classified other/ambiguous and answered
+  // clarify with 0 rows while beauty/body/tanning held 17 serving-eligible
+  // rows (Bondi Sands, applied + verified that day). The bucket is a leaf the
+  // recall SQL binds EXACTLY (canonicalCatalogSearch.js exact-path bind), so
+  // rows stored without a trailing slash still match.
+  //
+  // MUST SIT FIRST: `self tanning body mist` would otherwise be claimed by the
+  // fragrance rule's `body mist`, and `tanning lotion` / `tanning cream` by the
+  // moisturizer rule's bare `lotion` / `cream`. Only product-anchored forms are
+  // claimed: bare `tan`, `tanning bed`, `tanning salon`, `leather tanning` stay
+  // unclassified, and `tanning oil` is deliberately left to sun care (it is
+  // sold with an SPF; the sunscreen rule claims `tanning oil spf 30`).
+  // Bronzing DROPS/WATER are NOT claimed here: measured 2026-09-25, all 6
+  // bronzing-drops-titled rows are filed under beauty/makeup/face/bronzer (5)
+  // and beauty/makeup (1), none under tanning, so this leaf would hard-drop
+  // every one of them. They route with the bronzer rule below.
+  {
+    category: 'self_tanner',
+    categoryPathPrefix: 'beauty/body/tanning/',
+    pattern:
+      /\bself[-\s]?tan(?:ners?|ning)?\b|\bsunless\s+tan(?:ners?|ning)?\b|\bfake\s+tan\b|\bgradual\s+tan(?:ners?|ning)?\b|\btanning\s+(?:mousses?|foams?|drops?|waters?|lotions?|mists?|sprays?|mitts?|serums?|creams?|gels?)\b|\btan\s+(?:drops?|mousses?|mitts?)\b|美黑|セルフタンニング/i,
+  },
   {
     category: 'fragrance',
     categoryPathPrefix: 'beauty/fragrance/',
@@ -33,15 +56,86 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern: /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|liquid\s*lips?|rouge)\b|口红|口紅/i,
   },
+  // lip liner/pencil/tint arms added 2026-08-20 (second residue pass): all
+  // three safe-emptied as ambiguous. Their rows split across competing lip
+  // taxonomies (beauty/makeup/lip/liner 30 eligible + beauty/makeup/lips/
+  // lip-liner 8 — note lip vs lipS trees; tint leaf only 4), so the broad
+  // beauty/makeup/lip/ prefix (519 eligible) is the only one that doesn't
+  // orphan a subtree, and the union's title boost sorts the queried form to
+  // the head. The lipS/ tree is still excluded by the prefix — recorded.
   {
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
-    pattern: /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?)\b|唇油|润唇|潤唇|唇膜|唇彩/i,
+    pattern:
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|metal\s+serum\s+gloss)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
+  },
+  // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
+  // `hair mask` / `hair oil` had no rule here and no entry in
+  // hasBeautySearchSignal, so the contract classified them
+  // other/ambiguous_or_non_shopping and the safe-empty branch answered
+  // "No products matched this search." in ~0.2s — BEFORE any SQL ran. That
+  // silently nullified the #2035/#2039 category-browse union for exactly the
+  // vocabulary it was built to fix (the union's own end-to-end trap #2,
+  // "possibly a no-op", turned out to live one layer up).
+  //
+  // MUST SIT ABOVE the moisturizer / serum / skincare_treatment rules:
+  // first match wins, and `hair cream` / `hair serum` / `hair treatment`
+  // would otherwise be claimed by the `cream` / `serum` / `treatment` arms
+  // of those skincare rules and browse the wrong tree. Hair words with no
+  // hair/scalp anchor (bare `mask`, bare `oil`) are deliberately NOT
+  // claimed. The lookbehind keeps `lip conditioner` out — it is a lip
+  // product; it had no rule before and keeps having none.
+  //
+  // Prefix is the broad beauty/haircare/ tree (measured 2026-08-20:
+  // shampoo 130 + conditioner 42 + general 244 + root 47 serving-eligible
+  // rows): the leaf buckets (mask 2, hair-oil 1) are too sparse to browse,
+  // and the category-browse union's title boost sorts the queried form to
+  // the head inside the broad bucket.
+  {
+    category: 'haircare',
+    categoryPathPrefix: 'beauty/haircare/',
+    // The lookbehinds are \b-anchored on the guard word: an unanchored
+    // (?<!air\s) is satisfied by the trailing "air " of hAIR, repAIR, chAIR,
+    // which blocked the single most canonical phrasing of this category —
+    // "hair conditioner" (caught in the pre-merge review, by execution).
+    // hairspray/hair spray arm added 2026-08-20 (second residue pass): both
+    // spellings safe-emptied; 13 eligible hairspray-titled rows live in
+    // beauty/haircare/general, inside this rule's existing broad prefix.
+    pattern:
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
   },
   {
     category: 'mascara',
     categoryPathPrefix: 'beauty/makeup/eye/',
     pattern: /\bmascara\b|睫毛膏/i,
+  },
+  // Brow + eyeshadow. Tail of the same measured gap as haircare/toner above
+  // (2026-08-20 probe): `brow pencil` / `brow gel` / `eye shadow palette`
+  // classified ambiguous and safe-emptied before any SQL. Buckets verified on
+  // prod 2026-08-20: beauty/makeup/eye/brow 44 serving-eligible rows,
+  // beauty/makeup/eye/eyeshadow 58. Brow claims only anchored compounds
+  // (brow + product noun) — bare `brow`/`brows` stays unclassified.
+  {
+    category: 'brow',
+    categoryPathPrefix: 'beauty/makeup/eye/brow/',
+    pattern: /\b(?:eye\s*)?brow\s+(?:pencils?|gels?|pomades?|powders?|waxes?|tints?)\b|眉笔|眉筆/i,
+  },
+  // Bare `palette` is deliberately NOT claimed (paint palette, color
+  // palette) — only the eyeshadow anchor routes here, and `eyeshadow
+  // palette` matches via its `eyeshadow` token.
+  {
+    category: 'eyeshadow',
+    categoryPathPrefix: 'beauty/makeup/eye/eyeshadow/',
+    pattern: /\beye\s*shadows?\b|眼影/i,
+  },
+  // Eyeliner. Second residue pass, 2026-08-20: `eyeliner` / `eye liner` /
+  // `liquid eyeliner` safe-emptied. Bucket verified on prod the same day:
+  // beauty/makeup/eye/eyeliner, 48 serving-eligible rows (41 of them
+  // eyeliner-titled).
+  {
+    category: 'eyeliner',
+    categoryPathPrefix: 'beauty/makeup/eye/eyeliner/',
+    pattern: /\beye\s?liners?\b|眼线|眼線/i,
   },
   {
     category: 'blush',
@@ -53,20 +147,160 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/face/',
     pattern: /\b(foundation|skin\s*tint|tinted\s+moisturi[sz]er|concealer|base\s+makeup)\b|粉底|遮瑕|底妆|底妝/i,
   },
+  // Bronzer + contour. Same 2026-08-20 tail: both safe-emptied. Contour-titled
+  // rows live mostly IN the bronzer bucket on prod (13 of the 33 eligible
+  // beauty/makeup/face/bronzer rows; concealer/highlighter hold the rest), so
+  // both nouns share the bronzer leaf and the union's title boost sorts the
+  // queried form to the head. Contour claims only product-anchored compounds —
+  // bare `contour` stays unclassified (contour pillow, contour map).
+  //
+  // MUST SIT ABOVE the moisturizer rule: `contour cream` would otherwise be
+  // claimed by its bare `cream` arm and browse the skincare tree. Sits BELOW
+  // foundation on purpose: `powder foundation` / `foundation stick` are
+  // foundation.
+  {
+    category: 'bronzer_or_contour',
+    categoryPathPrefix: 'beauty/makeup/face/bronzer/',
+    // `bronzing drops/water/serum` arm added 2026-09-25: those rows live in the
+    // bronzer leaf (5 eligible), not in beauty/body/tanning.
+    pattern: /\bbronzers?\b|\bbronzing\s+(?:drops?|waters?|serums?|mists?)\b|\bcontour(?:ing)?\s+(?:sticks?|palettes?|wands?|kits?|powders?|creams?)\b|修容/i,
+  },
+  // Face powder. `setting powder` was the highest-traffic zero in the
+  // 2026-08-20 probe. Bucket: beauty/makeup/face/powder, 99 eligible rows
+  // (the two-row `setting-powder` leaf is too sparse — same broad-vs-leaf
+  // trade as haircare above). Qualifier is REQUIRED: bare `powder` stays
+  // unclassified (baby powder, protein powder), `brow powder` belongs to the
+  // brow rule above, and `powder foundation` to the foundation rule above.
+  {
+    category: 'face_powder',
+    categoryPathPrefix: 'beauty/makeup/face/powder/',
+    pattern: /\b(?:setting|face|translucent|loose|pressed|compact|finishing)\s+powders?\b|散粉|蜜粉/i,
+  },
+  // Highlighter. Second residue pass, 2026-08-20: safe-emptied. Bucket:
+  // beauty/makeup/face/highlighter, 69 eligible rows (49 highlighter-titled).
+  // The lookahead keeps the stationery sense (`highlighter pens`/`markers`)
+  // unclassified — same guard style as printer toner.
+  {
+    category: 'highlighter',
+    categoryPathPrefix: 'beauty/makeup/face/highlighter/',
+    pattern: /\bhighlighters?\b(?!\s+(?:pens?|markers?)\b)|高光/i,
+  },
+  // Primer. Second residue pass, 2026-08-20: `primer` / `face primer` /
+  // `makeup primer` / `eye primer` all safe-emptied. Bucket:
+  // beauty/makeup/face/primer, 30 eligible rows (23 primer-titled). The
+  // lookbehind/lookahead keep the hardware sense (`paint/wall/wood primer`,
+  // `primer paint`) unclassified.
+  {
+    category: 'primer',
+    categoryPathPrefix: 'beauty/makeup/face/primer/',
+    pattern: /(?<!\bpaints?\s)(?<!\bwall\s)(?<!\bwood\s)\bprimers?\b(?!\s+paints?\b)|妆前乳|妝前乳/i,
+  },
   {
     category: 'sunscreen',
     categoryPathPrefix: 'beauty/skincare/sun/',
     pattern: /\b(sunscreen|sun\s*screen|sunblock|spf\b|broad spectrum|uv|uva|uvb|pa\+{1,4})\b|防晒|防曬|日焼け止め/i,
   },
+  // `micellar water` and `makeup remover` arms added 2026-08-20 (same tail):
+  // `micellar cleansing water` already routed here via `cleansing`, but the
+  // commonly typed short forms safe-emptied. Their rows live in
+  // beauty/skincare/cleanse/cleanser on prod (5 micellar + 8 remover titled;
+  // the cleanse tree holds 425 eligible rows). `remov...` requires the
+  // makeup anchor, so `nail polish remover` stays unclassified.
   {
     category: 'cleanser',
     categoryPathPrefix: 'beauty/skincare/cleanse/',
-    pattern: /\b(cleanser|cleansing|face wash|facial wash|cleansing foam|cleansing gel|wash)\b|洁面|潔面|洗顔料/i,
+    pattern:
+      /\b(cleanser|cleansing|face wash|facial wash|cleansing foam|cleansing gel|wash|micellar(?:\s+water)?|make\s?up\s+remov(?:ers?|ing|al)?)\b|洁面|潔面|洗顔料|卸妆|卸妝/i,
   },
   {
     category: 'moisturizer',
     categoryPathPrefix: 'beauty/skincare/moisturize/',
     pattern: /\b(moisturi(?:z|s)er|cream|lotion|gel cream|gel-cream|barrier cream)\b|面霜|乳液|クリーム/i,
+  },
+  // Toner. Same measured gap as haircare above: bare `toner` (and `best
+  // toner`, `toner pads`, `face mist`) safe-emptied before any SQL. The
+  // bucket is real — beauty/skincare/tone/toner held 333 serving-eligible
+  // rows on 2026-08-20 (the backfill that repaired the once-empty tone/
+  // target), 58 of them mist-titled, which is why face/facial mist maps
+  // here rather than to fragrance (whose rule only claims BODY mist, and
+  // sits earlier so body mist still wins there). The lookbehind/lookahead
+  // keep `printer toner` / `toner cartridge` out of the beauty domain —
+  // they stay unclassified exactly as before.
+  {
+    category: 'toner',
+    categoryPathPrefix: 'beauty/skincare/tone/',
+    pattern:
+      /\b(?<!printer\s)toners?\b(?!\s+cartridges?)|\btoner\s+pads?\b|\b(?:face|facial)\s+mists?\b|爽肤水|爽膚水|化妆水|化妝水|化粧水/i,
+  },
+  // Face masks. Same 2026-08-20 tail (clay/mud in the first pass; face/sheet/
+  // overnight/sleeping added in the second residue pass — 68 of the eligible
+  // face|sheet-mask-titled rows live in this bucket). The mask leaf is a real
+  // bucket — beauty/skincare/treat/mask held 407 eligible rows — so unlike
+  // the sparse haircare leaves this one is browsable directly. Only anchored
+  // forms are claimed: `lip mask` belongs to the lip rule and `hair mask` to
+  // the haircare rule (both sit earlier), and bare `mask` stays unclassified
+  // (PPE/costume senses).
+  {
+    category: 'face_mask',
+    categoryPathPrefix: 'beauty/skincare/treat/mask/',
+    pattern: /\b(?:clay|mud|face|facial|sheet|overnight|sleeping)\s+masks?\b|泥膜|面膜/i,
+  },
+  // Exfoliants. Second residue pass, 2026-08-20: `exfoliant` / `exfoliator` /
+  // `chemical peel` / `body scrub` safe-emptied. Bucket:
+  // beauty/skincare/treat/exfoliant, 69 eligible rows (peel-titled 31 +
+  // exfoli-titled 11 + scrub-titled 8 live there). MUST SIT BELOW the
+  // cleanser and toner rules: `exfoliating cleanser` (13 eligible
+  // exfoli-titled rows in cleanse/) and `exfoliating toner` (8 in tone/)
+  // belong to those buckets. Bare `peel` and bare `scrub` stay unclassified
+  // (fruit/kitchen senses) — only anchored compounds are claimed.
+  {
+    category: 'exfoliant',
+    categoryPathPrefix: 'beauty/skincare/treat/exfoliant/',
+    pattern:
+      /\bexfolia(?:nts?|tors?|ting|te)\b|\b(?:chemical|face|facial)\s+peels?\b|\bpeeling\s+(?:gels?|solutions?|pads?)\b|\b(?:body|face|facial|sugar|salt)\s+scrubs?\b|磨砂|去角质|去角質/i,
+  },
+  // Face oil. Second residue pass, 2026-08-20: safe-emptied. The catalog runs
+  // competing taxonomies here — beauty/skincare/face-oil (18 eligible, 15
+  // face-oil-titled) AND beauty/skincare/moisturize/oil (24 eligible, 8
+  // face-oil-titled). The dedicated face-oil leaf wins on titled density; the
+  // moisturize/oil subtree is excluded by the prefix — recorded. `hair oil`
+  // keeps its earlier haircare claim; bare `oil` stays unclassified.
+  {
+    category: 'face_oil',
+    categoryPathPrefix: 'beauty/skincare/face-oil/',
+    pattern: /\b(?:face|facial)\s+oils?\b/i,
+  },
+  // Nail polish. Second residue pass, 2026-08-20: `nail polish` / `gel nail
+  // polish` safe-emptied. Bucket: beauty/makeup/nails/nail-polish, 38
+  // eligible rows. The lookahead keeps `nail polish remover` unclassified —
+  // its bucket (nails/nail-polish-remover) holds only 2 rows, too sparse to
+  // browse, and routing removers into the polish bucket would be wrong.
+  {
+    category: 'nail_polish',
+    categoryPathPrefix: 'beauty/makeup/nails/nail-polish/',
+    pattern: /\bnail\s+(?:polish(?:es)?(?!\s+removers?\b)|lacquers?|varnish(?:es)?)\b|指甲油|甲油/i,
+  },
+  // Deodorant. Second residue pass, 2026-08-20: safe-emptied. The bodycare
+  // taxonomy is fragmented (body-care/ vs bodycare/ vs personal_care/ vs
+  // fragrance/deodorant); beauty/body-care/deodorant is the largest home
+  // (11 eligible rows of the ~20 deodorant-titled) — the other spellings'
+  // subtrees are excluded by the prefix, recorded.
+  {
+    category: 'deodorant',
+    categoryPathPrefix: 'beauty/body-care/deodorant/',
+    pattern: /\bdeodorants?\b|\bantiperspirants?\b|止汗/i,
+  },
+  // Shower gel. Second residue pass, 2026-08-20: safe-emptied. Same
+  // fragmented bodycare taxonomy: beauty/body-care/body-wash is the largest
+  // home (8 eligible; bath/shower_gel holds 5 more, excluded by the prefix —
+  // recorded). NOTE `body wash` itself never safe-emptied — the cleanser
+  // rule's bare `wash` arm claims it into the skincare/cleanse tree (the
+  // wrong tree, but a served result; changing that arm is out of scope and
+  // recorded).
+  {
+    category: 'shower_gel',
+    categoryPathPrefix: 'beauty/body-care/body-wash/',
+    pattern: /\bshower\s+gels?\b|沐浴露|沐浴乳/i,
   },
   {
     category: 'serum',
@@ -81,7 +315,12 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   },
 ]);
 
+// Looked up by NAME: this was CATEGORY_ALIAS_RULES[0], which silently became
+// the self-tan rule when that rule had to sit first.
+const FRAGRANCE_RULE = CATEGORY_ALIAS_RULES.find((rule) => rule.category === 'fragrance');
+
 const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
+  'beauty/body/tanning/': 'self tanner',
   'beauty/fragrance/': 'fragrance',
   'beauty/makeup/lip/': 'lipstick',
   'beauty/makeup/eye/': 'mascara',
@@ -92,6 +331,21 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/skincare/cleanse/': 'cleanser',
   'beauty/skincare/moisturize/': 'moisturizer',
   'beauty/skincare/treat/': 'serum',
+  'beauty/skincare/tone/': 'toner',
+  'beauty/haircare/': 'shampoo',
+  'beauty/makeup/eye/brow/': 'brow pencil',
+  'beauty/makeup/eye/eyeshadow/': 'eyeshadow',
+  'beauty/makeup/face/bronzer/': 'bronzer',
+  'beauty/makeup/face/powder/': 'setting powder',
+  'beauty/skincare/treat/mask/': 'face mask',
+  'beauty/makeup/face/highlighter/': 'highlighter',
+  'beauty/makeup/face/primer/': 'primer',
+  'beauty/makeup/eye/eyeliner/': 'eyeliner',
+  'beauty/makeup/nails/nail-polish/': 'nail polish',
+  'beauty/skincare/treat/exfoliant/': 'exfoliant',
+  'beauty/skincare/face-oil/': 'face oil',
+  'beauty/body-care/deodorant/': 'deodorant',
+  'beauty/body-care/body-wash/': 'shower gel',
 });
 
 function normalizeQueryTextForUnderstanding(value) {
@@ -155,9 +409,9 @@ function hasFragranceFreeSkincareSignal(text) {
 function hasFragranceProductQuerySignal(text) {
   if (hasFragranceFreeSkincareSignal(text)) return false;
   const raw = String(text || '');
-  if (CATEGORY_ALIAS_RULES[0].pattern.test(raw)) return true;
+  if (FRAGRANCE_RULE.pattern.test(raw)) return true;
   const corrected = applyDeterministicCorrections(raw).corrected_query;
-  return corrected !== raw && CATEGORY_ALIAS_RULES[0].pattern.test(corrected);
+  return corrected !== raw && FRAGRANCE_RULE.pattern.test(corrected);
 }
 
 function resolveBeautyCategoryPathPrefixFromText(text) {
@@ -269,6 +523,12 @@ function hasBeautySearchSignal(text) {
     resolveBeautyCategoryPathPrefixFromText(raw) ||
       extractBeautyConcernSignals(raw).has_concern_signal ||
       extractConstraintSignals(raw).length ||
+      // toner/shampoo/conditioner are deliberately NOT in this bare-noun list
+      // even though they gained alias rules on 2026-08-20: the first arm of
+      // this predicate (resolveBeautyCategoryPathPrefixFromText) already
+      // covers every phrasing the alias patterns accept, and the alias
+      // patterns carry the non-beauty guards (printer toner, air
+      // conditioner) that a bare noun here would bypass.
       /\b(makeup|cosmetics?|beauty|skincare|skin\s+care|haircare|hair\s+care|fragrance|perfume|pdp|spf|serum|cleanser|moisturi[sz]er|lipstick|mascara|blush|foundation|concealer)\b/.test(normalized) ||
       /护肤|護膚|彩妆|彩妝|美妆|美妝|香水|粉底|口红|口紅|睫毛膏|腮红|腮紅/.test(raw)
   );
@@ -312,6 +572,16 @@ function inferExactProductAnchor({ correctedQuery, categoryPathPrefix, brandBrow
   return null;
 }
 
+// A caller that DECLARES its step family (the Aurora reco recall client does, on every catalog search)
+// knows the category better than the query text does — the planner may have rewritten that text. This
+// resolves the declared family through the SAME shipped CATEGORY_ALIAS_RULES the text path uses, so no
+// second family->prefix mapping is introduced and the two can never disagree.
+function resolveBeautyCategoryPathPrefixFromDeclaredStepFamily(declaredTargetStepFamily) {
+  const family = String(declaredTargetStepFamily || '').trim().toLowerCase();
+  if (!family) return '';
+  return resolveBeautyCategoryPathPrefixFromText(family) || '';
+}
+
 function buildSearchQualityContract({
   rawQuery,
   conversationMessages = [],
@@ -319,6 +589,7 @@ function buildSearchQualityContract({
   market = null,
   source = null,
   allowContextBinding = true,
+  declaredTargetStepFamily = '',
 } = {}) {
   const understanding = understandShoppingQuery({
     rawQuery,
@@ -330,8 +601,14 @@ function buildSearchQualityContract({
   });
   const effectiveQuery = understanding.effective_query || understanding.corrected_query || understanding.raw_query || '';
   const normalized = normalizeQueryTextForUnderstanding(effectiveQuery);
+  // Text first, declared family only as a FILL-IN. A declared family never overrides a prefix the text
+  // already produced, so this can only add a constraint where there was none — it cannot move a search
+  // out of the category its own words asked for.
   const inferredCategoryPathPrefix =
-    understanding.category_path_prefix || resolveBeautyCategoryPathPrefixFromText(effectiveQuery) || null;
+    understanding.category_path_prefix ||
+    resolveBeautyCategoryPathPrefixFromText(effectiveQuery) ||
+    resolveBeautyCategoryPathPrefixFromDeclaredStepFamily(declaredTargetStepFamily) ||
+    null;
   const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(effectiveQuery);
   const brandCandidates = Array.isArray(understanding.brand_candidates) ? understanding.brand_candidates : [];
   const brand = beautyBrandBrowse.matched
@@ -356,11 +633,19 @@ function buildSearchQualityContract({
   const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
   const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
   const hasNonMerchandiseSignal = hasNonMerchandiseQuerySignal(effectiveQuery);
-  const effectiveBrand = hasNonMerchandiseSignal ? null : brand;
-  const effectiveExactProductAnchor = hasNonMerchandiseSignal ? null : exactProductAnchor;
-  const effectiveCategoryPathPrefix = hasNonMerchandiseSignal ? null : categoryPathPrefix;
+  // A mixed retailer/brand is not a category. Explicit apparel requests must not become beauty
+  // browsing solely because the brand has a cosmetics line. Remove the brand first so a suffix
+  // such as "Beauty" or "Cosmetics" cannot cancel this check; perfume carried in a handbag stays in.
+  const merchandiseRemainder = stripBrandTokensFromNormalizedQuery(effectiveQuery, beautyBrandBrowse);
+  const explicitApparelRequest = hasKnownBeautyBrand
+    && /\b(?:bras?|bralettes?|lingerie|underwear|panties|sleepwear|loungewear|pajamas?|pyjamas?|nightgowns?|robes?|handbags?|purses?|dresses?|shirts?|skirts?|jeans|trousers?|leggings?|sneakers?|shoes?|boots?|coats?|jackets?)\b|内衣|內衣|文胸|睡衣|手提包/.test(merchandiseRemainder)
+    && !hasBeautySearchSignal(merchandiseRemainder);
+  const outsideBeauty = hasNonMerchandiseSignal || explicitApparelRequest;
+  const effectiveBrand = outsideBeauty ? null : brand;
+  const effectiveExactProductAnchor = outsideBeauty ? null : exactProductAnchor;
+  const effectiveCategoryPathPrefix = outsideBeauty ? null : categoryPathPrefix;
   const targetDomain =
-    !hasNonMerchandiseSignal &&
+    !outsideBeauty &&
     (hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery))
       ? 'beauty'
       : 'other';
@@ -389,6 +674,7 @@ function buildSearchQualityContract({
   }
 
   const exclusions = [];
+  if (explicitApparelRequest) exclusions.push('beauty_product_for_apparel_query');
   if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
   if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
   if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');
@@ -630,6 +916,63 @@ function maybeBindConversationContext({ rawQuery, correctedQuery, categoryPathPr
   return null;
 }
 
+function maybeBindBrandRefinementContext({
+  rawQuery,
+  correctedQuery,
+  categoryPathPrefix,
+  conversationMessages,
+  currentBrandCandidates,
+}) {
+  if (Array.isArray(currentBrandCandidates) && currentBrandCandidates.length > 0) return null;
+  const current = String(correctedQuery || rawQuery || '').trim();
+  const normalized = normalizeQueryTextForUnderstanding(current);
+  if (!normalized || normalized.length > 80) return null;
+  if (/^(hi|hello|hey|thanks|thank you|你好|您好|谢谢|謝謝)\b/i.test(normalized)) return null;
+
+  // Only bind an actual refinement. This avoids carrying an old brand into an
+  // unrelated new mission while supporting terse chat turns such as
+  // "only blush" and "show me niacinamide under $10".
+  const looksLikeRefinement =
+    /\b(only|under|below|over|above|cheaper|more|less|show|with|without|in stock|blush|serum|cleanser|toner|moisturizer|sunscreen|niacinamide|retinol|salicylic|shade|color|size)\b/i.test(
+      normalized,
+    ) || /只要|仅看|僅看|低于|低於|以内|以內|更便宜|精华|精華|腮红|腮紅|防晒|防曬/.test(current);
+  if (!looksLikeRefinement) return null;
+
+  const priorUserMessages = extractPriorUserMessages(conversationMessages, rawQuery);
+  for (const message of priorUserMessages) {
+    const priorCorrected = applyDeterministicCorrections(message.content).corrected_query || message.content;
+    const priorBrands = buildBrandCandidates(priorCorrected);
+    const priorNormalized = normalizeQueryTextForUnderstanding(priorCorrected);
+    const priorTokens = priorNormalized.split(/\s+/).filter(Boolean);
+    const priorLooksLikeNamedAnchor = Boolean(
+      priorNormalized &&
+        priorNormalized.length <= 48 &&
+        priorTokens.length >= 1 &&
+        priorTokens.length <= 5 &&
+        !resolveBeautyCategoryPathPrefixFromText(priorCorrected) &&
+        !hasNonMerchandiseQuerySignal(priorCorrected) &&
+        !/\b(show|find|get|recommend|products?|items?|under|over|best|cheap|routine|skin)\b/i.test(
+          priorNormalized,
+        ),
+    );
+    // Newly onboarded merchants may not be in the static brand lexicon yet.
+    // A short, category-free prior turn is still a safe conversation-local
+    // named anchor; it is never persisted or applied outside this chat.
+    const priorBrand = priorBrands[0] || (priorLooksLikeNamedAnchor ? priorCorrected : null);
+    if (!priorBrand) continue;
+    return {
+      scope: 'conversation',
+      source: 'current_conversation_messages',
+      source_query: message.content,
+      brand: priorBrand,
+      category_path_prefix: categoryPathPrefix || null,
+      reason: 'brand_refinement_followup_conversation',
+      contextual_query: `${priorBrand} ${current}`.trim(),
+    };
+  }
+  return null;
+}
+
 function isExplicitSessionContinuationQuery(text) {
   const normalized = normalizeQueryTextForUnderstanding(text);
   if (!normalized) return false;
@@ -715,6 +1058,13 @@ function understandShoppingQuery({
         currentProfileSignals,
         currentConcernSignals,
       }) ||
+      maybeBindBrandRefinementContext({
+        rawQuery: raw,
+        correctedQuery,
+        categoryPathPrefix,
+        conversationMessages,
+        currentBrandCandidates: brandCandidates,
+      }) ||
       maybeBindExplicitSessionContext({
         rawQuery: raw,
         correctedQuery,
@@ -723,6 +1073,7 @@ function understandShoppingQuery({
       })
     : null;
   const effectiveQuery = contextBinding?.contextual_query || correctedQuery || raw;
+  const effectiveBrandCandidates = buildBrandCandidates(effectiveQuery);
   const effectiveCategoryPathPrefix =
     nonMerchandiseQuery
       ? null
@@ -750,7 +1101,7 @@ function understandShoppingQuery({
     corrected_normalized_query: correctedNormalized,
     effective_query: effectiveQuery,
     corrections: correctionResult.corrections,
-    brand_candidates: brandCandidates,
+    brand_candidates: effectiveBrandCandidates,
     category_path_prefix: effectiveCategoryPathPrefix,
     context_binding: contextBinding,
     context_scope: contextBinding?.scope || 'none',
@@ -780,6 +1131,7 @@ module.exports = {
   buildSearchQualityContract,
   normalizeQueryTextForUnderstanding,
   resolveBeautyCategoryPathPrefixFromText,
+  resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,

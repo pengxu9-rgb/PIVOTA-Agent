@@ -11,12 +11,23 @@ const {
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
 // Fix Plan D · T1 — resolve retailer offers against existing catalog identity
-// BEFORE minting a self product/group, and use the ONE shared content_key formula.
+// BEFORE minting a self product/group. That resolve-first reuse is what collapses a
+// retailer offer onto its D2C product; the minter below is only for genuinely new ones.
 const {
-  contentKeyFallback,
   buildCatalogIdentityIndex,
   resolveAgainstIndex,
 } = require('../src/services/retailerOfferIdentity');
+// #1916 — the ONE content_key minter (Node mirror of the pivota-backend authority).
+const { makeContentKey } = require('../src/services/contentKey');
+const { categoryPathIsCategorised } = require('../src/services/beautyTaxonomy');
+// THE ONE CLASSIFIER, NOT A SECOND ONE. This lane had no classifier at all and defaulted every row
+// to the bare domain `beauty`. The sibling external-seed mirror already owns a ~20-branch category
+// ladder over exactly this row shape (seed_data + snapshot + title), so this lane borrows it rather
+// than growing a rival that would drift. Script-to-script reuse is the established pattern here
+// (see apply-external-seed-image-health-prune.cjs, audit-kb-commerce-index-readiness.cjs, ...).
+const {
+  _internals: { inferCatalogMirrorCategory },
+} = require('./sync-external-seeds-to-catalog.cjs');
 
 const RETAILER_FUZZY_THRESHOLD = 0.72;
 
@@ -207,20 +218,95 @@ function isUltaSeed(row) {
   );
 }
 
+/**
+ * #1916: drop mirrors still holding a null content_key after resolve-first — they have
+ * neither a match to reuse nor mintable brand/title. `index_pipeline_state.content_key`
+ * is a PRIMARY KEY, so a null cannot be written, and a placeholder would collide every
+ * such row onto ONE serving decision. Drop and retry next run.
+ *
+ * Extracted so it is directly testable: mutation testing on PR #1938 deleted this
+ * guard and all 72 tests still passed, which meant the PR's main runtime behaviour
+ * change had no coverage at all.
+ *
+ * Runs AFTER the resolve-first loop, not at build time, because resolve-first
+ * legitimately fills the key in between. `self_mint` was counted before that loop knew
+ * the outcome, so it is corrected here rather than left over-counting the dropped rows.
+ */
+function dropUnmintableMirrors(mirrors, skipped, identityResolution = null) {
+  return (mirrors || []).filter((mirror) => {
+    if (mirror?.product?.content_key) return true;
+    skipped.push({
+      external_product_id: mirror?.row?.external_product_id,
+      reason: 'content_key_unmintable',
+      brand: mirror?.product?.brand,
+      title: mirror?.product?.title,
+    });
+    if (identityResolution && identityResolution.self_mint > 0) {
+      identityResolution.self_mint -= 1;
+    }
+    return false;
+  });
+}
+
+// THE PER-ROW CATEGORY GATE, as a function rather than four lines inside a 100-line loop.
+//
+// It is extracted for ONE reason: a gate that lives only inside `run()` can only be tested by
+// reading the source text, and a source pin cannot see a broken binding. Both source-pin tests for
+// this gate stayed green when the imported predicate was replaced with `() => true`, and when the
+// destructured import was mistyped so the binding was `undefined` -- the second of which throws
+// `TypeError: categoryPathIsCategorised is not a function` on the FIRST row and aborts the whole
+// run, i.e. exactly the batch-abort this gate is shaped to avoid. Exported so a test can drive the
+// decision and can assert the binding is the real module export, not a look-alike.
+//
+// Returns a skip record, or null to admit. Never throws: applyMirrors wraps the batch in a single
+// BEGIN and --batch-size defaults to every fetched row, so an exception here would discard the run.
+function mirrorCategorySkipReason(mirror) {
+  const product = asObject(mirror && mirror.product);
+  if (categoryPathIsCategorised(product.category_path)) return null;
+  return {
+    external_product_id: asString(asObject(mirror && mirror.row).external_product_id),
+    reason: 'category_path_uncategorised',
+    category_path: asString(product.category_path) || null,
+    title: asString(product.title),
+  };
+}
+
 function buildMirror(row) {
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
   const externalProductId = asString(row.external_product_id);
   const seedId = asString(row.id);
-  const productKey = `prod::external_seed::external_seed::${externalProductId}`;
+  // ADR-009 R1: an existing catalog row keeps ITS OWN key; the template is
+  // only for genuinely new rows (which are currently blocked, see
+  // annotateUltaMirrorMerchants). Keys are opaque plumbing — look up, never
+  // parse or reconstruct.
+  const productKey = asString(row.existing_product_key)
+    || `prod::external_seed::external_seed::${externalProductId}`;
   const skuKey = `${productKey}::canonical`;
   const sourceVariantId = productKey;
+  const mirrorMerchantId = asString(row.mirror_merchant_id);
+  if (!mirrorMerchantId) {
+    throw new Error(`buildMirror: row ${externalProductId} has no resolved mirror_merchant_id — run annotateUltaMirrorMerchants first`);
+  }
   const canonicalUrl = pickCanonicalUrl(row);
   const imageUrl = pickImageUrl(row);
   const title = asString(row.title || seedData.title || snapshot.title || externalProductId);
   const brand = pickBrand(row);
   const description = pickDescription(row);
   const variantSku = pickVariantSku(row);
+  // `category_path` USED TO BE `asString(seedData.category_path || snapshot.category_path) ||
+  // 'beauty'`, and the left side is empty for essentially every row on this lane: the upstream
+  // producer (scripts/discover-ulta-brand-offers.cjs) never writes a per-product category_path --
+  // its only category_path is a CLI argument recorded on the RUN record, and those values are
+  // ulta.com browse slugs used to build crawl URLs, not our taxonomy. So the fallback WAS the
+  // value, for the whole lane.
+  //
+  // `beauty` is a NAMESPACE, not an answer to "what is this", and it is the worst available answer:
+  // unretrievable by category-scoped recall, yet finished-looking to every repair tool, because
+  // pivota-backend's regex backfill selects `WHERE category_path IS NULL` and an off-taxonomy
+  // health check passes it (`beauty` IS on the taxonomy -- see categoryPathIsCategorised).
+  const categoryShape = inferCatalogMirrorCategory(row);
+  const categoryPath = asString(categoryShape.categoryPath);
   const priceAmount =
     normalizeAmount(row.price_amount) ??
     normalizeAmount(seedData.price_amount) ??
@@ -231,11 +317,13 @@ function buildMirror(row) {
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
-  // Self-mint fallback content_key uses the ONE shared, URL-free formula
-  // (brandCore + strict titleCore) so two independent sellers of a brand-new item
-  // still converge. Resolve-first (run()) overrides this when an existing D2C
-  // product matches exactly.
-  const contentKey = contentKeyFallback(brand, title);
+  // Self-mint content_key for a genuinely new product, via the ONE minter that the
+  // pivota-backend authority also uses — so a Node-minted key lands in the same
+  // keyspace as the 12k keys already there (issue #1916). Resolve-first (run())
+  // overrides this whenever an existing D2C product matches exactly; that reuse, not
+  // this hash, is what makes a retailer offer share its D2C product's identity.
+  // Null when brand/title normalize to empty — the caller skips such rows.
+  const contentKey = makeContentKey(brand, title, null);
   const sigId = stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
   const productGroupId = stableHash('pg', ['external_seed_self_group', externalProductId], 32);
   const offerId = `offer:external_seed:${crypto
@@ -275,7 +363,7 @@ function buildMirror(row) {
     price_amount: priceAmount,
     price_currency: priceCurrency,
     availability,
-    category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+    category_path: categoryPath,
     commerce_facts_v1: facts || seedData.commerce_facts_v1 || snapshot.commerce_facts_v1 || null,
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     commerce_facts_gate: gate,
@@ -343,7 +431,7 @@ function buildMirror(row) {
     productGroupId,
     product: {
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       platform: PLATFORM,
       source_product_id: externalProductId,
       catalog_track: 'external_referral',
@@ -354,17 +442,30 @@ function buildMirror(row) {
       title,
       description,
       brand,
-      product_type: 'retailer_offer',
-      category: 'beauty',
+      // `retailer_offer` NAMES A LANE, NOT A PRODUCT. It is provenance wearing a taxonomy field,
+      // and it was never the carrier of that fact anyway: consumers read the role from
+      // `source_role` / `source_listing_scope` (set in retailerFields above, and what
+      // audit-ulta-catalog-coverage.cjs actually counts). Grepped across src/ and scripts/, nothing
+      // reads product_type for this value.
+      product_type: asString(categoryShape.productType),
+      category: asString(categoryShape.category),
       canonical_url: canonicalUrl,
       image_url: imageUrl,
       product_payload: productPayload,
       freshness_json: freshness,
-      category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+      category_path: categoryPath,
       category_confidence: 0.8,
       category_label_source: 'ulta_brand_offer_discovery',
-      pdp_scope: 'multi_merchant_canonical',
-      pdp_scope_source: SOURCE_SYSTEM,
+      // pdp_scope / pdp_scope_source / pdp_scope_set_at are DELIBERATELY not
+      // written by this lane. The classifier (pivota-backend
+      // services/pdp_scope_classifier) is the only authority on the column;
+      // rows land on the DB default 'unverified' (NOT NULL, migration 070) and
+      // are promoted by the classifier-backed writers. This lane used to stamp
+      // 'multi_merchant_canonical' unconditionally and re-assert it on every
+      // conflict: measured 2026-08-04, 3,182 of its 3,400 canonical rows had
+      // <2 sellers, each wrongly carrying a +200 rank term and the
+      // market-filter exemption (canonicalCatalogSearch.js). See
+      // pivota-backend docs/PDP_SCOPE_REDESIGN.md (P1).
       pivota_signature_id: sigId,
       pivota_canonical_url: canonicalUrl,
       tags: ['external_seed', 'ulta', 'retailer_offer'],
@@ -375,7 +476,7 @@ function buildMirror(row) {
     sku: {
       sku_key: skuKey,
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       platform: PLATFORM,
       source_product_id: externalProductId,
       source_variant_id: sourceVariantId,
@@ -393,7 +494,7 @@ function buildMirror(row) {
       offer_id: offerId,
       sku_key: skuKey,
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       catalog_track: 'external_referral',
       truth_tier: 'observed',
       readiness_tier: 'referral_only',
@@ -412,31 +513,67 @@ function buildMirror(row) {
   };
 }
 
+// ADR-009 R1 — resolve the merchant each ulta mirror row is written under.
+// This is a RETAILER lane: current external_product_seeds.seller_ref values for
+// ulta seeds are per-BRAND observed sellers, which fragments one retailer into
+// hundreds of merchants — the mirror image of the bug ADR-009 fixes. The
+// retailer seller model (W2) decides the real identity, so until it lands:
+//   - an EXISTING catalog row keeps its own merchant (derive from the row);
+//   - a NEW self-mint is BLOCKED (skipped + retried), never landed in the
+//     legacy bucket and never minted under a wrong per-brand identity.
+function annotateUltaMirrorMerchants(rows) {
+  const counts = { existing: 0, blocked_pending_w2: 0 };
+  for (const row of rows || []) {
+    const existing = asString(row.existing_merchant_id);
+    if (existing) {
+      row.mirror_merchant_id = existing;
+      counts.existing += 1;
+    } else {
+      row.mirror_mint_blocked_reason = 'retailer_seller_model_pending_w2';
+      counts.blocked_pending_w2 += 1;
+    }
+  }
+  if (counts.blocked_pending_w2 > 0) {
+    console.error(JSON.stringify({ event: 'mirror_merchant_mint_blocked', lane: 'ulta_retailer', ...counts }));
+  }
+  return counts;
+}
+
 async function fetchRows(ids, market) {
   const res = await query(
     `
       SELECT
-        id,
-        external_product_id,
-        market,
-        tool,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        canonical_url,
-        destination_url,
-        seed_data,
-        status,
-        updated_at
-      FROM external_product_seeds
-      WHERE external_product_id = ANY($1::text[])
-        AND ($2::text = '' OR market = $2::text)
-      ORDER BY array_position($1::text[], external_product_id::text)
+        e.id,
+        e.external_product_id,
+        e.market,
+        e.tool,
+        e.domain,
+        e.title,
+        e.image_url,
+        e.price_amount,
+        e.price_currency,
+        e.availability,
+        e.canonical_url,
+        e.destination_url,
+        e.seed_data,
+        e.status,
+        e.updated_at,
+        e.seller_ref,
+        cp.merchant_id AS existing_merchant_id,
+        cp.product_key AS existing_product_key
+      FROM external_product_seeds e
+      -- ADR-009 R1: join by SOURCE IDENTITY, never by merchant literal or a
+      -- reconstructed key template — re-keyed rows carry BOTH a different
+      -- merchant_id and a rewritten product_key (prod::merch_obs_…), and a
+      -- template upsert against them inserts a duplicate product.
+      LEFT JOIN catalog_products cp
+        ON cp.source_product_id = e.external_product_id
+       AND cp.source_system = $3
+      WHERE e.external_product_id = ANY($1::text[])
+        AND ($2::text = '' OR e.market = $2::text)
+      ORDER BY array_position($1::text[], e.external_product_id::text)
     `,
-    [ids, market || ''],
+    [ids, market || '', SOURCE_SYSTEM],
   );
   return res.rows || [];
 }
@@ -454,11 +591,10 @@ async function existingCounts(mirrors) {
       `
         SELECT count(*)::int AS n
         FROM product_group_members
-        WHERE merchant_id = $1
-          AND platform = $2
-          AND platform_product_id = ANY($3::text[])
+        WHERE platform = $1
+          AND platform_product_id = ANY($2::text[])
       `,
-      [MERCHANT_ID, PLATFORM, productIds],
+      [PLATFORM, productIds],
     ),
   ]);
   return {
@@ -524,9 +660,6 @@ async function applyMirrors(mirrors, dryRun) {
               category_path,
               category_confidence,
               category_label_source,
-              pdp_scope,
-              pdp_scope_source,
-              pdp_scope_set_at,
               pivota_signature_id,
               pivota_canonical_url,
               pivota_signature_minted_at,
@@ -537,8 +670,8 @@ async function applyMirrors(mirrors, dryRun) {
               sync_status,
               updated_at
             ) VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22,$23,now(),
-              $24,$25,now(),$26::jsonb,$27,$28,now(),$29,now()
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,
+              $22,$23,now(),$24::jsonb,$25,$26,now(),$27,now()
             )
             ON CONFLICT (product_key) DO UPDATE SET
               catalog_track = EXCLUDED.catalog_track,
@@ -558,9 +691,6 @@ async function applyMirrors(mirrors, dryRun) {
               category_path = EXCLUDED.category_path,
               category_confidence = EXCLUDED.category_confidence,
               category_label_source = EXCLUDED.category_label_source,
-              pdp_scope = EXCLUDED.pdp_scope,
-              pdp_scope_source = EXCLUDED.pdp_scope_source,
-              pdp_scope_set_at = now(),
               pivota_signature_id = COALESCE(catalog_products.pivota_signature_id, EXCLUDED.pivota_signature_id),
               pivota_canonical_url = EXCLUDED.pivota_canonical_url,
               tags = EXCLUDED.tags,
@@ -592,8 +722,6 @@ async function applyMirrors(mirrors, dryRun) {
             p.category_path,
             p.category_confidence,
             p.category_label_source,
-            p.pdp_scope,
-            p.pdp_scope_source,
             p.pivota_signature_id,
             p.pivota_canonical_url,
             JSON.stringify(p.tags),
@@ -757,7 +885,7 @@ async function applyMirrors(mirrors, dryRun) {
               updated_at = now()
             RETURNING product_group_id, product_group_id <> $1 AS preserved_existing_group
           `,
-          [mirror.productGroupId, MERCHANT_ID, PLATFORM, mirror.row.external_product_id],
+          [mirror.productGroupId, mirror.product.merchant_id, PLATFORM, mirror.row.external_product_id],
         );
         totals.group_member_upserts += Number(groupRes.rowCount || 0);
         if (groupRes.rows?.[0]?.preserved_existing_group) {
@@ -785,9 +913,10 @@ async function run() {
   const out = resolveOutPath(argValue('out'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
+  const mirrorMerchantCounts = annotateUltaMirrorMerchants(rows);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
   const skipped = [];
-  const mirrors = [];
+  let mirrors = [];
   for (const row of rows) {
     if (asString(row.status).toLowerCase() !== 'active') {
       skipped.push({ external_product_id: row.external_product_id, reason: 'inactive_seed' });
@@ -797,9 +926,34 @@ async function run() {
       skipped.push({ external_product_id: row.external_product_id, reason: 'not_ulta_seed' });
       continue;
     }
+    if (row.mirror_mint_blocked_reason) {
+      skipped.push({
+        external_product_id: row.external_product_id,
+        reason: 'seller_of_record_unresolved',
+        detail: row.mirror_mint_blocked_reason,
+      });
+      continue;
+    }
     const mirror = buildMirror(row);
     if (!mirror.product.canonical_url) {
       skipped.push({ external_product_id: row.external_product_id, reason: 'missing_canonical_url' });
+      continue;
+    }
+    const categorySkip = mirrorCategorySkipReason(mirror);
+    if (categorySkip) {
+      // A ROW THAT HAS NOT BEEN CATEGORISED IS SKIPPED, NOT LANDED ON A PLACEHOLDER.
+      //
+      // EXPECT A NON-TRIVIAL COUNT. Ulta rows carry no category of their own, so each is classified
+      // from its title alone. Measured over the 40 real ulta.com titles in
+      // reports/.../pdp_readiness_checkpoint/domains/ulta.com.json: 15% are still unnamed by their
+      // own title (The Ordinary-style "Alpha Arbutin 2% + Hyaluronic Acid" names ingredients, not a
+      // product class). Read `skipped[]` grouped by this reason before widening the ladder.
+      //
+      // THE COST IS STALENESS, NOT DELETION: a skipped row is not deleted (stale deletes are scoped
+      // to the mirrors actually built), but its price, availability and image stop refreshing while
+      // it stays `sync_status: 'live'`. That is the trade being made against writing a category
+      // that no category query can reach.
+      skipped.push(categorySkip);
       continue;
     }
     mirrors.push(mirror);
@@ -860,6 +1014,8 @@ async function run() {
   }
   // -----------------------------------------------------------------------------
 
+  mirrors = dropUnmintableMirrors(mirrors, skipped, identity_resolution);
+
   const applied = await applyMirrors(mirrors, dryRun);
   const byBrand = {};
   for (const mirror of mirrors) {
@@ -872,6 +1028,7 @@ async function run() {
     requested_ids: ids.length,
     fetched_rows: rows.length,
     mirror_rows: mirrors.length,
+    mirror_merchant_resolution: mirrorMerchantCounts,
     missing_ids: missingIds,
     skipped,
     by_brand: Object.entries(byBrand)
@@ -905,9 +1062,21 @@ async function run() {
   }
 }
 
-run()
-  .catch((err) => {
-    process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
-    process.exitCode = 1;
-  })
-  .finally(closePool);
+if (require.main === module) {
+  run()
+    .catch((err) => {
+      process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(closePool);
+}
+
+module.exports = {
+  _internals: {
+    categoryPathIsCategorised,
+    mirrorCategorySkipReason,
+    annotateUltaMirrorMerchants,
+    buildMirror,
+    dropUnmintableMirrors,
+  },
+};

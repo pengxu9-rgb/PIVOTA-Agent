@@ -281,8 +281,12 @@ export function composeProductionCommerce(config = {}) {
   const resolveUserRef = async (req) => {
     const token = extractBuyerToken(req);
     if (!nonEmpty(token)) return undefined; // adapter fails closed (USER_AUTH_REQUIRED) for a user-scoped op
-    try { return (await verifyUserToken(token)).user_ref; }
-    catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
+    try {
+      // Return the buyer-identity OBJECT, not the bare user_ref: the ACP door needs the ATTESTED email so a
+      // caller-asserted `buyer.email` can never override it. user_ref derivation is untouched (iss|sub).
+      const { user_ref, attested_email, attested_name } = await verifyUserToken(token);
+      return { user_ref, customer_email: attested_email, customer_name: attested_name };
+    } catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
   };
 
   // MCP: identity from the server-verified session context (the OAuth/session layer attaches claims/user_ref).
@@ -290,7 +294,11 @@ export function composeProductionCommerce(config = {}) {
     const auth = extra?.authInfo ?? extra?.sessionContext ?? {};
     const out = {};
     if (nonEmpty(auth.user_ref)) out.user_ref = auth.user_ref;
-    else if (auth.claims && typeof auth.claims === 'object') out.claims = auth.claims;
+    // Claims travel ALONGSIDE user_ref, never instead of it. The old `else if` dropped them on every
+    // SIGNED-IN request — exactly the requests that have an attested buyer email — so a caller-asserted
+    // `customer_email` won for a signed-in buyer. This helper is returned from composeProductionCommerce
+    // as the MCP identity bridge, so the drop reached integrators, not just this file.
+    if (auth.claims && typeof auth.claims === 'object') out.claims = auth.claims;
     if (nonEmpty(auth.acp_session_id)) out.acp_session_id = auth.acp_session_id;
     if (nonEmpty(auth.agent_id)) out.agent_id = auth.agent_id;
     return out;
