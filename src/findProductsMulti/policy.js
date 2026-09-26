@@ -6600,8 +6600,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
 module.exports = {
   buildFindProductsMultiContext,
-  extractLatestUserTextFromMessages,
-  looksLikeRealQuery,
   applyFindProductsMultiPolicy,
   buildFashionConstraintMetadata,
   getProductPriceMajor,

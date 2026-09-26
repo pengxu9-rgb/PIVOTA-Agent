@@ -4,7 +4,8 @@ const request = require('supertest');
 // The invoke route rejects an over-long search query with 400 QUERY_TOO_LONG before any search
 // code reads it. Measured 2026-09-26: 30k characters of "1 1 1 ..." held the event loop for 7.8 s
 // in buildFindProductsMultiContext alone, and nothing upstream bounded the query. Which text is
-// measured is pinned in tests/search_query_length_cap.node.test.cjs.
+// measured (query fields, recent queries, user messages) is pinned in
+// tests/search_query_length_cap.node.test.cjs.
 
 describe('search query length cap on the invoke route', () => {
   let priorEnv, dbCalls;
@@ -66,6 +67,19 @@ describe('search query length cap on the invoke route', () => {
       expect(res.body.error).toBe('QUERY_TOO_LONG');
       expect(Date.now() - started).toBeLessThan(1000);
     }
+    expect(dbCalls).toBe(0);
+  });
+
+  test('a short continuation cannot carry a long recent query past the cap', async () => {
+    // understandShoppingQuery promotes a session recent query to the effective query on "previous search".
+    const started = Date.now();
+    const res = await invoke({
+      search: { query: 'previous search' },
+      user: { session_recent_queries: ['1 '.repeat(15000)] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.field).toBe('user.session_recent_queries[]');
+    expect(Date.now() - started).toBeLessThan(1000);
     expect(dbCalls).toBe(0);
   });
 

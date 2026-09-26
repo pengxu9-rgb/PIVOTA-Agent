@@ -10,11 +10,13 @@
 // quadratic on digit runs (50k digits: 8.6 s). At 500 characters the worst measured shape took
 // ~170 ms. The longest query in 30 days of prod logs was 65 characters.
 //
-// Which text counts is the text the search would use: every explicit query field, and the
-// latest user message whenever it becomes the query -- the same rule buildFindProductsMultiContext
-// applies (looksLikeRealQuery, from policy.js, so the two cannot drift apart).
+// Which text counts is every text the search parses as a query: the explicit query fields, the
+// user's recent queries, and (find_products_multi) every user message. Recent queries and prior user
+// turns are not only history -- understandShoppingQuery re-parses them and can promote one to the
+// effective query on a continuation ("previous search") or refinement, and extractIntentRuleBased
+// classifies every user message -- so a short query beside a 30k-character history entry would
+// otherwise walk straight past the cap.
 
-const { extractLatestUserTextFromMessages, looksLikeRealQuery } = require('./policy');
 const { DEFAULT_MAX_CHARS, resolveSearchQueryMaxChars } = require('./queryLengthLimit');
 
 const SEARCH_OPERATIONS = new Set(['find_products_multi', 'find_products']);
@@ -49,15 +51,23 @@ function findOverlongSearchQuery({ operation, payload, maxChars = resolveSearchQ
     }
   }
 
-  const queryFromSearch = typeof search.query === 'string' ? search.query : '';
-  const queryFromPayload = typeof body.query === 'string' ? body.query : '';
-  if (!looksLikeRealQuery(queryFromSearch) && !looksLikeRealQuery(queryFromPayload)) {
-    const user = isPlainObject(body.user) ? body.user : {};
-    const messages = body.messages || user.conversation_messages || [];
-    const latest = extractLatestUserTextFromMessages(messages);
-    if (latest.length > maxChars) {
-      return { field: 'messages[].content', length: latest.length, max_chars: maxChars };
+  const user = isPlainObject(body.user) ? body.user : {};
+  for (const field of ['session_recent_queries', 'recent_queries']) {
+    for (const text of stringsOf(user[field])) {
+      const length = text.trim().length;
+      if (length > maxChars) return { field: `user.${field}[]`, length, max_chars: maxChars };
     }
+  }
+
+  // Only the multi operation builds a conversation context from messages.
+  if (String(operation).trim().toLowerCase() !== 'find_products_multi') return null;
+  const messages = body.messages || user.conversation_messages;
+  if (!Array.isArray(messages)) return null;
+  for (const message of messages) {
+    if (!isPlainObject(message) || String(message.role || '').toLowerCase() !== 'user') continue;
+    if (typeof message.content !== 'string') continue;
+    const length = message.content.trim().length;
+    if (length > maxChars) return { field: 'messages[].content', length, max_chars: maxChars };
   }
   return null;
 }
