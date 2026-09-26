@@ -221,6 +221,48 @@ function isCategoryBrowseTextUnionEnabled(env = process.env) {
   return CATEGORY_BROWSE_TEXT_UNION_ON_VALUES.has(raw);
 }
 
+// CANDIDATE-KEY PREFILTER (default OFF). Read per call, like the flags above.
+//
+// Measured in prod 2026-09-26 (read-only EXPLAIN ANALYZE, gateway 3c9f16fd8): every category-browse
+// query on the beauty mainline took 1.6-2.5s and ~330-375k shared buffers -- 1-token `toner` as much
+// as 2-token `hair mask` -- and turning the text union OFF did not help (category-only: 1.6-3.9s).
+// The cause is the plan shape, not the predicate: the only category_path index is partial
+// (catalog_track = 'internal_merchant') while 94% of rows are external_seed, so nothing in the WHERE
+// is indexable and the planner drives the candidate CTE from the OFFERS side -- every offer, a
+// catalog_skus probe per offer, a catalog_products probe per product (the whole catalog), and only
+// then the category/text predicate.
+//
+// With the flag on, that predicate is evaluated FIRST, in one pass over catalog_products alone, and
+// the candidate CTE keeps only the matching product keys. Same prod run: toner 1.8s/332k -> 0.65s/50k,
+// shampoo 1.6-1.8s -> 0.73-0.86s, hair mask 2.0-2.4s -> 1.35s, niacinamide toner 2.2-2.5s -> 1.6s.
+const CANDIDATE_KEY_PREFILTER_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isCandidateKeyPrefilterEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER ?? '').trim().toLowerCase();
+  return CANDIDATE_KEY_PREFILTER_ON_VALUES.has(raw);
+}
+
+// Whether a WHERE fragment reads ONLY the candidate row `p` (plus aliases it declares itself, e.g. an
+// EXISTS over catalog_skus correlated on p). Only such a predicate can be moved into
+// `SELECT p.product_key FROM catalog_products p WHERE ...` unchanged: the inner `p` then shadows the
+// outer one, and because product_key is the primary key, `p.product_key = ANY(<keys>)` holds for
+// exactly the rows the predicate held for. A reference to the merchants join (`m.merchant_name`, the
+// plain text clause) or any other outer alias would silently re-bind or break, so it is refused and
+// the WHERE is left as it was. String literals are dropped before scanning so that a dotted value
+// ('external_seed.source_unavailable.v1') is not read as a qualifier -- refusing is always safe,
+// accepting wrongly is not.
+function whereReadsOnlyCandidateRow(whereSql) {
+  const sql = String(whereSql || '').replace(/'(?:[^']|'')*'/g, "''");
+  const declared = new Set(['p']);
+  for (const m of sql.matchAll(/\b(?:FROM|JOIN)\s+[a-z_][a-z0-9_.]*\s+(?:AS\s+)?([a-z_][a-z0-9_]*)/gi)) {
+    declared.add(m[1].toLowerCase());
+  }
+  for (const m of sql.matchAll(/\b([a-z_][a-z0-9_]*)\.(?=[a-z_"])/gi)) {
+    if (!declared.has(m[1].toLowerCase())) return false;
+  }
+  return true;
+}
+
 // ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
 // dominance over provenance) + the market-exemption fix for
 // pdp_scope='multi_merchant_canonical'. Same per-call read discipline as
@@ -1490,6 +1532,17 @@ async function fetchCanonicalChainRows(args = {}) {
     .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
     .join('');
   brandWhere = qualityScope.brandWhere;
+  // Category browse only: that is the lane the prod measurement covers. See
+  // isCandidateKeyPrefilterEnabled for the plan this replaces and why the rewrite is exact.
+  const candidateKeyPrefilter = Boolean(categoryBind)
+    && isCandidateKeyPrefilterEnabled()
+    && whereReadsOnlyCandidateRow(whereClause);
+  if (candidateKeyPrefilter) {
+    whereClause = `p.product_key = ANY(ARRAY(
+        SELECT p.product_key FROM catalog_products p
+        WHERE ${whereClause}
+      ))`;
+  }
   // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
   // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
   //  * the carrier count is a CTE, counted once;
@@ -2117,6 +2170,8 @@ module.exports = {
   // union actually ran, rather than asserting the intent — the same reason
   // isRecallDocMatchEnabled is exported above.
   isCategoryBrowseTextUnionEnabled,
+  // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
+  isCandidateKeyPrefilterEnabled,
   // Exported so callers whose lane preserves recall order (the
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
@@ -2159,6 +2214,8 @@ module.exports = {
     RECALL_DOC_PATTERN_CAP,
     isRecallDocMatchEnabled,
     isCategoryBrowseTextUnionEnabled,
+    isCandidateKeyPrefilterEnabled,
+    whereReadsOnlyCandidateRow,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
     isDeterministicTiebreakEnabled,
