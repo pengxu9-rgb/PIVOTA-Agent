@@ -667,20 +667,25 @@ test('a blush query gets blush, not the whole face set', () => {
   assert.deepStrictEqual(terms, ['blush'], JSON.stringify(terms));
 });
 
-test('KNOWN GAP: a family word inside a makeup query still wins over the category prefix', () => {
-  // NOT a regression and NOT fixed here — recorded so it is visible rather than surprising.
-  //
-  // `families` are matched before the prefix fallback, so 'cream blush' matches the MOISTURIZER
-  // family on the word "cream" and never reaches the makeup branch. Same shape for
-  // 'powder cleanser', 'tinted moisturizer', 'bb cream'. Fixing it means changing which signal
-  // wins in `inferBeautyMainlineIntent`, one layer up, with a much wider blast radius.
-  //
-  // Asserted as the GAP rather than as the exact output: pinning `['moisturizer']` would also
-  // fail if someone merely added a word to the moisturizer family, which is a different change.
-  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('cream blush'));
+test('a texture word inside a makeup query no longer beats the category prefix', () => {
+  // Was a KNOWN GAP: 'cream blush' matched the MOISTURIZER family on the word "cream" and never
+  // reached the makeup branch. inferBeautyMainlineIntent now treats "cream" / "lotion" / "foam"
+  // as textures that imply their family only when the resolved category does not name another.
+  for (const [query, term] of [['cream blush', 'blush'], ['cream bronzer', 'bronzer']]) {
+    const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent(query));
+    assert.ok(terms.includes(term), `${query}: ${JSON.stringify(terms)}`);
+    assert.ok(!terms.includes('moisturizer'), `${query}: ${JSON.stringify(terms)}`);
+  }
+});
+
+test('KNOWN GAP: a query that NAMES a family still wins over a makeup reading', () => {
+  // NOT fixed by the texture rule, recorded so it is visible rather than surprising.
+  // 'tinted moisturizer' and 'powder cleanser' name the family outright, and 'bb cream' resolves
+  // the moisturize path itself, so none of them is a texture-only match.
+  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('tinted moisturizer'));
   assert.ok(
-    !terms.includes('blush'),
-    `the prefix now wins — the precedence gap is fixed, update this test: ${JSON.stringify(terms)}`,
+    !terms.includes('foundation'),
+    `the makeup reading now wins — the gap is fixed, update this test: ${JSON.stringify(terms)}`,
   );
 });
 
