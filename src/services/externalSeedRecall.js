@@ -113,7 +113,12 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Shampoo', /\bshampoos?\b/i],
   ['Cleanser', /\b(cleanser|cleansers|cleansing\s+(?:gel|foam|balm|oil|cream)?|face\s+wash)\b/i],
   ['Body Wash', /\bbody\s+wash(?:es)?\b/i],
-  ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],
+  // Titles name sunscreens as "SPF50+", "Suncream", "Sun Milk", "UV Essence" as often as "sunscreen";
+  // `\bspf\b` alone missed "SPF50" (no word boundary between F and 5).
+  [
+    'Sunscreen',
+    /\b(?:sunscreens?|sunblocks?|sun\s*(?:screens?|creams?|block|milk|gel|stick|fluid|essence|serum|lotion|spray|mist)|uv\s+(?:essence|gel|milk|serum|cream|lotion|fluid|stick|spray|protector|shield))\b|(?<!non[-\s])\bspf(?=\s*\d|\b)/i,
+  ],
   ['Serum', /\bserums?\b/i],
   ['Toner', /\b(toner|toners|tonic|tonics)\b/i],
   ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
@@ -127,8 +132,15 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
     /\b(fragrances?|fragarances?|fragances?|fragrences?|fragrancee)(?![-\s]?free)\b|\b(perfumes?|parfums?|colognes?|eau\s+de\s+(?:parfum|toilette))\b/i,
   ],
 ]);
+// Description / FAQ / details text is scanned only when the title, product_type and category name no
+// leaf. Sunscreen is never inferred from that text: product copy mentions sunscreen about OTHER
+// products -- "Wear SPF during the day" (every retinoid and acid), "takes off makeup, sunscreen",
+// "pair it with a sunscreen", kit contents, "non-SPF moisturizer". Measured 2026-09-25: all 37
+// text-only Sunscreen labels in prod were wrong (The Ordinary retinoids, PIXI eye patches and
+// self-tan, Naturium acids, a Supergoop pouch). A real sunscreen names itself in its title,
+// product_type or category, which the earlier stages still read.
+const TEXT_UNINFERABLE_RECALL_CATEGORIES = new Set(['Sunscreen']);
 const RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS = Object.freeze([
-  ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],
   ['Cleanser', /\b(cleanser|cleansers|cleansing\s+(?:gel|foam|balm|oil|cream)?|face\s+wash)\b/i],
   ['Toner', /\b(toner|toners|tonic|tonics)\b/i],
   ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
@@ -231,10 +243,11 @@ function normalizeKey(value) {
     .trim();
 }
 
-function inferRecallLeafCategoryFromText(value) {
+function inferRecallLeafCategoryFromText(value, { exclude = null } = {}) {
   const normalized = normalizeNonEmptyString(value);
   if (!normalized) return '';
   for (const [category, pattern] of RECALL_LEAF_CATEGORY_PATTERNS) {
+    if (exclude && exclude.has(category)) continue;
     if (pattern.test(normalized)) return category;
   }
   return '';
@@ -309,7 +322,7 @@ function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title =
   const skincareInferredLeaf = inferSkincareRecallLeafCategoryFromText(textBlob);
   if (skincareInferredLeaf) return skincareInferredLeaf;
 
-  const inferredLeaf = inferRecallLeafCategoryFromText(textBlob);
+  const inferredLeaf = inferRecallLeafCategoryFromText(textBlob, { exclude: TEXT_UNINFERABLE_RECALL_CATEGORIES });
   if (inferredLeaf) return inferredLeaf;
 
   return firstNonEmptyString(
