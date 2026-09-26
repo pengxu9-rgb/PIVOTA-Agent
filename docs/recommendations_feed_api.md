@@ -8,7 +8,16 @@ Goal: isolate agent uncertainty into **role selection**, while keeping supply + 
 
 If `RECOMMENDATIONS_INTERNAL_KEY` is set, callers must provide `X-Internal-Key: <value>`.
 
-In production (`NODE_ENV=production` or `APP_ENV=production`), `RECOMMENDATIONS_INTERNAL_KEY` is required.
+In production, `RECOMMENDATIONS_INTERNAL_KEY` is required — an unset key makes the route return
+`500 CONFIG_MISSING` rather than serving.
+
+Production is decided by `isProduction()` (`src/config/platform.js`), **not** by `NODE_ENV`.
+That distinction is the whole point: the deployed gateway sets neither `NODE_ENV` nor `APP_ENV`
+— it sets `PIVOTA_ENV=production` — so the previous wording described a branch that could never
+be taken there, and an operator following it would have set `NODE_ENV=production` to arm a guard
+that was already meant to be armed. `isProduction()` also treats a deployed-but-unlabelled
+revision (Cloud Run always injects `K_SERVICE`) as production, so losing the label cannot
+silently re-open the route.
 
 ### 1) Normalize role hints
 

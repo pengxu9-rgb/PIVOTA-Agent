@@ -140,7 +140,9 @@ function isGeminiSkinGatewayAvailable() {
   } catch {
     // noop
   }
-  return Boolean(FALLBACK_GEMINI_API_KEY);
+  // On Vertex the client authenticates via ADC, so available credentials count
+  // even with no raw key.
+  return vertexGemini.credentialsAvailable(FALLBACK_GEMINI_API_KEY);
 }
 
 function pickGeminiApiKey() {
@@ -706,7 +708,9 @@ async function callGeminiJson({
   const apiKey = pickGeminiApiKey();
   const client = getGeminiClient(apiKey);
   const sanitizedResponseSchema = sanitizeGeminiResponseSchema(responseSchema);
-  if (!client || !apiKey) {
+  // getGeminiClient already gates on credentialsAvailable (ADC on Vertex, where
+  // apiKey is empty), so a residual !apiKey check would discard a working client.
+  if (!client) {
     return {
       ok: false,
       reason: 'MISSING_GEMINI_KEY',

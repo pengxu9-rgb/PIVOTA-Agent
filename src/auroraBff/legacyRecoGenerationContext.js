@@ -10,6 +10,7 @@ function createLegacyRecoGenerationContextRuntime(deps = {}) {
     resolveRecommendationTargetContext,
     runConcernSemanticPlanner,
     buildConcernTargetContextFromSemanticPlan,
+    buyerRegionFromContext,
   } = deps;
 
   async function buildLegacyRecoGenerationContext({
@@ -135,6 +136,22 @@ function createLegacyRecoGenerationContextRuntime(deps = {}) {
             ? 'planner_timeout'
             : 'planner_untrusted';
       }
+    }
+
+    // ADR-024 Phase 1. Stamp the request's resolved region onto the target context LAST -- after the
+    // concern semantic planner, because that branch REPLACES targetContext wholesale via
+    // buildConcernTargetContextFromSemanticPlan, so stamping earlier would silently lose the region on
+    // exactly the generic-concern lane where the budget ceiling is read.
+    //
+    // The budget ceiling is resolved from targetContext alone (finalizeConcernFrameworkCandidatePools
+    // has no ctx in scope), so this is the wire that carries region to it. A path that never stamps
+    // reads `undefined` and falls back to US/USD -- today's behavior, unchanged.
+    if (targetContext && typeof targetContext === 'object') {
+      targetContext = {
+        ...targetContext,
+        buyer_region: buyerRegionFromContext(ctx),
+        buyer_region_source: pickFirstTrimmed(ctx && ctx.buyer_region_source) || 'defaulted',
+      };
     }
 
     return {

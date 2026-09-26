@@ -2,6 +2,12 @@
 set -euo pipefail
 
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+
+# Attach X-Internal-Key to gateway requests (PIVOTA-Agent #2038). Sourced AFTER BASE is set, because
+# the wrapper scopes the header to that host. No-op until AURORA_SURFACE_INTERNAL_KEY is present.
+# shellcheck source=scripts/lib/aurora_surface_auth.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/aurora_surface_auth.sh"
+
 AURORA_LANG="${AURORA_LANG:-EN}"
 RETURNING_UID="${RETURNING_UID:-uid_returning_canary_$(date +%s)}"
 NEGATIVE_UID="${NEGATIVE_UID:-uid_returning_canary_negative_$(date +%s)}"

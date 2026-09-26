@@ -9,10 +9,7 @@ describe('server boot with optional modules missing', () => {
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
-  test('keeps shopping health routes up when aurora/look modules fail to load', async () => {
-    jest.doMock('../src/lookReplicator', () => {
-      throw new Error("Cannot find module './lookReplicatePipeline'");
-    });
+  test('keeps shopping health routes up when the aurora module fails to load', async () => {
     jest.doMock('../src/auroraBff/routes', () => {
       throw new Error("Cannot find module './socialSummaryUserVisible'");
     });

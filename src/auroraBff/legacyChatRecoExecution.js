@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -105,7 +107,8 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
           recommendations: [],
           source: 'catalog_grounded_v1',
           task_mode: recoTaskMode,
-          recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
+          // F4: no invented 0.61 — an uncomputed artifact confidence stays null.
+          recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : null,
           recommendation_confidence_level:
             artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
               ? artifactConfidenceLevel
@@ -125,6 +128,12 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
         recoSource = 'catalog_grounded_v1';
         recoMainlineStatus = 'grounded_success';
         recoTelemetryFailureReason = '';
+        // ANOTHER ANSWER THE LANE NEVER SEES. Setting `norm` here makes the guard below skip
+        // generateProductRecommendations entirely, so this grounded answer would go uncounted.
+        // Counted here rather than after the guard so the record sits with the assignment that
+        // causes the skip; the accompanying test drives a real restore and asserts exactly ONE row,
+        // which is what would catch it if the lane ever ran anyway.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'verified_context_restore' });
       }
     }
 

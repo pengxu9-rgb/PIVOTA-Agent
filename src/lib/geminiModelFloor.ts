@@ -1,3 +1,5 @@
+import { isProduction } from "../config/platform";
+
 export const TEMPORARY_UNIFIED_GEMINI_MODEL = "gemini-2.5-flash";
 export const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = "gemini-2.5-flash";
 const LEGACY_GEMINI_FLASH_PREVIEW_ALIAS = "gemini-2.5-flash-preview";
@@ -72,18 +74,9 @@ function isExplicitTrue(value: unknown): boolean {
   return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
+/** Kept byte-for-byte equivalent to the .js twin: both delegate to the platform shim. */
 export function isProductionLikeRuntime(): boolean {
-  const values = [
-    process.env.NODE_ENV,
-    process.env.PIVOTA_ENV,
-    process.env.APP_ENV,
-    process.env.RAILWAY_ENVIRONMENT,
-    process.env.RAILWAY_ENVIRONMENT_NAME,
-  ];
-  return values.some((value) => {
-    const token = String(value || "").trim().toLowerCase();
-    return token === "production" || token === "prod";
-  });
+  return isProduction();
 }
 
 export function isTemporaryUnifiedGeminiModelEnabled(): boolean {

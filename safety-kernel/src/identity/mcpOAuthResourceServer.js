@@ -52,6 +52,25 @@ function assertHttpsUrl(value, label) {
 }
 
 /**
+ * One or more resource identifiers → the audience set jose checks against. Accepts a bare string
+ * (the common case) or a non-empty array. Every member is validated as an https URL, so a typo or an
+ * accidental `undefined` in the array is a 500 at construction rather than a token that verifies
+ * against garbage. Duplicates are collapsed so `aud` diagnostics stay readable.
+ */
+function normalizeResourceSet(value) {
+  const list = Array.isArray(value) ? value : [value];
+  const seen = [];
+  for (const entry of list) {
+    if (!nonEmpty(entry)) throw new McpOAuthError('resource is required', 'BAD_CONFIG', 500);
+    assertHttpsUrl(entry, 'resource');
+    if (!seen.includes(entry)) seen.push(entry);
+  }
+  if (seen.length === 0) throw new McpOAuthError('resource is required', 'BAD_CONFIG', 500);
+  // A single identifier stays a string so the value handed to jose is unchanged for existing callers.
+  return seen.length === 1 ? seen[0] : seen;
+}
+
+/**
  * RFC 9728 Protected Resource Metadata document served at
  * GET /.well-known/oauth-protected-resource (and the path-suffixed variant for /mcp).
  *
@@ -158,13 +177,21 @@ function extractScopes(payload) {
  * resource cannot be replayed at this MCP server. Subject identity → user_ref via the same
  * derivation used everywhere else (parity with userTokenVerifier).
  *
+ * `resource` may be a SET of identifiers (array), in which case a token bound to ANY of them is
+ * accepted. That is not a relaxation of RFC 8707 — it is how one MCP server presents more than one
+ * resource identifier without a flag day. This gateway serves the same commerce surface at two
+ * endpoints, `/mcp` (native tool names) and `/ucp/mcp` (UCP spec tool names); each publishes its own
+ * RFC 9728 metadata naming ITS OWN identifier, so the UCP door accepts both its own identifier and
+ * the native one that clients were minting against before it had one. Every member is still an
+ * identifier of THIS server: a token for someone else's resource is refused exactly as before.
+ * An empty array is a config error, not "accept anything".
+ *
  * @param {{ issuers:Array<{iss:string,jwksUri?:string,jwks?:object,algs?:string[],requiredScopes?:string[]}>,
- *           resource:string, maxTokenAge?:string|number, clockToleranceSeconds?:number }} config
+ *           resource:string|string[], maxTokenAge?:string|number, clockToleranceSeconds?:number }} config
  * @returns {(token:string) => Promise<{ user_ref:string, claims:object, scopes:string[] }>}
  */
 export function createMcpAccessTokenVerifier(config = {}) {
-  const resource = config.resource;
-  if (!nonEmpty(resource)) throw new McpOAuthError('resource is required', 'BAD_CONFIG', 500);
+  const resource = normalizeResourceSet(config.resource);
   const registry = normalizeIssuers(config.issuers);
   const ct = clampClockTolerance(config.clockToleranceSeconds);
   const maxTokenAge = config.maxTokenAge;
@@ -187,7 +214,10 @@ export function createMcpAccessTokenVerifier(config = {}) {
     try {
       ({ payload } = await jwtVerify(token, entry.jwks, {
         issuer: unsafeIss,
-        audience: resource, // RFC 8707: token must be bound to THIS resource
+        // RFC 8707: token must be bound to THIS resource. When `resource` is a set, jose accepts a
+        // token whose `aud` matches ANY member — every member is an identifier of this same server
+        // (see normalizeResourceSet), so this never widens acceptance to a foreign resource.
+        audience: resource,
         algorithms: entry.algs,
         clockTolerance: ct,
         ...(maxTokenAge != null ? { maxTokenAge } : {}),

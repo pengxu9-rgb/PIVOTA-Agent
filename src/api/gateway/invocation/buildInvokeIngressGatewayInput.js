@@ -488,6 +488,20 @@ function buildInvokeIngressGatewayInput({
 
 module.exports = {
   buildInvokeIngressGatewayInput,
+  // Exported so the asserted-privilege observer can ask THIS MODULE what a
+  // caller's claims actually resolve to, instead of reimplementing the rules.
+  //
+  // `buildRawAuthClaims` is the one that matters: it applies normalizePartnerTier
+  // AND drops the key when the result is 'none', so reading `.partner_tier` off
+  // its output is identical-by-construction to what the governance envelope sees.
+  // An earlier version of the observer copied only the normalizer and kept private
+  // copies of firstNonEmptyString/readHeader — which disagreed on array-valued and
+  // falsy inputs and produced FALSE NEGATIVES: a caller holding flagship that the
+  // measurement never counted. The readers are exported too, for source attribution.
+  buildRawAuthClaims,
+  normalizePartnerTier,
+  firstNonEmptyString,
+  readHeader,
   resolveInvokeTaskType,
   resolveInvokeRequestedLayer,
   resolveInvokeRequestedLayerWithInput,

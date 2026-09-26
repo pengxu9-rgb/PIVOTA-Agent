@@ -19,5 +19,9 @@ coverage
 *.swo
 *~
 tests
+# The sentinel non-growth audit (scripts/audit-external-seed-sentinel-nongrowth.cjs)
+# runs as a Cloud Run Job from this image and reads its per-lane watermarks from this
+# fixture; re-include it so the image carries the ratchet that ships with the code.
+!tests/fixtures/external_seed_sentinel_watermarks.json
 scripts/demo-*.mjs
 docs/integrations/*.md

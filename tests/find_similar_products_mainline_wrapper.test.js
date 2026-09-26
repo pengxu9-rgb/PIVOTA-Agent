@@ -320,6 +320,139 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  // ADR-009 phase 3 round trip. The test above sends the LEGACY sentinel; this one sends what the
+  // door now actually serves. After #2189 a beauty mainline card is
+  // {merchant_id: 'merch_obs_*', product_id: 'sig_*'}, and an agent echoes that straight back into
+  // find_similar_products. The signature-resolution gate at the signature-resolution gate (server.js, ~:49578 — line numbers drift, grep isPivotaSignatureProductId) read
+  // `merchantId === EXTERNAL_SEED_MERCHANT_ID`, so a re-keyed ref skipped resolution entirely and
+  // fell through to a lookup that cannot match a sig_ id.
+  //
+  // It was missed by #2191 because that PR's guard regex only watches `requestedMerchantId` and
+  // `callerRequestedMerchantId`; this gate spells the same thing `merchantId`. The oracle suites
+  // stayed green through the widening in both directions — they never covered this round trip,
+  // which is precisely why the gap survived review.
+  it('resolves a sig base echoed back under an OBSERVED seller (ADR-009 re-key)', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          // THE PRODUCTION SHAPE. An earlier version of this test left the CATALOG row on the
+          // sentinel and changed only the request merchant — so it exercised a pre-migration row
+          // and passed while the fix was a no-op on real data. After ADR-009 phase 3 the mirrored
+          // row carries an observed seller and a seed source_system; zero catalog rows carry the
+          // sentinel.
+          merchant_id: 'merch_obs_9ab12cd34ef56789',
+          source_system: 'external_product_seeds_mirror_v1',
+          platform: 'external_seed',
+          source_product_id: 'ext_source_1',
+          product_key: 'prod::external_seed::external_seed::ext_source_1',
+          pivota_signature_id: 'sig_source1',
+          content_key: 'tom-ford:test-content-key',
+          catalog_title: 'The Ordinary Alpha Arbutin Serum',
+          catalog_brand: 'The Ordinary',
+          category: 'Serum',
+          product_type: 'Serum',
+          category_path: 'beauty/skincare/serum',
+          catalog_image_url: 'https://cdn.example.test/base.jpg',
+        },
+      ],
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'ext_sim_1',
+          merchant_id: 'external_seed',
+          pivota_signature_id: 'sig_sim1',
+          title: 'Similar Product 1',
+          image_url: 'https://cdn.example.test/sim-1.jpg',
+          card_highlight: 'Same category with a comparable finish.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 1 },
+      },
+    });
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'sig_source1',
+          // DELIBERATELY DIFFERENT from the catalog row's seller below. With both the same, this
+          // test cannot tell "carries the RESOLVED seller" from "carries the REQUEST seller" — and
+          // a mutant doing the latter survived it. The assertion on pdp_product.merchant_id is only
+          // meaningful because these two differ.
+          merchant_id: 'merch_obs_deadbeefcafe0001',
+          limit: 4,
+          options: { debug: true },
+        },
+      })
+      .expect(200);
+
+    expect(dbQueryMock).toHaveBeenCalledWith(expect.stringContaining('WHERE cp.pivota_signature_id = $1'), ['sig_source1']);
+    expect(recommendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pdp_product: expect.objectContaining({
+          // The OBSERVED seller, carried through from the resolved catalog row — not the sentinel.
+          // The twin above asserts 'external_seed' because its catalog fixture IS the sentinel row;
+          // re-minting it here would undo the re-key one line after honouring it.
+          merchant_id: 'merch_obs_9ab12cd34ef56789',
+          // The point of the fix: the sig_ base resolved to the real product id. Without it this
+          // stays 'sig_source1' and the downstream lookup cannot match it.
+          product_id: 'ext_source_1',
+          product_id: 'ext_source_1',
+          external_product_id: 'ext_source_1',
+          pivota_signature_id: 'sig_source1',
+          requested_product_id: 'sig_source1',
+          title: 'The Ordinary Alpha Arbutin Serum',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          product_type: 'Serum',
+          category_path: 'beauty/skincare/serum',
+          image_url: 'https://cdn.example.test/base.jpg',
+          source: 'external_seed',
+        }),
+      }),
+    );
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_sim1',
+        source_product_id: 'ext_sim_1',
+      }),
+    );
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        direct_base_detail_mode: 'external_seed_minimal',
+        similar_base_ref_resolution: expect.objectContaining({
+          requested_product_id: 'sig_source1',
+          resolved_product_id: 'ext_source_1',
+          resolved: true,
+        }),
+      }),
+    );
+    expect(res.body.debug.route_stage_timing_ms).toEqual(
+      expect.objectContaining({
+        resolve_signature_ref: expect.any(Number),
+        similar_recall: expect.any(Number),
+        card_enrichment: expect.any(Number),
+        visible_sig_hydration: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    );
+  });
   it('resolves sig bases whose external seed id is not ext-prefixed', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     const dbQueryMock = jest.fn().mockResolvedValue({

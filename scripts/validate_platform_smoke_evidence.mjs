@@ -171,7 +171,10 @@ function validateEvidence(evidence) {
     throw new EvidenceError('remote_mcp.write_without_verified_identity_code must be USER_AUTH_REQUIRED');
   }
   requireBoolTrue(evidence.remote_mcp?.verified_session_created_checkout_session, 'remote_mcp.verified_session_created_checkout_session');
-  requireBoolTrue(evidence.remote_mcp?.model_supplied_identity_ignored, 'remote_mcp.model_supplied_identity_ignored');
+  // RENAMED from model_supplied_identity_ignored with PR #2103: the gateway now REFUSES model-supplied
+  // identity in tool args (declared-schema guard) rather than silently stripping it, and the smoke asserts
+  // the refusal. Old-key evidence predates the guard and must not validate against the new contract.
+  requireBoolTrue(evidence.remote_mcp?.model_supplied_identity_refused, 'remote_mcp.model_supplied_identity_refused');
   checks.push('remote_mcp');
 
   requireString(evidence.identity?.user_ref_source, 'identity.user_ref_source');

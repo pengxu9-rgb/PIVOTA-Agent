@@ -17,10 +17,28 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/**"
+      # The two ESM packages the node:test suites reach into — the safety kernel and the MCP
+      # commerce surface, i.e. the money path. Without these a PR that touched ONLY them ran NO gate at all:
+      # #2018 (mcp-server/src/ucpArgumentAdapter.js + its test, the "file that matters most" per the note
+      # below) produced a single green "CI Entrypoint" that had correctly computed "nothing expected". A
+      # green that means "nothing ran" is the failure mode this whole file is about; do not narrow this back.
+      - "mcp-server/**"
+      - "safety-kernel/**"
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"
-      - ".github/workflows/pr-full-jest.yml"
+      # The LLM prompts are behaviour, not assets. prompts/reco_main_v1_2.system.txt bounds the Aurora
+      # chat lane to skincare and reco_main_v1_3 opens the agent door to beauty; either file is one
+      # editable line away from re-narrowing a door or widening the chat surface, and
+      # tests/reco_widen_lane_domain_scope.node.test.cjs asserts on both. Without this a prompt-only PR
+      # would have run NO gate at all — the same "green that means nothing ran" this file exists to stop.
+      - "prompts/**"
+      # ANY workflow change, not just this file's. The workflow-hygiene gate in
+      # tests/ polices `.github/workflows/**`, and a PR that ADDS a workflow
+      # touches nothing else — so without this the gate could not fire on the
+      # exact change class it exists to police. That is how the backend's twin
+      # gate shipped unable to run; do not narrow this back.
+      - ".github/workflows/**"
   workflow_dispatch: {}
 
 concurrency:
@@ -28,6 +46,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # THE SUITES JEST STRUCTURALLY CANNOT SEE. jest.config.js testMatch is
+  # `**/tests/**/*.test.(js|ts)`, so every `*.node.test.cjs` file is invisible to
+  # the shard matrix below — including tests written specifically to pin behaviour
+  # that had already broken production once.
+  #
+  # This job used to be a 1,100-line hand-maintained allowlist, added to file by
+  # file, on the reasoning that sweeping every suite in "without first confirming
+  # each is green would trade a silent gap for a permanently red gate". The caution
+  # was sound; the allowlist was not. Measured on 2026-09-10 against 205e9f1cd it
+  # named 87 of 295 suites. A second list in the `test:node` npm script named 66
+  # more — but no workflow invokes `npm run test:node`, so those never ran either,
+  # which is easy to miss because the list looks like coverage. 208 suites had never
+  # executed in CI. 163 of them were passing, gating nothing, purely because nobody
+  # had typed their names. Among the rest was `aurora_undefined_symbol_guard`, red
+  # over a live ReferenceError in src/server.js (`crossMerchantCacheRouteDebug`,
+  # referenced at two points outside the scope of its `let`) that no gate could see.
+  #
+  # So discovery is now a GLOB, and the list is a list of EXCLUSIONS
+  # (tests/node_suite_quarantine.txt) that may only shrink: the runner executes the
+  # quarantined suites too and FAILS if one of them passes, telling you to delete
+  # its line. The original caution is preserved — the 45 suites red on main are
+  # still excluded — but the default is inverted. A suite added tomorrow is gated
+  # tomorrow, with nobody remembering anything.
+  node-tests:
+    name: node:test (glob + quarantine)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # `npm ci` IS required, and the reason is worth writing down because it is
+      # easy to get wrong locally. `node_modules` is a TRACKED SYMLINK in this
+      # repo pointing at an absolute path on a developer machine, so every fresh
+      # checkout — including this runner and `git archive` — starts with a
+      # DANGLING link. On a dev box it silently resolves to a populated tree, so
+      # "this test needs no deps" verifies as true locally and is false in CI.
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci attempt $attempt/3"
+            if npm ci; then exit 0; fi
+            echo "npm ci failed (attempt $attempt); retrying after backoff…"
+            sleep $((attempt * 15))
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
+
+      # The same command a developer runs. `test:node` is this script plus the
+      # preflight guard; invoking the script directly keeps the guard's cwd-name
+      # check (which wants the checkout to be named PIVOTA-Agent) from deciding
+      # whether the suites run.
+      - name: Run node:test suites
+        run: node scripts/run_node_test_suites.cjs
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -76,3 +153,37 @@ jobs:
             --maxWorkers=1 \
             --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
+
+  canonical-main-postgres:
+    name: Canonical main SQL + HTTP (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gateway_review
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gateway_review -d gateway_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then exit 0; fi
+            sleep $((attempt * 15))
+          done
+          exit 1
+      - name: Execute canonical primary SQL through HTTP without rescue
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/canonical_offer_availability_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js tests/integration/find_products_multi_prod_flags_bind_types_postgres.test.js tests/integration/catalog_entity_group_offer_count_postgres.test.js tests/integration/catalog_entity_group_membership_postgres.test.js tests/integration/discovery_brand_seed_scan_postgres.test.js tests/integration/external_seed_brand_fastpath_postgres.test.js tests/integration/aurora_activity_keyset_postgres.test.js tests/integration/relationship_graph_ref_resolution_postgres.test.js tests/integration/canonical_brand_match_postgres.test.js tests/integration/search_name_evidence_admission_postgres.test.js tests/integration/search_name_evidence_acceptance_postgres.test.js tests/integration/find_products_multi_buyer_market_postgres.test.js

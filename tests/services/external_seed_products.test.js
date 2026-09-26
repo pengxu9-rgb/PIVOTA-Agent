@@ -1,5 +1,7 @@
 const {
   availabilityToInStock,
+  honestInventoryQuantity,
+  IN_STOCK_QTY_SENTINEL,
   buildExternalSeedProduct,
   canonicalizeExternalSeedSnapshot,
   buildExternalSeedBrandSearchProduct,
@@ -4398,5 +4400,35 @@ describe('externalSeedProducts helper', () => {
       expect.objectContaining({ name: 'Shade', value: 'C02 TULIP', axis_kind: 'shade' }),
     ]);
     expect(product.variants[1].label_image_url).toBe('https://cdn.shopify.com/s/files/1/catkin/files/C02.jpg');
+  });
+});
+
+
+describe('honestInventoryQuantity — never surface the 999 in-stock sentinel', () => {
+  it('emits null for in-stock-with-unknown-count (not a fake 999)', () => {
+    expect(honestInventoryQuantity(undefined, true)).toBeNull();
+    expect(honestInventoryQuantity(null, true)).toBeNull();
+  });
+
+  it('treats a raw 999 as unknown, not a real count', () => {
+    expect(honestInventoryQuantity(IN_STOCK_QTY_SENTINEL, true)).toBeNull();
+    expect(honestInventoryQuantity('999', true)).toBeNull();
+  });
+
+  it('emits 0 for out of stock', () => {
+    expect(honestInventoryQuantity(undefined, false)).toBe(0);
+    expect(honestInventoryQuantity(0, false)).toBe(0);
+  });
+
+  it('passes a REAL count through unchanged (only the 999 sentinel is stripped)', () => {
+    expect(honestInventoryQuantity(12, true)).toBe(12);
+    expect(honestInventoryQuantity(1, true)).toBe(1);
+    expect(honestInventoryQuantity(998, true)).toBe(998);
+    expect(honestInventoryQuantity(1000, true)).toBe(1000);
+  });
+
+  it('does not decide stock status — that stays with in_stock', () => {
+    // unknown in_stock + unknown count => null count, status left to caller
+    expect(honestInventoryQuantity(undefined, null)).toBeNull();
   });
 });

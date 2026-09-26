@@ -6,8 +6,19 @@ const {
   resolveRecoTargetStepIntent,
   getRecoTargetFamilyRelation,
   normalizeRecoTargetStep,
+  normalizeMatchedStepToken,
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
+const {
+  deriveRecoNeedIntentSignals,
+  applyRecoGentlenessPreference,
+  classifyRecoCandidateAbrasion,
+} = require('./recoGentlenessSignals');
+const {
+  applyRecoPriceCeilingPreference,
+  countRecoPriceCeilingConforming,
+  normalizeRecoPriceCeiling,
+} = require('./recoPriceCeiling');
 
 const normalizeProductType =
   recoHybridInternal && typeof recoHybridInternal.normalizeProductType === 'function'
@@ -47,6 +58,30 @@ const STEP_QUERY_ALIASES = Object.freeze({
   treatment: Object.freeze(['treatment', 'spot treatment', 'retinol treatment', 'acid treatment', '祛痘', '刷酸', '点涂']),
   mask: Object.freeze(['mask', 'sleeping mask', 'sheet mask', 'overnight mask', 'facial mask', '面膜', '睡眠面膜', '泥膜']),
   oil: Object.freeze(['face oil', 'facial oil', 'oil serum', '护肤油', '面油']),
+  // MAKEUP AND FRAGRANCE. Without these a resolved makeup step would build its ladder from the bare
+  // step token alone, which is the narrowest possible query -- the aliases are what let 'bronzer'
+  // also recall 'bronzing powder' and 'contour powder', the way 'cleanser' recalls 'face wash'.
+  blush: Object.freeze(['blush', 'cream blush', 'powder blush', 'cheek tint', '腮红']),
+  bronzer: Object.freeze(['bronzer', 'bronzing powder', 'contour powder', 'contour stick', '修容']),
+  highlighter: Object.freeze(['highlighter', 'illuminator', 'luminizer', '高光']),
+  foundation: Object.freeze(['foundation', 'skin tint', 'bb cream', 'cc cream', 'tinted moisturizer', '粉底', '气垫']),
+  concealer: Object.freeze(['concealer', 'under eye concealer', 'colour corrector', '遮瑕']),
+  face_powder: Object.freeze(['setting powder', 'loose powder', 'pressed powder', 'finishing powder', '散粉', '定妆粉']),
+  primer: Object.freeze(['makeup primer', 'face primer', 'pore primer', '妆前乳']),
+  lip_colour: Object.freeze(['lipstick', 'lip gloss', 'lip tint', 'lip liner', '口红', '唇釉']),
+  eye_colour: Object.freeze(['eyeshadow', 'eyeliner', 'mascara', 'brow pencil', '眼影', '眼线', '睫毛膏']),
+  // PERFUME LEADS, NOT "fragrance". The first alias is the family's QUERY ANCHOR: it is the rescue
+  // query every other fragrance phrasing falls back to when its own token retrieves nothing. The
+  // bare word "fragrance" is not what a perfume is titled -- it is what a MOISTURISER says about
+  // itself ("fragrance-free", "no added fragrance"), so as a catalog query it returned three
+  // non-fragrance rows that the domain classifier then hard-rejected, leaving the pool empty.
+  // Measured against prod 79790300377d: `recommend a fragrance` planned exactly one query,
+  // "fragrance", and came back viable=0 / hard_reject=3, while `recommend a perfume` planned
+  // ["perfume", "fragrance"] and its FIRST query grounded three real perfumes. Every other
+  // phrasing (eau de toilette / eau de parfum / cologne) inherited the dead anchor as its only
+  // rescue and failed identically. Same pattern as face_powder/lip_colour/eye_colour above: the
+  // anchor is the noun a product is TITLED, never the family label.
+  fragrance: Object.freeze(['perfume', 'fragrance', 'eau de parfum', 'eau de toilette', 'body mist', '香水']),
 });
 
 const STEP_QUERY_LADDER_EXPANSIONS = Object.freeze({
@@ -915,9 +950,24 @@ function resolveRecommendationTargetContext({
       : confidence === 'medium'
         ? 'soft_target'
         : 'generic';
+  // The surface token the buyer actually wrote ("exfoliant"), not just the family it belongs to
+  // ("treatment"). Only meaningful when a step resolved AND the token says something the family label
+  // does not -- otherwise it is dropped, so every existing plan stays byte-identical.
+  const resolvedStepToken = normalizeMatchedStepToken(resolved.resolved_target_step_token);
+  const stepQueryAnchor = step ? String((STEP_QUERY_ALIASES[step] || [step])[0] || step).toLowerCase() : '';
+  const targetStepToken =
+    step && resolvedStepToken && resolvedStepToken !== stepQueryAnchor && resolvedStepToken !== step
+      ? resolvedStepToken
+      : null;
   return {
     ...resolved,
     resolved_target_step: step,
+    resolved_target_step_token: targetStepToken,
+    // RANKING-ONLY intent flags read off the buyer's own words, for the callers that have no profile
+    // (the agent lane passes profile: null). These must never reach computeCandidateContextSignals --
+    // its sensitivity/barrier rules set constraint_conflict, and feeding "gentle ... sensitive skin"
+    // in there would hard-zero every chemical exfoliant and fill the shortlist with scrubs.
+    need_intent_signals: deriveRecoNeedIntentSignals({ focus, text }),
     entry_type: normalizedEntryType,
     step_aware_intent: stepAwareIntent,
     mainline_mode: hasFrameworkRoles ? 'framework' : stepAwareIntent ? mainlineMode : 'generic',
@@ -955,6 +1005,10 @@ function buildSameFamilyQueryLevels({
     8,
   );
   const stepPrimary = aliases[0] || step;
+  // The buyer's own token anchors the ladder when it says more than the family label. `stepPrimary`
+  // stays the family alias -- it still labels every row's `step` and still gets its own query -- so a
+  // context with no token produces a byte-identical ladder.
+  const stepQueryAnchor = normalizeQueryToken(targetContext?.resolved_target_step_token) || stepPrimary;
   const rawGoalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
   const goalTerms = step === 'sunscreen'
     ? []
@@ -997,27 +1051,30 @@ function buildSameFamilyQueryLevels({
       ladder_level: 'step_goal_ingredient_concern',
       queries: uniqCaseInsensitiveStrings([
         ...goalTerms.flatMap((goal) => ingredientTerms.flatMap((ingredient) => concernTerms.length
-          ? concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, goal, ingredient, concern))
-          : [joinUniqueQueryParts(stepPrimary, goal, ingredient)])),
-        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [joinUniqueQueryParts(stepPrimary, seed, goal)])),
+          ? concernTerms.map((concern) => joinUniqueQueryParts(stepQueryAnchor, goal, ingredient, concern))
+          : [joinUniqueQueryParts(stepQueryAnchor, goal, ingredient)])),
+        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [joinUniqueQueryParts(stepQueryAnchor, seed, goal)])),
       ], 8),
     },
     {
       ladder_level: 'step_goal',
       queries: uniqCaseInsensitiveStrings([
-        ...goalTerms.map((goal) => joinUniqueQueryParts(stepPrimary, goal)),
+        ...goalTerms.map((goal) => joinUniqueQueryParts(stepQueryAnchor, goal)),
       ], 8),
     },
     {
       ladder_level: 'step_concern',
       queries: uniqCaseInsensitiveStrings([
-        ...concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, concern)),
-        ...normalizedSeedTerms.map((seed) => joinUniqueQueryParts(stepPrimary, seed)),
+        ...concernTerms.map((concern) => joinUniqueQueryParts(stepQueryAnchor, concern)),
+        ...normalizedSeedTerms.map((seed) => joinUniqueQueryParts(stepQueryAnchor, seed)),
       ], 8),
     },
     {
       ladder_level: 'step_only',
       queries: uniqCaseInsensitiveStrings([
+        // Token first, family alias second. The token can be over-narrow ("first essence"), and this
+        // second query is what rescues that -- it is never dropped, only out-ranked.
+        stepQueryAnchor,
         stepPrimary,
       ], 8),
     },
@@ -1404,7 +1461,15 @@ function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
 function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
-  const skincareDomainClass = classifySkincareCandidateDomain(row);
+  // THE REQUESTED CATEGORY REACHES THE CLASSIFIER HERE TOO. Without it ranking re-asks the domain
+  // question with no idea what was asked for, so a bronzer on a BRONZER request scores 'ambiguous'
+  // and pays 0.08 while a serum classifies explicit_face_skincare and pays 0 -- on a pool that is
+  // then sliced to three. Driven before this change: two real bronzers were displaced by a serum and
+  // a moisturizer on a bronzer query. The gate learned the requested domain one PR ago; this is the
+  // second reader that needed telling.
+  const skincareDomainClass = classifySkincareCandidateDomain(row, {
+    requestedStep: (targetContext && targetContext.resolved_target_step) || '',
+  });
   const facialSkincareCandidate =
     skincareDomainClass !== 'explicit_non_skincare'
     && skincareDomainClass !== 'explicit_non_face_supportive';
@@ -1501,7 +1566,7 @@ function summarizePrimaryDisplayGroups(selected) {
   ];
 }
 
-function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, recoContext = null } = {}) {
+function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, recoContext = null, priceCeiling = null } = {}) {
   const deduped = [];
   const seen = new Set();
   for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
@@ -1517,9 +1582,32 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     .map((row) => classifyRecommendationCandidate(row, { targetContext, recoContext }))
     .filter(Boolean);
 
-  const viable = classified
+  const relevanceSortedViable = classified
     .filter((row) => row.bucket === 'viable')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
+  // CONFORMING-FIRST, and only when a ceiling was actually supplied.
+  //
+  // `selected` below is `viable.slice(0, 3)` off a pure-relevance ordering. Live 2026-08-21 that took
+  // the top 3 of a premium-heavy pool -- 45/45/60 USD against a $40 ceiling -- while 40+ conforming
+  // products existed in the catalog. This is a STABLE PARTITION, not a re-rank: relevance order is
+  // preserved inside each bucket, nothing is dropped, and with no ceiling the array is untouched, so
+  // every existing caller (the whole chat lane included) is byte-stable.
+  // GENTLENESS INSIDE, PRICE OUTSIDE.
+  //
+  // The gentleness partition runs FIRST and the price partition runs over its output. Because the
+  // price partition is stable, price conformance stays the OUTER key and gentleness becomes the inner
+  // one -- a gentle scrub over the ceiling can never outrank a conforming chemical exfoliant.
+  const gentlenessOrderedViable = applyRecoGentlenessPreference(
+    relevanceSortedViable,
+    targetContext?.need_intent_signals,
+    { getCandidate: (row) => row.product },
+  );
+  const viable = applyRecoPriceCeilingPreference(gentlenessOrderedViable, priceCeiling, {
+    getCandidate: (row) => row.product,
+  });
+  const priceCeilingConformingCount = countRecoPriceCeilingConforming(viable, priceCeiling, {
+    getCandidate: (row) => row.product,
+  });
   const softMismatch = classified
     .filter((row) => row.bucket === 'soft_mismatch')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
@@ -1591,6 +1679,23 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     hard_constraint_conflict: hardConstraintConflict,
     constraint_conflict: hardConstraintConflict,
     average_context_fit_score: Number(averageContextFit.toFixed(4)),
+    need_intent_signals: isPlainObject(targetContext?.need_intent_signals)
+      ? targetContext.need_intent_signals
+      : null,
+    gentleness_rank_applied: Boolean(
+      targetContext?.need_intent_signals?.gentleness_preferred === true &&
+      targetContext?.need_intent_signals?.scrub_requested !== true,
+    ),
+    abrasion_class_counts: relevanceSortedViable.reduce((acc, row) => {
+      const key = classifyRecoCandidateAbrasion(row.product);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+    price_ceiling: normalizeRecoPriceCeiling(priceCeiling),
+    price_ceiling_conforming_count: priceCeilingConformingCount,
+    price_ceiling_conforming_selected_count: countRecoPriceCeilingConforming(selected, priceCeiling, {
+      getCandidate: (row) => row.product,
+    }),
     artifact_context_applied: artifactContextApplied,
     terminal_success: terminalSuccess,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
@@ -1776,6 +1881,7 @@ async function runRecommendationSharedStack({
 }
 
 module.exports = {
+  STEP_QUERY_ALIASES,
   REQUEST_CONTEXT_SIGNATURE_VERSION,
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,

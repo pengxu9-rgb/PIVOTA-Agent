@@ -36,11 +36,36 @@ function loadServerWithDb(envOverrides = {}) {
 // before the identity-graph build. It queries catalog_products joined to
 // index_pipeline_state; without a mocked answer the gate fails closed for
 // external_seed refs and returns 404 PRODUCT_NOT_SERVABLE.
+// Match the gate on its own `LEFT JOIN index_pipeline_state ips`. A bare
+// `index_pipeline_state` substring also matches the group-member
+// catalog-source quarantine query, which probes `index_pipeline_state
+// ips_pick` inside a LATERAL — see isGroupMemberQuarantineQuery below.
 function isServingEligibilityQuery(normalizedSql) {
   return (
     normalizedSql.includes('FROM catalog_products cp') &&
-    normalizedSql.includes('index_pipeline_state')
+    normalizedSql.includes('LEFT JOIN index_pipeline_state ips')
   );
+}
+
+// filterGroupMembersByCatalogSourceQuarantine. It must be answered on its own
+// terms: the real query projects `COALESCE(jsonb_agg(...), '[]'::jsonb) AS
+// members`, and an empty/absent survivor list means "every member is
+// quarantined", which empties the offer group and drops the offers module.
+// Nothing is quarantined in these fixtures, so every requested member survives.
+function isGroupMemberQuarantineQuery(normalizedSql) {
+  return normalizedSql.includes('surviving_members AS');
+}
+
+function buildQuarantineSurvivorRows(params) {
+  const requested = JSON.parse(String((Array.isArray(params) ? params[0] : null) || '[]'));
+  return [
+    {
+      members: requested.map((member) => ({
+        merchant_id: member.merchant_id,
+        product_id: member.product_id,
+      })),
+    },
+  ];
 }
 
 function buildServingEligibleRow(params) {
@@ -97,6 +122,9 @@ describe('get_pdp_v2 identity graph live read', () => {
 
     db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
       if (isServingEligibilityQuery(normalizedSql)) {
         return { rows: [buildServingEligibleRow(params)] };
       }
@@ -602,6 +630,9 @@ describe('get_pdp_v2 identity graph live read', () => {
 
     db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
       if (isServingEligibilityQuery(normalizedSql)) {
         return { rows: [buildServingEligibleRow(params)] };
       }
@@ -734,6 +765,9 @@ describe('get_pdp_v2 identity graph live read', () => {
 
     db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
       if (isServingEligibilityQuery(normalizedSql)) {
         return { rows: [buildServingEligibleRow(params)] };
       }

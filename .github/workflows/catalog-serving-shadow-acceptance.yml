@@ -63,17 +63,23 @@ jobs:
       - name: Run catalog-serving shadow acceptance
         continue-on-error: ${{ github.event_name == 'schedule' && vars.CATALOG_SHADOW_STRICT_ON_SCHEDULE != 'true' }}
         shell: bash
+        env:
+          IN_LIMIT: ${{ inputs.limit || '500' }}
+          IN_MARKET: ${{ inputs.market || 'US' }}
+          IN_SAMPLE_QUERY: ${{ inputs.sample_query || 'serum' }}
+          IN_FAIL_ON_STATUS: ${{ inputs.fail_on_status || 'red' }}
+          IN_BRAND: ${{ inputs.brand || '' }}
         run: |
           set -euo pipefail
           mkdir -p reports
           args=(
             --out-dir reports
-            --limit "${{ inputs.limit || '500' }}"
-            --market "${{ inputs.market || 'US' }}"
-            --sample-query "${{ inputs.sample_query || 'serum' }}"
-            --fail-on-status "${{ inputs.fail_on_status || 'red' }}"
+            --limit "${IN_LIMIT:-}"
+            --market "${IN_MARKET:-}"
+            --sample-query "${IN_SAMPLE_QUERY:-}"
+            --fail-on-status "${IN_FAIL_ON_STATUS:-}"
           )
-          brand_input="${{ inputs.brand || '' }}"
+          brand_input="${IN_BRAND:-}"
           if [[ -n "${brand_input}" ]]; then
             args+=(--brand "${brand_input}")
           fi

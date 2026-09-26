@@ -88,10 +88,22 @@ async function ensureReviewTable(client) {
       candidate_content_key text,
       candidate_title text,
       jaccard_score numeric(6,4),
+      -- Non-null when the candidate was refused for a REASON rather than scored as a
+      -- near-miss (currently only 'pack_count_mismatch'). jaccard_score is NULL in that
+      -- case: there is no similarity number to report, and 1.0000 would read as an
+      -- endorsement of exactly the merge the row exists to block.
+      blocked_by text,
       status text NOT NULL DEFAULT 'pending',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
+  // The table already exists in prod (written 2026-07-12), so CREATE TABLE IF NOT
+  // EXISTS above will NOT add a newly-declared column to it. Without this, the INSERT
+  // fails with `column "blocked_by" does not exist` on every existing deployment while
+  // passing on a fresh database — the worst shape of schema drift to debug.
+  await client.query(
+    `ALTER TABLE retailer_offer_identity_review ADD COLUMN IF NOT EXISTS blocked_by text`,
+  );
 }
 
 async function main() {
@@ -126,7 +138,17 @@ async function main() {
         selfMint.push({ offer: o, reason: 'already_folded' });
       }
     } else if (r.decision === 'review_fuzzy') {
-      fuzzyCandidates.push({ offer: o, target: r.match, score: r.score });
+      // Carry blocked_by/pack_counts through. The resolver computes them and everything
+      // downstream — the spike ratio, the review row, the report — needs to tell a
+      // scored near-miss apart from a rule-based refusal. Dropping them here would make
+      // the guard's own evidence invisible at exactly the point a human reads it.
+      fuzzyCandidates.push({
+        offer: o,
+        target: r.match,
+        score: r.score,
+        blocked_by: r.blocked_by || null,
+        pack_counts: r.pack_counts || null,
+      });
     } else {
       selfMint.push({ offer: o, reason: 'no_match', score: r.score || 0 });
     }
@@ -135,8 +157,15 @@ async function main() {
   // Review-queue spike guard (relative to offers whose brand HAS D2C candidates).
   const brandsWithCandidates = new Set(Array.from(index.byBrand.keys()));
   const matchableOffers = offers.filter((o) => brandsWithCandidates.has(brandCore(o.brand)));
+  // Pack-count blocks are NOT jaccard near-misses — their titleCore matches exactly and
+  // they are refused on evidence, not on a score. Counting them here would let an
+  // operator trip a guard that says "FUZZY_THRESHOLD is too loose" and then tune 0.72
+  // forever with no effect, because the ratio never depended on it. Excluded, and
+  // reported separately below.
+  const scoredFuzzy = fuzzyCandidates.filter((f) => !f.blocked_by);
+  const blockedByRule = fuzzyCandidates.filter((f) => f.blocked_by);
   const reviewPct = matchableOffers.length
-    ? Math.round((fuzzyCandidates.length / matchableOffers.length) * 1000) / 10
+    ? Math.round((scoredFuzzy.length / matchableOffers.length) * 1000) / 10
     : 0;
 
   let applied = { mode: apply ? 'apply' : 'dry_run', content_key_updates: 0, group_member_updates: 0, review_rows_written: 0, apply_error: null };
@@ -195,27 +224,33 @@ async function main() {
   if (apply && fuzzyCandidates.length && !applied.apply_error) {
     try {
       await ensureReviewTable(client);
-      const ids = [], rpk = [], roid = [], rdom = [], br = [], brc = [], ti = [], tic = [], cpk = [], cck = [], cti = [], sc = [];
+      const ids = [], rpk = [], roid = [], rdom = [], br = [], brc = [], ti = [], tic = [], cpk = [], cck = [], cti = [], sc = [], bb = [];
       for (const f of fuzzyCandidates) {
         ids.push(`ror_${f.offer.product_key}_${f.target.product_key}`.slice(0, 200));
         rpk.push(f.offer.product_key); roid.push(f.offer.offer_id); rdom.push(f.offer.dom);
         br.push(f.offer.brand); brc.push(brandCore(f.offer.brand));
         ti.push(f.offer.title); tic.push(titleCore(f.offer.title, f.offer.brand));
         cpk.push(f.target.product_key); cck.push(f.target.content_key); cti.push(f.target.title);
-        sc.push(f.score);
+        // A pack-count block is NOT a fuzzy near-miss: its titleCore matches exactly, so
+        // it arrives with score 1. Writing that into jaccard_score would put the
+        // strongest possible "these are the same, approve the merge" signal on a row
+        // that exists to say the opposite. Persist the reason, and null the score so no
+        // reviewer reads a similarity number that was never computed.
+        sc.push(f.blocked_by ? null : f.score);
+        bb.push(f.blocked_by || null);
       }
       const rRes = await client.query(
         `
         INSERT INTO retailer_offer_identity_review
           (id, retailer_product_key, retailer_offer_id, retailer_domain, brand, brand_core, title, title_core,
-           candidate_product_key, candidate_content_key, candidate_title, jaccard_score)
+           candidate_product_key, candidate_content_key, candidate_title, jaccard_score, blocked_by)
         SELECT * FROM unnest(
           $1::text[],$2::text[],$3::text[],$4::text[],$5::text[],$6::text[],$7::text[],$8::text[],
-          $9::text[],$10::text[],$11::text[],$12::numeric[]
-        ) AS t(id,rpk,roid,rdom,br,brc,ti,tic,cpk,cck,cti,sc)
+          $9::text[],$10::text[],$11::text[],$12::numeric[],$13::text[]
+        ) AS t(id,rpk,roid,rdom,br,brc,ti,tic,cpk,cck,cti,sc,bb)
         ON CONFLICT (id) DO UPDATE SET
-          jaccard_score = EXCLUDED.jaccard_score, updated_at = now()`,
-        [ids, rpk, roid, rdom, br, brc, ti, tic, cpk, cck, cti, sc],
+          jaccard_score = EXCLUDED.jaccard_score, blocked_by = EXCLUDED.blocked_by, updated_at = now()`,
+        [ids, rpk, roid, rdom, br, brc, ti, tic, cpk, cck, cti, sc, bb],
       );
       applied.review_rows_written = rRes.rowCount || 0;
     } catch (err) {
@@ -255,6 +290,9 @@ async function main() {
     })),
     fuzzy_sample: fuzzyCandidates.slice(0, 25).map((f) => ({
       brand: f.offer.brand, score: f.score,
+      // Without these a reader cannot tell a 0.9-similarity near-miss from a hard
+      // pack-count refusal that happens to carry score 1.
+      blocked_by: f.blocked_by || null, pack_counts: f.pack_counts || null,
       retailer_title: f.offer.title, retailer_product_key: f.offer.product_key,
       candidate_title: f.target.title, candidate_product_key: f.target.product_key,
     })),

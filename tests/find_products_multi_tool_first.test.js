@@ -310,3 +310,26 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     expect(String(out.reply || '')).toMatch(/哪位明星|参考/);
   });
 });
+
+describe('tool recommender inventory_quantity null-safety (regression for #1819)', () => {
+  const { _debug } = require('../src/findProductsMulti/toolRecommender');
+  const { mapRawProductToToolProduct } = _debug;
+
+  test('preserves null inventory_quantity (in stock, count unknown) — not coerced to 0', () => {
+    // External-seed in-stock-but-unknown-count products now emit null (was a fake 999).
+    // Number(null) === 0 would previously mark them out-of-stock and filter them out.
+    const tool = mapRawProductToToolProduct({ id: 'p1', title: 'powder brush', inventory_quantity: null });
+    expect(tool).not.toBeNull();
+    expect(tool.inventory_quantity).toBeNull();
+  });
+
+  test('passes a real count through', () => {
+    const tool = mapRawProductToToolProduct({ id: 'p2', title: 'powder brush', inventory_quantity: 12 });
+    expect(tool.inventory_quantity).toBe(12);
+  });
+
+  test('keeps 0 as 0 (genuinely out of stock)', () => {
+    const tool = mapRawProductToToolProduct({ id: 'p3', title: 'powder brush', inventory_quantity: 0 });
+    expect(tool.inventory_quantity).toBe(0);
+  });
+});

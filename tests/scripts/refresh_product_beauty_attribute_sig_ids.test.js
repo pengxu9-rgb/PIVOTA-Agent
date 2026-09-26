@@ -77,4 +77,66 @@ describe('refresh-product-beauty-attribute-sig-ids', () => {
     expect(fs.existsSync(out)).toBe(true);
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
+
+  // The 2026-08-16T10:37Z production tick: the affected-products selector
+  // honestly returned zero rows, and the routine died at its first step.
+  describe('an affected-products manifest with no ids', () => {
+    let manifest;
+    beforeEach(() => {
+      manifest = path.join(os.tmpdir(), `affected-pba-empty-${Date.now()}.json`);
+      fs.writeFileSync(manifest, JSON.stringify({ rows: [], external_product_ids: [], sig_ids: [] }), 'utf8');
+      jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    });
+
+    test('still refuses by default (a filterless refresh would be catalog-wide)', async () => {
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+
+      await expect(run(['--affected-products-file', manifest], { queryFn })).rejects.toMatchObject({
+        code: 'MISSING_PBA_SIG_REFRESH_FILTER',
+      });
+      expect(queryFn).not.toHaveBeenCalled();
+    });
+
+    test('--allow-empty-filter records a no-op report and never queries', async () => {
+      const out = path.join(os.tmpdir(), `pba-refresh-empty-${Date.now()}.json`);
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+
+      const report = await run(
+        ['--affected-products-file', manifest, '--allow-empty-filter', '--out', out],
+        { queryFn },
+      );
+
+      expect(report).toMatchObject({
+        dry_run: true,
+        skipped: true,
+        skip_reason: 'empty_filter',
+        external_product_id_filter_count: 0,
+        sig_id_filter_count: 0,
+        matched_count: 0,
+        updated_count: 0,
+        rows: [],
+      });
+      expect(queryFn).not.toHaveBeenCalled();
+      expect(JSON.parse(fs.readFileSync(out, 'utf8'))).toMatchObject({ skipped: true, skip_reason: 'empty_filter' });
+    });
+
+    test('--allow-empty-filter does not swallow other failures', async () => {
+      const queryFn = jest.fn(async () => {
+        throw Object.assign(new Error('connection refused'), { code: 'ECONNREFUSED' });
+      });
+
+      await expect(
+        run(['--external-product-ids', 'ext_a', '--allow-empty-filter'], { queryFn }),
+      ).rejects.toMatchObject({ code: 'ECONNREFUSED' });
+    });
+
+    test('--allow-empty-filter changes nothing when the manifest has ids', async () => {
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+
+      const report = await run(['--external-product-ids', 'ext_a', '--allow-empty-filter'], { queryFn });
+
+      expect(report.skipped).toBeUndefined();
+      expect(queryFn).toHaveBeenCalledTimes(1);
+    });
+  });
 });

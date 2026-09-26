@@ -105,6 +105,9 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
     normalizeRecoGroundingStatus,
     attachRecoContractMeta,
     restorePlanOnlyRecommendations,
+    resolveBuyerRegion,
+    isRejectedBuyerRegionInput,
+    buildServedPriceRegionCensus,
     logger,
   } = deps;
 
@@ -168,6 +171,54 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
       if (!parsed.success) {
         return res.status(400).json(buildBadRequestEnvelope(ctx, parsed.error.format()));
       }
+      // ADR-024 Phase 1. Resolve the buyer's region ONCE, at the entry to the lane, and hang it on
+      // `ctx` -- the same object that already carries `lang` into recall, grounding and every cache
+      // key below, so region rides an existing wire instead of a new parameter on nine signatures.
+      //
+      // With no buyer_region in the body this yields exactly {US, defaulted}, which is what every one
+      // of those call sites already assumed, so today's traffic is unchanged end to end.
+      const resolvedBuyerRegion = resolveBuyerRegion(parsed.data.buyer_region);
+      ctx.buyer_region = resolvedBuyerRegion.region;
+      ctx.buyer_region_source = resolvedBuyerRegion.regionSource;
+      if (isRejectedBuyerRegionInput(parsed.data.buyer_region)) {
+        // The caller SENT a region and we could not read it. Not an error -- the request proceeds on
+        // the default -- but silence here is how a partner ships `"buyer_region": "usa"` and never
+        // learns that every one of its buyers was served US pricing.
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            event: 'reco_buyer_region_rejected',
+            buyer_region_type: typeof parsed.data.buyer_region,
+            // The raw value is a 2-letter-ish country token, not buyer text; bounded anyway.
+            buyer_region_raw: String(parsed.data.buyer_region).slice(0, 16),
+            region: ctx.buyer_region,
+            region_source: ctx.buyer_region_source,
+          },
+          'aurora bff: reco_generate buyer_region unreadable, defaulting',
+        );
+      }
+      const buyerRegionMeta = {
+        buyer_region: ctx.buyer_region,
+        region_source: ctx.buyer_region_source,
+      };
+      // ADR-024's TRIPWIRE, taken over the rows a given path ACTUALLY SERVES.
+      //
+      // The decision owner declined the FX ranker and asked for this count instead: "count
+      // `unknown`-classified rows actually served, per region; materially nonzero means clean data,
+      // not convert it." A materially nonzero `served_priced_foreign` for a region is MISLABELED
+      // SUPPLY -- an ingestion defect of the 433-EUR-offers-stamped-`market='US'` family -- and the
+      // correct response is to quarantine and fix those rows, NEVER to convert their prices into the
+      // buyer's currency. Conversion is the fifth layer of a defect this repo has already shipped in
+      // four (ADR-024, "The recurring failure mode this ADR must not feed").
+      //
+      // Taken as a closure over `rows` rather than once, because the two stamp sites below serve
+      // DIFFERENT lists: the guardrail path can drop rows, and a census of the pre-guardrail answer
+      // would report prices no buyer saw.
+      //
+      // READ-ONLY, and it must stay that way: the census is computed AFTER selection, ranking and the
+      // guardrail, and nothing reads it back. If a count ever becomes an input to what we serve, this
+      // has quietly become the ranker the ADR refused.
+      const servedPriceCensusMetaFor = (rows) => buildServedPriceRegionCensus(rows, ctx.buyer_region);
       const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
       const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
@@ -293,7 +344,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
           payload: buildConfidenceNoticeCardPayload({
             language: ctx.lang,
             reason: 'diagnosis_first',
-            confidence: { score: 0.45, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
+            // F4: nothing measured this — null score, categorical 'low' level.
+            confidence: { score: null, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
             non_blocking: true,
             details: [
               ...(Array.isArray(gate.missing) ? gate.missing.map((field) => `missing_${field}`) : []),
@@ -512,6 +564,15 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         const payloadMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
         payload.recommendation_meta = {
           ...payloadMeta,
+          // ADR-024 Phase 1 telemetry. recommendation_meta is the lane's existing reporting surface --
+          // it already carries the signature versions, the target-step resolution and its SOURCE, and
+          // buildRecoRequestedEventData reads this same object to build the reco_requested event. So
+          // the region rides it too, rather than inventing a channel. `region_source` is the half that
+          // matters: it is what turns "we served US" into "we ASSUMED US, and nobody told us".
+          ...buyerRegionMeta,
+          // The census of THIS path's served rows, beside the region they were served into -- the two
+          // are only meaningful together, so they ride the same surface.
+          ...servedPriceCensusMetaFor(payload.recommendations),
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(payloadMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
@@ -613,7 +674,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
                 payload: buildConfidenceNoticeCardPayload({
                   language: ctx.lang,
                   reason: directNoRecoReason || 'artifact_missing',
-                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
+                  // F4: no invented 0.35 — an uncomputed confidence stays null.
+                  confidence: { score: null, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
                   actions: ['retry_recommendations', 'refine_profile'],
                 }),
               },
@@ -673,6 +735,16 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         const guardedMeta = isPlainObject(guardedRecoCard.payload.recommendation_meta) ? guardedRecoCard.payload.recommendation_meta : {};
         guardedRecoCard.payload.recommendation_meta = {
           ...guardedMeta,
+          // Same two fields on the guardrail'd copy. This block REBUILDS recommendation_meta from
+          // `guardedMeta` rather than extending the object stamped above, so omitting them here would
+          // make the region visible only on the AURORA_RECO_GENERATE_GUARDRAIL_V1=off path -- i.e.
+          // invisible in prod, which is the one place the measurement is for.
+          ...buyerRegionMeta,
+          // Re-censused over `guardedRecommendations`, NOT re-used from `guardedMeta`. The guardrail
+          // REJECTS rows, so the pre-guardrail census counts prices this buyer was never shown, and
+          // over-reporting foreign supply sends someone hunting an ingestion defect that the guardrail
+          // already caught. This is the FINAL served list; it is the only one the tripwire may count.
+          ...servedPriceCensusMetaFor(guardedRecommendations),
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(guardedMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
@@ -785,7 +857,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: finalNoRecoReason || 'artifact_missing',
-              confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
+              // F4: no invented 0.35 — an uncomputed confidence stays null.
+              confidence: { score: null, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
               actions: ['retry_recommendations', 'refine_profile'],
             }),
           },

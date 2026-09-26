@@ -18,6 +18,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED:
         process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED,
       FIND_PRODUCTS_MULTI_EXPANSION_MODE: process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
@@ -34,6 +35,8 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
+    // This suite elects the configured upstream primary; missing DB is not a route selector.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     delete process.env.DATABASE_URL;
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
@@ -58,6 +61,8 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     else process.env.API_MODE = prevEnv.API_MODE;
     if (prevEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
+    if (prevEnv.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED === undefined) delete process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED;
+    else process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = prevEnv.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED;
     if (prevEnv.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED === undefined) {
       delete process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
     } else {

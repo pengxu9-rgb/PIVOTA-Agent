@@ -50,18 +50,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 
 /**
  * Pull the verified identity the OAuth/session layer attached to this MCP request. Returns
- * { user_ref } or { claims }; an unauthenticated session yields {} so writes are refused downstream.
+ * { user_ref?, claims? }; an unauthenticated session yields {} so writes are refused downstream.
  * Kept deliberately small: identity must come from server-verified context, never from tool args.
+ *
+ * `claims` travels ALONGSIDE `user_ref`, never instead of it: returning one OR the other dropped the
+ * verified claims on every SIGNED-IN request — precisely the requests carrying an attested buyer email —
+ * which let a model-asserted `customer_email` win. Fixed in all four copies of this helper together.
  */
 function resolveSessionIdentity(extra) {
   const auth = extra?.authInfo ?? extra?.sessionContext ?? {};
+  const out = {};
   if (typeof auth.user_ref === "string" && auth.user_ref.trim()) {
-    return { user_ref: auth.user_ref };
+    out.user_ref = auth.user_ref;
   }
   if (auth.claims && typeof auth.claims === "object") {
-    return { claims: auth.claims };
+    out.claims = auth.claims;
   }
-  return {};
+  return out;
 }
 
 const transport = new StdioServerTransport();

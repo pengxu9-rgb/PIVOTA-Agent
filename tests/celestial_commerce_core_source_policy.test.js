@@ -126,7 +126,7 @@ describe('Celestial commerce core source policy module', () => {
       query: 'camera',
       allow_external_seed: true,
       allow_stale_cache: false,
-      external_seed_strategy: 'supplement_internal_first',
+      external_seed_strategy: 'unified_relevance',
       fast_mode: true,
     });
 
@@ -183,6 +183,23 @@ describe('Celestial commerce core source policy module', () => {
     ).toEqual({
       search: {
         query: 'hair oil',
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      },
+    });
+  });
+
+  test('public strict commerce search cannot disable eligible external offers', () => {
+    expect(
+      applyFindProductsMultiSourceContract(
+        { search: { query: 'camera', catalog_surface: 'agent_api', allow_external_seed: false } },
+        { source: 'search' },
+        'find_products_multi',
+      ),
+    ).toEqual({
+      search: {
+        query: 'camera',
+        catalog_surface: 'agent_api',
         allow_external_seed: true,
         external_seed_strategy: 'unified_relevance',
       },

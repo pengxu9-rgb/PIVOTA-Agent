@@ -20,6 +20,11 @@ import { InMemoryKvStore } from '../stores.js';
 import { wrapUpstream } from '../upstreamAdapter.js';
 import { PivotaCommerceError } from '../errors.js';
 import { createCanonicalExecutor } from './canonicalExecutor.js';
+
+// Read-only ops — the lanes where a bare 404 means "no such product" rather than a missing backend route.
+// Mirrors the read() calls in canonicalExecutor.js and COMMERCE_KERNEL_READ_OPS in
+// src/services/commerceKernelErrorMapping.js (where it moved out of src/server.js).
+const BACKEND_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
 import { createPaymentAuthorizationVerifier } from './paymentAuthorizationVerifier.js';
 import { createSignedGrantVerifier, createAp2MandateVerifier } from './protocolPaymentVerifiers.js';
 import { createAcpRestAdapter } from './acpRestAdapter.js';
@@ -91,6 +96,23 @@ export function createHttpBackendUpstream(cfg = {}) {
       clearTimeout(timer);
     }
     if (!res.ok) {
+      // 404 on a READ op = the backend positively answered "nothing here" (e.g. PRODUCT_NOT_FOUND). That is
+      // persistent and must not be advertised as a retriable outage. Restricted to reads because this same
+      // upstream carries preview_quote / create_order / submit_payment, where a 404 is far more likely to be a
+      // missing or mid-deploy route than a statement about the product — calling that NO_MERCHANT_OFFER would
+      // tell a checkout agent not to retry a transient blip. Kept in step with
+      // throwCommerceKernelUpstreamError in src/server.js.
+      //
+      // DELIBERATELY NOT MIRRORED HERE: the UNKNOWN_PRODUCT_ID arm that throwCommerceKernelUpstreamError
+      // grew for the `MISSING_MERCHANT_CONTEXT` / HTTP 400 lane. That arm keys on the upstream error CODE,
+      // and this function throws before it parses the response body, so it cannot see one. Widening it to a
+      // bare 400 would be wrong: a 400 on a read op is just as likely a malformed request from our own
+      // caller. It also cannot arise on this path — that code comes from the gateway's own get_pdp_v2, which
+      // only the src/server.js wiring calls. The two stay in step on the 404 lane, which is the only lane
+      // both can observe.
+      if (res.status === 404 && BACKEND_READ_OPS.has(String(operation || '').trim())) {
+        throw new PivotaCommerceError('NO_MERCHANT_OFFER', { reason: 'backend_not_found', status: res.status });
+      }
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: res.status });
     }
     let body;
@@ -259,8 +281,12 @@ export function composeProductionCommerce(config = {}) {
   const resolveUserRef = async (req) => {
     const token = extractBuyerToken(req);
     if (!nonEmpty(token)) return undefined; // adapter fails closed (USER_AUTH_REQUIRED) for a user-scoped op
-    try { return (await verifyUserToken(token)).user_ref; }
-    catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
+    try {
+      // Return the buyer-identity OBJECT, not the bare user_ref: the ACP door needs the ATTESTED email so a
+      // caller-asserted `buyer.email` can never override it. user_ref derivation is untouched (iss|sub).
+      const { user_ref, attested_email, attested_name } = await verifyUserToken(token);
+      return { user_ref, customer_email: attested_email, customer_name: attested_name };
+    } catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
   };
 
   // MCP: identity from the server-verified session context (the OAuth/session layer attaches claims/user_ref).
@@ -268,7 +294,11 @@ export function composeProductionCommerce(config = {}) {
     const auth = extra?.authInfo ?? extra?.sessionContext ?? {};
     const out = {};
     if (nonEmpty(auth.user_ref)) out.user_ref = auth.user_ref;
-    else if (auth.claims && typeof auth.claims === 'object') out.claims = auth.claims;
+    // Claims travel ALONGSIDE user_ref, never instead of it. The old `else if` dropped them on every
+    // SIGNED-IN request — exactly the requests that have an attested buyer email — so a caller-asserted
+    // `customer_email` won for a signed-in buyer. This helper is returned from composeProductionCommerce
+    // as the MCP identity bridge, so the drop reached integrators, not just this file.
+    if (auth.claims && typeof auth.claims === 'object') out.claims = auth.claims;
     if (nonEmpty(auth.acp_session_id)) out.acp_session_id = auth.acp_session_id;
     if (nonEmpty(auth.agent_id)) out.agent_id = auth.agent_id;
     return out;

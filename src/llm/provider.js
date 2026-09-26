@@ -559,7 +559,12 @@ function createProviderFromEnv(purpose = 'generic') {
         ...resolveGeminiRuntimeModelCandidates(resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL)),
       ]);
       const apiVersions = vertexGemini.vertexEnabled() ? ['v1'] : ['v1beta', 'v1'];
-      if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');
+      // Gate on the seam, not the raw key: on Vertex the credential is ADC and
+      // GEMINI_API_KEY is unused, so `!apiKey` would wrongly throw the moment
+      // the key is retired even though the call would authenticate.
+      if (!vertexGemini.credentialsAvailable(apiKey)) {
+        throw new LlmError('LLM_CONFIG_MISSING', vertexGemini.missingCredentialMessage());
+      }
 
       const targetFor = (apiVersion, model) =>
         vertexGemini.restTarget({ model, apiKey, baseUrl: baseURL, apiVersion });

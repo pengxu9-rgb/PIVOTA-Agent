@@ -33,12 +33,29 @@ const {
 } = require('./externalSeedLocalityFacts');
 const {
   buildCatalogImageCacheVisibleUrl,
+  normalizeCatalogImageCacheUrlHost,
 } = require('./catalogImageCacheStorage');
 const {
   resolveBeautyCategoryPathPrefixFromText,
 } = require('../findProductsMulti/queryUnderstanding');
 
+// TWO AXES THAT SHARE A STRING, and must not share a NAME.
+//
+// EXTERNAL_SEED_MERCHANT_ID is the sentinel SELLER — "the world has one shared seller". ADR-009
+// is retiring it (tests/scripts/external_seed_merchant_literal_ratchet.test.js is the shrink-only
+// ratchet) because rows migrate to their observed sellers and every comparison against it then
+// goes silently blind. Measured 2026-09-10: catalog_products and catalog_offers carry ZERO rows
+// with it — all 13,896 external-seed products already have a real merch_* seller.
+//
+// EXTERNAL_SEED_PLATFORM is the LANE, and it survives that re-key. It is what the data uses:
+// platform=external_seed on 13,896 of 15,516 catalog_products rows, and on 90/90 rows served by
+// the live agent door.
+//
+// They are the same string today, which is exactly why spelling a lane question with the seller
+// constant is invisible — and src/server.js did it in a SQL WHERE clause, so retiring the
+// sentinel would have left that lane silently matching nothing.
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const EXTERNAL_SEED_PLATFORM = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
   /\b(sunscreen|sun\s*screen|broad\s+spectrum|spf\s*\d{2,3}\+?|pa\s*\+{2,4}|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock))\b/i;
 const BEAUTY_CATEGORY_PATTERNS = [
@@ -75,30 +92,43 @@ const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([labe
   }
   return [label, pattern];
 });
+// Label -> canonical category path. Values come from the shared taxonomy
+// module (Class 3 single source of truth) so this table and the reconciler can
+// never disagree — a disagreement here means the resolver browses a bucket the
+// data has been moved out of, which is exactly the failure this class is about.
+//
+// Corrected 2026-08-04 against the prod survey: Shampoo/Conditioner/Hair
+// Styling pointed at beauty/hair/* (2/2/0 rows) while the data lives at
+// beauty/haircare/* (143/42/8), and the cheek trio pointed at
+// beauty/makeup/cheek/* (2/13/0) while the data lives at beauty/makeup/face/*
+// (83+22/57/35). Both made the canonical browse leg recall ~nothing —
+// prod-measured: "shampoo" BROWSE 0 rows vs TEXT 48/48 hits.
+const { CANONICAL_CATEGORY_PATHS: BEAUTY_TAXONOMY } = require('./beautyTaxonomy');
+
 const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
-  Brush: 'beauty/tools/brush',
-  Shampoo: 'beauty/hair/shampoo',
-  Conditioner: 'beauty/hair/conditioner',
-  'Hair Styling': 'beauty/hair/styling',
-  'Hair Care': 'beauty/hair',
-  Sunscreen: 'beauty/skincare/sun/sunscreen',
-  Fragrance: 'beauty/fragrance/perfume',
-  Cleanser: 'beauty/skincare/cleanse/cleanser',
-  Toner: 'beauty/skincare/tone/toner',
-  Treatment: 'beauty/skincare/treat/treatment',
-  Serum: 'beauty/skincare/treat/serum',
-  Concealer: 'beauty/makeup/face/concealer',
-  Foundation: 'beauty/makeup/face/foundation',
-  Powder: 'beauty/makeup/face/powder',
-  Highlighter: 'beauty/makeup/cheek/highlighter',
-  Blush: 'beauty/makeup/cheek/blush',
-  Bronzer: 'beauty/makeup/cheek/bronzer',
-  Eyeshadow: 'beauty/makeup/eye/eyeshadow',
-  Mascara: 'beauty/makeup/eye/mascara',
-  'Brow Pencil': 'beauty/makeup/eye/brow',
-  'Lip Balm': 'beauty/makeup/lip/balm',
-  Lipstick: 'beauty/makeup/lip/lipstick',
-  Moisturizer: 'beauty/skincare/moisturize/cream',
+  Brush: BEAUTY_TAXONOMY.brush,
+  Shampoo: BEAUTY_TAXONOMY.shampoo,
+  Conditioner: BEAUTY_TAXONOMY.conditioner,
+  'Hair Styling': BEAUTY_TAXONOMY.hair_styling,
+  'Hair Care': 'beauty/haircare',
+  Sunscreen: BEAUTY_TAXONOMY.sunscreen,
+  Fragrance: BEAUTY_TAXONOMY.fragrance,
+  Cleanser: BEAUTY_TAXONOMY.cleanser,
+  Toner: BEAUTY_TAXONOMY.toner,
+  Treatment: BEAUTY_TAXONOMY.treatment,
+  Serum: BEAUTY_TAXONOMY.serum,
+  Concealer: BEAUTY_TAXONOMY.concealer,
+  Foundation: BEAUTY_TAXONOMY.foundation,
+  Powder: BEAUTY_TAXONOMY.powder,
+  Highlighter: BEAUTY_TAXONOMY.highlighter,
+  Blush: BEAUTY_TAXONOMY.blush,
+  Bronzer: BEAUTY_TAXONOMY.bronzer,
+  Eyeshadow: BEAUTY_TAXONOMY.eyeshadow,
+  Mascara: BEAUTY_TAXONOMY.mascara,
+  'Brow Pencil': BEAUTY_TAXONOMY.brow,
+  'Lip Balm': BEAUTY_TAXONOMY.lip_balm,
+  Lipstick: BEAUTY_TAXONOMY.lipstick,
+  Moisturizer: BEAUTY_TAXONOMY.moisturizer,
 });
 const BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS = Object.freeze([
   ['beauty/makeup/lip/lipstick', /\b(lipsticks?|lip\s*tints?|lip\s*colors?|liquid\s*lips?|lip\s*gloss(?:es)?)\b|口红|口紅|唇膏|唇釉|唇彩/i],
@@ -510,6 +540,23 @@ function availabilityToInStock(availability) {
   if (a === 'in_stock') return true;
   if (a === 'out_of_stock') return false;
   return null;
+}
+
+// A source that only knows in-stock as a boolean was historically encoded as a
+// fake count of 999 ("assume plenty"). That synthesized number leaks to agents
+// as "999 units in stock". Never surface it: emit the REAL count when known, 0
+// when out of stock, and null ("in stock, count unknown") otherwise. `in_stock`
+// stays the authoritative boolean, emitted alongside — so this strips only a
+// fabricated number, never the stock status.
+const IN_STOCK_QTY_SENTINEL = 999;
+
+function honestInventoryQuantity(realCount, inStock) {
+  const n = Number(realCount);
+  if (realCount != null && realCount !== '' && Number.isFinite(n) && n !== IN_STOCK_QTY_SENTINEL) {
+    return Math.max(0, Math.floor(n));
+  }
+  if (inStock === false) return 0;
+  return null; // in stock but count unknown, or unknown entirely
 }
 
 function normalizeCurrency(value, fallback = 'USD') {
@@ -1391,7 +1438,11 @@ function appendImageUrls(out, value) {
 function normalizeCatalogImageCacheVisibleUrl(value) {
   const normalized = normalizePdpImageUrl(value);
   if (!normalized) return '';
-  return buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized;
+  // buildCatalogImageCacheVisibleUrl hands a stored URL back verbatim on its non-proxy branch, so
+  // a row cached under a retired host survives it. Re-home on the way out.
+  return normalizeCatalogImageCacheUrlHost(
+    buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized,
+  );
 }
 
 function normalizeCatalogImageCacheVisibleUrls(values) {
@@ -2895,9 +2946,11 @@ function rewriteSeedImageUrlThroughCache(url, cacheUrlMap, fallbackImageUrl = ''
     isCatalogImageCacheUrl(fallback) &&
     !isCatalogImageCacheUrl(candidate)
   ) {
-    return fallback;
+    return normalizeCatalogImageCacheUrlHost(fallback);
   }
-  return candidate;
+  // A cache-map miss falls back to the RAW stored value, which is how rows cached under a retired
+  // host reach the home feed and search cards. Re-home whichever candidate wins.
+  return normalizeCatalogImageCacheUrlHost(candidate);
 }
 
 function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap) {
@@ -3616,7 +3669,7 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.stock_quantity ??
         rawVariant.stock;
       const availableQuantity =
-        rawQty == null || rawQty === ''
+        rawQty == null || rawQty === '' || Number(rawQty) === IN_STOCK_QTY_SENTINEL
           ? undefined
           : Number.isFinite(Number(rawQty))
             ? Math.max(0, Math.floor(Number(rawQty)))
@@ -3685,7 +3738,7 @@ function normalizeSeedVariants(seedData, row) {
         price,
         currency,
         pricing: { current: { amount: price, currency } },
-        inventory_quantity: availableQuantity ?? (inStock === true ? 999 : inStock === false ? 0 : null),
+        inventory_quantity: honestInventoryQuantity(availableQuantity, inStock),
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         availability: availability || undefined,
@@ -4345,7 +4398,7 @@ function buildExternalSeedProduct(row, options = {}) {
         price,
         currency,
         pricing: { current: { amount: price, currency } },
-        inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+        inventory_quantity: honestInventoryQuantity(undefined, inStock),
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         image_url: imageUrl,
@@ -4390,9 +4443,16 @@ function buildExternalSeedProduct(row, options = {}) {
     .map(ensureJsonObject)
     .find((contract) => Object.keys(contract).length > 0);
 
+  // ADR-009 (writer side): this is a synthetic, product-SHAPED bag assembled
+  // for ingredient classification only — it never leaves this function and
+  // never reaches a response, a row, or a cache key. It used to carry a
+  // fabricated seller purely so the ingredient module's seed detector would
+  // recognise it, which is the category error in miniature: provenance dressed
+  // as a seller. The detector reads five signals and `source` below is the
+  // SOURCING one, which is the honest answer to "where did this come from" and
+  // is the axis ADR-009 keeps. So the seller axis is simply absent here.
   const authorityInput = {
     product_id: externalProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     source: 'external_seed',
     title,
     description,
@@ -4466,7 +4526,7 @@ function buildExternalSeedProduct(row, options = {}) {
     image_url: imageUrl,
     images: imageUrls,
     image_urls: imageUrls,
-    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    inventory_quantity: honestInventoryQuantity(undefined, inStock),
     in_stock: inStock,
     availability: availability || undefined,
     ...(transactionUnavailableContract
@@ -4701,11 +4761,16 @@ function buildExternalSeedBrandSearchProduct(row) {
     ingredientIds: [],
   });
   const cachedImageUrls = collectCachedSeedImageUrls(effectiveSeedData);
-  const imageUrl = firstNonEmptyString(
-    cachedImageUrls[0],
-    row.image_url,
-    snapshot.image_url,
-    effectiveSeedData.image_url,
+  // Only the cached-contract arm is re-homed upstream; the row/snapshot/seed columns are raw and
+  // one of them wins whenever that contract is absent — which is how a retired host reaches a
+  // search card.
+  const imageUrl = normalizeCatalogImageCacheUrlHost(
+    firstNonEmptyString(
+      cachedImageUrls[0],
+      row.image_url,
+      snapshot.image_url,
+      effectiveSeedData.image_url,
+    ),
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
   const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);
@@ -4760,7 +4825,7 @@ function buildExternalSeedBrandSearchProduct(row) {
     currency,
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(imageUrls.length ? { images: imageUrls, image_urls: imageUrls } : {}),
-    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    inventory_quantity: honestInventoryQuantity(undefined, inStock),
     in_stock: inStock,
     ...(availability ? { availability } : {}),
     product_type: normalizedCategory || explicitCategory || 'external',
@@ -4804,17 +4869,24 @@ function buildExternalSeedBrandSearchProduct(row) {
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
+  EXTERNAL_SEED_PLATFORM,
   stableExternalProductId,
   ensureJsonObject,
   normalizeSeedAvailability,
   normalizeSeedReviewSummary,
   availabilityToInStock,
+  honestInventoryQuantity,
+  IN_STOCK_QTY_SENTINEL,
   resolveBeautyCategoryPathPrefixForQuery,
   inferExternalSeedBeautyCategory,
   inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,
   collectSeedImageUrls,
   collectCachedSeedImageUrls,
   normalizeSeedImageUrls,
+  // Exposed so the stale-cache-host re-homing can be pinned on the lane that actually serves the
+  // home feed and search cards, rather than only on the shared helper it calls.
+  normalizeCatalogImageCacheVisibleUrl,
+  rewriteSeedImageUrlThroughCache,
   normalizeSeedVariants,
   normalizeExternalSeedPrice,
   sanitizeSeedVariantDisplayFields,

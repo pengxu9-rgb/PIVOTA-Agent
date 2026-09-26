@@ -1,21 +1,26 @@
 const axios = require('axios');
 const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
+const { isProduction, isTestRuntime } = require('../config/platform');
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').trim().replace(/\/$/, '');
 }
 
+/**
+ * SAFETY GUARD: this is what stops a mock upstream from servicing real traffic.
+ *
+ * It used to spell its own detection as
+ * `NODE_ENV==='production' || RAILWAY_ENVIRONMENT==='production' || VERCEL_ENV==='production'`.
+ * Production sets no NODE_ENV, so RAILWAY_ENVIRONMENT was the arm actually carrying it —
+ * and on Cloud Run that arm is unset, which would have turned this guard OFF in
+ * production. `isProduction()` answers the same union across every platform.
+ */
 function isProductionLikeEnvironment() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
-  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
-  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+  return isProduction();
 }
 
 function isTestRuntimeEnvironment() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const nodeTestContext = String(process.env.NODE_TEST_CONTEXT || '').trim();
-  return nodeEnv === 'test' || Boolean(nodeTestContext);
+  return isTestRuntime();
 }
 
 const REQUESTED_AURORA_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';

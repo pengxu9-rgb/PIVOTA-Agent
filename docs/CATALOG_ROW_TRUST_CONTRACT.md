@@ -2,9 +2,23 @@
 
 **Status:** Phase 3a (discoveryFeed brand candidates wired behind flag).
 **Migration:** `pivota-backend-quality-gate/db/migrations/136_catalog_row_trust.sql`
-**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.4`)
+**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.5`)
 **Python parity:** `pivota-backend/services/catalog_trust_policy.py` (same version)
 **Backfill:** `scripts/backfill-catalog-row-trust.cjs`
+
+> ⚠️ **The two twins must ship together, and their flags must match.** Both
+> repos write `catalog_row_trust` against the SAME Postgres, and the UPSERT
+> refreshes a row whenever `policy_version <> EXCLUDED.policy_version`. The Node
+> writers are not batch-only: `src/services/pdpIdentityGraph.js` calls
+> `upsertCatalogRowTrustForSourceListingRefs` on every live-read promotion and
+> identity override, in prod runtime. A version split-brain therefore has the
+> backend's 6h cron stamp one version across ~14k keys while Node stamps the
+> other back on every identity event — a permanent rewrite loop and a
+> permanently false `version_distribution` alarm on `/__trust_health`. Merge
+> pivota-backend and PIVOTA-Agent policy changes back to back, and set
+> `CATALOG_TRUST_RENDERABLE_GATE` on **both** Railway services or **neither**:
+> with the gate on one side only, rows FLAP public↔blocked on the live serving
+> surface.
 
 ## What this contract is
 
@@ -27,7 +41,7 @@ Decision vocabulary:
 | 3 | `catalogServingIndex.fetchCatalogServingEligibleSourceSet` | `ips.serving_eligible=TRUE` | subset of `serving_decision='public'` — Phase 3e wired behind `CATALOG_SERVING_USES_CATALOG_ROW_TRUST` (default OFF) |
 | 4 | `catalogServingIndex` external search body | `publish_state='public'` (doc-level) + market | Already trust-derived end-to-end: doc `publish_state` is built from `is_public` (catalogServingIndex.js:709) which is sourced from identity rows that Phase 3d wires to trust. No separate cutover needed. |
 | 5 | `catalogServingIndex` local serving scan | `publish_state='public'` + market + optional `servingEligibleOnly` flag | Same as #4 — already trust-derived end-to-end via doc-build pipeline. |
-| 6 | `findProductsExternalSeedDirectRetrieval` | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` (default OFF) |
+| 6 | `findProductsExternalSeedDirectRetrieval` (deleted 2026-09-26: never loaded at runtime) | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` (default OFF) |
 | 7 | `findProductsExternalSeedBrandFastpath` | same as #6 | same as #6 — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` |
 | 8 | `discoveryFeed` identity join (`.js:2120`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — same gap as reader #2 |
 | 9 | `discoveryFeed` brand candidates (`.js:8589`) | `ips.serving_eligible=TRUE` | `serving_decision='public'` — Phase 3a wired behind `DISCOVERY_USES_CATALOG_ROW_TRUST` (default OFF) |
@@ -55,6 +69,8 @@ Authoritative source: `src/services/catalogTrustPolicy.js` (`REASON_CODES`).
 | `PUBLISH_STATE_NOT_PUBLIC`          | blocked         | `catalog_products.sync_status` != `live`. (Name kept for forward-compat with audit copy.)      |
 | `IDENTITY_CONFLICT`                 | blocked         | `pdp_identity_listing.identity_status='conflict'`.                                             |
 | `OFFER_SUPPRESSED`                  | blocked         | subject_type=`offer`, offer.suppression_reason set.                                            |
+| `TEST_MERCHANT_EXCLUDED`            | blocked         | 2026-07-27. `merchant_id` is a known rig (`src/services/testMerchantPolicy.js` `TEST_MERCHANT_IDS` / `pivota-backend services/test_merchant_policy.py` `KNOWN_TEST_MERCHANT_IDS`). Evaluated **after** the lifecycle/index gates, so an already-blocked rig keeps its real reason and only a rig that would *otherwise* reach public/shadow is reclassified. Fires on **zero rows today** (census 2026-07-28: all 1,561 rig rows already `blocked`, zero public, zero shadow) — it is the backstop for the day a rig's `suppression_reason` is cleared. Reads the **baked-in** lists only, never the `PIVOTA_TEST_MERCHANT_IDS` env hatch, because this table is shared state written by both twins and a per-service env var would flap rows. |
+| `PDP_ROUTE_UNRESOLVABLE`            | blocked         | c1.v0.5+. The gateway has no resolvable PDP **content route** for the row (no acceptable `external_product_seeds` row answers on `external_product_id = catalog_products.source_product_id`, and the row is not merchant-synced), so its public PDP is a 500 or a generic noindex shell rather than a real product page. **Gated on `CATALOG_TRUST_RENDERABLE_GATE`, default OFF** — measured 2026-07-25, turning it on demotes 1,376 rows out of `public` (1,011 of them with no renderable sibling), which is a founder serving-surface call, not a code default. Predicate: `pivota-backend/services/pdp_renderability.py` / `src/services/pdpRenderability.js`. |
 
 ## How to consume
 

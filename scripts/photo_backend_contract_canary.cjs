@@ -75,10 +75,29 @@ async function parseJsonResponse(res) {
   }
 }
 
-async function requestJson(name, url, init = {}, timeoutMs = 30000) {
+/**
+ * Attach X-Internal-Key, and ONLY to the gateway.
+ *
+ * The gateway's Aurora-surface guard (PIVOTA-Agent #2038) 401s uncredentialed callers once
+ * AURORA_SURFACE_AUTH_MODE flips to `enforce`. This canary runs on every push to main against the
+ * live gateway and hits /v1/photos/*, /v1/analysis/skin.
+ *
+ * Scoped by host on purpose: this script also talks to BACKEND_BASE, a different service, and an
+ * unconditional header would hand it our shared secret.
+ */
+function withGatewayAuth(url, init, gatewayBase) {
+  const key = String(process.env.AURORA_SURFACE_INTERNAL_KEY || '').trim();
+  const base = String(gatewayBase || '').replace(/\/+$/, '');
+  if (!key || !base) return init;
+  const u = String(url);
+  if (u !== base && !u.startsWith(`${base}/`) && !u.startsWith(`${base}?`)) return init;
+  return { ...init, headers: { ...(init.headers || {}), 'X-Internal-Key': key } };
+}
+
+async function requestJson(name, url, init = {}, timeoutMs = 30000, gatewayBase = '') {
   const startedAt = Date.now();
   const res = await fetch(url, {
-    ...init,
+    ...withGatewayAuth(url, init, gatewayBase || process.env.BASE || ''),
     signal: timeoutSignal(timeoutMs),
   });
   const body = await parseJsonResponse(res);

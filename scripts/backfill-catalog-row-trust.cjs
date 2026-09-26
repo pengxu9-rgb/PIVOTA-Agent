@@ -18,6 +18,11 @@ const {
   POLICY_VERSION,
   deriveTrust,
 } = require('../src/services/catalogTrustPolicy');
+const {
+  pdpRouteResolvableFromRow,
+  seedRouteResolvesSql,
+} = require('../src/services/pdpRenderability');
+const { pricedOfferExistsSql } = require('../src/services/pricedOfferSql');
 
 const BATCH_SIZE = 500;
 
@@ -61,7 +66,7 @@ async function loadActiveQuarantines(pool) {
 const PRODUCT_DRIVER_SQL = `
   WITH external_seed_one AS (
     SELECT DISTINCT ON (external_product_id)
-      id, external_product_id, status, domain, attached_product_key, updated_at
+      id, external_product_id, status, domain, attached_product_key, updated_at, seed_kind
     FROM external_product_seeds
     ORDER BY
       external_product_id,
@@ -77,7 +82,7 @@ const PRODUCT_DRIVER_SQL = `
     -- key below). Kept in sync with src/services/catalogRowTrustUpserter.js
     -- + the Python twin.
     SELECT DISTINCT ON (s.attached_product_key)
-      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at
+      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at, s.seed_kind
     FROM external_product_seeds s
     LEFT JOIN pdp_identity_listing spl
       ON spl.product_id = s.external_product_id
@@ -143,11 +148,62 @@ const PRODUCT_DRIVER_SQL = `
     pil.product_line_id,
     pil.review_family_id,
 
+    -- c1.v0.5 renderability input. NOT the same question as the eps join
+    -- below: eps is restricted to source_system='external_product_seeds_mirror_v1',
+    -- while the gateway routes through seeds on TWO keys and this answers for
+    -- both. Path-C minted rows join their seed by attached_product_key, exactly
+    -- like the minted_seed_one CTE; since P3 (2026-07-25) the gateway resolves
+    -- that key too, so they answer TRUE here whenever an acceptable attached
+    -- seed exists and their PDPs render. They answered FALSE — and 500ed —
+    -- until P3 shipped.
+    ` + seedRouteResolvesSql('cp') + ` AS pdp_seed_route_ok,
+
+    -- PER-ROW price input for the OFFER_PRICE_MISSING gate. This is the one
+    -- serving signal that CANNOT be taken from the ips join below: that join is
+    -- 'ips.content_key = cp.content_key', and index_pipeline_state stores ONE
+    -- state per content_key (its primary key, migration 098) chosen from the
+    -- best of that key's catalog_products rows. Every product_key mints its own
+    -- pivota_signature_id and therefore its own public PDP, so reading price
+    -- eligibility off the content-grained row publishes a price-less PDP
+    -- whenever a priced SIBLING carries the content_key's state.
+    --
+    -- That is not hypothetical: it put 4 Tom Ford fragrance PDPs on the public
+    -- surface with no price on 2026-07-31, each sharing its content_key with a
+    -- priced tomfordbeauty.com row while its own single offer had list_price,
+    -- merchant_effective_price and estimated_best_price ALL NULL and no
+    -- suppression. index_pipeline_state's has_price was never wrong — it was
+    -- answering about a different row.
+    ` + pricedOfferExistsSql('cp.product_key') + ` AS row_has_priced_offer,
+
+    -- c1.v0.7 canonical-election input. THE grain bridge, and the reason the
+    -- OFFER_PRICE_MISSING gate above is a backstop rather than the fix.
+    --
+    -- content_canonical_election (mig 181) elects ONE pivota_signature_id per
+    -- content_key: the single URL the sitemap advertises and that every sibling
+    -- sig's PDP names in <link rel="canonical">. index_pipeline_state answers
+    -- for the CONTENT, catalog_row_trust answers for the ROW, and this is the
+    -- fact that connects them — without it a non-elected sibling inherits the
+    -- content-grained verdict and gets promoted as though it were canonical.
+    --
+    -- Measured on prod 2026-07-31: 121 of 6,814 trust-public rows are NOT their
+    -- content_key's elected canonical, every one on a multi-row content_key.
+    -- The 4 Tom Ford rows behind OFFER_PRICE_MISSING were 4 of them.
+    --
+    -- TRI-STATE and it must stay that way: TRUE/FALSE when an election exists,
+    -- NULL when it does not. 32 multi-row content_keys still have no election
+    -- and must be left alone, not demoted.
+    (
+      SELECT (cce.canonical_sig_id = cp.pivota_signature_id)
+      FROM content_canonical_election cce
+      WHERE cce.content_key = cp.content_key
+    ) AS row_is_elected_canonical,
+
     COALESCE(eps.id, epm.id)                                     AS eps_id,
     COALESCE(eps.status, epm.status)                             AS eps_status,
     COALESCE(eps.domain, epm.domain)                             AS eps_domain,
     COALESCE(eps.attached_product_key, epm.attached_product_key) AS eps_attached_product_key,
     COALESCE(eps.updated_at, epm.updated_at)                     AS eps_last_seen_at,
+    COALESCE(eps.seed_kind, epm.seed_kind)                       AS eps_seed_kind,
 
     ms.merchant_id    AS ms_merchant_id,
     ms.platform       AS ms_platform,
@@ -253,7 +309,14 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
       sync_status: row.sync_status,
       suppression_reason: row.suppression_reason,
       last_seen_in_sync_at: row.last_seen_in_sync_at,
+      // seed_kind='cross' (retailer-sourced observed seller) must NOT get the
+      // observed-seller public-passthrough exemption; 'self'/null keeps it.
+      seed_kind: row.eps_seed_kind,
     },
+    // c1.v0.5. The lane test is pure row data; only the seed EXISTS needs SQL
+    // (pdp_seed_route_ok above). Tri-state: a row assembled without that column
+    // yields null and leaves the decision exactly as c1.v0.4.
+    pdp_route_resolvable: pdpRouteResolvableFromRow(row),
     identity: row.identity_status ? {
       source_listing_ref: row.pil_source_listing_ref,
       identity_status: row.identity_status,
@@ -264,6 +327,20 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
       product_line_id: row.product_line_id,
       review_family_id: row.review_family_id,
     } : null,
+    // Tri-state, same contract as pdp_route_resolvable above: true = this
+    // product_key has its own unsuppressed priced offer, false = it does not,
+    // null = the caller did not compute it and the gate stays silent. The JOIN
+    // always computes it (EXISTS is never NULL), so null here means a
+    // hand-built test input or an older caller.
+    row_has_priced_offer:
+      row.row_has_priced_offer == null ? null : Boolean(row.row_has_priced_offer),
+    // Tri-state, same contract. true = this row IS its content_key's elected
+    // canonical, false = a sibling holds the canonical URL, null = no election
+    // exists and the gate stays silent. Unlike the two above, null is a NORMAL
+    // production value here — the election table does not cover every
+    // content_key — not just a hand-built-test artifact.
+    row_is_elected_canonical:
+      row.row_is_elected_canonical == null ? null : Boolean(row.row_is_elected_canonical),
     ips: row.serving_eligible != null ? {
       serving_eligible: row.serving_eligible,
       pipeline_stage: row.pipeline_stage,
@@ -376,7 +453,16 @@ async function main() {
   await pool.end();
 }
 
-main().catch((err) => {
-  process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
-  process.exit(1);
-});
+// Exported so tests can assert on the compiled SQL and the row reshape without
+// opening a pool. The main() call is guarded on require.main so `node
+// scripts/backfill-catalog-row-trust.cjs` still runs exactly as before, while
+// `require()` from a test is inert. Without this, replacing the c1.v0.5
+// seed-route EXISTS in PRODUCT_DRIVER_SQL with TRUE was an invisible mutation.
+module.exports = { PRODUCT_DRIVER_SQL, rowToPolicyInputs };
+
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
+    process.exit(1);
+  });
+}

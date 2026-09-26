@@ -352,3 +352,55 @@ test('auroraGeminiGlobalClient direct REST transport preserves JSON config and s
     else delete require.cache[clientModuleId];
   }
 });
+
+test('hasAuroraGeminiApiKey is true on Vertex with no key (ADC via seam)', () => {
+  // The switch: on Vertex the key pool is unused (client authenticates via ADC),
+  // so the availability gate must open with zero pooled keys and no feature key.
+  // Old code returned Boolean(resolveAuroraGeminiKey()) === false here.
+  const clientModuleId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
+  const keyModuleId = require.resolve('../src/auroraBff/auroraGeminiKeys');
+  const gateModuleId = require.resolve('../src/lib/geminiGlobalGate');
+  const origKey = require.cache[keyModuleId];
+  const origGate = require.cache[gateModuleId];
+  const origClient = require.cache[clientModuleId];
+
+  const savedEnv = {};
+  const setEnv = (k, v) => {
+    savedEnv[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  setEnv('VERTEX_AI_ENABLED', 'true');
+  setEnv('GOOGLE_CLOUD_PROJECT', 'proj-vertex-test');
+  setEnv('GOOGLE_CLOUD_LOCATION', 'global');
+  setEnv('GOOGLE_APPLICATION_CREDENTIALS_JSON',
+    JSON.stringify({ type: 'service_account', project_id: 'proj-vertex-test' }));
+  for (const k of ['GEMINI_API_KEY', 'PIVOTA_GEMINI_API_KEY', 'GOOGLE_API_KEY',
+    'AURORA_DIAG_GEMINI_API_KEY']) setEnv(k, undefined);
+
+  require.cache[gateModuleId] = {
+    id: gateModuleId, filename: gateModuleId, loaded: true,
+    exports: { getGeminiGlobalGate: () => ({ snapshot: () => ({ gate: { keyCount: 0 } }) }) },
+  };
+  require.cache[keyModuleId] = {
+    id: keyModuleId, filename: keyModuleId, loaded: true,
+    exports: { resolveAuroraGeminiKey: () => '' },
+  };
+  delete require.cache[clientModuleId];
+
+  try {
+    const vg = require('../src/llm/vertexGemini');
+    vg.resetCredentialsCache && vg.resetCredentialsCache();
+    const { hasAuroraGeminiApiKey } = require('../src/auroraBff/auroraGeminiGlobalClient');
+    assert.equal(hasAuroraGeminiApiKey('AURORA_DIAG_GEMINI_API_KEY'), true);
+  } finally {
+    if (origGate) require.cache[gateModuleId] = origGate; else delete require.cache[gateModuleId];
+    if (origKey) require.cache[keyModuleId] = origKey; else delete require.cache[keyModuleId];
+    if (origClient) require.cache[clientModuleId] = origClient; else delete require.cache[clientModuleId];
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+    const vg = require('../src/llm/vertexGemini');
+    vg.resetCredentialsCache && vg.resetCredentialsCache();
+  }
+});

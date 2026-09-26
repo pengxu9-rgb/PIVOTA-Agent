@@ -4,6 +4,7 @@ const {
   _debug: intentLlmDebug = {},
 } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
+const { isExternalSeedRow } = require('../externalSeedIdentity');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 const { buildClarification } = require('./clarification');
@@ -12,6 +13,8 @@ const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
+  hoistDetectedBrandProducts,
+  reduceBrandOnlyQuery,
 } = require('./brandLexicon');
 const {
   buildBeautyQueryProfile,
@@ -410,11 +413,12 @@ function hasFragranceQuerySignal(rawQuery) {
   return inferFragranceSemanticClass(rawQuery) === 'fragrance';
 }
 
+// Delegates to src/externalSeedIdentity.js, the LEGACY shim — NOT the owner of this question.
+// The owner is src/services/externalSeedLane.js over pdpRenderability's isSeedRoutedLane. Identical semantics for
+// merchant_id and `source`; additionally reads the source aliases and the two further source
+// spellings pdpBuilder already accepted, so this is a widening and never a narrowing.
 function isExternalSeedProduct(product) {
-  if (!product || typeof product !== 'object') return false;
-  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
-  const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
+  return isExternalSeedRow(product);
 }
 
 function normalizeBrandTerms(terms) {
@@ -710,6 +714,20 @@ function resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency, 
       budget_fx_unresolved: false,
     },
   };
+}
+
+// SQL recall needs the same per-native-currency bounds as the final budget
+// gate, before it spends its candidate limit. No second FX table or rates.
+function resolveBudgetConstraintsForRecall(priceConstraint) {
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) return null;
+  const sourceCurrency = normalizePriceCurrencyCode(priceConstraint.currency, '');
+  if (!sourceCurrency) {
+    // Existing policy: an undenominated budget uses each offer's native units.
+    return [{ currency: null, min: priceConstraint.min ?? null, max: priceConstraint.max ?? null }];
+  }
+  const currencies = new Set([sourceCurrency, ...Object.keys(FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES)]);
+  return [...currencies].map(currency => resolveBudgetConstraintForCurrency(priceConstraint, currency).constraint)
+    .filter(Boolean);
 }
 
 function buildBudgetFxMetadata(priceConstraint, products = [], fallbackProducts = []) {
@@ -1454,6 +1472,10 @@ function normalizeSearchSemanticContract(raw) {
       contract.target_step_family || contract.targetStepFamily,
     ),
     primary_role_id: String(contract.primary_role_id || contract.primaryRoleId || '').trim() || null,
+    // The surface token the buyer wrote, when it says more than the family label does.
+    target_step_token:
+      normalizeSemanticQueryLabel(contract.target_step_token || contract.targetStepToken).slice(0, 40)
+      || null,
     support_role_ids: normalizeSemanticStringList(
       contract.support_role_ids || contract.supportRoleIds,
       6,
@@ -1650,6 +1672,91 @@ function normalizeSemanticQueryLabel(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+// Structural tokens that identify a role's POSITION in a plan, not the product being asked for.
+// A role id is an identifier; these tokens are part of the identifier and must never survive into a
+// query string. `cleanser_primary` -> "cleanser primary", and "primary" is 7 characters and not a
+// search stopword, so it becomes a first-class significant token: it kills the phrase arm
+// (`LIKE '%cleanser primary%'` matches no title), zeroes the all-token coverage arm (the AND-chain
+// then requires "%primary%" in the title or brand), raises the token-overlap threshold, and eats one
+// of the six token slots — while paying the full union scan cost.
+// NOTE: 'first' is deliberately NOT here — "first essence" is a real product noun and a real entry in
+// STEP_QUERY_ALIASES.essence, so stripping it would lose a query rather than clean one.
+const SEMANTIC_ROLE_STRUCTURAL_TOKENS = new Set([
+  'primary', 'secondary', 'tertiary', 'support', 'supporting', 'core', 'main', 'slot', 'role', 'rank',
+]);
+
+// The query anchor for a bare step family, when the family token alone is not the noun a shopper (or
+// a product title) would use. MUST stay in sync with STEP_QUERY_ALIASES[step][0] in
+// src/auroraBff/recommendationSharedStack.js — a test asserts the two agree, so drift fails CI rather
+// than silently degrading recall.
+const STEP_FAMILY_QUERY_ANCHORS = Object.freeze({
+  oil: 'face oil',
+  // Makeup families whose CANONICAL name is not a thing a buyer would search for. The invariant this
+  // table serves (tests/reco_recall_honest_queries) is that the search side and the planner side
+  // anchor on the same string; without these four, recall would query the literal 'lip_colour'.
+  face_powder: 'setting powder',
+  primer: 'makeup primer',
+  lip_colour: 'lipstick',
+  eye_colour: 'eyeshadow',
+  // Fragrance belongs here for a slightly different reason than the four above: "fragrance" IS a
+  // word buyers use, but in this catalog it is overwhelmingly a word SKINCARE uses about itself
+  // ("fragrance-free"), so it retrieves the wrong rows. "perfume" is the noun a fragrance product is
+  // actually titled. See the STEP_QUERY_ALIASES.fragrance comment for the measurement.
+  fragrance: 'perfume',
+});
+
+function resolveStepFamilyQueryAnchor(targetStepFamily) {
+  const family = normalizeSemanticStepFamily(targetStepFamily);
+  if (!family) return '';
+  return STEP_FAMILY_QUERY_ANCHORS[family] || family;
+}
+
+// Turn a role id into query TEXT. Strips the structural tokens above, then falls back to the step
+// family's anchor when nothing usable survives (or when the survivor is just the bare family).
+function normalizeSemanticRoleQueryLabel(roleId, targetStepFamily = '') {
+  const label = normalizeSemanticQueryLabel(roleId);
+  const anchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  if (!label) return anchor;
+  const kept = label
+    .split(' ')
+    .filter((token) => token && !SEMANTIC_ROLE_STRUCTURAL_TOKENS.has(token));
+  const stripped = kept.join(' ').trim();
+  if (!stripped) return anchor;
+  // The role id carried no information beyond the family it belongs to -> use the family's anchor.
+  // Anything richer than the bare family token (e.g. "daily sunscreen", "barrier repair moisturizer")
+  // is a real query and is kept verbatim.
+  if (anchor && stripped === normalizeSemanticStepFamily(targetStepFamily)) return anchor;
+  return stripped;
+}
+
+// A "generic anchor" is the bare, undecorated query for a step family. It is the one query in a pack
+// that is guaranteed to be a real product noun, so the substring dedupe must never let a decorated
+// sibling suppress it — nor may it suppress a more specific query in turn.
+// "<qualifier> <family>", skipping the degenerate cases.
+//
+// `${semanticFamily} treatment` produces the literal query "treatment treatment" whenever the
+// semantic family IS the step family -- which is the common case for treatment and serum. It matches
+// no title, and since #2047 the bare-anchor dedupe exemption lets it through instead of collapsing it,
+// so it burns one of only three query slots. Verified on main: a treatment contract packs
+// ["treatment", "treatment treatment", <raw>] and a serum one ["serum", "serum serum", <raw>].
+function buildFamilyQualifiedSemanticQuery(qualifier, family) {
+  const q = normalizeSemanticQueryLabel(qualifier);
+  const f = normalizeSemanticQueryLabel(family);
+  if (!q) return '';
+  if (!f) return q;
+  if (q === f) return '';
+  // Already qualified ("acne treatment"): appending the family again would only repeat it.
+  if (q.split(' ').includes(f)) return q;
+  return `${q} ${f}`;
+}
+
+function isGenericSemanticAnchorLabel(value, targetStepFamily = '') {
+  const normalized = normalizeSemanticQueryLabel(value);
+  if (!normalized) return false;
+  const anchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  return Boolean(anchor) && normalized === anchor;
 }
 
 function normalizeSemanticContractIdentifier(value, fallback = '') {
@@ -2029,12 +2136,29 @@ function buildDeterministicStrictSemanticQueryPack({
 } = {}) {
   const contract = normalizeSearchSemanticContract(semanticContract);
   const out = [];
+  // Labels that anchor this pack: the bare family word, and (below) the buyer's own step token. An
+  // anchor is never suppressed by a decorated sibling, and never suppresses one -- see push().
+  const packAnchors = new Set();
+  const isPackAnchor = (value) =>
+    packAnchors.has(value) || isGenericSemanticAnchorLabel(value, contract?.target_step_family);
   const push = (value) => {
     const normalized = normalizeSemanticQueryLabel(value);
     if (!normalized) return;
-    if (out.some((item) => item === normalized || item.includes(normalized) || normalized.includes(item))) {
-      return;
-    }
+    if (out.includes(normalized)) return;
+    // Substring dedupe, with one exemption. The bare family anchor ("cleanser") and a decorated
+    // sibling ("cleanser sensitive skin") are NOT redundant with each other: the anchor is the only
+    // query guaranteed to hit the phrase / all-token-coverage / title-dominance arms, while the
+    // decorated one carries the caller's constraint. The unexempted rule dropped whichever of the two
+    // arrived second, which is how a junk role label ("cleanser primary") could delete the honest
+    // "cleanser" from the pack entirely.
+    const incomingIsAnchor = isPackAnchor(normalized);
+    const redundant = out.some((item) => {
+      if (!(item.includes(normalized) || normalized.includes(item))) return false;
+      if (incomingIsAnchor) return false;
+      if (isPackAnchor(item)) return false;
+      return true;
+    });
+    if (redundant) return;
     out.push(normalized);
   };
   const pushExactUnique = (value) => {
@@ -2046,7 +2170,12 @@ function buildDeterministicStrictSemanticQueryPack({
 
   const raw = normalizeSemanticQueryLabel(rawQuery);
   const targetStepFamily = normalizeSemanticStepFamily(contract?.target_step_family);
-  const primaryRoleLabel = normalizeSemanticQueryLabel(contract?.primary_role_id);
+  // Role ids are IDENTIFIERS, not query text. `${family}_primary` must never reach the search as
+  // "cleanser primary" — see SEMANTIC_ROLE_STRUCTURAL_TOKENS for what that costs.
+  const primaryRoleLabel = normalizeSemanticRoleQueryLabel(
+    contract?.primary_role_id,
+    targetStepFamily,
+  );
   const semanticFamily = normalizeSemanticQueryLabel(contract?.semantic_family);
   const concernClass =
     normalizeSemanticContractIdentifier(
@@ -2079,11 +2208,11 @@ function buildDeterministicStrictSemanticQueryPack({
       ? (() => {
           if (targetStepFamily === 'treatment') {
             if (concernClass === 'oil_control') {
-              push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+              push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'oil control', 'treatment'));
             } else if (primaryRoleLabel) {
               push(primaryRoleLabel);
             } else if (semanticFamily) {
-              push(`${semanticFamily} treatment`);
+              push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'treatment'));
             } else {
               push('treatment');
             }
@@ -2129,7 +2258,7 @@ function buildDeterministicStrictSemanticQueryPack({
       Number(ambiguityScorePre) >= 0.7 &&
       targetStepFamily
     ) {
-      push(targetStepFamily);
+      push(resolveStepFamilyQueryAnchor(targetStepFamily));
     }
     return out.slice(0, 3);
   }
@@ -2140,6 +2269,28 @@ function buildDeterministicStrictSemanticQueryPack({
       targetStepFamily === 'moisturizer' &&
       (concernClass === 'hydration' || concernClass === 'barrier_repair')
     );
+
+  // TOKEN FIRST, FAMILY SECOND.
+  //
+  // The family label is the widest word in its own vocabulary, and in this catalog "treatment" is
+  // shared with haircare: the $40 exfoliant ask came back with Lador ACV Treatment, Paul Mitchell
+  // Color Depositing Treatment and two more hair products -- every one under the ceiling, none of
+  // them an exfoliant. Leading with what the buyer actually wrote puts the conforming AND relevant
+  // rows in the primary arm (which is also the only arm that carries the price ceiling, per #2057).
+  //
+  // The family anchor is KEPT, immediately after: a token can be over-narrow ("first essence"), and
+  // the second arm is what rescues that. Nothing is removed from the pack.
+  const targetStepToken = normalizeSemanticQueryLabel(contract?.target_step_token);
+  const stepFamilyAnchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  const leadWithStepToken = Boolean(
+    targetStepToken && stepFamilyAnchor && targetStepToken !== stepFamilyAnchor,
+  );
+  if (leadWithStepToken) {
+    // Registered as an anchor BEFORE it is pushed: "exfoliant" and "exfoliant sensitive skin" are not
+    // redundant with each other, exactly as "treatment" and "gentle treatment" are not.
+    packAnchors.add(targetStepToken);
+    pushExactUnique(targetStepToken);
+  }
 
   if (shouldAutoSeedPrimaryRole) {
     push(primaryRoleLabel);
@@ -2179,14 +2330,14 @@ function buildDeterministicStrictSemanticQueryPack({
     pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
     if (concernClass === 'oil_control') {
-      push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'oil control', 'treatment'));
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
         push(`${hypothesis} treatment`);
       }
       if (allowedStepFamilies.includes('serum')) push('oil control serum');
       push(raw);
     } else if (concernClass === 'brightening') {
-      push(primaryRoleLabel || `${semanticFamily || 'brightening'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'brightening', 'treatment'));
       if (ingredientHypotheses.some((value) => value === 'vitamin c')) push('vitamin c treatment');
       if (ingredientHypotheses.some((value) => value === 'tranexamic acid')) push('tranexamic acid treatment');
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
@@ -2194,7 +2345,7 @@ function buildDeterministicStrictSemanticQueryPack({
       }
       push(raw);
     } else if (concernClass === 'acne_urgent') {
-      push(primaryRoleLabel || `${semanticFamily || 'acne'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'acne', 'treatment'));
       push('spot treatment');
       for (const hypothesis of ingredientHypotheses.slice(0, 1)) {
         push(`${hypothesis} treatment`);
@@ -2202,7 +2353,7 @@ function buildDeterministicStrictSemanticQueryPack({
       push(raw);
     } else {
       if (semanticFamily) {
-        push(`${semanticFamily} treatment`);
+        push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'treatment'));
       }
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
         push(`${hypothesis} treatment`);
@@ -2212,7 +2363,7 @@ function buildDeterministicStrictSemanticQueryPack({
     }
   } else if (targetStepFamily === 'serum') {
     if (primaryRoleLabel) push(primaryRoleLabel);
-    if (semanticFamily) push(`${semanticFamily} serum`);
+    if (semanticFamily) push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'serum'));
     for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
       push(`${hypothesis} serum`);
     }
@@ -2237,7 +2388,9 @@ function buildDeterministicStrictSemanticQueryPack({
     }
     push(raw);
   } else if (targetStepFamily) {
-    push(targetStepFamily);
+    // The family ANCHOR, not the bare family token: for "oil" the bare token is a substring of
+    // ordinary words like "oily", which the substring dedupe would then use to delete real queries.
+    push(resolveStepFamilyQueryAnchor(targetStepFamily));
     push(raw);
   } else {
     push(raw);
@@ -2249,7 +2402,7 @@ function buildDeterministicStrictSemanticQueryPack({
     Number(ambiguityScorePre) >= 0.7 &&
     targetStepFamily
   ) {
-    push(targetStepFamily);
+    push(resolveStepFamilyQueryAnchor(targetStepFamily));
   }
 
   return out.slice(0, 3);
@@ -2423,9 +2576,44 @@ function shouldUseSemanticContractQueryOwner(semanticContract = null) {
   return isBeautyDiscoverySemanticContract(semanticContract);
 }
 
+// The semantic owner query REPLACES the user's words with the contract's canonical category phrase.
+// That is the point — it is what grounds a vague beauty request — but it also deleted the one word in
+// the query that no category phrase can carry: the brand. Measured before this preservation, with no
+// database and no network:
+//     "CeraVe cleanser"    -> "daily cleanser"
+//     "CeraVe serum"       -> "serum serum"
+//     "CeraVe moisturizer" -> "lightweight moisturizer face moisturizer"
+// and in production the same shape answered "I am looking for a Murad cleanser" with twelve
+// cleansers from Pixi, Mixsoon and The Ordinary while Murad's own cleansers — which the bare query
+// "Murad" returned seconds earlier — were absent. Makeup categories were unaffected ("NARS blush"
+// survived), which is why this read as a category problem rather than a brand one.
+//
+// So the brand the user typed is carried through the rewrite instead of being replaced by it. Terms
+// are prepended, not appended: the pack's own phrase stays intact behind them, and a query whose
+// first token is the brand is what the bare-brand path already proves works. Token-deduplicated
+// case-insensitively, so "CeraVe serum" + "serum serum" is "CeraVe serum" rather than a stutter.
+function withPreservedQueryTerms(query, preserveTerms = '') {
+  const base = String(query || '').trim();
+  const preserved = String(preserveTerms || '').trim();
+  if (!preserved) return base;
+  if (!base) return preserved;
+  const seen = new Set();
+  const out = [];
+  for (const token of `${preserved} ${base}`.split(/\s+/)) {
+    const key = token.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+  }
+  const joined = out.join(' ').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+}
+
 function buildSemanticOwnerSearchQuery({
   semanticRewriteResult = null,
   fallbackQuery = '',
+  preserveTerms = '',
 } = {}) {
   const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
     ? semanticRewriteResult.normalized_query_pack
@@ -2440,13 +2628,15 @@ function buildSemanticOwnerSearchQuery({
       .slice(0, 3)
       .join(' ')
       .trim();
-    if (joined) return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+    if (joined) return withPreservedQueryTerms(joined, preserveTerms);
   }
   const primaryQuery = normalizedQueryPack
     .map((value) => String(value || '').trim())
     .find(Boolean);
-  if (!primaryQuery) return String(fallbackQuery || '').trim();
-  return primaryQuery.length > 220 ? primaryQuery.slice(0, 220).trim() : primaryQuery;
+  // The fallback is the user's OWN query, so it already carries the brand; preservation is idempotent
+  // there thanks to the dedupe, and running it keeps every return path on one rule.
+  if (!primaryQuery) return withPreservedQueryTerms(String(fallbackQuery || '').trim(), preserveTerms);
+  return withPreservedQueryTerms(primaryQuery, preserveTerms);
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
@@ -3493,6 +3683,21 @@ function getCompatMeta(intent, product) {
   return { critical: true, state: match ? 'ok' : 'incompatible' };
 }
 
+// A product counts as in stock when it explicitly says so (in_stock/available
+// boolean) or carries a real positive count. A null/absent inventory_quantity is
+// "unknown" — never a positive signal on its own, but it must NOT override an
+// explicit in_stock:true. (External-seed in-stock-but-unknown-count products now
+// emit inventory_quantity:null instead of a fabricated 999; coercing that null to
+// 0 would wrongly mark them out of stock.)
+function hasPositiveInStockSignal(product) {
+  if (product?.in_stock === true || product?.available === true) return true;
+  const rawQty =
+    product?.inventory_quantity ?? product?.inventoryQuantity ?? product?.quantity ?? null;
+  if (rawQty == null) return false;
+  const n = Number(rawQty);
+  return Number.isFinite(n) && n > 0;
+}
+
 function evaluateProductForIntent(product, intent, ctx = {}) {
   const rawQuery = String(ctx?.rawQuery || '').trim();
   const target = intent?.target_object?.type || 'unknown';
@@ -3626,10 +3831,7 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
   // ---------- in_stock_only ----------
   const inStockOnly = intent?.hard_constraints?.in_stock_only;
   if (riskLevel !== 'hard_block' && inStockOnly === true) {
-    const qty = Number(
-      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
-    );
-    if (!Number.isFinite(qty) || qty <= 0) {
+    if (!hasPositiveInStockSignal(product)) {
       riskLevel = 'hard_block';
       reasonCodes.add(REASON_CODES.CONSTRAINT_PARTIAL);
     }
@@ -3723,10 +3925,7 @@ function computeProductRelevance(product, intent, evalMeta) {
 
   if (hard.in_stock_only === true) {
     required += 1;
-    const qty = Number(
-      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
-    );
-    if (Number.isFinite(qty) && qty > 0) {
+    if (hasPositiveInStockSignal(product)) {
       satisfied += 1;
     } else {
       reasonCodes.add(REASON_CODES.MISSING_SIZE);
@@ -3932,10 +4131,7 @@ function computeMatchStats(sortedProducts, intent, ctx = {}) {
       else if (tier === 'weak') weakCount += 1;
       else distractorCount += 1;
 
-      const qty = Number(
-        p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0,
-      );
-      if (tier !== 'none' && Number.isFinite(qty) && qty > 0) inStockNonNoneCount += 1;
+      if (tier !== 'none' && hasPositiveInStockSignal(p)) inStockNonNoneCount += 1;
     }
   }
 
@@ -4447,6 +4643,11 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     sessionRecentQueries,
     market: search?.market || payload?.market || metadata?.market,
     source: metadata?.source || search?.source || payload?.source,
+    // Honour a DECLARED step family as a fill-in when the text yields no category prefix. Before this,
+    // the declared family was carried on `search` and then dropped: the prefix was a function of query
+    // text alone, and the reco planner had already replaced that text with its own pack.
+    declaredTargetStepFamily:
+      String(search?.target_step_family || search?.targetStepFamily || '').trim(),
   });
   const latestUserQuery = queryUnderstanding?.effective_query || rawLatestUserQuery;
   const recentQueries =
@@ -4816,33 +5017,36 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   // detectBrandEntities includes the catalog dictionary
   // (GATEWAY_DYNAMIC_BRAND_DETECT), so brands unknown to the NLU are exactly
   // the ones this protects.
-  const brandQueryExpansionBypassed = (() => {
-    if (!brandQueryDetected || !latestUserQuery) return false;
-    const normalizeGuardToken = (token) =>
-      String(token || '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]/gu, '');
-    const brandTokenSet = new Set(
-      brandEntities
-        .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
-        .map(normalizeGuardToken)
-        .filter(Boolean),
-    );
-    if (!brandTokenSet.size) return false;
-    const remainder = String(latestUserQuery)
-      .toLowerCase()
-      .split(/\s+/)
-      .map(normalizeGuardToken)
-      .filter(Boolean)
-      .filter((token) => !brandTokenSet.has(token));
-    return remainder.length === 0;
-  })();
+  //
+  // A brand query in a chat UI is rarely the bare token, and until this reduction the two spellings
+  // were different query classes. Live on agent.pivota.cc 2026-08-31, against a build carrying every
+  // one of #2127-#2135: "Murad" -> 12 Murad products; "Murad products" -> nothing at all;
+  // "show me Murad products" -> one LIZUSH bath bomb, matched on the word "products" in its title.
+  // detectBrandEntities returned brand_like:true for all three (confirmed in prod through
+  // /internal/diag/brand-dict), so the brand was detected every time and then simply not acted on.
+  // When the only non-brand words are filler, reduce the query to the brand tokens the user actually
+  // typed and take the SAME verbatim path the bare query takes. A remainder holding any real token
+  // -- "Murad cleanser" -- is untouched and still expands, because that query asks something the
+  // brand alone does not answer.
+  const brandQueryReduction =
+    brandQueryDetected && latestUserQuery
+      ? reduceBrandOnlyQuery(latestUserQuery, brandEntities)
+      : null;
+  const brandQueryFillerReducedQuery =
+    brandQueryReduction && brandQueryReduction.fillerOnly ? brandQueryReduction.query : null;
+  const brandQueryExpansionBypassed = Boolean(
+    brandQueryReduction && (brandQueryReduction.bare || brandQueryFillerReducedQuery),
+  );
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
     const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
+    // The filler-reduced form REPLACES the query rather than merely skipping expansion: leaving
+    // "show me murad products" verbatim is what returned the bath bomb, and leaving "murad products"
+    // verbatim is what returned nothing.
+    if (brandQueryFillerReducedQuery) return brandQueryFillerReducedQuery;
     if (brandQueryExpansionBypassed) return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
@@ -5139,6 +5343,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ? buildSemanticOwnerSearchQuery({
         semanticRewriteResult,
         fallbackQuery: expandedWithAssociation || latestUserQuery,
+        // The brand tokens AS TYPED. reduceBrandOnlyQuery returns them whatever the remainder looks
+        // like, so this covers "CeraVe cleanser" as well as the filler-only shapes above.
+        preserveTerms: brandQueryReduction ? brandQueryReduction.query : '',
       })
     : expandedWithAssociation;
   const beautyContextRetrievalQuery = buildBeautyContextRetrievalQuery({
@@ -5149,6 +5356,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semanticFamily: effectiveSemanticFamily,
   });
   const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
+  const intentBudgetMaxRaw = intent?.hard_constraints?.price?.max;
+  const intentBudgetMax = intentBudgetMaxRaw == null || intentBudgetMaxRaw === ''
+    ? null
+    : Number(intentBudgetMaxRaw);
+  const effectiveBudgetMax = beautyBudgetMax != null
+    ? beautyBudgetMax
+    : Number.isFinite(intentBudgetMax) && intentBudgetMax >= 0
+      ? intentBudgetMax
+      : null;
   const normalizedSessionRecentQueries = normalizeStringArray(sessionRecentQueries, 5, 80);
 
   const adjustedPayload = {
@@ -5170,14 +5386,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
       ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
       ...(effectiveConcernClass ? { concern_class: effectiveConcernClass } : {}),
-      ...(beautyBudgetMax != null &&
+      ...(effectiveBudgetMax != null &&
       search?.price_max == null &&
       search?.max_price == null &&
       payload?.price_max == null &&
       payload?.max_price == null
         ? {
-            price_max: beautyBudgetMax,
-            max_price: beautyBudgetMax,
+            price_max: effectiveBudgetMax,
+            max_price: effectiveBudgetMax,
           }
         : {}),
       ...(adjustedSemanticContract ? { semantic_contract: adjustedSemanticContract } : {}),
@@ -5235,6 +5451,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
     brand_query_expansion_bypassed: brandQueryExpansionBypassed,
+    brand_query_filler_reduced_to: brandQueryFillerReducedQuery,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
     brand_query_without_category: brandQueryWithoutCategory,
@@ -5841,6 +6058,42 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   } else {
     postQuality.context_fail_open_applied = false;
   }
+
+  // Genuinely the last word on ORDER, and it has to be here rather than up with the other ordering
+  // stages. A first cut sat immediately after the beauty-bucket backstop, which reads like the end of
+  // the pipeline but is not: the context fail-open above replaces `filtered` wholesale with
+  // preDomainFilterCandidates — a snapshot taken ~400 lines earlier — and the clarify path can empty
+  // it. A brand query that lost its page and then recovered would have come back un-scoped, with the
+  // named brand buried among competitors, which is the exact complaint this pass exists to answer.
+  // Placed below every reassignment and above the first read (`after`, computeMatchStats,
+  // setResponseProductList), so no later branch can undo it.
+  //
+  // Still only a reorder, so `after`, the match stats and the response length are all identical to
+  // what they would be without it. (An llm_rerank stage runs further downstream in server.js and
+  // would re-sort this if it ever applied; it reports applied:false on the observed traffic.)
+  //
+  // No brandQueryDetected guard in front of this: brandEntities is only ever populated from that same
+  // detection, so a guard would be an unreachable branch — and hoistDetectedBrandProducts already
+  // refuses on an empty alias list. A mutant that removed the guard left every test green, which is
+  // the tell; the honest fix is to delete the redundancy rather than write a test for a state the
+  // code cannot reach.
+  const brandResultScope = hoistDetectedBrandProducts(filtered, brandEntities);
+  filtered = Array.isArray(brandResultScope.products) ? brandResultScope.products : filtered;
+  pushGateTrace(
+    'brand_result_scope',
+    Boolean(brandResultScope.applied),
+    brandResultScope.applied ? 'reordered' : 'pass',
+    brandEntities.length === 0
+      ? null
+      : brandResultScope.applied
+        ? `hoisted_${brandResultScope.matched}`
+        : brandResultScope.matched > 0
+          ? 'all_on_brand'
+          : 'brand_absent_from_page',
+    5,
+    queryClass,
+  );
+
   after = filtered.length;
 
   let stats = computeMatchStats(filtered, intent, { rawQuery });
@@ -6352,11 +6605,17 @@ module.exports = {
   getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
   BEAUTY_DISCOVERY_CONTRACT_OWNER,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   buildBeautyDiscoverySemanticContract,
   buildBeautyDiscoveryQueryPackFromContract,
+  buildFamilyQualifiedSemanticQuery,
+  normalizeSemanticRoleQueryLabel,
+  resolveStepFamilyQueryAnchor,
+  STEP_FAMILY_QUERY_ANCHORS,
+  SEMANTIC_ROLE_STRUCTURAL_TOKENS,
   isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
   pruneRecentQueries,

@@ -142,9 +142,19 @@ function loadConfig(flags) {
     if (pspMode === 'live' && env('MCP_PAID_LIVE_ACK') !== 'live-charge-approved') {
       throw new UsageError('live --charge requires MCP_PAID_LIVE_ACK=live-charge-approved');
     }
-    if (!config.buyer.customerEmail) throw new UsageError('--charge requires PROBE_CUSTOMER_EMAIL');
     const missing = requiredShippingFields(config.buyer.shippingAddress);
     if (missing.length) throw new UsageError(`--charge requires shipping fields: ${missing.join(', ')}`);
+  }
+  // Required in EVERY mode, not only --charge: create_checkout_session now refuses a cart with no buyer email
+  // at intake, before pricing (the order lane hard-requires one, so a session minted without it could never
+  // be completed anyway). This probe's identity JWT carries no `email` claim, so there is nothing attested to
+  // fall back to — the address has to come from here.
+  if (!config.buyer.customerEmail) throw new UsageError('PROBE_CUSTOMER_EMAIL is required (the checkout door needs a buyer email)');
+  // Same rule for the address: optional, but COMPLETE if supplied. A partial one is refused rather than
+  // priced against a destination order-create would reject.
+  if (config.buyer.shippingAddress) {
+    const missingAddr = requiredShippingFields(config.buyer.shippingAddress);
+    if (missingAddr.length) throw new UsageError(`shipping address must be complete or omitted; missing: ${missingAddr.join(', ')}`);
   }
   return config;
 }
@@ -304,9 +314,11 @@ function amountMinorFromSession(session) {
 }
 
 function createSessionArgs(config) {
+  // NOTE: no `currency` here. QUOTE_SCHEMA does not declare it (the locked quote's currency comes from the
+  // server-side pricing, never from the caller) — it was silently dropped before the declared-schema guard,
+  // and is refused by name since PR #2103. config.currency is still used for the paid-leg amount assertions.
   const quote = {
     merchant_id: config.merchantId,
-    currency: config.currency,
     items: [{
       product_id: config.productId,
       ...(config.variantId ? { variant_id: config.variantId } : {}),

@@ -361,4 +361,28 @@ describe('run_discovery_feed_smoke helpers', () => {
       ),
     ).toThrow(/products_search provider degraded unexpectedly/i);
   });
+
+  test('rejects products_search skipped by an open circuit, like the timeouts that opened it', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [{ merchant_id: 'm1', product_id: 'p1', title: 'Fallback Product' }],
+          metadata: {
+            candidate_source: 'multi_provider',
+            provider_breakdown: [
+              {
+                provider: 'products_search',
+                successful: false,
+                skipped: true,
+                skip_reason: 'circuit_open',
+                failure_reason: 'circuit_open',
+              },
+              { provider: 'external_seeds', successful: true, returned: 1 },
+            ],
+          },
+        },
+        { minProducts: 1, candidateSource: 'multi_provider' },
+      ),
+    ).toThrow(/products_search provider degraded unexpectedly/i);
+  });
 });

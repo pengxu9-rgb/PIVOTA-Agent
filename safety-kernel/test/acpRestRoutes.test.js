@@ -64,7 +64,7 @@ test('ACP route handlers forward captured rawBody for signature verification and
   const createRoute = routes.find((r) => r.method === 'POST' && r.path === '/acp/checkout_sessions');
   assert.ok(createRoute);
 
-  const rawBody = JSON.stringify({ merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] });
+  const rawBody = JSON.stringify({ merchant_id: 'merch_A', buyer: { email: 'route@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] });
   const out = await createRoute.handler({
     headers: {
       timestamp: String(FIXED_NOW),
@@ -73,7 +73,7 @@ test('ACP route handlers forward captured rawBody for signature verification and
       'x-test-buyer': 'buyer_route',
     },
     rawBody: Buffer.from(rawBody),
-    body: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 99, amount: 999999 }] },
+    body: { merchant_id: 'merch_A', buyer: { email: 'route@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 99, amount: 999999 }] },
     params: {},
   });
 

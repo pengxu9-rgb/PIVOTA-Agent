@@ -196,11 +196,157 @@ describe('product search proxy route — mainline contract', () => {
     );
   });
 
+  test('public queryless browse reaches unified v2 recall without a beauty surface or legacy GET bridge', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    let capturedBody = null;
+    const upstreamV2 = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'browse_1',
+              canonical_title: 'Singapore Browse Product',
+              canonical_category: 'beauty',
+              variants: [{ variant_id: 'browse_variant_1', variant_attributes: {} }],
+              offers: [{
+                offer_id: 'offer::external_seed::browse_variant_1',
+                merchant_id: 'external_seed',
+                variant_id: 'browse_variant_1',
+                price: '30.00',
+                currency: 'SGD',
+                availability: { in_stock: true },
+                source_type: 'external_seed',
+                capability_flags: ['catalog_search'],
+              }],
+              provenance: { merchant_id: 'external_seed', source_type: 'external_seed' },
+            },
+          ],
+          total: 1,
+          metadata: { query_source: 'agent_products_search' },
+        };
+      });
+    const { legacyV1, legacyV2Get } = armLegacyGetBridges();
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        market: 'SG',
+        search_all_merchants: 'true',
+        allow_external_seed: 'false',
+        external_seed_strategy: 'legacy',
+        limit: 20,
+        offset: 0,
+        in_stock_only: 'false',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamV2.isDone()).toBe(true);
+    expect(legacyV1.isDone()).toBe(false);
+    expect(legacyV2Get.isDone()).toBe(false);
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        market: 'SG',
+        search_all_merchants: true,
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      }),
+    );
+    expect(capturedBody).not.toHaveProperty('query');
+    expect(capturedBody).not.toHaveProperty('catalog_surface');
+    expect(capturedBody).not.toHaveProperty('commerce_surface');
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({
+      product_id: 'browse_1',
+      title: 'Singapore Browse Product',
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      price: '30.00',
+      currency: 'SGD',
+    }));
+  });
+
+  test('public recall keeps an external referral card that requires a live quote without inventing commerce facts', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    const upstreamV2 = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'external_unverified_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'External Product Requiring Live Quote',
+            destination_url: 'https://merchant.example/products/unverified-1',
+            availability: 'unknown',
+            buyable: false,
+            checkout_ready: false,
+            commerce_verification: {
+              required: true,
+              status: 'live_quote_required',
+              reasons: ['price_currency_mismatch', 'zero_variants'],
+              price_trusted: false,
+              availability_trusted: false,
+            },
+            external_referral_status: {
+              status: 'blocked',
+              gating_policy_version: 'external_referral_v1',
+              blocker_anomaly_types: ['price_currency_mismatch', 'zero_variants'],
+              review_anomaly_types: [],
+            },
+            variants: [],
+          },
+        ],
+        total: 1,
+        metadata: { query_source: 'agent_products_search' },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({ market: 'SG', search_all_merchants: 'true', limit: 20, offset: 0 });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamV2.isDone()).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({
+      product_id: 'external_unverified_1',
+      source: 'external_seed',
+      buyable: false,
+      checkout_ready: false,
+      availability: 'unknown',
+      commerce_verification: expect.objectContaining({
+        required: true,
+        status: 'live_quote_required',
+      }),
+    }));
+    expect(resp.body.products[0]).not.toHaveProperty('price');
+    expect(resp.body.products[0]).not.toHaveProperty('currency');
+    const priceContractBody = app._debug.enforceFindProductsMultiPriceContract(
+      JSON.parse(JSON.stringify(resp.body)),
+    );
+    expect(priceContractBody.products).toHaveLength(1);
+    expect(priceContractBody.metadata?.price_contract).toEqual(expect.objectContaining({
+      dropped_unpriced: 0,
+      verification_required_unpriced_kept: 1,
+    }));
+  });
+
   // Descends from quarantined L703 "v2 primary contract mismatch does not fall back
   // to legacy public search bridge". A 422 contract mismatch on the v2 transport
   // must NOT bridge to the legacy GET route — it returns strict_empty. Pins the
   // no-fallback authoritative shopping contract (normalizeAuthoritativeSearchNoFallbackResponse).
   test('v2 contract mismatch (422) does not bridge to the legacy GET search route', async () => {
+    // Elect upstream for this transport test; neighboring local recall tests keep their primary.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     const queryText = 'sunscreen oily skin';
     const upstreamV2 = nock('http://pivota.test')
       .post('/agent/v2/products/search')

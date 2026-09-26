@@ -8,6 +8,7 @@ const { buildRequestContext } = require('../requestContext');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
+const { isCatalogSearchOwnedChatRequest } = require('../findProductsIntent');
 const { attachBeautyExpertV1ToResponse } = require('../../modules/orchestration/aurora_beauty/beautyExpertV1');
 const { getProfileForIdentity } = require('../memoryStore');
 
@@ -384,7 +385,8 @@ function buildChatSkillFailurePayload({ ctx, body, error, status } = {}) {
         type: 'confidence_notice',
         payload: {
           reason: failureClass,
-          confidence: { score: 0.2, level: 'low', rationale: [failureClass] },
+          // F4: no invented 0.2 — an uncomputed confidence stays null.
+          confidence: { score: null, level: 'low', rationale: [failureClass] },
           details: [text],
           actions: ['retry', 'provide_text_context'],
         },
@@ -1529,7 +1531,8 @@ async function handleChat(req, res) {
   try {
     auth = await resolveRequestIdentity(req, getRoutesInternal());
     body = isPlainObject(req.body) ? req.body : {};
-    const proxyEligible = shouldProxyFrameworkRecoToV1Mainline(body, auth.internal);
+    const catalogSearchOwned = isCatalogSearchOwnedChatRequest(body);
+    const proxyEligible = !catalogSearchOwned && shouldProxyFrameworkRecoToV1Mainline(body, auth.internal);
     const proxyAvailable = canProxyRecoToV1Mainline();
     setResponseHeader(res, 'x-aurora-chat-handler', 'skill_router_v2');
     setResponseHeader(res, 'x-aurora-reco-proxy-eligible', String(proxyEligible));
@@ -1610,8 +1613,10 @@ async function handleChat(req, res) {
     } catch (_error) {
       promptMeta = null;
     }
-    const persistedRoutineFollowupProfile = await loadPersistedProfileForRoutineAnalysisFollowup({ auth, body });
-    const productFitFollowup = buildBeautyProductFitFollowupSkillResponse(req);
+    const persistedRoutineFollowupProfile = catalogSearchOwned
+      ? null
+      : await loadPersistedProfileForRoutineAnalysisFollowup({ auth, body });
+    const productFitFollowup = catalogSearchOwned ? null : buildBeautyProductFitFollowupSkillResponse(req);
     if (productFitFollowup) {
       const responsePayload = mergePromptMeta(
         applyRolloutMeta(
@@ -1629,7 +1634,7 @@ async function handleChat(req, res) {
       res.json(responsePayload);
       return;
     }
-    const lowBudgetRoutineFollowup = buildBeautyLowBudgetRoutineSkillResponse(req);
+    const lowBudgetRoutineFollowup = catalogSearchOwned ? null : buildBeautyLowBudgetRoutineSkillResponse(req);
     if (lowBudgetRoutineFollowup) {
       const responsePayload = mergePromptMeta(
         applyRolloutMeta(
@@ -1647,9 +1652,11 @@ async function handleChat(req, res) {
       res.json(responsePayload);
       return;
     }
-    const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req, {
-      persistedProfile: persistedRoutineFollowupProfile,
-    });
+    const routineAnalysisFollowup = catalogSearchOwned
+      ? null
+      : buildRoutineAnalysisPriorityFollowupSkillResponse(req, {
+          persistedProfile: persistedRoutineFollowupProfile,
+        });
     if (routineAnalysisFollowup) {
       const responsePayload = mergePromptMeta(
         applyRolloutMeta(
@@ -2164,7 +2171,8 @@ async function handleChatStream(req, res) {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
     const internal = auth.internal;
-    if (shouldProxyFrameworkRecoToV1Mainline(body, internal) && canProxyRecoToV1Mainline()) {
+    const catalogSearchOwned = isCatalogSearchOwnedChatRequest(body);
+    if (!catalogSearchOwned && shouldProxyFrameworkRecoToV1Mainline(body, internal) && canProxyRecoToV1Mainline()) {
       sendEvent('thinking', {
         step: 'routing_framework_mainline',
         message: 'Preparing framework-first recommendations...',
@@ -2182,7 +2190,9 @@ async function handleChatStream(req, res) {
       sendEvent('done', {});
       return;
     }
-    const followupResolution = resolveAnalysisFollowupActionId(req, internal);
+    const followupResolution = catalogSearchOwned
+      ? { actionId: null, routingMode: null }
+      : resolveAnalysisFollowupActionId(req, internal);
     const analysisFollowupActionId = followupResolution.actionId;
     if (analysisFollowupActionId) {
       sendEvent('thinking', { step: 'routing', message: 'Preparing follow-up analysis...' });
@@ -2458,4 +2468,10 @@ module.exports = {
   __getAuroraV1MainlineProxyTimeoutMsForTests() {
     return getAuroraV1MainlineProxyTimeoutMs();
   },
+  isCatalogSearchOwnedChatRequest,
+  // Exposed so the ownership policy's copy of this spelling list can be pinned against THIS one. Three copies
+  // of `normalizeIncomingChatAction`'s action-id precedence exist (here, routes.js, recoOwnershipPolicy); the
+  // policy's was silently missing `id`/`type`, which made its routing gate inert for the shape the frontend
+  // actually sends. Asserting the equivalence is what stops them drifting apart again.
+  __normalizeIncomingChatActionForTests: normalizeIncomingChatAction,
 };

@@ -1,0 +1,470 @@
+jest.mock('../../src/db', () => ({
+  query: jest.fn(async () => ({ rows: [], rowCount: 0 })),
+  closePool: jest.fn(async () => {}),
+}));
+
+const db = require('../../src/db');
+
+const {
+  CONFIRM_TOKEN,
+  DEFAULT_BATCH_SIZE,
+  ALIAS_BUNDLE_PATHS,
+  RECALL_DOC_FIELD_ORDER,
+  assertWriteConfirmed,
+  buildRecallDocProjection,
+  buildDriftPredicateSql,
+  normalizeAvailability,
+  textOf,
+  fetchDriftMetric,
+  fetchOrphanedMirrorMetric,
+  fetchDriftedBatch,
+  landBatch,
+  reconcile,
+} = require('../../scripts/reconcile-catalog-recall-doc.cjs');
+
+const gapScope = require('../fixtures/adr020_phase1_gap_scope.json');
+
+function fixtureSeedRow() {
+  return {
+    product_key: 'prod::external_seed::external_seed::ext_fixture1',
+    seed_id: 'ext_fixture1',
+    title: 'Ginseng Cleansing Oil',
+    domain: 'beautyofjoseon.com',
+    canonical_url: 'https://beautyofjoseon.com/products/ginseng-cleansing-oil',
+    destination_url: 'https://beautyofjoseon.com/products/ginseng-cleansing-oil?ref=x',
+    market: 'us',
+    tool: 'beauty',
+    availability: 'In Stock',
+    seed_data: {
+      brand: 'Beauty of Joseon',
+      derived: {
+        recall: {
+          retrieval_title: 'Beauty of Joseon Ginseng Cleansing Oil',
+          retrieval_summary: 'Lightweight cleansing oil with ginseng seed oil',
+          retrieval_body: 'Dissolves sunscreen and makeup without stripping',
+          brand: 'Beauty of Joseon',
+          category: 'cleansing oil',
+          ingredient_tokens: 'ginseng-seed-oil soybean-oil',
+          alias_tokens: 'boj cleansing oil',
+        },
+      },
+      snapshot: {
+        availability: 'OutOfStock',
+        product: {
+          search_aliases: ['ginseng oil cleanser', 'BOJ oil'],
+        },
+        aliases: 'joseon ginseng oil',
+      },
+    },
+  };
+}
+
+describe('buildRecallDocProjection (pure doc builder)', () => {
+  test('projects every seed-lane searchable field into a lowercased line-per-field doc', () => {
+    const projection = buildRecallDocProjection(fixtureSeedRow());
+
+    expect(projection.recall_doc).toBe(projection.recall_doc.toLowerCase());
+
+    const lines = projection.recall_doc.split('\n');
+    // One line per field, in migration-057 arm order.
+    expect(lines).toHaveLength(RECALL_DOC_FIELD_ORDER.length);
+    expect(lines[RECALL_DOC_FIELD_ORDER.indexOf('title')]).toBe('ginseng cleansing oil');
+    expect(lines[RECALL_DOC_FIELD_ORDER.indexOf('domain')]).toBe('beautyofjoseon.com');
+
+    // urls
+    expect(projection.recall_doc).toContain('https://beautyofjoseon.com/products/ginseng-cleansing-oil');
+    expect(projection.recall_doc).toContain('?ref=x');
+    // derived.recall retrieval fields
+    expect(projection.recall_doc).toContain('lightweight cleansing oil with ginseng seed oil');
+    expect(projection.recall_doc).toContain('dissolves sunscreen and makeup without stripping');
+    // brand + category chains
+    expect(projection.recall_doc).toContain('beauty of joseon');
+    expect(projection.recall_doc).toContain('cleansing oil');
+    // ingredient tokens
+    expect(projection.recall_doc).toContain('ginseng-seed-oil soybean-oil');
+    // alias bundle: top-level alias_tokens, nested snapshot.product array items,
+    // and snapshot string alias all land on the alias line
+    const aliasLine = lines[RECALL_DOC_FIELD_ORDER.indexOf('alias_bundle')];
+    expect(aliasLine).toContain('boj cleansing oil');
+    expect(aliasLine).toContain('ginseng oil cleanser');
+    expect(aliasLine).toContain('boj oil');
+    expect(aliasLine).toContain('joseon ginseng oil');
+  });
+
+  test('maps market, tool, and availability scoping', () => {
+    const projection = buildRecallDocProjection(fixtureSeedRow());
+    expect(projection.recall_market).toBe('US');
+    expect(projection.recall_tool).toBe('beauty');
+    expect(projection.recall_availability).toBe('in_stock');
+  });
+
+  test('falls back through seed_data/snapshot for availability when the column is empty', () => {
+    const row = fixtureSeedRow();
+    row.availability = null;
+    // seed_data.availability absent -> snapshot.availability used
+    expect(buildRecallDocProjection(row).recall_availability).toBe('out_of_stock');
+
+    row.seed_data.availability = 'Available';
+    expect(buildRecallDocProjection(row).recall_availability).toBe('in_stock');
+  });
+
+  test('is null-safe on missing or malformed seed_data', () => {
+    expect(() => buildRecallDocProjection(null)).not.toThrow();
+    expect(() => buildRecallDocProjection({})).not.toThrow();
+
+    const minimal = buildRecallDocProjection({
+      title: 'Bare Title',
+      domain: 'example.com',
+      seed_data: null,
+    });
+    expect(minimal.recall_doc).toContain('bare title');
+    expect(minimal.recall_doc).toContain('example.com');
+    expect(minimal.recall_doc.split('\n')).toHaveLength(RECALL_DOC_FIELD_ORDER.length);
+    expect(minimal.recall_market).toBeNull();
+    expect(minimal.recall_tool).toBeNull();
+    expect(minimal.recall_availability).toBeNull();
+
+    const garbage = buildRecallDocProjection({ seed_data: 'not-json{{{', market: 'jp' });
+    expect(garbage.recall_market).toBe('JP');
+    expect(garbage.recall_doc.split('\n')).toHaveLength(RECALL_DOC_FIELD_ORDER.length);
+  });
+
+  test('accepts seed_data delivered as a JSON string', () => {
+    const row = fixtureSeedRow();
+    row.seed_data = JSON.stringify(row.seed_data);
+    row.availability = null; // exercise snapshot fallback through the parsed string
+    const projection = buildRecallDocProjection(row);
+    expect(projection.recall_doc).toContain('boj cleansing oil');
+    expect(projection.recall_availability).toBe('out_of_stock');
+  });
+
+  test('alias bundle covers all 13 seed-lane alias paths', () => {
+    expect(ALIAS_BUNDLE_PATHS).toHaveLength(13);
+    const joined = ALIAS_BUNDLE_PATHS.map((p) => p.join('.'));
+    expect(joined).toContain('derived.recall.alias_tokens');
+    expect(joined).toContain('snapshot.product.search_aliases');
+    expect(joined).toContain('snapshot.product.searchAliases');
+    expect(joined).toContain('snapshot.product.aliases');
+  });
+});
+
+describe('textOf / normalizeAvailability helpers', () => {
+  test('textOf flattens arrays and tolerates odd shapes', () => {
+    expect(textOf(['a', ['b', 'c'], null, 'd'])).toBe('a b c d');
+    expect(textOf('plain')).toBe('plain');
+    expect(textOf(42)).toBe('42');
+    expect(textOf(null)).toBe('');
+    expect(textOf({ k: 'v' })).toBe('{"k":"v"}');
+  });
+
+  test('normalizeAvailability mirrors normalizeSeedAvailability', () => {
+    expect(normalizeAvailability('In Stock')).toBe('in_stock');
+    expect(normalizeAvailability('instock')).toBe('in_stock');
+    expect(normalizeAvailability('OOS')).toBe('out_of_stock');
+    expect(normalizeAvailability('preorder')).toBe('preorder');
+    expect(normalizeAvailability('')).toBeNull();
+    expect(normalizeAvailability(undefined)).toBeNull();
+  });
+});
+
+describe('drift predicate SQL builder', () => {
+  test('flags never-projected and stale rows against the seed clock', () => {
+    const sql = buildDriftPredicateSql('cp', 'eps');
+    expect(sql).toContain('cp.recall_doc IS NULL');
+    expect(sql).toContain('cp.recall_doc_updated_at IS NULL');
+    expect(sql).toContain('cp.recall_doc_updated_at < eps.updated_at');
+  });
+
+  test('respects custom aliases', () => {
+    const sql = buildDriftPredicateSql('p', 's');
+    expect(sql).toContain('p.recall_doc IS NULL');
+    expect(sql).toContain('p.recall_doc_updated_at < s.updated_at');
+  });
+});
+
+describe('landBatch convergence stamp', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+  });
+
+  test('stamps recall_doc_updated_at from the seed clock observed at select time, never now()', async () => {
+    db.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    const seedTs = new Date('2026-07-30T01:02:03Z');
+    const landed = await landBatch([
+      {
+        product_key: 'prod::external_seed::external_seed::ext_a',
+        seed_updated_at: seedTs,
+        projection: {
+          recall_doc: 'doc a',
+          recall_market: 'US',
+          recall_tool: 'beauty',
+          recall_availability: 'in_stock',
+        },
+      },
+      {
+        product_key: 'prod::external_seed::external_seed::ext_b',
+        seed_updated_at: null, // seed with no clock -> COALESCE(now()) in SQL
+        projection: {
+          recall_doc: 'doc b',
+          recall_market: null,
+          recall_tool: null,
+          recall_availability: null,
+        },
+      },
+    ]);
+
+    expect(landed).toBe(1);
+    expect(db.query).toHaveBeenCalledTimes(1);
+    const [sql, params] = db.query.mock.calls[0];
+
+    // The stamp must come from the observed seed clock so a seed updated
+    // between SELECT and UPDATE stays drift-flagged (convergence guarantee).
+    expect(sql).toContain('recall_doc_updated_at = COALESCE(d.seed_updated_at, now())');
+    expect(sql).not.toMatch(/recall_doc_updated_at\s*=\s*now\(\)/);
+    expect(sql).toContain('unnest($6::timestamptz[]) AS seed_updated_at');
+
+    expect(params).toHaveLength(6);
+    expect(params[5]).toEqual([seedTs, null]);
+  });
+
+  test('lands nothing without touching the db when the batch is empty', async () => {
+    await expect(landBatch([])).resolves.toBe(0);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('script conventions', () => {
+  test('write path is gated behind an explicit confirm token', () => {
+    expect(CONFIRM_TOKEN).toBe('RECONCILE_CATALOG_RECALL_DOC_PROJECTION');
+    expect(DEFAULT_BATCH_SIZE).toBe(200);
+  });
+});
+
+describe('reconcile() write confirm gate', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+    db.query.mockResolvedValue({ rows: [], rowCount: 0 });
+  });
+
+  test('write intent without the confirm token throws before any db access', async () => {
+    await expect(reconcile({ write: true, batchSize: 5, maxRows: 5 })).rejects.toThrow(
+      `Refusing write without --confirm ${CONFIRM_TOKEN}`,
+    );
+    await expect(
+      reconcile({ write: true, confirm: 'WRONG_TOKEN', batchSize: 5, maxRows: 5 }),
+    ).rejects.toThrow(`--confirm ${CONFIRM_TOKEN}`);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  test('proceeds when --write carries the exact confirm token', async () => {
+    const result = await reconcile({
+      write: true,
+      confirm: CONFIRM_TOKEN,
+      batchSize: 5,
+      maxRows: 5,
+    });
+    expect(result.counters.rows_scanned).toBe(0);
+    expect(result.counters.updates_landed).toBe(0);
+    expect(db.query).toHaveBeenCalled(); // reached the batch fetch past the gate
+  });
+
+  test('dry-run needs no token and never writes', async () => {
+    const result = await reconcile({ write: false, batchSize: 5, maxRows: 5 });
+    expect(result.counters.updates_landed).toBe(0);
+    // Only the drifted-batch SELECT ran; no UPDATE landed.
+    for (const [sql] of db.query.mock.calls) {
+      expect(sql).not.toContain('UPDATE catalog_products');
+    }
+  });
+
+  test('assertWriteConfirmed is the shared gate', () => {
+    expect(() => assertWriteConfirmed({ write: true })).toThrow(/Refusing write/);
+    expect(() => assertWriteConfirmed({ write: true, confirm: CONFIRM_TOKEN })).not.toThrow();
+    expect(() => assertWriteConfirmed({ write: false })).not.toThrow();
+  });
+});
+
+describe('seed clock precision round-trip', () => {
+  test('batch SELECT reads eps.updated_at::text so microseconds survive the JS Date round-trip', async () => {
+    // Regression: node-pg parses bare timestamptz into a ms-precision JS Date;
+    // stamping that back left recall_doc_updated_at up to 999µs behind
+    // eps.updated_at, re-flagging every row forever (prod 2026-07-31:
+    // 10,579/10,579 "stale", max_staleness 999µs).
+    db.query.mockClear();
+    await fetchDriftedBatch({ batchSize: 5, offset: 0 });
+    const sql = db.query.mock.calls[0][0];
+    expect(sql).toContain('eps.updated_at::text AS seed_updated_at');
+    expect(sql).not.toMatch(/eps\.updated_at AS seed_updated_at/);
+  });
+});
+
+describe('orphaned mirror metric', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+  });
+
+  test('counts external_referral rows with no ACTIVE attached seed, split by live sync_status', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{ orphaned_mirror_count: 1963, orphaned_mirror_live_count: 1925 }],
+    });
+    await expect(fetchOrphanedMirrorMetric()).resolves.toEqual({
+      orphaned_mirror_count: 1963,
+      orphaned_mirror_live_count: 1925,
+    });
+
+    const sql = db.query.mock.calls[0][0];
+    // Anti-join over the same back-pointer the reconciler projects through:
+    // a row only counts as orphaned when no active seed carries its key.
+    expect(sql).toContain('NOT EXISTS');
+    expect(sql).toContain('eps.attached_product_key = cp.product_key');
+    expect(sql).toContain(`eps.status = 'active'`);
+    expect(sql).toContain(`cp.catalog_track = 'external_referral'`);
+    expect(sql).toContain(`cp.sync_status = 'live'`);
+  });
+
+  test('is null-safe on an empty result', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    await expect(fetchOrphanedMirrorMetric()).resolves.toEqual({
+      orphaned_mirror_count: 0,
+      orphaned_mirror_live_count: 0,
+    });
+  });
+
+  test('fetchDriftMetric folds the orphan counters into the drift report', async () => {
+    // Orphans sit outside the attached-seed lateral join, so drift_total can
+    // read 0 while unprojectable rows exist — the folded counters make the
+    // --drift-only report surface that class (prod 2026-07-31: 3 gap-scope
+    // acceptance products were orphaned while drift_total showed 0).
+    db.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attached_rows_total: 10579,
+            recall_doc_null: 0,
+            recall_doc_stale: 0,
+            drift_total: 0,
+            max_staleness: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ orphaned_mirror_count: 1963, orphaned_mirror_live_count: 1925 }],
+      });
+
+    const metric = await fetchDriftMetric();
+    expect(metric).toEqual({
+      attached_rows_total: 10579,
+      recall_doc_null: 0,
+      recall_doc_stale: 0,
+      drift_total: 0,
+      converged_pct: 100,
+      max_staleness: null,
+      orphaned_mirror_count: 1963,
+      orphaned_mirror_live_count: 1925,
+    });
+  });
+});
+
+describe('phase 1 acceptance corpus fixture', () => {
+  // Re-baselined 2026-08-07. The previous fixture asserted "15 gap queries / 71
+  // unique products" straight off a raw parity diff over a generic
+  // multi-category corpus — no relevance judgement, so seed-lane substring
+  // noise ("black leather sneakers" -> Ombré *Leather* Eau de Parfum) was
+  // pinned as recall the projection must close.
+  const { judgeProduct, GRADE } = require('../../scripts/lib/adr020_recall_relevance.cjs');
+
+  test('is built from the in-domain corpus and a named relevance rubric', () => {
+    expect(gapScope.corpus).toBe('tests/fixtures/adr020_phase1_recall_corpus.jsonl');
+    expect(gapScope.rubric).toBe('scripts/lib/adr020_recall_relevance.cjs');
+    expect(gapScope.source).toContain('audit-recall-lane-parity.cjs');
+    // The re-baseline records what it replaced, so the old target cannot be
+    // silently reinstated.
+    expect(gapScope.supersedes.fixture_generated_at).toBe('2026-07-30T11:36:39.299Z');
+  });
+
+  test('a gap requires BOTH a relevance judgement and a catalog-lane deficit', () => {
+    expect(gapScope.method.gap_definition).toMatch(/RELEVANT/);
+    expect(gapScope.method.gap_definition).toMatch(/FEWER RELEVANT ANSWERS/);
+    expect(gapScope.method.both_lanes_judged).toBe(true);
+  });
+
+  test('every acceptance-target product is independently graded RELEVANT', () => {
+    // The property the old fixture violated: nothing irrelevant may be an
+    // acceptance target. Re-judged here from the rubric rather than trusting
+    // the grade the builder wrote into the fixture.
+    const targets = gapScope.queries.filter((q) => q.acceptance_target);
+    expect(targets.length).toBe(gapScope.summary.gap_query_count);
+    for (const q of targets) {
+      expect(q.relevance_deficit).toBeGreaterThan(0);
+      for (const p of q.true_gaps) {
+        const judged = judgeProduct(q.query, p);
+        expect({ q: q.query, t: p.title, g: judged.grade }).toEqual({
+          q: q.query,
+          t: p.title,
+          g: GRADE.RELEVANT,
+        });
+      }
+    }
+  });
+
+  test('queries where the catalog lane is already as good carry no acceptance targets', () => {
+    for (const q of gapScope.queries) {
+      if (q.acceptance_target) continue;
+      expect(q.true_gaps).toEqual([]);
+      expect(q.catalog_relevant_avg).toBeGreaterThanOrEqual(q.seed_relevant_avg);
+    }
+  });
+
+  test('the products the old parity diff would have pinned are retained and rejected', () => {
+    // Kept in-fixture so the re-baseline is auditable rather than asserted.
+    expect(gapScope.summary.products_rejected_by_relevance).toBeGreaterThan(0);
+    for (const q of gapScope.queries) {
+      for (const p of q.rejected_by_relevance) {
+        expect(p.grade).toBeLessThan(GRADE.RELEVANT);
+      }
+    }
+  });
+
+  test('the fixture is re-derivable from the checked-in rubric', () => {
+    // The fixture drifted from the rubric once already: a rubric commit landed
+    // and the fixture kept the pre-commit grades, so the report's headline
+    // (75.0% catalog precision) was one edit stale and nothing failed. This
+    // re-judges every stored product from the rubric at HEAD.
+    let checked = 0;
+    for (const q of gapScope.queries) {
+      for (const p of [
+        ...(q.true_gaps || []),
+        ...(q.rejected_by_relevance || []),
+        ...(q.catalog_returns_last_clean_pass || []),
+      ]) {
+        if (p.grade == null) continue;
+        const rejudged = judgeProduct(q.query, p);
+        expect({ q: q.query, t: p.title, stored: p.grade }).toEqual({
+          q: q.query,
+          t: p.title,
+          stored: rejudged.grade,
+        });
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  test('records the catalog lane too, so the precision headline is auditable', () => {
+    // Earlier fixtures stored seed-lane titles only. The catalog-precision
+    // figure is the report's headline and was uncheckable from the repo,
+    // because the raw parity passes live in a scratchpad, not in git.
+    const withCatalog = gapScope.queries.filter(
+      (q) => (q.catalog_returns_last_clean_pass || []).length > 0,
+    );
+    expect(withCatalog.length).toBeGreaterThan(15);
+    expect(gapScope.summary.lane_precision.catalog_relevant_distinct_brands_total)
+      .toBeGreaterThan(0);
+  });
+
+  test('scopes the corpus to the beauty domain the catalog actually stocks', () => {
+    for (const q of gapScope.queries) {
+      expect(q.bucket).toMatch(/^(skincare|makeup|fragrance)/);
+    }
+  });
+});

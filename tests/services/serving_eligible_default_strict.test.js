@@ -73,6 +73,26 @@ describe('serving eligibility default-strict behavior', () => {
     };
 
     expect(shouldAllowPublishedPdpMissingQualitySnapshot(staleMissingSnapshot)).toBe(true);
+
+    // BOTH backend spellings of "never scored" must open this branch.
+    // pivota-backend #1758 renames the NULL-score blocker from `low_quality` to
+    // `not_scored`; this override exists for exactly those rows, so a version
+    // that accepted only the old code would hard-block every published,
+    // seed-matched, unscored PDP the moment that backend deployed — and the UI
+    // filters `serving_eligible !== true` out of browse entirely. Asserting
+    // only the old spelling is what would let that regression ship green.
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      blocker_code: 'not_scored',
+      blocker_detail:
+        'no quality snapshot found (content_quality_score is null) — never scored, not scored below the bar',
+    })).toBe(true);
+
+    // The widening is exactly two codes, not "any blocker with that detail".
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      blocker_code: 'short_description',
+    })).toBe(false);
     expect(shouldAllowPublishedPdpMissingQualitySnapshot({
       ...staleMissingSnapshot,
       blocker_code: 'missing_price',
@@ -137,37 +157,6 @@ describe('serving eligibility default-strict behavior', () => {
     const sql = String(query.mock.calls[0][0] || '');
     expect(sql).toMatch(/FROM catalog_products cp/i);
     expectServingEligibleJoin(sql, 'cp');
-  });
-
-  test('direct external-seed retrieval gates seeds through eligible catalog products', async () => {
-    const { retrieveExternalSeedDirectCandidates } = require('../../src/findProductsExternalSeedDirectRetrieval');
-    const query = jest.fn(async () => ({ rows: [] }));
-
-    await retrieveExternalSeedDirectCandidates({
-      retrievalQueries: ['lipstick'],
-      relevanceQueryText: 'lipstick',
-      deps: {
-        resolveGuidanceDirectExternalSeedRetrievalBudget: () => ({
-          per_variant_limit: 5,
-          raw_product_cap: 5,
-        }),
-        shouldRunExternalSeedExactTitleRecall: () => false,
-        queryExternalSeedExactTitleRows: jest.fn(),
-        normalizeExactTitleLookupText: (value) => String(value || '').trim().toLowerCase(),
-        compactExactTitleLookupText: (value) => String(value || '').replace(/\s+/g, ''),
-        buildExternalSeedProduct: () => null,
-        buildSearchProductKey: () => '',
-        normalizeSearchTextForMatch: (value) => String(value || '').trim().toLowerCase(),
-        extractSearchAnchorTokens: () => ['lipstick'],
-        tokenizeSearchTextForMatch: (value) => String(value || '').split(/\s+/).filter(Boolean),
-        query,
-      },
-    });
-
-    const sql = String(query.mock.calls[0][0] || '');
-    expect(sql).toMatch(/FROM external_product_seeds/i);
-    expect(sql).toMatch(/FROM catalog_products cp/i);
-    expectRowTrustServingJoin(sql, 'cp');
   });
 
   test('brand external-seed fastpath gates exact and broad queries through eligible catalog products', async () => {

@@ -264,7 +264,11 @@ function mapRawProductToToolProduct(raw) {
 
   const price = Number(raw?.price ?? raw?.price_amount ?? raw?.priceAmount ?? null);
   const currency = raw?.currency || null;
-  const inventory = Number(raw?.inventory_quantity ?? raw?.inventoryQuantity ?? raw?.quantity ?? null);
+  // Preserve a genuine "unknown count" (null/undefined) instead of coercing it to
+  // 0 via Number(null): downstream isInStock() treats null as in-stock but 0 as
+  // out-of-stock, so an in-stock-but-unknown-count product must stay null here.
+  const rawInventory = raw?.inventory_quantity ?? raw?.inventoryQuantity ?? raw?.quantity ?? null;
+  const inventory = rawInventory == null ? null : Number(rawInventory);
 
   return {
     raw,

@@ -1,7 +1,6 @@
 const { OutcomeEventV0Schema } = require('./schemas/outcomeEventV0');
 const { ingestOutcomeEventV0 } = require('./outcomeStore');
 const { requireMarketEnabled } = require('../markets/market');
-const { mountLookReplicatorEventRoutes } = require('./lookReplicatorEvents');
 const { mountUiEventRoutes } = require('./uiEvents');
 
 function mountOutcomeTelemetryRoutes(app, { logger } = {}) {
@@ -30,6 +29,5 @@ function mountOutcomeTelemetryRoutes(app, { logger } = {}) {
 
 module.exports = {
   mountOutcomeTelemetryRoutes,
-  mountLookReplicatorEventRoutes,
   mountUiEventRoutes,
 };

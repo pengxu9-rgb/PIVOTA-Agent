@@ -19,6 +19,7 @@ const {
   resolveCanonicalCatalogEntityGroup,
 } = require('./catalogEntityResolution');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { isExternalSeedLaneProduct } = require('./externalSeedLane');
 const {
   summarizePdpPayloadContract,
 } = require('./pdpIdentityPayloadDrift');
@@ -80,6 +81,58 @@ const PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS = Math.max(
 );
 const liveSyntheticPdpCache = new Map();
 const liveSyntheticPdpInflight = new Map();
+// Budget for a live synthetic-PDP read.
+//
+// The in-flight map hands its stored promise to every concurrent caller for the
+// same key and evicts it only when that promise settles. A read that never
+// settles is therefore never evicted, and the key stays poisoned for the life
+// of the process — the failure mode that made three sitemap PDPs return zero
+// bytes indefinitely (see resolveCatalogProductRefFromPivotaSignature in
+// src/server.js). Bounding the promise BEFORE it is stored is what makes the
+// map self-healing.
+//
+// Resolves to null on timeout rather than rejecting: every other failure in
+// this path already degrades to null (see the .catch at the call site), and a
+// live-read miss is meant to fall back, not to fail the PDP.
+const LIVE_SYNTHETIC_PDP_BUDGET_MS = readTimeoutMsEnv(
+  'PDP_IDENTITY_GRAPH_LIVE_READ_BUDGET_MS',
+  15000,
+  { min: 250, max: 120000 },
+);
+// Defense in depth: even with a budget, cap the map so a burst of distinct keys
+// cannot grow it without bound.
+const LIVE_SYNTHETIC_PDP_INFLIGHT_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PDP_IDENTITY_GRAPH_LIVE_INFLIGHT_MAX_ENTRIES || 300) || 300,
+);
+
+function withLiveSyntheticPdpBudget(promise, cacheKey) {
+  const ms = LIVE_SYNTHETIC_PDP_BUDGET_MS;
+  if (!ms) return promise;
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn(
+          { cache_key: cacheKey, budget_ms: ms },
+          'PDP identity graph live read exceeded budget; degrading to null',
+        );
+        resolve(null);
+      }, ms);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function trimLiveSyntheticPdpInflight() {
+  while (liveSyntheticPdpInflight.size >= LIVE_SYNTHETIC_PDP_INFLIGHT_MAX_ENTRIES) {
+    const firstKey = liveSyntheticPdpInflight.keys().next().value;
+    if (firstKey === undefined) break;
+    liveSyntheticPdpInflight.delete(firstKey);
+  }
+}
 
 const SAVINGS_PRESENTATION_FIELDS = Object.freeze([
   'payment_offer_evidence',
@@ -210,9 +263,9 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
       FROM external_product_seeds eps
       JOIN catalog_products cp
         -- ADR-009: match the external-seed mirror row by platform +
-        -- source_system + source_product_id, NOT the legacy
-        -- merchant_id='external_seed' bucket. External seeds now mirror under
-        -- per-brand observed sellers (merch_obs_…), so the old merchant_id
+        -- source_system + source_product_id, NOT the legacy shared seller
+        -- bucket (the retired sentinel merchant). External seeds now mirror
+        -- under per-brand observed sellers (merch_obs_…), so the old seller
         -- conjunct excluded every served merch_obs_ seed from its own identity
         -- listing regardless of serving_eligible. Mirrors the #1772 inline fix
         -- in server.js; this shared helper (used by ~7 serving/PDP identity
@@ -2786,10 +2839,22 @@ function sameListingRef(left, right) {
   );
 }
 
+// ADR-009: gate on external-seed SUPPLY, not on the retired sentinel seller.
+// The stored payload of a seed listing goes stale between backfills, so the
+// freshly-built seed product is the better variant source — and that is true of
+// every seed listing, including the ~all of them the #1770 re-key moved onto
+// per-brand observed sellers. Asking only about the legacy bucket served those
+// rows their stale stored variants.
 function shouldPreserveFreshExternalSeedVariantFields(selectedListing, selectedPayload, fallbackProduct) {
-  const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload?.merchant_id);
-  if (selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID) return false;
   const selectedProductId = asString(selectedListing?.product_id || selectedPayload?.product_id || selectedPayload?.id);
+  // Same precedence the sentinel comparison used: the listing names the seller
+  // when it has one, otherwise the payload does.
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: asString(selectedListing?.merchant_id || selectedPayload?.merchant_id),
+    source_kind: selectedListing?.source_kind,
+    product_id: selectedProductId,
+  });
+  if (!selectedIsSeedSupply) return false;
   const fallbackProductId = asString(fallbackProduct?.product_id || fallbackProduct?.id);
   if (selectedProductId && fallbackProductId && selectedProductId !== fallbackProductId) return false;
   return asArray(fallbackProduct?.variants).length > 0;
@@ -2802,10 +2867,19 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
 
   const next = { ...(product || {}) };
   const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload.merchant_id);
+  // ADR-009: savings presentation ("was $X", store-discount badges) is only
+  // overlaid for a seller we transact with. Crawl-sourced seed payloads carry
+  // unverified compare-at claims, so external-seed supply is suppressed — and
+  // after the #1770 re-key that supply is mostly keyed on per-brand observed
+  // sellers, which a bare comparison against the retired sentinel seller reads
+  // as "real merchant" and lets the unverified claims through.
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: selectedMerchantId,
+    source_kind: selectedListing?.source_kind,
+    product_id: asString(selectedListing?.product_id || selectedPayload.product_id || selectedPayload.id),
+  });
   const savingsFields =
-    selectedMerchantId && selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
-      ? SAVINGS_PRESENTATION_FIELDS
-      : [];
+    selectedMerchantId && !selectedIsSeedSupply ? SAVINGS_PRESENTATION_FIELDS : [];
   const directFields = [
     'price',
     'currency',
@@ -3122,11 +3196,42 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
+// ADR-009 — the ONE listing-side answer to "is this row external-seed SUPPLY?"
+// (crawl-sourced, no upstream merchant checkout/API, PDP served straight from
+// the seed payload). It is deliberately NOT the same question as "is this the
+// legacy anonymous placeholder seller?" — see buildLegacyExternalSeedLumpPredicate
+// and the seller-name fallback in buildIdentitySearchOffer, which keep asking
+// that narrower one.
+//
+// Two durable discriminators, in the order server.js's memberIsExternalSeedSupply
+// uses them:
+//   1. `source_kind`, written by this file's own external-seed writer and
+//      untouched by the #1770 re-key;
+//   2. the canonical seed-lane predicate (pdpRenderability.isSeedRoutedLane,
+//      reached through the loose-object adapter in externalSeedLane).
+//
+// The lane predicate's FIRST arm is the equality against the retired sentinel
+// merchant that used to live here, so this is a strict widening: the legacy
+// bucket keeps every verdict it had.
+//
+// WHAT THE WIDENING ACTUALLY REACHES — measured, because the honest answer is
+// narrower than "the canonical 4-arm lane". `parseIdentityRow` (~569) returns
+// only {source_listing_ref, merchant_id, product_id, source_kind, source_tier,
+// source_payload, merchant_name, variant_axes, is_primary}. The lane adapter
+// reads platform / source_system / product_data — NONE of which a parsed
+// listing carries (its payload key is source_payload). So the lane's platform
+// and source_system arms are structurally unreachable here, and the effective
+// predicate is:
+//     sentinel merchant  OR  source_kind='external_seed'  OR  ext_/ext: id
+// That is real coverage — source_kind is written by this file's own seed
+// writer and survives the re-key — but a per-brand observed seller
+// (merch_obs_…) carrying NEITHER source_kind NOR an ext_ id is NOT reached.
+// isSeedRoutedLane has no merch_obs_ arm. Widening further means carrying
+// platform/source_system through parseIdentityRow, which is its own change.
 function isExternalSeedIdentityRow(row) {
-  return (
-    asString(row?.merchant_id) === EXTERNAL_SEED_MERCHANT_ID ||
-    asString(row?.source_kind).toLowerCase() === 'external_seed'
-  );
+  if (!row || typeof row !== 'object') return false;
+  if (asString(row.source_kind).toLowerCase() === 'external_seed') return true;
+  return isExternalSeedLaneProduct(row);
 }
 
 function hydrateIdentityRowSourcePayloadFromSeed(row, seedRow) {
@@ -3289,10 +3394,24 @@ function buildIdentitySearchOffer(listing, groupId) {
     payload.vendor,
     payload.brand?.name,
     payload.brand,
+    // ADR-009 — KEPT ON PURPOSE, and it is the one comparison in this file that
+    // must stay narrow. This is a LABEL of last resort, and it asks the
+    // OWNERSHIP question buildLegacyExternalSeedLumpPredicate asks, not the
+    // supply question: the legacy anonymous bucket has a placeholder
+    // catalog_merchants row and genuinely has no seller to name. A per-brand
+    // observed seller (merch_obs_…) DOES have one — this function names it from
+    // the payload's vendor/brand, which the seed writer requires (~5041), not
+    // from catalog_merchants — so widening this to the seed lane would
+    // overwrite a real seller of record with a generic placeholder —
+    // the opposite of what the re-key was for. Left as an equality against the
+    // retired sentinel seller so it retires with the bucket itself.
     merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'External reference' : '',
   );
+  // ADR-009: suppress unverified crawl-sourced savings claims for ALL
+  // external-seed supply — the listing row carries the durable source_kind, so
+  // observed-seller seeds are covered here, not just the legacy bucket.
   const savingsFields =
-    merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
+    merchantId && !isExternalSeedIdentityRow(listing)
       ? pickSavingsPresentationFields(payload)
       : {};
   const commerceFacts = asPlainObject(payload.commerce_facts_v1) || asPlainObject(payload.commerce_facts);
@@ -3394,8 +3513,23 @@ function scoreIdentitySearchProductForQuery(product, normalizedQuery) {
     else if (queryText.includes(title)) score += 24;
     else if (title.includes(queryText)) score += 10;
   }
-  const selectedMerchant = asString(product.selected_commerce_ref?.merchant_id || product.merchant_id);
-  if (selectedMerchant && selectedMerchant !== EXTERNAL_SEED_MERCHANT_ID) score += 24;
+  // ADR-009: the bonus is for a group that resolved onto a seller we transact
+  // with, over one that only has crawl supply behind it. Comparing against the
+  // retired sentinel seller alone stopped discriminating once the re-key moved
+  // that same crawl supply onto per-brand observed sellers — every seed group
+  // then scored as if it were a connected merchant and tied with one.
+  //
+  // The composed product carries no source_kind (it is a fused view, not a
+  // listing row), so the lane verdict here rests on the ref's seller plus the
+  // seed id prefix. That covers the mirror corpus; a seed whose external id is
+  // neither sentinel-keyed nor `ext_`-prefixed still scores as a merchant.
+  const selectedRef = product.selected_commerce_ref || product;
+  const selectedMerchant = asString(selectedRef?.merchant_id || product.merchant_id);
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: selectedMerchant,
+    product_id: asString(selectedRef?.product_id || product.product_id || product.id),
+  });
+  if (selectedMerchant && !selectedIsSeedSupply) score += 24;
   if (product.has_multiple_offers === true || Number(product.offers_count || 0) > 1) score += 20;
   if (asString(product.pdp_content_source) === 'canonical_inherited') score += 10;
   if (asString(product.offer_source) === 'group_fused') score += 5;
@@ -3927,18 +4061,26 @@ async function maybeBuildLiveSyntheticPdp({
   if (cacheKey) {
     const inflight = liveSyntheticPdpInflight.get(cacheKey);
     if (inflight) return cloneJsonSafe(await inflight);
-    const promise = loadLiveSyntheticPdp().catch((err) => {
-      if (looksLikeRelationMissing(err)) return null;
-      logger.warn(
-        {
-          err: err?.message || String(err),
-          merchant_id: merchantId,
-          product_id: productId,
-        },
-        'PDP identity graph live read failed',
-      );
-      return null;
-    });
+    // Bound BEFORE storing. The stored promise is what every concurrent caller
+    // awaits, so an unbounded one here poisons this cacheKey permanently: the
+    // finally below never runs, the entry is never evicted, and each later
+    // caller is handed the same promise that will never settle.
+    const promise = withLiveSyntheticPdpBudget(
+      loadLiveSyntheticPdp().catch((err) => {
+        if (looksLikeRelationMissing(err)) return null;
+        logger.warn(
+          {
+            err: err?.message || String(err),
+            merchant_id: merchantId,
+            product_id: productId,
+          },
+          'PDP identity graph live read failed',
+        );
+        return null;
+      }),
+      cacheKey,
+    );
+    trimLiveSyntheticPdpInflight();
     liveSyntheticPdpInflight.set(cacheKey, promise);
     try {
       return await promise;
@@ -4681,6 +4823,7 @@ async function fetchBackfillProducts({
   limit = 500,
   brandFilter = null,
   externalProductIds = [],
+  onlyUncovered = false,
   queryFn = query,
 } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
@@ -4696,7 +4839,16 @@ async function fetchBackfillProducts({
   const externalRows = [];
   const titleBrandPatterns = brandFilterTokens.titlePatterns;
 
-  if (!exactExternalProductIds.length) {
+  // The internal (products_cache) lane is OUT OF SCOPE for catch-up mode, and
+  // deliberately so rather than by oversight. An internal listing's key is
+  // `product_data->>'product_id' || .id || platform_product_id`, resolved in
+  // JS below — no SQL predicate reproduces it faithfully, and an APPROXIMATE
+  // one re-opens exactly the hazard this mode exists to close (a row whose
+  // listing is keyed on a JSON id would look uncovered and re-enter ON
+  // CONFLICT). Skipping the lane keeps the guarantee absolute: in catch-up
+  // mode this function touches nothing that already has a listing. Internal
+  // rows are minted by dispatching without --only-uncovered.
+  if (!exactExternalProductIds.length && !onlyUncovered) {
     const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
     const internalWhere = ['merchant_id <> $1'];
     if (compactBrandVariants.length) {
@@ -4792,6 +4944,30 @@ async function fetchBackfillProducts({
 
   const externalParams = [EXTERNAL_SEED_MERCHANT_ID];
   const externalWhere = [`e.status = 'active'`];
+  if (onlyUncovered) {
+    // CATCH-UP MODE — select ONLY seeds that have no identity listing yet, so
+    // the run cannot reach the ON CONFLICT branch below and therefore cannot
+    // rewrite live_read_enabled / review_summary / source_payload on a row
+    // some other job or operator wrote. liveReadEnabled computes to FALSE
+    // whenever PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset (it is unset in
+    // prod), so a blanket re-run would demote the entire live public surface
+    // to shadow. This predicate is what makes an unattended apply safe.
+    //
+    // 🚨 CORRELATE ON product_id ALONE, NEVER ALSO ON merchant_id. Since #1770
+    // an external-seed listing is keyed to the per-brand observed seller
+    // (`merch_obs_…`, from catalog_merchant_id below), not the legacy shared
+    // `external_seed` bucket. A `pil.merchant_id = $1` conjunct therefore
+    // cannot see the very rows THIS job mints: run 1 would mint them under
+    // merch_obs_, run 2 would re-select them as "uncovered" and re-enter ON
+    // CONFLICT — weekly, unattended, forever. Same trap #1772 fixed in
+    // buildActiveExternalSeedIdentityPredicate; `source_kind` carries the
+    // lane, so merchant_id buys nothing here.
+    externalWhere.push(`NOT EXISTS (
+      SELECT 1 FROM pdp_identity_listing pil
+      WHERE pil.source_kind = 'external_seed'
+        AND pil.product_id = e.external_product_id
+    )`);
+  }
   if (exactExternalProductIds.length) {
     externalParams.push(exactExternalProductIds);
     externalWhere.push(`e.external_product_id = ANY($${externalParams.length}::text[])`);
@@ -5088,7 +5264,24 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               product_id = EXCLUDED.product_id,
               source_kind = EXCLUDED.source_kind,
               source_tier = EXCLUDED.source_tier,
-              live_read_enabled = EXCLUDED.live_read_enabled,
+              -- PRESERVED, not overwritten. Enabling/disabling live read is an
+              -- OPERATOR decision made elsewhere (the gated live-read runbook,
+              -- and the 2026-07 currency remediation that deliberately disabled
+              -- it on defective rows). EXCLUDED.live_read_enabled is a
+              -- recomputed default -- false whenever
+              -- PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset, as it is in prod
+              -- -- so taking it here would silently revert those decisions and
+              -- demote the live public surface. Same failure class as the
+              -- relationship-graph upsert that reverted 203 human labels.
+              -- CONSEQUENCE, stated so it is not rediscovered as a mystery:
+              -- applyIdentityOverrides' approve_first_party_canonical action
+              -- sets live_read_enabled=true in the built listing and — unlike
+              -- approve_live_read / deny_live_read / force_review_required —
+              -- has no synchronous UPDATE of its own, so this upsert was its
+              -- only route to the column for an EXISTING row. No creator for
+              -- that action exists in the repo today; if one is added it needs
+              -- its own write path.
+              live_read_enabled = pdp_identity_listing.live_read_enabled,
               sellable_item_group_id = CASE
                 WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
                   THEN EXCLUDED.sellable_item_group_id
@@ -5211,6 +5404,7 @@ async function backfillPdpIdentityGraph({
   limit = 500,
   brand = null,
   externalProductIds = [],
+  onlyUncovered = false,
   dryRun = false,
   queryFn = query,
   withClientFn = withClient,
@@ -5219,6 +5413,7 @@ async function backfillPdpIdentityGraph({
     limit,
     brandFilter: brand,
     externalProductIds,
+    onlyUncovered,
     queryFn,
   });
   const overrides = await loadIdentityOverrides({ queryFn }).catch((err) => {
@@ -5466,5 +5661,7 @@ module.exports = {
     fetchBackfillProducts,
     sanitizeJsonForPostgres,
     stringifyPostgresJsonb,
+    liveSyntheticPdpInflight,
+    withLiveSyntheticPdpBudget,
   },
 };

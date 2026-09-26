@@ -2,6 +2,12 @@
 set -euo pipefail
 
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+
+# Attach X-Internal-Key to gateway requests (PIVOTA-Agent #2038). Sourced AFTER BASE is set, because
+# the wrapper scopes the header to that host. No-op until AURORA_SURFACE_INTERNAL_KEY is present.
+# shellcheck source=scripts/lib/aurora_surface_auth.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/aurora_surface_auth.sh"
+
 AURORA_LANG="${AURORA_LANG:-EN}"
 AURORA_UID_PREFIX="${AURORA_UID_PREFIX:-uid_aurora_skill_prod_smoke}"
 LAB_SERIES_URL="${LAB_SERIES_URL:-https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one}"
@@ -11,7 +17,10 @@ CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="${OUT_DIR:-reports/aurora_skill_routes_prod_smoke_${STAMP}}"
 
-CURL_BIN="${CURL_BIN:-$(command -v curl)}"
+# Bare name on purpose — see smoke_entry_routes.sh. `$(command -v curl)` happens to work only
+# because it resolves to the wrapper FUNCTION once sourced; reorder the source line and it
+# silently reverts to the binary and stops sending the header.
+CURL_BIN="${CURL_BIN:-curl}"
 JQ_BIN="${JQ_BIN:-$(command -v jq)}"
 PY_BIN="${PY_BIN:-$(command -v python3)}"
 LOCAL_HEAD_COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"

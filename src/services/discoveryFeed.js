@@ -25,6 +25,7 @@ const {
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
 } = require('./externalSeedProducts');
+const { isExternalSeedSupplyMerchantId } = require('./externalSeedLane');
 const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 const {
@@ -62,7 +63,19 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { brandIdentityKey } = require('./canonicalSearchQualitySql');
+const {
+  brandSeedScanPredicateSql,
+  identityPrefixRangeSql,
+  identityPrefixUpperBound,
+  likePrefixPattern,
+  seedBrandIdentitySql,
+  seedDomainIdentitySql,
+  seedTitleSql,
+  uncoveredPrefixKeys,
+} = require('./brandSeedScanSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
+const { canonicalBrandMatchSql } = require('./canonicalBrandMatchSql');
 const {
   fetchRelationshipGraphRecallForAnchors,
   isRelationshipGraphSurfaceEnabled,
@@ -169,7 +182,13 @@ const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX = Object.freeze([
   { value: 'bodycare', share: 0.06 },
   { value: 'beauty_tools', share: 0.03 },
 ]);
+// buildProviderBreakdown maps over this list, so a provider missing from it is
+// dropped from the breakdown entirely — which also drops it from the
+// "successful providers" count that finalizeProviderResult requires, turning a
+// healthy recall into DiscoveryCatalogUnavailableError. Register every provider
+// that can serve a request.
 const DISCOVERY_PROVIDER_ORDER = [
+  'canonical_sig',
   'beauty_interest_mainline',
   'products_search',
   'internal_catalog',
@@ -1180,6 +1199,15 @@ const DOMAIN_KEYWORDS = {
 };
 const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 'other', 'product', 'products', 'unknown']);
 const browsePoolCache = new Map();
+// Brand-direct pool results, keyed on the inputs that decide them (never on the viewer). See
+// loadBrandScopedDirectCandidates.
+// 200, not the ~22 brands of the incident: the key is brand x candidate limit x order-by-recency,
+// and page-dependent limits give ~11 live keys per brand (~240 across 22 brands). A 50-entry cap
+// was simulated to cut cache avoidance from 0.93 to 0.78 at 5 brand-page rps/instance (3.1x the
+// DB loads). Worst-case heap at 200 full entries measured 0.6-0.8 GB against a 4Gi limit.
+const BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES = 200;
+const brandDirectPoolCache = new Map();
+const brandDirectPoolInflight = new Map();
 const browseCatalogCountCache = new Map();
 const discoveryDbDependencyProbeCache = {
   value: null,
@@ -1700,6 +1728,16 @@ function getDiscoveryPoolCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_POOL_CACHE_TTL_MS, 45000, 1000, 300000);
 }
 
+// Minutes, not seconds: the cache is per gateway instance (no shared store), so a short TTL spread
+// over 4-6 instances would rarely hit. 0 disables it.
+function getBrandDirectPoolCacheTtlMs() {
+  const raw = process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS;
+  if (raw === undefined || String(raw).trim() === '') return 300000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 300000;
+  return Math.min(900000, Math.max(0, Math.trunc(parsed)));
+}
+
 function buildProductKey(merchantId, productId) {
   const mid = String(merchantId || '').trim();
   const pid = String(productId || '').trim();
@@ -1767,7 +1805,11 @@ function buildDiscoveryDedupKey(product, { brandScoped = false } = {}) {
   const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
   const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
   const baseKey = buildProductKey(merchantId, productId);
-  if (!brandScoped || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return baseKey;
+  // ADR-009: the semantic key exists to collapse crawl-sourced duplicates of one
+  // product in a brand-scoped feed. The test named only the retired sentinel, so
+  // after the re-key moved that supply onto per-brand observed sellers those rows
+  // fell back to the plain product key and could surface as duplicate cards.
+  if (!brandScoped || !isExternalSeedSupplyMerchantId(merchantId)) return baseKey;
   return buildExternalSemanticProductKey(product) || baseKey;
 }
 
@@ -1931,11 +1973,25 @@ function compactBrandToken(value) {
   return normalizeBrandText(value).replace(/\s+/g, '');
 }
 
-function buildBrandScopeAliases(brandNames = []) {
-  const aliases = new Set();
+// Every brand-scope alias, as BOTH the normalized form every consumer matches on and the
+// spelling the caller actually sent. The brand-page seed scan needs the second one: it keys
+// the indexed brand identity through brandIdentityKey, whose SQL twin folds ONLY the Latin-1
+// accent table, while normalizeBrandText folds every combining mark (NFKD). A brand page for
+// "Señora Skin" therefore bound 'senoraskin' against an indexed 'señoraskin' and returned
+// nothing — measured on prod 2026-09-16: 1 of 11,817 attached seed rows, brand "Aetās".
+//
+// The spelling has to be carried rather than recovered: buildBrandQueryVariants returns
+// variants that have ALREADY been through normalizeBrandText, so by the time a variant is
+// seen here the caller's spelling is gone. It is restored for the one variant that is the
+// brand name's own normalization; the derived variants (a dropped suffix token, the compacted
+// form) are built out of normalized tokens and have no original spelling to restore.
+function buildBrandScopeAliasEntries(brandNames = []) {
+  const entries = [];
+  const byNormalized = new Map();
   for (const rawBrand of Array.isArray(brandNames) ? brandNames : []) {
     const brandName = String(rawBrand || '').trim();
     if (!brandName) continue;
+    const brandNameNormalized = normalizeBrandText(brandName);
     const detected = detectBrandEntities(brandName, { candidateProducts: [] });
     const variants = buildBrandQueryVariants(
       brandName,
@@ -1943,10 +1999,36 @@ function buildBrandScopeAliases(brandNames = []) {
     );
     variants.forEach((variant) => {
       const normalized = normalizeBrandText(variant);
-      if (normalized) aliases.add(normalized);
+      if (!normalized) return;
+      let entry = byNormalized.get(normalized);
+      if (!entry) {
+        entry = { normalized, spellings: [] };
+        byNormalized.set(normalized, entry);
+        entries.push(entry);
+      }
+      // EVERY brand name in the scope that folds to this alias contributes its spelling, not
+      // just the first one to reach it. A scope of ["Aetas", "Aetās"] folds to the single alias
+      // 'aetas', and keeping only the first spelling made the brand page NON-MONOTONIC in its
+      // own scope: ["Aetas","Aetās"] returned strictly fewer rows than ["Aetās"] alone, and
+      // swapping the order of an array the client controls changed the result.
+      if (normalized === brandNameNormalized && !entry.spellings.includes(brandName)) {
+        entry.spellings.push(brandName);
+      }
     });
   }
-  return Array.from(aliases);
+  // A derived variant (a dropped suffix token, the compacted form) is built out of normalized
+  // tokens and has no original spelling to restore, so it stands for itself.
+  for (const entry of entries) {
+    if (!entry.spellings.length) entry.spellings.push(entry.normalized);
+  }
+  return entries;
+}
+
+// The normalized aliases, unchanged: this is what every brand consumer other than the seed
+// scan matches on (cache keys, the browse count query, matchesBrandScopeCandidate). Defined
+// through the entries above so the two lists cannot drift in content or in order.
+function buildBrandScopeAliases(brandNames = []) {
+  return buildBrandScopeAliasEntries(brandNames).map((entry) => entry.normalized);
 }
 
 function buildSellableStatusPredicate(statusExpr) {
@@ -1958,6 +2040,20 @@ function buildSellableStatusPredicate(statusExpr) {
 function getDiscoveryBrowseCatalogCountCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_BROWSE_COUNT_CACHE_TTL_MS, 60000, 1000, 300000);
 }
+
+// How long a count past its freshness TTL may still be SERVED while a refresh runs in the background.
+// The count is the catalog-wide product total for unfiltered browse: identical for every visitor, moving
+// slowly, and not used for pagination (browse `hasMore` reads the cursor's has_next_page). The
+// per-instance cache it lives in expired after 60s, but unfiltered landing-page traffic is a handful of
+// requests an hour spread over 4+ instances - so in production the entry had always expired before the
+// next visitor, and every one of them waited ~0.9-1.7s on a query that "scans broad JSON text". 0 turns
+// stale serving off and restores the old behaviour exactly.
+function getDiscoveryBrowseCatalogCountMaxStaleMs() {
+  return clampInt(process.env.DISCOVERY_BROWSE_COUNT_MAX_STALE_MS, 6 * 60 * 60 * 1000, 0, 24 * 60 * 60 * 1000);
+}
+
+// One refresh per key at a time: a burst of stale reads must not fan out into a burst of full scans.
+const browseCatalogCountInflight = new Map();
 
 function buildDiscoveryBrowseCatalogCountCacheKey(request, { market = '' } = {}) {
   return JSON.stringify({
@@ -1975,12 +2071,14 @@ function buildDiscoveryBrowseCatalogCountCacheKey(request, { market = '' } = {})
 
 function readBrowseCatalogCountCache(cacheKey) {
   const entry = browseCatalogCountCache.get(cacheKey);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    browseCatalogCountCache.delete(cacheKey);
-    return null;
+  if (!entry || !entry.value) return null;
+  const now = Date.now();
+  if (entry.expiresAt > now) return { value: entry.value, state: 'fresh' };
+  if (entry.expiresAt + getDiscoveryBrowseCatalogCountMaxStaleMs() > now) {
+    return { value: entry.value, state: 'stale' };
   }
-  return entry.value || null;
+  browseCatalogCountCache.delete(cacheKey);
+  return null;
 }
 
 function writeBrowseCatalogCountCache(cacheKey, value) {
@@ -2025,6 +2123,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     maxPhrases: 4,
     maxTokens: 8,
   });
+
   const filteredClauses = ['TRUE'];
 
   if (brandCompacts.length > 0 || brandPatterns.length > 0) {
@@ -2059,6 +2158,33 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     }
     filteredClauses.push(`(${queryClauses.join(' OR ')})`);
   }
+
+  // Project ONLY the columns a filter clause actually reads.
+  //
+  // This is a COUNT. Its output is one integer, so any column computed in the
+  // source CTEs that no WHERE clause consumes is pure wasted work — and the
+  // waste is not small. `search_text` is lower(concat_ws(...)) over ~15
+  // seed_data JSON paths per row, which forces a full JSONB detoast of every
+  // qualifying seed. That cost is linear in the servable corpus: measured at
+  // 1.1s when 49 seeds cleared the serving gate and 8.9s once 3,681 did, on
+  // exactly the same plan.
+  //
+  // Which shapes reach this count is decided by shouldUseStableBrowseCatalogTotal:
+  // generic browse, category-only, and query+category. Query-only and anything
+  // brand-scoped never get here. Of the three that do, generic and category-only
+  // read no `search_text` at all, and that is where the 8.9s -> 1.0s comes from.
+  // query+category still reads it and still pays the detoast; that shape is
+  // correct, just not faster.
+  //
+  // The gates are DERIVED from the built clauses rather than restating their
+  // conditions, so a future clause that reads one of these columns cannot be
+  // forgotten by the gate — that failure is a silently WRONG COUNT (comparing
+  // against ''), not an error. The columns stay in the CTE shape as constants
+  // so the clause text under every scope is byte-for-byte unchanged.
+  const filteredClauseSql = filteredClauses.join('\n');
+  const needsSearchText = filteredClauseSql.includes('search_text');
+  const needsBrandCompact = filteredClauseSql.includes('brand_compact');
+  const needsCategoryText = filteredClauseSql.includes('category_text');
 
   const internalListingIdExpr = `
     coalesce(
@@ -2154,9 +2280,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           pc.merchant_id,
           ${internalListingIdExpr} AS product_id,
           pc.merchant_id || ':' || ${internalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          ${internalCategoryExpr} AS category_text,
-          ${internalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? internalCategoryExpr : "''::text"} AS category_text,
+          ${needsSearchText ? internalSearchTextExpr : "''::text"} AS search_text
         FROM products_cache pc
         JOIN merchant_onboarding mo
           ON mo.merchant_id = pc.merchant_id
@@ -2178,9 +2304,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           '${EXTERNAL_SEED_MERCHANT_ID}'::text AS merchant_id,
           ${externalListingIdExpr} AS product_id,
           '${EXTERNAL_SEED_MERCHANT_ID}'::text || ':' || ${externalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category}) AS category_text,
-          ${externalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? `trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category})` : "''::text"} AS category_text,
+          ${needsSearchText ? externalSearchTextExpr : "''::text"} AS search_text
         FROM external_product_seeds eps
         WHERE eps.status = 'active'
           AND ${buildDiscoveryAttachedSeedServingExistsSql('eps')}
@@ -2212,19 +2338,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
   };
 }
 
-async function countStableBrowseCatalogTotal(request, { queryFn = query, useCache = true } = {}) {
-  if (!request || request.surface !== 'browse_products' || typeof queryFn !== 'function' || !process.env.DATABASE_URL) {
-    return null;
-  }
-
-  const { market } = resolveDiscoveryExternalSeedMarketConfig();
-  const cacheEnabled = useCache !== false && queryFn === query;
-  const cacheKey = buildDiscoveryBrowseCatalogCountCacheKey(request, { market });
-  if (cacheEnabled) {
-    const cached = readBrowseCatalogCountCache(cacheKey);
-    if (cached) return cached;
-  }
-
+async function runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled }) {
   const attempts = [true, false];
   let lastError = null;
   for (const includeIdentityJoin of attempts) {
@@ -2258,6 +2372,41 @@ async function countStableBrowseCatalogTotal(request, { queryFn = query, useCach
     'stable browse catalog count failed; falling back to runtime corpus size',
   );
   return null;
+}
+
+// Shares one in-flight count per key. A failed refresh leaves any stale entry in place, so the next
+// reader keeps getting the last good total rather than falling back to the runtime corpus size.
+function loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled }) {
+  if (!cacheEnabled) return runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled });
+  const inflight = browseCatalogCountInflight.get(cacheKey);
+  if (inflight) return inflight;
+  const pending = runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled }).finally(() => {
+    browseCatalogCountInflight.delete(cacheKey);
+  });
+  browseCatalogCountInflight.set(cacheKey, pending);
+  return pending;
+}
+
+async function countStableBrowseCatalogTotal(request, { queryFn = query, useCache = true } = {}) {
+  if (!request || request.surface !== 'browse_products' || typeof queryFn !== 'function' || !process.env.DATABASE_URL) {
+    return null;
+  }
+
+  const { market } = resolveDiscoveryExternalSeedMarketConfig();
+  const cacheEnabled = useCache !== false && queryFn === query;
+  const cacheKey = buildDiscoveryBrowseCatalogCountCacheKey(request, { market });
+  if (cacheEnabled) {
+    const cached = readBrowseCatalogCountCache(cacheKey);
+    if (cached?.state === 'fresh') return cached.value;
+    if (cached?.state === 'stale') {
+      // Serve the last good total NOW and refresh behind it. The refresh is deliberately not awaited:
+      // awaiting it would reinstate the ~1s wait this exists to remove. Its rejection is already handled
+      // inside runStableBrowseCatalogCount, which returns null rather than throwing.
+      loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled });
+      return cached.value;
+    }
+  }
+  return loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled });
 }
 
 function shouldUseStableBrowseCatalogTotal(request) {
@@ -2298,22 +2447,32 @@ function getBrandDirectPrefetchDelayMs() {
   return clampInt(process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS, 75, 0, 1000);
 }
 
-function buildCandidateBrandAliases(candidate) {
+// A candidate's brand aliases come from two sources with very different costs. The direct fields
+// (brand, vendor, ...) are a handful of short strings. The detected aliases run detectBrandEntities -
+// a brand-lexicon scan - over the title, name AND FULL DESCRIPTION.
+//
+// Measured 2026-09-17: matchesBrandScopeCandidate cost ~3ms PER CANDIDATE, almost all of it the
+// detection scan (356ms for 120 candidates, 1,074ms for 360, 2,321ms for 784, linear), while
+// normalizing the same candidates took ~0.04ms each. It is synchronous, so it also blocks every other
+// request on the instance, and phase timings put it at ~491ms of a brand page's p50.
+function buildCandidateDirectBrandAliases(candidate) {
   const aliases = new Set();
-  const directSignals = [
+  [
     candidate?.brand,
     candidate?.raw?.brand,
     candidate?.raw?.brand_name,
     candidate?.raw?.vendor,
     candidate?.raw?.vendor_name,
     candidate?.raw?.manufacturer,
-  ];
-
-  directSignals.forEach((value) => {
+  ].forEach((value) => {
     const normalized = normalizeBrandText(value);
     if (normalized) aliases.add(normalized);
   });
+  return Array.from(aliases);
+}
 
+function buildCandidateDetectedBrandAliases(candidate) {
+  const aliases = new Set();
   const detectionText = [
     candidate?.raw?.title,
     candidate?.raw?.name,
@@ -2333,7 +2492,6 @@ function buildCandidateBrandAliases(candidate) {
       });
     });
   }
-
   return Array.from(aliases);
 }
 
@@ -2360,15 +2518,20 @@ function matchesNormalizedBrandAlias(candidateBrand, normalizedAlias) {
 
 function matchesBrandScopeCandidate(candidate, aliases = []) {
   if (!Array.isArray(aliases) || aliases.length === 0) return true;
-  const candidateAliases = buildCandidateBrandAliases(candidate);
-  if (candidateAliases.length === 0) return false;
-  return aliases.some((alias) => {
-    const normalizedAlias = normalizeBrandText(alias);
-    if (!normalizedAlias) return false;
-    return candidateAliases.some((candidateBrand) =>
-      matchesNormalizedBrandAlias(candidateBrand, normalizedAlias),
+  // Normalized once per call rather than once per candidate alias pair.
+  const normalizedAliases = aliases.map((alias) => normalizeBrandText(alias)).filter(Boolean);
+  if (normalizedAliases.length === 0) return false;
+  const anyAliasMatches = (candidateAliases) =>
+    normalizedAliases.some((normalizedAlias) =>
+      candidateAliases.some((candidateBrand) => matchesNormalizedBrandAlias(candidateBrand, normalizedAlias)),
     );
-  });
+  // The detection scan only runs when the direct fields do not already answer the question. This is
+  // the same boolean as matching against the union: `some` over (direct ∪ detected) is exactly
+  // `some` over direct OR `some` over detected. It is not an approximation - it is short-circuit
+  // evaluation of the identical predicate. On the brand-direct lane every candidate was fetched BY
+  // brand, so the direct fields match and the scan never runs.
+  if (anyAliasMatches(buildCandidateDirectBrandAliases(candidate))) return true;
+  return anyAliasMatches(buildCandidateDetectedBrandAliases(candidate));
 }
 
 function parseCandidatePriceAmount(rawPrice) {
@@ -2537,7 +2700,7 @@ function inferCandidateTaxonomy({ merchantId, title, description, rawCategory, r
   const normalizedCategory = normalizeText(rawProductType || rawCategory || '');
   const normalizedParent = normalizeText(rawCategory || '');
   const needsInference =
-    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isExternalSeedSupplyMerchantId(merchantId) ||
     isWeakCategoryLabel(normalizedCategory) ||
     isWeakCategoryLabel(normalizedParent);
 
@@ -3939,6 +4102,25 @@ function shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) {
   return request?.surface === 'browse_products' && hasBrandScope(request);
 }
 
+// products_search is an HTTP hop to the backend. On a brand-only page the brand direct pool (canonical index
+// plus attached seeds) is the source of truth for the brand, and when it completes cleanly with nothing
+// the brand simply has no products. products_search was still called then, and across 2026-09-15..17 the
+// 499 brand-scoped builds that reached it served 0 products in 498 cases while waiting ~1.65s on it. It is
+// now skipped in exactly that case: a brand-only page whose primary brand pool finished without an error or
+// a swallowed fetcher failure and returned nothing. Brand + query text, brand + category, and a failed
+// brand pool still call it. DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true always calls it.
+function isBrandScopedProductsSearchEnabled() {
+  return String(process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+function isCleanEmptyBrandDirectResult(result) {
+  if (!result || !Array.isArray(result.products) || result.products.length > 0) return false;
+  const steps = Array.isArray(result.recallSummary) ? result.recallSummary : [];
+  const poolSteps = steps.filter((step) => step && step.label === 'brand_direct_pool');
+  if (poolSteps.length === 0) return false;
+  return !steps.some((step) => step && (step.error || step.degraded === true));
+}
+
 function shouldUseBrandDirectPoolAsPrimary(request) {
   return (
     request?.surface === 'browse_products' &&
@@ -4224,6 +4406,121 @@ async function fetchDiscoveryRecallStep({
   }
 }
 
+// products_search is an HTTP hop to the backend, and nothing bounds how long the backend holds a request
+// after the gateway gives up on it. In prod on 2026-09-16 every call timed out at the ~1.65s step budget
+// (the backend went on to answer 504 after 300s) and none returned a product, so every visitor that
+// reached this provider waited out the budget for nothing. After enough consecutive failures, stop
+// calling it for a cooldown and serve the request without it; once the cooldown ends, one background
+// probe per process decides whether to close the circuit, so no visitor waits on the probe either.
+// DISCOVERY_PRODUCTS_SEARCH_BREAKER_FAILURES=0 turns the breaker off.
+function getProductsSearchBreakerFailureThreshold() {
+  return clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_BREAKER_FAILURES, 3, 0, 100);
+}
+
+function getProductsSearchBreakerCooldownMs() {
+  return clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_BREAKER_COOLDOWN_MS, 60 * 1000, 1000, 60 * 60 * 1000);
+}
+
+function getProductsSearchBreakerMaxCooldownMs() {
+  return clampInt(
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BREAKER_MAX_COOLDOWN_MS,
+    30 * 60 * 1000,
+    1000,
+    6 * 60 * 60 * 1000,
+  );
+}
+
+const productsSearchBreaker = {
+  consecutiveFailures: 0,
+  openUntil: 0,
+  cooldownMs: 0,
+  probe: null,
+};
+
+function resetProductsSearchBreaker() {
+  productsSearchBreaker.consecutiveFailures = 0;
+  productsSearchBreaker.openUntil = 0;
+  productsSearchBreaker.cooldownMs = 0;
+  productsSearchBreaker.probe = null;
+}
+
+function isProductsSearchBreakerOpen() {
+  return getProductsSearchBreakerFailureThreshold() > 0 && productsSearchBreaker.cooldownMs > 0;
+}
+
+// Only answers that say the upstream is down or unusable count against it: a timeout, a transport error,
+// a 5xx, or a 401/403 (misconfigured key). A 400/404/422 is about the query, so it neither counts nor
+// clears the count, except on the probe, where any answer inside the budget proves the upstream is back.
+const PRODUCTS_SEARCH_BREAKER_FAILURE_REASONS = new Set(['timeout', 'http_5xx', 'http_401', 'http_403']);
+
+function classifyProductsSearchOutcome(result) {
+  if (result?.success === true) return 'success';
+  const reason = String(result?.summary?.failure_reason || '');
+  if (PRODUCTS_SEARCH_BREAKER_FAILURE_REASONS.has(reason) || reason.startsWith('request_error:')) {
+    return 'failure';
+  }
+  return 'neutral';
+}
+
+function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null } = {}) {
+  const wasOpen = productsSearchBreaker.cooldownMs > 0;
+  if (outcome === 'success' || (probe && outcome === 'neutral')) {
+    resetProductsSearchBreaker();
+    if (wasOpen) logger.info({ probe }, 'discovery products_search circuit closed');
+    return;
+  }
+  if (outcome !== 'failure') return;
+  const threshold = getProductsSearchBreakerFailureThreshold();
+  if (threshold <= 0) return;
+  // A call that was already in flight when the circuit opened must not stretch the cooldown; only the
+  // probe's verdict does.
+  if (wasOpen && !probe) return;
+  productsSearchBreaker.consecutiveFailures += 1;
+  if (wasOpen) {
+    productsSearchBreaker.cooldownMs = Math.min(
+      productsSearchBreaker.cooldownMs * 2,
+      Math.max(getProductsSearchBreakerMaxCooldownMs(), getProductsSearchBreakerCooldownMs()),
+    );
+  } else if (productsSearchBreaker.consecutiveFailures >= threshold) {
+    productsSearchBreaker.cooldownMs = getProductsSearchBreakerCooldownMs();
+  } else {
+    return;
+  }
+  productsSearchBreaker.openUntil = Date.now() + productsSearchBreaker.cooldownMs;
+  logger.warn(
+    {
+      probe,
+      failure_reason: failureReason,
+      consecutive_failures: productsSearchBreaker.consecutiveFailures,
+      cooldown_ms: productsSearchBreaker.cooldownMs,
+    },
+    'discovery products_search circuit open',
+  );
+}
+
+function recordProductsSearchResult(result, { probe = false } = {}) {
+  recordProductsSearchOutcome(classifyProductsSearchOutcome(result), {
+    probe,
+    failureReason: result?.summary?.failure_reason || null,
+  });
+}
+
+function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders }) {
+  if (productsSearchBreaker.probe || Date.now() < productsSearchBreaker.openUntil) return;
+  // The probe gets the same step timeout a visitor would: an upstream that only answers after a visitor
+  // has given up is still down.
+  const timeoutMs = computeDiscoveryStepTimeoutMs(getDiscoveryRecallBudgetMs(), getDiscoveryProductsSearchTimeoutMs());
+  const probe = fetchDiscoveryRecallStep({ baseUrl, request, step, requestHeaders, timeoutMs })
+    .catch((err) => ({ success: false, summary: { failure_reason: `request_error:${err?.code || 'unknown'}` } }))
+    .then((result) => {
+      // A real success may have closed the circuit, and a new probe replaced this one, while it was out.
+      if (productsSearchBreaker.probe !== probe) return;
+      productsSearchBreaker.probe = null;
+      recordProductsSearchResult(result, { probe: true });
+    });
+  productsSearchBreaker.probe = probe;
+}
+
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
   const safeLimit = clampInt(
     limit,
@@ -4316,6 +4613,34 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   requestHeaders.Authorization = `Bearer ${apiKey}`;
 
   const recallPlan = buildDiscoveryRecallPlan(request, profile, safeLimit);
+  if (isProductsSearchBreakerOpen()) {
+    if (recallPlan[0]) {
+      maybeStartProductsSearchProbe({ baseUrl, request, step: recallPlan[0], requestHeaders });
+    }
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'products_search_pool',
+      status: 'circuit_open',
+      latencyMs: 0,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'products_search_pool',
+          query: recallPlan[0]?.query || null,
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: 0,
+          skipped: true,
+          skipReason: 'circuit_open',
+        }),
+      ],
+    };
+  }
   const mergedProducts = [];
   const seenKeys = new Set();
   const brandScoped = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
@@ -4374,6 +4699,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
 
     for (const result of stepResults) {
       recallSummary.push(result.summary);
+      recordProductsSearchResult(result);
       if (!result.success) continue;
       successCount += 1;
       mergeProducts(result.products);
@@ -4420,6 +4746,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
       timeoutMs: stepTimeoutMs,
     });
     recallSummary.push(result.summary);
+    recordProductsSearchResult(result);
 
     if (!result.success) continue;
 
@@ -5907,71 +6234,104 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
       if (rows.length >= safeLimit) break;
     }
   };
-  const runIndexedStage = async ({ axis, value, sqlField, score, maxRows = null }) => {
-    const normalizedValue = String(value || '').trim().toLowerCase();
-    if (!normalizedValue || rows.length >= safeLimit) return;
-    const numericMaxRows = Number(maxRows);
-    const stageQuota =
-      Number.isFinite(numericMaxRows) && numericMaxRows > 0
-        ? Math.max(1, Math.floor(numericMaxRows))
-        : safeLimit;
-    const stageTargetRows = Math.min(safeLimit, rows.length + stageQuota);
-    for (const toolScope of toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents']) {
-      if (rows.length >= stageTargetRows) break;
-      const stageParams = [market, toolScope, normalizedValue];
-      const resolvedCap = Math.max(1, stageTargetRows - rows.length);
-      let sql = `
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
-          AND market = $1
-          AND tool = $2
-          AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND ${sqlField} = $3
-      `;
-      if (seenSqlIds.size > 0) {
-        stageParams.push(Array.from(seenSqlIds));
-        sql += `
-          AND id <> ALL($${stageParams.length}::bigint[])
-        `;
-      }
-      stageParams.push(resolvedCap);
+  // One query per axis, not one per (value × tool_scope).
+  //
+  // 2026-08-17: this ladder used to await a separate statement for every
+  // (value, tool_scope) pair — 6 verticals + 33 categories against 2 tool
+  // scopes. Each statement costs ~700ms (the serving-gate EXISTS join plus a
+  // JSON category extraction, neither of which is indexable here), and the
+  // ladder only advances while `rows.length < minimumRowsForServing`. On the
+  // real corpus that floor is never reached, so EVERY browse request ran the
+  // full 84-statement sweep and took ~56s to return 9 products. The public
+  // /products grid aborts at 15s, so the whole page rendered "No products
+  // found" while the feed was in fact healthy.
+  //
+  // The batched form issues the identical predicate once with `= ANY(...)` and
+  // reproduces the loop's priority order in SQL: `array_position` over the
+  // value array is the outer loop, over the tool-scope array the inner one, and
+  // the per-row tiebreak is unchanged. The old inner LIMIT was always
+  // `safeLimit - rows.length` (these callers pass no `maxRows`, so the stage
+  // quota degenerated to `safeLimit`), which is exactly the batched LIMIT.
+  const runIndexedLadder = async ({ axis, values, sqlField, score }) => {
+    const normalizedValues = uniqStrings(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter(Boolean),
+      64,
+    );
+    if (normalizedValues.length <= 0 || rows.length >= safeLimit) return;
+    const scopedTools = toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'];
+    const stageParams = [market, scopedTools, normalizedValues];
+    let sql = `
+      SELECT
+        ${selectSql},
+        ${Number(score || 0)}::int AS match_score,
+        '${stage}'::text AS match_stage,
+        ${sqlField} AS ladder_match_value,
+        tool AS ladder_tool_scope
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
+        AND market = $1
+        AND tool = ANY($2::text[])
+        AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND ${sqlField} = ANY($3::text[])
+    `;
+    if (seenSqlIds.size > 0) {
+      stageParams.push(Array.from(seenSqlIds));
       sql += `
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT $${stageParams.length}
+        AND id <> ALL($${stageParams.length}::bigint[])
       `;
-      const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope, stageQuota);
+    }
+    stageParams.push(Math.max(1, safeLimit - rows.length));
+    sql += `
+      ORDER BY
+        array_position($3::text[], ${sqlField}) ASC,
+        array_position($2::text[], tool) ASC,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST,
+        id DESC
+      LIMIT $${stageParams.length}
+    `;
+    const res = await query(sql, stageParams);
+    const fetchedRows = Array.isArray(res?.rows) ? res.rows : [];
+
+    // Preserve the per-(value, tool_scope) stage metrics the sequential ladder
+    // emitted. Groups the batch returned nothing for are simply absent rather
+    // than reported as an attempted zero-row stage.
+    const groups = new Map();
+    for (const row of fetchedRows) {
+      const groupValue = String(row?.ladder_match_value || '').trim().toLowerCase();
+      const groupToolScope = String(row?.ladder_tool_scope || '').trim() || '*';
+      const groupKey = `${groupValue} ${groupToolScope}`;
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { value: groupValue, toolScope: groupToolScope, rows: [] });
+      }
+      groups.get(groupKey).rows.push(row);
+    }
+    for (const group of groups.values()) {
+      if (rows.length >= safeLimit) break;
+      appendRows(group.rows, axis, group.value, group.toolScope, safeLimit);
     }
   };
 
   await runBalancedVerticalMixStage();
   if (rows.length < minimumRowsForServing) {
-    for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
-      await runIndexedStage({
-        axis: 'vertical',
-        value: vertical,
-        sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
-        score: 58,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'vertical',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS,
+      sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
+      score: 58,
+    });
   }
   if (rows.length < minimumRowsForServing) {
-    for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
-      await runIndexedStage({
-        axis: 'category',
-        value: category,
-        sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
-        score: 52,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'category',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES,
+      sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
+      score: 52,
+    });
   }
 
   const products = annotateProviderProducts(
@@ -6914,7 +7274,7 @@ function buildProviderBreakdown(results = []) {
     const stepFailureReason =
       recallSummary.find((step) => typeof step?.failure_reason === 'string')?.failure_reason || null;
     const skipReasonAsFailure =
-      ['missing_database', 'schema_missing', 'query_error', 'budget_truncated'].includes(skipReason)
+      ['missing_database', 'schema_missing', 'query_error', 'budget_truncated', 'circuit_open'].includes(skipReason)
         ? skipReason
         : null;
     const failureReason = successfulSteps.length > 0
@@ -7147,6 +7507,7 @@ async function loadCatalogCandidates({
   limit = MAX_CANDIDATE_FETCH,
   providerOverrides = null,
   identityGraphRowsResolverFn = listLivePdpIdentityRowsForRefs,
+  brandDirectPoolEmpty = false,
 } = {}) {
   const safeLimit = clampInt(
     limit,
@@ -7198,6 +7559,7 @@ async function loadCatalogCandidates({
   };
 
   const getProviderLabel = (provider) => {
+    if (provider === 'canonical_sig') return 'canonical_sig_browse';
     if (provider === 'beauty_interest_mainline') return 'beauty_interest_mainline';
     if (provider === 'products_search') return 'products_search_pool';
     if (provider === 'internal_catalog') return 'internal_catalog_pool';
@@ -7446,6 +7808,117 @@ async function loadCatalogCandidates({
 
   const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
   if (shouldUseNoSignalExternalSeedFastpath) {
+    // Main route: the canonical sig index. The external-seed lane below is the
+    // fallback and is skipped entirely when the index already covers the page,
+    // so a healthy catalog never pays for the seed ladder.
+    if (browseUsesCanonicalSig()) {
+      const canonicalSigStartedAt = Date.now();
+      // null == index not readable yet (no DATABASE_URL / migrations pending).
+      // A thrown error is a REAL failure and is recorded as one, so it can never
+      // masquerade as a successful provider returning zero rows.
+      let canonicalSigProducts = null;
+      let canonicalSigFailed = false;
+      try {
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
+      } catch (err) {
+        canonicalSigFailed = true;
+        providerResults.push(buildProviderErrorResult('canonical_sig', err));
+      }
+
+      if (!canonicalSigFailed && Array.isArray(canonicalSigProducts)) {
+        // Recorded even at zero recall: a main route that was consulted and came
+        // back empty is a different operational fact from one that never ran,
+        // and the breakdown is how the cutover is watched.
+        const annotated = annotateProviderProducts('canonical_sig', canonicalSigProducts);
+        providerResults.push({
+          provider: 'canonical_sig',
+          products: annotated,
+          recallSummary: [
+            buildDiscoveryProviderStepSummary({
+              provider: 'canonical_sig',
+              label: getProviderLabel('canonical_sig'),
+              query: 'canonical_sig_browse',
+              limit: safeLimit,
+              returned: annotated.length,
+              status: 200,
+              latencyMs: Date.now() - canonicalSigStartedAt,
+            }),
+          ],
+        });
+        if (annotated.length > 0) mergeProducts(annotated);
+      }
+
+      // Volume AND composition.
+      //
+      // `enoughThreshold` is the right VOLUME bar — measured, it is 48 at
+      // browse p1/l24 where the beauty mainline's `primaryPathEnoughThreshold`
+      // is 24, so copying that gate here (tried, reverted) halved it. But volume
+      // alone is domain-BLIND, and this reader selects everything public in
+      // agent_pdp_view with no domain filter, so `mergedProducts.length` happily
+      // counts rows the cold-start curator is about to bury:
+      // COLD_START_DEFERRED_DOMAINS is {pet, sleepwear, apparel} plus
+      // beautyBucket 'tools', which scoreColdStartCandidateQuality penalises by
+      // -0.85 to -1.7. 48 sig rows of which 40 are apparel would pass a count
+      // gate and render a page of deferred rows.
+      //
+      // This lane skips `external_seeds`, which the seed lane's own gate never
+      // does, so it has to clear the bars the seed lane itself would need to
+      // stop — on BOTH surfaces, since neither subsumes the other:
+      //   - countNoSignalMinimumFastpathCandidates is stricter on browse
+      //     (excludes apparel + tools; 24 at p1/l24, 120 at p5/l24)
+      //   - shouldSkipNoSignalProviderExpansion is stricter on home_hot_deals
+      //     (6 strictly-beauty-non-tools against the coverage arm's 3), where
+      //     external_seeds IS the beauty supply for cold start
+      //
+      // Deliberately NOT a filtered count at the same value: at p1/l60 and
+      // p5/l24 `enoughThreshold === safeLimit`, so a filtered-only bar would
+      // demand a 100%-clean fetch and the lane could never fire.
+      const canonicalSigCoversPage =
+        mergedProducts.length >= enoughThreshold &&
+        countNoSignalMinimumFastpathCandidates(mergedProducts, { request, profile }) >=
+          getNoSignalMinimumFastpathCoverageThreshold(request) &&
+        shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile });
+
+      if (canonicalSigCoversPage) {
+        candidateSource = 'canonical_sig';
+        primaryPathUsed = 'canonical_sig';
+        providerResults.push(
+          buildSkippedProviderResult('products_search', {
+            label: getProviderLabel('products_search'),
+            query: providerQueries.join(' | '),
+            limit: safeLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('internal_catalog', {
+            label: getProviderLabel('internal_catalog'),
+            query: providerQueries.join(' | '),
+            limit: internalProviderLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('external_seeds', {
+            label: getProviderLabel('external_seeds'),
+            query: externalProviderQueries.join(' | '),
+            limit: externalProviderLimit,
+            skipReason: 'canonical_sig_primary_used',
+          }),
+        );
+        return finalizeProviderResult();
+      }
+
+      fallbackTriggered = true;
+      fallbackReason = canonicalSigFailed
+        ? 'canonical_sig_query_failed'
+        : !Array.isArray(canonicalSigProducts)
+          ? 'canonical_sig_unavailable'
+          : canonicalSigProducts.length > 0
+            ? 'canonical_sig_insufficient'
+            : 'canonical_sig_zero_recall';
+    }
+
     // Opt-in: run internal_catalog in parallel with the external_seed fastpath so
     // real-merchant products (status=approved, psp_connected, fresh products_cache)
     // surface on anonymous Browse. Default off — flip per-env after staging
@@ -7625,7 +8098,18 @@ async function loadCatalogCandidates({
       }),
     );
   } else if (!explicitQueryScoped) {
-    appendProviderResult(await fetchProductsSearchProviderResult());
+    if (brandDirectPoolEmpty === true && !isBrandScopedProductsSearchEnabled()) {
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'brand_direct_pool_empty',
+        }),
+      );
+    } else {
+      appendProviderResult(await fetchProductsSearchProviderResult());
+    }
   }
 
   const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {
@@ -8577,36 +9061,97 @@ function buildDiscoveryCategoryFacets(entries = []) {
     }));
 }
 
+// The market the brand-scoped external seed query binds. One read, shared with the brand-direct pool
+// cache key, so a cached pool can never be keyed on a different market than the query that built it.
+function brandScopedExternalSeedMarket() {
+  return String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+}
+
 async function fetchBrandScopedExternalSeedCandidates({
   brandAliases = [],
+  // The spelling each alias arrived with, aligned index for index with brandAliases. Optional:
+  // a caller that omits it gets exactly the aliases it passed, folded as before.
+  brandAliasSpellings = [],
   limit = 120,
   orderByRecency = true,
   // When false, skip the attached-seed JOIN query — attached seeds are already
   // represented in the canonical agent_pdp_view path (commerce-index brand flow).
   // Default true preserves T2a behaviour.
   includeAttached = true,
+  failures = null,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
-  const normalizedAliases = uniqStrings(
-    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
-    16,
-  );
+  // ONE capped pass over the caller's aliases feeds both lanes: the title lane matches
+  // the spaced normalization, the brand lanes the identity key. Capping the two lists
+  // separately let the lanes probe different alias sets past the cap. Every spelling of an
+  // alias is carried, because the identity key must be computed from each — see below.
+  const keptAliases = [];
+  const seenSpaced = new Set();
+  const spellingsByAlias = Array.isArray(brandAliasSpellings) ? brandAliasSpellings : [];
+  for (let at = 0; at < brandAliases.length; at += 1) {
+    const alias = brandAliases[at];
+    const spaced = normalizeBrandText(alias);
+    if (!spaced || seenSpaced.has(spaced)) continue;
+    seenSpaced.add(spaced);
+    // A LIST, because two brand names in one scope can fold to this one alias. A caller that
+    // passes no spellings (every injected fetcher, every non-brand-page caller) gets the alias
+    // itself, which is exactly what it passed.
+    const spellings = Array.isArray(spellingsByAlias[at]) && spellingsByAlias[at].length
+      ? spellingsByAlias[at]
+      : [alias];
+    keptAliases.push({ spellings, spaced });
+    if (keptAliases.length >= 16) break;
+  }
+  const normalizedAliases = keptAliases.map((entry) => entry.spaced);
   if (!normalizedAliases.length) return [];
-  const brandPrefixAliases = uniqStrings(
-    normalizedAliases.filter((alias) => alias.length >= 4),
-    16,
-  );
-  const brandPrefixPatterns = uniqStrings(
-    brandPrefixAliases.map((alias) => `${alias}%`),
-    16,
-  );
-  const compactAliases = uniqStrings(
-    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
-    16,
-  );
+  // Brand identity keys (accent-folded, alphanumerics only) — the SAME value the
+  // brand-identity indexes store, so equality and prefix are both index lookups.
+  // A key is derived from EVERY spelling the alias is known by, never from one of them:
+  // normalizeBrandText folds EVERY combining diacritic (NFKD), while the SQL identity's
+  // translate() folds only the Latin-1 table. Keying off the folded spelling alone bound
+  // 'senoraskin' against an indexed 'señoraskin' and those brand pages returned nothing;
+  // keying off the unfolded spelling alone loses the rows whose brand is stored unaccented.
+  // brandIdentityKey is the twin of the SQL expression, so it must be fed what the SQL is fed.
+  // The >= 4 floor reads the SPACED normalization: "e.l.f." is "e l f" (5) and keeps
+  // its prefix arm, where the compacted identity "elf" (3) would silently lose it.
+  // Aliases that collide on one identity key are OR'd, never first-wins: ["elf",
+  // "e.l.f."] both key to 'elf', and taking `prefixable` from whichever came first
+  // dropped the prefix arm and with it every row the old predicate matched by prefix.
+  // A brand whose diacritic is outside the SQL identity's Latin-1 translate table (Señora,
+  // Škoda, Māori) USED to be unreachable here: every layer above this function runs
+  // normalizeBrandText, whose NFKD pass folds every combining mark, so the alias arrived
+  // spelled 'senora' while the row indexes as 'señora'. The request's own spelling is now
+  // carried alongside the alias (see resolveBrandAliasSpellings) and keyed below, so those
+  // rows are reachable. What is still NOT reachable is the other direction: folding runs one
+  // way, so a plain 'senoraskin' alias cannot reach a row indexed 'señoraskin' — that needs
+  // the ROW side folded, i.e. the diacritic added to identitySql's translate() table and the
+  // three brand identity indexes rebuilt. The scan's real reach is pinned by the
+  // production-path test rather than described here.
+  const prefixableByKey = new Map();
+  for (const { spellings, spaced } of keptAliases) {
+    // EVERY spelling this alias is known by, not one of them. For any brand the SQL fold table
+    // covers they are the same string and collapse into one key here, so the common brand page
+    // gains no branch. Where they differ, both must be probed, because each reaches rows the
+    // other cannot:
+    //   - the spelling the request sent reaches a row whose own brand carries a diacritic
+    //     outside translate()'s Latin-1 table ("Senora Skin" with n-tilde indexes with the
+    //     n-tilde), which no folded key can ever equal;
+    //   - the folded spelling reaches a row whose brand is stored unaccented ('senoraskin'),
+    //     which the accented key can never equal.
+    // Binding only one of them does not fix the brand page, it moves which half of it is empty.
+    // `spaced` is the folded spelling. brandIdentityKey(alias) is NOT listed separately: in
+    // production the alias IS its own folded form, so it duplicated this key, and for a caller
+    // that passes no spellings the alias is already in `spellings` above.
+    for (const key of [...spellings.map((value) => brandIdentityKey(value)), brandIdentityKey(spaced)]) {
+      if (!key) continue;
+      prefixableByKey.set(key, (prefixableByKey.get(key) || false) || spaced.length >= 4);
+    }
+  }
+  const identityAliases = [...prefixableByKey.keys()];
+  const identityPrefixAliases = identityAliases.filter((key) => prefixableByKey.get(key));
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const market = brandScopedExternalSeedMarket();
   const tool = 'creator_agents';
 
   try {
@@ -8644,64 +9189,161 @@ async function fetchBrandScopedExternalSeedCandidates({
       cp.canonical_url        AS pivota_canonical_url,
       cp.title                AS catalog_title
     `;
-    const normalizedBrandSql = `trim(regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', ' ', 'g'))`;
-    const compactBrandSql = `regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', '', 'g')`;
     // Brand-scoped public cards must point at a PDP that the serving contract
     // accepts, so external seeds are resolved through attached_product_key.
-    const indexedBrandSql = `lower(regexp_replace(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', split_part(eps.domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
       ? 'ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST'
       : '';
-    const brandMatchSql = `(
-        ${epsBrandFieldSql} = ANY($3::text[])
-        OR ${epsBrandFieldSql} LIKE ANY($4::text[])
-        OR ${normalizedBrandSql} = ANY($3::text[])
-        OR ${normalizedBrandSql} LIKE ANY($4::text[])
-        OR ${compactBrandSql} = ANY($6::text[])
-        OR ${indexedBrandSql} = ANY($6::text[])
-      )`;
     if (!includeAttached) return [];
-    // Primary query — attached seeds with canonical fields. The old unattached
-    // partial-index path could expose ext_* or stale sig_* routes that PDP
-    // rejects, so public brand recall now requires the serving catalog join.
-    const attachedHeadRes = await query(
-      `
-        SELECT ${attachedSelectColumns}
-        FROM external_product_seeds eps
-        JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
-        ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-        WHERE eps.status = 'active'
-          AND eps.attached_product_key IS NOT NULL
-          AND eps.market = $1
-          AND (eps.tool = '*' OR eps.tool = $2)
-          AND ${brandMatchSql}
-        ${orderClause}
-        LIMIT $5
-      `,
-      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
-    );
-    const rows = Array.isArray(attachedHeadRes?.rows) ? [...attachedHeadRes.rows] : [];
-    if (rows.length < safeLimit) {
-      const titleRes = await query(
-        `
-          SELECT ${attachedSelectColumns}
+    // Every bind is pushed at the moment its text is added, so a clause that is
+    // skipped can never leave an unreferenced parameter behind (42P18 kills the
+    // whole statement, see #2207).
+    const headParams = [market, tool];
+    const headBind = (value) => {
+      headParams.push(value);
+      return `$${headParams.length}`;
+    };
+    // `tool = ANY(ARRAY['*', $2])`, not `(tool = '*' OR tool = $2)`: the OR split every branch into two
+    // bitmap arms, and whenever the planner served one arm from an index without the identity condition it
+    // kept the identity as a Filter for the whole heap scan, re-extracting the brand from seed_data per row.
+    // The array form is the same rows and one index scan whose condition carries market, tool and identity.
+    const scanScopeSql = `${brandSeedScanPredicateSql('eps')}
+            AND eps.market = $1
+            AND eps.tool = ANY(ARRAY['*', $2]::text[])`;
+    // Each alias probe is its OWN branch of a UNION, not another OR'd filter on
+    // one scan. An OR chain makes PostgreSQL re-evaluate the 10-path JSONB
+    // identity once per clause per row, so cost grows with alias count and the
+    // planner abandons the index entirely past ~6 clauses — measured at 5.4-11.7x
+    // SLOWER than the predicate this replaces. As UNION branches each probe is a
+    // single comparison the index answers on its own, and the outer query then
+    // touches only the ids that matched.
+    const branch = (identitySql, clause) => `
+          SELECT eps.id
+          FROM external_product_seeds eps
+          WHERE ${scanScopeSql}
+            AND ${identitySql} ${clause}`;
+    // An alias with a prefix arm needs no equality arm: `alias%` already matches
+    // `alias` exactly, so binding both doubled the branch work for nothing.
+    const equalityOnlyAliases = identityAliases.filter((alias) => !identityPrefixAliases.includes(alias));
+    const brandBranches = [];
+    if (identityAliases.length && equalityOnlyAliases.length) {
+      brandBranches.push(branch(seedBrandIdentitySql('eps'), `= ANY(${headBind(equalityOnlyAliases)}::text[])`));
+    }
+    for (const alias of uncoveredPrefixKeys(identityPrefixAliases)) {
+      const identity = seedBrandIdentitySql('eps');
+      brandBranches.push(`
+          SELECT eps.id
+          FROM external_product_seeds eps
+          WHERE ${scanScopeSql}
+            AND ${identityPrefixRangeSql(identity, headBind(alias), headBind(identityPrefixUpperBound(alias)))}`);
+    }
+    // The domain chain is EQUALITY ONLY. The predicate this replaces compared it with
+    // `= ANY($6)` and never prefix-matched it, and a prefix over a domain-derived brand
+    // pulls in unrelated merchants: "mixsoon" would reach mixsoonish-teashop.com, "rare"
+    // would reach rareearthminerals.com. Widening brand pages is not this PR's business.
+    if (identityAliases.length) {
+      brandBranches.push(branch(seedDomainIdentitySql('eps'), `= ANY(${headBind(identityAliases)}::text[])`));
+    }
+    // Candidate ids are resolved in their OWN statement, then the rows are fetched
+    // by primary key. Keeping the union as a CTE of the fetch made the outer query
+    // seq-scan the table again from 8 branches on: PostgreSQL estimates a
+    // parameterized LIKE / `= ANY` over an expression index at ~16% of the table
+    // (3,192 of 20,320 rows measured) where it returns ~17, so it hash-joined
+    // against a full scan instead of probing the key. An id list takes that
+    // estimate out of the decision — every row fetch is a pkey lookup.
+    //
+    // The old unattached partial-index path could expose ext_* or stale sig_*
+    // routes that PDP rejects, so public brand recall still requires the serving
+    // catalog join — and that join still runs AFTER the probe, so LIMIT applies to
+    // rows that passed the trust gate, exactly as before, not to candidates.
+    //
+    // The fetch picks its rows BEFORE it reads them. The single-statement form joined every candidate,
+    // sorted them all, and then read seed_data for the kept rows through ~33 separate `seed_data->...`
+    // expressions, each of which detoasts the row's whole seed_data (~56KB on average) again. In prod on
+    // 2026-09-17, Fenty Beauty's 784 candidates took 193.8ms that way. Now:
+    //   1. `picked` joins and orders ids only, and applies the LIMIT, so the gate still runs before the
+    //      LIMIT exactly as before;
+    //   2. the wide columns are read for the picked rows only, from a seed_data detoasted ONCE per row by
+    //      a lateral that cannot be inlined (OFFSET 0). `seed_data || '{}'` returns a new in-memory value;
+    //      it only differs from seed_data when seed_data is not an object, and every read below is a
+    //      text-key path, which yields NULL on an array or scalar either way.
+    // Same rows, same order: 48.7ms for Fenty. Without an ORDER BY (brand-only pages) the kept rows were
+    // an arbitrary subset before and still are.
+    const detoastedSelectColumns = attachedSelectColumns.replace(/\beps\.seed_data\b/g, 'sd.seed_data');
+    const fetchByIdSql = `
+        WITH picked AS MATERIALIZED (
+          SELECT eps.id
           FROM external_product_seeds eps
           JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
           ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-          WHERE eps.status = 'active'
-            AND eps.attached_product_key IS NOT NULL
-            AND eps.market = $1
-            AND (eps.tool = '*' OR eps.tool = $2)
-            AND EXISTS (
-              SELECT 1
-              FROM unnest($3::text[]) AS alias
-              WHERE lower(coalesce(eps.seed_data->'snapshot'->>'title', eps.seed_data->>'title', eps.title, '')) LIKE alias || ' %'
-            )
+          WHERE eps.id = ANY($1::text[])
           ${orderClause}
-          LIMIT $4
-        `,
-        [market, tool, normalizedAliases, Math.max(0, safeLimit - rows.length)],
-      );
+          LIMIT $2
+        )
+        SELECT ${detoastedSelectColumns}
+        FROM picked
+        JOIN external_product_seeds eps ON eps.id = picked.id
+        JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+        CROSS JOIN LATERAL (SELECT eps.seed_data || '{}'::jsonb AS seed_data OFFSET 0) sd
+        ${orderClause}
+      `;
+    // The candidate list is deliberately UNBOUNDED. Binding it back as an id array is what makes the
+    // fetch a key probe instead of a re-planned semi-join, and that array is also what puts a cliff at
+    // the far end: the measured crossover where this shape stops beating the predicate it replaces is
+    // ~13,000 candidates, with the array cost dominating from ~25,000. Prod's ENTIRE attached-seed
+    // population is 11,817 rows and the largest brand page probes 784, so neither is reachable.
+    // Do not add a cap here: a cap truncates BEFORE the fetch's ORDER BY, so it would drop the newest
+    // rows rather than the ones the ranking would have dropped.
+    const idsOf = (res) => uniqStrings(
+      (Array.isArray(res?.rows) ? res.rows : []).map((row) => String(row?.id || '').trim()).filter(Boolean),
+      Number.MAX_SAFE_INTEGER,
+    );
+    let rows = [];
+    if (identityAliases.length) {
+      const brandIdsSql = `
+        WITH brand_seed_ids AS (
+          ${brandBranches.join('\n          UNION')}
+        )
+        SELECT id FROM brand_seed_ids
+      `;
+      const brandIds = idsOf(await query(brandIdsSql, headParams));
+      if (brandIds.length) {
+        const headRes = await query(fetchByIdSql, [brandIds, safeLimit]);
+        rows = Array.isArray(headRes?.rows) ? [...headRes.rows] : [];
+      }
+    }
+    if (rows.length < safeLimit) {
+      // Same match as the EXISTS/unnest form this replaces — a title that starts
+      // with an alias followed by a space — but each alias is its own UNION branch,
+      // so idx_external_seeds_attached_title_prefix_v1 answers each one instead of
+      // the title expression being evaluated for every attached seed.
+      // likePrefixPattern escapes % and _: "100% PURE" is a real brand, and an
+      // unescaped % matched everything AND defeated the index's prefix scan.
+      const titleParams = [market, tool];
+      const titleBind = (value) => {
+        titleParams.push(value);
+        return `$${titleParams.length}`;
+      };
+      const titleSql = seedTitleSql('eps');
+      const titleBranches = normalizedAliases.map((alias) => `
+            SELECT eps.id
+            FROM external_product_seeds eps
+            WHERE ${brandSeedScanPredicateSql('eps')}
+              AND eps.market = $1
+              AND (eps.tool = '*' OR eps.tool = $2)
+              AND ${titleSql} LIKE ${titleBind(likePrefixPattern(alias, ' '))}`);
+      // Two statements for the same reason as the brand lane: an id probe cannot be
+      // mis-planned, a semi-join against an estimated CTE can.
+      const titleIdsSql = `
+          WITH title_seed_ids AS (
+            ${titleBranches.join('\n            UNION')}
+          )
+          SELECT id FROM title_seed_ids
+        `;
+      const titleIds = idsOf(await query(titleIdsSql, titleParams));
+      const titleRes = titleIds.length
+        ? await query(fetchByIdSql, [titleIds, Math.max(0, safeLimit - rows.length)])
+        : null;
       const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
       for (const row of Array.isArray(titleRes?.rows) ? titleRes.rows : []) {
         const id = String(row?.id || '').trim();
@@ -8722,11 +9364,12 @@ async function fetchBrandScopedExternalSeedCandidates({
       },
       'brand scoped discovery external query failed',
     );
+    if (Array.isArray(failures)) failures.push('external_seed');
     return [];
   }
 }
 
-async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], limit = 120 } = {}) {
+async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], limit = 120, failures = null } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -8797,6 +9440,7 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
       },
       'brand scoped discovery internal query failed',
     );
+    if (Array.isArray(failures)) failures.push('internal_catalog');
     return [];
   }
 }
@@ -8834,7 +9478,100 @@ function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_produc
   `;
 }
 
-async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
+// Product identity first, merchant identity second.
+//
+// The row is keyed by `pivota_signature_id` — the canonical product — and the
+// merchant is resolved off it: a connected first-party catalog row when one
+// exists, otherwise the external-seed mirror. Shared by the brand-page reader
+// and the generic browse reader so both spell identity the same way.
+function mapCanonicalIndexRowToProduct(row) {
+  const productId = String(row.pivota_signature_id || '').trim();
+  if (!productId) return null;
+  const offers = Array.isArray(row.offers) ? row.offers : null;
+  const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
+  const priceMin = Number(row.price_min);
+  // Prefer the first-party catalog row when one exists. The legacy mapper
+  // hardcoded merchant_id='external_seed', which works for Pivota-seeded
+  // brands like Fenty but mangles every first-party brand (MOYU, GR,
+  // PawStyle, etc.) — they ship without the real merchant/platform that
+  // downstream hydration needs.
+  const firstPartyMerchantId = row.first_party_merchant_id
+    ? String(row.first_party_merchant_id)
+    : null;
+  const isFirstParty = !!firstPartyMerchantId;
+  const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
+  const platform = isFirstParty
+    ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
+    : 'external_seed';
+  const sourceProductId = isFirstParty
+    ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
+    : (row.external_product_id != null ? String(row.external_product_id) : null);
+  const productKey = isFirstParty
+    ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
+    : (row.external_product_key ? String(row.external_product_key) : null);
+  return {
+    id: productId,
+    product_id: productId,
+    merchant_id: merchantId,
+    platform,
+    pivota_signature_id: productId,
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
+    ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
+    ...(row.content_key ? { content_key: String(row.content_key) } : {}),
+    // The external identity every other lane already serves. `merchant_id`
+    // stays the 'external_seed' convention both lanes share; the real seller is
+    // carried in merchant_name, and the seed id / merchant canonical URL /
+    // destination URL are what the PDP purchase flow, the JSON-LD, and the
+    // consumer's servability check read. Without them this reader emitted a
+    // product the UI dropped as unservable — 24 in, 0 rendered — while the
+    // seed lane's identical products rendered, because only the seed lane
+    // carried these fields.
+    ...(!isFirstParty && row.external_seed_id ? { external_seed_id: String(row.external_seed_id) } : {}),
+    // From the catalog row's brand, not from seed_data — see the lateral above
+    // for why reading seed_data here cost 6x. Verified against the live seed
+    // lane over its 24 served products: 22 identical, 2 differing only in case.
+    ...(!isFirstParty && (row.external_brand || row.brand)
+      ? { merchant_name: String(row.external_brand || row.brand) }
+      : {}),
+    ...(!isFirstParty && row.external_canonical_url
+      ? { merchant_canonical_url: String(row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && (row.external_destination_url || row.external_canonical_url)
+      ? { destination_url: String(row.external_destination_url || row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && sourceProductId ? { platform_product_id: sourceProductId } : {}),
+    // pivota_canonical_url is deliberately NOT emitted.
+    //
+    // The mapper's old `row.canonical_url` was a dead read (neither reader
+    // selected it), so this field has never been populated here. Sourcing it
+    // from catalog_products.pivota_canonical_url was tried and REVERTED: that
+    // column is minted from its OWN row's sig, and the ext_seed lateral resolves
+    // a row by content_key, so for 49 servable rows the URL named a DIFFERENT
+    // product than the one being served. agent-ui's resolveProductRouteId reads
+    // pivota_canonical_url BEFORE pivota_signature_id, so the card would have
+    // rendered product A and linked to product B's PDP. 385 of those rows also
+    // hold an off-site retailer URL in that column, which would publish a
+    // competitor link under a field named "the Pivota canonical".
+    //
+    // Omitting it is both correct and the status quo: agent-ui falls back to
+    // pivota_signature_id, which is always this product.
+    title: String(row.title || '').trim() || productId,
+    ...(row.description ? { description: String(row.description) } : {}),
+    ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
+    ...(row.image_url ? { image_url: String(row.image_url) } : {}),
+    ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
+    price: Number.isFinite(priceMin) ? priceMin : null,
+    currency: String(row.currency || 'USD').trim() || 'USD',
+    ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
+    ...(Array.isArray(row.category_path) && row.category_path.length
+      ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
+      : {}),
+    source: 'commerce_index',
+  };
+}
+
+async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120, failures = null } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -8858,15 +9595,21 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
   try {
     const res = await query(
       `
-        WITH brand_match AS (
-          SELECT DISTINCT cp.content_key
-          FROM catalog_products cp
-          WHERE cp.content_key IS NOT NULL
-            AND cp.brand IS NOT NULL
-            AND (
-              lower(cp.brand) = ANY($1::text[])
-              OR regexp_replace(lower(cp.brand), '[^a-z0-9]+', '', 'g') = ANY($2::text[])
-            )
+        WITH brand_match AS (${canonicalBrandMatchSql({ alias: 'cp', lowerAliasesParam: '$1', compactAliasesParam: '$2' })}
+        ),
+        -- The page is picked BEFORE the two identity laterals run. Every filter and the ordering that decide
+        -- which rows are served live here, so the laterals run for the kept rows only instead of for every
+        -- brand match (Fenty Beauty: 754 matches for 120 served; 103ms -> 50ms in prod on 2026-09-17, same
+        -- rows in the same order).
+        picked AS MATERIALIZED (
+          SELECT apv.content_key, apv.refreshed_at
+          FROM agent_pdp_view apv
+          JOIN brand_match bm ON bm.content_key = apv.content_key
+          ${gateJoinSql}
+          WHERE apv.pivota_signature_id IS NOT NULL
+            ${gateWhereSql}
+          ORDER BY apv.refreshed_at DESC NULLS LAST
+          LIMIT $3
         )
         SELECT
           apv.content_key,
@@ -8877,6 +9620,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
           apv.description,
@@ -8888,9 +9635,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           apv.offer_count,
           apv.offers,
           apv.category_path
-        FROM agent_pdp_view apv
-        JOIN brand_match bm ON bm.content_key = apv.content_key
-        ${gateJoinSql}
+        FROM picked
+        JOIN agent_pdp_view apv ON apv.content_key = picked.content_key
         LEFT JOIN LATERAL (
           SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
           FROM catalog_products cp
@@ -8907,8 +9653,76 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           LIMIT 1
         ) first_party ON TRUE
         LEFT JOIN LATERAL (
-          SELECT cp.source_product_id, cp.product_key
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.brand,
+            cp.canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
           FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            -- Prefer the seed that sells the SAME storefront the card's
+            -- merchant_canonical_url names. 151 product_keys carry more than one
+            -- active seed with a distinct destination, and this leg supplies the
+            -- buyer's redirect while merchant_canonical_url comes from
+            -- cp.canonical_url — so ordering by recency alone let one card show
+            -- beautyofjoseon.com as the merchant and link the buy button to
+            -- ohlolly.com. Both are real sellers, so this is a disagreement
+            -- between two fields on one card, not a wrong destination; measured
+            -- on all 10,222 live seeded rows it drops host mismatches 13 -> 0.
+            --
+            -- IS NOT DISTINCT FROM, and the IS NOT NULL guard, keep this
+            -- expression non-NULL: ORDER BY bool DESC sorts NULLs FIRST, so
+            -- a seed with no destination would otherwise win the pick.
+            ORDER BY (
+                       eps.destination_url IS NOT NULL
+                       -- Require a PARSEABLE canonical host too. Without this,
+                       -- two unparseable sides compare equal: a NULL or
+                       -- uppercase-scheme cp.canonical_url yields a NULL host,
+                       -- and a seed whose destination_url is relative or
+                       -- malformed also yields NULL, so IS NOT DISTINCT FROM
+                       -- scored them TRUE and PROMOTED the malformed seed above
+                       -- a well-formed absolute one — a wrong buy link, not
+                       -- merely a mismatched card. No such row exists today
+                       -- (0 NULL/unparseable across 11,352 active seeds and
+                       -- 12,514 external_seed catalog rows), so this closes a
+                       -- latent inversion rather than a live one.
+                       AND substring(cp.canonical_url from '^https?://([^/]+)') IS NOT NULL
+                       -- Hosts are case-insensitive; lower() on both sides so a
+                       -- scheme/host casing difference cannot demote the right
+                       -- seed. IS NOT DISTINCT FROM keeps the whole expression
+                       -- non-NULL, which matters because ORDER BY bool DESC
+                       -- sorts NULLs FIRST.
+                       AND lower(substring(eps.destination_url from '^https?://([^/]+)'))
+                           IS NOT DISTINCT FROM lower(substring(cp.canonical_url from '^https?://([^/]+)'))
+                     ) DESC,
+                     eps.updated_at DESC NULLS LAST,
+                     eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
             -- ADR-009: match external-seed content by platform + accept both the
             -- legacy 'ext_%' id scheme AND observed sellers (merch_obs_…, whose
@@ -8918,68 +9732,28 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
-          ORDER BY cp.updated_at DESC NULLS LAST
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
-        WHERE apv.pivota_signature_id IS NOT NULL
-          ${gateWhereSql}
-        ORDER BY apv.refreshed_at DESC NULLS LAST
-        LIMIT $3
+        ORDER BY picked.refreshed_at DESC NULLS LAST
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
-    return (res.rows || [])
-      .map((row) => {
-        const productId = String(row.pivota_signature_id || '').trim();
-        if (!productId) return null;
-        const offers = Array.isArray(row.offers) ? row.offers : null;
-        const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
-        const priceMin = Number(row.price_min);
-        // Prefer the first-party catalog row when one exists. The legacy mapper
-        // hardcoded merchant_id='external_seed', which works for Pivota-seeded
-        // brands like Fenty but mangles every first-party brand (MOYU, GR,
-        // PawStyle, etc.) — they ship without the real merchant/platform that
-        // downstream hydration needs.
-        const firstPartyMerchantId = row.first_party_merchant_id
-          ? String(row.first_party_merchant_id)
-          : null;
-        const isFirstParty = !!firstPartyMerchantId;
-        const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
-        const platform = isFirstParty
-          ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
-          : 'external_seed';
-        const sourceProductId = isFirstParty
-          ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
-          : (row.external_product_id != null ? String(row.external_product_id) : null);
-        const productKey = isFirstParty
-          ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
-          : (row.external_product_key ? String(row.external_product_key) : null);
-        return {
-          id: productId,
-          product_id: productId,
-          merchant_id: merchantId,
-          platform,
-          pivota_signature_id: productId,
-          ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
-          ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
-          ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
-          ...(row.content_key ? { content_key: String(row.content_key) } : {}),
-          ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
-          title: String(row.title || '').trim() || productId,
-          ...(row.description ? { description: String(row.description) } : {}),
-          ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
-          ...(row.image_url ? { image_url: String(row.image_url) } : {}),
-          ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
-          price: Number.isFinite(priceMin) ? priceMin : null,
-          currency: String(row.currency || 'USD').trim() || 'USD',
-          ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
-          ...(Array.isArray(row.category_path) && row.category_path.length
-            ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
-            : {}),
-          source: 'commerce_index',
-        };
-      })
-      .filter(Boolean);
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -8989,6 +9763,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       (message.includes('catalog_row_trust') && message.includes('does not exist'))
     ) {
       // Migrations not applied yet — fail open, caller falls back to legacy path.
+      if (Array.isArray(failures)) failures.push('canonical_relation_missing');
       return [];
     }
     logger.warn(
@@ -8998,7 +9773,222 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       },
       'brand scoped commerce-index query failed',
     );
+    if (Array.isArray(failures)) failures.push('canonical');
     return [];
+  }
+}
+
+// Generic browse recalled from the canonical sig index rather than the legacy
+// external-seed lane.
+//
+// The seed lane recalls by facets the servable corpus does not carry: measured
+// 2026-08-17, the two cohorts that actually clear the serving gate
+// (external_brand_crawl 1,135 rows, catalog_enrichment_agent_v1 1,637) have ZERO
+// `derived.recall.category` and ZERO `derived.recall.vertical` between them, so
+// the curated head and the indexed ladder can never match them and browse fell
+// through to a 78-statement sweep that returned 9 products. The canonical index
+// is keyed the way the catalog is now keyed — one row per `pivota_signature_id`,
+// merchant resolved off the identity — and 2,467 of its 2,471 servable rows
+// carry a category.
+//
+// Default off. Flip DISCOVERY_BROWSE_USES_CANONICAL_SIG per environment once the
+// corpus backfill has run, so the cutover is observable rather than implicit.
+function browseUsesCanonicalSig() {
+  const raw = String(process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG || '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+// Returns `null` when the index is unreadable in a way the caller should treat
+// as "not available yet" (no DATABASE_URL, migrations not applied) and an array
+// otherwise. A REAL failure — timeout, dropped connection, schema drift — is
+// rethrown, never flattened to an empty array.
+//
+// Flattening every error to [] is what made an outage indistinguishable from an
+// empty catalog: the caller then recorded the provider as a 200 with zero rows,
+// which counts as a successful provider, which suppresses
+// DiscoveryCatalogUnavailableError and lets a dead database render as a healthy
+// empty page — and makes the discovery smoke gate pass on it.
+//
+// The request carries no category scope in practice: the only call site is
+// gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
+// scope is set. No category branch is built here for that reason.
+async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return null;
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  const params = [safeLimit];
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          apv.content_key,
+          apv.pivota_signature_id,
+          first_party.merchant_id AS first_party_merchant_id,
+          first_party.platform AS first_party_platform,
+          first_party.source_product_id AS first_party_source_product_id,
+          first_party.product_key AS first_party_product_key,
+          ext_seed.source_product_id AS external_product_id,
+          ext_seed.product_key AS external_product_key,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
+          apv.brand,
+          apv.title,
+          apv.description,
+          apv.image_url,
+          apv.image_urls,
+          apv.currency,
+          apv.price_min,
+          apv.price_max,
+          apv.offer_count,
+          apv.offers,
+          apv.category_path
+        FROM agent_pdp_view apv
+        LEFT JOIN LATERAL (
+          SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.platform <> 'external_seed'
+            AND cp.sync_status = 'live'
+            AND cp.suppression_reason IS NULL
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) first_party ON TRUE
+        LEFT JOIN LATERAL (
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.brand,
+            cp.canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
+          FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            -- Prefer the seed that sells the SAME storefront the card's
+            -- merchant_canonical_url names. 151 product_keys carry more than one
+            -- active seed with a distinct destination, and this leg supplies the
+            -- buyer's redirect while merchant_canonical_url comes from
+            -- cp.canonical_url — so ordering by recency alone let one card show
+            -- beautyofjoseon.com as the merchant and link the buy button to
+            -- ohlolly.com. Both are real sellers, so this is a disagreement
+            -- between two fields on one card, not a wrong destination; measured
+            -- on all 10,222 live seeded rows it drops host mismatches 13 -> 0.
+            --
+            -- IS NOT DISTINCT FROM, and the IS NOT NULL guard, keep this
+            -- expression non-NULL: ORDER BY bool DESC sorts NULLs FIRST, so
+            -- a seed with no destination would otherwise win the pick.
+            ORDER BY (
+                       eps.destination_url IS NOT NULL
+                       -- Require a PARSEABLE canonical host too. Without this,
+                       -- two unparseable sides compare equal: a NULL or
+                       -- uppercase-scheme cp.canonical_url yields a NULL host,
+                       -- and a seed whose destination_url is relative or
+                       -- malformed also yields NULL, so IS NOT DISTINCT FROM
+                       -- scored them TRUE and PROMOTED the malformed seed above
+                       -- a well-formed absolute one — a wrong buy link, not
+                       -- merely a mismatched card. No such row exists today
+                       -- (0 NULL/unparseable across 11,352 active seeds and
+                       -- 12,514 external_seed catalog rows), so this closes a
+                       -- latent inversion rather than a live one.
+                       AND substring(cp.canonical_url from '^https?://([^/]+)') IS NOT NULL
+                       -- Hosts are case-insensitive; lower() on both sides so a
+                       -- scheme/host casing difference cannot demote the right
+                       -- seed. IS NOT DISTINCT FROM keeps the whole expression
+                       -- non-NULL, which matters because ORDER BY bool DESC
+                       -- sorts NULLs FIRST.
+                       AND lower(substring(eps.destination_url from '^https?://([^/]+)'))
+                           IS NOT DISTINCT FROM lower(substring(cp.canonical_url from '^https?://([^/]+)'))
+                     ) DESC,
+                     eps.updated_at DESC NULLS LAST,
+                     eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
+          WHERE cp.content_key = apv.content_key
+            -- ADR-009: this leg exists to keep the row EXTERNAL identity
+            -- (external_product_id / external_product_key) so the redirect path
+            -- still resolves. The platform check below is already a complete leg
+            -- of the canonical seed-lane predicate, so an id-prefix filter on top
+            -- can only narrow it. The brand reader LIKE ext_% matched the live
+            -- ext: prefix only because the unescaped underscore acted as a
+            -- wildcard; spelling it as a literal underscore silently dropped
+            -- every ext: row. Dropped entirely rather than re-spelled.
+            AND cp.platform = 'external_seed'
+            AND cp.suppression_reason IS NULL
+            AND cp.sync_status = 'live'
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
+          LIMIT 1
+        ) ext_seed ON TRUE
+        WHERE apv.pivota_signature_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM catalog_products cp_trust
+            JOIN catalog_row_trust crt
+              ON crt.subject_type = 'product'
+             AND crt.subject_key = cp_trust.product_key
+            WHERE cp_trust.content_key = apv.content_key
+              AND crt.serving_decision = 'public'
+          )
+        -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
+        -- make paging stable: browse re-runs this query with a larger LIMIT and
+        -- slices rather than keyset-paging, so a refreshed_at bump between page
+        -- requests still reorders the prefix. Same exposure as the seed lane.
+        ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC
+        LIMIT $1
+      `,
+      params,
+    );
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
+      (message.includes('catalog_row_trust') && message.includes('does not exist'))
+    ) {
+      // Migrations not applied yet — genuinely "no index to read", fail open.
+      return null;
+    }
+    // Everything else is a real failure and must stay one.
+    throw err;
   }
 }
 
@@ -9007,17 +9997,41 @@ function brandPageUsesCommerceIndex() {
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
 }
 
-async function loadBrandScopedDirectCandidates({
+// The spelling of each alias as the request sent it, aligned index for index with
+// `normalizedAliases`. The aliases reaching this lane have been folded by normalizeBrandText
+// on the way in, and the seed scan needs the unfolded spelling to key the indexed brand
+// identity (see buildBrandScopeAliasEntries and fetchBrandScopedExternalSeedCandidates).
+//
+// It is rebuilt from the request's own brand names rather than threaded through another
+// parameter, so a call site cannot pass the aliases and forget the spellings. It is used ONLY
+// when it reproduces the caller's alias list exactly, element for element: a caller that
+// passed some other alias set (every test that injects one, and every non-brand-page caller)
+// keeps today's behaviour, and this can never change WHICH brands are probed.
+function resolveBrandAliasSpellings(request, normalizedAliases) {
+  const entries = buildBrandScopeAliasEntries(request?.scope?.brand_names || []);
+  const normalized = uniqStrings(entries.map((entry) => entry.normalized), 16);
+  const reproduces =
+    normalized.length === normalizedAliases.length &&
+    normalized.every((value, at) => value === normalizedAliases[at]);
+  // One LIST per alias, never one spelling: two brand names in one scope can fold to the same
+  // alias and both must be probed.
+  if (!reproduces) return normalizedAliases.map((alias) => [alias]);
+  return entries.slice(0, normalized.length).map((entry) => entry.spellings);
+}
+
+async function computeBrandScopedDirectCandidates({
   request,
   brandAliases = [],
   limit = 120,
   fetchExternalCandidatesFn = null,
   fetchInternalCandidatesFn = null,
+  failures = null,
 } = {}) {
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
     16,
   );
+  const aliasSpellings = resolveBrandAliasSpellings(request, normalizedAliases);
   if (!normalizedAliases.length) {
     return {
       products: [],
@@ -9027,6 +10041,9 @@ async function loadBrandScopedDirectCandidates({
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
   const stepStartedAt = Date.now();
+  // The brand fetchers swallow their own errors and return [], recording them here. Keep a sink even
+  // when the caller passes none, so an empty pool can be told apart from a failed one.
+  const failureSink = Array.isArray(failures) ? failures : [];
 
   // When BRAND_PAGE_USES_COMMERCE_INDEX is enabled, swap the legacy products_cache
   // read for the commerce-index canonical view (agent_pdp_view + catalog_products).
@@ -9041,15 +10058,18 @@ async function loadBrandScopedDirectCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
             request,
+            failures: failureSink,
           })
         : useCommerceIndex
           ? fetchBrandScopedCanonicalCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
+              failures: failureSink,
             })
           : fetchBrandScopedInternalCatalogCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
+              failures: failureSink,
             }),
       typeof fetchExternalCandidatesFn === 'function'
         ? fetchExternalCandidatesFn({
@@ -9057,12 +10077,15 @@ async function loadBrandScopedDirectCandidates({
             limit: safeLimit,
             request,
             includeAttached: includeAttachedSeeds,
+            failures: failureSink,
           })
         : fetchBrandScopedExternalSeedCandidates({
             brandAliases: normalizedAliases,
+            brandAliasSpellings: aliasSpellings,
             limit: safeLimit,
             orderByRecency: !isBrandScopeOnlyQuery(request),
             includeAttached: includeAttachedSeeds,
+            failures: failureSink,
           }),
     ]);
 
@@ -9091,6 +10114,7 @@ async function loadBrandScopedDirectCandidates({
           returned: deduped.length,
           latency_ms: Date.now() - stepStartedAt,
           cache_hit: false,
+          ...(failureSink.length > 0 ? { degraded: true } : {}),
         },
       ],
     };
@@ -9111,6 +10135,126 @@ async function loadBrandScopedDirectCandidates({
         },
       ],
     };
+  }
+}
+
+// Brand pages are the hottest repeated read on this surface: the 2026-09-15 pivota-pg CPU incident
+// was ~22 K-beauty brand pages opened over and over, and ~90% of discovery builds were this pool
+// (brand_direct_primary), each running two CPU-heavy brand queries (~5s mean in pg_stat_statements).
+// browsePoolCache never covered it (and is keyed per viewer). The pool depends only on the inputs in
+// the key below, so it is cached per gateway instance for DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS.
+//
+// - Concurrent misses for one key share one load (a 5s query is exactly where a stampede costs most).
+// - A result is NEVER cached when any brand fetcher swallowed an error: they return [] on failure, so
+//   caching would pin an empty brand page for minutes after a transient pool timeout.
+// - Callers get a deep copy, so downstream scoring that mutates products cannot leak across requests.
+// - Injected fetch functions (tests) bypass the cache; production never injects them.
+function cloneBrandDirectResult(value) {
+  return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+}
+
+function markBrandDirectCacheHit(value, ageMs, startedAt) {
+  const copy = cloneBrandDirectResult(value);
+  copy.recallSummary = (Array.isArray(copy.recallSummary) ? copy.recallSummary : []).map((step) => ({
+    ...step,
+    cache_hit: true,
+    cache_age_ms: Math.max(0, Math.round(ageMs)),
+    latency_ms: Math.max(0, Date.now() - startedAt),
+  }));
+  return copy;
+}
+
+// Every input the pool's contents depend on, and nothing else.
+function buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit }) {
+  return JSON.stringify({
+    aliases: normalizedAliases,
+    // Two brand names that fold to the same aliases ("Señora Skin" and "Senora Skin") produce
+    // DIFFERENT scans, because the seed lane keys the indexed brand identity off the unfolded
+    // spelling too. Without this they would share one entry and one of those names would be
+    // served the other's brand page.
+    //
+    // The discriminator is brandIdentityKey, the SAME function the scan keys on, so this splits
+    // the cache exactly where the scan differs and nowhere else. A weaker fold (trim +
+    // lowercase) splits it far more often than the scan does: "Dr. Jart+" / "Dr Jart+",
+    // "L'Oreal" with a straight vs a curly apostrophe, a doubled space, NFD vs NFC — all scan
+    // identically and would each take a second entry. Every extra entry is another run of the
+    // statement that was #1 in prod pg_stat_statements and the subject of the 2026-09-15
+    // brand-page stampede, so over-splitting this key is not a cosmetic cost.
+    //
+    // It is NOT resolveBrandAliasSpellings: that re-runs the whole brand lexicon (~0.3ms
+    // measured) on every cache HIT, the one path meant to be free. brandIdentityKey is 0.34us
+    // and the spellings are a pure function of these names anyway.
+    // Sorted, because the scan is order-insensitive: the keys it probes are a SET, so two
+    // scopes listing the same brands in a different order run the same scan and must share one
+    // entry. This does not make the field a perfect discriminator — ['Aetās'] and
+    // ['Aetas','Aetās'] also scan alike yet key apart, since one is a superset of the other —
+    // it just removes the split that ordering alone caused.
+    brand_names: uniqStrings(
+      (Array.isArray(request?.scope?.brand_names) ? request.scope.brand_names : [])
+        .map((name) => brandIdentityKey(name)),
+      16,
+    ).sort(),
+    limit: safeLimit,
+    commerce_index: brandPageUsesCommerceIndex(),
+    order_by_recency: !isBrandScopeOnlyQuery(request),
+    market: brandScopedExternalSeedMarket(),
+  });
+}
+
+async function loadBrandScopedDirectCandidates(args = {}) {
+  const {
+    request,
+    brandAliases = [],
+    limit = 120,
+    fetchExternalCandidatesFn = null,
+    fetchInternalCandidatesFn = null,
+  } = args;
+  const ttlMs = getBrandDirectPoolCacheTtlMs();
+  const injected = typeof fetchExternalCandidatesFn === 'function' || typeof fetchInternalCandidatesFn === 'function';
+  const normalizedAliases = uniqStrings(
+    (Array.isArray(brandAliases) ? brandAliases : []).map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (ttlMs <= 0 || injected || !normalizedAliases.length) {
+    return computeBrandScopedDirectCandidates(args);
+  }
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
+  const key = buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit });
+  const startedAt = Date.now();
+  const cached = brandDirectPoolCache.get(key);
+  if (cached) {
+    if (startedAt - cached.storedAt <= ttlMs) {
+      return markBrandDirectCacheHit(cached.value, startedAt - cached.storedAt, startedAt);
+    }
+    brandDirectPoolCache.delete(key);
+  }
+  const inflight = brandDirectPoolInflight.get(key);
+  if (inflight) {
+    const shared = await inflight;
+    return shared.cacheable ? markBrandDirectCacheHit(shared.value, 0, startedAt) : cloneBrandDirectResult(shared.value);
+  }
+  const load = (async () => {
+    const failures = [];
+    const value = await computeBrandScopedDirectCandidates({ ...args, failures });
+    const errored =
+      failures.length > 0 ||
+      (Array.isArray(value?.recallSummary) ? value.recallSummary : []).some((step) => step && step.error);
+    const cacheable = !errored && Array.isArray(value?.products);
+    if (cacheable) {
+      brandDirectPoolCache.set(key, { storedAt: Date.now(), value: cloneBrandDirectResult(value) });
+      if (brandDirectPoolCache.size > BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES) {
+        const oldestKey = Array.from(brandDirectPoolCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
+        if (oldestKey) brandDirectPoolCache.delete(oldestKey);
+      }
+    }
+    return { value, cacheable };
+  })();
+  brandDirectPoolInflight.set(key, load);
+  try {
+    const { value } = await load;
+    return value;
+  } finally {
+    brandDirectPoolInflight.delete(key);
   }
 }
 
@@ -9185,7 +10329,7 @@ function scoreBeautyBucketAlignment(candidate, profile) {
 }
 
 function isExternalSeedMerchantCandidate(candidate) {
-  return String(candidate?.merchantId || '').trim() === EXTERNAL_SEED_MERCHANT_ID;
+  return isExternalSeedSupplyMerchantId(candidate?.merchantId);
 }
 
 function scoreColdStartCandidateQuality(candidate, surface) {
@@ -10868,8 +12012,34 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
   return summary;
 }
 
+// Phase timings for getDiscoveryFeed. The build reported ONE latency_ms and two
+// unlogged sub-timers, so a p50 of 1.6s could not be attributed: the provider
+// breakdown accounted for ~0ms of it and the database, measured live, for under
+// 500ms. Marks are cumulative-since-the-previous-mark, so the phases PARTITION the
+// wall clock rather than sampling it, and whatever the marks do not cover is
+// reported as `unattributed` instead of vanishing — an instrument that hides the
+// time it cannot explain is worse than none.
+function createDiscoveryPhaseTimer(now = Date.now) {
+  const startedAt = now();
+  let last = startedAt;
+  const phases = {};
+  return {
+    mark(name) {
+      const at = now();
+      phases[name] = Number(phases[name] || 0) + Math.max(0, at - last);
+      last = at;
+    },
+    summary(totalMs) {
+      const attributed = Object.values(phases).reduce((sum, value) => sum + value, 0);
+      const total = Number.isFinite(totalMs) ? totalMs : Math.max(0, now() - startedAt);
+      return { ...phases, unattributed: Math.max(0, total - attributed) };
+    },
+  };
+}
+
 async function getDiscoveryFeed(payload = {}, options = {}) {
   const startedAt = Date.now();
+  const phaseTimer = createDiscoveryPhaseTimer();
   let request = null;
   let profile = null;
   let strategy = 'unknown';
@@ -10884,6 +12054,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   try {
     request = normalizeDiscoveryRequest(payload);
     profile = buildDiscoveryProfile(request.context);
+    phaseTimer.mark('setup');
     strategy = profile.hasInterestSignals ? 'personalized_interest' : 'cold_start_curated';
     personalizationSource =
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
@@ -10912,6 +12083,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           })
         : null;
     let prefetchedBrandDirectLoadResult = null;
+    // #2219 put 1,009ms of a 1,114ms p50 inside `recall`, and showed that no entry in
+    // provider_breakdown claims it - the loads below are not in that breakdown at all. These
+    // marks split the window into its four awaits so the second can be attributed to one.
+    phaseTimer.mark('recall_setup');
     if (shouldUseBrandDirectPrimary) {
       prefetchedBrandDirectLoadResult = scheduledBrandDirectLoad
         ? await scheduledBrandDirectLoad.startNow()
@@ -10923,10 +12098,13 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
             fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
           });
     }
+    phaseTimer.mark('recall_brand_direct');
     const brandDirectAppliedPrimary =
       shouldUseBrandDirectPrimary &&
       Array.isArray(prefetchedBrandDirectLoadResult?.products) &&
       prefetchedBrandDirectLoadResult.products.length > 0;
+    const brandDirectPoolEmpty =
+      shouldUseBrandDirectPrimary && isCleanEmptyBrandDirectResult(prefetchedBrandDirectLoadResult);
 
     const candidateLoadResult = Array.isArray(options.candidateProducts)
       ? {
@@ -10947,6 +12125,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           limit: candidateLimit,
           providerOverrides: options.providerOverrides || null,
           identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
+          brandDirectPoolEmpty,
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
       ? candidateLoadResult.products
@@ -10973,6 +12152,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidateLoadResult?.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError
         ? candidateLoadResult.catalogUnavailableError
         : null;
+    phaseTimer.mark('recall_catalog');
     const relationshipGraphDiscovery =
       Array.isArray(options.candidateProducts)
         ? {
@@ -10988,6 +12168,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
             logger,
           });
     relationshipGraphDiscoveryStats = relationshipGraphDiscovery.stats || relationshipGraphDiscoveryStats;
+    phaseTimer.mark('recall_graph');
     let effectiveRawCandidates =
       Array.isArray(relationshipGraphDiscovery.products) && relationshipGraphDiscovery.products.length > 0
         ? relationshipGraphDiscovery.products.concat(rawCandidates)
@@ -11101,7 +12282,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     }
 
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
-      brandEmptyReason = catalogUnavailableError
+      // A brand pool that completed cleanly with nothing is an answer, not an outage, even when the other
+      // providers were skipped because of it.
+      brandEmptyReason = catalogUnavailableError && !brandDirectPoolEmpty
         ? 'brand_catalog_providers_unavailable'
         : 'no_matching_brand_candidates';
       recallSummary = recallSummary.concat([
@@ -11120,12 +12303,14 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         },
       ]);
     }
+    phaseTimer.mark('recall');
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
       identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
     });
     scopedCandidates = identityGraphDedupe.candidates;
     identityGraphDedupeStats = identityGraphDedupe.stats;
+    phaseTimer.mark('identity_dedupe');
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'normalized',
@@ -11223,7 +12408,14 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       orderedPool = browseSelection.orderedPool;
       decisions = browseSelection.decisions;
       filterCounts = buildFilterCounts(decisions);
+      // The stable browse count is STARTED back in the recall window and awaited here, and its
+      // own comment says it "scans broad JSON text and can dominate live latency" on exactly this
+      // surface. Charging that wait to `select` would send whoever chases the number to the
+      // ranker instead of to the count query, so it gets its own phase. `select` is marked on
+      // both sides of the await and accumulates.
+      phaseTimer.mark('select');
       const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
+      phaseTimer.mark('stable_count_wait');
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource =
@@ -11275,6 +12467,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       count: selectedEntries.length,
     });
 
+	    phaseTimer.mark('select');
 	    const selectionLatencyMs = Date.now() - startedAt;
 	    const hasMore =
 	      request.surface === 'browse_products'
@@ -11412,13 +12605,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       });
     }
 
+    phaseTimer.mark('assemble');
     const hydrationStartedAt = Date.now();
     const hydratedSelectedCandidates = await hydrateDiscoveryCandidatesProductIntel(
       selectedEntries.map((entry) => entry.candidate),
       request,
     );
     const hydrateLatencyMs = Math.max(0, Date.now() - hydrationStartedAt);
+    phaseTimer.mark('hydrate');
     const latencyMs = Math.max(0, Date.now() - startedAt);
+    const phaseMs = phaseTimer.summary(latencyMs);
     metadata.hydrate_latency_ms = hydrateLatencyMs;
     metadata.request_latency_ms = latencyMs;
 
@@ -11463,6 +12659,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       latency_ms: latencyMs,
       selection_latency_ms: selectionLatencyMs,
       hydrate_latency_ms: hydrateLatencyMs,
+      phase_ms: phaseMs,
       dominant_domain: profile.dominantDomain || null,
     });
     logger.info(
@@ -11476,6 +12673,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         candidate_counts: candidateCounts,
         provider_breakdown: providerBreakdown,
         latency_ms: latencyMs,
+        phase_ms: phaseMs,
       },
       'discovery feed built',
     );
@@ -11529,7 +12727,21 @@ module.exports = {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
+    // The phase timer is exported so a test can drive it with a fake clock: the
+    // property that matters is that the phases PARTITION the total, which cannot
+    // be asserted against a real clock without flaking.
+    createDiscoveryPhaseTimer,
+    // ADR-009: exported for test. These three read "is this seller seed
+    // supply?" and each silently flipped when the re-key moved that supply onto
+    // observed sellers — the brand cap in particular is a 4x change on the live
+    // home feed, so it does not ship unasserted again.
+    isExternalSeedMerchantCandidate,
+    getColdStartHomeBrandCap,
+    buildDiscoveryDedupKey,
     buildBrandScopeAliases,
+    buildBrandScopeAliasEntries,
+    resolveBrandAliasSpellings,
+    buildBrandDirectPoolCacheKey,
     buildBeautyPersonalizedQueries,
     computeDiscoveryStepTimeoutMs,
     fetchExternalSeedCandidates,
@@ -11581,6 +12793,9 @@ module.exports = {
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
+    buildCandidateDirectBrandAliases,
+    buildCandidateDetectedBrandAliases,
+    matchesNormalizedBrandAlias,
     shouldUseDiscoveryExternalSeedExactTitleFastpath,
     normalizeDiscoveryRequest,
     normalizeDiscoveryCursor,
@@ -11590,6 +12805,11 @@ module.exports = {
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     buildStableBrowseCatalogCountQuery,
+    browseUsesCanonicalSig,
+    fetchCanonicalSigBrowseCandidates,
+    mapCanonicalIndexRowToProduct,
+    getRecallEnoughThreshold,
+    getPrimaryPathEnoughThreshold,
     buildDiscoveryCursor,
     buildDiscoveryCursorContextSignature,
     countStableBrowseCatalogTotal,
@@ -11607,6 +12827,25 @@ module.exports = {
       productIntelKbStore = null;
     },
     resetBrowsePoolCache: () => browsePoolCache.clear(),
-    resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
+    resetBrandDirectPoolCache: () => {
+      brandDirectPoolCache.clear();
+      brandDirectPoolInflight.clear();
+    },
+    getBrandDirectPoolCacheTtlMs,
+    BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES,
+    computeBrandScopedDirectCandidates,
+    loadProductsSearchCandidates,
+    resetProductsSearchBreaker,
+    getProductsSearchBreakerState: () => ({
+      consecutive_failures: productsSearchBreaker.consecutiveFailures,
+      open: isProductsSearchBreakerOpen(),
+      open_until: productsSearchBreaker.openUntil,
+      cooldown_ms: productsSearchBreaker.cooldownMs,
+      probe_inflight: Boolean(productsSearchBreaker.probe),
+    }),
+    resetBrowseCatalogCountCache: () => {
+      browseCatalogCountCache.clear();
+      browseCatalogCountInflight.clear();
+    },
   },
 };

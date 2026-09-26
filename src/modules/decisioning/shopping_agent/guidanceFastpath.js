@@ -3,6 +3,7 @@ const {
   GUIDANCE_FASTPATH_INTERNAL_RECALL_BUDGET_MS,
   GUIDANCE_FASTPATH_EXTERNAL_RECALL_BUDGET_MS,
 } = require('./guidanceContext');
+const { isExternalSeedLaneProduct } = require('../../../services/externalSeedLane');
 
 function scoreGuidanceFastpathTargetClass(targetClass) {
   if (targetClass === 'strong_goal_family') return 400;
@@ -59,10 +60,13 @@ function createGuidanceFastpathRuntime(deps = {}) {
         const rightAnchorHits = anchorTokens.filter((token) => rightText.includes(token)).length;
         if (rightAnchorHits !== leftAnchorHits) return rightAnchorHits - leftAnchorHits;
 
-        const leftExternal =
-          String(left?.merchant_id || left?.merchantId || '').trim().toLowerCase() === 'external_seed';
-        const rightExternal =
-          String(right?.merchant_id || right?.merchantId || '').trim().toLowerCase() === 'external_seed';
+        // Final tiebreak: seed-lane products sort AFTER merchant-synced ones.
+        // Keyed on lane membership, not on the merchant_id literal — the
+        // ADR-009 phase-3 re-key changes merchant_id and nothing else, so a
+        // merchant_id test would start reading re-keyed seed rows as
+        // merchant-synced and float them above real connected inventory.
+        const leftExternal = isExternalSeedLaneProduct(left);
+        const rightExternal = isExternalSeedLaneProduct(right);
         if (leftExternal !== rightExternal) return leftExternal ? 1 : -1;
 
         return String(right?.title || right?.name || '').localeCompare(String(left?.title || left?.name || ''));

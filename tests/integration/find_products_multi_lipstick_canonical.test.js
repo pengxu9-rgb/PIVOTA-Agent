@@ -21,6 +21,15 @@ function canonicalLipstickRows(count = 18) {
     truth_tier: 'observed',
     readiness_tier: 'referral_only',
     pdp_scope: 'unverified',
+    // Offer-row columns from the catalog_offers join. These are the ONLY price
+    // source the canonical-chain mapper reads: amount and currency must come
+    // from the same offer row or the product ships no price and the serving
+    // gate drops it. This fixture previously carried price only in
+    // seed_data.price_amount and relied on the payload fallback that has since
+    // been deleted; on prod 2026-08-05, 9,276 of 9,289 serving-eligible
+    // products carry these columns, so this shape is the representative one.
+    merchant_effective_price: '24.00',
+    currency: 'USD',
     product_payload: {
       seed_data: {
         price_amount: '24.00',
@@ -253,7 +262,7 @@ describe('find_products_multi canonical lipstick recall', () => {
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products'))).toBe(true);
   });
 
-  test('brand lipstick plural query uses lipstick seed category and canonicalizes mirrored seed URLs to sig PDPs', async () => {
+  test('brand lipstick plural query selects brand/category text as its primary query and canonicalizes mirrored seed URLs to sig PDPs', async () => {
     const observed = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql, params = []) => {
@@ -263,8 +272,10 @@ describe('find_products_multi canonical lipstick recall', () => {
         // recall SQL embeds `FROM catalog_products cp` subselects for the
         // catalog-mirror projection (src/server.js queryBeautyExternalSeedRowsFast),
         // so a catalog_products-first match would swallow the seed query.
-        if (text.includes('FROM external_product_seeds')) {
-          if (!params.includes('lipstick')) return { rows: [] };
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
+          // Only the selected primary brand/category text shape has this data.
+          // An exact-category or generic retry query cannot make the test pass.
+          if (!params.includes('%lipstick%') || !params.some(value => Array.isArray(value) && value.includes('fentybeauty'))) return { rows: [] };
           return {
             rows: [{
               id: 'eps_fenty_lipstick',
@@ -280,8 +291,8 @@ describe('find_products_multi canonical lipstick recall', () => {
               price_currency: 'USD',
               availability: 'in stock',
               catalog_product_key: 'prod::external_seed::external_seed::ext_fenty_lipstick',
-              pivota_signature_id: 'sig_fenty_lipstick',
-              pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
+              pivota_signature_id: 'sig_0123456789abcdef0123456789abcdef',
+              pivota_canonical_url: 'https://agent.pivota.cc/products/sig_0123456789abcdef0123456789abcdef',
               catalog_category_path: 'beauty/makeup/lip/lipstick',
               seed_data: {
                 brand: 'Fenty Beauty',
@@ -325,13 +336,14 @@ describe('find_products_multi canonical lipstick recall', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.products.length).toBeGreaterThanOrEqual(1);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.products).toHaveLength(1);
     expect(resp.body.products[0]).toEqual(expect.objectContaining({
-      product_id: 'sig_fenty_lipstick',
-      pivota_signature_id: 'sig_fenty_lipstick',
+      product_id: 'sig_0123456789abcdef0123456789abcdef',
+      pivota_signature_id: 'sig_0123456789abcdef0123456789abcdef',
       external_product_id: 'ext_fenty_lipstick',
-      canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
-      url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
+      canonical_url: 'https://agent.pivota.cc/products/sig_0123456789abcdef0123456789abcdef',
+      url: 'https://agent.pivota.cc/products/sig_0123456789abcdef0123456789abcdef',
       destination_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
     }));
     expect(resp.body.products[0].title).toMatch(/Lipstick/i);
@@ -341,7 +353,11 @@ describe('find_products_multi canonical lipstick recall', () => {
         decision: 'apply_raw',
       }),
     );
-    expect(observed.some(({ sql, params }) => sql.includes('FROM external_product_seeds') && params.includes('lipstick'))).toBe(true);
+    const seedCalls = observed.filter(({ sql }) => sql.includes('FROM external_product_seeds') && !sql.includes('FROM external_product_seeds eps'));
+    expect(seedCalls).toHaveLength(3);
+    expect(seedCalls.every(({ params }) => params.includes('%lipstick%') && params.some(value => Array.isArray(value) && value.includes('fentybeauty')))).toBe(true);
+    expect(seedCalls.some(({ params }) => params.includes('lipstick'))).toBe(false);
+    expect(resp.body.metadata?.retrieval_query_debug.every(entry => entry.primary_text_query === true)).toBe(true);
   });
 
   test('strict lipstick query does not keep lip oil or balm rows from broad lip category paths', async () => {

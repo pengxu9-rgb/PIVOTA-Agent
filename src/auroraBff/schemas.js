@@ -600,6 +600,15 @@ const RecoGenerateRequestSchema = z
     focus: z.string().min(1).optional(),
     constraints: z.record(z.string(), z.any()).optional(),
     include_alternatives: z.boolean().optional(),
+    // ADR-024 Phase 1. ISO-3166-1 alpha-2, declared here so the contract is readable rather than
+    // arriving only through .passthrough().
+    //
+    // Deliberately NOT z.string().length(2): this schema is validated with safeParse and a failure is
+    // a 400, so a typed field would turn a partner's malformed region into an OUTAGE for a request
+    // that would otherwise have succeeded. Validation lives in resolveBuyerRegion, which treats an
+    // unreadable value as absent and reports region_source 'defaulted' -- a signal an operator can
+    // act on, instead of an error the buyer eats.
+    buyer_region: z.any().optional(),
     session: z
       .object({
         session_id: z.string().min(1).optional(),

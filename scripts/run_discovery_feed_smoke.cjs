@@ -121,7 +121,9 @@ function validateDiscoveryResponse(response, expectations = {}) {
   const productsSearchBreakdown = providerBreakdown.find(
     (entry) => String(entry?.provider || '').trim() === 'products_search',
   );
-  const disallowedProductsSearchFailures = new Set(['missing_base_url', 'http_401', 'http_403', 'timeout']);
+  // circuit_open means the gateway stopped calling products_search after repeated timeouts/401s/5xx, so it
+  // is the same outage as those reasons and must fail the gate the same way.
+  const disallowedProductsSearchFailures = new Set(['missing_base_url', 'http_401', 'http_403', 'timeout', 'circuit_open']);
   ensure(
     !disallowedProductsSearchFailures.has(String(productsSearchBreakdown?.failure_reason || '').trim()),
     `products_search provider degraded unexpectedly: ${JSON.stringify({
@@ -356,10 +358,30 @@ async function runSmoke(options = {}) {
       'products_search+external_seed_fastpath',
       'external_seed_fastpath',
       'external_seed_fastpath+products_search',
+      // Generic cold-start browse serves from the canonical sig index once
+      // DISCOVERY_BROWSE_USES_CANONICAL_SIG is on, and that path skips the seed
+      // lane by design. Without these two entries the gate fails the moment the
+      // flag is flipped — on a healthy feed.
+      'canonical_sig',
     ],
     minProducts: 3,
     requireRankDebug: true,
-    requiredRecallLabels: [['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath']],
+    // Tracks the path that actually served, rather than accepting either.
+    //
+    // `canonical_sig_browse` is emitted even at ZERO recall (deliberately, so the
+    // breakdown can distinguish "consulted and empty" from "never ran"). Adding
+    // it to a flat any-of would let this gate pass on a state that used to fail:
+    // flag on, sig index empty, external_seeds errored, only products_search
+    // returning rows. Requiring it ONLY when canonical_sig actually served keeps
+    // both modes strict.
+    requiredRecallLabels: [
+      String(coldStart?.metadata?.candidate_source || '') === 'canonical_sig'
+        ? ['canonical_sig_browse']
+        : ['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath'],
+    ],
+    // Still required: these are breakdown-presence checks, and every registered
+    // provider gets an entry whether it ran or was skipped. Serving from
+    // canonical_sig does not remove them.
     requiredProviders: ['products_search', 'external_seeds'],
     disallowTopN: 3,
     disallowTitlePatterns: [

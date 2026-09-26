@@ -79,6 +79,16 @@ async function reconcileToOwnServingRow({
       content_key: ownRow.content_key,
       contentKey: ownRow.content_key,
       ...(ownRow.product_key ? { product_key: ownRow.product_key } : {}),
+      // ADR-009: carry the row's LANE evidence onto the ref. Every row-side
+      // gate in get_pdp_v2 now asks pdpRenderability.isSeedRoutedLane over
+      // canonicalProductRef, and on the request path the ref is built from the
+      // caller's {merchant_id, product_id} with no source_system — so without
+      // this a slug-id observed-seller row (no ext_ prefix) reads as
+      // not-seed-routed even after it resolved to its own serving row. The
+      // eligibility fetch already selects cp.source_system; this just stops
+      // dropping it on the floor.
+      ...(ownRow.source_system ? { source_system: ownRow.source_system } : {}),
+      ...(ownRow.platform ? { platform: ownRow.platform } : {}),
       ...(ownRow.pivota_signature_id
         ? { pivota_signature_id: ownRow.pivota_signature_id }
         : {}),

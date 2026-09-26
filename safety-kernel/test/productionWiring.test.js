@@ -12,6 +12,11 @@ import { InMemoryKvStore } from '../src/stores.js';
 import { createCommerceToolSurface } from '../../mcp-server/src/commerceToolSurface.js';
 
 const MERCHANT = 'merch_A';
+// A real signed-in MCP request carries the verified JWT payload on its session context, and the shared buyer
+// intake reads `email` from it as the ATTESTED buyer address (an attested one always beats a caller-supplied
+// one). `variant_id` is explicit on the carts below so these E2E tests exercise the money path rather than
+// default-variant resolution, which has its own coverage in mcpBuyerIntake.test.js.
+const MCP_CLAIMS = { iss: 'https://idp.test', sub: 'mcp-buyer', email: 'mcp-buyer@example.com', email_verified: true };
 const SECRET = 'confirmation-secret-0123456789-xyz';
 const ACP_SECRET = 'acp-signing-secret-0123456789abcdef';
 const WH_SECRET = 'payment-webhook-secret-0123456789';
@@ -199,8 +204,10 @@ test('fail-closed: strict rejects a short acpSigningSecret and a custom now()', 
 
 // --- end to end through both doors -----------------------------------------------------------------------
 
-async function mintBuyerToken(privateKey, sub = 'buyer-1') {
-  return new SignJWT({}).setProtectedHeader({ alg: 'ES256', kid: 'k1' }).setIssuer(ISS).setAudience(AUD).setSubject(sub).setIssuedAt().setExpirationTime('1h').sign(privateKey);
+// `claims` carries the ATTESTED buyer fields (OIDC `email`/`email_verified`). They never touch user_ref
+// derivation (still iss|sub) — they are what the ACP door reads so a body-supplied email cannot override.
+async function mintBuyerToken(privateKey, sub = 'buyer-1', claims = { email: `${sub}@example.com`, email_verified: true }) {
+  return new SignJWT({ ...claims }).setProtectedHeader({ alg: 'ES256', kid: 'k1' }).setIssuer(ISS).setAudience(AUD).setSubject(sub).setIssuedAt().setExpirationTime('1h').sign(privateKey);
 }
 async function mintGrant(privateKey, checkout_session_id, { maxAmount = 50000 } = {}) {
   // exp is anchored to FIXED_NOW (the binding verifier's clock) so the allowance isn't seen as expired; iat is
@@ -213,8 +220,8 @@ test('E2E MCP door: identity from session claims → checkout charges the BACKEN
   const { privateKey, jwks } = await keypair();
   const calls = [];
   const wired = composeProductionCommerce(baseConfig(jwks, fakeBackendFetch({ onCall: (c) => calls.push(c.operation) })));
-  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'mc-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'mc-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
   // backend returned MAJOR "113.00" → wrapUpstream normalized to minor 11300
   assert.equal(created.totals.total, 11300);
   // the grant binds the public MCP checkout session id returned by create_checkout_session.
@@ -234,7 +241,9 @@ test('E2E ACP door: signed request + verified buyer token → checkout completes
     const raw = JSON.stringify(body); const ts = String(FIXED_NOW);
     return { headers: { authorization: 'Bearer platform', timestamp: ts, signature: sign(raw, ts), 'idempotency-key': idem, 'x-buyer-authorization': `Bearer ${buyerToken}` }, rawBody: raw, body, params: id ? { checkout_session_id: id } : {} };
   };
-  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] }, null, 'ac-create-1'));
+  // No `buyer` in the body: the buyer email is ATTESTED by the verified token (mintBuyerToken sets an
+  // `email` claim), which is the precedence this door is built around.
+  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, null, 'ac-create-1'));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.totals.total, 11300);
   const grant = await mintGrant(privateKey, created.body.id);
@@ -263,8 +272,8 @@ test('identity: an unverifiable buyer token does not resolve a user_ref (fail cl
 test('E2E webhook: an async charge (charge_pending) is finalized to paid by a SIGNED webhook on this kernel', async () => {
   const { privateKey, jwks } = await keypair();
   const wired = composeProductionCommerce(baseConfig(jwks, fakeAsyncBackendFetch()));
-  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'wh-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'wh-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
   const grant = await mintGrant(privateKey, created.session_id);
   const out = await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'wh-pay-1', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   // the PSP returned requires_action → the order is charge_pending, NOT yet paid (no double-finalize)
@@ -288,8 +297,8 @@ test('E2E webhook: an async charge (charge_pending) is finalized to paid by a SI
 test('P2 namespace: a signed webhook whose order_id is an ACP session id (not the kernel order id) does NOT finalize', async () => {
   const { privateKey, jwks } = await keypair();
   const wired = composeProductionCommerce(baseConfig(jwks, fakeAsyncBackendFetch()));
-  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'ns-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'ns-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
   await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'ns-pay-1', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
   // wrong namespace: use the SESSION id (or the MCP session_id/quote id) as order_id → kernel has no such order
   const wrong = JSON.stringify({ order_id: 'sess_mcp', payment_id: 'pi_async', status: 'succeeded' });
@@ -308,8 +317,8 @@ test('P0 reconcile: an object-returning queryPaymentStatus transitions a stuck c
     // returns the OBJECT shape the JSDoc documents — the adapter must extract the scalar status (Codex P0)
     queryPaymentStatus: async (order) => { queried = order; return { status: 'succeeded', payment_id: 'pi_async' }; },
   }));
-  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'rc-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'rc-create-1', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
   const out = await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'rc-pay-1', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
   assert.equal(out.payment.order_status, 'charge_pending'); // stuck until reconcile
 
@@ -327,8 +336,8 @@ test('P0 reconcile: a present-but-malformed/foreign payment_id is HELD BACK (nev
       listPendingOrders: async () => [{ order_id: 'o_async', payment_id: 'pi_async', charge_pending_at: FIXED_NOW - 1000 }],
       queryPaymentStatus: async () => ({ status: 'succeeded', payment_id: badId }),
     }));
-    const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-    const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'bm-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+    const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+    const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'bm-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
     await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'bm-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
     const res = await wired.reconcile();
     assert.equal(res.reconciled.length, 0, `badId=${JSON.stringify(badId)} must NOT finalize`);
@@ -366,8 +375,8 @@ test('PSP webhooks: built only when configured; Stripe webhook finalizes an asyn
   assert.equal(typeof wired.stripeWebhook, 'function');
   assert.equal(typeof wired.adyenWebhook, 'function');
   // drive an async charge to charge_pending, then finalize via the Stripe webhook on the SAME kernel
-  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp' };
-  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'psp-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
+  const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'psp-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
   const out = await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'psp-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
   assert.equal(out.payment.order_status, 'charge_pending');
   // the kernel order is o_async / pi_async (from fakeAsyncBackendFetch); Stripe event carries those in metadata + PI id
@@ -388,6 +397,7 @@ test('identity: the same verified buyer token yields a stable user_ref across bo
   const token = await mintBuyerToken(privateKey, 'buyer-shared');
   const acpRef = await wired.resolveUserRef({ headers: { 'x-buyer-authorization': `Bearer ${token}` } });
   const direct = (await wired.verifyUserToken(token)).user_ref;
-  assert.ok(acpRef?.startsWith('usr_'));
-  assert.equal(acpRef, direct);
+  // resolveUserRef now returns the buyer-IDENTITY object; user_ref itself is unchanged.
+  assert.ok(acpRef?.user_ref?.startsWith('usr_'));
+  assert.equal(acpRef.user_ref, direct);
 });

@@ -45,6 +45,9 @@ describe('report-relationship-graph-serving-status', () => {
       '12',
       '--max-ai-approved-pct',
       '60',
+      '--max-expiring-14d-pct',
+      '40',
+      '--fail-on-expiry-risk',
       '--json',
     ]);
 
@@ -53,6 +56,7 @@ describe('report-relationship-graph-serving-status', () => {
       limit: 500,
       topAnchors: 5,
       failOnReadiness: false,
+      failOnExpiryRisk: true,
       json: true,
     }));
     expect(options.thresholds).toEqual(expect.objectContaining({
@@ -61,7 +65,50 @@ describe('report-relationship-graph-serving-status', () => {
       minNicheSpecialistCount: 100,
       maxExpiring7d: 12,
       maxAiApprovedPct: 60,
+      maxExpiring14dPct: 40,
     }));
+  });
+
+  test('expiring-14d percentage gate flags a renewal outage cliff', () => {
+    const cliff = summarizeServingStatusRows([
+      row({ id: 'e1', expires_at: '2026-06-15T12:00:00.000Z' }),
+      row({ id: 'e2', expires_at: '2026-06-18T12:00:00.000Z' }),
+      row({ id: 'safe', expires_at: '2026-07-20T12:00:00.000Z' }),
+    ], {
+      generatedAt: NOW,
+      thresholds: { maxExpiring14dPct: 30 },
+    });
+
+    expect(cliff.expiry_windows.expiring_14d).toBe(2);
+    expect(cliff.expiry_windows.expiring_14d_pct).toBe(66.67);
+    expect(cliff.checks.expiring_14d_pct.status).toBe('fail');
+    expect(cliff.ok).toBe(false);
+
+    const inactive = summarizeServingStatusRows([
+      row({ id: 'e1', expires_at: '2026-06-15T12:00:00.000Z' }),
+    ], { generatedAt: NOW });
+    expect(inactive.checks.expiring_14d_pct.status).toBe('not_applicable');
+  });
+
+  test('fail-on-expiry-risk defaults its threshold and the total-rows floor catches an emptied view', () => {
+    const options = parseArgs(['--fail-on-expiry-risk']);
+    expect(options.failOnExpiryRisk).toBe(true);
+    expect(options.thresholds.maxExpiring14dPct).toBe(30);
+
+    const withFloor = parseArgs(['--min-total-rows', '500']);
+    expect(withFloor.thresholds.minTotalRows).toBe(500);
+
+    // The 2026-07 outage shape: serving set fully drained. 0% expiring of 0 rows
+    // must not read as healthy — the floor gate fails.
+    const empty = summarizeServingStatusRows([], {
+      generatedAt: NOW,
+      thresholds: { minTotalRows: 500, maxExpiring14dPct: 30 },
+    });
+    expect(empty.coverage.total_rows).toBe(0);
+    expect(empty.expiry_windows.expiring_14d_pct).toBe(0);
+    expect(empty.checks.expiring_14d_pct.status).toBe('pass');
+    expect(empty.checks.total_rows.status).toBe('fail');
+    expect(empty.ok).toBe(false);
   });
 
   test('buildServingStatusSql uses the runtime active/fresh serving predicates', () => {

@@ -34,4 +34,10 @@ if [[ -n "${AGENT_API_KEY}" ]]; then
   args+=(--agent-api-key "${AGENT_API_KEY}")
 fi
 
+# /ui/chat is no longer anonymous on any host. This wrapper defaults ENDPOINT to /v1/chat, so CI is
+# unaffected, but a manual run pointed at /ui/chat 404s on every case without this.
+if [[ -n "${PIVOTA_UI_CHAT_INTERNAL_KEY:-}" ]]; then
+  args+=(--internal-key "${PIVOTA_UI_CHAT_INTERNAL_KEY}")
+fi
+
 node "${SCRIPT_DIR}/run_celestial_commerce_core_prompt_live_smoke.js" "${args[@]}"

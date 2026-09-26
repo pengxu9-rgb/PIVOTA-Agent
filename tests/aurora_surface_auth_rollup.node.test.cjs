@@ -1,0 +1,239 @@
+'use strict';
+
+/*
+ * The durable rollup that gates the Phase 1 flip.
+ *
+ * The thing being tested is an INSTRUMENT. If it under-counts, someone flips
+ * AURORA_SURFACE_AUTH_MODE=enforce on a bad reading and takes the consumer app down; if it can throw,
+ * it breaks the very requests it is measuring. So the tests are aimed at those two failure modes
+ * rather than at the happy path:
+ *
+ *   - record() must never throw, for any input, including hostile ones.
+ *   - counts must survive a flush failure rather than being dropped.
+ *   - path cardinality must stay bounded, because req.path is caller-controlled and an unbounded
+ *     key map is a memory-exhaustion vector reachable with no credential.
+ *
+ * The store takes an injected `query`, so all of this runs without a database.
+ */
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+  createAuroraAuthRollup, bucketKey, utcDay, normalizePath, OVERFLOW_PATH,
+} = require('../src/services/auroraSurfaceAuthRollup');
+
+const T = { timeout: 20_000 };
+const DAY = '2026-08-20T12:00:00.000Z';
+
+function fakeQuery() {
+  const calls = [];
+  const fn = async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; };
+  fn.calls = calls;
+  return fn;
+}
+
+test('utcDay and bucketKey are stable and normalised', T, () => {
+  assert.equal(utcDay(Date.parse(DAY)), '2026-08-20');
+  assert.equal(bucketKey({ path: '/V1/Chat', reason: 'missing_key', callerClass: 'node' }), '/v1/chat|missing_key|node');
+  assert.equal(bucketKey({}), `${OVERFLOW_PATH}|unknown|unknown`);
+});
+
+test('record accumulates, and the snapshot reports what the flip is gated on', T, () => {
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  r.record({ path: '/v1/chat', reason: 'missing_key', callerClass: 'node' });
+  r.record({ path: '/v1/chat', reason: 'missing_key', callerClass: 'node' });
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+
+  const snap = r.snapshot()['2026-08-20'];
+  assert.equal(snap.total, 3);
+  assert.equal(snap.buckets['/v1/chat|missing_key|node'], 2);
+  assert.equal(snap.buckets['/v1/chat|ok|node'], 1);
+  assert.ok(snap.first_seen && snap.last_seen);
+});
+
+test('record NEVER throws, whatever it is handed', T, () => {
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  const hostile = [
+    undefined, null, {},
+    { path: null, reason: undefined, callerClass: 0 },
+    { path: {}, reason: [], callerClass: Symbol('x') },
+    { path: '\u0000\uFFFF', reason: 'a'.repeat(10_000), callerClass: 'b'.repeat(10_000) },
+    { path: { toString() { throw new Error('boom'); } } },
+  ];
+  for (const h of hostile) {
+    assert.doesNotThrow(() => r.record(h), `threw on ${JSON.stringify(String(h))}`);
+  }
+  // A clock that throws must not take a request down either.
+  const broken = createAuroraAuthRollup({ now: () => { throw new Error('clock'); } });
+  assert.doesNotThrow(() => broken.record({ path: '/v1/chat' }));
+});
+
+test('the key space is bounded BY CONSTRUCTION, not by a cap', T, () => {
+  // The first version capped the in-memory map. That bounded ONE 15-second window: the map is cleared
+  // on every flush, so a caller inventing new paths got a fresh 500 keys each window and they piled up
+  // in the same jsonb row forever — measured on real PG at 60,000 keys / 287KB / 237ms merges after
+  // 120 windows, growing linearly. Normalising the path to a literal set removes the growth entirely.
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  for (let i = 0; i < 20_000; i += 1) {
+    r.record({ path: `/v1/${i}`, reason: 'missing_key', callerClass: 'scanner' });
+  }
+  const snap = r.snapshot()['2026-08-20'];
+  assert.equal(snap.total, 20_000, 'every observation must be counted');
+  assert.equal(Object.keys(snap.buckets).length, 1, 'unknown paths collapse to one bucket');
+  assert.ok(Object.keys(snap.buckets)[0].startsWith(OVERFLOW_PATH));
+});
+
+test('a path flood cannot hide a browser caller — flip criterion (b)', T, () => {
+  // The bug this replaced: the overflow fold dropped the observation entirely once one __other__ key
+  // existed, so 250 observations reported 200 AND a real browser_app consumer became invisible while
+  // `total` still equalled the sum of buckets, leaving no internal tell. Criterion (b) would have read
+  // clean with a browser consumer live — which means either 401ing it at the flip or shipping a shared
+  // secret into a JS bundle.
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  for (let i = 0; i < 5_000; i += 1) r.record({ path: `/v1/${i}`, reason: 'missing_key', callerClass: 'scanner' });
+  for (let i = 0; i < 3; i += 1) r.record({ path: '/v1/analysis/skin', reason: 'ok', callerClass: 'browser_app' });
+
+  const snap = r.snapshot()['2026-08-20'];
+  assert.equal(snap.total, 5_003);
+  assert.equal(
+    Object.values(snap.buckets).reduce((a, b) => a + b, 0), 5_003,
+    'total must equal the sum of buckets — otherwise loss is invisible',
+  );
+  const browser = Object.entries(snap.buckets).find(([k]) => k.includes('browser_app'));
+  assert.ok(browser, 'a browser caller must survive a flood by an anonymous scanner');
+  assert.equal(browser[1], 3);
+});
+
+test('normalizePath keeps known routes and bounds everything else', T, () => {
+  assert.equal(normalizePath('/v1/chat'), '/v1/chat');
+  assert.equal(normalizePath('/V1/Chat/'), '/v1/chat');
+  assert.equal(normalizePath('/v2/chat'), '/v2/chat');
+  assert.equal(normalizePath('/v1/whatever-an-attacker-invents'), OVERFLOW_PATH);
+  // A 7KB request path must not become a 7KB database key.
+  assert.ok(bucketKey({ path: `/v1/${'a'.repeat(7000)}`, reason: 'ok', callerClass: 'node' }).length < 60);
+});
+
+test('flush writes a merge, not a read-modify-write', T, async () => {
+  // Two replicas doing read-then-write would silently lose counts. The merge has to happen in SQL.
+  const q = fakeQuery();
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: q });
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  await r.flush();
+
+  assert.equal(q.calls.length, 1);
+  const { sql, params } = q.calls[0];
+  assert.match(sql, /INSERT INTO commerce_kv/);
+  assert.match(sql, /ON CONFLICT \(ns, k\) DO UPDATE/);
+  assert.match(sql, /jsonb_each_text/, 'the per-bucket merge must be done in SQL');
+  assert.ok(!/SELECT v FROM commerce_kv/i.test(sql), 'must not read-modify-write');
+  assert.equal(params[1], '2026-08-20');
+  assert.equal(JSON.parse(params[2]).buckets['/v1/chat|ok|node'], 1);
+
+  // The delta is cleared once written, so a second flush is a no-op rather than a double count.
+  await r.flush();
+  assert.equal(q.calls.length, 1);
+});
+
+test('counts survive a flush failure instead of being dropped', T, async () => {
+  // The whole point of a durable counter. Losing a day of counts to one transient DB error would
+  // silently reset the gate.
+  let fail = true;
+  const q = async () => { if (fail) throw new Error('connection reset'); return { rows: [] }; };
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: q });
+  r.record({ path: '/v1/chat', reason: 'missing_key', callerClass: 'node' });
+  r.record({ path: '/v1/chat', reason: 'missing_key', callerClass: 'node' });
+
+  await r.flush();
+  assert.equal(r.snapshot()['2026-08-20'].total, 2, 'counts must be restored after a failed flush');
+
+  const calls = [];
+  fail = false;
+  const r2 = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: async (s, p) => { calls.push(p); return { rows: [] }; } });
+  r2.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  await r2.flush();
+  assert.equal(JSON.parse(calls[0][2]).total, 1);
+});
+
+test('read reports whether the numbers are durable or only in-process', T, async () => {
+  // An operator must never mistake a fresh process's in-memory count for a full day of history.
+  const noDb = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  noDb.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  const a = await noDb.read();
+  assert.equal(a.durable, false);
+  assert.equal(a.pending['2026-08-20'].total, 1);
+
+  const withDb = createAuroraAuthRollup({
+    now: () => Date.parse(DAY),
+    query: async () => ({ rows: [{ day: '2026-08-20', v: { total: 42 } }] }),
+  });
+  const b = await withDb.read({ days: 3 });
+  assert.equal(b.durable, true);
+  assert.equal(b.rows[0].v.total, 42);
+
+  const broken = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: async () => { throw new Error('nope'); } });
+  const c = await broken.read();
+  assert.equal(c.durable, false, 'a failed read must not claim to be durable');
+  assert.equal(c.error, 'read_failed');
+});
+
+test('the flush timer never holds the process open', T, () => {
+  // This previously asserted ok(true) and could not fail: removing unref() and making stop() a no-op
+  // both survived it. An un-unref'd interval turns every CI run and local script into a hang.
+  const handles = [];
+  const realSet = global.setInterval;
+  global.setInterval = (...a) => { const h = realSet(...a); handles.push(h); return h; };
+  try {
+    const r = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: fakeQuery() });
+    r.start(50);
+    assert.equal(handles.length, 1, 'start() must create exactly one interval');
+    assert.equal(handles[0].hasRef(), false, 'the interval must be unref\'d');
+    r.stop();
+    assert.equal(handles[0]._destroyed, true, 'stop() must actually clear the interval');
+  } finally {
+    global.setInterval = realSet;
+    for (const h of handles) clearInterval(h);
+  }
+});
+
+test('read() clamps a caller-controlled days value', T, async () => {
+  // src/server.js passes Number(req.query.days) straight in. Admin-gated, but ?days=-1 reaching
+  // LIMIT -1 is still a bug, and the clamp was unasserted.
+  const seen = [];
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY), query: async (s2, p2) => { seen.push(p2[1]); return { rows: [] }; } });
+  for (const d of [-1, 0, 1, 7, 5000, NaN, undefined]) await r.read({ days: d });
+  for (const limit of seen) {
+    assert.ok(Number.isInteger(limit) && limit >= 1 && limit <= 90, `limit out of range: ${limit}`);
+  }
+});
+
+test('first_seen is never overwritten by a later observation', T, () => {
+  let t = Date.parse('2026-08-20T01:00:00.000Z');
+  const r = createAuroraAuthRollup({ now: () => t });
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  const first = r.snapshot()['2026-08-20'].first_seen;
+  t = Date.parse('2026-08-20T09:00:00.000Z');
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  const snap = r.snapshot()['2026-08-20'];
+  assert.equal(snap.first_seen, first, 'first_seen must stay the earliest');
+  assert.ok(snap.last_seen > first, 'last_seen must advance');
+});
+
+test('a flush spanning UTC midnight writes one row per day', T, async () => {
+  const seen = [];
+  let t = Date.parse('2026-08-20T23:59:59.500Z');
+  const r = createAuroraAuthRollup({ now: () => t, query: async (s2, p2) => { seen.push(p2[1]); return { rows: [] }; } });
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  t = Date.parse('2026-08-21T00:00:00.100Z');
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  await r.flush();
+  assert.deepEqual(seen.sort(), ['2026-08-20', '2026-08-21'], 'each UTC day gets its own row');
+});
+
+test('flush is inert with no query injected', T, async () => {
+  const r = createAuroraAuthRollup({ now: () => Date.parse(DAY) });
+  r.record({ path: '/v1/chat', reason: 'ok', callerClass: 'node' });
+  const out = await r.flush();
+  assert.equal(out.flushed, 0);
+  assert.equal(r.snapshot()['2026-08-20'].total, 1, 'in-memory counts are kept when there is no DB');
+});
