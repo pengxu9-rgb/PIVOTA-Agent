@@ -38,7 +38,7 @@ Every `find_products_multi` / `find_products` request logs, in the existing
 | `normalize_hydrate` | response normalization + catalog-identity SQL hydration (extras: `returned`) | no (DB) |
 | `second_stage_context` | second `buildFindProductsMultiContext` with expansion mode | no |
 | `second_stage_upstream` | widened re-query when primary underfills | yes |
-| `external_seed_supplement` | external-seed fill on the cross-merchant cache path | yes |
+| `external_seed_supplement` | external-seed fill on the cross-merchant cache path — removed 2026-09-26 with the cache query-search stage (p50 9 s; the request then called the primary anyway) | — |
 | `brand_rescue_pre_policy` / `brand_rescue_post_policy` | local external-seed brand rescue | no (DB) |
 | `policy_apply` | `applyFindProductsMultiPolicy` ranking (extras: `skipped`) | no (CPU) |
 | `llm_rerank` | LLM rerank pass (extras: `applied`, `provider`, `error`) | LLM |
@@ -47,8 +47,8 @@ Every `find_products_multi` / `find_products` request logs, in the existing
 
 Stages that don't run for a given request are simply absent — the breakdown is also a
 map of which legs fired. Anything unaccounted (wall `latency_ms` minus overlapping
-stage time) is gateway CPU / cross-merchant cache recall (not yet wrapped — it has
-many early-return fastpaths; wrap next if the residual is large).
+stage time) is gateway CPU (the cross-merchant cache query-search stage that used to
+sit here was removed on 2026-09-26).
 
 ## Behavior changes (each with a kill switch)
 
@@ -85,7 +85,7 @@ many early-return fastpaths; wrap next if the residual is large).
 
 - The primary upstream leg itself (2.2–3.8s in the Python backend) — p95 < 3s is not
   reachable from the gateway alone; use the new breakdown to build the backend case.
-- Cross-merchant cache recall / beauty mainline legs are not individually wrapped.
+- Beauty mainline legs are not individually wrapped.
 - `max_results` is still ignored everywhere (only `page_size`/`limit` are honored).
 - `FPM_GATEWAY_TOTAL_BUDGET_MS` (default 2500) still only gates second-stage
   expansion; `context_build` and `llm_rerank` bypass it. Once prod

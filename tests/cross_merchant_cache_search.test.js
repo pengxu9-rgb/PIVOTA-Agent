@@ -430,37 +430,6 @@ describe('cross-merchant cache lexical search', () => {
     expect((result.retrieval_sources || []).some((item) => item?.source === 'beauty_browse_fallback')).toBe(false);
   });
 
-  test('public beauty unified merge helper collapses duplicate offers into one card', async () => {
-    const app = require('../src/server');
-    const { mergePublicBeautyUnifiedSearchProducts } = app._debug;
-
-    const merged = mergePublicBeautyUnifiedSearchProducts([
-      {
-        product_id: 'ext_lip_1',
-        source: 'external_seed',
-        title: 'Barrier Repair Lip Balm',
-        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
-        offers: [{ offer_id: 'offer::1', merchant_id: 'external_seed' }],
-      },
-      {
-        product_id: 'ext_lip_2',
-        source: 'external_seed',
-        title: 'Barrier Repair Lip Balm',
-        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
-        offers: [{ offer_id: 'offer::2', merchant_id: 'external_seed' }],
-      },
-    ], { limit: 10 });
-
-    expect(merged).toHaveLength(1);
-    expect(merged[0]).toEqual(
-      expect.objectContaining({
-        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
-        merged_sources: expect.arrayContaining(['external_seed']),
-      }),
-    );
-    expect(Array.isArray(merged[0]?.offers)).toBe(true);
-    expect(merged[0].offers).toHaveLength(2);
-  });
 
   // GH #1659: "paula choice" returned dog harnesses because the relaxed
   // no-onboarding fallback OR-matched the generic token "choice" against
