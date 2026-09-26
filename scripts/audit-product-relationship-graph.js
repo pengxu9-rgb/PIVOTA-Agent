@@ -13,10 +13,10 @@ const {
   SOCIAL_CLAIM_PATTERN,
   CANDIDATE_CLAIM_FIELDS,
   ANCHOR_CLAIM_FIELDS,
+  hasSupportingSocialSource: sourceRefsSupportSocialClaims,
 } = require('../src/auroraBff/relationshipClaimPhrases');
 
 const ALTERNATIVE_RELATION_TYPES = new Set(['dupe', 'competitive_alternative']);
-const SOCIAL_SOURCE_SUPPORT_PATTERN = /\b(?:social|creator|influencer|tiktok|tik\s*tok|instagram|ugc|review|reviews|testimonial|press|editorial|citation|source)\b/i;
 
 const UNSUPPORTED_CLAIM_PATTERNS = [
   { id: 'identical_formula', pattern: /\bidentical\s+formula\b/i },
@@ -150,20 +150,6 @@ function normalizeSourceRefs(edge) {
   return asArray(edge.source_refs || edge.sourceRefs).filter(Boolean);
 }
 
-function sourceRefsText(edge) {
-  return normalizeSourceRefs(edge)
-    .map((ref) => {
-      if (typeof ref === 'string') return ref;
-      if (!ref || typeof ref !== 'object') return '';
-      return [ref.type, ref.source_type, ref.source, ref.name, ref.label, ref.title, ref.url, ref.href]
-        .map((item) => normalizeString(item, 500))
-        .filter(Boolean)
-        .join(' ');
-    })
-    .filter(Boolean)
-    .join(' ');
-}
-
 function hasOnPageRelatedSource(edge) {
   return normalizeSourceRefs(edge).some((ref) => {
     const type = normalizeLower(typeof ref === 'string' ? ref : ref.type || ref.source_type || ref.source, 160);
@@ -290,7 +276,7 @@ function claimTextFragments(edge) {
 }
 
 function hasSupportingSocialSource(edge) {
-  return SOCIAL_SOURCE_SUPPORT_PATTERN.test(sourceRefsText(edge));
+  return sourceRefsSupportSocialClaims(normalizeSourceRefs(edge));
 }
 
 function excerpt(text, max = 180) {

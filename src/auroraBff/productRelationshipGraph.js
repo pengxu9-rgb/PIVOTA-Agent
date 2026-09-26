@@ -17,6 +17,13 @@ const familyIdentityKeysCompatible =
   ((left, right) => Boolean(left && right && left === right));
 
 const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
+// Minimum score_total for a dupe, on the graded scale the sources scorer emits since #2290:
+// score = base + (1 - base) * pair_evidence, with base at the 0.72 exact-category floor for a
+// same-shelf pair. 0.78 is that floor plus a fifth of the maximum pair evidence (0.72 + 0.28 * 0.2),
+// i.e. a pair whose names, INCI or copy actually overlap; the shelf alone (0.72) can never make a
+// dupe. The old 0.82 was set against max(channels) + provenance constants, where a product-intel row
+// alone reached 0.93; on the new scale it let a similar-INCI pair through by 0.004.
+const DUPE_MIN_SCORE_TOTAL = 0.78;
 const REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired']);
 const ANCHOR_TYPES = new Set(['product', 'need']);
 const PRICE_FRESHNESS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -440,7 +447,7 @@ function validateRelationshipEdge(input = {}, options = {}) {
   }
 
   if (edge.relation_type === 'dupe') {
-    if (scoreTotal == null || scoreTotal < 0.82) errors.push('dupe_similarity_below_threshold');
+    if (scoreTotal == null || scoreTotal < DUPE_MIN_SCORE_TOTAL) errors.push('dupe_similarity_below_threshold');
     if (getCandidatePrice(edge) == null) errors.push('dupe_candidate_price_missing');
     if (priceRatio == null) {
       errors.push('dupe_price_ratio_missing');
@@ -1744,6 +1751,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
 }
 
 module.exports = {
+  DUPE_MIN_SCORE_TOTAL,
   RELATION_TYPES,
   REVIEW_STATUSES,
   LABEL_STATES,

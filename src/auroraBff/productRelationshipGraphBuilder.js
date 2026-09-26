@@ -1,4 +1,5 @@
 const {
+  DUPE_MIN_SCORE_TOTAL,
   coerceRelationshipEdge,
   validateRelationshipEdge,
   __internal: relationshipInternals,
@@ -14,20 +15,21 @@ const {
 const {
   CANDIDATE_CLAIM_FIELDS,
   ANCHOR_CLAIM_FIELDS,
+  hasSupportingSocialSource,
   neutralizeClaimValue,
   neutralizeSnapshotClaims,
 } = require('./relationshipClaimPhrases');
-const {
-  CATEGORY_LEAF_ALIASES,
-  CATEGORY_LEAF_STOP_TOKENS,
-  categoryLeafTokens,
-} = require('./productRelationshipGraphPreflight');
 
-// One candidate may serve at most this many anchors as a dupe / competitive_alternative in one
-// build. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
+// One candidate may serve at most this many anchors as a dupe / competitive_alternative in ONE
+// BUILD. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
 // most cream anchors in its shard; nothing bounded a candidate's fan-in, so a single well-described
 // SKU crowded every anchor's slot. The cap keeps a candidate's best-scoring anchors and rejects
-// the rest with `candidate_fan_in_cap`. See capCandidateFanIn for how the value was chosen.
+// the rest with `candidate_fan_in_cap_per_build`.
+//
+// Scope: per build only. The routine job runs `--limit 200 --anchor-offset N` shards, labels
+// upsert per (anchor, candidate) pair and nothing deletes stale edges, so across shards a hub can
+// still serve 8 x shards anchors. A global cap needs a write-time count over the labels table;
+// that is a follow-up for the owner, not something a dry-run builder can enforce.
 const DEFAULT_MAX_ANCHORS_PER_CANDIDATE = 8;
 const FAN_IN_CAPPED_RELATION_TYPES = new Set(['dupe', 'competitive_alternative']);
 
@@ -875,39 +877,90 @@ function productJobCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
 
 // Leaf-category agreement for dupe / competitive_alternative.
 //
-// 2026-09-26 JP/AU dry run: a jelly lip gloss got a lip balm and a lip kit as alternatives; a hand
-// cream got a dry oil and a hair oil; a face cream got an eye emulsion; a muslin face cloth was a
-// cleanser alternative. The job gates above read description copy, where every product mentions
-// every area, and their skincare rules only run when `category` is literally "skincare" while the
-// JP/AU catalogs carry leaf categories ("cream", "Eye Cream", "Hand Cream").
+// 2026-09-26 JP/AU dry run: a jelly lip gloss got a lip balm as an alternative; a hand cream got a
+// hair oil; a face cream got an eye emulsion; a sunscreen gel got a face wash filed under
+// "sunscreen". The job gates above read description copy, where every product mentions every
+// area, and their skincare rules only run when `category` is literally "skincare" while the JP/AU
+// catalogs carry leaf categories ("cream", "Eye Cream", "Hand Cream").
 //
-// This rule reads only the leaf category and the product name. Two products agree when
-//   1. their body areas intersect: eye / lip / body / hand / nail / foot / hair, with face (and
-//      cheeks, as the preflight gate allows) as the default when nothing is named; and
-//   2. their forms intersect, where a form is a leaf-category token canonicalised by the
-//      preflight's categoryLeafTokens (cream / lotion -> moisturizer, wash -> cleanser, mist ->
-//      toner, stop words dropped) or, when the name carries one, a form word from the builder's
-//      own form vocabulary. A side with no recognisable form abstains on (2), never on (1).
+// This rule reads only the leaf category and the product name, and FAILS OPEN on anything it
+// does not recognise:
+//   1. Area: reject only when BOTH sides name a known body area (eye, lip, body, hand, nail, foot,
+//      hair, face) and the areas do not intersect. There is no default area: "Shampoo" vs "Hair
+//      Shampoo", "Lipstick" vs "Rouge", "Body Wash" vs "Shower Gel" all pass. A hand cream against
+//      a multi-purpose oil that names no area also passes; the old face default rejected it.
+//   2. Form: forms are canonicalised through synonym groups (JP "lotion" is its own form and is
+//      never incompatible with toner; BB / CC cream, cushion, skin tint and tinted moisturizer are
+//      foundation; sun cream / UV gel / SPF are sunscreen; essence, ampoule, booster are serum;
+//      rouge is lipstick; cheek tint is blush). A pair is rejected only when its primary forms are
+//      on the curated incompatibility list below — the pairs the dry run actually measured — never
+//      because two forms merely differ. Night cream vs face oil, blush vs cheek tint and toner vs
+//      lotion all pass. The primary form is the head noun of the name (the last form word before a
+//      "with / for / &" clause), else the leaf category's form.
+//   3. Japanese-script names and categories yield no tokens (normalizeTokens keeps [a-z0-9] only),
+//      so they carry no area and no form and fail open. That is intended.
 const LEAF_AREA_GROUPS = {
   eye: [...EYE_AREA_TOKENS, 'brows', 'eyes', 'lashes', 'mascara', 'undereye'],
-  lip: ['lip', 'lips', 'lipstick', 'lipgloss'],
+  lip: ['lip', 'lips', 'lipstick', 'lipgloss', 'rouge'],
   body: ['body'],
   hand: ['hand', 'hands'],
   nail: ['nail', 'nails'],
   foot: ['foot', 'feet'],
-  hair: ['hair', 'scalp'],
+  hair: ['hair', 'scalp', 'shampoo', 'conditioner'],
   face: ['face', 'facial', 'cheek', 'cheeks'],
 };
-const LEAF_AREA_WORDS = new Set(Object.values(LEAF_AREA_GROUPS).flat());
-// Strong use-case words that qualify a product rather than name its form.
-const LEAF_FORM_MODIFIER_TOKENS = new Set(['acne', 'barrier', 'complexion', 'gel', 'peptide', 'retinoid']);
-const LEAF_NAME_FORM_TOKENS = new Set(
-  [...STRONG_USE_CASE_TOKENS, ...TOPICAL_FORM_TOKENS, ...TOOL_FORM_TOKENS]
-    .filter((token) => !LEAF_AREA_WORDS.has(token))
-    .filter((token) => !CATEGORY_LEAF_STOP_TOKENS.has(token))
-    .filter((token) => !LEAF_FORM_MODIFIER_TOKENS.has(token))
-    .filter((token) => !GENERIC_USE_CASE_TOKENS.has(token)),
-);
+
+// Multi-word forms are matched first and consume their words, so "sun cream" is a sunscreen, not a
+// moisturizer, and "cleansing balm" is a cleanser, not a balm.
+const LEAF_FORM_PHRASES = [
+  ['tinted moisturizer', 'foundation'], ['tinted moisturiser', 'foundation'], ['skin tint', 'foundation'],
+  ['bb cream', 'foundation'], ['cc cream', 'foundation'], ['cushion foundation', 'foundation'],
+  ['sun cream', 'sunscreen'], ['sun gel', 'sunscreen'], ['sun milk', 'sunscreen'], ['sun stick', 'sunscreen'],
+  ['sun fluid', 'sunscreen'], ['sun serum', 'sunscreen'], ['sun essence', 'sunscreen'], ['sun screen', 'sunscreen'],
+  ['uv gel', 'sunscreen'], ['uv milk', 'sunscreen'], ['uv cream', 'sunscreen'], ['uv essence', 'sunscreen'],
+  ['uv lotion', 'sunscreen'], ['uv fluid', 'sunscreen'], ['uv stick', 'sunscreen'], ['uv protection', 'sunscreen'],
+  ['cleansing oil', 'cleanser'], ['cleansing balm', 'cleanser'], ['cleansing milk', 'cleanser'],
+  ['cleansing gel', 'cleanser'], ['cleansing foam', 'cleanser'], ['cleansing powder', 'cleanser'],
+  ['cleansing water', 'cleanser'], ['micellar water', 'cleanser'], ['shower gel', 'cleanser'],
+  ['cheek tint', 'blush'], ['cheek stain', 'blush'], ['lip tint', 'lipstick'], ['lip stain', 'lipstick'],
+  ['lip oil', 'balm'], ['lip mask', 'balm'], ['setting spray', 'mist'],
+];
+
+const LEAF_FORM_SYNONYMS = {
+  toner: 'toner', mist: 'mist',
+  lotion: 'lotion',
+  moisturizer: 'moisturizer', moisturiser: 'moisturizer', cream: 'moisturizer', creme: 'moisturizer',
+  emulsion: 'moisturizer',
+  serum: 'serum', essence: 'serum', ampoule: 'serum', booster: 'serum', concentrate: 'serum', drops: 'serum',
+  sunscreen: 'sunscreen', sunblock: 'sunscreen', spf: 'sunscreen',
+  cleanser: 'cleanser', cleansing: 'cleanser', wash: 'cleanser', soap: 'cleanser', micellar: 'cleanser',
+  mask: 'mask', masque: 'mask', patch: 'mask', patches: 'mask',
+  oil: 'oil',
+  powder: 'powder', primer: 'primer', concealer: 'concealer', corrector: 'concealer',
+  foundation: 'foundation', cushion: 'foundation', bb: 'foundation', cc: 'foundation',
+  blush: 'blush', bronzer: 'bronzer', highlighter: 'highlighter',
+  lipstick: 'lipstick', rouge: 'lipstick', gloss: 'gloss', balm: 'balm',
+  liner: 'liner', eyeliner: 'liner', mascara: 'mascara', eyeshadow: 'eyeshadow', shadow: 'eyeshadow',
+  shampoo: 'shampoo', conditioner: 'conditioner',
+  deodorant: 'deodorant', perfume: 'fragrance', parfum: 'fragrance', fragrance: 'fragrance', cologne: 'fragrance',
+  brush: 'tool', sponge: 'tool', applicator: 'tool',
+};
+
+// Curated incompatible primary-form pairs: the leaf_form_mismatch reasons the 2026-09-26 shard
+// runs measured, plus the two wrong-form pairs the audit found by hand (gloss / balm, tint / balm).
+// Anything not listed is compatible; a form the vocabulary does not know is compatible with all.
+const LEAF_INCOMPATIBLE_FORM_PAIRS = [
+  ['cleanser', 'powder'], ['cleanser', 'serum'], ['cleanser', 'moisturizer'], ['cleanser', 'sunscreen'],
+  ['cleanser', 'mask'], ['cleanser', 'foundation'], ['cleanser', 'concealer'], ['cleanser', 'primer'],
+  ['cleanser', 'toner'],
+  ['powder', 'serum'], ['powder', 'moisturizer'], ['powder', 'sunscreen'], ['powder', 'mask'], ['powder', 'toner'],
+  ['serum', 'primer'], ['serum', 'concealer'], ['serum', 'mask'], ['serum', 'sunscreen'], ['serum', 'foundation'],
+  ['moisturizer', 'mask'], ['moisturizer', 'concealer'], ['moisturizer', 'primer'], ['moisturizer', 'foundation'],
+  ['moisturizer', 'shampoo'], ['moisturizer', 'conditioner'], ['serum', 'shampoo'], ['serum', 'conditioner'],
+  ['gloss', 'balm'], ['lipstick', 'balm'], ['liner', 'lipstick'], ['liner', 'gloss'],
+  ['tool', 'cleanser'], ['tool', 'moisturizer'], ['tool', 'serum'],
+];
+const LEAF_INCOMPATIBLE_FORM_KEYS = new Set(LEAF_INCOMPATIBLE_FORM_PAIRS.map(([a, b]) => [a, b].sort().join('|')));
 
 function leafCategoryValue(snapshot = {}) {
   const candidates = [snapshot.category];
@@ -921,37 +974,71 @@ function leafCategoryValue(snapshot = {}) {
   return '';
 }
 
-function leafAreas(tokens) {
-  const areas = new Set();
-  for (const [area, words] of Object.entries(LEAF_AREA_GROUPS)) {
-    if (words.some((word) => tokens.has(word))) areas.add(area);
-  }
-  if (!areas.size) areas.add('face');
-  return areas;
-}
-
-function snapshotLeafProfile(snapshot = {}) {
-  const leaf = leafCategoryValue(snapshot);
-  const leafTokens = categoryLeafTokens(normalizeTokens(leaf).join('_'));
-  const nameTokens = new Set(normalizeTokens([
+function snapshotNameText(snapshot = {}) {
+  return pickFirstString(
     snapshot.name,
     snapshot.title,
     snapshot.display_name,
     snapshot.displayName,
     snapshot.product_name,
     snapshot.productName,
-  ]));
-  const categoryForms = new Set(
-    [...leafTokens].filter((token) => !LEAF_AREA_WORDS.has(token) && !GENERIC_USE_CASE_TOKENS.has(token)),
   );
-  const nameForms = new Set(
-    [...nameTokens]
-      .filter((token) => LEAF_NAME_FORM_TOKENS.has(token))
-      .map((token) => CATEGORY_LEAF_ALIASES[token] || token),
-  );
+}
+
+// Forms named in `text`, phrases first (their words consumed), then single words. Returns the
+// canonical forms in order of appearance so the caller can pick the head form.
+function leafFormsInText(text) {
+  let working = ` ${normalizeTokens(text).join(' ')} `;
+  const found = [];
+  for (const [phrase, form] of LEAF_FORM_PHRASES) {
+    const needle = ` ${phrase} `;
+    const at = working.indexOf(needle);
+    if (at === -1) continue;
+    found.push({ at, form });
+    working = working.replace(needle, ' ');
+  }
+  const words = working.trim().split(/\s+/).filter(Boolean);
+  const consumed = found.map((item) => item.form);
+  const ordered = [];
+  for (const word of words) {
+    const form = LEAF_FORM_SYNONYMS[word];
+    if (form) ordered.push(form);
+  }
+  return { phraseForms: consumed, wordForms: ordered };
+}
+
+// The head form of a product name: a multi-word synonym phrase when the name carries one ("Tinted
+// Moisturizer Cream" -> foundation, not moisturizer), else the last form word before a modifier
+// clause ("Lip Balm with Hemp Seed Oil" -> balm, "Cream-to-Foam Face Cleanser" -> cleanser).
+function leafHeadForm(name) {
+  const head = normalizeLower(name, 512).split(/\s+(?:with|for|and|&|\+|featuring|infused|enriched)\s+|\s+[—–]\s+|\s*\|\s*/)[0] || '';
+  const { phraseForms, wordForms } = leafFormsInText(head);
+  if (phraseForms.length) return phraseForms[phraseForms.length - 1];
+  if (wordForms.length) return wordForms[wordForms.length - 1];
+  return '';
+}
+
+function leafAreas(tokens) {
+  const areas = new Set();
+  for (const [area, words] of Object.entries(LEAF_AREA_GROUPS)) {
+    if (words.some((word) => tokens.has(word))) areas.add(area);
+  }
+  return areas;
+}
+
+function snapshotLeafProfile(snapshot = {}) {
+  const leaf = leafCategoryValue(snapshot);
+  const name = snapshotNameText(snapshot);
+  const leafTokens = new Set(normalizeTokens(leaf));
+  const nameTokens = new Set(normalizeTokens(name));
+  const headForm = leafHeadForm(name);
+  const leafForms = leafFormsInText(leaf);
+  const categoryForms = new Set([...leafForms.phraseForms, ...leafForms.wordForms]);
+  const forms = headForm ? new Set([headForm]) : categoryForms;
   return {
     leaf,
-    forms: nameForms.size ? nameForms : categoryForms,
+    head_form: headForm,
+    forms,
     areas: leafAreas(new Set([...leafTokens, ...nameTokens])),
   };
 }
@@ -963,17 +1050,31 @@ function setsIntersect(left, right) {
   return false;
 }
 
+function formsIncompatible(left, right) {
+  if (!left.size || !right.size) return false;
+  for (const a of left) {
+    for (const b of right) {
+      if (a === b || !LEAF_INCOMPATIBLE_FORM_KEYS.has([a, b].sort().join('|'))) return false;
+    }
+  }
+  return true;
+}
+
 function leafCategoryCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
   const anchor = snapshotLeafProfile(anchorSnapshot);
   const candidate = snapshotLeafProfile(candidateSnapshot);
   const label = (set) => [...set].sort().join('+') || 'none';
-  if (!setsIntersect(anchor.areas, candidate.areas)) {
+  if (anchor.areas.size && candidate.areas.size && !setsIntersect(anchor.areas, candidate.areas)) {
     return { compatible: false, reason: `leaf_area_mismatch:${label(anchor.areas)}_vs_${label(candidate.areas)}`, evaluated: true };
   }
-  if (anchor.forms.size && candidate.forms.size && !setsIntersect(anchor.forms, candidate.forms)) {
+  if (formsIncompatible(anchor.forms, candidate.forms)) {
     return { compatible: false, reason: `leaf_form_mismatch:${label(anchor.forms)}_vs_${label(candidate.forms)}`, evaluated: true };
   }
-  return { compatible: true, reason: '', evaluated: Boolean(anchor.forms.size && candidate.forms.size) };
+  return {
+    compatible: true,
+    reason: '',
+    evaluated: Boolean((anchor.areas.size && candidate.areas.size) || (anchor.forms.size && candidate.forms.size)),
+  };
 }
 
 function collectUseCaseTokens(snapshot = {}) {
@@ -1057,7 +1158,23 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
 // words. A category word counts only when both names carry it ("Barrier Serum" / "Barrier Serum
 // Alternative"); a category label the names do not share is not evidence. Curated dupe evidence
 // (aurora_dupe_kb) stands on its own.
+//
+// Dupe rule, stated (not an accident of the score margin):
+//   1. curated evidence (aurora_dupe_kb), OR shared product name words >= 2;
+//   2. when BOTH sides carry an ingredient list, the lists must overlap by at least
+//      DUPE_MIN_INCI_OVERLAP — a contradicting INCI refutes a dupe. INCI is not required: a
+//      retailer row without an ingredient list, or with only a few "key ingredients" entries
+//      (< DUPE_MIN_INCI_ENTRIES, comma-separated), can still be a dupe on its name words (#2268);
+//   3. score_total >= DUPE_MIN_SCORE_TOTAL (productRelationshipGraph.js, re-expressed for the
+//      graded scale: the 0.72 shelf floor plus a fifth of the pair evidence), category >= 0.55,
+//      and the candidate is not dearer than the anchor.
 const DUPE_MIN_SHARED_PRODUCT_TOKENS = 2;
+const DUPE_MIN_INCI_OVERLAP = 0.35;
+// A "key ingredients" blurb of a few ENTRIES is not an INCI list; comparing it against a full list
+// (hits / max size) would refute every genuine dupe. Entries are the comma / semicolon-separated
+// items, not words: "Niacinamide, Sodium Hyaluronate, Zinc PCA, Glycerin" is 4 entries (6 words).
+// Below this many entries on either side the refutation abstains.
+const DUPE_MIN_INCI_ENTRIES = 5;
 const PRODUCT_AREA_TOKENS = new Set(['body', 'eye', 'eyes', 'face', 'facial', 'hair', 'lip', 'lips', 'scalp', 'skin']);
 const SHELF_PLACEHOLDER_TOKENS = new Set(['general', 'misc', 'other', 'others', 'uncategorized', 'unknown']);
 
@@ -1080,6 +1197,21 @@ function sharedProductEvidence(anchorSnapshot = {}, candidateSnapshot = {}) {
   const candidateTokens = productEvidenceTokens(candidateSnapshot, excluded);
   const shared = Array.from(productEvidenceTokens(anchorSnapshot, excluded)).filter((token) => candidateTokens.has(token));
   return { count: shared.length, tokens: shared };
+}
+
+function inciEntryCount(value) {
+  return String(value == null ? '' : value).split(/[,;]/).map((item) => item.trim()).filter(Boolean).length;
+}
+
+function ingredientOverlap(anchorSnapshot = {}, candidateSnapshot = {}) {
+  if (inciEntryCount(anchorSnapshot.ingredient_text) < DUPE_MIN_INCI_ENTRIES) return null;
+  if (inciEntryCount(candidateSnapshot.ingredient_text) < DUPE_MIN_INCI_ENTRIES) return null;
+  const left = new Set(normalizeTokens(anchorSnapshot.ingredient_text).filter((token) => token.length > 2));
+  const right = new Set(normalizeTokens(candidateSnapshot.ingredient_text).filter((token) => token.length > 2));
+  if (!left.size || !right.size) return null;
+  let hits = 0;
+  for (const token of left) if (right.has(token)) hits += 1;
+  return hits / Math.max(left.size, right.size);
 }
 
 function hasCuratedDupeEvidence(candidate = {}) {
@@ -1439,8 +1571,10 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
     };
   }
   const productEvidence = sharedProductEvidence(anchorSnapshot, candidateSnapshot);
+  const inciOverlap = ingredientOverlap(anchorSnapshot, candidateSnapshot);
+  const inciRefutes = inciOverlap != null && inciOverlap < DUPE_MIN_INCI_OVERLAP;
   const dupeEvidence = hasCuratedDupeEvidence(candidate) || productEvidence.count >= DUPE_MIN_SHARED_PRODUCT_TOKENS;
-  if (dupeEvidence && categoryScore >= 0.55 && scoreTotal >= 0.82 && priceRatio != null && priceRatio <= 1.0) {
+  if (dupeEvidence && !inciRefutes && categoryScore >= 0.55 && scoreTotal >= DUPE_MIN_SCORE_TOTAL && priceRatio != null && priceRatio <= 1.0) {
     return {
       relation_type: 'dupe',
       categoryScore,
@@ -1452,6 +1586,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       leafCompatibility,
       useCaseAlignment,
       productEvidence,
+      inciOverlap,
     };
   }
   if (categoryScore >= 0.55) {
@@ -1479,6 +1614,29 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
   };
 }
 
+const stripClaims = {
+  snapshot: (snapshot, fields) => neutralizeSnapshotClaims(snapshot, fields),
+  value: (value) => neutralizeClaimValue(value),
+};
+const keepClaims = {
+  snapshot: (snapshot) => snapshot,
+  value: (value) => value,
+};
+
+// why_candidate is user-visible; stripping must never leave its summary empty or its reasons list
+// empty.
+const DEFAULT_REASONS_USER_VISIBLE = ['Category/use-case evidence is aligned.', 'Source provenance is available.'];
+
+function withSummaryFallback(why, fallbackSummary, fallbackReasons = DEFAULT_REASONS_USER_VISIBLE) {
+  if (!isPlainObject(why)) return { summary: fallbackSummary, reasons_user_visible: fallbackReasons };
+  const out = { ...why };
+  if (!normalizeString(out.summary, 2000)) out.summary = fallbackSummary;
+  if (Array.isArray(why.reasons_user_visible) && !why.reasons_user_visible.some((item) => normalizeString(item, 2000))) {
+    out.reasons_user_visible = fallbackReasons;
+  }
+  return out;
+}
+
 function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, reviewStatus = 'pending' } = {}) {
   const anchorNorm = normalizeProductSnapshot(anchor);
   const candidateNorm = normalizeProductSnapshot(candidate);
@@ -1499,12 +1657,21 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
   const anchorPrice = toNumberOrNull(anchorNorm.snapshot.price ?? anchorNorm.snapshot.price_amount);
   const candidatePrice = toNumberOrNull(candidateNorm.snapshot.price ?? candidateNorm.snapshot.price_amount ?? candidate.price);
   const observedAt = normalizeString(candidate.price_observed_at || candidate.priceObservedAt || candidate.observed_at || nowIso);
+  const sourceRefs = buildSourceRefs(candidate);
+  // Social proof a social / review source_ref supports is a sourced claim; the audit accepts it and
+  // the builder keeps it. Only unsourced social proof is stripped from the stored text.
+  const claims = hasSupportingSocialSource(sourceRefs) ? keepClaims : stripClaims;
+  const defaultSummary = inferred.relation_type === 'dupe'
+    ? 'Lower-priced alternative with similar category and function signals.'
+    : inferred.relation_type === 'related_product'
+      ? 'Same-brand or adjacent product for the routine context.'
+      : 'Cross-brand alternative with matching category and use-case signals.';
   const edge = coerceRelationshipEdge({
     anchor_type: 'product',
     anchor_ref: anchorNorm.product_ref,
-    anchor_snapshot: neutralizeSnapshotClaims(anchorNorm.snapshot, ANCHOR_CLAIM_FIELDS),
+    anchor_snapshot: claims.snapshot(anchorNorm.snapshot, ANCHOR_CLAIM_FIELDS),
     candidate_product_ref: candidateNorm.product_ref,
-    candidate_snapshot: neutralizeSnapshotClaims(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
+    candidate_snapshot: claims.snapshot(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
     relation_type: inferred.relation_type,
     market,
     category_taxonomy: candidate.category_taxonomy || candidate.categoryTaxonomy || candidateNorm.snapshot.category_taxonomy || candidateNorm.snapshot.category,
@@ -1525,21 +1692,17 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
       price_ratio: inferred.priceRatio,
       observed_at: observedAt,
     },
-    source_refs: buildSourceRefs(candidate),
+    source_refs: sourceRefs,
     evidence_grade: candidate.evidence_grade || candidate.evidenceGrade || 'B',
     review_status: reviewStatus,
     why_candidate: isPlainObject(candidate.why_candidate || candidate.whyCandidate)
-      ? neutralizeClaimValue(candidate.why_candidate || candidate.whyCandidate)
+      ? withSummaryFallback(claims.value(candidate.why_candidate || candidate.whyCandidate), defaultSummary)
       : {
-        summary: inferred.relation_type === 'dupe'
-          ? 'Lower-priced alternative with similar category and function signals.'
-          : inferred.relation_type === 'related_product'
-            ? 'Same-brand or adjacent product for the routine context.'
-            : 'Cross-brand alternative with matching category and use-case signals.',
+        summary: defaultSummary,
         reasons_user_visible: ['Category/use-case evidence is aligned.', 'Source provenance is available.'],
       },
-    tradeoffs: Array.isArray(candidate.tradeoffs) ? neutralizeClaimValue(candidate.tradeoffs) : [],
-    watchouts: Array.isArray(candidate.watchouts) ? neutralizeClaimValue(candidate.watchouts) : [],
+    tradeoffs: Array.isArray(candidate.tradeoffs) ? claims.value(candidate.tradeoffs) : [],
+    watchouts: Array.isArray(candidate.watchouts) ? claims.value(candidate.watchouts) : [],
     provenance: {
       pipeline: 'product_relationship_graph_builder.v1',
       generated_at: nowIso,
@@ -1566,12 +1729,15 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
       metrics: { needCompatibility },
     };
   }
+  const nicheSourceRefs = buildSourceRefs(candidate);
+  const nicheClaims = hasSupportingSocialSource(nicheSourceRefs) ? keepClaims : stripClaims;
+  const nicheSummary = `Specialist candidate for ${normalizeString(needObj.label || needObj.need_id)}.`;
   const edge = coerceRelationshipEdge({
     anchor_type: 'need',
     anchor_ref: normalizeString(needObj.need_id || needObj.id || needObj.label, 260),
     anchor_snapshot: needObj,
     candidate_product_ref: candidateNorm.product_ref,
-    candidate_snapshot: neutralizeSnapshotClaims(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
+    candidate_snapshot: nicheClaims.snapshot(candidateNorm.snapshot, CANDIDATE_CLAIM_FIELDS),
     relation_type: 'niche_specialist',
     market,
     category_taxonomy: needObj.category_taxonomy || needObj.categoryTaxonomy,
@@ -1588,13 +1754,13 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
       candidate_price_amount: toNumberOrNull(candidateNorm.snapshot.price ?? candidate.price),
       observed_at: normalizeString(candidate.price_observed_at || candidate.priceObservedAt || candidate.observed_at || nowIso),
     },
-    source_refs: buildSourceRefs(candidate),
+    source_refs: nicheSourceRefs,
     evidence_grade: candidate.evidence_grade || candidate.evidenceGrade || needObj.evidence_grade_min || 'B',
     review_status: reviewStatus,
     why_candidate: isPlainObject(candidate.why_candidate || candidate.whyCandidate)
-      ? neutralizeClaimValue(candidate.why_candidate || candidate.whyCandidate)
+      ? withSummaryFallback(nicheClaims.value(candidate.why_candidate || candidate.whyCandidate), nicheSummary, ['Need-specific tags and source evidence are available.'])
       : {
-        summary: `Specialist candidate for ${normalizeString(needObj.label || needObj.need_id)}.`,
+        summary: nicheSummary,
         reasons_user_visible: ['Need-specific tags and source evidence are available.'],
       },
     tradeoffs: Array.isArray(candidate.tradeoffs) ? candidate.tradeoffs : [],
@@ -1637,7 +1803,8 @@ function dedupeEdgesByIdentity(edges) {
   return Array.from(byKey.values()).sort((a, b) => Number(b.score_total || 0) - Number(a.score_total || 0));
 }
 
-// Bound how many anchors one candidate may serve as a dupe / competitive_alternative. Input edges
+// Bound how many anchors one candidate may serve as a dupe / competitive_alternative IN THIS BUILD
+// (see DEFAULT_MAX_ANCHORS_PER_CANDIDATE for why this is not a global cap). Input edges
 // arrive score-sorted from dedupeEdgesByIdentity; within one candidate the best-scoring anchors are
 // kept, ties broken by anchor_ref so a rerun over the same input keeps the same edges. Other
 // relation types (related_product, niche_specialist) are never capped: a same-brand sibling or a
@@ -1664,7 +1831,7 @@ function capCandidateFanIn(edges, { maxAnchorsPerCandidate = DEFAULT_MAX_ANCHORS
     dropped.push({
       anchor_ref: edge.anchor_ref,
       candidate_ref: edge.candidate_product_ref,
-      errors: ['candidate_fan_in_cap'],
+      errors: ['candidate_fan_in_cap_per_build'],
       metrics: { relation_type: edge.relation_type, score_total: edge.score_total, fan_in_rank: count, cap },
     });
   }
@@ -1775,9 +1942,9 @@ function buildProductRelationshipGraphDryRun({
       rejected_count: rejected_edges.length,
       anchors_with_alternative_count: anchorsWithApprovedAlternative.size,
       niche_specialist_count: deduped.filter((edge) => edge.relation_type === 'niche_specialist').length,
-      max_anchors_per_candidate: fanIn.cap,
-      max_fan_in_before_cap: fanIn.max_fan_in_before_cap,
-      fan_in_capped_count: fanIn.dropped.length,
+      max_anchors_per_candidate_per_build: fanIn.cap,
+      max_fan_in_before_cap_per_build: fanIn.max_fan_in_before_cap,
+      fan_in_capped_count_per_build: fanIn.dropped.length,
       relation_counts: deduped.reduce((acc, edge) => {
         acc[edge.relation_type] = Number(acc[edge.relation_type] || 0) + 1;
         return acc;
