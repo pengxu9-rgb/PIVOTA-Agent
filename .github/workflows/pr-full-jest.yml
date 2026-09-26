@@ -105,6 +105,27 @@ jobs:
       # whether the suites run.
       - name: Run node:test suites
         run: node scripts/run_node_test_suites.cjs
+
+      # THE SAME SUITES, IN THE CONFIGURATION PROD ACTUALLY RUNS.
+      #
+      # The gateway exports RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3. The step above does
+      # not, because the code default has the wide id INHERIT the narrow one (routes.js) so that
+      # "off" is true by construction. The consequence went unnoticed until 2026-09-10: six tests
+      # asserting the default-off contract FAILED under prod's own env, on main, while this gate
+      # stayed green -- and the armed behaviour of the reco lane, which is the only one real users
+      # and partner integrations touch, was guarded by nothing at all.
+      #
+      # That gap is how a defect survived four review rounds on #2173: the lane read the beauty ASK
+      # (`promptDomainScope`) where the contract lives in the GRANT (`wide_template_active`), and
+      # every fixture, plus the suite they were written against, modelled the disarmed lane.
+      #
+      # Runs the identical glob rather than a curated subset: the point is that no test may assume a
+      # configuration prod does not run. A test that legitimately describes the default must pin it
+      # itself, and the tests that want the wide template arm it explicitly.
+      - name: Run node:test suites (wide reco template ARMED, as in prod)
+        env:
+          RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: reco_main_v1_3
+        run: node scripts/run_node_test_suites.cjs
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30
