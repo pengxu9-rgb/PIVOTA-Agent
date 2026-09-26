@@ -133,6 +133,7 @@ describe('discovery feed service', () => {
       PIVOTA_AGENT_API_KEY: process.env.PIVOTA_AGENT_API_KEY,
       AGENT_API_KEY: process.env.AGENT_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
+      DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED: process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
       DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS: process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
@@ -147,7 +148,9 @@ describe('discovery feed service', () => {
     };
     resetDiscoveryMetricsForTest();
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     _internals.resetBrowseCatalogCountCache();
+    _internals.resetProductsSearchBreaker();
     _internals.resetDiscoveryDependencyProbeCache();
     _internals.resetProductIntelKbStoreCache();
     nock.cleanAll();
@@ -325,6 +328,13 @@ describe('discovery feed service', () => {
     delete process.env.PIVOTA_API_KEY;
     delete process.env.DATABASE_URL;
 
+    // The `discovery feed built` line is where an operator reads these, so the log payload is
+    // asserted as well as the snapshot: dropping phase_ms from the log alone otherwise passes.
+    const builtLogPayloads = [];
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation((payload, message) => {
+      if (message === 'discovery feed built') builtLogPayloads.push(payload);
+    });
+
     const internalSpy = jest.fn(async () => []);
     const externalSpy = jest.fn(async ({ queries }) =>
       Array.from({ length: 12 }, (_, idx) =>
@@ -373,6 +383,29 @@ describe('discovery feed service', () => {
     expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(externalCall.queries).toEqual(['lip balm']);
+
+    // Phase timings, asserted on a feed that demonstrably did the work (12 products above).
+    // getDiscoveryFeed reported ONE latency_ms, so a p50 of 1.6s could not be attributed: the
+    // provider breakdown accounted for ~0ms of it and the database, measured live, for under
+    // 500ms. The phases must add up to the number operators already see, and whatever the marks
+    // do not cover must surface as `unattributed` rather than vanish.
+    // getLastDiscoverySnapshot() with no argument returns a map keyed by surface.
+    const phaseSnapshot = getLastDiscoverySnapshot('browse_products');
+    expect(Object.keys(phaseSnapshot.phase_ms).sort()).toEqual(
+      ['assemble', 'hydrate', 'identity_dedupe', 'recall', 'recall_brand_direct', 'recall_catalog',
+        'recall_graph', 'recall_setup', 'select', 'setup', 'stable_count_wait', 'unattributed'].sort(),
+    );
+    for (const value of Object.values(phaseSnapshot.phase_ms)) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+    }
+    expect(Object.values(phaseSnapshot.phase_ms).reduce((a, b) => a + b, 0)).toBe(
+      phaseSnapshot.latency_ms,
+    );
+
+    infoSpy.mockRestore();
+    expect(builtLogPayloads).toHaveLength(1);
+    expect(builtLogPayloads[0].phase_ms).toEqual(phaseSnapshot.phase_ms);
     expect(recallSummaryText).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
@@ -2115,10 +2148,37 @@ describe('discovery feed service', () => {
     const dbQueryMock = jest.fn(async (sql, params) => {
       const text = String(sql || '');
       if (text.includes('FROM external_product_seeds')) {
-        if (text.includes('EXISTS')) return { rows: [] };
-        expect(text).toContain('regexp_replace');
-        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
-        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        // The backfill lane's candidate-id statement, identified by the title expression it matches
+        // on. It used to be identified by its EXISTS/unnest subquery, which the indexed rewrite
+        // replaced with one LIKE per alias; that lane still binds the space-separated normalized
+        // alias.
+        if (text.includes('title_seed_ids')) {
+          expect(params[2]).toBe('la roche posay %');
+          return { rows: [] };
+        }
+        // The brand lane's candidate-id statement. It binds brand IDENTITY keys (accent-folded,
+        // alphanumerics only) — the same value the brand-identity index stores — for both the
+        // equality and the prefix arm. The old $3 normalized-alias / $4 prefix-pattern / $6
+        // compact-alias triple is gone.
+        if (text.includes('brand_seed_ids')) {
+          expect(text).toContain('regexp_replace');
+          // "la roche posay" is 14 spaced characters, so it gets a PREFIX arm on the brand chain and
+          // therefore no equality arm there — the prefix already matches `larocheposay` itself. The
+          // prefix is bound as an identity range: $3 the key, $4 the key plus U+10FFFF. $5 is the
+          // domain chain's identity array, which is equality only.
+          expect(params[2]).toBe('larocheposay');
+          expect(params[3]).toBe('larocheposay\u{10FFFF}');
+          expect(params[4]).toEqual(expect.arrayContaining(['larocheposay']));
+          expect(text).toContain('~>=~ $3::text');
+          expect(text).toContain('~<~ $4::text');
+          expect(text).toContain('= ANY($5::text[])');
+          expect(text).not.toMatch(/LIKE ANY\(/);
+          return { rows: [{ id: 'eps_lrp_anthelios' }] };
+        }
+        // The by-key fetch, which carries the serving gate and is bound only to the ids the
+        // candidate statement returned.
+        expect(text).toContain('eps.id = ANY($1::text[])');
+        expect(params[0]).toEqual(['eps_lrp_anthelios']);
         return {
           rows: [
             {
@@ -2253,6 +2313,7 @@ describe('discovery feed service', () => {
 
     const compactPage = await fetchFeed(12);
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     const standardPage = await fetchFeed(24);
 
     expect(compactPage.total).toBe(standardPage.total);
@@ -2621,6 +2682,105 @@ describe('discovery feed service', () => {
     expect(recommendCalls).toBe(0);
   });
 
+  describe('products_search on a brand-only page whose brand pool is empty', () => {
+    const productsSearchCalls = (spy) =>
+      spy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search')).length;
+    const brandOnlyRequest = (extra = {}) => ({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      debug: true,
+      scope: { brand_names: ['Meebak'] },
+      query: { text: 'Meebak' },
+      context: { locale: 'en-US' },
+      ...extra,
+    });
+    const setUpSearch = () => {
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+      process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+      delete process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED;
+      delete process.env.DATABASE_URL;
+      nock('http://discovery-catalog.test').persist().get('/agent/v1/products/search').query(true).reply(200, { products: [] });
+      return jest.spyOn(axios, 'get');
+    };
+    const products = (n, prefix) =>
+      Array.from({ length: n }, (_, index) =>
+        makeProduct({ merchant_id: 'external_seed', product_id: `${prefix}_${index + 1}`, title: `Meebak ${prefix} ${index + 1}`,
+          brand: 'Meebak', category: 'Serum', product_type: 'Serum' }));
+
+    test('a clean empty pool skips products_search and reports the brand as having no products', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.products).toEqual([]);
+      expect(response.metadata.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.route_health.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: 'products_search', attempted: true, skipped: true, skip_reason: 'brand_direct_pool_empty' }),
+        ]),
+      );
+    });
+
+    test('a pool whose fetcher swallowed a failure still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async ({ failures }) => {
+          failures.push('canonical');
+          return [];
+        },
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a pool that threw still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => {
+          throw new Error('pool timeout');
+        },
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('brand plus other query text still calls products_search: the pool is not the primary source', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest({ query: { text: 'vitamin c serum' } }), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a brand pool with products never reaches products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async ({ limit }) => products(20, 'direct').slice(0, limit),
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    });
+
+    test('DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true calls it for a clean empty pool too', async () => {
+      const axiosGetSpy = setUpSearch();
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([expect.objectContaining({ provider: 'products_search', skipped: false })]),
+      );
+    });
+  });
+
   test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -2652,7 +2812,11 @@ describe('discovery feed service', () => {
         },
       },
       {
-        brandFallbackFetchInternalCandidatesFn: async () => [],
+        // The brand pool really fails, as a statement timeout would: an empty pool is a different case
+        // (see the products_search tests below).
+        brandFallbackFetchInternalCandidatesFn: async () => {
+          throw new Error('canceling statement due to statement timeout');
+        },
         brandFallbackFetchExternalCandidatesFn: async () => [],
         brandFallbackRecommendFn: async () => {
           recommendCalls += 1;

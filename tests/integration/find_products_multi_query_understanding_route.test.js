@@ -55,6 +55,7 @@ describe('find_products_multi query understanding route wiring', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       SEARCH_AMBIGUITY_GATE_ENABLED: process.env.SEARCH_AMBIGUITY_GATE_ENABLED,
     };
@@ -62,6 +63,8 @@ describe('find_products_multi query understanding route wiring', () => {
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
+    // This suite elects the configured upstream primary; missing DB is not a route selector.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     delete process.env.DATABASE_URL;
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.SEARCH_AMBIGUITY_GATE_ENABLED = 'true';

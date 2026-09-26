@@ -127,6 +127,10 @@ describe('agentCenterLlmProbe — request validation', () => {
   test('PRIMARY_ISSUE_TYPE_BY_SCAN_MODE covers all four demand-test modes', () => {
     const { PRIMARY_ISSUE_TYPE_BY_SCAN_MODE } = _internals;
     for (const mode of ALLOWED_SCAN_MODES) {
+      if (mode === 'consumer_answer_test') {
+        expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeUndefined();
+        continue;
+      }
       expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeTruthy();
     }
   });
@@ -951,6 +955,8 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
       max_runs: 1,
       context: { queries: ['X'], product: { title: 'X' } },
     });
+    expect(out.raw_runs[0].evidence_kind).toBe('merchant_context_diagnostic');
+    expect(out.raw_runs[0].prompt_contract).toBe('merchant_context_diagnostic_v1');
     expect(out.raw_runs[0].grounding_sources).toEqual([
       { uri: 'https://vertexaisearch.cloud.google.com/abc', title: 'Sephora' },
       { uri: 'https://vertexaisearch.cloud.google.com/def', title: 'Olive Young Global' },
@@ -1271,6 +1277,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       cost_usd_estimate: expect.any(Number),
     }));
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       competitors_listed: ['Sephora'],
       evidence_excerpt: 'Merchant PDP was cited.',
@@ -1351,9 +1359,12 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       context: { queries: ['where can I buy Product X'], product: { title: 'Product X' } },
     });
 
-    // tokens: 1000/1000*0.005 + 100/1000*0.02 = 0.005 + 0.002 = 0.007
-    // web search: 2 calls * 0.015 = 0.030  ->  total 0.037
-    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.037, 6);
+    // Published chat-latest token cost: 0.005 + 0.003 = 0.008
+    // Preview search SKU uncertainty: 2 * $0.01–$0.025.
+    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.058, 6);
+    expect(out.usage.cost_usd_estimate_min).toBeCloseTo(0.028, 6);
+    expect(out.usage.web_search_requests).toBe(2);
+    expect(out.usage.cost_settled).toBe(false);
     // The search fee dominates token cost here — the whole point of metering it.
     expect(out.usage.cost_usd_estimate).toBeGreaterThan(0.007 * 2);
   });
@@ -1381,6 +1392,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.scores.visibility_score).toBe(0);
     expect(out.findings.map((f) => f.issue_type)).toContain('ai_visibility_loss');
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '',
       parsed: null,
       product_visible: false,
@@ -1574,6 +1587,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(100);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       evidence_excerpt: 'Merchant page cited.',
       grounding_chunks: ['https://merchant.com/p/123'],
@@ -1609,6 +1624,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(0);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '__error__:upstream unavailable',
       parsed: null,
       product_visible: false,

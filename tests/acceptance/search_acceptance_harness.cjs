@@ -1,0 +1,201 @@
+'use strict';
+
+// Shared evaluation for the search acceptance set.
+//
+// WHAT THIS LAYER PROVES. For each query, over rows sampled from production, it computes
+// the SERVED set the beauty mainline would return, the way the route does:
+//   1. the real contract (`buildSearchQualityContract`); a safe-empty contract serves nothing;
+//   2. the route's query text (`effective_query`) and intent, and the multi-family relaxation
+//      of the contract (`relaxSearchQualityContractForMultiFamilyBeautyIntent`);
+//   3. `rankAndServeBeautyRecallProducts` -- the SAME function the route calls: scoring (which
+//      applies the hard constraints), ranking, near-duplicate collapse, display dedupe/polish,
+//      and the serving-eligibility gate.
+//
+// WHAT IT DOES NOT. Canonical SQL recall and the seed lane are not run (the fixture rows stand
+// in for recall), nor are request-specific budget/currency filters and paging. Fixture rows
+// carry no description, seed_data or transaction-hold fields, so rules that read those cannot
+// fire here. The live runner (scripts/acceptance/live_search_acceptance.cjs) covers the rest.
+//
+// Why this exists: the Meitu-reported product was indexed and serving-eligible, and six rounds
+// of fixes to the query rules were each verified as "no diff against main" over fixture
+// strings -- never as "does the reported query now return the product?".
+
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..', '..');
+const CASES_PATH = path.join(__dirname, 'cases.json');
+const ROWS_PATH = path.join(__dirname, 'fixtures', 'serving_rows_2026_09_16.json');
+const BASELINE_PATH = path.join(__dirname, 'fixtures', 'eligible_baseline.json');
+const SAFE_LIMIT = 20;
+
+let loaded = null;
+function load() {
+  if (loaded) return loaded;
+  const { _debug: d } = require(path.join(ROOT, 'src', 'server'));
+  const { buildSearchQualityContract } = require(path.join(ROOT, 'src', 'findProductsMulti', 'queryUnderstanding'));
+  const needed = [
+    'isSearchQualityContractSafeEmptyContract', 'isBeautySearchQualityContractApplied', 'getSearchQualityContractMode',
+    'inferBeautyMainlineIntent', 'relaxSearchQualityContractForMultiFamilyBeautyIntent', 'tokenizeSearchTextForMatch',
+    'rankAndServeBeautyRecallProducts',
+  ];
+  for (const name of needed) {
+    if (typeof d[name] !== 'function') throw new Error(`acceptance harness: server _debug.${name} is no longer exported`);
+  }
+  if (typeof buildSearchQualityContract !== 'function') throw new Error('acceptance harness: buildSearchQualityContract missing');
+  loaded = { d, buildSearchQualityContract };
+  return loaded;
+}
+
+function loadRows() {
+  // Fresh copies: nothing in the pipeline may leak a mutation from one query to the next.
+  return require(ROWS_PATH).rows.map((row) => JSON.parse(JSON.stringify(row)));
+}
+
+function loadCases() {
+  return require(CASES_PATH);
+}
+
+function rowId(row) {
+  return String(row.product_id);
+}
+
+// One key format everywhere: what the baseline stores and what dedupe uses.
+function keyFor(market, query) {
+  return `${market}|${query}`;
+}
+
+// One query over every fixture row. `eligible` is the SERVED list, in served order.
+// `rejected` maps a row id to the stage and reasons that removed it.
+function evaluateQuery(query, market, rows = loadRows()) {
+  const { d, buildSearchQualityContract } = load();
+  const contract = buildSearchQualityContract({ rawQuery: query, market, allowContextBinding: false });
+  const rejected = new Map();
+  if (d.isSearchQualityContractSafeEmptyContract(contract)) {
+    for (const row of rows) rejected.set(rowId(row), ['safe_empty_contract']);
+    return { contract, effectiveContract: contract, safeEmpty: true, eligible: [], rejected };
+  }
+  const applied = d.isBeautySearchQualityContractApplied(contract);
+  const queryText = (applied && contract.effective_query) || query;
+  const beautyIntent = d.inferBeautyMainlineIntent(queryText);
+  const effectiveContract = d.relaxSearchQualityContractForMultiFamilyBeautyIntent(contract, beautyIntent);
+  const normalizedQuery = beautyIntent.normalized;
+  const out = d.rankAndServeBeautyRecallProducts({
+    recallProducts: rows.map((row) => JSON.parse(JSON.stringify(row))),
+    queryText,
+    beautyIntent,
+    normalizedQuery,
+    queryTokens: Array.from(new Set(d.tokenizeSearchTextForMatch(normalizedQuery))),
+    searchQualityEnforced: applied && d.getSearchQualityContractMode() === 'enforce',
+    searchQualityContractApplied: applied,
+    effectiveSearchQualityContract: effectiveContract,
+    creatorScoped: false,
+    metadata: {},
+    safeLimit: SAFE_LIMIT,
+  });
+  for (const r of out.scoreRejected) rejected.set(String(r.product_id), r.reasons);
+  for (const r of out.servingEligibilityGate.rejected) rejected.set(String(r.product_id), ['serving_gate', ...(r.reasons || [])]);
+  const eligible = out.servingEligibilityGate.products;
+  const servedIds = new Set(eligible.map(rowId));
+  for (const row of rows) {
+    const id = rowId(row);
+    if (!servedIds.has(id) && !rejected.has(id)) rejected.set(id, ['display_dedupe_or_polish']);
+  }
+  return { contract, effectiveContract, safeEmpty: false, eligible, rejected };
+}
+
+function describeContract(contract, safeEmpty) {
+  const hard = (contract && contract.hard_constraints) || {};
+  return {
+    safe_empty: Boolean(safeEmpty),
+    query_class: contract && contract.query_class,
+    category_path_prefix: hard.category_path_prefix || null,
+    brand: hard.brand || null,
+    exact_product_anchor: hard.exact_product_anchor || null,
+  };
+}
+
+// A case's expectation, evaluated. Returns { pass, detail } -- detail is what a failing
+// assertion prints, so it must say WHY, not just THAT.
+function evaluateCase(testCase, rows = loadRows()) {
+  const market = testCase.market || 'SG';
+  const { effectiveContract, safeEmpty, eligible, rejected } = evaluateQuery(testCase.query, market, rows);
+  const expect = testCase.expect || {};
+  const contractSummary = describeContract(effectiveContract, safeEmpty);
+  const ids = eligible.map(rowId);
+
+  switch (expect.kind) {
+    case 'target_eligible': {
+      const rank = ids.indexOf(expect.target);
+      return { pass: rank >= 0, detail: { contract: contractSummary, target: expect.target, served_rank: rank >= 0 ? rank + 1 : null, rejected_for: rejected.get(expect.target) || null } };
+    }
+    case 'target_not_eligible': {
+      return { pass: !ids.includes(expect.target), detail: { contract: contractSummary, target: expect.target } };
+    }
+    case 'no_eligible_title_match': {
+      const re = new RegExp(expect.title_pattern, 'i');
+      const offenders = eligible.filter((row) => re.test(String(row.title || ''))).map((row) => row.title);
+      return { pass: offenders.length === 0, detail: { contract: contractSummary, offenders: offenders.slice(0, 10) } };
+    }
+    case 'min_eligible': {
+      return { pass: eligible.length >= expect.count, detail: { contract: contractSummary, served: eligible.length, required: expect.count } };
+    }
+    default:
+      throw new Error(`acceptance case ${testCase.id}: unknown expect.kind ${JSON.stringify(expect.kind)}`);
+  }
+}
+
+// Every query the baseline tracks: all case queries plus the ratchet-only queries.
+function baselineQueries(cases = loadCases()) {
+  const seen = new Map();
+  for (const c of cases.cases) seen.set(keyFor(c.market || 'SG', c.query), { query: c.query, market: c.market || 'SG' });
+  for (const q of cases.ratchet_queries || []) seen.set(keyFor(q.market || 'SG', q.query), { query: q.query, market: q.market || 'SG' });
+  return [...seen.values()];
+}
+
+function computeEligibleSets(cases = loadCases(), rows = loadRows()) {
+  const out = {};
+  for (const { query, market } of baselineQueries(cases)) {
+    out[keyFor(market, query)] = evaluateQuery(query, market, rows).eligible.map(rowId).sort();
+  }
+  return out;
+}
+
+// The no-deletion ratchet, as a pure function so it can be tested on its own.
+//
+// A REMOVAL is a row the baseline serves and the current code does not -- INCLUDING every row of
+// a query that is no longer tracked. Dropping a query from cases.json must not be a quiet way to
+// stop protecting its rows. Additions are reported, not failed.
+function compareToBaseline(baselineSets, currentSets) {
+  const removals = [];
+  const additions = [];
+  const missingQueries = [];
+  for (const [key, ids] of Object.entries(baselineSets)) {
+    if (!(key in currentSets)) {
+      missingQueries.push(key);
+      for (const id of ids) removals.push({ query: key, product_id: id, reason: 'query_no_longer_tracked' });
+      continue;
+    }
+    const now = new Set(currentSets[key]);
+    for (const id of ids) if (!now.has(id)) removals.push({ query: key, product_id: id });
+    const before = new Set(ids);
+    for (const id of currentSets[key]) if (!before.has(id)) additions.push({ query: key, product_id: id });
+  }
+  const untracked = Object.keys(currentSets).filter((key) => !(key in baselineSets));
+  return { removals, additions, missingQueries, untracked };
+}
+
+module.exports = {
+  BASELINE_PATH,
+  CASES_PATH,
+  ROWS_PATH,
+  baselineQueries,
+  compareToBaseline,
+  computeEligibleSets,
+  evaluateCase,
+  evaluateQuery,
+  keyFor,
+  loadCases,
+  loadRows,
+};

@@ -1,5 +1,6 @@
 const nock = require('nock');
 const request = require('supertest');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../../src/services/catalogEntityResolutionSqlTag');
 
 jest.setTimeout(60000);
 
@@ -182,7 +183,7 @@ function mockDbForObservedSellerGroup(db, { seedDetailAvailable }) {
     }
 
     // Canonical catalog entity group (both lanes, one content_key).
-    if (normalizedSql.includes('WITH offer_stats AS')) {
+    if (normalizedSql.includes(CANONICAL_ENTITY_GROUP_SQL_TAG)) {
       return { rows: [canonicalGroupRow(), urlAuditGroupRow()] };
     }
 

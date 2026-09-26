@@ -32,6 +32,48 @@ const PAN_EXEMPT_ID_KEYS = new Set([
   'orderid', 'quoteid', 'sessionid', 'checkoutsessionid', 'merchantid', 'externalseedid', 'offerid',
   'lineitemid', 'itemid',
 ]);
+// The same exemption, derived rather than enumerated — BOUNDED ON BOTH SIDES.
+//
+// The list this replaces rotted exactly as the composite-id note below predicts a list will. It
+// carried `variantid` and not `defaultvariantid`, so one prod get_product response (MAC Retro Matte
+// Lipstick, 2026-09-06) carried the same Shopify id twice — intact inside `variants[]`,
+// "[REDACTED_PAN]" in `default_variant_id`, the one field an agent reads to preselect a shade.
+// 54057345941699 is 14 digits and Luhn-valid, and Luhn is only a 1-in-10 filter.
+//
+// THE WHOLE KEY MUST BE BUILT FROM WORDS WE CHOSE. A qualifier* + noun + "id", anchored at BOTH
+// ends. The anchoring is the entire point, and it is what three earlier attempts got wrong:
+//
+//   - `endsWith('id')` exempts ~468 keys, including `payment_id` — which `upstreamAdapter` copies
+//     verbatim out of the raw upstream body — plus `card_number_id`, `account_id`, and every
+//     merchant-authored option axis that happens to end in "id" ("Liquid", "Paid" are real
+//     cosmetics finishes, and axis names become dict KEYS).
+//   - A bare suffix like /(variant|product|…|line|order)id$/ looks bounded and is not: the left
+//     context is still open, so `payment_session_id`, `psp_session_id`, `acquirer_merchant_id`,
+//     `card_line_id` and `pan_order_id` all match, and so does `decline_id` — "dec" + "line" + "id".
+//     Measured against a system word list, that form newly exempts 621 ordinary English words.
+//
+// Anchoring the left side to a closed qualifier vocabulary removes the unbounded context. A key we
+// have not composed ourselves is scanned, and the cost of missing one is that an id gets redacted —
+// a visible bug on a page — INTERMITTENTLY, on the ~1 in 10 ids that are Luhn-valid, which is why
+// this defect went unnoticed until 2026-09-06. That is still the direction to fail in: the
+// alternative rules leak a card,
+// silently. `vault/pci.js::assertNoPan` makes the same call, using Luhn alone and failing closed.
+const ID_QUALIFIERS = 'default|matched|source|parent|canonical|preferred|selected|primary|elected'
+  + '|representative|attached|external|platform|base|target|sellable|pivota|first|last|new|old';
+const ID_NOUNS = 'variant|product|sku|offer|order|quote|session|merchant|group|item|line'
+  + '|signature|seed|catalog';
+// AT LEAST ONE LEADING TOKEN, never zero, and every token drawn from the two closed vocabularies.
+// A noun may lead as well as qualify, because real keys compound nouns: `product_line_id` and
+// `line_item_id` are among the most common ids in this repo.
+//
+// Requiring a leading token is what buys the merchant-authored case. Every BARE noun form —
+// `variantid`, `productid`, `orderid`, `itemid`, `signatureid` and the rest — is already enumerated
+// above, so demanding one costs nothing; and an option axis named "Line ID" or "Group Id"
+// canonicalizes to exactly a bare noun, with axis names becoming dict KEYS whose values are
+// merchant free text.
+const ID_STEM_KEY_RE = new RegExp(`^(?:${ID_QUALIFIERS}|${ID_NOUNS})+(?:${ID_NOUNS})id$`);
+const isPanExemptKey = (c) => PAN_EXEMPT_ID_KEYS.has(c) || ID_STEM_KEY_RE.test(c);
+
 function luhnValid(candidate) {
   const digits = String(candidate).replace(/[ -]/g, '');
   if (digits.length < 13 || digits.length > 19) return false;
@@ -49,8 +91,40 @@ function luhnValid(candidate) {
   }
   return sum % 10 === 0;
 }
+// A COMPOSITE IDENTIFIER is one of our own keys: separator-joined, no whitespace —
+// "merch_x|shopify|9854988910809|∅", "prod::merch_x::shopify::9854988910809". Inside one, a digit
+// run that FOLLOWS a separator is a segment of the id, never a card number.
+//
+// Why a shape gate and not more key names. `PAN_EXEMPT_ID_KEYS` already carried `productkey`, so on
+// one prod get_product response (2026-09-02) `product_key` kept the Shopify id 9854988910809 while
+// `sku_key` came back "[REDACTED_PAN]" — 13 digits and Luhn-valid, so the checksum gate that stops
+// random digit runs cannot stop this one. Adding `skukey` fixes that row and nothing else: the same
+// asymmetry waits on every sibling nobody enumerated (`matched_product_key` is exempted by name in
+// one upserter tuple while `matched_content_key` beside it is not), which is how the original hole
+// was born. A name list cannot stop rotting; the value's shape can.
+//
+// It is also strictly SAFER than a name exemption, which skips PAN scanning for the whole value:
+//   - a bare PAN keeps being redacted even under an exempt key — "4111111111111111" has no
+//     separator before it;
+//   - a PAN in the FIRST segment is redacted — "4111111111111111|shopify|985…" → the leading run is
+//     not preceded by a separator;
+//   - free text is untouched, because a composite id has no whitespace. That closes a real hole:
+//     `catalog_variant_promoter._visible_attributes` lowercases MERCHANT-AUTHORED option axis names
+//     into dict keys, and canon() erases the space — so an axis literally named "sku key" would
+//     inherit a name-based exemption. Its value is bare text, so the shape gate refuses it.
+//
+// Mirrors redactPansOutsideStorefrontIds below, whose comment records that its own per-VALUE
+// ancestor was a prefix-gate hole. Same lesson, same fix.
+const COMPOSITE_ID_RE = /^\S*(?:\|\|?|::)\S*$/;
+const COMPOSITE_SEGMENT_SEPARATORS = new Set(['|', ':']);
+
 function redactPans(s) {
-  return s.replace(PAN_RE, (m) => (luhnValid(m) ? '[REDACTED_PAN]' : m));
+  const composite = COMPOSITE_ID_RE.test(s);
+  return s.replace(PAN_RE, (m, offset) => {
+    if (!luhnValid(m)) return m;
+    if (composite && offset > 0 && COMPOSITE_SEGMENT_SEPARATORS.has(s[offset - 1])) return m;
+    return '[REDACTED_PAN]';
+  });
 }
 const SENSITIVE = new Set([
   'ap2state', 'confirmationtoken', 'clientsecret', 'authorization', 'accesstoken', 'idtoken', 'refreshtoken',
@@ -172,7 +246,7 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
       // A shape-verified cart permalink is exempt for the same reason: the digit run IS the variant id.
       // Note this exempts PAN scanning ONLY — the secret scrubs below still run on it, which is stricter
       // than the verbatim return the attributed-link rule above takes, and costs nothing here.
-      const out = keyCanon && PAN_EXEMPT_ID_KEYS.has(keyCanon)
+      const out = keyCanon && isPanExemptKey(keyCanon)
         ? value
         : keyCanon && STOREFRONT_URL_KEYS.has(keyCanon)
           ? redactPansOutsideStorefrontIds(value)

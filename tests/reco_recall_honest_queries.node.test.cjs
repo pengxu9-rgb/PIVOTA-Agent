@@ -241,7 +241,7 @@ test('the declared family resolves through the shipped text rules, so a bogus on
 // ---------------------------------------------------------------------------
 
 // `require('../src/server')` does not boot: `app.listen` lives behind `if (require.main === module)`.
-const { buildFindProductsMultiPayloadFromQuery } = require('../src/server')._debug;
+const { buildFindProductsMultiPayloadFromQuery, buildSearchProductsV2Body } = require('../src/server')._debug;
 
 test('the payload builder parses target_step_family / semantic_family / query_step_strength', () => {
   const payload = buildFindProductsMultiPayloadFromQuery({
@@ -295,6 +295,46 @@ test('the three params are OPTIONAL: an existing caller gets a byte-identical pa
   assert.ok(!('query_step_strength' in before.search));
   assert.equal(before.search.query, 'gentle cleanser');
   assert.equal(before.search.limit, 5);
+});
+
+test('the public GET payload builder preserves page pagination and derives its offset', () => {
+  const secondPage = buildFindProductsMultiPayloadFromQuery({
+    q: 'JUNG SAEM MOOL',
+    page: '2',
+    limit: '10',
+  });
+  assert.equal(secondPage.search.page, 2);
+  assert.equal(secondPage.search.limit, 10);
+  assert.equal(secondPage.search.offset, 10);
+
+  const offsetWins = buildFindProductsMultiPayloadFromQuery({
+    q: 'JUNG SAEM MOOL',
+    page: '9',
+    offset: '20',
+    limit: '10',
+  });
+  assert.equal(offsetWins.search.page, 3);
+  assert.equal(offsetWins.search.offset, 20);
+
+  const defaultLimit = buildFindProductsMultiPayloadFromQuery({
+    q: 'JUNG SAEM MOOL',
+    page: '9',
+    offset: '20',
+  });
+  assert.equal(defaultLimit.search.page, 2);
+  assert.equal(defaultLimit.search.offset, 20);
+
+  const unaligned = buildFindProductsMultiPayloadFromQuery({
+    q: 'JUNG SAEM MOOL',
+    offset: '15',
+    limit: '10',
+  });
+  assert.equal(unaligned.search.page, 2);
+  assert.equal(unaligned.search.offset, 15);
+  const upstream = buildSearchProductsV2Body({ search: unaligned.search });
+  assert.equal(upstream.page, 2);
+  assert.equal(upstream.offset, 15);
+  assert.equal(upstream.in_stock_only, undefined);
 });
 
 test('every canonical step family is accepted by the allowlist', () => {

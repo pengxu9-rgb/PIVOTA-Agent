@@ -49,6 +49,19 @@ describe('dynamic catalog brand detection', () => {
     expect(r.detection_mode).toBe('static');
   });
 
+  test('exact article-elided brand query is recognized without hijacking adjective phrases', () => {
+    delete process.env.GATEWAY_DYNAMIC_BRAND_DETECT;
+
+    const exact = detectBrandEntities('ordinary', { candidateProducts: [] });
+    expect(exact.brand_like).toBe(true);
+    expect(exact.detection_mode).toBe('static');
+    expect(exact.brands).toContain('the ordinary');
+
+    expect(
+      detectBrandEntities('ordinary moisturizer', { candidateProducts: [] }).brand_like,
+    ).toBe(false);
+  });
+
   test('matchCatalogBrand respects min length + flag gate', () => {
     delete process.env.GATEWAY_DYNAMIC_BRAND_DETECT;
     brandDict.__setBrandSetForTest(['anuko']);

@@ -173,6 +173,29 @@ function offerToSignal(offer, { productId = null } = {}) {
   };
 }
 
+// "THIS SELLER CANNOT SELL IT" — the backend's OFFER_UNAVAILABLE_AVAILABILITIES (pivota-backend #2218,
+// routes/agent_shop_gateway.py; #2220 moves it to services/offer_buyability.py), mirrored verbatim. Only an
+// explicit statement counts. The `in_stock` FLAG decides whenever it is a boolean — exactly as the backend's
+// `_offer_is_known_unavailable` reads only the flag — and the availability string is consulted only when the
+// flag is absent. That order matters: live verification CORRECTS `in_stock` to true on a restocked offer and
+// leaves the feed's stale `availability: "out_of_stock"` beside it. `unknown`, null and anything unrecognised
+// are NOT unavailability — the backend reports them as `in_stock: true` and ranks them with the in-stock
+// offers, and ranking them lower here would make `best_offer` disagree with the backend's offers[0].
+const UNAVAILABLE_AVAILABILITIES = new Set(['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable']);
+
+function isKnownUnavailable(signal) {
+  // INTERNAL (buy-here) offers are exempt, mirroring the backend's `_offer_is_known_unavailable`. Their
+  // `in_stock` is computed from inventory_quantity alone, so an untracked-inventory Shopify variant that is
+  // perfectly buyable arrives as `in_stock: false`; demoting on it would hand best_offer away from a buyable
+  // buy-here offer. Drop this together with the backend exemption once that flag reads the way the backend's
+  // eligibility gate does.
+  if (signal.value.purchase_route === 'internal_checkout') return false;
+  if (signal.value.in_stock === true) return false;
+  if (signal.value.in_stock === false) return true;
+  const a = typeof signal.value.availability === 'string' ? signal.value.availability.trim().toLowerCase() : '';
+  return UNAVAILABLE_AVAILABILITIES.has(a);
+}
+
 function offersToSignals(offers, opts = {}) {
   const { productId = null, limit = 10 } = opts;
   if (!Array.isArray(offers)) return { best_offer: null, signals: [] };
@@ -181,7 +204,18 @@ function offersToSignals(offers, opts = {}) {
     const s = offerToSignal(o, { productId });
     if (s) signals.push(s);
   }
-  // best = primary, then CONFIRMED-IN-STOCK, then lowest price.
+  // best = SELLABLE, then primary, then CONFIRMED-IN-STOCK, then lowest price.
+  //
+  // SELLABLE FIRST. Measured on prod 2026-09-18: get_offers on the Purito Oat-in Calming Gel Cream
+  // named eyurs.com $13 `out_of_stock` as best_offer over sokoglam.com $19.50 `in_stock`, because with
+  // live verification off every offer is unchecked and price alone decided. A buyer's agent following
+  // best_offer was sent to a seller that cannot sell. It sits above the verification tier. A VERIFIED
+  // offer is never "known unavailable" here — the backend drops an offer its live check found out of
+  // stock (GONE) and stamps every VERIFIED one `in_stock: true` — but the two tiers CAN disagree below
+  // that: a check that merely FAILED (`stock_verified: false`, e.g. a fetch error) says nothing about
+  // stock, while an unchecked offer whose feed says `in_stock: false` does. The sellable one wins. It
+  // outranks `is_primary` because the primary seller being out of stock does not make it somewhere a
+  // buyer can buy.
   //
   // The stock tier is not a preference, it is a correction. The backend already sorts its
   // shortlist verified-first, and without mirroring that here a cheaper offer we could NOT
@@ -199,6 +233,8 @@ function offersToSignals(offers, opts = {}) {
   };
   const priced = signals.filter((s) => typeof s.value.price === 'number');
   priced.sort((a, b) => {
+    const sellable = Number(isKnownUnavailable(a)) - Number(isKnownUnavailable(b));
+    if (sellable !== 0) return sellable;
     if (a.value.is_primary !== b.value.is_primary) return a.value.is_primary ? -1 : 1;
     const tier = stockTier(a) - stockTier(b);
     if (tier !== 0) return tier;

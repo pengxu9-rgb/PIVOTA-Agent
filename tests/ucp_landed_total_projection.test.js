@@ -43,7 +43,20 @@ test('the LIVE merchant shape is accepted — string amounts, minor units', () =
     includes_shipping: false,
     includes_tax: false,
     requires_escalation: true,
+    // NULL, not absent, and the distinction is deliberate. An absent `preview` means the lane
+    // produced no priced preview at all (see the sibling test below); a present preview with a
+    // null `checkout_id` means the merchant priced this cart but named no checkout — so there is
+    // nothing for the card mint to be minted against. Those are different answers to different
+    // questions and a caller must be able to tell them apart.
+    checkout_id: null,
   });
+});
+
+test('the merchant checkout id rides the projection when one is named', () => {
+  // What the field is FOR: pivota-backend's CardIssueRequest requires a UCP `checkout_id`, and
+  // until this existed nothing in this repo surfaced one, so a card could not be minted against
+  // a checkout the buyer was about to finish on the storefront.
+  assert.equal(pricedTotals({ ...LIVE, checkout_id: 'chk_42' }).checkout_id, 'chk_42');
 });
 
 test('the amount is MINOR units and the key says so', () => {
