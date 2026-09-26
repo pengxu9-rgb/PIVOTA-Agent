@@ -127,11 +127,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // Constrained beauty recall adds three exits: unsupported category, indexed success,
   // and an explicit primary failure. All still pass through the response JSON wrapper.
   // 2026-09-26: -1, the cache-miss resolver fallback (its early return) was deleted with the
-  // other post-primary fallbacks.
+  // other post-primary fallbacks; -2, the mainline_direct beauty call (its success and its 503)
+  // was folded into creator_direct.
   assert.equal(
     exits.length,
-    102,
-    `expected 102 response exits in handleInvokeRequest, saw ${exits.length}`,
+    100,
+    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
