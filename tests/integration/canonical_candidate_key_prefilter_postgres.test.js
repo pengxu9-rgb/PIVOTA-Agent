@@ -18,6 +18,8 @@ const suite = url ? describe : describe.skip;
 
 const FLAGS = [
   'CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER',
+  'CANONICAL_CATALOG_RANK_V2', 'CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK',
+  'CANONICAL_CATALOG_SET_DIVERSITY', 'CANONICAL_CATALOG_FORM_AGREEMENT',
   'CANONICAL_CATALOG_RECALL_DOC_MATCH',
   'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION',
   'SEARCH_NAME_EVIDENCE_ADMISSION',
@@ -31,12 +33,18 @@ const QUERIES = [
   ['Silver Serum Gloss', 'beauty/skincare/treat/'],
 ];
 
+// Every SQL-affecting flag is stated in every config, so one config cannot inherit another's leftovers.
+const OFF = { CANONICAL_CATALOG_RANK_V2: 'off', CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK: 'off',
+  CANONICAL_CATALOG_SET_DIVERSITY: 'off', CANONICAL_CATALOG_FORM_AGREEMENT: 'off' };
 const CONFIGS = [
-  // prod, 2026-09-26
-  { name: 'prod', env: { CANONICAL_CATALOG_RECALL_DOC_MATCH: 'enabled', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'on' } },
-  { name: 'union off', env: { CANONICAL_CATALOG_RECALL_DOC_MATCH: 'enabled', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'off' } },
+  // prod's COMPLETE lane config, read from the live gateway env on 2026-09-26 (gateway-00396-xuj)
+  { name: 'prod', env: { CANONICAL_CATALOG_RECALL_DOC_MATCH: 'enabled', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'on',
+    CANONICAL_CATALOG_RANK_V2: 'enabled', CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK: 'enabled',
+    CANONICAL_CATALOG_SET_DIVERSITY: 'enabled', CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' } },
+  { name: 'union + recall_doc only', env: { ...OFF, CANONICAL_CATALOG_RECALL_DOC_MATCH: 'enabled', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'on' } },
+  { name: 'union off', env: { ...OFF, CANONICAL_CATALOG_RECALL_DOC_MATCH: 'enabled', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'off' } },
   // the plain clause reads m.merchant_name: the guard must leave it alone, so on == off trivially
-  { name: 'recall_doc off', env: { CANONICAL_CATALOG_RECALL_DOC_MATCH: 'off', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'on' } },
+  { name: 'recall_doc off', env: { ...OFF, CANONICAL_CATALOG_RECALL_DOC_MATCH: 'off', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'on' } },
 ];
 
 function args(query, prefix, { contract = false, limit = 200 } = {}) {
