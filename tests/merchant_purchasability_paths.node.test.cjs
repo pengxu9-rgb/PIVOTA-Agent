@@ -522,13 +522,14 @@ test('path3/offers: NO MARKET + NOT enforced / enforcement read failing => uncha
   }
 });
 
-test('path3/offers: NO MARKET across M merchants costs ONE enforcement read once it is cached', async () => {
-  const backend = fakeBackend(BROWSE_ONLY);
+test('path3/offers: NO MARKET across M merchants costs ONE enforcement read — at the page\'s REAL concurrency', async () => {
+  const backend = fakeBackend(BROWSE_ONLY, { delayMs: 1 }); // yields, so the 4 workers really overlap
   const env = gateEnv();
   const offers = Array.from({ length: 6 }, (_, i) => offer(`o${i}`, `shop${i}.test`));
-  // concurrency 1 so the first answer is cached before the second merchant is asked
+  // DEFAULT concurrency (GATE_CONCURRENCY = 4): the single-flight share, not a serial loop, is
+  // what makes this one read.
   const gated = await annotateOffersWithCommerceMetadataGated(offers, {
-    env, market: undefined, concurrency: 1, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+    env, market: undefined, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
   });
   assert.equal(backend.calls.length, 1, 'enforcement is backend-wide: one read, not one per merchant');
   for (const row of gated) assert.ok(!Object.prototype.hasOwnProperty.call(row, 'merchant_checkout_url'));
@@ -850,7 +851,7 @@ test('F4: the offers batch has a REAL deadline — one hanging read cannot stall
 test('F5: offersGateBuyerMarket reads only caller-supplied markets and NEVER defaults', () => {
   // THE DEFECT. This helper lived in src/server.js with zero coverage, and the mutant that defaults
   // it to 'US' survived the entire suite — the one substitution the gate must never make.
-  assert.equal(offersGateBuyerMarket({ search: { market: 'us' } }, {}), 'us');
+  assert.equal(offersGateBuyerMarket({ search: { market: 'us' } }, {}), 'US', 'normalised to ISO-2');
   assert.equal(offersGateBuyerMarket({ market: 'SG' }, {}), 'SG');
   assert.equal(offersGateBuyerMarket({}, { market: 'GB' }), 'GB');
   assert.equal(offersGateBuyerMarket({ search: { market: 'JP' } }, { market: 'GB' }), 'JP', 'search wins');
@@ -859,6 +860,49 @@ test('F5: offersGateBuyerMarket reads only caller-supplied markets and NEVER def
   assert.equal(offersGateBuyerMarket({ search: { market: '   ' } }, {}), undefined);
   // And a market it cannot use must not become one the gate asks about.
   assert.equal(offersGateBuyerMarket(undefined, undefined), undefined);
+});
+
+test('F6: the FIRST carrier that yields ONE ISO-2 market wins — an unreadable or multi-market carrier is skipped', () => {
+  // THE DEFECT. First-NON-EMPTY selection took `search.market: "USA"` and made the request
+  // unkeyable (refused under enforcement) although `payload.market: "US"` was right there.
+  assert.equal(offersGateBuyerMarket({ search: { market: 'USA' }, market: 'US' }, {}), 'US');
+  assert.equal(offersGateBuyerMarket({ search: { market: 'U1' } }, { market: 'sg' }), 'SG');
+  // A multi-valued search scope that REDUCES to one market is that market…
+  assert.equal(offersGateBuyerMarket({ search: { market: 'US,US' } }, {}), 'US');
+  assert.equal(offersGateBuyerMarket({ search: { market: 'us, US' } }, {}), 'US');
+  assert.equal(offersGateBuyerMarket({ search: { market: ['US', 'us'] } }, {}), 'US');
+  // …and one that does NOT is no market at all — never its first entry.
+  assert.equal(offersGateBuyerMarket({ search: { market: 'US,SG' } }, {}), undefined);
+  assert.equal(offersGateBuyerMarket({ search: { market: 'SG US' } }, {}), undefined);
+  assert.equal(offersGateBuyerMarket({ search: { market: ['SG', 'US'] } }, {}), undefined);
+  assert.equal(offersGateBuyerMarket({ search: { market: 'US,USA' } }, {}), undefined, 'an unreadable entry is not ignored');
+  // A multi-market carrier is SKIPPED, so a later single-market carrier still keys the request.
+  assert.equal(offersGateBuyerMarket({ search: { market: 'US,SG' } }, { market: 'SG' }), 'SG');
+  // Precedence among VALID carriers is unchanged: search, then payload, then metadata.
+  assert.equal(offersGateBuyerMarket({ search: { market: 'JP' }, market: 'US' }, { market: 'GB' }), 'JP');
+});
+
+test('F6: the resolver lane uses the SAME carrier rule (metadata, then payload)', () => {
+  const { selectBuyerMarket } = require('../src/services/merchantPurchasabilityClient');
+  const resolverSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'checkoutHandoffResolver.js'), 'utf8');
+  assert.match(resolverSrc, /return selectBuyerMarket\(metadata\.market, payload\.market\);/);
+  assert.equal(selectBuyerMarket('USA', 'US'), 'US');
+  assert.equal(selectBuyerMarket('US,SG'), undefined);
+  assert.equal(selectBuyerMarket('US,SG', 'us'), 'US');
+  assert.equal(selectBuyerMarket(undefined, null, ''), undefined);
+});
+
+test('F6: a multi-market search scope under ENFORCEMENT is unkeyable — declined, never keyed on its first market', async () => {
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const offers = [offer('o1', MERCHANT)];
+  await annotateOffersWithCommerceMetadataGated(offers, {
+    env, market: offersGateBuyerMarket({ search: { market: 'US,SG' } }, {}),
+    shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.equal(backend.calls.length, 1);
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false,
+    'a "US,SG" scope must not be asked about as US');
 });
 
 test('F4b: the credential step runs INSIDE the caller\'s deadline, not before it', async () => {

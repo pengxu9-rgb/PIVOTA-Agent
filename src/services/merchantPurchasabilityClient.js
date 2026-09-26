@@ -298,6 +298,50 @@ function normalizeMarket(value) {
 }
 
 /**
+ * ONE carrier value -> ONE ISO-2 market, or null. A carrier may be a single value (`"us"`), a
+ * list (`"US,SG"`, `"US SG"`, `"US;US"`, `["US", "SG"]` — search scopes are legitimately
+ * multi-valued), or garbage. It yields a market ONLY when EVERY entry normalises to ISO-2 AND the
+ * entries reduce to EXACTLY ONE distinct market:
+ *
+ *   "us" -> US      "US,US" -> US      "US, us" -> US
+ *   "US,SG" -> null (two markets: which one is the buyer's is not ours to guess)
+ *   "USA" -> null   "US,USA" -> null (an entry we cannot read is not ignored)   "" -> null
+ *
+ * Taking the FIRST entry of "US,SG" would gate an SG buyer against the US fact — the
+ * wrong-market answer that looks like an answer.
+ */
+function carrierMarket(value) {
+  let entries;
+  if (Array.isArray(value)) entries = value;
+  else if (typeof value === 'string') entries = value.split(/[\s,;|]+/);
+  else return null;
+  entries = entries.map((e) => (typeof e === 'string' ? e.trim() : e)).filter((e) => e !== '');
+  if (entries.length === 0) return null;
+  const markets = new Set();
+  for (const entry of entries) {
+    const market = typeof entry === 'string' ? normalizeMarket(entry) : null;
+    if (!market) return null;
+    markets.add(market);
+  }
+  return markets.size === 1 ? [...markets][0] : null;
+}
+
+/**
+ * THE BUYER MARKET FROM A REQUEST'S CARRIERS, in the caller's precedence order: the FIRST carrier
+ * that yields a market (`carrierMarket`) wins, and a carrier that does not — absent, blank,
+ * "USA", "US,SG" — is SKIPPED, not decisive. So `{search: {market: "USA"}, market: "US"}` is US.
+ * No carrier yields one => `undefined` (unkeyable). NEVER a default. The ONE rule for every door
+ * that hands this gate a market (`offersGateBuyerMarket`, `checkoutHandoffResolver.requestBuyerMarket`).
+ */
+function selectBuyerMarket(...carriers) {
+  for (const carrier of carriers) {
+    const market = carrierMarket(carrier);
+    if (market) return market;
+  }
+  return undefined;
+}
+
+/**
  * The outbound URL. Two query values and no others — the shape a test can assert
  * on rather than a promise in a comment.
  */
@@ -478,6 +522,15 @@ function createMerchantPurchasabilityClient(deps = {}) {
   // THE ENFORCEMENT FLAG, learned without a market (see `fetchEnforcement`). One key; same TTL
   // ceilings as the facts. Values: `true` / `false` / `null` (a failed read, negative-cached).
   const enforcementCache = createTtlCache({ maxEntries: 1, now });
+  // FRESHNESS. Every read that can carry `enforced` (a keyed fact read or the market-less probe)
+  // takes a ticket from this counter when it STARTS; a result is written only if no read that
+  // started LATER has already written. Without it a slow probe that started before a keyed read
+  // could land after it and pin a stale `enforced` for another five minutes.
+  let enforcementReadSeq = 0;
+  let enforcementWrittenSeq = 0;
+  // SINGLE-FLIGHT. At most one market-less probe in flight per client: a cold cache under a burst
+  // of market-less requests (a click storm, an offers page at concurrency 4) costs ONE read.
+  let enforcementInFlight = null;
   // Rate limiters for the "say it once" logs. Bounded by the same cache shape.
   const logGuards = createTtlCache({ maxEntries: DEFAULT_CACHE_MAX_ENTRIES, now });
 
@@ -718,6 +771,7 @@ function createMerchantPurchasabilityClient(deps = {}) {
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
 
+    const enforcementTicket = ++enforcementReadSeq;
     return withinDeadline(budgetMs, async (controller) => {
       const { value: fact, failure } = await opsGet(
         controller,
@@ -733,14 +787,16 @@ function createMerchantPurchasabilityClient(deps = {}) {
           });
         }
         cache.set(key, null, negativeTtlMs);
+        // A FAILED keyed read says nothing about the dial, so it does NOT touch the enforcement
+        // cache: a known `enforced` survives it (pinned by a test).
         return null;
       }
       noteMisorderedArming(fact, domain, market);
       cache.set(key, fact, ttlMs);
       // `enforced` is ONE backend-wide dial, and every keyed answer carries it — so a keyed read
       // is also a fresh enforcement read, and an unkeyable request right after it need not probe.
-      // Same TTL ceiling as the fact it came with.
-      enforcementCache.set(ENFORCEMENT_CACHE_KEY, fact.enforced, ttlMs);
+      // Same TTL ceiling as the fact it came with; written only if nothing newer already was.
+      writeEnforcement(enforcementTicket, fact.enforced);
       return fact;
     });
   }
@@ -758,36 +814,78 @@ function createMerchantPurchasabilityClient(deps = {}) {
    * ⚠️ `null` IS NOT `true`. An absent, expired or failed read is "not known", which
    * `decideUnkeyable` resolves to the previous behaviour. Nothing here defaults to enforced.
    *
-   * The route requires a domain, so a request with NO domain either reads the cache or answers
-   * `null` — it is not given a made-up domain to ask with.
+   * The route requires a domain, so a request with NO domain either reads the cache (or joins a
+   * probe already in flight) or answers `null` — it is not given a made-up domain to ask with.
+   *
+   * SINGLE-FLIGHT and FRESHEST-WINS: see `enforcementInFlight` and `writeEnforcement`.
    */
   async function fetchEnforcement(domain, budgetMs) {
     const cached = enforcementCache.get(ENFORCEMENT_CACHE_KEY);
     if (cached !== undefined) return cached;
+    // SINGLE-FLIGHT: a probe is already out — wait for IT, inside THIS caller's own deadline. A
+    // caller whose deadline expires first gets `null` (not known => fail open), exactly as its own
+    // timed-out probe would have given it; the shared probe keeps running for everyone else.
+    if (enforcementInFlight) return awaitWithinDeadline(enforcementInFlight, budgetMs);
     if (!domain) return null;
 
-    return withinDeadline(budgetMs, async (controller) => {
-      const { value: probe, failure } = await opsGet(
-        controller,
-        (origin) => buildEnforcementProbeUrl(origin, domain),
-        parseEnforcementProbe,
-      );
-      if (failure) {
-        if (failure !== 'not_configured' && failure !== 'bad_url') {
-          noteOnce('warn', 'merchant_purchasability_enforcement_read_failed', failure, {
-            domain, failure,
-            detail: 'the market-less enforcement read failed, so enforcement is NOT KNOWN and a request '
-              + 'with no market keeps the previous behaviour (fail OPEN). A status_422 here means the '
-              + 'backend predates pivota-backend #2352.',
-          });
-        }
-        enforcementCache.set(ENFORCEMENT_CACHE_KEY, null, negativeTtlMs);
-        return null;
+    const ticket = ++enforcementReadSeq;
+    const probe = withinDeadline(budgetMs, (controller) => runEnforcementProbe(controller, domain, ticket))
+      .catch(() => null) // `runEnforcementProbe` does not throw; the share must never reject either
+      .finally(() => { if (enforcementInFlight === probe) enforcementInFlight = null; });
+    enforcementInFlight = probe;
+    return probe;
+  }
+
+  async function runEnforcementProbe(controller, domain, ticket) {
+    const { value: probe, failure } = await opsGet(
+      controller,
+      (origin) => buildEnforcementProbeUrl(origin, domain),
+      parseEnforcementProbe,
+    );
+    if (failure) {
+      if (failure !== 'not_configured' && failure !== 'bad_url') {
+        noteOnce('warn', 'merchant_purchasability_enforcement_read_failed', failure, {
+          domain, failure,
+          detail: 'the market-less enforcement read failed, so enforcement is NOT KNOWN and a request '
+            + 'with no market keeps the previous behaviour (fail OPEN). A status_422 here means the '
+            + 'backend predates pivota-backend #2352.',
+        });
       }
-      noteMisorderedArming(probe, domain, '?');
-      enforcementCache.set(ENFORCEMENT_CACHE_KEY, probe.enforced, ttlMs);
-      return probe.enforced;
+      return writeEnforcement(ticket, null);
+    }
+    noteMisorderedArming(probe, domain, '?');
+    return writeEnforcement(ticket, probe.enforced);
+  }
+
+  /**
+   * Write one enforcement answer, FRESHEST WINS, and return the value the caller should act on.
+   *
+   *   - a result from a read that started BEFORE the one that last wrote is dropped (the newer
+   *     answer stays cached, and is what the caller gets back);
+   *   - a failure (`null`) never erases a KNOWN value — a failed read says nothing about the dial;
+   *   - otherwise: a boolean for the TTL (≤ 5 min), a failure for the negative TTL (30 s).
+   */
+  function writeEnforcement(ticket, value) {
+    const cached = enforcementCache.get(ENFORCEMENT_CACHE_KEY);
+    if (ticket < enforcementWrittenSeq) return cached !== undefined ? cached : value;
+    if (value === null && typeof cached === 'boolean') return cached;
+    enforcementWrittenSeq = ticket;
+    enforcementCache.set(ENFORCEMENT_CACHE_KEY, value, value === null ? negativeTtlMs : ttlMs);
+    return value;
+  }
+
+  /**
+   * Await a promise the caller did not start, bounded by the caller's OWN deadline
+   * (`min(timeoutMs, budgetMs)`, the same clamp as every read). Resolves `null` on expiry.
+   * ⚠️ NOT `unref()`d, for the reason written on `withinDeadline`: when the shared read hangs,
+   * this timer is the only thing that settles this caller.
+   */
+  function awaitWithinDeadline(promise, budgetMs) {
+    let timer = null;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), callTimeoutFor(budgetMs));
     });
+    return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
   }
 
   /**
@@ -964,6 +1062,8 @@ module.exports = {
   isGateEnabled,
   normalizeDomain,
   normalizeMarket,
+  carrierMarket,
+  selectBuyerMarket,
   REASON_MARKET_UNKNOWN,
   REASON_DOMAIN_UNKNOWN,
   buildFactUrl,

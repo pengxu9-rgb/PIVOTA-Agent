@@ -47,6 +47,7 @@ const {
   MIN_GATE_BUDGET_MS,
   isGateEnabled,
   getMerchantPurchasabilityClient,
+  selectBuyerMarket,
 } = require('../services/merchantPurchasabilityClient');
 
 /** At most this many purchasability reads in flight for one page of offers. */
@@ -550,11 +551,11 @@ function offersGateBuyerMarket(payload, metadata) {
   const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
   const p = obj(payload);
   const search = p ? obj(p.search) : null;
-  for (const candidate of [search && search.market, p && p.market, obj(metadata) && metadata.market]) {
-    const text = asString(candidate);
-    if (text) return text;
-  }
-  return undefined;
+  const m = obj(metadata);
+  // Precedence unchanged (search, payload, metadata); the FIRST carrier that yields ONE ISO-2
+  // market wins — an unreadable or multi-market carrier is skipped, not decisive. See
+  // `selectBuyerMarket` and docs/merchant-purchasability-gate.md §5.
+  return selectBuyerMarket(search && search.market, p && p.market, m && m.market);
 }
 
 /** `annotateOffersWithCommerceMetadata`, with the gate consulted first. */

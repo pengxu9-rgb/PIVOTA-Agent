@@ -79,8 +79,8 @@ and no market reaches it (`QUOTE_KEYS` has no market field and `mapQuote` drops
 
 The gate keys on the **request's** buyer market and never on a default.
 
-* `checkoutHandoffResolver.requestBuyerMarket(input)` reads `metadata.market || payload.market` —
-  this door's existing spelling (`src/server.js` reads `search.market || metadata.market` on the
+* `checkoutHandoffResolver.requestBuyerMarket(input)` reads `metadata.market`, then `payload.market`
+  — the first that yields ONE ISO-2 market (§5 carrier rule) — this door's existing spelling (`src/server.js` reads `search.market || metadata.market` on the
   discovery lane, and the invoke handler threads `metadata` into the resolver verbatim).
 * `ucpWarmHandoffInternalRoute` reads an optional `body.market`.
 
@@ -296,6 +296,56 @@ literal `true` refuses**: an absent, expired or failed read is "not known" and r
 previous behaviour — never defaulted to enforced. The route requires a domain, so a request with no
 usable domain reads the cache only and is never given a made-up domain to ask with.
 
+**One probe at a time, and the freshest answer wins.**
+
+* **Single-flight.** At most one market-less read is in flight per client. A burst of market-less
+  requests on a cold cache (a click storm, an offers page at concurrency 4) sends ONE read; the
+  others wait for it, each inside its **own** deadline (`min(timeoutMs, budgetMs)`, the same clamp).
+  A waiter whose deadline expires first gets "not known" and fails open, exactly as its own timed-out
+  read would have; the shared read keeps going for everyone else.
+* **Freshness.** Every read that can carry `enforced` — a keyed fact read or the market-less read —
+  takes a sequence number when it STARTS, and its answer is written only if no read that started
+  later has already written. So a slow market-less read that started before a keyed read cannot land
+  after it and pin a stale `enforced` for another five minutes; its caller acts on the newer cached
+  answer. A **failed** read never erases a known value (a failure says nothing about the dial), and a
+  failed keyed read does not touch the enforcement cache at all.
+
+**Two properties worth knowing.**
+
+* **The TTL clock is wall-clock.** Cache expiry compares `Date.now()` (injectable `now`), not a
+  monotonic clock, so a wall-clock step backwards can keep an entry up to that much longer and a step
+  forwards expires it early; the per-read deadlines are `setTimeout`s and are unaffected.
+* **A `domain_unknown` answer depends on the cache.** With no usable domain nothing can be asked, so
+  the same request declines if some earlier read in the last five minutes cached `enforced: true`,
+  and fails open (`failed`) if nothing is cached. No seam produces such a request today (every seam
+  holds a merchant host), which is why that asymmetry is accepted rather than engineered away.
+
+### Which market a request carries — the carrier rule
+
+The doors that hand this gate a market read it from several carriers, in a fixed precedence:
+the offers door `payload.search.market`, then `payload.market`, then `metadata.market`
+(`offersGateBuyerMarket`); the resolver lane `metadata.market`, then `payload.market`
+(`checkoutHandoffResolver.requestBuyerMarket`). Both go through ONE function,
+`merchantPurchasabilityClient.selectBuyerMarket`, and two rules apply:
+
+1. **The FIRST carrier that yields a valid ISO-2 market wins.** A carrier that does not — absent,
+   blank, `"USA"`, `"U1"`, a two-market list — is SKIPPED, not decisive. So
+   `{search: {market: "USA"}, market: "US"}` is `US`. (Until this rule it was the first NON-EMPTY
+   carrier, which made that request unkeyable — and, under enforcement, refused.)
+2. **A multi-valued carrier yields a market only if it reduces to EXACTLY ONE.** `search.market` may
+   legitimately be a list (`"US,SG"`, `"US SG"`, `["US","SG"]`). Every entry must normalise to ISO-2
+   and the distinct set must have one member:
+
+   | carrier value | market |
+   |---|---|
+   | `"us"`, `"US,US"`, `"us, US"`, `["US","us"]` | `US` |
+   | `"US,SG"`, `"SG US"`, `["SG","US"]` | none (skipped) — never the first entry, which would gate an SG buyer against the US fact |
+   | `"US,USA"` | none — an entry that cannot be read is not ignored |
+   | `{search: {market: "US,SG"}}` + `metadata.market: "SG"` | `SG` (the list is skipped, the next carrier keys it) |
+
+If no carrier yields a market the request is unkeyable (the rows above). The market is never
+defaulted.
+
 `offer: false` is therefore reachable from exactly two rows, and **both require the backend to have
 answered 200 with `enforced: true`**: `gate` (a browse_only fact for this merchant × market) and
 `unkeyable_enforced` (no market, so no fact can exist). Every seam takes a decline from
@@ -335,11 +385,18 @@ are **not negotiable**; step 7 is this repo's.
    `PIVOTA_OPS_ADMIN_TOKEN` set through the switch-over as the fallback; unset it afterwards once
    the identity rail is confirmed.
 9. **`MERCHANT_PURCHASABILITY_GATE_ENABLED=1`** on the gateway. **Precondition: pivota-backend
-   #2352 deployed on backend `web` AND this gateway's unkeyable rule (§5, the
-   `unkeyable_enforced` row) deployed.** Without #2352 the market-less read answers 422, which fails
-   open — a market-less click then keeps its warm cart under enforcement, the hole §5 closes (and
-   `merchant_purchasability_enforcement_read_failed / status_422` says so). Without the gateway
-   change, every market-less request fails open the same way. Watch for
+   #2352 (squash-merged as `8f2cf0cdf`, deployed dark) on backend `web` AND this gateway's
+   unkeyable rule (PIVOTA-Agent #2276: §5, the `unkeyable_enforced` row) deployed.** Without #2352
+   the market-less read answers 422, which fails open — a market-less click then keeps its warm cart
+   under enforcement, the hole §5 closes (and `merchant_purchasability_enforcement_read_failed /
+   status_422` says so). Without the gateway change, every market-less request fails open the same way.
+
+   *For completeness of the arming order:* pivota-backend **#2354** (the #2352 review follow-up; it
+   also makes the ops route answer an empty, blank or 3-letter `market` with `market_unknown`
+   instead of 422) is **NOT a functional dependency of this gateway**. `buildFactUrl` is only ever
+   called with a market `normalizeMarket` has already reduced to ISO-2, and the market-less read
+   sends no `market` key at all — so this gateway never sends the inputs #2354 changes the answer
+   for. Watch for
    `merchant_purchasability_browse_only` (the gate declining a merchant — with
    `reason: market_unknown` when the request carried no market), `merchant_purchasability_read_failed` /
    `merchant_purchasability_enforcement_read_failed` (the gate failing open) and
@@ -363,7 +420,7 @@ are **not negotiable**; step 7 is this repo's.
 > `utils.gateway_oidc_auth` debug line names the accepted service account) with nothing riding
 > on it.
 >
-> Arming step 7 before step 6 is **safe but inert**: `enforced: false` keeps the previous
+> Arming step 9 before step 6 is **safe but inert**: `enforced: false` keeps the previous
 > behaviour and logs `merchant_purchasability_not_enforced` once per merchant per 5 minutes.
 > That is a deliberately harmless ordering mistake, which is why the gateway switch can be
 > armed whenever it is convenient once step 6 is done.
@@ -439,7 +496,7 @@ and the deployed commit is checkable with `npm run deploy:verify:production`. So
 `docs/deployment.md` §"Production Deploy Policy".
 
 **Merging this PR therefore changes nothing in production.** The code reaches prod only on a
-manual `deploy_gateway.sh` run, and even then it is inert until step 7 of §6.
+manual `deploy_gateway.sh` run, and even then it is inert until step 9 of §6.
 
 ---
 
@@ -451,9 +508,9 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
 | # | path | what it offers | market source | fallback when `offer === false` |
 |---|---|---|---|---|
-| 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — still absent from the backend payload, §2) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
+| 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
-| 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market \|\| payload.market \|\| metadata.market` (`offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with `commerce_mode`, `checkout_handoff`, its price and its PDP/browse links unchanged |
+| 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market`, then `payload.market`, then `metadata.market` — the first that yields ONE ISO-2 market (§5 carrier rule; `offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with its price and its PDP/browse links; its "buyable here" signals are rewritten to the links-out vocabulary: `commerce_mode: links_out`, `checkout_handoff: redirect`, `purchase_route: affiliate_outbound` (see "A URL is not the only thing…" below) |
 
 Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
 reason: the only difference a declined merchant produces is a URL that is not there.

@@ -1356,3 +1356,122 @@ test('MUTANT (v): through the escalation seam the probe is capped at ESCALATION_
   assert.ok(elapsed >= 700, `waited the clamp; took ${elapsed}ms`);
   assert.ok(elapsed < 1500, `the 800 ms clamp must bound the probe; took ${elapsed}ms`);
 });
+
+// ---- 15. REVIEW OF #2276: a failed keyed read, single-flight, freshness ----------------------------------------
+
+/** A backend whose every request is a deferred the test resolves by hand, in any order. */
+function deferredBackend() {
+  const pending = [];
+  const fetchImpl = (url, options) => new Promise((resolve, reject) => {
+    const entry = {
+      url,
+      keyed: new URL(url).searchParams.has('market'),
+      answer: (body) => resolve({ ok: true, status: 200, json: async () => body }),
+      fail: (status) => resolve({ ok: false, status, json: async () => ({}) }),
+    };
+    options.signal.addEventListener('abort', () => {
+      const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
+    });
+    pending.push(entry);
+  });
+  return { fetchImpl, pending };
+}
+/** Let the client's awaits (credential race, fetch, json) drain. */
+const drain = async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); };
+
+test('a FAILED keyed read leaves a KNOWN enforcement value untouched', async () => {
+  const backend = switchableBackend({ body: FACT_BROWSE_ONLY });
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  // enforced=true is learned…
+  assert.equal((await client.shouldOfferPurchase({ domain: MERCHANT })).offer, false);
+  // …then a keyed read for another merchant FAILS…
+  backend.state.answer = { status: 503 };
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: 'other-shop.test', market: 'US' }), { offer: true, source: 'failed' });
+  // …and the known value still stands: no re-probe, still declined.
+  const calls = backend.calls.length;
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT }),
+    { offer: false, source: 'unkeyable_enforced', reason: 'market_unknown' });
+  assert.equal(backend.calls.length, calls, 'a failed keyed read must not reset what is known about the dial');
+});
+
+test('SINGLE-FLIGHT: 8 concurrent unkeyable requests on a cold cache send ONE probe', async () => {
+  const backend = deferredBackend();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  const decisions = Array.from({ length: 8 }, (_, i) => client.shouldOfferPurchase({ domain: `shop${i}.test` }));
+  await drain();
+  assert.equal(backend.pending.length, 1, 'one probe for the whole burst');
+  backend.pending[0].answer(marketUnknownAnswer(backend.pending[0].url, FACT_BROWSE_ONLY));
+  for (const d of await Promise.all(decisions)) {
+    assert.deepEqual(d, { offer: false, source: 'unkeyable_enforced', reason: 'market_unknown' });
+  }
+});
+
+test('SINGLE-FLIGHT: a waiter whose OWN deadline expires first fails open; the shared probe still lands for others', async () => {
+  const backend = deferredBackend();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  const owner = client.shouldOfferPurchase({ domain: MERCHANT, budgetMs: 1500 });
+  await drain();
+  const started = Date.now();
+  const hurried = await client.shouldOfferPurchase({ domain: 'other-shop.test', budgetMs: 320 });
+  const elapsed = Date.now() - started;
+  assert.deepEqual(hurried, { offer: true, source: 'failed', reason: 'market_unknown' });
+  assert.ok(elapsed < 1000, `the waiter is bounded by its own 320 ms, took ${elapsed}ms`);
+  assert.equal(backend.pending.length, 1, 'the waiter did not start a second probe');
+  backend.pending[0].answer(marketUnknownAnswer(backend.pending[0].url, FACT_BROWSE_ONLY));
+  assert.equal((await owner).offer, false, 'the owner gets the shared answer');
+});
+
+test('FRESHNESS: a keyed read that STARTED after an in-flight probe wins, even when the probe lands last', async () => {
+  const backend = deferredBackend();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  // 1. the probe starts (older)…
+  const unkeyed = client.shouldOfferPurchase({ domain: MERCHANT });
+  await drain();
+  // 2. …then a keyed read starts (newer)…
+  const keyed = client.shouldOfferPurchase({ domain: 'other-shop.test', market: 'US' });
+  await drain();
+  const [probe, fact] = [backend.pending.find((p) => !p.keyed), backend.pending.find((p) => p.keyed)];
+  assert.ok(probe && fact);
+  // 3. …the NEWER keyed read lands first: the backend has stopped enforcing…
+  fact.answer(FACT_NOT_ENFORCED);
+  assert.deepEqual(await keyed, { offer: true, source: 'previous' });
+  // 4. …and the OLDER probe lands last, still saying enforced=true.
+  probe.answer(marketUnknownAnswer(probe.url, FACT_BROWSE_ONLY));
+  assert.deepEqual(await unkeyed, { offer: true, source: 'unkeyable_unenforced', reason: 'market_unknown' },
+    'the stale probe answer is not acted on');
+  // The cache holds the NEWER answer, not the stale `true` for another five minutes.
+  assert.equal(client._enforcementCache.get('enforced'), false);
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: 'third-shop.test' }),
+    { offer: true, source: 'unkeyable_unenforced', reason: 'market_unknown' });
+  assert.equal(backend.pending.length, 2, 'answered from the fresh cache, no new probe');
+});
+
+test('FRESHNESS: a probe that starts AFTER a keyed read and lands later DOES win (newer is newer)', async () => {
+  const backend = deferredBackend();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  const keyed = client.shouldOfferPurchase({ domain: 'other-shop.test', market: 'US' });
+  await drain();
+  const unkeyed = client.shouldOfferPurchase({ domain: MERCHANT });
+  await drain();
+  backend.pending.find((p) => p.keyed).answer(FACT_NOT_ENFORCED);
+  await keyed;
+  const probe = backend.pending.find((p) => !p.keyed);
+  probe.answer(marketUnknownAnswer(probe.url, FACT_BROWSE_ONLY));
+  assert.equal((await unkeyed).offer, false);
+  assert.equal(client._enforcementCache.get('enforced'), true);
+});
+
+test('FRESHNESS: a NEWER probe that FAILS does not erase a known value an older keyed read wrote', async () => {
+  const backend = deferredBackend();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+  const keyed = client.shouldOfferPurchase({ domain: 'other-shop.test', market: 'US' });
+  await drain();
+  const unkeyed = client.shouldOfferPurchase({ domain: MERCHANT }); // probe starts later (newer ticket)
+  await drain();
+  backend.pending.find((p) => p.keyed).answer(FACT_PURCHASE); // enforced=true, lands first
+  await keyed;
+  backend.pending.find((p) => !p.keyed).fail(503); // the newer read FAILS
+  assert.deepEqual(await unkeyed, { offer: false, source: 'unkeyable_enforced', reason: 'market_unknown' },
+    'a failed read says nothing about the dial; the known answer stands');
+  assert.equal(client._enforcementCache.get('enforced'), true);
+});

@@ -10,6 +10,7 @@ const {
   toVariantGid,
   resolveVariantFromSeed,
 } = require('./shopifyVariantResolver');
+const { selectBuyerMarket } = require('./merchantPurchasabilityClient');
 
 const HANDOFF_KIND = 'pivota_agent_checkout_handoff';
 const DIRECT_COMMERCE_PATH = 'pivota_direct_quote_first';
@@ -602,7 +603,9 @@ function buildWarmHandoffOutput({ input = {}, descriptor = {}, product = null, o
 function requestBuyerMarket(input = {}) {
   const metadata = isPlainObject(input.metadata) ? input.metadata : {};
   const payload = isPlainObject(input.payload) ? input.payload : {};
-  return firstNonEmptyString(metadata.market, payload.market) || undefined;
+  // The FIRST carrier that yields ONE ISO-2 market wins (`selectBuyerMarket`, the rule the offers
+  // door uses too); an unreadable or multi-market carrier is skipped, not decisive.
+  return selectBuyerMarket(metadata.market, payload.market);
 }
 
 // Flag-gated (UCP_WARM_HANDOFF_ENABLED, DEFAULT OFF) attempt to upgrade a cold redirect into a warm handoff:
