@@ -131,6 +131,28 @@ describe('candidate-key prefilter', () => {
     expect(on.sql).toBe(off.sql);
   });
 
+  // Brand / merchant scope: the planner drives from those selective, indexable conjuncts, and the prefilter
+  // (a whole-catalog pass over the category/text predicate) made prod 15-80x SLOWER there.
+  test.each([
+    ['an explicit brand filter', mainlineArgs('the ordinary serum', 'beauty/skincare/treat/', { brandFilter: 'the ordinary' })],
+    ['a contract brand constraint', mainlineArgs('the ordinary serum', 'beauty/skincare/treat/',
+      { searchQualityContract: buildSearchQualityContract({ rawQuery: 'the ordinary serum' }) })],
+    ['a merchant scope', mainlineArgs('toner', 'beauty/skincare/tone/', { merchantId: 'merch_x' })],
+  ])('flag on: not applied under %s', async (_label, a) => {
+    const off = await capture(a);
+    expect(off.sql).toMatch(/brand|merchant_id = \$/i); // the scope really is in the statement
+    process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = 'on';
+    const on = await capture(a);
+    expect(on.sql).toBe(off.sql);
+    expect(on.sql).not.toContain('ANY(ARRAY(');
+  });
+
+  test('flag on: a plain category query is still wrapped (the gate is not a blanket off)', async () => {
+    process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = 'on';
+    const on = await capture(mainlineArgs('serum', 'beauty/skincare/treat/'));
+    expect(on.sql).toContain('ANY(ARRAY(');
+  });
+
   test('flag on: the text lane (no category prefix) is not touched', async () => {
     const off = await capture(mainlineArgs('hair mask', null));
     process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = 'on';

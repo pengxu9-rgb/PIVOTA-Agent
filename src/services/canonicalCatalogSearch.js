@@ -1565,7 +1565,15 @@ async function fetchCanonicalChainRows(args = {}) {
   brandWhere = qualityScope.brandWhere;
   // Category browse only: that is the lane the prod measurement covers. See
   // isCandidateKeyPrefilterEnabled for the plan this replaces and why the rewrite is exact.
+  // NOT under a brand or merchant scope. Those conjuncts are selective and indexable (the brand-identity
+  // expressions, merchant_id), so the planner drives the candidate scan from them and touches one brand's
+  // rows. The prefilter would instead evaluate the category/text predicate over the WHOLE catalog and hand
+  // the outer scan thousands of keys to re-check against the brand arm -- strictly more work. Measured in
+  // prod, 2026-09-26 (prod flags, contract enforced): the ordinary serum 238ms -> 3.5s, la roche-posay
+  // sunscreen 50ms -> ~4.0s, rare beauty lipstick 66ms -> ~3.5-4.0s with the prefilter on.
+  const brandOrMerchantScoped = Boolean(String(brandWhere || '').trim()) || Boolean(String(merchantClause || '').trim());
   const candidateKeyPrefilter = Boolean(categoryBind)
+    && !brandOrMerchantScoped
     && isCandidateKeyPrefilterEnabled()
     && whereReadsOnlyCandidateRow(whereClause);
   if (candidateKeyPrefilter) {
