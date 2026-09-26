@@ -1,4 +1,6 @@
+const { recommendationIdentityConflict, sameRecommendationProduct } = require('../shared/recoProductIdentity');
 const vertexGemini = require('../llm/vertexGemini');
+const { servedMarkets } = require('../services/servedMarkets');
 const axios = require('axios');
 // SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
 // BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
@@ -334,6 +336,7 @@ const {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,
@@ -405,7 +408,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -1148,12 +1151,10 @@ const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(12, v));
 })();
-const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
-  const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
+// External offers are part of the catalog recall universe. Preserve the
+// legacy symbol for call-site compatibility without allowing an environment
+// switch to remove an otherwise eligible source.
+const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = true;
 const AURORA_DISCOVERY_CARD_IN_LIST_ENABLED = (() => {
   const raw = String(process.env.AURORA_DISCOVERY_CARD_IN_LIST_ENABLED || 'true')
     .trim()
@@ -4737,6 +4738,7 @@ function pickFirstNarrativeRecoCopy(...values) {
 }
 
 function normalizeRecoCatalogProduct(raw) {
+  if (recommendationIdentityConflict(raw)) return null;
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
   const sanitizeRecoCatalogBrand = (value) => {
@@ -10013,7 +10015,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         '${definition.stage}'::text AS match_stage
       FROM external_product_seeds
       WHERE status = 'active'
-        AND market = $1
+        AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
     `;
@@ -10398,7 +10400,9 @@ async function searchLocalExternalSeedProducts({
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const rowCap = Math.max(18, Math.min(80, safeLimit * 8));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
@@ -10504,7 +10508,7 @@ async function searchLocalExternalSeedProducts({
           ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND market = $1
+          AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
@@ -10617,7 +10621,9 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   }
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
@@ -21075,6 +21081,49 @@ function buildRecoCatalogQueryLevels({
   needSeedText = '',
   maxGenericQueries = 0,
 } = {}) {
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch sets allow_external_seed from its stage plan; the other two branches set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // FROM THE RESOLVED STEP AND NOTHING ELSE. The first attempt read the step OR `needSeedText`, and
+  // put the supplement on the GENERIC branch. Both were wrong, in opposite directions and at the
+  // same time: `step_aware_intent` is set whenever a step resolves, so a makeup ask never reaches
+  // the generic branch and got no supplement, while a skincare ask whose text said "fragrance-free"
+  // resolved as fragrance through the seed-text fallback and got one. Measured live: bronzer,
+  // lipstick and eau-de-toilette all took the step-aware branch with source_scope undefined; the
+  // only need that reached the generic branch with a beauty domain was "a fragrance-free
+  // moisturizer".
+  const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
+  const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
+  // BOTH FIELDS, BECAUSE THE TWO COLLECTORS READ DIFFERENT ONES. An earlier version of this comment
+  // said `source_scope` decides and `allow_external_seed` is a no-op; a review traced it and the
+  // truth is the other way round on the path this ladder actually takes.
+  //   - collectRecoCandidatesFromQueryLevels -> runQueryLevelEntry OVERWRITES source_scope from
+  //     `allowExternalSeed && entry.allow_external_seed`, so `allow_external_seed` is what decides
+  //     and any scope set here is discarded.
+  //   - executeRecoRecallPlanEntry reads entry.source_scope directly.
+  // Setting one and not the other yields a ladder that looks external-eligible in a trace and goes
+  // out internal-only on whichever collector runs. Do not drop either.
+  //
+  // NOTE that the query-levels path rewrites the scope to 'external_seed', not 'hybrid' -- so on
+  // that path the request uses the external-seed direct transport and fast mode. External seeds
+  // SUPPLEMENT rather than replace only via external_seed_strategy, which is why it is pinned here.
+  //
+  // `preferred_step` is emitted alongside `step` because the outbound external-seed arm derives
+  // targetStepFamily from `preferred_step` alone; the step-aware ladder only ever set `step`, so the
+  // makeup category never reached the backend's own category resolution.
+  const withExternalSeedSupplement = (entry) => (externalSeedEligible
+    ? {
+      ...entry,
+      source_scope: 'hybrid',
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+      preferred_step: pickFirstTrimmed(entry?.preferred_step, entry?.step) || '',
+    }
+    : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
       mode: 'framework_generic',
@@ -21125,7 +21174,7 @@ function buildRecoCatalogQueryLevels({
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
-      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => withExternalSeedSupplement({
         query: String(entry?.query || '').trim(),
         step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
         slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
@@ -21141,12 +21190,17 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  return queries.length
+  // NOT withExternalSeedSupplement HERE. This branch is only reached when no step resolved (a
+  // resolved step at high or medium confidence sets step_aware_intent and takes the branch above),
+  // and externalSeedEligible is derived from the resolved step -- so the call was dead code whose
+  // comment implied otherwise. The eligibility test above is the whole rule.
+  const generalQueries = queries;
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
@@ -21162,9 +21216,9 @@ function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext
       });
 }
 
-function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate, { requestedStep = '' } = {}) {
   if (!isPlainObject(candidate)) return { rejected: false, reason: null };
-  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  const scopeClassification = classifyConcernScopeCandidate(candidate, { requestedStep });
   if (scopeClassification?.hard_reject === true) {
     return {
       rejected: true,
@@ -21602,7 +21656,9 @@ async function collectRecoCandidatesFromRecallPlan({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -22014,8 +22070,12 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
-function classifyConcernScopeCandidate(row) {
-  return classifyConcernScopeCandidatePolicy(row);
+// A PASS-THROUGH THAT DROPPED THE OPTIONS IS A SILENT UNTHREADING. This wrapper sits between the
+// mainline boundary and the policy module; forwarding `row` alone meant the step reached the policy
+// on the two call sites that use the policy directly and nowhere else, and the boundary went on
+// deleting the category it had just searched for.
+function classifyConcernScopeCandidate(row, options = {}) {
+  return classifyConcernScopeCandidatePolicy(row, options);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
@@ -27911,6 +27971,9 @@ function finalizeConcernFrameworkCandidatePools(
     explicit_face_skincare: 0,
     explicit_non_face_supportive: 0,
     explicit_non_skincare: 0,
+    // Without its own bucket the new class fell into `ambiguous`, so the telemetry said the pool was
+    // full of rows the gate could not place — the opposite of what threading the step achieved.
+    explicit_requested_beauty_category: 0,
     ambiguous: 0,
   };
   for (const role of roles) {
@@ -27920,8 +27983,9 @@ function finalizeConcernFrameworkCandidatePools(
     rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
+  const frameworkRequestedStep = pickFirstTrimmed(targetContext?.resolved_target_step) || '';
   for (const row of deduped) {
-    const scopeClassification = classifyConcernScopeCandidate(row);
+    const scopeClassification = classifyConcernScopeCandidate(row, { requestedStep: frameworkRequestedStep });
     if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
       scopeClassificationStats[scopeClassification.classification] += 1;
     } else {
@@ -28878,7 +28942,9 @@ async function collectRecoCandidatesFromQueryLevels({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -29423,51 +29489,6 @@ function buildRecoGroundingQueriesFromPlanItem(item, { lang = 'EN' } = {}) {
   return normalizeRecoPlanQueryTerms(queries, 4);
 }
 
-// Every key a reco reader consults when it wants a price. `mergeRecoPlanWithGroundedCandidate` re-points
-// a row at a DIFFERENT product than the LLM named, so each of these has to be re-sourced from the
-// grounded candidate instead of surviving the `...plan` spread. Readers this list has to cover:
-//   - readRecoCandidatePriceForCeiling (src/auroraBff/recoPriceCeiling.js): price, price_amount,
-//     priceAmount, currency, price_currency, priceCurrency
-//   - the agent bridge (src/agentSignals/recommendProducts.js:375): item.price, item.currency
-//   - extractCatalogCandidatePrice (this file): the whole alias family below, reached whenever a
-//     MERGED row is read back. The two call sites that do this are isConcernFrameworkCandidateOverBudget
-//     (routes.js ~26860, the framework budget gate) and buildRecoAssistantRewritePrompt (~60776, which
-//     turns the price into user-facing prose). NOT the recall pool cache -- it stores recall candidates
-//     and its write happens BEFORE these rows are merged -- and NOT the ceiling top-up, which reads via
-//     readRecoCandidatePriceForCeiling instead. Check those two sites when auditing this list.
-//
-// `price` and `currency` are in the list even though the merge also assigns both explicitly after the
-// spread: stripping them makes the result independent of where those two assignments sit, so moving
-// them above the spread can never quietly restore the LLM's price.
-const RECO_PLAN_PRICE_CARRYING_KEYS = Object.freeze([
-  'price', 'price_amount', 'priceAmount', 'price_value', 'priceValue',
-  'offer_price', 'offerPrice', 'sale_price', 'salePrice', 'list_price', 'listPrice',
-  'min_price', 'minPrice', 'max_price', 'maxPrice',
-  'pricing', 'price_info', 'priceInfo', 'offer', 'offers',
-  'price_usd', 'priceUsd', 'usd', 'price_cny', 'priceCny', 'cny',
-  'currency', 'currency_code', 'currencyCode', 'price_currency', 'priceCurrency',
-]);
-
-// extractCatalogCandidatePrice also reaches NESTED carriers -- `subject.price`, `subject.offers`,
-// `product.price`, `product.offers`, `sku.price`, `sku.offers`. `sku` needs no handling here because
-// the merge re-sources it wholesale from the candidate, but `subject` and `product` ride through on
-// the plan item, so an unpriced candidate would let the LLM's number come back on re-normalization --
-// the exact failure the top-level strip exists to prevent. Strip the price keys OUT of those objects
-// rather than dropping the objects, which also carry product_group_id, category and sku identity.
-const RECO_PLAN_NESTED_PRICE_CARRIERS = Object.freeze(['subject', 'product']);
-
-function stripRecoPlanPriceCarryingFields(plan) {
-  const next = { ...plan };
-  for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete next[key];
-  for (const carrier of RECO_PLAN_NESTED_PRICE_CARRIERS) {
-    if (!isPlainObject(next[carrier])) continue;
-    const nested = { ...next[carrier] };
-    for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete nested[key];
-    next[carrier] = nested;
-  }
-  return next;
-}
-
 function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   const plan = normalizeRecoPlanRecommendation(planItem);
   const normalizedProduct = normalizeRecoCatalogProduct(product);
@@ -29481,13 +29502,32 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     },
     { requireMerchant: true, allowOpaqueProductId: false },
   );
-  const mergedReasons = uniqCaseInsensitiveStrings(
-    [
-      ...normalizeRecoPlanStringArray(plan.reasons, 3),
-      ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
-    ],
-    4,
-  );
+  const sameProduct = sameRecommendationProduct(planItem, normalizedProduct);
+  // Grounding can substitute a different catalog product. Carry only the requested slot/category,
+  // not the old product's URL, identity, notes, formula claims, or nested evidence bundles.
+  // Same-identity rationale may survive; all identity and catalog fields still come from the candidate.
+  const planning = {
+    slot: plan.slot,
+    step: plan.step,
+    product_type: plan.product_type,
+    query_terms: sameProduct ? plan.query_terms : [],
+    score: sameProduct ? plan.score : null,
+    ...(sameProduct
+      ? (plan.__pivota_score_basis ? { __pivota_score_basis: plan.__pivota_score_basis } : {})
+      : { __pivota_score_basis: 'catalog_rebound' }),
+  };
+  const rationale = sameProduct ? {
+    use_case: plan.use_case,
+    concern_match: plan.concern_match,
+    skin_fit: plan.skin_fit,
+    constraint_notes: plan.constraint_notes,
+    warnings: plan.warnings,
+    notes: plan.notes,
+  } : {};
+  const mergedReasons = uniqCaseInsensitiveStrings([
+    ...(sameProduct ? normalizeRecoPlanStringArray(plan.reasons, 3) : []),
+    ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
+  ], 4);
   // PRICE FOLLOWS IDENTITY. The identity fields below all come from the grounded candidate, so the
   // price has to come from the SAME candidate -- otherwise a row carries product A's name and product
   // B's price and a buyer is quoted a number no merchant will honour. When the candidate carries no
@@ -29496,16 +29536,19 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   // POSITIVE finite amount, so presence is the whole test here -- a test pins that so this stays true.
   const groundedPrice = isPlainObject(normalizedProduct.price) ? normalizedProduct.price : null;
   return {
-    ...stripRecoPlanPriceCarryingFields(plan),
+    ...planning,
+    ...rationale,
+    ...normalizedProduct,
+    ...buildRecoVisibleProductFields(normalizedProduct),
     price: groundedPrice,
     currency: groundedPrice && groundedPrice.currency ? groundedPrice.currency : null,
     grounding_status: 'grounded',
-    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId, plan.product_id),
-    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId, plan.merchant_id),
-    brand: pickFirstTrimmed(normalizedProduct.brand, plan.brand),
-    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title, plan.name),
-    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name, plan.title),
-    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name, plan.display_name),
+    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId),
+    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId),
+    brand: pickFirstTrimmed(normalizedProduct.brand),
+    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title),
+    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name),
+    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name),
     category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
     retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
     retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
@@ -41824,6 +41867,11 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
+  // NOTE: HTTP status is deliberately NOT classified here. This function is shared with
+  // legacyChatRecoExecution's rethrow guard and two beauty-handoff sites, and axios sets
+  // `.status` on any error carrying a response — so classifying it here silently changed how
+  // those three lanes treat a 5xx, and both of their suites stub this function, so nothing
+  // would have shown it. The reco LLM leg classifies status itself; see classifyRecoLlmLegFailure.
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -41832,8 +41880,31 @@ function classifyRecoUpstreamFailureCode(err) {
   return '';
 }
 
+// THE RECO LLM LEG'S OWN CLASSIFICATION. Scoped to this leg rather than to the shared classifier
+// above, and deliberately TOTAL: every throw gets a non-empty code.
+//
+// `''` was the old answer for an HTTP rejection, and it is also the answer for
+// AURORA_NOT_CONFIGURED and for any error whose code this repo does not recognise. A blank code
+// means the failure leaves the telemetry dimension entirely rather than moving within it — on the
+// tree before this, a decision service that was DOWN produced null upstream_failure_code, null
+// failure_class and products in the response, which reads as success.
+function classifyRecoLlmLegFailure(err) {
+  const shared = classifyRecoUpstreamFailureCode(err);
+  if (shared) return shared;
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  if (code === 'AURORA_NOT_CONFIGURED') return 'NOT_CONFIGURED';
+  return 'UPSTREAM_ERROR';
+}
+
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
+  // 5xx is the upstream having a bad moment; 4xx is not worth retrying on the same request. (429
+  // lands here too, which is not "a request we built wrong" as an earlier version of this comment
+  // put it — postWithRetry does not retry it either, so the classification matches the behaviour.)
+  const httpStatus = /^HTTP_(\d{3})$/.exec(token);
+  if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
     token === 'ECONNRESET' ||
     token === 'EPIPE' ||
@@ -46098,6 +46169,10 @@ function buildRecoRequestedEventData({
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
+    // NOT the same as `source` above, which is source_mode — a presentation label with its own
+    // fallback ladder that can read 'step_aware_mainline' on a turn the LLM actually answered.
+    // This one is derived from structuredSource, so it says which path produced the answer.
+    ...(pickFirstTrimmed(meta.confidence_basis) ? { confidence_basis: pickFirstTrimmed(meta.confidence_basis) } : {}),
     ...(pickFirstTrimmed(meta.owner_source) ? { owner_source: pickFirstTrimmed(meta.owner_source) } : {}),
     ...(pickFirstTrimmed(meta.final_outcome_owner) ? { final_outcome_owner: pickFirstTrimmed(meta.final_outcome_owner) } : {}),
     ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
@@ -84647,6 +84722,9 @@ async function runRecoLlmPrimary({
   let llmStructuredSource = null;
   let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
   let llmInvoked = false;
+  // Set only when the upstream call actually threw. Kept separate from llmFailureClass,
+  // which feeds the contract/status derivation and is deliberately left alone here.
+  let llmUpstreamError = null;
 
   if (!promptContract.ok) {
     llmLatencyMs = 0;
@@ -84683,7 +84761,12 @@ async function runRecoLlmPrimary({
       llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      llmUpstreamError = {
+        code: classifyRecoLlmLegFailure(err),
+        status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
+        not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
+      };
+      upstreamFailureCode = llmUpstreamError.code;
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
         llmFailureClass = 'timeout';
@@ -84737,18 +84820,52 @@ async function runRecoLlmPrimary({
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
-    } else if (!llmFailureClass && llmInvoked) {
+    } else if (!llmFailureClass && llmInvoked && !llmUpstreamError) {
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    } else if (llmUpstreamError) {
+      // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
+      // catch already set (upstream_timeout / upstream_dependency_failure) rather than
+      // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // NOT gated on `!llmFailureClass`. It was, and that made this branch unreachable for a 5xx:
+      // the catch sets llmFailureClass = 'timeout' for transient codes, so a 503 recorded NO
+      // main-stage metric at all — it went from the wrong bucket to no bucket, and the
+      // `upstream_timeout` token added to the allowlist alongside it was dead on arrival.
+      //
+      // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
+      // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
+      // incident would have been indistinguishable from an unrecognised token. This branch DOES
+      // fire for a 5xx — it used to be gated on `!llmFailureClass`, and the catch sets
+      // llmFailureClass = 'timeout' for transient codes, which is exactly what made a 503 record
+      // nothing at all. Ungating it is what put `upstream_timeout` on the wire.
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
 
+  // WHAT HAPPENED TO THE LLM LEG, as a fact rather than an inference. Every other field here
+  // describes the ANSWER; none of them said whether the model was reached at all, so a dead
+  // leg and a model that declined were the same record — and the recovery path below strips
+  // `error_class`, which was the only surviving hint. This one is not stripped.
+  const llmLegOutcome = !promptContract.ok
+    ? 'prompt_contract_mismatch'
+    : !llmInvoked
+      ? 'not_invoked'
+      : llmUpstreamError
+        ? (llmUpstreamError.not_configured ? 'not_configured' : (llmUpstreamError.code || 'upstream_error').toLowerCase())
+        : (llmFailureClass || 'ok');
   const llmTrace = {
     ...llmTraceSeed,
     latency_ms: llmLatencyMs,
     cache_hit: false,
     prompt_contract_ok: promptContract.ok,
+    llm_leg: {
+      invoked: Boolean(llmInvoked),
+      outcome: llmLegOutcome,
+      upstream_status: llmUpstreamError ? llmUpstreamError.status : null,
+      latency_ms: llmLatencyMs,
+    },
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };
@@ -84827,6 +84944,7 @@ const {
   shouldUseRecoCatalogTransientFallback,
   buildRecoCatalogTransientFallbackStructured,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   groundRecoRecommendationsFromCatalog,
   coerceRecoItemForUi,
   normalizeRecoGenerate,
@@ -103680,6 +103798,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          // COUNTED: the routine lane answers a recommendation request without entering the reco
+          // lane, from its own synthesized routine query — the user's text never reaches the
+          // upstream. Budget-flow branch.
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeAssistantMessage(
@@ -103770,6 +103892,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        // COUNTED: the other routine-lane branch. Its trigger is a substring match on the message
+        // (`routine`, `am/pm`, and the Chinese equivalents), so it is broad live traffic.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
@@ -105607,6 +105732,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  classifyBeautyMainlineBoundaryRejectCandidate,
   extractCatalogCandidatePrice,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,

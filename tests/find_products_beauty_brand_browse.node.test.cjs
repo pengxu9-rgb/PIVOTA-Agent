@@ -17,6 +17,8 @@ const {
   filterSearchServingEligibleProducts,
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
+  isBeautyProductContraindicatedForQuery,
+  rankAndServeBeautyRecallProducts,
   resolveBeautyBrandBrowseQuery,
   scoreBeautyExternalSeedProduct,
 } = app._debug;
@@ -204,6 +206,56 @@ test('beauty brand browse scoring prioritizes core makeup over promo sets and of
 
   assert.ok(score(lipstick) > score(mysterySet) + 40);
   assert.ok(score(lipstick) > score(hair) + 30);
+});
+
+test('pure brand browse puts a precisely typed product on the first page ahead of generic buckets', () => {
+  // Thirty distinct, equally healthy brand rows carry only the broad makeup
+  // bucket. They fill page one when the target's precise category is ignored.
+  const genericTitles = [
+    'Amber', 'Aqua', 'Balance', 'Barrier', 'Bloom', 'Bright', 'Calm', 'Clear',
+    'Comfort', 'Daily', 'Dew', 'Elastic', 'Essential', 'Fresh', 'Glow', 'Hydra',
+    'Luminous', 'Mild', 'Nourish', 'Pure', 'Radiant', 'Renew', 'Repair', 'Restore',
+    'Revive', 'Silky', 'Smooth', 'Soft', 'Soothing', 'Vital',
+  ].map((name) => `BeginS by JUNGSAEMMOOL ${name} Serum`);
+  const generic = genericTitles.map((title, index) => solidBrandGloss({
+    id: `ext_jsm_generic_${index}`,
+    product_id: `ext_jsm_generic_${index}`,
+    title,
+    category: 'makeup',
+    product_type: 'makeup',
+    category_path: ['beauty', 'makeup'],
+    catalog_category_path: 'beauty/makeup',
+    destination_url: `https://jsmbeauty.sg/products/generic-${index}`,
+  }));
+  const gloss = solidBrandGloss({
+    category_path: ['beauty', 'makeup', 'lip', 'gloss'],
+    catalog_category_path: 'beauty/makeup/lip/gloss',
+  });
+  for (const queryText of ['JUNG SAEM MOOL', 'JUNGSAEMMOOL']) {
+    const beautyIntent = inferBeautyMainlineIntent(queryText);
+    assert.equal(beautyIntent.brandBrowse.brand_only, true);
+    const rank = (target) => {
+      const ranked = rankAndServeBeautyRecallProducts({
+        recallProducts: [...generic, target],
+        queryText,
+        beautyIntent,
+        normalizedQuery: queryText.toLowerCase(),
+        queryTokens: queryText.toLowerCase().split(/\s+/),
+        safeLimit: 40,
+      });
+      return ranked.servingEligibilityGate.products.findIndex((product) =>
+        product.destination_url === gloss.destination_url) + 1;
+    };
+    const shallowRank = rank(solidBrandGloss({
+      category: 'makeup',
+      product_type: 'makeup',
+      category_path: ['beauty', 'makeup'],
+      catalog_category_path: 'beauty/makeup',
+    }));
+    assert.ok(shallowRank > 20, `${queryText}: broad category rank ${shallowRank}`);
+    const preciseRank = rank(gloss);
+    assert.ok(preciseRank > 0 && preciseRank <= 20, `${queryText}: exact gloss rank ${preciseRank}`);
+  }
 });
 
 test('beauty brand browse display dedupe collapses shade variants by product line', () => {
@@ -545,4 +597,319 @@ test('canonical chain replaces degraded products for beauty brand browse', () =>
   assert.equal(out.metadata.canonical_returned_count, 3);
   assert.equal(out.metadata.search_card_quality_gate.applied, true);
   assert.equal(out.metadata.source_breakdown.canonical_chain_count, 3);
+});
+
+test('a makeup face query recalls ITS OWN form, not the skincare defaults', () => {
+  // MUTANT: delete the `beauty/makeup/face/` branch, or drop any single term from it.
+  //
+  // The first version of this test asserted `bronzer || foundation || powder` over all three
+  // queries, so it passed with `bronzer` removed entirely — review found seven mutants surviving
+  // it. Each query now asserts the term IT resolves to.
+  //
+  // Without the branch, a bronzer query matches nothing above, is not brand-browse, and falls to
+  // ['sunscreen','cleanser','moisturizer','serum']; external-seed recall then searches skincare
+  // and the makeup hard constraint rejects what it finds. Measured on prod 2026-09-10 UTC
+  // (gateway f19c997a057b): all six retrieval arms carried the four skincare terms,
+  // `category_mismatch: 206` against `ranker_rejected: 1`.
+  const SKINCARE_DEFAULTS = ['sunscreen', 'cleanser', 'moisturizer', 'serum'];
+
+  for (const [query, expected] of [
+    ['bronzer for medium skin', 'bronzer'],
+    ['setting powder', 'powder'],
+    ['primer', 'primer'],
+    ['highlighter makeup', 'highlighter'],
+  ]) {
+    const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent(query));
+    assert.deepStrictEqual(
+      terms, [expected],
+      `${query} should recall exactly ["${expected}"], got ${JSON.stringify(terms)}`,
+    );
+    assert.ok(
+      !SKINCARE_DEFAULTS.some((t) => terms.includes(t)),
+      `${query} fell through to the skincare defaults: ${JSON.stringify(terms)}`,
+    );
+  }
+});
+
+test('a specific face form spends its whole row budget on that form', () => {
+  // MUTANT: push the whole face set for a specific sub-prefix.
+  //
+  // `perCategoryRowLimit` is ceil(perScopeRowLimit / terms.length) clamped to >= 3, so ten terms
+  // cut a bronzer query to 3 rows per tool scope where the single-term lip lane gets 24. And for
+  // a seed with no category PATH the fallback admits a foundation for a bronzer query, with
+  // `category_order` putting foundation first — so breadth here can serve the wrong form.
+  const bronzer = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('bronzer for medium skin'),
+  );
+  assert.strictEqual(bronzer.length, 1, `bronzer recalled ${JSON.stringify(bronzer)}`);
+  assert.ok(!bronzer.includes('foundation'), 'a bronzer query must never recall foundation');
+});
+
+test('every face term is a real derived-category label', () => {
+  // The SQL matches `derived.recall.category` by EQUALITY, and that column is written from
+  // BEAUTY_CATEGORY_PATTERNS. A display word that is not a label ('setting powder', 'skin tint',
+  // 'cushion', 'luminizer', 'cheek') matches nothing and only dilutes the row budget. `primer` is
+  // the deliberate exception: it has no label, but emitting `foundation` instead would serve the
+  // wrong product.
+  const LABELS = new Set(['foundation', 'concealer', 'powder', 'highlighter', 'blush', 'bronzer']);
+  const bare = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('foundation for oily skin'),
+  );
+  assert.deepStrictEqual(
+    bare, ['foundation', 'concealer', 'powder', 'highlighter', 'blush', 'bronzer'],
+    `the bare-face set changed: ${JSON.stringify(bare)}`,
+  );
+  for (const t of bare) assert.ok(LABELS.has(t), `${t} is not a derived-category label`);
+});
+
+test('a blush query gets blush, not the whole face set', () => {
+  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('blush'));
+  assert.deepStrictEqual(terms, ['blush'], JSON.stringify(terms));
+});
+
+test('KNOWN GAP: a family word inside a makeup query still wins over the category prefix', () => {
+  // NOT a regression and NOT fixed here — recorded so it is visible rather than surprising.
+  //
+  // `families` are matched before the prefix fallback, so 'cream blush' matches the MOISTURIZER
+  // family on the word "cream" and never reaches the makeup branch. Same shape for
+  // 'powder cleanser', 'tinted moisturizer', 'bb cream'. Fixing it means changing which signal
+  // wins in `inferBeautyMainlineIntent`, one layer up, with a much wider blast radius.
+  //
+  // Asserted as the GAP rather than as the exact output: pinning `['moisturizer']` would also
+  // fail if someone merely added a word to the moisturizer family, which is a different change.
+  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('cream blush'));
+  assert.ok(
+    !terms.includes('blush'),
+    `the prefix now wins — the precedence gap is fixed, update this test: ${JSON.stringify(terms)}`,
+  );
+});
+
+test('Metal Serum Gloss sends external-seed recall to lip gloss, not skincare serum', () => {
+  const terms = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('metal serum gloss core drop'),
+  );
+  assert.deepStrictEqual(terms, ['lip gloss', 'lipgloss']);
+});
+
+test('Metal Serum Gloss name and shade do not trigger the skincare serum rank gate', () => {
+  for (const query of ['Metal Serum Gloss', 'metal serum gloss core drop', 'LIP-PRESSION Metal Serum Gloss']) {
+    const intent = inferBeautyMainlineIntent(query);
+    assert.equal(intent.beautyLike, true);
+    assert.deepStrictEqual(intent.families, []);
+    assert.deepStrictEqual(buildBeautyExternalSeedCategoryTerms(intent), ['lip gloss', 'lipgloss']);
+  }
+  assert.deepStrictEqual(inferBeautyMainlineIntent('hyaluronic serum').families, ['serum']);
+  assert.deepStrictEqual(inferBeautyMainlineIntent('Metal Serum Gloss with niacinamide serum').families, ['serum']);
+});
+
+test('a canonical lip gloss survives short-name scoring while separate skincare intent rejects it', () => {
+  const product = canonicalFentyProduct('meitu_gloss', 'LIP-PRESSION Metal Serum Gloss', {
+    brand: 'JUNGSAEMMOOL', category: 'Lip Gloss', product_type: 'Lip Gloss',
+    category_path: 'beauty/makeup/lip/gloss', catalog_category_path: 'beauty/makeup/lip/gloss',
+    currency: 'SGD', price: 30,
+  });
+  for (const query of ['Metal Serum Gloss', 'metal serum gloss core drop']) {
+    const intent = inferBeautyMainlineIntent(query);
+    assert.equal(isBeautyProductContraindicatedForQuery(product, query, intent), false, query);
+    const scored = scoreBeautyExternalSeedProduct({
+      product, queryText: query, intent, normalizedQuery: query.toLowerCase(),
+      queryTokens: query.toLowerCase().split(/\s+/),
+      searchQualityContract: buildSearchQualityContract({ rawQuery: query, market: 'SG' }),
+    });
+    assert.equal(scored.relevant, true, query);
+  }
+  for (const query of ['face serum', 'Metal Serum Gloss for face serum']) {
+    assert.equal(isBeautyProductContraindicatedForQuery(product, query, inferBeautyMainlineIntent(query)), true, query);
+  }
+});
+
+test('shallow Meitu catalog row passes lip category until the targeted sync repairs it', () => {
+  const contract = buildSearchQualityContract({ rawQuery: 'lip gloss', market: 'SG' });
+  const target = canonicalFentyProduct('meitu_gloss', 'LIP-PRESSION Metal Serum Gloss', {
+    brand: 'JUNGSAEMMOOL',
+    product_type: 'makeup',
+    category_path: 'beauty/makeup',
+    catalog_category_path: 'beauty/makeup',
+  });
+  const unrelated = canonicalFentyProduct('meitu_eyeliner', 'Precision Eyeliner', {
+    brand: 'JUNGSAEMMOOL',
+    product_type: 'makeup',
+    category_path: 'beauty/makeup',
+    catalog_category_path: 'beauty/makeup',
+    description: 'Pairs with Metal Serum Gloss',
+  });
+  assert.equal(getSearchQualityContractHardConstraintResult(target, contract, 'lip gloss').eligible, true);
+  assert.equal(getSearchQualityContractHardConstraintResult(unrelated, contract, 'lip gloss').eligible, false);
+});
+
+test('the skincare, lip and fragrance lanes are unchanged', () => {
+  const acne = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('acne treatment for clogged pores'),
+  );
+  assert.deepStrictEqual(acne, ['sunscreen', 'cleanser', 'moisturizer', 'serum'], JSON.stringify(acne));
+  const lip = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('red lipstick'));
+  assert.ok(lip.includes('lipstick'), JSON.stringify(lip));
+  const fragrance = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('eau de parfum'));
+  assert.ok(fragrance.includes('fragrance'), JSON.stringify(fragrance));
+});
+
+
+// ---------------------------------------------------------------------------
+// A brand stored SOLID must satisfy a contract that spells it SPACED.
+//
+// Measured in prod 2026-09-16 (gateway da7e94db5bd3): every JUNGSAEMMOOL query recalled
+// 100 rows, all serving_eligible, and the hard constraint rejected all 100 with
+// `brand_mismatch` — the brand's entire catalogue was invisible to search while its PDPs
+// were published and buyable. The catalogue stores `JUNGSAEMMOOL`; the contract canonical
+// is `jung saem mool`; neither string contains the other.
+// ---------------------------------------------------------------------------
+
+function solidBrandGloss(overrides = {}) {
+  return {
+    id: 'ext_jsm_metal_serum_gloss',
+    product_id: 'ext_jsm_metal_serum_gloss',
+    merchant_id: 'merch_obs_jsm',
+    title: 'LIP-PRESSION Metal Serum Gloss - Core Drop',
+    brand: 'JUNGSAEMMOOL',
+    merchant_name: 'JUNGSAEMMOOL',
+    price: 28.2,
+    currency: 'SGD',
+    image_url: 'https://cdn.example.com/jsm-metal-serum-gloss.jpg',
+    destination_url: 'https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss',
+    category: 'Lip Gloss',
+    product_type: 'Lip Gloss',
+    category_path: ['beauty', 'makeup'],
+    catalog_category_path: 'beauty/makeup',
+    source: 'canonical_chain',
+    search_recall_source: 'canonical_chain',
+    catalog_source: 'canonical_chain',
+    ...overrides,
+  };
+}
+
+for (const rawQuery of ['JUNG SAEM MOOL', 'JUNGSAEMMOOL']) {
+  test(`a solid-spelled brand passes the hard constraint for query "${rawQuery}"`, () => {
+    const contract = buildSearchQualityContract({ rawQuery, market: 'SG' });
+
+    // Guard the premise, not just the outcome: if the lexicon ever stops producing the
+    // spaced canonical for this query, the assertion below would pass for the wrong reason.
+    assert.equal(contract.query_class, 'brand_browse');
+    assert.equal(contract.hard_constraints.brand.canonical, 'jung saem mool');
+
+    const gate = getSearchQualityContractHardConstraintResult(solidBrandGloss(), contract, rawQuery);
+    assert.equal(gate.eligible, true, JSON.stringify(gate.reasons));
+    assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+  });
+}
+
+test('the spaced catalogue spelling of the same brand still passes', () => {
+  // A row stored `JUNG SAEM MOOL` was never broken and must not become broken.
+  //
+  // NOTE what answers this one: the spaced brand resolves through the lexicon with
+  // brand_only=true, so the identity short-circuit returns before the compacted arm
+  // runs. It is a real regression guard for the SPACED cohort, not coverage of the new
+  // arm — the two solid-brand tests and the three controls below are that.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNGSAEMMOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'JUNG SAEM MOOL', merchant_name: 'JUNG SAEM MOOL' }),
+    contract,
+    'JUNGSAEMMOOL',
+  );
+  assert.equal(gate.eligible, true, JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a different brand is still rejected by the same contract', () => {
+  // Without this, the test above would also pass if someone deleted the brand check
+  // outright. This is the assertion that keeps the gate a gate.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({
+      id: 'ext_vely_gloss',
+      product_id: 'ext_vely_gloss',
+      title: 'Dewy Glow Lip Gloss',
+      brand: 'VELY VELY',
+      merchant_name: 'VELY VELY',
+    }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a same-length brand that is not the same letters is rejected', () => {
+  // Kills a mutant comparing LENGTHS instead of contents. `jungsaemmoon` and
+  // `jungsaemmool` are both twelve characters, so a length check calls them equal and
+  // admits a brand we have never heard of.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'Jung Saem Moon', merchant_name: 'Jung Saem Moon' }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a PREFIX of the brand is rejected, in both containment directions', () => {
+  // The chosen relation is equality. Containment the other way round --
+  // compactNeedle.includes(compactProductBrand) -- would admit `JungSaem` for the
+  // JUNGSAEMMOOL contract, which is a different brand, or none at all.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'JungSaem', merchant_name: 'JungSaem' }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: compaction matches on EQUALITY, never on containment', () => {
+  // Pins the chosen relation. Compacted CONTAINMENT would admit this row — 'velyvelyesque'
+  // contains 'velyvely' — and that is exactly the widening the fix refuses, because it would
+  // let one brand's letters swallow another brand's name.
+  const contract = buildSearchQualityContract({ rawQuery: 'VELY VELY', market: 'SG' });
+  assert.equal(contract.hard_constraints.brand.canonical.replace(/\s+/g, ''), 'velyvely');
+
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({
+      id: 'ext_velyvelyesque',
+      product_id: 'ext_velyvelyesque',
+      title: 'Velyvelyesque Shine Balm',
+      brand: 'Velyvelyesque',
+      merchant_name: 'Velyvelyesque',
+    }),
+    contract,
+    'VELY VELY',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('a brand+category query admits the solid-spelled brand too', () => {
+  // brand_browse is not the only class that runs the brand hard constraint —
+  // brand_category and exact_product do as well. Pin one of the others so the fix is not
+  // silently scoped to a single query class.
+  const rawQuery = 'jung saem mool lip gloss';
+  const contract = buildSearchQualityContract({ rawQuery, market: 'SG' });
+  assert.equal(contract.query_class, 'brand_category');
+
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ category_path: ['beauty', 'makeup', 'lip'], catalog_category_path: 'beauty/makeup/lip' }),
+    contract,
+    rawQuery,
+  );
+  assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('a compact brand alias consumes the whole query but preserves product-word remainders', () => {
+  const identity = resolveBeautyBrandBrowseQuery('jungsaemmool');
+  assert.equal(identity.matched, true);
+  assert.equal(identity.brand_key, 'jung_saem_mool');
+  assert.equal(identity.brand_only, true);
+  assert.equal(resolveBeautyBrandBrowseQuery('jung saem mool').brand_only, true);
+  assert.equal(resolveBeautyBrandBrowseQuery('firstaidbeauty').brand_only, true);
+  assert.equal(resolveBeautyBrandBrowseQuery('jungsaemmool lip gloss').brand_only, false);
+  assert.equal(resolveBeautyBrandBrowseQuery('firstaidbeauty serum').brand_only, false);
 });

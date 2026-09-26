@@ -22,6 +22,29 @@ const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
 ]);
 
 const CATEGORY_ALIAS_RULES = Object.freeze([
+  // Self-tan. MEASURED GAP, 2026-09-24: `self tanner` (even with
+  // category=beauty/body/tanning) classified other/ambiguous and answered
+  // clarify with 0 rows while beauty/body/tanning held 17 serving-eligible
+  // rows (Bondi Sands, applied + verified that day). The bucket is a leaf the
+  // recall SQL binds EXACTLY (canonicalCatalogSearch.js exact-path bind), so
+  // rows stored without a trailing slash still match.
+  //
+  // MUST SIT FIRST: `self tanning body mist` would otherwise be claimed by the
+  // fragrance rule's `body mist`, and `tanning lotion` / `tanning cream` by the
+  // moisturizer rule's bare `lotion` / `cream`. Only product-anchored forms are
+  // claimed: bare `tan`, `tanning bed`, `tanning salon`, `leather tanning` stay
+  // unclassified, and `tanning oil` is deliberately left to sun care (it is
+  // sold with an SPF; the sunscreen rule claims `tanning oil spf 30`).
+  // Bronzing DROPS/WATER are NOT claimed here: measured 2026-09-25, all 6
+  // bronzing-drops-titled rows are filed under beauty/makeup/face/bronzer (5)
+  // and beauty/makeup (1), none under tanning, so this leaf would hard-drop
+  // every one of them. They route with the bronzer rule below.
+  {
+    category: 'self_tanner',
+    categoryPathPrefix: 'beauty/body/tanning/',
+    pattern:
+      /\bself[-\s]?tan(?:ners?|ning)?\b|\bsunless\s+tan(?:ners?|ning)?\b|\bfake\s+tan\b|\bgradual\s+tan(?:ners?|ning)?\b|\btanning\s+(?:mousses?|foams?|drops?|waters?|lotions?|mists?|sprays?|mitts?|serums?|creams?|gels?)\b|\btan\s+(?:drops?|mousses?|mitts?)\b|美黑|セルフタンニング/i,
+  },
   {
     category: 'fragrance',
     categoryPathPrefix: 'beauty/fragrance/',
@@ -44,7 +67,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|metal\s+serum\s+gloss)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
@@ -138,7 +161,9 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   {
     category: 'bronzer_or_contour',
     categoryPathPrefix: 'beauty/makeup/face/bronzer/',
-    pattern: /\bbronzers?\b|\bcontour(?:ing)?\s+(?:sticks?|palettes?|wands?|kits?|powders?|creams?)\b|修容/i,
+    // `bronzing drops/water/serum` arm added 2026-09-25: those rows live in the
+    // bronzer leaf (5 eligible), not in beauty/body/tanning.
+    pattern: /\bbronzers?\b|\bbronzing\s+(?:drops?|waters?|serums?|mists?)\b|\bcontour(?:ing)?\s+(?:sticks?|palettes?|wands?|kits?|powders?|creams?)\b|修容/i,
   },
   // Face powder. `setting powder` was the highest-traffic zero in the
   // 2026-08-20 probe. Bucket: beauty/makeup/face/powder, 99 eligible rows
@@ -290,7 +315,12 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   },
 ]);
 
+// Looked up by NAME: this was CATEGORY_ALIAS_RULES[0], which silently became
+// the self-tan rule when that rule had to sit first.
+const FRAGRANCE_RULE = CATEGORY_ALIAS_RULES.find((rule) => rule.category === 'fragrance');
+
 const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
+  'beauty/body/tanning/': 'self tanner',
   'beauty/fragrance/': 'fragrance',
   'beauty/makeup/lip/': 'lipstick',
   'beauty/makeup/eye/': 'mascara',
@@ -379,9 +409,9 @@ function hasFragranceFreeSkincareSignal(text) {
 function hasFragranceProductQuerySignal(text) {
   if (hasFragranceFreeSkincareSignal(text)) return false;
   const raw = String(text || '');
-  if (CATEGORY_ALIAS_RULES[0].pattern.test(raw)) return true;
+  if (FRAGRANCE_RULE.pattern.test(raw)) return true;
   const corrected = applyDeterministicCorrections(raw).corrected_query;
-  return corrected !== raw && CATEGORY_ALIAS_RULES[0].pattern.test(corrected);
+  return corrected !== raw && FRAGRANCE_RULE.pattern.test(corrected);
 }
 
 function resolveBeautyCategoryPathPrefixFromText(text) {
@@ -603,11 +633,19 @@ function buildSearchQualityContract({
   const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
   const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
   const hasNonMerchandiseSignal = hasNonMerchandiseQuerySignal(effectiveQuery);
-  const effectiveBrand = hasNonMerchandiseSignal ? null : brand;
-  const effectiveExactProductAnchor = hasNonMerchandiseSignal ? null : exactProductAnchor;
-  const effectiveCategoryPathPrefix = hasNonMerchandiseSignal ? null : categoryPathPrefix;
+  // A mixed retailer/brand is not a category. Explicit apparel requests must not become beauty
+  // browsing solely because the brand has a cosmetics line. Remove the brand first so a suffix
+  // such as "Beauty" or "Cosmetics" cannot cancel this check; perfume carried in a handbag stays in.
+  const merchandiseRemainder = stripBrandTokensFromNormalizedQuery(effectiveQuery, beautyBrandBrowse);
+  const explicitApparelRequest = hasKnownBeautyBrand
+    && /\b(?:bras?|bralettes?|lingerie|underwear|panties|sleepwear|loungewear|pajamas?|pyjamas?|nightgowns?|robes?|handbags?|purses?|dresses?|shirts?|skirts?|jeans|trousers?|leggings?|sneakers?|shoes?|boots?|coats?|jackets?)\b|内衣|內衣|文胸|睡衣|手提包/.test(merchandiseRemainder)
+    && !hasBeautySearchSignal(merchandiseRemainder);
+  const outsideBeauty = hasNonMerchandiseSignal || explicitApparelRequest;
+  const effectiveBrand = outsideBeauty ? null : brand;
+  const effectiveExactProductAnchor = outsideBeauty ? null : exactProductAnchor;
+  const effectiveCategoryPathPrefix = outsideBeauty ? null : categoryPathPrefix;
   const targetDomain =
-    !hasNonMerchandiseSignal &&
+    !outsideBeauty &&
     (hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery))
       ? 'beauty'
       : 'other';
@@ -636,6 +674,7 @@ function buildSearchQualityContract({
   }
 
   const exclusions = [];
+  if (explicitApparelRequest) exclusions.push('beauty_product_for_apparel_query');
   if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
   if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
   if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');

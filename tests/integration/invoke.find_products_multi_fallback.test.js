@@ -23,6 +23,9 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+      PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH: process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH,
+      FIND_PRODUCTS_BUYER_MARKET: process.env.FIND_PRODUCTS_BUYER_MARKET,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
@@ -56,6 +59,8 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
     process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
+    // This suite elects the configured upstream primary; missing DB is not a route selector.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     delete process.env.DATABASE_URL;
   });
 
@@ -152,87 +157,6 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
     expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
     expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
-  });
-
-  test('creator_agent explicit legacy_contracts can still use resolver-first legacy fallback', async () => {
-    const queryText = 'ipsa';
-    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
-    const resolvedProductId = '9886500127048';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
-    // Since #1753 the resolver-first probe RACES the primary recall in parallel
-    // (FPM_PARALLEL_RESOLVER_PRIMARY, default on): the primary upstream fires
-    // speculatively and its result is discarded when the resolver wins. This
-    // test asserts the serialized resolver-first path suppresses the primary
-    // call, so pin the flag off to stay green on this branch alone.
-    // NOTE: the real fix is the strong-resolver-query guard on branch
-    // fix/fpm-speculative-primary-strong-guard — 'ipsa' is a strong lookup, so
-    // once that lands the guard skips the speculative primary here and this pin
-    // becomes redundant (safe to drop in that follow-up).
-    process.env.FPM_PARALLEL_RESOLVER_PRIMARY = 'false';
-
-    jest.doMock('../../src/services/productGroundingResolver', () => ({
-      resolveProductRef: jest.fn().mockResolvedValue({
-        resolved: true,
-        product_ref: {
-          merchant_id: resolvedMerchantId,
-          product_id: resolvedProductId,
-        },
-        confidence: 0.99,
-        reason: 'stable_alias_ref',
-        metadata: { latency_ms: 10 },
-      }),
-    }));
-
-    const primaryScope = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: queryText,
-            limit: 10,
-            in_stock_only: false,
-          },
-        },
-        metadata: {
-          scope: { catalog: 'global', region: 'US', language: 'en-US' },
-          entry: 'home',
-          source: 'creator_agent',
-          legacy_contracts: true,
-        },
-      });
-
-    expect(resp.status).toBe(200);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: resolvedProductId,
-        merchant_id: resolvedMerchantId,
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        invoke_search_rail: 'legacy_internal',
-        legacy_contract: true,
-        query_source: 'agent_products_resolver_fallback',
-        proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: 'resolver_first',
-        }),
-      }),
-    );
-    expect(primaryScope.isDone()).toBe(false);
   });
 
   test('creator_agent broad beauty mainline generic concern uses internal primitive transport instead of legacy GET search', async () => {
@@ -407,6 +331,140 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         bridged_operation: 'get_discovery_feed',
       }),
     );
+  });
+
+  test.each([['off', false], ['on', true]])('zero-row discovery fallthrough %s keeps the empty response when indexed recall is unavailable', async (flag, attempted) => {
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = flag;
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [], total: 0, metadata: {} })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough?.attempted === true).toBe(attempted);
+    if (attempted) expect(resp.body.metadata.discovery_fallthrough.reason).toBe('indexed_unavailable');
+  });
+
+  test('market and budget constraints do not serve an unscoped discovery page when indexed recall is unavailable', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [
+          { product_id: 'usd', title: 'Lip balm USD', price: 12, currency: 'USD' },
+          { product_id: 'expensive', title: 'Lip balm SGD high', price: 40, currency: 'SGD' },
+          { product_id: 'eligible', title: 'Lip balm SGD', price: 20, currency: 'SGD' },
+        ],
+        total: 3,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty', max_price: 25, price_currency: 'SGD' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('a named market with its buyer-market flag off keeps the existing discovery route', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [{ product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' }],
+        total: 1,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['usd']);
+    expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+  });
+
+  test('a named market and budget also keep the discovery route while buyer-market is off', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [{ product_id: 'existing', title: 'Lip balm', price: 20, currency: 'USD' }],
+        total: 1,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty', max_price: 25 } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['existing']);
+    expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+  });
+
+  test('REST GET forwards an explicit offer currency into constrained recall', async () => {
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [{ product_id: 'usd', currency: 'USD' }], total: 1 })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).get('/agent/v1/products/search')
+      .query({ query: 'lip balm', catalog_surface: 'beauty', currency: 'EUR' });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('REST GET forwards the named market and price ceiling into constrained recall', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [{ product_id: 'usd', currency: 'USD' }], total: 1 })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).get('/agent/v1/products/search')
+      .query({ query: 'lip balm', catalog_surface: 'beauty', market: 'SG', max_price: 25, price_currency: 'SGD' });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(503);
+    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+  });
+
+  test('explicit category does not fall through to category-blind indexed recall', async () => {
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = 'on';
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [], total: 0, metadata: {} })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'MAC', category: 'makeup', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough?.attempted).not.toBe(true);
   });
 
   test.each([

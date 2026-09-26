@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -1534,6 +1536,19 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               }),
             },
           ).events,
+        });
+        // THIS DOOR ANSWERS WITHOUT ENTERING THE RECO LANE. It builds a recommendations card from
+        // the beauty mainline's own grounded handoff and returns, so the lane's counter never sees
+        // it. Left uncounted the metric would be biased in the worst direction: this is a catalog
+        // producer that reads no domain prompt, which is exactly the population #2155 is about, and
+        // omitting it would overstate the share of turns the prompt-reading path served.
+        const hardPathRecoCount = Array.isArray(hardPathPayloadBundle?.payload?.recommendations)
+          ? hardPathPayloadBundle.payload.recommendations.length
+          : 0;
+        recordAuroraRecoAnswerPath({
+          door: 'chat',
+          path: 'beauty_mainline_grounded',
+          served: hardPathRecoCount > 0,
         });
         return {
           handled: true,

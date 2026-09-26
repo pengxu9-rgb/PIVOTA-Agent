@@ -30,6 +30,21 @@ function makeMockQuery(rows = []) {
 }
 
 describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
+  test('explicit stock scope requires affirmative offer evidence', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick',
+      includeSkuOffers: true,
+      offerScope: { markets: ['SG'], inStockOnly: true, currency: 'SGD' },
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toContain("IN ('instock', 'available', 'true')");
+    expect(sql).toContain('WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0');
+    expect(sql).toContain('END) IS TRUE');
+    expect(sql).not.toContain('o.inventory_quantity IS NULL OR o.inventory_quantity > 0');
+  });
+
   test('returns [] for empty query without hitting the DB', async () => {
     const query = makeMockQuery([{ product_key: 'should not appear' }]);
     const out = await fetchCanonicalChainRows({ query: '   ', deps: { query } });
@@ -353,6 +368,23 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(lateral).toMatch(/ORDER BY[\s\S]*COALESCE\(o\.merchant_effective_price, o\.list_price\) ASC/);
     // Deterministic final tie-break so equal prices cannot reshuffle per call.
     expect(lateral).toMatch(/o\.offer_id ASC/);
+  });
+
+  test('at equal price a real variant sku beats the synthetic ::canonical sku, before offer_id', async () => {
+    // Every retailer-lane product carries a `<pk>::canonical` sku (source_variant_id = product key) next
+    // to its real variant skus, each with an offer at the same price. offer_id is a hash, so without this
+    // term the synthetic id won about half the ties and live price verification reported variant_missing.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    const price = lateral.indexOf('COALESCE(o.merchant_effective_price, o.list_price) ASC');
+    const realFirst = lateral.search(
+      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+OR s\.source_variant_id = 'default' OR s\.source_variant_id LIKE '%-default'\s+THEN 1 ELSE 0 END ASC/,
+    );
+    const offerId = lateral.indexOf('o.offer_id ASC');
+    expect(price).toBeGreaterThan(-1);
+    expect(realFirst).toBeGreaterThan(price);     // a tie-break only: price still decides first
+    expect(offerId).toBeGreaterThan(realFirst);   // and it runs before the hashed offer_id
   });
 
   test('sku/offer LATERAL prefers the caller market when one is supplied', async () => {

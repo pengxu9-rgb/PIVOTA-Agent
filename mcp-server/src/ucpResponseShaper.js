@@ -66,7 +66,8 @@
 //     an OPAQUE encoding of the next page number (see encodeSearchCursor) — the request side decodes it back
 //     to native `page`, which is what makes the loop honest: emitting a cursor the request side ignored
 //     would send every paginating client back to page 1 forever.
-//  messages ← one `info` when rows were dropped for having no price; one `warning` (code
+//  messages ← one `info` when ordinary rows were dropped for having no price, a distinct `info` when a
+//     discovery match is deferred because merchant price/availability still require a live quote; one `warning` (code
 //     `filters.categories_not_applied`) when the caller sent `filters.categories`, which this door accepts
 //     and does not apply (vocabulary mismatch — see ucpArgumentAdapter). The spec's whole point of
 //     `messages` is that an unapplied filter is SAID, not silently ignored.
@@ -220,6 +221,12 @@ export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE } = {}) {
   if (!isPlainObject(row)) return { product: undefined, dropped: "not_a_row" };
   const id = productIdOf(row);
   if (!id) return { product: undefined, dropped: "no_id" };
+  // Verification state dominates any stale commerce fields left by an older
+  // producer. Publishing those fields would turn "live quote required" into a
+  // priced, apparently buyable UCP card.
+  if (isPlainObject(row.commerce_verification) && row.commerce_verification.required === true) {
+    return { product: undefined, dropped: "live_quote_required" };
+  }
   const price = priceOf(row);
   if (!price) return { product: undefined, dropped: "no_price" };
 
@@ -272,10 +279,12 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
 
   const products = [];
   let droppedNoPrice = 0;
+  let deferredLiveQuoteRequired = 0;
   let droppedNoId = 0;
   for (const row of arr(body.products)) {
     const { product, dropped } = shapeUcpProduct(row, { pdpBase });
     if (product) products.push(product);
+    else if (dropped === "live_quote_required") deferredLiveQuoteRequired += 1;
     else if (dropped === "no_price") droppedNoPrice += 1;
     else if (dropped === "no_id" || dropped === "not_a_row") droppedNoId += 1;
   }
@@ -334,6 +343,15 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
       code: "products.omitted_no_price",
       path: "$.products",
       content: `${droppedNoPrice} matching product${droppedNoPrice === 1 ? "" : "s"} omitted: no priced offer, so no spec-conformant price_range could be published.`,
+      content_type: "plain",
+    });
+  }
+  if (deferredLiveQuoteRequired > 0) {
+    messages.push({
+      type: "info",
+      code: "products.deferred_live_quote_required",
+      path: "$.products",
+      content: `${deferredLiveQuoteRequired} matching product${deferredLiveQuoteRequired === 1 ? "" : "s"} deferred: current price and availability require live merchant verification, so no spec-conformant priced UCP product could be published. Retry after merchant verification completes.`,
       content_type: "plain",
     });
   }

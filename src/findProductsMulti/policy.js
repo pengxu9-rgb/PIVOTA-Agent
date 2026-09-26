@@ -4,6 +4,7 @@ const {
   _debug: intentLlmDebug = {},
 } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
+const { isExternalSeedRow } = require('../externalSeedIdentity');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 const { buildClarification } = require('./clarification');
@@ -412,11 +413,12 @@ function hasFragranceQuerySignal(rawQuery) {
   return inferFragranceSemanticClass(rawQuery) === 'fragrance';
 }
 
+// Delegates to src/externalSeedIdentity.js, the LEGACY shim — NOT the owner of this question.
+// The owner is src/services/externalSeedLane.js over pdpRenderability's isSeedRoutedLane. Identical semantics for
+// merchant_id and `source`; additionally reads the source aliases and the two further source
+// spellings pdpBuilder already accepted, so this is a widening and never a narrowing.
 function isExternalSeedProduct(product) {
-  if (!product || typeof product !== 'object') return false;
-  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
-  const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
+  return isExternalSeedRow(product);
 }
 
 function normalizeBrandTerms(terms) {
@@ -712,6 +714,20 @@ function resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency, 
       budget_fx_unresolved: false,
     },
   };
+}
+
+// SQL recall needs the same per-native-currency bounds as the final budget
+// gate, before it spends its candidate limit. No second FX table or rates.
+function resolveBudgetConstraintsForRecall(priceConstraint) {
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) return null;
+  const sourceCurrency = normalizePriceCurrencyCode(priceConstraint.currency, '');
+  if (!sourceCurrency) {
+    // Existing policy: an undenominated budget uses each offer's native units.
+    return [{ currency: null, min: priceConstraint.min ?? null, max: priceConstraint.max ?? null }];
+  }
+  const currencies = new Set([sourceCurrency, ...Object.keys(FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES)]);
+  return [...currencies].map(currency => resolveBudgetConstraintForCurrency(priceConstraint, currency).constraint)
+    .filter(Boolean);
 }
 
 function buildBudgetFxMetadata(priceConstraint, products = [], fallbackProducts = []) {
@@ -1677,6 +1693,18 @@ const SEMANTIC_ROLE_STRUCTURAL_TOKENS = new Set([
 // than silently degrading recall.
 const STEP_FAMILY_QUERY_ANCHORS = Object.freeze({
   oil: 'face oil',
+  // Makeup families whose CANONICAL name is not a thing a buyer would search for. The invariant this
+  // table serves (tests/reco_recall_honest_queries) is that the search side and the planner side
+  // anchor on the same string; without these four, recall would query the literal 'lip_colour'.
+  face_powder: 'setting powder',
+  primer: 'makeup primer',
+  lip_colour: 'lipstick',
+  eye_colour: 'eyeshadow',
+  // Fragrance belongs here for a slightly different reason than the four above: "fragrance" IS a
+  // word buyers use, but in this catalog it is overwhelmingly a word SKINCARE uses about itself
+  // ("fragrance-free"), so it retrieves the wrong rows. "perfume" is the noun a fragrance product is
+  // actually titled. See the STEP_QUERY_ALIASES.fragrance comment for the measurement.
+  fragrance: 'perfume',
 });
 
 function resolveStepFamilyQueryAnchor(targetStepFamily) {
@@ -6577,6 +6605,7 @@ module.exports = {
   getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
   BEAUTY_DISCOVERY_CONTRACT_OWNER,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,

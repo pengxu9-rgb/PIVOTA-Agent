@@ -12,6 +12,15 @@ function countMatches(value, pattern) {
   return (String(value || '').match(pattern) || []).length;
 }
 
+// The banner test on precomputed numbers, for a string that is already normalised.
+function isUppercaseDominantCounts(length, uppercaseMatches, lowercaseMatches) {
+  return (
+    length >= 24 &&
+    uppercaseMatches >= 10 &&
+    uppercaseMatches >= Math.max(3, lowercaseMatches * 3)
+  );
+}
+
 function isUppercaseDominantBanner(value) {
   const raw = String(value || '');
   // Normalising only ever collapses whitespace and trims, so it can only shrink.
@@ -74,25 +83,45 @@ function stripExternalSeedMarketingBannerPrefix(value) {
   // boundary; truncation can only hide a lowercase letter and make us miss a
   // banner, never invent one.
   const tokens = Array.from(scanWindow.matchAll(/\S+/g));
+  // Every candidate boundary used to re-slice the prefix before it, re-normalise it, split it, and
+  // count its upper- and lowercase letters with two global regexes: quadratic in the window, and run
+  // for every recall block of every seed. On a brand page that fetched ~200 seeds it was ~0.9s of
+  // synchronous CPU per request (prod CPU profile, 2026-09-17: Fenty Beauty 1,692ms wall, 883ms here).
+  //
+  // The checks only ever need four numbers about the prefix, and the boundary only moves forward, so
+  // they are accumulated in one pass. Each is the old expression, exactly, because `normalized`
+  // (and so the window) has no leading or trailing space and exactly one space between tokens:
+  //   leadingPrefix            = window.slice(0, b - 1): non-empty whenever b > 0
+  //   leadingBody              = normalized.slice(b):    never empty, length normalized.length - b
+  //   leadingPrefix split count = the number of tokens that start before b
+  //   isUppercaseDominantBanner(leadingPrefix) = the same 24-char floor and letter counts over [0, b)
+  let countedTo = 0;
+  let uppercaseBefore = 0;
+  let lowercaseBefore = 0;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     const tokenValue = String(token[0] || '');
     if (!/[a-z]/.test(tokenValue)) continue;
     const tokenIndex = token.index || 0;
     const previousToken = index > 0 ? String(tokens[index - 1][0] || '') : '';
-    const bodyStartIndex =
-      /^(?:A|An)$/i.test(previousToken) && Number.isInteger(tokens[index - 1]?.index)
-        ? tokens[index - 1].index
-        : tokenIndex;
-    // Prefix from the bounded window (identical bytes, bounded cost); body from
-    // the full text, because the body is what gets returned.
-    const leadingPrefix = scanWindow.slice(0, bodyStartIndex).trim();
-    const leadingBody = normalized.slice(bodyStartIndex).trim();
-    if (!leadingPrefix || !leadingBody) continue;
-    if (leadingPrefix.split(/\s+/).length < 6) continue;
-    if (!isUppercaseDominantBanner(leadingPrefix)) continue;
-    if (leadingBody.length < 24) continue;
-    return leadingBody;
+    const startsAtArticle =
+      /^(?:A|An)$/i.test(previousToken) && Number.isInteger(tokens[index - 1]?.index);
+    const bodyStartIndex = startsAtArticle ? tokens[index - 1].index : tokenIndex;
+    // bodyStartIndex never moves backwards: it is this token or the one before, and the previous
+    // candidate's was at most the previous token.
+    for (; countedTo < bodyStartIndex; countedTo += 1) {
+      const code = scanWindow.charCodeAt(countedTo);
+      if (code >= 65 && code <= 90) uppercaseBefore += 1;
+      else if (code >= 97 && code <= 122) lowercaseBefore += 1;
+    }
+    if (bodyStartIndex <= 0) continue;
+    const tokensBefore = startsAtArticle ? index - 1 : index;
+    if (tokensBefore < 6) continue;
+    const prefixLength = bodyStartIndex - 1;
+    if (!isUppercaseDominantCounts(prefixLength, uppercaseBefore, lowercaseBefore)) continue;
+    const bodyLength = normalized.length - bodyStartIndex;
+    if (bodyLength < 24) continue;
+    return normalized.slice(bodyStartIndex);
   }
 
   return normalized;

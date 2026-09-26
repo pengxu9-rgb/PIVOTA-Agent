@@ -1,5 +1,7 @@
 'use strict';
 
+const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
+
 // shop.find_products — grounded product/brand lookup for /v1/chat.
 //
 // Unlike reco.step_based (a routine recommender that LLM-generates candidates and
@@ -146,6 +148,12 @@ class ShopFindProductsSkill extends BaseSkill {
     // cannot surface an over-budget card.
     const rows = mappedRows.filter((row) => isWithinPriceConstraint(row, priceConstraint));
 
+    // COUNTED: the other skill_router_v2 producer of a recommendations card.
+    recordAuroraRecoAnswerPath({
+      door: 'skill_router',
+      path: 'skill_find_products',
+      served: rows.length > 0,
+    });
     if (rows.length > 0) {
       return {
         cards: [{

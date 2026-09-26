@@ -1,5 +1,8 @@
 'use strict';
 
+const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
+const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
+
 // recommend_products — a NEED in natural language → a reasoned shortlist, as agent-facing Signals.
 //
 // This is the bridge from Pivota's prompt-level recommendation lane (the Aurora BFF's
@@ -233,8 +236,21 @@ function hasBeautyMarker(need) {
  */
 function offVerticalMarker(need) {
   if (!nonEmpty(need)) return null;
-  if (hasBeautyMarker(need)) return null;
+  // Resolve the object of a narrow non-beauty phrase before ambiguous nouns such as foundation
+  // or oil can suppress the ordinary gate. A cosmetic used at home or to remove machine oil stays in.
   const n = normalizeForMatch(need);
+  const contextual = anchored([
+    String.raw`foundations?\s+(?:for|of|under|beneath)\s+(?:(?:my|our|the|a|an|new)\s+)*(?:houses?|homes?|buildings?|garages?|sheds?)(?!\s+part(?:y|ies)\b)`,
+    String.raw`(?:house|building|concrete|structural)\s+foundations?`,
+    String.raw`(?:engine|motor|machine|chainsaw|gear)\s+(?:oils?|lubricants?)`,
+    String.raw`(?:oils?|lubricants?)\s+(?:for|in)\s+(?:(?:my|our|the|a|an)\s+)*(?:chainsaws?|engines?|motors?|machines?|cars?|lawn mowers?)`,
+  ]).exec(n);
+  if (contextual) {
+    const cosmeticUse = /\b(?:cleansers?|cleansing oils?|hand soaps?|body wash|makeup removers?|moisturizers?|sunscreens?)\b[^.!?;]{0,80}\b(?:remove|wash off|clean off|after|while|during)\b/i.exec(n);
+    const negated = /\b(?:not|without|avoiding)\s+$/i.test(n.slice(0, contextual.index));
+    if (!negated && !(cosmeticUse && cosmeticUse.index < contextual.index)) return contextual[0];
+  }
+  if (hasBeautyMarker(need)) return null;
   const hard = OFF_VERTICAL_HARD_RE.exec(n) || OFF_VERTICAL_CJK_RE.exec(need);
   if (hard) return hard[0];
   if (BEAUTY_WEAK_RE.test(n)) return null;
@@ -435,7 +451,17 @@ function markPriceViolation(signal, ceiling) {
   // one would be the same fabrication this file's header guards against.
   // MUTATED IN PLACE, deliberately: `v.fit` and `v.lane_confidence` are the same object (see
   // recommendationItemToSignal), and reassigning would split them and leave the alias stale.
-  if (v.lane_confidence.level !== null) v.lane_confidence.level = 'low';
+  // TWO KINDS OF NULL, and only one of them may be overwritten.
+  //
+  // 'ungrounded' means the product is not in the catalog: there is no object to measure, so a band
+  // here would be invented, and test 4b-4 pins that it must not be. 'positional' means we simply do
+  // not score this answer path — but a ceiling breach IS something we measured and the item failed,
+  // so it earns a band where position does not. The guard used to be `level !== null`, which lumped
+  // the two together, so once positional rows lost their band a real violation stopped being
+  // downgraded at all while the description called that null "no information".
+  if (v.lane_confidence.level !== null || ['positional', 'catalog_rebound'].includes(v.lane_confidence.basis)) {
+    v.lane_confidence.level = 'low';
+  }
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -522,7 +548,20 @@ function normalizeConstraints(raw) {
  * `watchouts`, `fit_level`, `evidence_grade` and `pdp_open.directUrl` — none of which this lane
  * emits — so every real call answered with empty reasoning and a null price.
  */
-function recommendationItemToSignal(item, { rank } = {}) {
+// `confidenceBasis` says what the lane's `score` on this item is MADE OF — see
+// recommendation_meta.confidence_basis. It defaults to null ('unknown'), which behaves exactly as
+// before for any caller that does not know about it; only a caller that positively reports
+// 'positional' or a catalog identity replacement suppresses the band.
+function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
+  if (recommendationIdentityConflict(item)) return null;
+  // Per-row basis (stamped by applyStrictConformingTopUp on catalog filler) overrides the
+  // answer-level one. Without it a mixed answer labels its filler as the model's own estimate.
+  //
+  // ONLY the namespaced key is trusted. A plain `score_basis` is a key the MODEL can emit, and every
+  // transform on the lane spreads unknown keys through, so reading it let a model row claim
+  // 'model_self_report' inside a positional answer and take back the band. Reading only the
+  // server-written name closes that.
+  const effectiveBasis = str(item && item.__pivota_score_basis) || confidenceBasis;
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
@@ -620,7 +659,21 @@ function recommendationItemToSignal(item, { rank } = {}) {
         // capped the REAL item to fit=low, so the model's own score outranked the only thing an agent
         // could actually buy). Fit-to-catalog is unmeasurable for a product that is not in the catalog;
         // an asserted band there is a model claim with no object, the class this file exists to strip.
-        level: grounded ? scoreBand(finiteNumber(item.score)) : null,
+        // A POSITIONAL SCORE IS NOT A BAND EITHER — the same argument as the ungrounded case above,
+        // one step further. The catalog paths set `score = Math.max(72, 95 - index * 3)`, so with a
+        // shortlist of six every item scores >= 80 and bands to 'high' regardless of what it is.
+        // Measured on prod 2026-09-09: a bronzer need answered with three cleansers, all 'high'.
+        // Banding a row's POSITION as the lane's certainty about it is an assertion with no object,
+        // which is the class this file exists to strip.
+        // A ROW'S OWN BASIS BEATS THE ANSWER'S. The lane builds MIXED answers: with a price ceiling
+        // set, applyStrictConformingTopUp appends catalog rows (positional scores) into an
+        // llm_primary answer, and the answer-level basis would vouch for them as the model's own
+        // estimate — banding filler `high` above the model's actual pick at `medium`.
+        // A catalog replacement also cannot inherit the model's confidence in the original product.
+        level: grounded && effectiveBasis !== 'positional' && effectiveBasis !== 'catalog_rebound' ? scoreBand(finiteNumber(item.score)) : null,
+        // Why there is (or is not) a band, so an agent can tell "we are not sure" from "we do not
+        // measure this on this answer path". Without it, null reads as low confidence.
+        basis: grounded ? (effectiveBasis || 'unknown') : 'ungrounded',
       },
     },
     evidence: {
@@ -821,6 +874,11 @@ function makeRecommendProducts(deps = {}) {
         // hold. Without it the lane has no idea whether one conforming item is the whole answer or a
         // third of it.
         shortlistTarget: limit,
+        // THIS DOOR RECORDS ITS OWN ANSWER PATH, below, once the shortlist is final. The lane records
+        // `served` from ITS final list, but this bridge then drops every ungrounded row and every
+        // row whose price probe came back unresolvable — so an all-ungrounded turn, which is the
+        // #2155 failure exactly, would be counted as served while the partner receives nothing.
+        deferAnswerPathRecord: true,
       });
     } catch (err) {
       // The set id goes IN THE LOG, not just the response. `lane_unavailable` returns zero
@@ -832,6 +890,7 @@ function makeRecommendProducts(deps = {}) {
         { err: err?.message || String(err), recommendation_set_id: recommendationSetId },
         'recommend_products lane failed',
       );
+      recordAuroraRecoAnswerPath({ door: 'agent_tool', path: 'none', served: false });
       return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt, recommendation_set_id: recommendationSetId } };
     }
     const norm = isPlainObject(result?.norm) ? result.norm : null;
@@ -845,9 +904,19 @@ function makeRecommendProducts(deps = {}) {
     // order preserved); violating items are kept only in slots left over, each carrying an explicit
     // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
     // never displace a conforming item, and never travels as a clean recommendation.
+    const laneConfidenceBasis = firstString(
+      isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.confidence_basis : null,
+    ) || null;
     const projected = [];
+    let identityMismatchSuppressed = 0;
     for (const item of items) {
-      const s = recommendationItemToSignal(item, {});
+      // A price check cannot repair a product whose evidence/destination belongs to another ID.
+      // Withhold the complete row before projection, verification, or buyer-visible notes escape.
+      if (recommendationIdentityConflict(item)) {
+        identityMismatchSuppressed += 1;
+        continue;
+      }
+      const s = recommendationItemToSignal(item, { confidenceBasis: laneConfidenceBasis });
       if (s) projected.push(s);
     }
     // NOTHING UNBUYABLE LEAVES THIS FUNCTION. Two independent ways a signal can carry no purchasable
@@ -1090,6 +1159,14 @@ function makeRecommendProducts(deps = {}) {
     // partner waited; stamping the lane's latency alone would understate the call by that much.
     const latencyMs = now() - startedAt;
 
+    // THE ANSWER IS FINAL HERE, and only here. `signals` is what the partner agent actually receives,
+    // after the resolvability pass and the price probe have removed rows the lane still counted.
+    recordAuroraRecoAnswerPath({
+      door: 'agent_tool',
+      path: result?.structuredSource,
+      served: signals.length > 0,
+    });
+
     return {
       subject,
       signals,
@@ -1104,7 +1181,16 @@ function makeRecommendProducts(deps = {}) {
         recommendation_set_id: recommendationSetId,
         // Lane-level certainty. On metadata on purpose: the sanitizer strips `confidence` from PRODUCT nodes;
         // this node carries no product identity.
-        confidence_overall: confidence,
+        //
+        // NULL WHEN THE NUMBER IS NOT A JUDGEMENT. The catalog paths hard-code 0.9 (and the transient
+        // fallback 0.62) regardless of the need, the items or how well either matched — so a bronzer
+        // need answered with three cleansers reported 0.9. Reporting a constant as certainty is worse
+        // than reporting nothing: an agent can route around a null, but it cannot route around a
+        // confident-looking number that means "the catalog code ran".
+        confidence_overall: laneConfidenceBasis === 'positional' ? null : confidence,
+        // What that number is made of, always present: 'model_self_report' | 'positional' | 'none'.
+        // Read it before presenting any certainty to a buyer.
+        confidence_basis: laneConfidenceBasis || 'unknown',
         missing_info: asStringArray(payload.missing_info, 8),
         warnings: asStringArray(payload.warnings, 8),
         grounding_status: firstString(payload.grounding_status, meta.grounding_status) || null,
@@ -1117,7 +1203,7 @@ function makeRecommendProducts(deps = {}) {
             // The lane DID answer, but every item it produced was an archetype it could not resolve
             // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
             // truth is that nothing it produced was buyable — a different problem with a different fix.
-            || (suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
+            || (identityMismatchSuppressed > 0 ? 'identity_mismatch' : suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
           : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
@@ -1141,6 +1227,7 @@ function makeRecommendProducts(deps = {}) {
         // A lane defect, not a policy outcome (see the suppression block): an item that claimed
         // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
         ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
+        ...(identityMismatchSuppressed > 0 ? { identity_mismatch_suppressed: identityMismatchSuppressed } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
         // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
         // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
@@ -1178,8 +1265,8 @@ function makeRecommendProducts(deps = {}) {
         // Counts only items projection could not IDENTIFY (items minus projected), not the whole
         // lane output: an empty shortlist can now also mean identified items were dropped as
         // unresolvable, and those belong to price_verification.unresolvable, not to this key.
-        ...(signals.length === 0 && items.length > projected.length
-          ? { dropped_unidentified_items: items.length - projected.length }
+        ...(signals.length === 0 && items.length > projected.length + identityMismatchSuppressed
+          ? { dropped_unidentified_items: items.length - projected.length - identityMismatchSuppressed }
           : {}),
       },
     };

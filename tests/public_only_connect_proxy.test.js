@@ -42,7 +42,12 @@ test('launches Chromium through the connection-bound proxy instead of direct mer
   const proxy = { start: jest.fn().mockResolvedValue({ server: 'http://127.0.0.1:32123' }), close: jest.fn().mockResolvedValue() };
   const page = {
     goto: jest.fn().mockResolvedValue(), url: () => 'https://merchant.example/product/a',
-    locator: () => ({ first: () => ({ getAttribute: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0), isVisible: jest.fn() }), innerText: jest.fn().mockResolvedValue('') }),
+    on: jest.fn(),
+    locator: () => ({
+      count: jest.fn().mockResolvedValue(0),
+      first: () => ({ getAttribute: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0), isVisible: jest.fn() }),
+      innerText: jest.fn().mockResolvedValue(''),
+    }),
     getByRole: () => ({ count: jest.fn().mockResolvedValue(0), first: () => ({ isVisible: jest.fn().mockResolvedValue(false) }) }),
   };
   const context = { route: jest.fn().mockResolvedValue(), newPage: jest.fn().mockResolvedValue(page) };
