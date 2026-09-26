@@ -47973,57 +47973,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               });
         return res.json(directResponse);
       }
-      const earlyMerchantIdForBeauty = String(search.merchant_id || search.merchantId || '').trim();
-      const earlyMerchantIdsRawForBeauty = search.merchant_ids || search.merchantIds;
-      const earlyMerchantIdsForBeauty =
-        Array.isArray(earlyMerchantIdsRawForBeauty)
-          ? earlyMerchantIdsRawForBeauty.map((v) => String(v || '').trim()).filter(Boolean)
-          : typeof earlyMerchantIdsRawForBeauty === 'string'
-            ? earlyMerchantIdsRawForBeauty
-                .split(',')
-                .map((v) => String(v || '').trim())
-                .filter(Boolean)
-            : [];
-      const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
-      const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
-      if (
-        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        !canonicalSigEntityMode &&
-        pivotBeautyContractInvoke &&
-        queryText.length > 0 &&
-        (earlyBeautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
-        !earlyHasMerchantScopeForBeauty
-      ) {
-        try {
-          const earlySourceNormalized = normalizeAgentSource(source);
-          const earlyCreatorScoped = isCreatorUiSource(source) || earlySourceNormalized === 'creator-agent';
-          const beautyDirectStartedAt = Date.now();
-          let directResponse;
-          try {
-            directResponse = await searchBeautyExternalSeedProductsMainline({
-              search,
-              metadata,
-              intent: effectiveIntent,
-              creatorScoped: earlyCreatorScoped,
-            });
-          } finally {
-            // See the early_indexed lane: also answers outright, also needs the throw path measured.
-            recordFpmStage('beauty_direct_recall', beautyDirectStartedAt, {
-              returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
-              lane: 'mainline_direct',
-              failed: directResponse === undefined ? true : null,
-            });
-          }
-          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
-          return res.json(directResponse);
-        } catch (err) {
-          logger.warn(
-            { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty contract primary recall failed',
-          );
-          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
-        }
-      }
+      // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
+      // request this spot used to (pivot contract, beauty-like or SQC, no merchant scope) with the
+      // same call and the same response; in the 30 days to 2026-09-25 this spot answered 2 of
+      // 3,791 requests. Only a creator-agent-ui request can see a difference: its cache search
+      // (which returns only with CREATOR_CACHE_SHORT_CIRCUIT_ENABLED, off) now runs first.
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
 
@@ -48415,19 +48369,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
+      // A pivot beauty contract request takes this call with no product_only / strict conditions:
+      // that is the gate of the mainline_direct call this replaced, so its requests land here
+      // unchanged. Every other request keeps the conditions it always had.
       const creatorBeautyMainlineDirectEligible =
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        !findProductsMultiProductOnly &&
         !canonicalSigEntityMode &&
-        (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
+        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
+        !hasMerchantScope &&
         (
           isPivotBeautyContractInvokeRequest({ operation, req }) ||
-          shoppingCanonicalMainlineDirectEligible ||
-          routeSearchQualityContractApplied
-        ) &&
-        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
-        !hasMerchantScope;
+          (
+            !findProductsMultiProductOnly &&
+            (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
+            (shoppingCanonicalMainlineDirectEligible || routeSearchQualityContractApplied)
+          )
+        );
       if (creatorBeautyMainlineDirectEligible) {
         try {
           const creatorDirectStartedAt = Date.now();
