@@ -63,12 +63,29 @@ function normalize(value) {
 // Emits the normalised span AND its separator-free squash, so either spelling
 // of the query finds the brand. No-op for a brand with no internal separator,
 // where the two forms are the same string.
+//
+// A polluted brand field like "Biodance | Better Formula for Better Glow"
+// (brand + tagline) normalises to one six-token span, so a bare `biodance`
+// query never matches it. The leading segment before a tagline separator
+// ('|' or newline) is indexed too, with its own squash. Only the FIRST segment
+// is the brand: later segments are marketing copy and are never indexed on
+// their own, or category-ish words would become brand hits. The split reads
+// the RAW string -- `normalize` has already turned '|' into a space -- so a
+// caller that passes an already-normalised brand gets exactly the old output.
 function brandAliases(rawBrand) {
-  const full = normalize(rawBrand);
-  if (!full) return [];
-  const out = [full];
-  const squashed = full.replace(/[\s\-]/g, '');
-  if (squashed && squashed !== full) out.push(squashed);
+  const out = [];
+  const add = (value) => {
+    const full = normalize(value);
+    if (!full) return;
+    if (!out.includes(full)) out.push(full);
+    const squashed = full.replace(/[\s\-]/g, '');
+    if (squashed && !out.includes(squashed)) out.push(squashed);
+  };
+  const raw = String(rawBrand || '');
+  add(raw);
+  if (out.length === 0) return out;
+  const lead = raw.split(/[|\n]/, 1)[0];
+  if (lead !== raw) add(lead);
   return out;
 }
 
