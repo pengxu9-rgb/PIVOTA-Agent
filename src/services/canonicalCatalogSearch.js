@@ -646,17 +646,16 @@ function buildSignificantTokens(lowered) {
 }
 
 // Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
-// lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
-// variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+// lane's cap discipline (the since-deleted findProductsExternalSeedDirectRetrieval
+// capped its variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
 const RECALL_DOC_PATTERN_CAP = 16;
 
 /**
  * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
  * query. Pure function; mirrors the external-seed lane's approach
  * (search_text LIKE ANY over token patterns — see
- * buildExternalSeedRecallLikePredicate in externalSeedRecall.js and its
- * caller in findProductsExternalSeedDirectRetrieval.js; that caller derives
- * patterns from injected tokenizers so it is not reusable here).
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js; its old
+ * caller derived patterns from injected tokenizers so it was not reusable here).
  *
  * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
  *   1. the lowered full phrase,
@@ -1769,6 +1768,15 @@ async function fetchCanonicalChainRows(args = {}) {
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        -- At the SAME price a real variant beats the synthetic product-level sku (\`<pk>::canonical\`,
+        -- whose source_variant_id is the product key). The hashed offer_id alone picked between them at
+        -- random, and a card carrying the synthetic id cannot be matched to the store's variant:
+        -- liveMerchantSearchPrice reported variant_missing on 4 of 17 bluemercury.com cards (2026-09-25).
+        -- Also the placeholder ids the backend derives when a store gives no variant id ('default',
+        -- '<id>-default'; services/variant_identity.py): none of them names a variant the store sells.
+        CASE WHEN s.sku_key LIKE '%::canonical' OR s.source_variant_id IS NULL OR s.source_variant_id = s.product_key
+               OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
+          THEN 1 ELSE 0 END ASC,
         o.offer_id ASC
       LIMIT 1`
     : `

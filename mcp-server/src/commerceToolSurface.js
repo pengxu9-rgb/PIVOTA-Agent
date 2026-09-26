@@ -36,6 +36,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
+import { tryReapAgenticCheckout } from "./ucpReapAgenticLane.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
@@ -197,7 +198,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -313,14 +314,38 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     default OFF). Deliberately AFTER the identity check (2) — an escalated checkout is still a buyer's
     //     checkout — and after the allowlist, so it only ever sees fields this op defines. See
     //     ucpCheckoutEscalation.js for the classification rule and the wire shape.
+    // 7-early) DIALECT RESULT SHAPING — see step 7 below. Defined here so the Reap lane's answer (3a-i) leaves
+    //     through the SAME shaper every other result of this call does.
+    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+
     let resolveVariantsForThisCall = resolveDefaultVariants;
     if (dialect === TOOL_DIALECTS.ucp && op.capability === "checkout") {
       // ONE read per product per call: the escalation classifier and the checkout resolver both perform the
       // unscoped `get_product` read; a memoizing view of the executor lets a contracted cart (classified
       // "kernel path" here) be read once and the resolver reuse the same result. Scoped to this call.
       const reads = memoizedProductReads(executor);
+      // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
+      //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
+      //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
+      //     uses: a row Pivota transacts returns null there before anything else, and so reaches the kernel
+      //     below exactly as it did without this lane. Kill-switched (REAP_AGENTIC_LANE_ENABLED, default OFF)
+      //     and inert without an injected backend client. Its answer carries no kernel state, so it takes the
+      //     result half of this door here — the SAME money filter (step 5) and the SAME dialect shaper (step 7)
+      //     as a kernel result — instead of the executor.
+      const reapHints = [];
+      const reap = await tryReapAgenticCheckout({
+        op, params, ctx, executor: reads, ucpArgs: toolArgs, attested,
+        client: reapAgentic && reapAgentic.client, log: logger, hints: reapHints,
+      });
+      if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
-      if (escalated) return escalated;
+      // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
+      // storefront answer only. With no hint the escalation answer is returned as the very same object.
+      if (escalated) {
+        return reapHints.length
+          ? { ...escalated, messages: [...(Array.isArray(escalated.messages) ? escalated.messages : []), ...reapHints] }
+          : escalated;
+      }
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
@@ -360,7 +385,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    dialect-agnostic params, and both dialects read the same entry — shaping before the cache would let
     //    a UCP call poison the entry the next /mcp call reads, and vice versa. The shaper is pure and runs on
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
-    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+    //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);

@@ -1097,6 +1097,9 @@ async function loadAffectedProductAnchorCandidates({
         FROM external_product_seeds eps
         LEFT JOIN catalog_products cp
           ON cp.source_product_id = eps.external_product_id
+          -- Path-C / retailer-lane seeds point at their catalog row only through
+          -- attached_product_key (same join as the affected-products selector).
+          OR cp.product_key = eps.attached_product_key
         WHERE COALESCE(eps.status, 'active') = 'active'
           AND upper(COALESCE(eps.market, $2)) = $2
           AND (
@@ -1847,6 +1850,31 @@ function overlapScore(left, right) {
   return hits / Math.max(a.size, b.size);
 }
 
+// A shared category is a shelf, not evidence that two products are alike. Two equal one-word
+// categories ("mask", "sunscreen") overlap 1.0, and through the max() in scoreCandidateForAnchor
+// that alone scored every same-shelf pair 1.0. Category agreement is capped at the exact-category
+// floor, and catch-all shelves (beauty/haircare/general -> "general") count for nothing.
+const CATEGORY_MATCH_CEILING = 0.72;
+const PLACEHOLDER_CATEGORY_TOKENS = new Set([
+  'default',
+  'general',
+  'misc',
+  'miscellaneous',
+  'none',
+  'other',
+  'others',
+  'uncategorized',
+  'unknown',
+]);
+
+function informativeTokenText(value, excluded = PLACEHOLDER_CATEGORY_TOKENS) {
+  return Array.from(tokenSet(value)).filter((token) => !excluded.has(token)).join(' ');
+}
+
+function categoryTokens(product = {}) {
+  return [...tokenSet(product.category), ...tokenSet(product.category_taxonomy)];
+}
+
 function hasIntersectingIdentity(left, right) {
   const a = new Set(productIdentityKeys(left));
   for (const key of productIdentityKeys(right)) {
@@ -1947,15 +1975,22 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
     candidate.intel_text,
   ].filter(Boolean).join(' ');
   const nameScore = overlapScore(anchor.name, candidate.name);
-  const categoryScoreBase = Math.max(
-    overlapScore(anchor.category, candidate.category),
-    overlapScore(anchor.category_taxonomy, candidate.category_taxonomy),
-    overlapScore(anchor.name, candidate.category),
-    nameScore * 0.65,
+  const anchorCategory = informativeTokenText(anchor.category);
+  const candidateCategory = informativeTokenText(candidate.category);
+  const categoryMatch = Math.min(
+    CATEGORY_MATCH_CEILING,
+    Math.max(
+      overlapScore(anchorCategory, candidateCategory),
+      overlapScore(informativeTokenText(anchor.category_taxonomy), informativeTokenText(candidate.category_taxonomy)),
+      overlapScore(anchor.name, candidateCategory),
+    ),
   );
-  const exactCategory =
-    normalizeLower(anchor.category) &&
+  const categoryScoreBase = Math.max(categoryMatch, nameScore * 0.65);
+  const exactCategory = Boolean(anchorCategory) &&
     normalizeLower(anchor.category) === normalizeLower(candidate.category);
+  // Tags that only repeat a category (retailer rows carry tags = [category leaf]) are the category
+  // term again; they must not re-enter as product evidence below.
+  const shelfTokens = new Set([...PLACEHOLDER_CATEGORY_TOKENS, ...categoryTokens(anchor), ...categoryTokens(candidate)]);
   const categoryUseCase = clamp01(
     Math.max(categoryScoreBase, exactCategory ? 0.72 : 0) +
       (legacyMatch ? 0.12 : 0) +
@@ -1965,7 +2000,7 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
   const ingredientScore = Math.max(
     overlapScore(anchor.ingredient_text, candidate.ingredient_text),
     overlapScore(anchor.description, candidate.description),
-    overlapScore(anchor.tags, candidate.tags),
+    overlapScore(informativeTokenText(anchor.tags, shelfTokens), informativeTokenText(candidate.tags, shelfTokens)),
     overlapScore(anchorText, candidateText) * 0.75,
     categoryUseCase * 0.72,
   );
@@ -2015,13 +2050,34 @@ function compareScoredCandidates(a, b) {
   return normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref));
 }
 
+// Fields that name one listing. They move as a block from a single record, never field by field.
+const LISTING_IDENTITY_FIELDS = [
+  'product_ref',
+  'product_id',
+  'product_key',
+  'source_product_id',
+  'pivota_signature_id',
+  'content_key',
+];
+
+// A retailer-lane catalog row and the external_product_seeds row attached to it collapse into one
+// family. Serving reads edges by `product:sig_<hash>` and the affected selector emits the sig, so
+// when only one side carries a pivota signature, that side owns the merged identity.
+function listingIdentityOwner(preferred, secondary) {
+  const hasSig = (item) => Boolean(normalizeString(item?.pivota_signature_id));
+  return !hasSig(preferred) && hasSig(secondary) ? secondary : preferred;
+}
+
 function mergeDuplicateCandidate(existing, candidate) {
   if (!existing) return candidate;
   const preferred = compareScoredCandidates(existing, candidate) <= 0 ? existing : candidate;
   const secondary = preferred === existing ? candidate : existing;
+  const identityOwner = listingIdentityOwner(preferred, secondary);
+  const identity = Object.fromEntries(LISTING_IDENTITY_FIELDS.map((field) => [field, identityOwner[field]]));
   return {
     ...secondary,
     ...preferred,
+    ...identity,
     source_refs: mergeSourceRefs(existing.source_refs, candidate.source_refs),
     evidence_grade: betterEvidenceGrade(existing.evidence_grade, candidate.evidence_grade),
     category_taxonomy: normalizeCategoryTaxonomy(existing.category_taxonomy, candidate.category_taxonomy),

@@ -4,6 +4,7 @@
 // the storefront. A variant id must match exactly, or every variant must publish the same
 // price and currency; a product-level minimum is not an offer for an arbitrary variant.
 const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
+const { isRestatedProductId } = require('./merchantVariantSource');
 
 const publicFetch = createPublicNetworkFetch();
 const cache = new Map();
@@ -22,7 +23,14 @@ function targetOf(card) {
     if (url.protocol !== 'https:' || url.username || url.password) return null;
     const match = url.pathname.match(/^\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
     if (!match) return null;
-    const variant = String(card.source_variant_id || url.searchParams.get('variant') || '').trim();
+    // A variant id that only restates the product (the synthetic `<pk>::canonical` sku carries the product
+    // key) or a derived placeholder (`default`, `<id>-default`) names no variant the store sells: treat it
+    // as absent, so the price is verified by the URL's ?variant= or by every variant agreeing, instead of
+    // failing as variant_missing.
+    let own = String(card.source_variant_id || '').trim();
+    const productKey = String(card.product_key || card.catalog_product_key || '').trim();
+    if (own && (isRestatedProductId(own, productKey) || own === 'default' || own.endsWith('-default'))) own = '';
+    const variant = String(own || url.searchParams.get('variant') || '').trim();
     return { url: `${url.origin}/products/${match[1]}.json`, variant };
   } catch {
     return null;

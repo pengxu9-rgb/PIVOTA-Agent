@@ -135,19 +135,46 @@ test('lane is the LAST lane recorded', () => {
   assert.equal(mt.laneFromStageBreakdown([]), null);
 });
 
+test('query_source and primary_path_used are read from the page sent, for lanes that set no stage', () => {
+  // Measured 2026-09-26: the discovery bridge and ingredient-direct lanes record no fpm stage and
+  // no lane, so 31% of 30 days of traffic could not be attributed to the lane that served it.
+  const body = {
+    products: [],
+    metadata: { query_source: 'beauty_discovery_mainline', route_health: { primary_path_used: 'local_discovery_bridge' } },
+  };
+  const record = mt.buildMarketTelemetry({ operation: 'find_products_multi', body, stages: [{ stage: 'route_entry' }] });
+  assert.equal(record.query_source, 'beauty_discovery_mainline');
+  assert.equal(record.primary_path_used, 'local_discovery_bridge');
+  assert.equal('lane' in record, false);
+});
+
+test('served-by fields are absent, never empty, when the page does not say; and capped', () => {
+  for (const body of [null, {}, { metadata: null }, { metadata: [] }, { metadata: { query_source: '  ' } },
+    { metadata: { query_source: 7, route_health: 'x' } }]) {
+    const served = mt.servedByFromBody(body);
+    assert.deepEqual(served, {}, JSON.stringify(body));
+  }
+  const long = mt.servedByFromBody({ metadata: { query_source: 'q'.repeat(500) } });
+  assert.equal(long.query_source.length, 65);
+});
+
 test('the record is emitted for find_products_multi ONLY, and its keys are all new', () => {
   assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_offers', payload: { search: { market: 'SG' } } }), {});
   assert.deepEqual(mt.buildMarketTelemetry({ operation: null }), {});
   const record = mt.buildMarketTelemetry({
     operation: 'find_products_multi',
     observation: { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'] },
-    body: { products: [{ currency: 'SGD', source: 'canonical_chain' }] },
+    body: {
+      products: [{ currency: 'SGD', source: 'canonical_chain' }],
+      metadata: { query_source: 'agent_products_beauty_external_seed_mainline', route_health: { primary_path_used: 'beauty_external_seed_mainline' } },
+    },
     stages: [{ lane: 'early_indexed' }],
   });
   assert.deepEqual(record, {
     market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null,
     served_currencies: ['SGD'], served_currency_mismatch: false, served_price_sources: { canonical_chain: 1 },
     lane: 'early_indexed',
+    query_source: 'agent_products_beauty_external_seed_mainline', primary_path_used: 'beauty_external_seed_mainline',
   });
   const existing = new Set(['gateway_request_id', 'client_channel', 'key_fingerprint', 'operation', 'status',
     'latency_ms', 'upstream_ms', 'gateway_retries', 'fpm_stage_breakdown', 'fpm_stage_total_ms',
