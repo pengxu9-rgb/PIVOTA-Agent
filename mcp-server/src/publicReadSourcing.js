@@ -23,6 +23,8 @@ const DEFAULT_RESELLER_HOSTS = Object.freeze([
   'selfridges.com', 'harrods.com', 'spacenk.com', 'coupang.com', 'gmarket.co.kr',
   // Full parity with offerSellerIdentity: extra Amazon TLDs / shortlinks + BestBuy + OY Korea.
   'amazon.ca', 'amazon.de', 'amzn.to', 'amzn.com', 'bestbuy.com', 'oliveyoung.co.kr',
+  // UK/AU beauty retailers (pivota-backend #2363, review of #2359).
+  'beautybay.com', 'adorebeauty.com.au', 'chemistwarehouse.com.au',
 ]);
 
 function hostOf(url) {

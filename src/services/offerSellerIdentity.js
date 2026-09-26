@@ -36,6 +36,8 @@ const DEFAULT_KNOWN_RETAILER_DOMAINS = Object.freeze([
   // Dept-store / marketplace beauty retailers (added Fix Plan C read-review):
   'selfridges.com', 'harrods.com', 'spacenk.com',
   'coupang.com', 'gmarket.co.kr',
+  // UK/AU beauty retailers (pivota-backend #2363, review of #2359).
+  'beautybay.com', 'adorebeauty.com.au', 'chemistwarehouse.com.au',
 ]);
 
 // Multi-level public suffixes we recognise for SLD extraction (approx eTLD+1; not

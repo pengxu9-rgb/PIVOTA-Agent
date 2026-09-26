@@ -70,6 +70,11 @@ describe('isKnownRetailer (suffix + env-extendable)', () => {
     ['spacenk.com', true],
     ['coupang.com', true],
     ['gmarket.co.kr', true],
+    // UK/AU beauty retailers (pivota-backend #2363).
+    ['beautybay.com', true],
+    ['www.beautybay.com', true],
+    ['adorebeauty.com.au', true],
+    ['chemistwarehouse.com.au', true],
     ['fentybeauty.com', false],
     ['notulta.com', false],
   ])('isKnownRetailer(%p)=%p', (host, expected) => {

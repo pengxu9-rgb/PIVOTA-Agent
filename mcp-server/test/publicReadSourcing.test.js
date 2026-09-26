@@ -41,6 +41,7 @@ test("isResellerRow drops the retailer hosts synced from offerSellerIdentity", (
   for (const host of [
     "amazon.ca", "amazon.de", "amzn.to", "amzn.com", "bestbuy.com", "oliveyoung.co.kr",
     "selfridges.com", "harrods.com", "spacenk.com", "coupang.com", "gmarket.co.kr",
+    "beautybay.com", "adorebeauty.com.au", "chemistwarehouse.com.au",
   ]) {
     assert.equal(
       isResellerRow({ destination_url: `https://www.${host}/p/x` }, DENY),
