@@ -4,7 +4,6 @@
  "src/auroraBff/routes.js": 2,
  "src/auroraBff/travelLocalProductAuthority.js": 1,
  "src/auroraBff/travelReadinessBuilder.js": 1,
- "src/findProductsInvokeSemanticOwnerExecution.js": 1,
  "src/findProductsMulti/rerankLlm.js": 1,
  "src/observability/debugBundle.js": 1,
  "src/pdpBuilder.js": 1,

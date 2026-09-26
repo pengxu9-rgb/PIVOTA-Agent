@@ -38,9 +38,10 @@
 // 879,841 row shapes with zero narrowings against those two. Against the other implementations
 // it is strictly narrower: pdpBuilder.js:233 also accepts `purchase_route` ∈
 // {affiliate_outbound, merchant_site, external_redirect, links_out} and `commerce_mode` ∈
-// {links_out, affiliate_outbound, merchant_site} and normalises with stripHtml, and
-// findProductsInvokeSemanticOwnerExecution.js:111 matches `source` by SUBSTRING. Delegating
-// either of those to this module would flip branches — pdpBuilder's is exported and used at
+// {links_out, affiliate_outbound, merchant_site} and normalises with stripHtml (a third, in
+// findProductsInvokeSemanticOwnerExecution.js, matched `source` by SUBSTRING; that module was
+// never loaded and was deleted 2026-09-26). Delegating pdpBuilder's to this module would flip
+// branches — pdpBuilder's is exported and used at
 // 18 sites, including PDP redirect resolution and renderability.
 //
 // A SIXTH implementation exists and was missed by the original survey:

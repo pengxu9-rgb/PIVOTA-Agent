@@ -646,17 +646,16 @@ function buildSignificantTokens(lowered) {
 }
 
 // Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
-// lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
-// variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+// lane's cap discipline (the since-deleted findProductsExternalSeedDirectRetrieval
+// capped its variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
 const RECALL_DOC_PATTERN_CAP = 16;
 
 /**
  * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
  * query. Pure function; mirrors the external-seed lane's approach
  * (search_text LIKE ANY over token patterns — see
- * buildExternalSeedRecallLikePredicate in externalSeedRecall.js and its
- * caller in findProductsExternalSeedDirectRetrieval.js; that caller derives
- * patterns from injected tokenizers so it is not reusable here).
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js; its old
+ * caller derived patterns from injected tokenizers so it was not reusable here).
  *
  * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
  *   1. the lowered full phrase,
