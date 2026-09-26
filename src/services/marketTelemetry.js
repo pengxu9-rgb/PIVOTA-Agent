@@ -35,12 +35,20 @@
 //   lane                      the beauty direct lane that answered; ABSENT for every other
 //                             path, including all upstream-routed traffic -- so it cannot, on its
 //                             own, split the Python door's lanes
+//   query_source              the response's own metadata.query_source: which lane actually
+//                             served the page, for EVERY lane -- including those that record no
+//                             stage and set no `lane` (discovery bridge, ingredient direct, early
+//                             exits). `lane` says which stage ran; this says what the page claims
+//   primary_path_used         the response's metadata.route_health.primary_path_used
 
 const MAX_CURRENCIES = 8;
 const MAX_PRICE_SOURCES = 6;
 // A caller's `market` is free text. Capped so junk cannot bloat every log line or become an
 // unbounded metrics label; a real market code is two letters.
 const MAX_REQUESTED_CHARS = 16;
+// Lane names are code constants, but a lane that relays the backend's value relays whatever the
+// backend sent, so they are capped too.
+const MAX_SERVED_BY_CHARS = 64;
 
 function capRequested(raw) {
   if (raw == null) return null;
@@ -135,6 +143,27 @@ function summariseServedProducts(products = []) {
   };
 }
 
+function capServedBy(raw) {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (!text) return null;
+  return text.length > MAX_SERVED_BY_CHARS ? `${text.slice(0, MAX_SERVED_BY_CHARS)}…` : text;
+}
+
+// Which lane served the page, as the page itself says: every lane stamps metadata.query_source.
+function servedByFromBody(body) {
+  const metadata = body && typeof body === 'object' && !Array.isArray(body) ? body.metadata : null;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' ? metadata.route_health : null;
+  const querySource = capServedBy(metadata.query_source);
+  const primaryPathUsed = capServedBy(routeHealth && routeHealth.primary_path_used);
+  return {
+    ...(querySource ? { query_source: querySource } : {}),
+    ...(primaryPathUsed ? { primary_path_used: primaryPathUsed } : {}),
+  };
+}
+
 /** The lane that produced the rows: the LAST lane recorded, since every lane's failure path
  *  answers the request itself rather than falling through. */
 function laneFromStageBreakdown(stages = []) {
@@ -168,6 +197,7 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
     ...market,
     ...summariseServedProducts(products),
     ...(lane ? { lane } : {}),
+    ...servedByFromBody(body),
   };
 }
 
@@ -178,5 +208,6 @@ module.exports = {
   describeUnboundRequest,
   laneFromStageBreakdown,
   observeBoundMarket,
+  servedByFromBody,
   summariseServedProducts,
 };
