@@ -21,7 +21,7 @@
     0.3107985774329141,
     0.030067895247332704,
     0.9427740058196107,
-    0.9715036857420143,
+    0.741206,
     0.030067895247332704,
     0.05431619786614932
   ],
@@ -33,7 +33,7 @@
     0.26038883906488985,
     0.17077416936623577,
     0.21604788586058235,
-    0.12221755715291144,
+    0.054566,
     0.17077416936623577,
     0.22664057120364267
   ],
@@ -58,5 +58,12 @@
     "5pct": 0.712,
     "10pct": 0.592,
     "20pct": 0.495
+  },
+  "scoreTotal_recentred": {
+    "from_mean": 0.9715036857420143,
+    "from_sd": 0.12221755715291144,
+    "to_mean": 0.741206,
+    "to_sd": 0.054566,
+    "note": "2026-09-26 #2290: score_total re-scaled (base + (1-base)*pair evidence). Re-centred on the product edges (dupe / competitive_alternative / related_product, the labelled population) of the two-shard prod dry run on gateway cecd89171 with this branch overlaid: n=1905, mean=0.7412, sd=0.0546 (all edges incl. need nodes: n=2077, mean=0.7113, sd=0.1164). Weights untouched; no retrain."
   }
 }
