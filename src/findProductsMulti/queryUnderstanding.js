@@ -101,8 +101,16 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     // hairspray/hair spray arm added 2026-08-20 (second residue pass): both
     // spellings safe-emptied; 13 eligible hairspray-titled rows live in
     // beauty/haircare/general, inside this rule's existing broad prefix.
+    // Curl arms added 2026-09-26: `curl cream` fell through to the
+    // moisturizer rule's bare `cream` and browsed skincare/moisturize (prod
+    // recall: 4 curl rows of 200, 4.0s; the served page was 18 face creams of
+    // 20). Under beauty/haircare/ the same recall held 11 curl rows with the
+    // three Moroccanoil curl creams at the head, in 1.9s. Only a curl word
+    // followed by a styling-product noun, or curly/wavy/coily hair, is
+    // claimed: `curling mascara` (33 mascara rows carry "curl") and `curling
+    // iron` keep their homes.
     pattern:
-      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care|curl(?:s|y|ing)?(?:[-\s]+(?:defining|enhancing|refreshing|boosting))?\s+(?:creams?|custards?|gels?|mousses?|foams?|butters?|milks?|sprays?|activators?|definers?)|(?:curly|wavy|coily)\s+hair)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
   },
   {
     category: 'mascara',
@@ -432,6 +440,25 @@ function isStrictLipstickQuery(text) {
   return !/\b(lip\s*gloss(?:es)?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?)\b/i.test(raw);
 }
 
+// Shaving has no category: the backend taxonomy lists "no men's-grooming leaf"
+// (services/category_path_aliases.py), and measured on prod 2026-09-26 only 3
+// shave products are servable, filed under beauty/makeup and
+// skincare/moisturize. "shaving cream" routes to skincare/moisturize with the
+// other creams, and served 1 shave cream and 19 face creams. A shave query
+// therefore keeps only rows that name shaving themselves (the same shape as
+// strict_lipstick); fewer rows beat face creams served as shaving cream.
+// One word list for both sides: the query and the product title must name
+// shaving the same way.
+const SHAVE_WORD_PATTERN = /\b(?:shav(?:e|es|ing)|after[-\s]?shaves?|pre[-\s]?shave)\b/i;
+
+function isStrictShaveQuery(text) {
+  return SHAVE_WORD_PATTERN.test(String(text || ''));
+}
+
+function productTextNamesShaving(text) {
+  return SHAVE_WORD_PATTERN.test(String(text || ''));
+}
+
 function extractConstraintSignals(text) {
   const raw = String(text || '');
   const normalized = normalizeQueryTextForUnderstanding(raw);
@@ -677,6 +704,7 @@ function buildSearchQualityContract({
   if (explicitApparelRequest) exclusions.push('beauty_product_for_apparel_query');
   if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
   if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
+  if (understanding.hard_negatives?.strict_shave) exclusions.push('product_not_named_for_shaving');
   if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');
 
   return {
@@ -692,6 +720,7 @@ function buildSearchQualityContract({
       exclusions,
       exact_product_anchor: effectiveExactProductAnchor,
       strict_lipstick: Boolean(understanding.hard_negatives?.strict_lipstick),
+      strict_shave: Boolean(understanding.hard_negatives?.strict_shave),
       fragrance_free_skincare: Boolean(understanding.hard_negatives?.fragrance_free_skincare),
     },
     soft_preferences: {
@@ -1117,6 +1146,7 @@ function understandShoppingQuery({
     hard_negatives: {
       fragrance_free_skincare: hasFragranceFreeSkincareSignal(correctedQuery),
       strict_lipstick: isStrictLipstickQuery(correctedQuery),
+      strict_shave: isStrictShaveQuery(correctedQuery),
       non_merchandise_query: nonMerchandiseQuery,
     },
     ...(market ? { market: String(market).trim().toUpperCase() } : {}),
@@ -1135,4 +1165,6 @@ module.exports = {
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,
+  isStrictShaveQuery,
+  productTextNamesShaving,
 };

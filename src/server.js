@@ -276,6 +276,8 @@ const {
 const {
   buildSearchQualityContract,
   SEARCH_QUALITY_CONTRACT_VERSION,
+  isStrictShaveQuery,
+  productTextNamesShaving,
 } = require('./findProductsMulti/queryUnderstanding');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
@@ -18318,6 +18320,10 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
     reasons.push('strict_lipstick_mismatch');
   }
 
+  if (hard.strict_shave === true && !beautyProductMatchesStrictShaveIntent(product)) {
+    reasons.push('strict_shave_mismatch');
+  }
+
   if (hard.fragrance_free_skincare === true && productLooksLikeFragranceMerchandise(product)) {
     reasons.push('fragrance_product_for_fragrance_free_query');
   }
@@ -21151,6 +21157,21 @@ function beautyProductMatchesStrictLipstickIntent(product = {}) {
   return /\b(lipstick|lip\s*stick|liquid\s*lip|lip\s*color|lip\s*colour|rouge)\b/i.test(text);
 }
 
+// Title, name and URLs only, as for strict lipstick: a face cream whose
+// description says "soothes after shaving" is still a face cream.
+function beautyProductMatchesStrictShaveIntent(product = {}) {
+  return productTextNamesShaving(normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+    product?.merchant_canonical_url,
+  ].filter(Boolean).join(' ')));
+}
+
 function beautyQueryHasAcneOilControlIntent(queryText = '') {
   const query = String(queryText || '');
   // Oily hair/scalp is not an inferred acne or oily-skin request. Preserve
@@ -21769,6 +21790,9 @@ function scoreBeautyExternalSeedProduct({
     return { product, relevant: false, score: -45 };
   }
   if (hasStrictLipstickQueryIntent(queryText) && !beautyProductMatchesStrictLipstickIntent(product)) {
+    return { product, relevant: false, score: -55 };
+  }
+  if (isStrictShaveQuery(queryText) && !beautyProductMatchesStrictShaveIntent(product)) {
     return { product, relevant: false, score: -55 };
   }
   if (
