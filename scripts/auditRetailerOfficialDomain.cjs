@@ -5,11 +5,13 @@
  * instead of the brand's own domain. Read-only audit: counts + samples so we
  * can pick the right repair per cohort before touching data.
  *
- * Run: railway run node ./scripts/auditRetailerOfficialDomain.cjs
+ * Run: DATABASE_URL=... node ./scripts/auditRetailerOfficialDomain.cjs
+ * Railway is decommissioned and prod Postgres is VPC-only: run this from a one-off job inside
+ * the prod VPC with DATABASE_URL set, never from a laptop.
  */
 
 const { Client } = require('pg');
-const { knownRetailerDomains } = require('./offerSellerIdentity.js');
+const { knownRetailerDomains } = require('../src/services/offerSellerIdentity');
 
 const EFF_DOMAIN_SQL = `
   regexp_replace(

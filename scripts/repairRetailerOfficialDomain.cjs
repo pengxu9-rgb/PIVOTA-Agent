@@ -27,6 +27,10 @@
  * Dry-run by default. Run:
  *   railway run node ./scripts/repairRetailerOfficialDomain.cjs           # report only
  *   railway run node ./scripts/repairRetailerOfficialDomain.cjs --apply  # write
+ *
+ * Railway is decommissioned and prod Postgres is VPC-only: run this from a one-off job inside
+ * the prod VPC with DATABASE_URL set, never from a laptop.
+ * --apply WRITES PROD ROWS: it needs the operator's explicit go on a fresh dry-run, every time.
  */
 
 const { Client } = require('pg');
