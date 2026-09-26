@@ -47,6 +47,7 @@ const {
   MIN_GATE_BUDGET_MS,
   isGateEnabled,
   getMerchantPurchasabilityClient,
+  selectBuyerMarket,
 } = require('../services/merchantPurchasabilityClient');
 
 /** At most this many purchasability reads in flight for one page of offers. */
@@ -346,8 +347,8 @@ function enrichOfferCommerceMetadata(offer, options) {
 
   // THE SEAM.
   // `declinedDomains` is empty (and this is `false`) on every path where the switch is off, the
-  // backend is not enforcing, the read failed, or no market was carried — i.e. the previous
-  // behaviour, byte for byte.
+  // backend is not enforcing, or the read failed — i.e. the previous behaviour, byte for byte.
+  // (No market under ENFORCEMENT is a decline since backend #2352: no fact can exist for it.)
   const declined = declinedSetOf(options);
   const domain = readOfferMerchantDomain(offer);
   const merchantNotPurchasable = Boolean(checkoutUrl && declined && declined.has(domain));
@@ -542,18 +543,19 @@ async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
  *
  * ⚠️ CALLER-SUPPLIED ONLY. `servedMarkets.primaryMarket()` answers the DEPLOYMENT's market ('US' by
  * default) and the fact is keyed on the BUYER's; a positive fact from another vantage is evidence
- * for a human, never permission for the door. No market => `undefined` => the gate cannot ask =>
- * today's exact behaviour, logged `merchant_purchasability_unkeyable`.
+ * for a human, never permission for the door. No market => `undefined` => no fact can be read =>
+ * under backend enforcement every merchant on the page is declined (the delete path, backend #2352);
+ * unenforced, today's exact behaviour. Logged `merchant_purchasability_unkeyable` either way.
  */
 function offersGateBuyerMarket(payload, metadata) {
   const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
   const p = obj(payload);
   const search = p ? obj(p.search) : null;
-  for (const candidate of [search && search.market, p && p.market, obj(metadata) && metadata.market]) {
-    const text = asString(candidate);
-    if (text) return text;
-  }
-  return undefined;
+  const m = obj(metadata);
+  // Precedence unchanged (search, payload, metadata); the FIRST carrier that yields ONE ISO-2
+  // market wins — an unreadable or multi-market carrier is skipped, not decisive. See
+  // `selectBuyerMarket` and docs/merchant-purchasability-gate.md §5.
+  return selectBuyerMarket(search && search.market, p && p.market, m && m.market);
 }
 
 /** `annotateOffersWithCommerceMetadata`, with the gate consulted first. */

@@ -10677,8 +10677,8 @@ async function buildOffersFromGroupMembers(args) {
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
   const preferredProductId = args?.preferredProductId ? String(args.preferredProductId).trim() : null;
   const debug = args?.debug === true;
-  // The request's buyer market, for the merchant-purchasability gate below. Undefined = the gate
-  // cannot ask and this lane keeps today's exact shape (logged `merchant_purchasability_unkeyable`).
+  // The request's buyer market, for the merchant-purchasability gate below. Undefined = unkeyable:
+  // declined under backend enforcement, else today's exact shape (logged `merchant_purchasability_unkeyable`).
   const buyerMarket = args?.buyerMarket;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
@@ -38826,7 +38826,7 @@ async function buildProductIntelOffersDataForContext({
   checkoutToken,
   limit = 10,
   // The request's buyer market, threaded for the merchant-purchasability gate below. Undefined =
-  // the gate cannot ask and this lane keeps today's exact shape.
+  // unkeyable: declined under backend enforcement, else today's exact shape.
   buyerMarket,
 }) {
   if (!context?.canonicalProductRef || !context?.product) return null;
