@@ -571,7 +571,7 @@ describe('PDP grouped offers', () => {
         }),
       }),
     );
-    expect(offersData.default_offer_id).toBe(internalOffer.offer_id);
+    expect(offersData.default_offer_id).toBe(externalOffer.offer_id);
     expect(offersData.best_price_offer_id).toBe(externalOffer.offer_id);
   });
 

@@ -36,6 +36,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
+import { tryReapAgenticCheckout } from "./ucpReapAgenticLane.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
@@ -197,7 +198,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -313,14 +314,38 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     default OFF). Deliberately AFTER the identity check (2) — an escalated checkout is still a buyer's
     //     checkout — and after the allowlist, so it only ever sees fields this op defines. See
     //     ucpCheckoutEscalation.js for the classification rule and the wire shape.
+    // 7-early) DIALECT RESULT SHAPING — see step 7 below. Defined here so the Reap lane's answer (3a-i) leaves
+    //     through the SAME shaper every other result of this call does.
+    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+
     let resolveVariantsForThisCall = resolveDefaultVariants;
     if (dialect === TOOL_DIALECTS.ucp && op.capability === "checkout") {
       // ONE read per product per call: the escalation classifier and the checkout resolver both perform the
       // unscoped `get_product` read; a memoizing view of the executor lets a contracted cart (classified
       // "kernel path" here) be read once and the resolver reuse the same result. Scoped to this call.
       const reads = memoizedProductReads(executor);
+      // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
+      //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
+      //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
+      //     uses: a row Pivota transacts returns null there before anything else, and so reaches the kernel
+      //     below exactly as it did without this lane. Kill-switched (REAP_AGENTIC_LANE_ENABLED, default OFF)
+      //     and inert without an injected backend client. Its answer carries no kernel state, so it takes the
+      //     result half of this door here — the SAME money filter (step 5) and the SAME dialect shaper (step 7)
+      //     as a kernel result — instead of the executor.
+      const reapHints = [];
+      const reap = await tryReapAgenticCheckout({
+        op, params, ctx, executor: reads, ucpArgs: toolArgs, attested,
+        client: reapAgentic && reapAgentic.client, log: logger, hints: reapHints,
+      });
+      if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
-      if (escalated) return escalated;
+      // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
+      // storefront answer only. With no hint the escalation answer is returned as the very same object.
+      if (escalated) {
+        return reapHints.length
+          ? { ...escalated, messages: [...(Array.isArray(escalated.messages) ? escalated.messages : []), ...reapHints] }
+          : escalated;
+      }
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
@@ -360,7 +385,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    dialect-agnostic params, and both dialects read the same entry — shaping before the cache would let
     //    a UCP call poison the entry the next /mcp call reads, and vice versa. The shaper is pure and runs on
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
-    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+    //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
@@ -488,7 +513,7 @@ function toParams(op, toolArgs) {
   const a = asObj(toolArgs);
   switch (op.id) {
     case "search_catalog":
-      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
+      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
       return {
         payload: {
@@ -677,7 +702,7 @@ function describe(op) {
     get_offers:
       "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. An external offer may carry `cart_prefilled`, which says what following its `affiliate_url` actually does: true = the buyer lands on the merchant's own checkout with the item already in the cart; false = a bare product page they must add from themselves; null = Pivota does not know. Treat null as unknown and say nothing about where the link lands — only an explicit false licenses telling a buyer to expect a product page. An offer may also carry `stock_verified` and `merchant_price_verified`: true means Pivota asked the MERCHANT'S own storefront moments ago and it agreed, false means it disagreed or could not be compared, null means we did not check this one. They are separate because they fail separately — stock can be confirmed while price cannot. When `merchant_price_verified` is true the spec carries `expected_item_total` with its `expected_currency` and `expected_quantity`, valid until `expected_total_expires_at`; abort the handoff rather than proceeding if the merchant's checkout shows a different total. If `rank_one_unverified` is true, NOTHING in the shortlist could be confirmed this turn — say so rather than presenting the top result as checked. Note the two flags differ on false as well as true: here false means we asked the merchant and could not confirm, while null means we did not ask. Never present an offer as price-checked on the strength of `price_verified` from another surface — that one means consistent with Pivota's own records rather than with the merchant, and its false covers unchecked and failed alike. Read-only; surfaces real cross-merchant competition only when it exists.",
     recommend_products:
-      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Today's lane is tuned for beauty/skincare: off-vertical needs answer with an empty shortlist and a reason, never with fabricated products. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
+      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Read `lane_confidence` for per-item certainty: it is the lane's own confidence in the product, NOT a measure of how well the product answers your need — nothing on that path reads your need, so an off-vertical need that slips the gate below can still come back at `lane_confidence: high`. Judge relevance yourself. Read `lane_confidence.basis` (and `metadata.confidence_basis`) before trusting the band at all: `lane_confidence.basis` is PER ITEM, and a single shortlist can mix them: `model_self_report` means that item's number is the model's own estimate of it; `positional` means the lane has NO certainty estimate for that item — the underlying score was the item's POSITION in the list, not a judgement about it — and its band is null. `metadata.confidence_basis` describes the ANSWER as a whole and `metadata.confidence_overall` is null when that is `positional`. A null band usually means unmeasured rather than low — with one exception: a row that breaches a `price_max` you set is downgraded to `low` even on a positional answer, because that IS a measurement, and it carries `constraint_violations`. `catalog_rebound` means grounding selected a different catalog product; the original product’s confidence and evidence were discarded, so the new product’s band is null unless a price violation independently downgrades it. `basis` also takes `ungrounded` (the lane named a product it could not resolve) and `none`/`unknown`. (`fit` is a DEPRECATED alias carrying the identical value and will be removed; migrate to `lane_confidence`.) The lane is tuned for SKINCARE specifically: it is instructed never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements, so a need for any of those may come back with skincare picks instead of nothing. Detection of off-vertical needs is best-effort, not exhaustive: a RECOGNISED off-vertical need answers with an empty shortlist and `metadata.products_empty_reason: 'off_vertical'`, but an unrecognised one may still come back with beauty products — so check that the shortlist actually matches the need before presenting it. Every returned item IS a catalog product with a non-null `product_id`: that one holds unconditionally, and products the lane named but could not resolve are never returned as items — they appear only as plain text in `metadata.unresolved_archetypes`, and are not buyable. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
     get_intel:
       "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
@@ -751,7 +776,7 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       query: { type: "string" }, merchant_id: { type: "string" }, category: { type: "string" },
-      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" },
+      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2)." },
       in_stock_only: { type: "boolean" }, page: { type: "integer", minimum: 1 },
       page_size: { type: "integer", minimum: 1, maximum: 50 },
     },

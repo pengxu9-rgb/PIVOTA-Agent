@@ -58,11 +58,17 @@
 
 'use strict';
 
+const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
+// NOTE: when the name-evidence arm is armed (SEARCH_NAME_EVIDENCE_ADMISSION), both caps are exceeded
+// by exactly MAX_CARRIERS (searchNameEvidence.js): admitted rows take reserved slots so they never
+// evict a row the category recalls. The overrun is bounded and pinned by
+// tests/integration/search_name_evidence_admission_postgres.test.js.
 const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
@@ -640,17 +646,16 @@ function buildSignificantTokens(lowered) {
 }
 
 // Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
-// lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
-// variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+// lane's cap discipline (the since-deleted findProductsExternalSeedDirectRetrieval
+// capped its variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
 const RECALL_DOC_PATTERN_CAP = 16;
 
 /**
  * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
  * query. Pure function; mirrors the external-seed lane's approach
  * (search_text LIKE ANY over token patterns — see
- * buildExternalSeedRecallLikePredicate in externalSeedRecall.js and its
- * caller in findProductsExternalSeedDirectRetrieval.js; that caller derives
- * patterns from injected tokenizers so it is not reusable here).
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js; its old
+ * caller derived patterns from injected tokenizers so it was not reusable here).
  *
  * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
  *   1. the lowered full phrase,
@@ -791,6 +796,11 @@ function buildBrandFilterTerms(brandFilter) {
  *                                          the citableSargableLane comment for
  *                                          the measured plans.
  * @param {function} [args.deps.query]     pg-style query function. Required.
+ * @param {object} [args.offerScope]      MAIN shopping constraints, applied before
+ *                                          candidate LIMIT and to the selected offer:
+ *                                          markets, inStockOnly, optional native
+ *                                          currency, priceRanges from budget policy.
+ *                                          Null preserves other callers' SQL behavior.
  * @returns {Promise<Array<object>>}
  */
 async function fetchCanonicalChainRows(args = {}) {
@@ -802,11 +812,13 @@ async function fetchCanonicalChainRows(args = {}) {
     verticalSearch = false,
     includeSkuOffers = false,
     brandFilter = null,
+    searchQualityContract = null,
     marketId = null,
     limit = DEFAULT_LIMIT,
     eligibility = 'serving_eligible',
     tokenMatch = false,
     sargableTextWhere = false,
+    offerScope = null,
     deps = {},
   } = args;
   const { query: pgQuery } = deps;
@@ -969,7 +981,8 @@ async function fetchCanonicalChainRows(args = {}) {
       )`;
   }
 
-  const brandFilterTerms = buildBrandFilterTerms(brandFilter);
+  const brandFilterTerms = searchQualityContract?.target_domain === 'beauty' && searchQualityContract?.hard_constraints?.brand
+    ? [] : buildBrandFilterTerms(brandFilter);
   const brandTextSql = `
     lower(concat_ws(' ',
       p.brand,
@@ -1287,14 +1300,20 @@ async function fetchCanonicalChainRows(args = {}) {
   // hazard the paragraph above describes only exists when the text branch is
   // discarded.
   let recallDocWhere = '';
+  // Binds referenced ONLY inside the text WHERE arm, with their SQL types. The
+  // search-quality contract below may REPLACE the default WHERE; a bind left in
+  // params but absent from the statement fails the whole query with 42P18.
+  const textArmOnlyBinds = [];
   if ((!categoryBind || categoryBrowseTextUnion) && isRecallDocMatchEnabled()) {
     const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
     if (recallDocPatterns.length > 0) {
       params.push(recallDocPatterns);
       const recallDocPatternsBind = `$${params.length}`;
+      textArmOnlyBinds.push({ bind: recallDocPatternsBind, type: 'text[]' });
       let recallDocMarketGuard = '';
       if (marketId) {
         params.push(String(marketId).toUpperCase());
+        textArmOnlyBinds.push({ bind: `$${params.length}`, type: 'text' });
         recallDocMarketGuard = `
           AND (p.recall_market IS NULL OR p.recall_market = $${params.length})`;
       }
@@ -1452,6 +1471,32 @@ async function fetchCanonicalChainRows(args = {}) {
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
+  const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
+    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
+  // Same idiom as `$2::text IS NOT NULL`: keep a typed, always-true reference to
+  // every text-arm bind the contract's WHERE no longer contains. Params cannot be
+  // removed instead — later binds (brand identity, offer scope) are numbered after them.
+  whereClause = qualityScope.where + textArmOnlyBinds
+    .filter(({ bind }) => !new RegExp(`\\${bind}(?!\\d)`).test(qualityScope.where))
+    .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
+    .join('');
+  brandWhere = qualityScope.brandWhere;
+  // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
+  // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
+  //  * the carrier count is a CTE, counted once;
+  //  * admitted rows are ranked +95 and MARKED, so the gate and ranker read the SQL's decision;
+  //  * the candidate and row limits grow by the most rows that can be admitted, so an
+  //    admitted row takes an extra slot instead of evicting a row the category recalls. This
+  //    deliberately exceeds CANDIDATE_LIMIT_MAX / ROW_LIMIT_MAX by exactly MAX_CARRIERS.
+  const nameEvidence = qualityScope.nameEvidence || null;
+  const nameEvidenceRankArm = nameEvidence ? `\n          ${nameEvidence.rankSql}` : '';
+  const nameEvidenceCteSql = nameEvidence ? `${nameEvidence.cteSql},\n    ` : '';
+  const nameEvidenceProjectionSql = nameEvidence ? `\n        ${nameEvidence.admittedSql} AS name_evidence_admitted,` : '';
+  const nameEvidenceOuterColumnSql = nameEvidence ? '\n      c.name_evidence_admitted,' : '';
+  if (nameEvidence) {
+    params[2] = candidateLimit + nameEvidence.extraCandidates;
+    params[3] = rowLimit + nameEvidence.extraCandidates;
+  }
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
@@ -1487,15 +1532,75 @@ async function fetchCanonicalChainRows(args = {}) {
   // Price presence is part of the serving contract on BOTH branches: shopping
   // ingesters reject price-null items. Either way this surfaces ONE
   // representative offer via a LATERAL — amount, currency and availability MUST
-  // come from the same offer row (never mixed across rows), cheapest in-market
-  // first, and currency is never defaulted: an offer without a currency is not
-  // price-quotable. The branches differ only in whether the sku columns ride
-  // along, not in how the price is chosen.
+  // come from the same offer row (never mixed across rows), in-market first,
+  // then known-unavailable last, then cheapest. Currency is never defaulted:
+  // an offer without a currency is not price-quotable. The branches differ
+  // only in whether the sku columns ride along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
+  // Match #2240: unknown availability shares the sellable ranking tier. An
+  // explicit inStockOnly filter below is stricter: it requires positive stock
+  // evidence and never treats an unknown/null signal as an affirmative match.
+  const bestOfferAvailabilityOrder = `${OFFER_AVAILABILITY_TIER_SQL},`;
+  // The MAIN shopping route elects an offer scope. Require a matching live
+  // offer BEFORE the candidate LIMIT, then select from that identical set in
+  // the lateral. Filtering only the chosen cheapest offer afterward loses a
+  // valid sibling (or an entire lower-ranked affordable product).
+  // Other surfaces retain their existing unscoped SQL contract.
+  const offerScopeClauses = [];
+  const bindOfferValue = value => { params.push(value); return `$${params.length}`; };
+  if (offerScope) {
+    offerScopeClauses.push("upper(trim(coalesce(o.currency, ''))) ~ '^[A-Z]{3}$'");
+    const allowedMarkets = [...new Set((Array.isArray(offerScope.markets) ? offerScope.markets : [])
+      .map(value => String(value || '').trim().toUpperCase()).filter(Boolean))];
+    if (allowedMarkets.length) {
+      const bind = bindOfferValue(allowedMarkets);
+      // A declared different offer market is not eligible. Legacy unmarked
+      // offers still rely on the existing product-market gate; no shipping
+      // destination is inferred from currency, domain or retailer identity.
+      offerScopeClauses.push(`(nullif(upper(trim(coalesce(o.market, ''))), '') IS NULL OR upper(trim(o.market)) = ANY(${bind}::text[]))`);
+    }
+    if (offerScope.inStockOnly === true) {
+      const normalizedAvailability = "regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g')";
+      offerScopeClauses.push(`(CASE
+        WHEN ${normalizedAvailability} IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false', 'discontinued') THEN FALSE
+        WHEN o.inventory_quantity IS NOT NULL THEN o.inventory_quantity > 0
+        WHEN ${normalizedAvailability} IN ('instock', 'available', 'true') THEN TRUE
+        ELSE NULL
+      END) IS TRUE`);
+    }
+    if (offerScope.currency) {
+      offerScopeClauses.push(`upper(trim(o.currency)) = ${bindOfferValue(String(offerScope.currency).trim().toUpperCase())}`);
+    }
+    if (Array.isArray(offerScope.priceRanges)) {
+      const price = 'COALESCE(o.merchant_effective_price, o.list_price)';
+      const ranges = offerScope.priceRanges.map(range => {
+        // Validate BEFORE binding: an abandoned currency bind is a 42P18 (see seedSearchOfferScope).
+        if (['min', 'max'].some(field => range[field] != null && !Number.isFinite(Number(range[field])))) return 'FALSE';
+        const parts = [];
+        if (range.currency) parts.push(`upper(trim(o.currency)) = ${bindOfferValue(String(range.currency).trim().toUpperCase())}`);
+        for (const [field, operator] of [['min', '>='], ['max', '<=']]) {
+          if (range[field] == null) continue;
+          parts.push(`${price} ${operator} ${bindOfferValue(Number(range[field]))}`);
+        }
+        return parts.length ? `(${parts.join(' AND ')})` : 'FALSE';
+      });
+      offerScopeClauses.push(`(${ranges.join(' OR ') || 'FALSE'})`);
+    }
+  }
+  const scopedOfferWhere = offerScopeClauses.length ? `AND ${offerScopeClauses.join('\n        AND ')}` : '';
+  const candidateOfferWhere = offerScope ? `
+        AND EXISTS (
+          SELECT 1 FROM catalog_offers o
+          ${joinSkuOffers ? 'JOIN catalog_skus scoped_sku ON scoped_sku.sku_key = o.sku_key AND scoped_sku.suppressed_at IS NULL' : ''}
+          WHERE ${joinSkuOffers ? 'scoped_sku.product_key' : 'o.product_key'} = p.product_key
+            AND o.suppressed_at IS NULL
+            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+            ${scopedOfferWhere}
+        )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
       best_sku_offer.sku_key,
@@ -1605,9 +1710,9 @@ async function fetchCanonicalChainRows(args = {}) {
   //     a request for N products returned fewer than N distinct ones.
   //
   // Collapsing to a LATERAL fixes all three at the source and makes the price
-  // contract identical on both branches: the row carries the cheapest
-  // in-market PRICED offer, with amount, currency and availability from that
-  // ONE offer row. Safe to collapse because nothing downstream groups these
+  // contract identical on both branches: the row carries the best in-market
+  // PRICED offer by availability tier and price, with amount, currency and
+  // availability from that ONE offer row. Safe to collapse because nothing downstream groups these
   // rows back into variants — of the sku/offer columns only `sku_image_url` is
   // read by the mapper, and it now describes the variant actually being priced.
   //
@@ -1649,8 +1754,19 @@ async function fetchCanonicalChainRows(args = {}) {
         AND s.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        -- At the SAME price a real variant beats the synthetic product-level sku (\`<pk>::canonical\`,
+        -- whose source_variant_id is the product key). The hashed offer_id alone picked between them at
+        -- random, and a card carrying the synthetic id cannot be matched to the store's variant:
+        -- liveMerchantSearchPrice reported variant_missing on 4 of 17 bluemercury.com cards (2026-09-25).
+        -- Also the placeholder ids the backend derives when a store gives no variant id ('default',
+        -- '<id>-default'; services/variant_identity.py): none of them names a variant the store sells.
+        CASE WHEN s.sku_key LIKE '%::canonical' OR s.source_variant_id IS NULL OR s.source_variant_id = s.product_key
+               OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
+          THEN 1 ELSE 0 END ASC,
         o.offer_id ASC
       LIMIT 1
     ) best_sku_offer ON TRUE`
@@ -1662,7 +1778,9 @@ async function fetchCanonicalChainRows(args = {}) {
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
+        ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
       LIMIT 1
@@ -1723,7 +1841,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
   // the gateway intentionally diverges from the backend's legacy weights.
   const sql = `
-    WITH ${candidateCteName} AS (
+    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
       SELECT
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
@@ -1763,13 +1881,13 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}
+        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}${nameEvidenceProjectionSql}
         (
           ${skuIdentityScore}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${nameEvidenceRankArm}
           ${canonicalScopeRankArms}
           ${categoryScore}${categoryBrowseTextArm}
           ${verticalScore}
@@ -1783,6 +1901,7 @@ async function fetchCanonicalChainRows(args = {}) {
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
         ${externalSeedUnavailableWhere}
+        ${candidateOfferWhere}
       ${merchantClause}
       ${marketWhere}
       ${brandWhere}${innerOrderLimitSql}
@@ -1821,7 +1940,7 @@ async function fetchCanonicalChainRows(args = {}) {
       c.size_guide,
       c.size_guide_source,
       c.size_guide_confidence,
-      c.product_updated_at,
+      c.product_updated_at,${nameEvidenceOuterColumnSql}
       ${skuOfferColumns}
     FROM candidate_products c
     ${skuOfferJoinSql}

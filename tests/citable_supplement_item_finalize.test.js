@@ -3,7 +3,7 @@
 // ADR-007 citation-item finalization. finalizeCitableSupplementItem marks a
 // built product as a non-buyable citation and strips the raw seed_data /
 // external_seed jsonb blobs that buildCanonicalChainMainlineProduct echoes onto
-// every item (pure response bloat on an offer-free citation), while KEEPING the
+// every item (pure response bloat on a referral-only citation), while KEEPING the
 // derived fields extracted from those blobs (ingredient_intel, active_ingredients,
 // ingredients_inci, pdp_ingredients_raw, fashion_meta, identity).
 
@@ -33,8 +33,8 @@ function sampleBuiltItem() {
     pdp_field_quality_summary: { ingredients: 'high' },
     fashion_meta: { material: { value: 'n/a' } },
     // raw passthrough — MUST be stripped
-    seed_data: { brand: 'Jumiso', snapshot: { title: 'x' }, derived: { recall: {} }, big: 'x'.repeat(2000) },
-    external_seed: { external_product_id: 'ext_1', snapshot: { price_amount: '24.00' } },
+    seed_data: { brand: 'Jumiso', snapshot: { title: 'x', price_amount: '24.00', price_currency: 'USD' }, derived: { recall: {} }, big: 'x'.repeat(2000) },
+    external_seed: { external_product_id: 'ext_1', snapshot: { price_amount: '24.00', price_currency: 'USD' } },
   };
 }
 
@@ -49,7 +49,8 @@ describe('finalizeCitableSupplementItem', () => {
     // citation semantics
     expect(out.buyable).toBe(false);
     expect(out.in_stock).toBe(false);
-    expect(out).not.toHaveProperty('price');
+    expect(out).toHaveProperty('price', 24);
+    expect(out).toHaveProperty('currency', 'USD');
     expect(out.catalog_track).toBe('citation');
     expect(out.source).toBe('canonical_citation');
     expect(out.search_recall_source).toBe('canonical_citation');
@@ -85,8 +86,8 @@ describe('finalizeCitableSupplementItem', () => {
     expect(finalizeCitableSupplementItem([1, 2])).toBeNull();
   });
 
-  test('is a no-op-safe when the blobs are already absent', () => {
-    const out = finalizeCitableSupplementItem({ content_key: 'ck', title: 't', ingredient_intel: { a: 1 } });
+  test('is safe when the blobs are already absent and the card has a canonical price', () => {
+    const out = finalizeCitableSupplementItem({ content_key: 'ck', title: 't', price: 12, currency: 'USD', ingredient_intel: { a: 1 } });
     expect(out).not.toHaveProperty('seed_data');
     expect(out.ingredient_intel).toEqual({ a: 1 });
     expect(out.buyable).toBe(false);

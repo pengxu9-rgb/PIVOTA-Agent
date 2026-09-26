@@ -23,8 +23,6 @@ describe('GET /api/admin/search-diagnostics', () => {
       PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
-      PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY: process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
     };
 
     process.env.ADMIN_API_KEY = 'admin_test_key';
@@ -32,8 +30,6 @@ describe('GET /api/admin/search-diagnostics', () => {
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
 
     jest.doMock('../src/db', () => ({
       query: async (sql) => {
@@ -136,17 +132,6 @@ describe('GET /api/admin/search-diagnostics', () => {
     else process.env.PIVOTA_API_KEY = prevEnv.PIVOTA_API_KEY;
     if (prevEnv.API_MODE === undefined) delete process.env.API_MODE;
     else process.env.API_MODE = prevEnv.API_MODE;
-    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY === undefined) {
-      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
-    } else {
-      process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY =
-        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
-    }
   });
 
   test('requires admin key', async () => {
@@ -171,9 +156,10 @@ describe('GET /api/admin/search-diagnostics', () => {
     expect(resp.body.query).toBe('ipsa');
     expect(resp.body.config).toEqual(
       expect.objectContaining({
-        resolver_first_enabled: true,
-        resolver_first_strong_only: true,
-        resolver_first_would_apply: true,
+        // Resolver-first was removed from find_products_multi (2026-09-26); the diagnostics
+        // must not report a lane that no longer exists.
+        resolver_first_enabled: false,
+        resolver_first_would_apply: false,
         resolver_query_is_strong: true,
       }),
     );

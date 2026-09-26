@@ -1,5 +1,7 @@
 'use strict';
 
+const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
+
 // shop.find_products — grounded product/brand lookup for /v1/chat.
 //
 // Unlike reco.step_based (a routine recommender that LLM-generates candidates and
@@ -10,6 +12,8 @@
 
 const BaseSkill = require('./BaseSkill');
 const shopGatewayClient = require('../clients/shopGatewayClient');
+const { understandShoppingQuery } = require('../../findProductsMulti/queryUnderstanding');
+const { extractIntentRuleBased } = require('../../findProductsMulti/intent');
 
 function firstTrimmed(...vals) {
   for (const v of vals) {
@@ -51,9 +55,24 @@ function toRecommendationRow(product) {
     category_path: Array.isArray(product.category_path) ? product.category_path : null,
     image_url: firstImage(product),
     pdp_url: firstTrimmed(product.pdp_url, product.url, product.redirect_url, product.buy_url) || null,
+    price: product.price ?? product.price_amount ?? null,
+    currency: firstTrimmed(product.currency, product.price_currency) || null,
+    availability: firstTrimmed(product.availability, product.stock_status) || null,
     source: 'catalog_search',
     retrieval_source: 'find_products_multi',
   };
+}
+
+function isWithinPriceConstraint(row, constraint) {
+  if (!constraint || (constraint.min == null && constraint.max == null)) return true;
+  const price = Number(row?.price);
+  if (!Number.isFinite(price)) return false;
+  const requestedCurrency = firstTrimmed(constraint.currency).toUpperCase();
+  const productCurrency = firstTrimmed(row?.currency).toUpperCase();
+  if (requestedCurrency && productCurrency && requestedCurrency !== productCurrency) return false;
+  if (constraint.min != null && price < Number(constraint.min)) return false;
+  if (constraint.max != null && price > Number(constraint.max)) return false;
+  return true;
 }
 
 const NO_RESULT = {
@@ -70,13 +89,20 @@ class ShopFindProductsSkill extends BaseSkill {
 
   _resolveQuery(request) {
     const p = request && request.params ? request.params : {};
-    return firstTrimmed(
+    const rawQuery = firstTrimmed(
       p.find_products_query,
       p.query,
       p.user_message,
       p.message,
       p.text,
     );
+    if (!rawQuery) return '';
+    const understanding = understandShoppingQuery({
+      rawQuery,
+      conversationMessages: Array.isArray(p.messages) ? p.messages : [],
+      source: 'aurora_chat_shop',
+    });
+    return firstTrimmed(understanding.effective_query, rawQuery);
   }
 
   async execute(request /* , llmGateway */) {
@@ -105,11 +131,29 @@ class ShopFindProductsSkill extends BaseSkill {
       };
     }
 
-    const result = await this._client.findProductsMulti({ query, limit: 8, inStockOnly: false });
-    const rows = (Array.isArray(result && result.products) ? result.products : [])
+    const priceConstraint = extractIntentRuleBased(query, [], [])?.hard_constraints?.price || null;
+    const result = await this._client.findProductsMulti({
+      query,
+      limit: 8,
+      inStockOnly: false,
+      minPrice: priceConstraint?.min,
+      maxPrice: priceConstraint?.max,
+    });
+    const mappedRows = (Array.isArray(result && result.products) ? result.products : [])
       .map(toRecommendationRow)
       .filter(Boolean);
+    // The canonical backend owns hard-constraint enforcement, but the chat
+    // projection is the final boundary before a user sees a purchasable item.
+    // Recheck explicit price bounds here so a stale cache or an older backend
+    // cannot surface an over-budget card.
+    const rows = mappedRows.filter((row) => isWithinPriceConstraint(row, priceConstraint));
 
+    // COUNTED: the other skill_router_v2 producer of a recommendations card.
+    recordAuroraRecoAnswerPath({
+      door: 'skill_router',
+      path: 'skill_find_products',
+      served: rows.length > 0,
+    });
     if (rows.length > 0) {
       return {
         cards: [{
@@ -137,7 +181,12 @@ class ShopFindProductsSkill extends BaseSkill {
           { action_type: 'show_chip', label: { en: 'Refine my search', zh: '优化搜索' } },
         ],
         _taskMode: 'shop',
-        _meta: { source_mode: 'catalog_search', result_count: rows.length, backend_reason: (result && result.reason) || null },
+        _meta: {
+          source_mode: 'catalog_search',
+          result_count: rows.length,
+          budget_filtered_out_count: mappedRows.length - rows.length,
+          backend_reason: (result && result.reason) || null,
+        },
       };
     }
 
@@ -166,3 +215,4 @@ class ShopFindProductsSkill extends BaseSkill {
 
 module.exports = ShopFindProductsSkill;
 module.exports.toRecommendationRow = toRecommendationRow;
+module.exports.isWithinPriceConstraint = isWithinPriceConstraint;

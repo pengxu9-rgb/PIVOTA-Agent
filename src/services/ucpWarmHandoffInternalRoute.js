@@ -30,6 +30,7 @@
 const crypto = require('crypto');
 
 const { createWarmHandoffService, createTtlCache, isWarmHandoffEnabled } = require('./ucpWarmHandoff');
+const { selectBuyerMarket } = require('./merchantPurchasabilityClient');
 const {
   toVariantGid, resolveShopifyVariant, extractProductHandle, normalizeBrandOrigin,
 } = require('./shopifyVariantResolver');
@@ -292,6 +293,14 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
       return { gid: null, reason: 'no_variant_input' };
     }
 
+    // A `brand_domain` that cannot become an https origin (an IP literal, or userinfo) now costs NO
+    // network at all — shopifyVariantResolver declines before it builds a URL. That is deliberate, but it
+    // reopens the hole the `no_variant_input` branch above closes unless this miss is treated the same
+    // way: a caller could otherwise mint unbounded `brand_domain` series and flood the 500-entry memo
+    // for free, evicting live carts. NOT an early return, because seed_data resolves without an origin —
+    // the verdict is only applied below, if nothing resolved.
+    const brandOriginUsable = normalizeBrandOrigin(brandDomain) !== null;
+
     let resolved = null;
     try {
       resolved = await resolveShopifyVariant(
@@ -317,6 +326,11 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     // out" honestly, which beats a cart that dies at checkout. Only `out_of_stock` declines — an
     // UNKNOWN stock state (a storefront that does not publish `available`) must still resolve, or
     // this guard would drop every such brand. See shopifyVariantResolver.pickVariantFromProductNode.
+    if (!resolved && !brandOriginUsable) {
+      // Free miss: neither cached nor counted, exactly like `no_variant_input`.
+      return { gid: null, reason: 'invalid_brand_domain' };
+    }
+
     const soldOut = Boolean(resolved && resolved.availability === 'out_of_stock' && requireAvailable(env));
     const gid = !soldOut && resolved && resolved.variantGid ? resolved.variantGid : null;
     const reason = gid ? null : (soldOut ? 'variant_out_of_stock' : 'variant_unresolved');
@@ -353,21 +367,33 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     const { gid: variantGid, reason: variantMissReason } = await resolveVariantGid({ body, brandDomain, env });
     if (!variantGid) {
       const reason = variantMissReason || 'variant_unresolved';
-      if (reason !== 'no_variant_input') {
+      // Both of these are misses that cost no network, so neither is counted — see resolveVariantGid.
+      const uncountedMiss = reason === 'no_variant_input' || reason === 'invalid_brand_domain';
+      if (!uncountedMiss) {
         recordVariantMiss({ reason, brandDomain, metrics: deps.metrics, latencyMs: now() - variantStartedAt });
       }
-      // The wire reason stays in the shipped vocabulary; `no_variant_input` is reported as the
+      // The wire reason stays in the shipped vocabulary; these internal ones are reported as the
       // generic unresolved so the response contract is unchanged.
-      return { status: 200, body: { continue_url: null, reason: reason === 'no_variant_input' ? 'variant_unresolved' : reason } };
+      return { status: 200, body: { continue_url: null, reason: uncountedMiss ? 'variant_unresolved' : reason } };
     }
 
     const quantity = Number.isInteger(body.quantity) && body.quantity > 0 ? body.quantity : 1;
+    // The caller's buyer market by the ONE carrier rule every door uses (`selectBuyerMarket`,
+    // docs/merchant-purchasability-gate.md §5): one ISO-2 market or none — "US,US" is US, "US,SG"
+    // and "USA" are none.
+    const clickMarket = selectBuyerMarket(body.market);
     let handoff = null;
     try {
       handoff = await resolveService(env).resolveWarmHandoff({
         brandDomain,
         variantGid,
         quantity,
+        // The CALLER'S buyer market, for the merchant-purchasability gate only. Optional and additive: a
+        // caller that sends none is exactly today's request, and this deployment's own market is never
+        // substituted. With no market the gate reads no fact: under backend ENFORCEMENT the click is
+        // browse-only (the `null` below -> cold redirect); unenforced, the previous behaviour. Never
+        // echoed in the response, never sent anywhere but the ops read.
+        ...(clickMarket ? { market: clickMarket } : {}),
         ...(isPlainObject(body.attribution) ? { attribution: body.attribution } : {}),
       });
     } catch {

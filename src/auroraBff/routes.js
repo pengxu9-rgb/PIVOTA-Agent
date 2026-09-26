@@ -1,5 +1,12 @@
+const { recommendationIdentityConflict, sameRecommendationProduct } = require('../shared/recoProductIdentity');
 const vertexGemini = require('../llm/vertexGemini');
+const { servedMarkets } = require('../services/servedMarkets');
 const axios = require('axios');
+// SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
+// BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
+// attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
+// ucpBuyerAgentClient but the axios transport is deliberately kept.
+const { createPublicUrlFetch, createPublicHostCheck, parsePublicHttpUrl } = require('../services/publicUrlFetch');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -9,7 +16,14 @@ const path = require('path');
 const { z } = require('zod');
 const db = require('../db');
 const photoBackendClient = require('../photoBackendClient');
-const runDbQuery = (...args) => db.query(...args);
+// Callers that pass a `timeoutMs` get the pool-safe path: a checkout bounded by
+// the caller's own budget, and a connection destroyed rather than returned when
+// its statement outlives that budget. Everything else keeps `db.query`.
+const runDbQuery = (sql, params, options) => (
+  Number(options?.timeoutMs) > 0
+    ? db.queryWithBudget(sql, params, options)
+    : db.query(sql, params)
+);
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -93,6 +107,11 @@ const {
 const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
+const { getCatalogSearchOwnership } = require('./findProductsIntent');
+// A price/budget constraint in the extracted catalog query. Only products can answer it, so it is
+// what separates "show me niacinamide under $10" (shopping) from "show me MCI" (ingredient science).
+const CATALOG_QUERY_SHOPPING_CONSTRAINT_RE =
+  /(?:\bunder\b|\bbelow\b|\bless\s+than\b|\bmax\b|\bbudget\b|\bcheaper\s+than\b)\s*\$?\s?\d|\$\s?\d/i;
 const {
   createBeautyChatMainlineEnvelopeRuntime,
 } = require('./beautyChatMainlineEnvelope');
@@ -317,6 +336,7 @@ const {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,
@@ -388,7 +408,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -763,6 +783,57 @@ const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
 const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
+// The SAME lane, asked a wider question. reco_main_v1_2 bounds the planner to skincare
+// ("Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare"), which is right
+// for the Aurora consumer chat lane and wrong for the `recommend_products` agent door, whose
+// advertised vertical is beauty: a bronzer need came back as a barrier serum at fit 'high' with the
+// exclusion stated in warnings (#2155, measured 2026-09-08).
+//
+// The two callers therefore select DIFFERENT templates instead of one being widened under the
+// other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
+// v1_3.
+//
+// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup, fragrance and
+// haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
+// answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
+// `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
+// serving lane would trade a wrong answer for an empty one, not for a right one.
+//
+// DEFAULT OFF SINCE 2026-09-09. The template id is NOT a local filename: formatAuroraPromptQuery
+// puts `PROMPT_TEMPLATE_ID=<id>` into the query sent to AURORA_DECISION_BASE_URL, and that service
+// VALIDATES it. Deployed as 8ed132e95233 (rev gateway-00131-jel), every LLM leg of the agent door
+// answered "Upstream status 400" — zero such errors in the 40 minutes before, zero after the
+// rollback. Registering an id there is not done in this repo.
+//
+// The failure is SILENT to the caller: with the LLM leg dead the lane answers from its catalog
+// path, so a partner sees products rather than an error. Nothing here could have caught it —
+// every test in this repo stops at the prompt builder and none calls the decision service.
+//
+// So the default is the NARROW template: v1_3 ships, stays tested, and stays inert. Setting this env
+// var to 'reco_main_v1_3' arms it, and must not be done until a live probe shows the decision service
+// accepting the id. It is a CODE default rather than a live env pin because a Cloud Run deploy has
+// wiped this service's env vars before (2026-08-30) — with the default armed, the next wipe would
+// silently re-break the lane.
+//
+// It defaults to RECO_MAIN_PROMPT_TEMPLATE_ID, not to the literal 'reco_main_v1_2' — the same shape
+// RECO_INGREDIENT_PROMPT_TEMPLATE_ID uses above, and for the same reason. With a literal, the two
+// ids agree only while a human keeps them in sync: repointing the CHAT lane's template (an ordinary
+// operation that has nothing to do with this door) would leave the wide id on the literal, making it
+// DIFFER from the narrow one and arming wide_template_active below — a 'beauty recommendation plan'
+// task line wrapped around a skincare-only system prompt. Inheriting makes "off" true by
+// construction instead of by coincidence.
+const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
+).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
+// The only value that widens the lane. Anything else — '', 'skincare', a typo, an object — is the
+// narrow default, so a mistake upstream cannot silently widen the chat lane.
+const RECO_PROMPT_DOMAIN_SCOPE_BEAUTY = 'beauty';
+function isWideRecoPromptDomainScope(scope) {
+  // typeof-checked, not coerced: String(['beauty']) === 'beauty', so a bare String() here would let a
+  // one-element array widen the lane. Caught by the token test.
+  if (typeof scope !== 'string') return false;
+  return scope.trim().toLowerCase() === RECO_PROMPT_DOMAIN_SCOPE_BEAUTY;
+}
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
@@ -1080,12 +1151,10 @@ const AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_MAX_CANDIDATES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(12, v));
 })();
-const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = (() => {
-  const raw = String(process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
+// External offers are part of the catalog recall universe. Preserve the
+// legacy symbol for call-site compatibility without allowing an environment
+// switch to remove an otherwise eligible source.
+const AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = true;
 const AURORA_DISCOVERY_CARD_IN_LIST_ENABLED = (() => {
   const raw = String(process.env.AURORA_DISCOVERY_CARD_IN_LIST_ENABLED || 'true')
     .trim()
@@ -1531,6 +1600,7 @@ const {
   buildRecoPayloadFromBeautyMainlineHandoff,
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
+  buildConfidenceNoticeCardPayload,
   looksLikeRecommendationRequest,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
@@ -1992,6 +2062,18 @@ async function buildChatIntentContract(body) {
         language,
       })
     : null;
+  // Consume the SAME canonicalized `message` every sibling guard in this function reads — NOT the raw
+  // payload. getCatalogSearchOwnership also reads `query` and `user_message`, and `message` above
+  // (built from message/text/reply_text/messages[]) does not. Passing the payload therefore let these
+  // arms fire in a state where `hasMessage` is FALSE, which is exactly the state in which every
+  // `hasMessage && …` guard below is structurally dark — including the pregnancy/lactation safety
+  // guard. `query` is a first-class field of V1ChatRequestSchema and the v1 mainline treats it as the
+  // user message (extractPrimaryChatRequestMessage), so this was reachable, not theoretical:
+  //   POST /v1/chat {"query":"can i buy tretinoin while pregnant"}
+  // resolved match_type 'explicit' and delegated to catalog search with the safety guard skipped.
+  // Reading the canonicalized message also puts these arms behind canonicalizeGenericConcernQuery,
+  // whose whole purpose is rewriting generic asks so the reco lane owns them.
+  const catalogSearchOwnership = hasMessage ? getCatalogSearchOwnership({ message }) : null;
 
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
@@ -2154,6 +2236,47 @@ async function buildChatIntentContract(body) {
       delegate_target: 'legacy_quarantine',
       should_search: false,
       reply_mode: 'ingredient_advice',
+    };
+  }
+  // ONE gate for both match types. The ingredient carve-out was originally on the `bare` arm only,
+  // which made this PR's own "known ingredient aliases such as MCI stay on their specialist paths"
+  // claim false for the explicit phrasing of the same ask: `show me MCI`, `show me retinol` and
+  // `where can i buy tretinoin` all resolve 'explicit', and the existing MCI regression test only
+  // covers the BARE body, so it stayed green through that.
+  //
+  // The three lane checks below are the lanes this block sits IN FRONT OF and would otherwise
+  // swallow whole. Verified against the shipped extractor: every EN phrasing in the diagnosis
+  // allowlist (`analyze my skin`, `scan my face`, `skin assessment`) and both progress phrasings
+  // (`check my progress`, `track my progress`) are `bare` catalog matches, and the reco-continuation
+  // cues (`under $30`, `what should i buy next`) match too. A catalog-search router must not be the
+  // thing that decides a skin scan is a product query.
+  //
+  // The ingredient carve-out keys on the EXTRACTED catalog query carrying a shopping constraint, not
+  // on which template matched. `shouldKeepV1ChatOnLegacyIngredientPath` returns true for any message
+  // naming a known ingredient, so applying it flatly would also block `show me niacinamide under $10`
+  // — a real shopping ask with a budget, and one this PR deliberately routes to catalog search. The
+  // distinction is not explicit-vs-bare, it is "bare ingredient name" vs "ingredient plus a
+  // constraint you can only satisfy by looking at products": `show me MCI` is a question about a
+  // preservative with no purchasable SKU, `show me niacinamide under $10` is shopping.
+  const catalogQueryHasShoppingConstraint = CATALOG_QUERY_SHOPPING_CONSTRAINT_RE.test(
+    (catalogSearchOwnership && catalogSearchOwnership.query) || '',
+  );
+  const catalogSearchLaneBlocked =
+    !catalogSearchOwnership ||
+    contextualRecoContinuationKeepsV1Mainline ||
+    looksLikeDiagnosisStart(message) ||
+    looksLikeProgressCheckRequest(message, actionId) ||
+    (!catalogQueryHasShoppingConstraint && await shouldKeepV1ChatOnLegacyIngredientPath(payload));
+  if (!catalogSearchLaneBlocked) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'catalog_search',
+      request_class: 'catalog_search',
+      delegate_target: 'v2',
+      should_search: true,
+      reply_mode: 'product_search',
+      primary_lane: 'shop.find_products',
     };
   }
   if (
@@ -4615,6 +4738,7 @@ function pickFirstNarrativeRecoCopy(...values) {
 }
 
 function normalizeRecoCatalogProduct(raw) {
+  if (recommendationIdentityConflict(raw)) return null;
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
   const sanitizeRecoCatalogBrand = (value) => {
@@ -9730,8 +9854,26 @@ function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = 
     }));
 }
 
+// Headroom for the outer stage race so the db layer's own budget — the one that
+// hands the pool slot back — expires first on the real transport.
+const LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS = 250;
+
+// `pool_acquire` means the stage never ran: it sat in the checkout queue until
+// its budget expired. That is a pool-capacity signal and reads nothing like
+// `query`, which means the statement itself was too slow. Before this split both
+// arrived as a bare `timeout: true`, and the acne-recall starvation of
+// 2026-09-08 was misread as a slow query for exactly that reason.
+function classifyLocalExternalSeedStageTimeoutCause(error) {
+  const code = String(error?.code || '').trim();
+  if (code === db.DB_BUDGET_ACQUIRE_TIMEOUT) return 'pool_acquire';
+  if (code === db.DB_BUDGET_QUERY_TIMEOUT) return 'query';
+  if (code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT') return 'stage_budget';
+  return '';
+}
+
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
+  logger = null,
   q,
   patterns = [],
   role = null,
@@ -9783,6 +9925,10 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   const overallStartedAt = Date.now();
   const effectiveTimeoutMs = Math.max(
     250,
+    // THIS clamp is the only thing holding the primary ladder at 4s — the 18,000ms
+    // constant is inert above it. `tests/recall_primary_role_budget.test.js`
+    // asserts the effective band and fails if this is lifted; removing an
+    // accidental bound is otherwise an invisible regression.
     Math.min(4000, Number.isFinite(Number(queryTimeoutMs)) ? Math.trunc(Number(queryTimeoutMs)) : 1600),
   );
   const stageStopRowFloor = Math.max(
@@ -9812,7 +9958,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         '${definition.stage}'::text AS match_stage
       FROM external_product_seeds
       WHERE status = 'active'
-        AND market = $1
+        AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
     `;
@@ -9841,6 +9987,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: true,
+        timeout_cause: 'stage_budget',
       });
       return {
         rows: stagedRows,
@@ -9851,15 +9998,25 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       };
     }
     let res = null;
+    // Filled in by the db layer with the split timings, pool census, connection
+    // age and timer lag for THIS stage. Recorded on the fast path too: a slow
+    // stage only means something next to a fast one from the same turn.
+    const stageDbDiagnostics = {};
     try {
+      // The budget goes to the db layer so an expired stage releases its pool
+      // slot instead of abandoning a query that keeps it. `withTimeout` stays as
+      // a backstop for injected `queryFn`s (tests, callers with their own
+      // transport), which do not honour `timeoutMs`; the grace keeps the inner,
+      // slot-releasing path the one that normally fires.
       // eslint-disable-next-line no-await-in-loop
       res = await withTimeout(
-        Promise.resolve().then(() => runQuery(sql, params)),
-        remainingMs,
+        Promise.resolve().then(() => runQuery(sql, params, { timeoutMs: remainingMs, diagnostics: stageDbDiagnostics })),
+        remainingMs + LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS,
         'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT',
       );
     } catch (error) {
-      const timedOut = error?.code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT';
+      const timeoutCause = classifyLocalExternalSeedStageTimeoutCause(error);
+      const timedOut = Boolean(timeoutCause);
       stageDebug.push({
         stage: definition.stage,
         row_count: 0,
@@ -9870,7 +10027,24 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: timedOut,
+        ...(timeoutCause ? { timeout_cause: timeoutCause } : {}),
+        ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       });
+      if (timedOut) {
+        // Into jsonPayload, not just the debug response body: the stalls worth
+        // attributing are intermittent, and nobody is holding a debug request
+        // open when one happens.
+        logger?.warn?.(
+          {
+            stage: definition.stage,
+            query: q,
+            role_id: role?.role_id || null,
+            timeout_cause: timeoutCause || null,
+            db: { ...stageDbDiagnostics },
+          },
+          'local_external_seed_stage_timeout',
+        );
+      }
       if (timedOut) {
         return {
           rows: stagedRows,
@@ -9893,6 +10067,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       ...(queryCap !== Number(definition.cap || safeLimit) ? { query_cap: queryCap } : {}),
       ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
       sequential_query: true,
+      ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
       ...(continueAfterPreciseStage === true && definition.stage === 'support_query_precise' ? { continued_after_precise_stage: true } : {}),
     });
@@ -10168,21 +10343,47 @@ async function searchLocalExternalSeedProducts({
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const rowCap = Math.max(18, Math.min(80, safeLimit * 8));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
     queryTimeoutMs != null &&
     Number.isFinite(Number(queryTimeoutMs)) &&
     Number(queryTimeoutMs) > 0;
+  // Which budget a role gets is a question about whether it is THE PRIMARY, not
+  // about its rank number. `roleRank > 1` assumed the primary always ranks 1;
+  // the concern planner emits spaced ranks (11 / 20 / 30 for the acne
+  // framework), so `> 1` was true for every role and the primary always fell to
+  // the support tier -- 1600ms against a query measured at 1720-1800ms in prod.
+  // It therefore ALWAYS overran, and whether rows came back was a race between
+  // the query resolving and the deadline firing. Rank is kept only as a fallback
+  // for target contexts that carry no `primary_role_id`.
+  //
+  // The constant is 18,000ms but the staged search clamps to
+  // `Math.min(4000, ...)`, so the effective budget here is 4,000ms — roughly 2.2x
+  // the measured query cost, and the worst-case pool-slot hold this raise can
+  // cause is 4s, not 18s.
+  // Lowercased on BOTH sides: every other comparison of these two ids in this
+  // codebase does (`beautyChatMainlineEntry.js:263,280,335`, `routes.js:24131,
+  // 26690,28215`). Trim-only would make `isPrimaryRole` false for EVERY role in a
+  // lane carrying a differently-cased primary id — the prior-reco continuation
+  // lane does — silently restoring the 1600ms race with every test still green.
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim().toLowerCase();
+  const roleId = String(role?.role_id || '').trim().toLowerCase();
+  const isPrimaryRole = primaryRoleId && roleId
+    ? roleId === primaryRoleId
+    : !(Number.isFinite(roleRank) && roleRank > 1);
   const effectiveQueryTimeoutMs = explicitQueryTimeoutMs
     ? Math.trunc(Number(queryTimeoutMs))
-    : (Number.isFinite(roleRank) && roleRank > 1 ? 1600 : RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+    : (isPrimaryRole ? RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS : 1600);
 
   try {
     if (leanSql) {
       const staged = await searchLocalExternalSeedProductsViaSupportStages({
         runQuery,
+        logger,
         q,
         patterns,
         role,
@@ -10249,7 +10450,7 @@ async function searchLocalExternalSeedProducts({
           ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND market = $1
+          AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
@@ -10362,7 +10563,9 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   }
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
@@ -10387,6 +10590,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   try {
     const staged = await searchLocalExternalSeedProductsViaSupportStages({
       runQuery,
+      logger,
       q,
       patterns,
       role,
@@ -16143,6 +16347,12 @@ function buildUrlFetchFailureCode(attempts = []) {
     .map((item) => String(item?.error_code || '').trim().toLowerCase())
     .filter(Boolean);
 
+  // FIRST, ahead of the challenge/status branches. In the DEFAULT config the precheck is only reachable
+  // AFTER a 403/406/429 or a challenge — that is what lets the vendor run at all — so checking statuses
+  // first meant a refused address reported `url_fetch_forbidden_403` and the `url_forbidden_address`
+  // dial stayed silent for exactly the case it was added to count. An address we refused is the more
+  // important fact about the request than the status that preceded it.
+  if (errorCodes.some((code) => code.startsWith('pivota_ssrf'))) return 'url_forbidden_address';
   if (challengeTypes.includes('cloudflare_challenge')) return 'url_fetch_challenge_cloudflare';
   if (challengeTypes.includes('access_denied_page')) return 'url_fetch_access_denied';
   if (statuses.includes(403)) return 'url_fetch_forbidden_403';
@@ -16225,6 +16435,12 @@ async function fetchViaZenRows({
   }
 }
 
+// One pinned transport for the whole product-URL lane. Built once: it only wraps agents and closures.
+const fetchPublicProductUrl = createPublicUrlFetch({ axiosInstance: axios });
+// The vendor lane never opens our socket, so the transport fence cannot speak for it. This answers the
+// same address question ahead of that call. Built once, beside the transport it complements.
+const checkPublicProductHost = createPublicHostCheck();
+
 async function runSingleUrlFetchAttempt({
   strategy,
   provider = 'native',
@@ -16268,7 +16484,14 @@ async function runSingleUrlFetchAttempt({
   }
 
   try {
-    const resp = await axios.get(productUrl, {
+    // NOT `axios.get`. This is the SSRF sink: a bare axios.get here followed a merchant's
+    // `302 -> http://127.0.0.1:PORT` all the way onto loopback, because axios defaults to
+    // maxRedirects: 5 and nothing in this chain ever checked an address. `fetchPublicProductUrl`
+    // refuses non-public literals before a request is built, dials through a public-only DNS
+    // resolver, and re-applies both to EVERY redirect hop. Everything else below — the decoded-byte
+    // cap, gzip negotiation, the text decoding, `validateStatus`, and the `resp.headers` shape that
+    // detectBotChallengePage reads — is unchanged, which is why the axios adapter was kept.
+    const resp = await fetchPublicProductUrl(productUrl, {
       timeout: timeoutMs,
       maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
       maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
@@ -16341,6 +16564,39 @@ async function fetchProductHtmlWithUnblockChain({
     };
   }
 
+  // Refuse a non-public URL ONCE, here, instead of three times at the sink. This is an optimisation and
+  // a partial vendor guard, NOT the fence: runSingleUrlFetchAttempt refuses independently, and deleting
+  // this block leaves the lane just as closed — verified by mutation (reverting the sink to a bare
+  // axios.get IS caught; neutering this block is not, because the sink's own refusal now produces the
+  // same failure_code). No test pins this block, deliberately: there is no behaviour left to pin once
+  // the sink refuses.
+  //
+  // What it adds is (a) refusing before three identical attempts, and (b) PARTIAL cover for the zenrows
+  // branch, which never reaches the fenced transport — it hands `productUrl` to a paid vendor as a query
+  // parameter. "Partial" is exact: this gate is parsePublicHttpUrl, which sees LITERALS only. A hostname
+  // whose DNS answer is private passes it, fails the three direct attempts, and is still handed to the
+  // vendor when AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED is false (it defaults true). Low impact — zenrows
+  // fetches from its own network, not ours — but the guard is not the whole door.
+  try {
+    parsePublicHttpUrl(urlText);
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      html: '',
+      attempts: [{
+        strategy: 'input_validation',
+        provider: 'native',
+        error_code: String(err?.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      }],
+      final_strategy: 'none',
+      failure_code: 'url_forbidden_address',
+      unblock_attempted: false,
+      unblock_failed: false,
+      used_unblock_vendor: false,
+    };
+  }
+
   const attemptTimeoutMs = Math.max(
     700,
     Math.min(URL_UNBLOCK_TIMEOUT_MS, Number(timeoutMs) || PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS),
@@ -16392,6 +16648,11 @@ async function fetchProductHtmlWithUnblockChain({
       timeoutMs: Math.max(700, Math.min(attemptTimeoutMs, totalDeadline - Date.now())),
       headers: plan.headers,
     });
+    // Tagged with WHICH url produced it. The evidence guard below must not treat a refusal on the
+    // `www.` host VARIANT as evidence about `urlText` — they are different hosts, and a merchant whose
+    // www label CNAMEs into private space would otherwise lose the vendor fallback for a perfectly
+    // public canonical URL. Measured: that false positive withheld the vendor for https://cosrx.com/p/x.
+    out.attempt.__url = plan.url;
     if (out.ok) {
       return {
         ok: true,
@@ -16408,10 +16669,93 @@ async function fetchProductHtmlWithUnblockChain({
     attempts.push(out.attempt);
   }
 
-  const shouldRunVendor =
+  /*
+   * THE VENDOR IS FENCED TOO, and it needs its own gate because it is the one path where OUR socket is
+   * never opened: `fetchViaZenRows` hands `productUrl` to api.zenrows.com as a query parameter and the
+   * vendor fetches it from ITS network, so `fetchPublicProductUrl` and every guard inside it are simply
+   * not on this code path.
+   *
+   * Reachability, stated precisely rather than dramatically: `shouldTryUnblockVendor` fires only on a
+   * `challenge_type` or a 403/406/429, and an address refusal carries NEITHER (verified live in prod:
+   * `attempts: [{error_code: 'pivota_ssrf_refused'}]`, no status). So under the DEFAULT
+   * AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED=true the vendor already does not run for a refused address.
+   * Set that one flag false — URL_UNBLOCK_ENABLED defaults true, provider defaults zenrows — and the
+   * gate vanishes. Measured on unfixed main in exactly that config: `http://localhost:8080/admin` was
+   * handed to the vendor TWICE (http and js_render). One env flag is not a security boundary.
+   *
+   * Two INDEPENDENT refusals, neither load-bearing alone:
+   *   (a) evidence already held — a direct attempt was refused by the fence, so the address is known bad
+   *       and no lookup is needed; and
+   *   (b) a direct check that does not depend on attempt bookkeeping at all, covering the case where the
+   *       direct attempts never ran (the deadline can break that loop before the first one) and there is
+   *       no evidence to read.
+   * A test kills each separately.
+   */
+  const fenceRefusedAddress = attempts.some(
+    (attempt) => attempt?.__url === urlText
+      && String(attempt?.error_code || '').trim().toLowerCase().startsWith('pivota_ssrf'),
+  );
+
+  let shouldRunVendor =
+    !fenceRefusedAddress &&
     URL_UNBLOCK_ENABLED &&
     URL_UNBLOCK_PROVIDER === 'zenrows' &&
     (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
+
+  // The exact string the vendor will be sent. Set by the precheck to the NORMALISED href, so the URL we
+  // judged is the URL we transmit — see below.
+  let vendorUrl = urlText;
+
+  if (shouldRunVendor) {
+    // Only here, so the happy path never pays for a lookup: this runs only when a vendor call — far more
+    // expensive than a resolve — is about to happen anyway. Measured: a 200 on the first direct attempt
+    // performs zero lookups through this path.
+    //
+    // BOUNDED, because a bare `await` here sits OUTSIDE the deadline this function was given: measured,
+    // a stalling resolver returned at 4006 ms against a declared 900 ms budget, and the deadline is only
+    // consulted on the next statement. It also holds a libuv threadpool slot. A lookup that outlives the
+    // budget is treated as "not proven bad" rather than "bad" — same direction as `unresolved` below,
+    // and the direct attempts have already resolved this name anyway.
+    // Wrapped, because an unexpected throw would otherwise escape fetchProductHtmlWithUnblockChain
+    // entirely; a failure to CHECK must never become a failure to serve, but it must not open the door
+    // either, so it fails closed. UNTESTED AND UNPINNED, deliberately stated: nothing reachable makes
+    // this reject today (the only throwing shape is the wrong-arity `createPublicHostCheck({lookup})`,
+    // and the single call site passes no args), and the lookup reference is captured at module load, so
+    // a spy cannot reach it without fighting the require order. It is defence against a future edit, not
+    // a guard with coverage — do not read the catch as evidence of a tested path.
+    const remainingMs = Math.max(0, totalDeadline - Date.now());
+    let vendorHostCheck;
+    try {
+      vendorHostCheck = await Promise.race([
+        checkPublicProductHost(urlText),
+        new Promise((resolve) => setTimeout(
+          () => resolve({ ok: true, code: null, reason: 'unresolved', url: null }),
+          Math.max(150, Math.min(1500, remainingMs)),
+        )),
+      ]);
+    } catch {
+      vendorHostCheck = { ok: false, code: 'pivota_ssrf_refused', reason: 'address_refused', url: null };
+    }
+    if (!vendorHostCheck.ok) {
+      shouldRunVendor = false;
+      attempts.push({
+        strategy: 'vendor_precheck',
+        provider: 'zenrows',
+        error_code: String(vendorHostCheck.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      });
+    } else if (vendorHostCheck.url) {
+      /*
+       * SEND THE STRING WE VALIDATED, not the one the caller typed. Our own fetches already go out
+       * normalised (`parsePublicHttpUrl(...).toString()` inside the pinned transport); the vendor was
+       * getting the raw input, and the two can disagree about the HOST. Measured:
+       * `http://cosrx.com\@127.0.0.1/` is host `cosrx.com` to Node's WHATWG parser (backslash is a path
+       * delimiter for special schemes) and host `127.0.0.1` to Python's urllib. We do not control the
+       * vendor's parser, so handing it anything other than the form we judged is validating one string
+       * and transmitting another.
+       */
+      vendorUrl = vendorHostCheck.url;
+    }
+  }
 
   if (shouldRunVendor && Date.now() < totalDeadline) {
     const vendorPlans = [
@@ -16426,7 +16770,7 @@ async function fetchProductHtmlWithUnblockChain({
       const out = await runSingleUrlFetchAttempt({
         strategy: plan.strategy,
         provider: plan.provider,
-        productUrl: urlText,
+        productUrl: vendorUrl,
         timeoutMs: Math.max(700, Math.min(URL_UNBLOCK_TIMEOUT_MS, totalDeadline - Date.now())),
         jsRender: plan.jsRender,
       });
@@ -20678,6 +21022,49 @@ function buildRecoCatalogQueryLevels({
   needSeedText = '',
   maxGenericQueries = 0,
 } = {}) {
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch sets allow_external_seed from its stage plan; the other two branches set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // FROM THE RESOLVED STEP AND NOTHING ELSE. The first attempt read the step OR `needSeedText`, and
+  // put the supplement on the GENERIC branch. Both were wrong, in opposite directions and at the
+  // same time: `step_aware_intent` is set whenever a step resolves, so a makeup ask never reaches
+  // the generic branch and got no supplement, while a skincare ask whose text said "fragrance-free"
+  // resolved as fragrance through the seed-text fallback and got one. Measured live: bronzer,
+  // lipstick and eau-de-toilette all took the step-aware branch with source_scope undefined; the
+  // only need that reached the generic branch with a beauty domain was "a fragrance-free
+  // moisturizer".
+  const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
+  const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
+  // BOTH FIELDS, BECAUSE THE TWO COLLECTORS READ DIFFERENT ONES. An earlier version of this comment
+  // said `source_scope` decides and `allow_external_seed` is a no-op; a review traced it and the
+  // truth is the other way round on the path this ladder actually takes.
+  //   - collectRecoCandidatesFromQueryLevels -> runQueryLevelEntry OVERWRITES source_scope from
+  //     `allowExternalSeed && entry.allow_external_seed`, so `allow_external_seed` is what decides
+  //     and any scope set here is discarded.
+  //   - executeRecoRecallPlanEntry reads entry.source_scope directly.
+  // Setting one and not the other yields a ladder that looks external-eligible in a trace and goes
+  // out internal-only on whichever collector runs. Do not drop either.
+  //
+  // NOTE that the query-levels path rewrites the scope to 'external_seed', not 'hybrid' -- so on
+  // that path the request uses the external-seed direct transport and fast mode. External seeds
+  // SUPPLEMENT rather than replace only via external_seed_strategy, which is why it is pinned here.
+  //
+  // `preferred_step` is emitted alongside `step` because the outbound external-seed arm derives
+  // targetStepFamily from `preferred_step` alone; the step-aware ladder only ever set `step`, so the
+  // makeup category never reached the backend's own category resolution.
+  const withExternalSeedSupplement = (entry) => (externalSeedEligible
+    ? {
+      ...entry,
+      source_scope: 'hybrid',
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+      preferred_step: pickFirstTrimmed(entry?.preferred_step, entry?.step) || '',
+    }
+    : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
       mode: 'framework_generic',
@@ -20728,7 +21115,7 @@ function buildRecoCatalogQueryLevels({
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
-      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => withExternalSeedSupplement({
         query: String(entry?.query || '').trim(),
         step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
         slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
@@ -20744,20 +21131,25 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  return queries.length
+  // NOT withExternalSeedSupplement HERE. This branch is only reached when no step resolved (a
+  // resolved step at high or medium confidence sets step_aware_intent and takes the branch above),
+  // and externalSeedEligible is derived from the resolved step -- so the call was dead code whose
+  // comment implied otherwise. The eligibility test above is the whole rule.
+  const generalQueries = queries;
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
 }
 
-function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null } = {}) {
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null, allowPrimaryMissingSupportRoutine = false } = {}) {
   return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext, allowPrimaryMissingSupportRoutine })
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
@@ -20765,9 +21157,9 @@ function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext
       });
 }
 
-function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate, { requestedStep = '' } = {}) {
   if (!isPlainObject(candidate)) return { rejected: false, reason: null };
-  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  const scopeClassification = classifyConcernScopeCandidate(candidate, { requestedStep });
   if (scopeClassification?.hard_reject === true) {
     return {
       rejected: true,
@@ -21205,7 +21597,9 @@ async function collectRecoCandidatesFromRecallPlan({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -21407,6 +21801,9 @@ function buildConcernFrameworkSummary({
   const primaryRoleId = String(targetContext.primary_role_id || '').trim();
   const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
   const recommendationList = Array.isArray(recommendations) ? recommendations : [];
+  const primaryRoleFilled = recommendationList.some(
+    (item) => String(item?.matched_role_id || item?.matchedRoleId || '').trim() === primaryRoleId,
+  );
   const primaryReco = recommendationList.find((item) => {
     const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
     return matchedRoleId && matchedRoleId === primaryRoleId;
@@ -21434,7 +21831,14 @@ function buildConcernFrameworkSummary({
   const topPickRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === topPickRoleId) || null;
   return {
     concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
-    headline: primaryRole
+    // "Start with X" is an instruction to use a product that is not in the card
+    // when the primary role went unfilled. Derived from the recommendations in
+    // hand rather than a new parameter, so it cannot drift from what shipped.
+    headline: primaryRole && !primaryRoleFilled && recommendationList.length > 0
+      ? (String(language || '').toUpperCase() === 'CN'
+        ? `暂未确认 ${primaryRole.label}，以下仅为可搭配的支持步骤`
+        : `I could not confirm a ${primaryRole.label} — these are the supporting steps to pair with one`)
+      : primaryRole
       ? (String(language || '').toUpperCase() === 'CN'
         ? `先围绕 ${primaryRole.label} 建立护理框架，再补充其它支持步骤`
         : `Start with ${primaryRole.label}, then layer the supporting roles`)
@@ -21607,8 +22011,12 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
-function classifyConcernScopeCandidate(row) {
-  return classifyConcernScopeCandidatePolicy(row);
+// A PASS-THROUGH THAT DROPPED THE OPTIONS IS A SILENT UNTHREADING. This wrapper sits between the
+// mainline boundary and the policy module; forwarding `row` alone meant the step reached the policy
+// on the two call sites that use the policy directly and nowhere else, and the boundary went on
+// deleting the category it had just searched for.
+function classifyConcernScopeCandidate(row, options = {}) {
+  return classifyConcernScopeCandidatePolicy(row, options);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
@@ -23636,6 +24044,8 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     primary_role_matched: candidateState?.primary_role_matched === true,
     primary_missing_authoritative_support_selected:
       candidateState?.primary_missing_authoritative_support_selected === true,
+    primary_missing_support_routine_surfaced:
+      candidateState?.primary_missing_support_routine_surfaced === true,
     viable_pool_strength: String(candidateState?.viable_pool_strength || '').trim().toLowerCase() || 'empty',
     weak_viable_pool: candidateState?.weak_viable_pool === true,
     candidate_drop_stage: pickFirstTrimmed(candidateState?.candidate_drop_stage) || null,
@@ -24907,6 +25317,12 @@ async function runBeautyMainlineLocalHandoffSearch({
     : 0;
 
   const collectedBase = await collectRecoCandidatesFromQueryLevels({
+    // The only production caller of this lane is
+    // `handoffRecoToBeautyMainlineSearch`, whose only caller is the beauty chat
+    // mainline entry -- the one surface that renders the
+    // `primary_step_unconfirmed` notice. Opting in anywhere else would surface a
+    // routine missing the requested step with nothing saying so.
+    allowPrimaryMissingSupportRoutine: true,
     queryLevels: effectiveLocalHandoffQueryLevels,
     targetContext,
     recommendationTaskContext,
@@ -25522,7 +25938,15 @@ async function runBeautyMainlineLocalHandoffSearch({
       ),
       deadlineAtMs: hydrationDeadlineMs || deadlineMs,
     });
-    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext });
+    // Both adoption sites are guarded by `selected_recommendations.length > 0`,
+    // so an empty re-finalize is DISCARDED rather than adopted -- dropping the
+    // flag here does not return nothing, it loses the hydration/rerank
+    // enrichment for this state. (An earlier comment here claimed the opposite,
+    // and also called this the redundant pair: hydration runs whenever
+    // `isFrameworkLocalHandoff && rawCandidates.length > 0`, so there is no
+    // non-hydrating path for this state and it is the collector's opt-in that is
+    // covered by the walk.)
+    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
     if (
       Array.isArray(hydratedFrameworkState?.selected_recommendations)
       && hydratedFrameworkState.selected_recommendations.length > 0
@@ -25547,7 +25971,7 @@ async function runBeautyMainlineLocalHandoffSearch({
           deadlineAtMs: hydrationDeadlineMs || deadlineMs,
         },
       );
-      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
       if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
         effectiveCandidateState = mergeConcernFrameworkRerankedState(
           effectiveCandidateState,
@@ -26445,6 +26869,17 @@ function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidat
       ? { primary_recommendation_id: pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id) }
       : {}),
     ...(typeof reranked.terminal_success === 'boolean' ? { terminal_success: reranked.terminal_success } : {}),
+    // These two travel WITH `selected_recommendations`, for the same reason
+    // `terminal_success` does. Taking the products from the reranked state while
+    // leaving these on `...base` ships a support-only routine with the base's
+    // `primary_role_matched: true` and no notice -- products presented as a
+    // complete answer, which is the exact harm this PR exists to prevent.
+    ...(typeof reranked.primary_role_matched === 'boolean'
+      ? { primary_role_matched: reranked.primary_role_matched }
+      : {}),
+    ...(typeof reranked.primary_missing_support_routine_surfaced === 'boolean'
+      ? { primary_missing_support_routine_surfaced: reranked.primary_missing_support_routine_surfaced }
+      : {}),
     ...(typeof reranked.comparison_fill_applied === 'boolean'
       ? { comparison_fill_applied: reranked.comparison_fill_applied }
       : {}),
@@ -27412,7 +27847,17 @@ function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = ''
   ];
 }
 
-function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
+// `allowPrimaryMissingSupportRoutine` is opt-in for one reason: surfacing a
+// support-only routine is only honest where the caller also renders the
+// "primary step unconfirmed" notice. This selector feeds nine call sites across
+// six modules, each with its own card, and only the beauty mainline entry
+// discloses. Defaulting to false means every other surface keeps returning
+// nothing rather than quietly showing a routine that is missing the step the
+// user asked about.
+function finalizeConcernFrameworkCandidatePools(
+  rawCandidates,
+  { targetContext, allowPrimaryMissingSupportRoutine = false } = {},
+) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
   const seen = new Set();
@@ -27445,6 +27890,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     explicit_face_skincare: 0,
     explicit_non_face_supportive: 0,
     explicit_non_skincare: 0,
+    // Without its own bucket the new class fell into `ambiguous`, so the telemetry said the pool was
+    // full of rows the gate could not place — the opposite of what threading the step achieved.
+    explicit_requested_beauty_category: 0,
     ambiguous: 0,
   };
   for (const role of roles) {
@@ -27454,8 +27902,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
+  const frameworkRequestedStep = pickFirstTrimmed(targetContext?.resolved_target_step) || '';
   for (const row of deduped) {
-    const scopeClassification = classifyConcernScopeCandidate(row);
+    const scopeClassification = classifyConcernScopeCandidate(row, { requestedStep: frameworkRequestedStep });
     if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
       scopeClassificationStats[scopeClassification.classification] += 1;
     } else {
@@ -27811,12 +28260,38 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  // With no primary pick, the default is still to surface nothing: one orphan
+  // support product answers a concern question worse than saying we could not
+  // confirm options, which is why that rule exists.
+  //
+  // A routine is the exception. When two or more DISTINCT support roles are
+  // filled, what is on the table is a coherent partial answer -- "no acne
+  // treatment confirmed, but here is the moisturiser and the sunscreen to pair
+  // with one" -- and discarding it loses real, already-scored candidates. On
+  // 2026-09-08 the acne turn threw away 10 viable rows across two support roles
+  // (moisturiser 6 @ 0.82, sunscreen 4 @ 0.86) to return nothing at all.
+  //
+  // The caller must not read this as a full routine: `primary_role_matched`
+  // stays false and `primary_missing_support_routine_surfaced` says the primary
+  // step is the one that is missing.
+  const supportOnlySelected = primaryRoleMatched
+    ? []
+    : selected.filter((item) => {
+      const roleId = String(item?.matched_role_id || '').trim();
+      return Boolean(roleId && roleId !== primaryRoleId);
+    });
+  const distinctSupportRoleCount = new Set(
+    supportOnlySelected.map((item) => String(item?.matched_role_id || '').trim()),
+  ).size;
+  const primaryMissingSupportRoutineSurfaced = allowPrimaryMissingSupportRoutine === true
+    && !primaryRoleMatched
+    && distinctSupportRoleCount >= 2;
   const surfacedRecommendations = primaryRoleMatched
     ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
         targetContext,
         primaryRole,
       })
-    : [];
+    : (primaryMissingSupportRoutineSurfaced ? supportOnlySelected : []);
   const primarySelectedRecommendations = surfacedRecommendations.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const comparisonFillCount = surfacedRecommendations.filter((item) => item?.comparison_fill === true).length;
   const routineSupportFillCount = surfacedRecommendations.filter((item) => {
@@ -27848,6 +28323,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
+    primary_missing_support_routine_surfaced: primaryMissingSupportRoutineSurfaced,
     best_available_role_id: pickFirstTrimmed(
       bestAvailableRecommendation?.matched_role_id,
       bestAvailableRecommendation?.matchedRoleId,
@@ -27907,7 +28383,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: surfacedRecommendations.length > 0,
+    // A routine missing the step the user asked for is not a terminal success.
+    // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`,
+    // so claiming success here would silently disable them for exactly the state
+    // that most needs them.
+    terminal_success: surfacedRecommendations.length > 0 && !primaryMissingSupportRoutineSurfaced,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: hasWeakViablePool,
     late_conflict_without_override: hasWeakViablePool,
@@ -28191,6 +28671,7 @@ async function collectRecoCandidatesFromQueryLevels({
   initialRawCandidates = [],
   initialSearchResults = [],
   priceCeiling = null,
+  allowPrimaryMissingSupportRoutine = false,
 } = {}) {
   const rawCandidates = (Array.isArray(initialRawCandidates) ? initialRawCandidates : [])
     .map((candidate) => normalizeRecoCatalogProduct(candidate))
@@ -28215,6 +28696,7 @@ async function collectRecoCandidatesFromQueryLevels({
   );
   let candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
     targetContext,
+    allowPrimaryMissingSupportRoutine,
     recommendationTaskContext,
     priceCeiling,
   });
@@ -28379,7 +28861,9 @@ async function collectRecoCandidatesFromQueryLevels({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -28598,6 +29082,7 @@ async function collectRecoCandidatesFromQueryLevels({
         }
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28613,6 +29098,7 @@ async function collectRecoCandidatesFromQueryLevels({
           accumulateQueryLevelRow(stageId, row, levelAggregate);
           candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
             targetContext,
+            allowPrimaryMissingSupportRoutine,
             recommendationTaskContext,
             priceCeiling,
           });
@@ -28665,6 +29151,7 @@ async function collectRecoCandidatesFromQueryLevels({
         accumulateQueryLevelRow(stageId, row, levelAggregate);
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28691,6 +29178,7 @@ async function collectRecoCandidatesFromQueryLevels({
     attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
+      allowPrimaryMissingSupportRoutine,
       recommendationTaskContext,
       priceCeiling,
     });
@@ -28920,51 +29408,6 @@ function buildRecoGroundingQueriesFromPlanItem(item, { lang = 'EN' } = {}) {
   return normalizeRecoPlanQueryTerms(queries, 4);
 }
 
-// Every key a reco reader consults when it wants a price. `mergeRecoPlanWithGroundedCandidate` re-points
-// a row at a DIFFERENT product than the LLM named, so each of these has to be re-sourced from the
-// grounded candidate instead of surviving the `...plan` spread. Readers this list has to cover:
-//   - readRecoCandidatePriceForCeiling (src/auroraBff/recoPriceCeiling.js): price, price_amount,
-//     priceAmount, currency, price_currency, priceCurrency
-//   - the agent bridge (src/agentSignals/recommendProducts.js:375): item.price, item.currency
-//   - extractCatalogCandidatePrice (this file): the whole alias family below, reached whenever a
-//     MERGED row is read back. The two call sites that do this are isConcernFrameworkCandidateOverBudget
-//     (routes.js ~26860, the framework budget gate) and buildRecoAssistantRewritePrompt (~60776, which
-//     turns the price into user-facing prose). NOT the recall pool cache -- it stores recall candidates
-//     and its write happens BEFORE these rows are merged -- and NOT the ceiling top-up, which reads via
-//     readRecoCandidatePriceForCeiling instead. Check those two sites when auditing this list.
-//
-// `price` and `currency` are in the list even though the merge also assigns both explicitly after the
-// spread: stripping them makes the result independent of where those two assignments sit, so moving
-// them above the spread can never quietly restore the LLM's price.
-const RECO_PLAN_PRICE_CARRYING_KEYS = Object.freeze([
-  'price', 'price_amount', 'priceAmount', 'price_value', 'priceValue',
-  'offer_price', 'offerPrice', 'sale_price', 'salePrice', 'list_price', 'listPrice',
-  'min_price', 'minPrice', 'max_price', 'maxPrice',
-  'pricing', 'price_info', 'priceInfo', 'offer', 'offers',
-  'price_usd', 'priceUsd', 'usd', 'price_cny', 'priceCny', 'cny',
-  'currency', 'currency_code', 'currencyCode', 'price_currency', 'priceCurrency',
-]);
-
-// extractCatalogCandidatePrice also reaches NESTED carriers -- `subject.price`, `subject.offers`,
-// `product.price`, `product.offers`, `sku.price`, `sku.offers`. `sku` needs no handling here because
-// the merge re-sources it wholesale from the candidate, but `subject` and `product` ride through on
-// the plan item, so an unpriced candidate would let the LLM's number come back on re-normalization --
-// the exact failure the top-level strip exists to prevent. Strip the price keys OUT of those objects
-// rather than dropping the objects, which also carry product_group_id, category and sku identity.
-const RECO_PLAN_NESTED_PRICE_CARRIERS = Object.freeze(['subject', 'product']);
-
-function stripRecoPlanPriceCarryingFields(plan) {
-  const next = { ...plan };
-  for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete next[key];
-  for (const carrier of RECO_PLAN_NESTED_PRICE_CARRIERS) {
-    if (!isPlainObject(next[carrier])) continue;
-    const nested = { ...next[carrier] };
-    for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete nested[key];
-    next[carrier] = nested;
-  }
-  return next;
-}
-
 function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   const plan = normalizeRecoPlanRecommendation(planItem);
   const normalizedProduct = normalizeRecoCatalogProduct(product);
@@ -28978,13 +29421,32 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     },
     { requireMerchant: true, allowOpaqueProductId: false },
   );
-  const mergedReasons = uniqCaseInsensitiveStrings(
-    [
-      ...normalizeRecoPlanStringArray(plan.reasons, 3),
-      ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
-    ],
-    4,
-  );
+  const sameProduct = sameRecommendationProduct(planItem, normalizedProduct);
+  // Grounding can substitute a different catalog product. Carry only the requested slot/category,
+  // not the old product's URL, identity, notes, formula claims, or nested evidence bundles.
+  // Same-identity rationale may survive; all identity and catalog fields still come from the candidate.
+  const planning = {
+    slot: plan.slot,
+    step: plan.step,
+    product_type: plan.product_type,
+    query_terms: sameProduct ? plan.query_terms : [],
+    score: sameProduct ? plan.score : null,
+    ...(sameProduct
+      ? (plan.__pivota_score_basis ? { __pivota_score_basis: plan.__pivota_score_basis } : {})
+      : { __pivota_score_basis: 'catalog_rebound' }),
+  };
+  const rationale = sameProduct ? {
+    use_case: plan.use_case,
+    concern_match: plan.concern_match,
+    skin_fit: plan.skin_fit,
+    constraint_notes: plan.constraint_notes,
+    warnings: plan.warnings,
+    notes: plan.notes,
+  } : {};
+  const mergedReasons = uniqCaseInsensitiveStrings([
+    ...(sameProduct ? normalizeRecoPlanStringArray(plan.reasons, 3) : []),
+    ...normalizeRecoPlanStringArray([pickFirstTrimmed(normalizedProduct.why_match, normalizedProduct.retrieval_reason)], 2),
+  ], 4);
   // PRICE FOLLOWS IDENTITY. The identity fields below all come from the grounded candidate, so the
   // price has to come from the SAME candidate -- otherwise a row carries product A's name and product
   // B's price and a buyer is quoted a number no merchant will honour. When the candidate carries no
@@ -28993,16 +29455,19 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   // POSITIVE finite amount, so presence is the whole test here -- a test pins that so this stays true.
   const groundedPrice = isPlainObject(normalizedProduct.price) ? normalizedProduct.price : null;
   return {
-    ...stripRecoPlanPriceCarryingFields(plan),
+    ...planning,
+    ...rationale,
+    ...normalizedProduct,
+    ...buildRecoVisibleProductFields(normalizedProduct),
     price: groundedPrice,
     currency: groundedPrice && groundedPrice.currency ? groundedPrice.currency : null,
     grounding_status: 'grounded',
-    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId, plan.product_id),
-    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId, plan.merchant_id),
-    brand: pickFirstTrimmed(normalizedProduct.brand, plan.brand),
-    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title, plan.name),
-    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name, plan.title),
-    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name, plan.display_name),
+    product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId),
+    merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId),
+    brand: pickFirstTrimmed(normalizedProduct.brand),
+    name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title),
+    title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name),
+    display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name),
     category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
     retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
     retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
@@ -38600,6 +39065,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '检测到可能的医疗风险信号，已停止商品推荐。'
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    primary_step_unconfirmed:
+      lang === 'CN'
+        ? '这轮没有找到可信的主步骤商品，以下只是可以搭配的辅助步骤。'
+        : 'I could not confirm a product for the main step of this routine, so these are the supporting steps only — pair them with a treatment for your main concern.',
     timeout_degraded:
       lang === 'CN'
         ? '这轮商品匹配没有在时限内完成。请稍后重试，或补充当前护肤流程/想找的步骤后我再继续缩窄。'
@@ -41317,6 +41786,11 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
+  // NOTE: HTTP status is deliberately NOT classified here. This function is shared with
+  // legacyChatRecoExecution's rethrow guard and two beauty-handoff sites, and axios sets
+  // `.status` on any error carrying a response — so classifying it here silently changed how
+  // those three lanes treat a 5xx, and both of their suites stub this function, so nothing
+  // would have shown it. The reco LLM leg classifies status itself; see classifyRecoLlmLegFailure.
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -41325,8 +41799,31 @@ function classifyRecoUpstreamFailureCode(err) {
   return '';
 }
 
+// THE RECO LLM LEG'S OWN CLASSIFICATION. Scoped to this leg rather than to the shared classifier
+// above, and deliberately TOTAL: every throw gets a non-empty code.
+//
+// `''` was the old answer for an HTTP rejection, and it is also the answer for
+// AURORA_NOT_CONFIGURED and for any error whose code this repo does not recognise. A blank code
+// means the failure leaves the telemetry dimension entirely rather than moving within it — on the
+// tree before this, a decision service that was DOWN produced null upstream_failure_code, null
+// failure_class and products in the response, which reads as success.
+function classifyRecoLlmLegFailure(err) {
+  const shared = classifyRecoUpstreamFailureCode(err);
+  if (shared) return shared;
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  if (code === 'AURORA_NOT_CONFIGURED') return 'NOT_CONFIGURED';
+  return 'UPSTREAM_ERROR';
+}
+
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
+  // 5xx is the upstream having a bad moment; 4xx is not worth retrying on the same request. (429
+  // lands here too, which is not "a request we built wrong" as an earlier version of this comment
+  // put it — postWithRetry does not retry it either, so the classification matches the behaviour.)
+  const httpStatus = /^HTTP_(\d{3})$/.exec(token);
+  if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
     token === 'ECONNRESET' ||
     token === 'EPIPE' ||
@@ -45591,6 +46088,10 @@ function buildRecoRequestedEventData({
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
+    // NOT the same as `source` above, which is source_mode — a presentation label with its own
+    // fallback ladder that can read 'step_aware_mainline' on a turn the LLM actually answered.
+    // This one is derived from structuredSource, so it says which path produced the answer.
+    ...(pickFirstTrimmed(meta.confidence_basis) ? { confidence_basis: pickFirstTrimmed(meta.confidence_basis) } : {}),
     ...(pickFirstTrimmed(meta.owner_source) ? { owner_source: pickFirstTrimmed(meta.owner_source) } : {}),
     ...(pickFirstTrimmed(meta.final_outcome_owner) ? { final_outcome_owner: pickFirstTrimmed(meta.final_outcome_owner) } : {}),
     ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
@@ -45640,7 +46141,7 @@ function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = ''
   return value;
 }
 
-function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
+function resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope = '' } = {}) {
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const ingredientMode = Boolean(
     normalizedIngredientContext &&
@@ -45655,9 +46156,22 @@ function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
         (Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length > 0)
       ),
   );
-  const templateId = ingredientMode ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID;
+  // Ingredient mode wins: it has its own template and its own contract, and the wide scope has
+  // nothing to say about an ingredient lookup. Widening is only ever the plain goal-based path.
+  const domainWide = !ingredientMode && isWideRecoPromptDomainScope(promptDomainScope);
+  const templateId = ingredientMode
+    ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID
+    : (domainWide ? RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID);
   return {
     ingredient_mode: ingredientMode,
+    // Reported, not inferred downstream: the template id alone cannot say whether the wide lane was
+    // ASKED for (an operator may point both env vars at one file), and telemetry needs the ask.
+    domain_scope: domainWide ? RECO_PROMPT_DOMAIN_SCOPE_BEAUTY : 'skincare',
+    // Whether the ask was actually GRANTED. With the wide id pinned back to the narrow template
+    // these differ, and the prompt TEXT must follow this one — otherwise the query carries a
+    // "beauty recommendation plan" task line wrapped around v1_2's skincare-only system prompt:
+    // half-applied, and worse than either end state.
+    wide_template_active: domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID,
     llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
     template_id: templateId,
     schema_file: `${templateId}.user_schema.json`,
@@ -70935,6 +71449,7 @@ function buildRecoMainPromptPayload({
   ingredientContext,
   promptSpec,
 } = {}) {
+  const domainWide = Boolean(promptSpec && promptSpec.wide_template_active);
   const fallbackSchema = {
     meta: { lang: 'EN', intent: 'reco_products', region: 'US', no_clarify: true },
     profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
@@ -70987,7 +71502,15 @@ function buildRecoMainPromptPayload({
     },
     hard_rules: [
       'Do not ask clarifying questions.',
-      'Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.',
+      // Scope-aware on purpose. This branch runs only when the template FILE is unreadable, and a
+      // hardcoded skincare-only rule here would re-narrow the wide door with no trace in the diff.
+      ...(domainWide
+        ? [
+          'Recommend skincare (including body care), makeup and fragrance only. Haircare is staged and not covered yet: answer it empty, like a tool request. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.',
+          'Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.',
+          'If the requested category cannot be served — any tool, brush or device request included — return recommendations: [] and explain in missing_info.',
+        ]
+        : ['Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.']),
       'Do not output routines or AM/PM plans.',
       'Do not invent purchase links, product ids, or availability.',
       'Use candidates[] only as optional grounding hints, not as a hard restriction.',
@@ -71076,13 +71599,21 @@ function buildRecoMainPromptPayload({
   return payload;
 }
 
-function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext } = {}) {
-  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext });
+function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' } = {}) {
+  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope });
+  const domainWide = Boolean(promptSpec.wide_template_active);
   const fallbackSystemPrompt = [
-    'You are a precision skincare recommendation planner.',
+    domainWide
+      ? 'You are a precision beauty recommendation planner.'
+      : 'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
-    'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
+    ...(domainWide
+      ? [
+        'Recommend skincare (including body care), makeup and fragrance. Haircare is staged and not covered yet. Never beauty tools, brushes, sponges or devices; never supplements, ingestibles or medication.',
+        'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served — a tool or brush request included — return an empty list and say so in missing_info.',
+      ]
+      : ['Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.']),
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',
     'Return fewer recommendations instead of weak guesses.',
@@ -71111,7 +71642,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     userPayload: payload,
   });
   return {
-    query: `Task: Generate a user-adaptive skincare recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
+    query: `Task: Generate a user-adaptive ${domainWide ? 'beauty' : 'skincare'} recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
     prompt_spec: promptSpec,
     user_payload: payload,
     system_prompt: systemPrompt,
@@ -71120,8 +71651,9 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
   };
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' }) {
   return buildAuroraProductRecommendationsPromptBundle({
+    promptDomainScope,
     profile,
     requestText,
     lang,
@@ -84035,6 +84567,9 @@ function buildRecoLlmPromptState({
   globalStatus = null,
   ingredientContext = null,
   candidates = [],
+  // Which domain the CALLER is entitled to. Chat never sets it and keeps reco_main_v1_2; the
+  // agent-door bridge sets 'beauty' (#2155). See RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID.
+  promptDomainScope = '',
 } = {}) {
   const promptBundle = buildAuroraProductRecommendationsPromptBundle({
     profile: profileSummary || {},
@@ -84043,6 +84578,7 @@ function buildRecoLlmPromptState({
     globalStatus: isPlainObject(globalStatus) ? globalStatus : {},
     candidates: Array.isArray(candidates) ? candidates : [],
     ingredientContext,
+    promptDomainScope,
   });
   const query = `${prefix}${promptBundle.query}`;
   const llmTraceCoverage = buildRecoInputCoverage({
@@ -84061,6 +84597,8 @@ function buildRecoLlmPromptState({
   });
   llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
   llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
+  llmTraceSeed.prompt_domain_scope = String(promptBundle.prompt_spec.domain_scope || '').trim() || null;
+  llmTraceSeed.wide_template_active = Boolean(promptBundle.prompt_spec.wide_template_active);
   llmTraceSeed.candidate_count = Array.isArray(candidates) ? candidates.length : 0;
   const promptContractBase = validateRecoPromptContract({
     query,
@@ -84103,6 +84641,9 @@ async function runRecoLlmPrimary({
   let llmStructuredSource = null;
   let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
   let llmInvoked = false;
+  // Set only when the upstream call actually threw. Kept separate from llmFailureClass,
+  // which feeds the contract/status derivation and is deliberately left alone here.
+  let llmUpstreamError = null;
 
   if (!promptContract.ok) {
     llmLatencyMs = 0;
@@ -84139,7 +84680,12 @@ async function runRecoLlmPrimary({
       llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      llmUpstreamError = {
+        code: classifyRecoLlmLegFailure(err),
+        status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
+        not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
+      };
+      upstreamFailureCode = llmUpstreamError.code;
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
         llmFailureClass = 'timeout';
@@ -84193,18 +84739,52 @@ async function runRecoLlmPrimary({
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
-    } else if (!llmFailureClass && llmInvoked) {
+    } else if (!llmFailureClass && llmInvoked && !llmUpstreamError) {
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    } else if (llmUpstreamError) {
+      // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
+      // catch already set (upstream_timeout / upstream_dependency_failure) rather than
+      // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // NOT gated on `!llmFailureClass`. It was, and that made this branch unreachable for a 5xx:
+      // the catch sets llmFailureClass = 'timeout' for transient codes, so a 503 recorded NO
+      // main-stage metric at all — it went from the wrong bucket to no bucket, and the
+      // `upstream_timeout` token added to the allowlist alongside it was dead on arrival.
+      //
+      // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
+      // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
+      // incident would have been indistinguishable from an unrecognised token. This branch DOES
+      // fire for a 5xx — it used to be gated on `!llmFailureClass`, and the catch sets
+      // llmFailureClass = 'timeout' for transient codes, which is exactly what made a 503 record
+      // nothing at all. Ungating it is what put `upstream_timeout` on the wire.
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
 
+  // WHAT HAPPENED TO THE LLM LEG, as a fact rather than an inference. Every other field here
+  // describes the ANSWER; none of them said whether the model was reached at all, so a dead
+  // leg and a model that declined were the same record — and the recovery path below strips
+  // `error_class`, which was the only surviving hint. This one is not stripped.
+  const llmLegOutcome = !promptContract.ok
+    ? 'prompt_contract_mismatch'
+    : !llmInvoked
+      ? 'not_invoked'
+      : llmUpstreamError
+        ? (llmUpstreamError.not_configured ? 'not_configured' : (llmUpstreamError.code || 'upstream_error').toLowerCase())
+        : (llmFailureClass || 'ok');
   const llmTrace = {
     ...llmTraceSeed,
     latency_ms: llmLatencyMs,
     cache_hit: false,
     prompt_contract_ok: promptContract.ok,
+    llm_leg: {
+      invoked: Boolean(llmInvoked),
+      outcome: llmLegOutcome,
+      upstream_status: llmUpstreamError ? llmUpstreamError.status : null,
+      latency_ms: llmLatencyMs,
+    },
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };
@@ -84283,6 +84863,7 @@ const {
   shouldUseRecoCatalogTransientFallback,
   buildRecoCatalogTransientFallbackStructured,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   groundRecoRecommendationsFromCatalog,
   coerceRecoItemForUi,
   normalizeRecoGenerate,
@@ -103136,6 +103717,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          // COUNTED: the routine lane answers a recommendation request without entering the reco
+          // lane, from its own synthesized routine query — the user's text never reaches the
+          // upstream. Budget-flow branch.
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeAssistantMessage(
@@ -103226,6 +103811,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        // COUNTED: the other routine-lane branch. Its trigger is a substring match on the message
+        // (`routine`, `am/pm`, and the Chinese equivalents), so it is broad live traffic.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
@@ -105063,6 +105651,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  classifyBeautyMainlineBoundaryRejectCandidate,
   extractCatalogCandidatePrice,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,
@@ -105089,6 +105678,9 @@ const __internal = {
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
+  buildBeautyMainlineLocalCandidatePoolSummary,
+  mergeConcernFrameworkRerankedState,
+  buildConcernFrameworkSummary,
   resolveConcernFrameworkBudgetCeiling,
   classifyConcernFrameworkCandidateAgainstBudget,
   isConcernFrameworkCandidateOverBudget,
@@ -105214,6 +105806,7 @@ const __internal = {
   buildAuroraProductRecommendationsPromptBundle,
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
+  buildAuroraProductRecommendationsPromptBundle,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,

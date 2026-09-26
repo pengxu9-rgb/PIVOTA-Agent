@@ -257,6 +257,9 @@ const LINE_ITEMS_SCHEMA = {
   description: "Required. The lines to price; the id is NESTED under `item`, per the UCP wire shape.",
 };
 
+/** The backend column is VARCHAR(32); the schema and the mapper both hold the tag to it. */
+const CONSENT_VERSION_MAX_LENGTH = 32;
+
 const BUYER_SCHEMA = {
   type: "object",
   // LIVE-VERIFIED: the merchant declares `buyer` with additionalProperties:true and the members
@@ -273,7 +276,25 @@ const BUYER_SCHEMA = {
     },
     phone_number: {
       type: "string",
-      description: "Accepted and NOT read: Pivota's canonical quote carries no buyer phone.",
+      description:
+        "Not read into Pivota's canonical quote, which carries no buyer phone. When the checkout is fulfilled"
+        + " through the Reap payment partner, it is the recipient phone used if the destination carries none.",
+    },
+    // A PIVOTA EXTENSION member of the permissive `buyer` object — NOT the spec's buyer-consent extension
+    // (`dev.ucp.shopping.buyer_consent`, a set of privacy booleans Pivota does not advertise). Read only by the
+    // Reap agentic lane (ucpReapAgenticLane.js `reapConsentVersion`), from the raw wire body, and forwarded to
+    // the backend as `buyer.consent_version`, which that rail REQUIRES. It is not a pricing input and never
+    // reaches the canonical quote, so it is listed in UCP_ACCEPTED_BUT_UNMAPPED below.
+    consent_version: {
+      type: "string",
+      maxLength: CONSENT_VERSION_MAX_LENGTH,
+      examples: ["reap-agentic-v1"],
+      description:
+        "Optional. The version tag of the Pivota terms the buyer accepted for a purchase fulfilled through the"
+        + " Reap payment partner (at most 32 characters, e.g. \"reap-agentic-v1\"), forwarded verbatim. Needed"
+        + " only for the Reap route: without it that route is not offered (the checkout completes on the"
+        + " seller's storefront, with an info message `reap.available_with_consent`). Show the buyer the"
+        + " terms before sending it.",
     },
   },
 };
@@ -793,6 +814,8 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    // Read by the Reap agentic lane from the RAW body, never mapped into the canonical quote (see BUYER_SCHEMA).
+    "checkout.buyer.consent_version",
     "checkout.fulfillment.methods[].type",
     "checkout.fulfillment.methods[].line_item_ids[]",
     "checkout.fulfillment.methods[].selected_destination_id",
@@ -804,6 +827,8 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    // Shared BUYER_SCHEMA; an update never reaches the Reap lane (a `reap_` checkout refuses update_checkout).
+    "checkout.buyer.consent_version",
     "checkout.fulfillment.methods[].id",
     "checkout.fulfillment.methods[].type",
     "checkout.fulfillment.methods[].line_item_ids[]",
@@ -831,7 +856,7 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   get_intel: Object.freeze([]),
   search_catalog: Object.freeze([
     "catalog.filters.categories[]",
-    "catalog.context.address_country", "catalog.context.address_region", "catalog.context.postal_code",
+    "catalog.context.address_region", "catalog.context.postal_code",
     "catalog.context.language", "catalog.context.intent",
     "catalog.signals.dev.ucp.buyer_ip", "catalog.signals.dev.ucp.user_agent",
   ]),
@@ -1057,6 +1082,18 @@ function mapQuote(checkout, { update } = {}) {
     // No rejectUnknown here: the live schema declares `buyer` with additionalProperties:true, so refusing an
     // unlisted member would be stricter than the spec. Only `email` is READ — `phone_number` and anything
     // else the platform sends are inert, because the canonical quote has nowhere truthful to put them.
+    // `consent_version` (a Pivota extension member, see BUYER_SCHEMA) is NOT mapped into the quote — the Reap
+    // lane reads it from the raw body and forwards it VERBATIM — but its advertised schema is ENFORCED here, like
+    // every other field this door publishes: a string of at most 32 characters (code points, as the backend's
+    // Python `len` counts them). Only the shape is checked; the
+    // content is the backend's single consent validator's to judge, so nothing is trimmed or filtered here.
+    const consent = own(buyer, "consent_version");
+    if (consent !== undefined && (typeof consent !== "string" || [...consent].length > CONSENT_VERSION_MAX_LENGTH)) {
+      throw ucpRefusal(CHECKOUT_REFUSAL_CODE, "ucp_consent_version_invalid", [
+        `\`checkout.buyer.consent_version\` must be a string of at most ${CONSENT_VERSION_MAX_LENGTH} characters: the`,
+        "version tag of the terms the buyer accepted (e.g. \"reap-agentic-v1\").",
+      ].join(" "), { rejected_field: "checkout.buyer.consent_version", max_length: CONSENT_VERSION_MAX_LENGTH });
+    }
     const email = own(buyer, "email");
     // Copied as a CANDIDATE only. buyerIntake `resolveBuyerEmail` reads the attested address first, so this
     // can fill a gap and can never override the verified buyer's own credential.
@@ -1083,6 +1120,10 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "be placed without it and `complete_checkout` has no field to carry it.",
   "This call NEVER charges: `checkout.payment` is refused, and payment authorization is",
   "presented inline on `complete_checkout`.",
+  "Some items Pivota does not sell directly can be bought through its payment partner Reap: the answer is then an",
+  "`incomplete` checkout whose id starts `reap_`; poll `get_checkout` and send the buyer to its `continue_url` to",
+  "add a card and approve the total. That route needs `checkout.buyer.consent_version`, a destination with a",
+  "phone number and a last name, and completes on Reap's page, never through `complete_checkout`.",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [
@@ -1166,7 +1207,8 @@ const SEARCH_CATALOG_DESCRIPTION = [
   "`catalog.pagination.cursor` (send back the `pagination.cursor` from the previous response, unchanged, to",
   "fetch the next page); `catalog.filters.price.min` / `.max` (integers in MINOR units of",
   "`catalog.context.currency`, default USD cents; `min` must not exceed `max`); `catalog.filters.available`",
-  "(true = in-stock only, the default); `catalog.context.currency` (ISO 4217).",
+  "(true = in-stock only, the default); `catalog.context.currency` (ISO 4217) and",
+  "`catalog.context.address_country` (buyer market, ISO 3166-1 alpha-2).",
   "Accepted and NOT read: `filters.categories` (Pivota filters on its own category vocabulary, which a",
   "platform's labels would not match — filter client-side; a `messages` warning says so in the response),",
   "the other `context` members, and `signals`.",
@@ -1203,6 +1245,21 @@ function readSearchCurrency(context, code) {
   // Blank -> ABSENT, the same rule `catalog.query` follows: the schema types it as a string and a blank
   // string is a string, so a door that refused it would be stricter than what it advertises.
   return nonEmpty(currency) ? currency.trim() : undefined;
+}
+
+function readSearchCountry(context, code) {
+  if (!isPlainObject(context)) return undefined;
+  const country = own(context, "address_country");
+  if (country === undefined) return undefined;
+  if (typeof country !== "string") {
+    throw ucpRefusal(code, "ucp_country_string_required",
+      "`catalog.context.address_country` must be a country code string when supplied.", { rejected_field: "catalog.context.address_country" });
+  }
+  const trimmed = country.trim();
+  if (!trimmed) return undefined;
+  // The UCP schema accepts any string. Let the buyer-market resolver decide whether a code is
+  // supported, while keeping schema-valid calls executable (including future territories).
+  return trimmed;
 }
 
 /**
@@ -1425,9 +1482,9 @@ const SPECS = Object.freeze({
             context: {
               type: "object",
               additionalProperties: true,
-              description: "Buyer context. `currency` is read (ISO 4217; also sets the minor unit of filters.price). Other members are accepted and NOT read.",
+              description: "Buyer context. `address_country` selects the buyer market; `currency` selects offer currency and the minor unit of filters.price. Other members are accepted and NOT read.",
               properties: {
-                address_country: { type: "string", description: "Accepted and NOT read." },
+                address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read." },
                 address_region: { type: "string", description: "Accepted and NOT read." },
                 postal_code: { type: "string", description: "Accepted and NOT read." },
                 language: { type: "string", description: "Accepted and NOT read." },
@@ -1488,6 +1545,8 @@ const SPECS = Object.freeze({
       // code falls back to exponent 2 in minorUnitExponent, exactly as it does for the kernel's own amounts.
       const currency = readSearchCurrency(own(catalog, "context"), code);
       if (currency !== undefined) native.currency = currency;
+      const country = readSearchCountry(own(catalog, "context"), code);
+      if (country !== undefined) native.market = country;
       Object.assign(native, mapSearchPagination(own(catalog, "pagination"), code));
       Object.assign(native, mapSearchFilters(own(catalog, "filters"), currency, code));
       return native;

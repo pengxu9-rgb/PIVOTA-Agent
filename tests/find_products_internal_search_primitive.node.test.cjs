@@ -18,6 +18,17 @@ test('internal products search primitive rejects orchestration fields', () => {
   assert.deepEqual(out.forbidden_fields.sort(), ['primary_lane', 'semantic_contract']);
 });
 
+test('internal primitive treats legacy external exclusion as source-neutral recall', () => {
+  const out = sanitizeInternalProductsSearchRequest({
+    query: 'camera',
+    allow_external_seed: false,
+    external_seed_strategy: 'legacy',
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.search.allow_external_seed, true);
+  assert.equal(out.search.external_seed_strategy, 'unified_relevance');
+});
+
 test('internal products search primitive uses local cache retrieval instead of upstream orchestrator', async () => {
   const calls = [];
   const runtime = createFindProductsInternalSearchPrimitiveRuntime({

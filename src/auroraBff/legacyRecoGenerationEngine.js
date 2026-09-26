@@ -4,6 +4,7 @@ const {
 const {
   createLegacyRecoRecommendationPostFiltersRuntime,
 } = require('./legacyRecoRecommendationPostFilters');
+const { deriveRecoConfidenceBasis } = require('./recoConfidenceBasis');
 const {
   createLegacyRecoGenerationResultRuntime,
 } = require('./legacyRecoGenerationResult');
@@ -80,6 +81,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     shouldUseRecoCatalogTransientFallback,
     buildRecoCatalogTransientFallbackStructured,
     recordAuroraRecoLlmCall,
+    recordAuroraRecoAnswerPath,
     groundRecoRecommendationsFromCatalog,
     coerceRecoItemForUi,
     normalizeRecoGenerate,
@@ -140,6 +142,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     recomputeFromProfileUpdate = false,
     budgetMs = null,
     entryType = 'chat',
+    // Set ONLY by the `recommend_products` agent bridge, which advertises a beauty vertical the
+    // skincare-bounded prompt cannot serve (#2155). Absent everywhere else, so chat and the consumer
+    // direct lane keep reco_main_v1_2 unchanged.
+    promptDomainScope = '',
     catalogExternalSeedStrategy = '',
     // The buyer's STRUCTURED price ceiling, when the caller extracted one. Prose in the prompt is not
     // a constraint on RECALL: it only reaches the LLM, and recall is what decides which ~5 candidates
@@ -148,6 +154,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // How many recommendations the CALLER asked for. With an enforcing ceiling this is the number of
     // CONFORMING products the shortlist should hold before a flagged near-miss may take a slot.
     shortlistTarget = 0,
+    // WHO RECORDS THE ANSWER PATH. Default: the lane, because it is the only place that knows which
+    // producer ran. The agent bridge sets this, because it drops ungrounded rows after the lane
+    // returns -- a turn where every row is ungrounded (the #2155 failure exactly) would otherwise be
+    // recorded as served while the partner agent receives an empty list.
+    deferAnswerPathRecord = false,
   }) {
     const {
       buildLegacyRecoUpstreamDebug,
@@ -330,8 +341,16 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     const frameworkCatalogFirstEnabled = Boolean(
       Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
     );
+    // NEVER FOR THE AGENT DOOR. Catalog-first assigns structuredSource BEFORE the model is called and
+    // never reads its answer back, so `recommend_products` -- which advertises a beauty vertical the
+    // catalog leg is skincare-shaped for -- would answer from a promptless path while still paying
+    // for the LLM. Prod runs AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED=true (the code default
+    // here is false), and the target resolver marks any ask NAMING A STEP as step_aware -- 'serum',
+    // 'toner', 'moisturizer' -- so this fires on ordinary partner traffic. Gated on the door rather
+    // than the env flag because the flag also governs chat and the consumer lane.
     const deterministicCatalogFirstEnabled = Boolean(
       AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
+        && recoTriggerSource !== 'agent_tool'
         && (targetContext.step_aware_intent || frameworkCatalogFirstEnabled),
     );
     const stepAwareFailurePolicyEnabled = Boolean(
@@ -358,6 +377,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       recentLogs,
       globalStatus,
       mainlineStageTimingsMs,
+      promptDomainScope,
       RECO_MAIN_PROMPT_TEMPLATE_ID,
       RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
       RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED:
@@ -467,6 +487,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       preLlmCatalogStructured: mainlineExecution.preLlmCatalogStructured,
       priceCeiling,
       shortlistTarget,
+      requestedStep: (targetContext && targetContext.resolved_target_step) || '',
     });
     // Unconditional assignment: applyStrictConformingTopUp returns the SAME object when it appends
     // nothing, so this branch cannot alter a no-top-up answer -- one less untested branch at a call
@@ -488,7 +509,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     let ungroundedCatalogRecoveryApplied = false;
     if (
       shouldRecoverFullyUngroundedDirectAnswer({
-        enabled: AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED,
+        // Same reason as catalog-first above: swapping a fully-ungrounded answer for catalog rows is
+        // how "we don't carry a bronzer" became "here are three cleansers". The agent bridge already
+        // reports unresolved archetypes as TEXT, which is what a partner agent can actually route on.
+        enabled: AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED
+          && recoTriggerSource !== 'agent_tool',
         entryType,
         structuredSource,
         groundingApplied: Boolean(postMainline.groundingResult),
@@ -674,7 +699,37 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     }
     const terminalSuccess = finalRecommendations.length > 0
       && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
+    // WHERE THE CONFIDENCE NUMBERS CAME FROM. Derived here because this is the point at which
+    // structuredSource is final for every answer path.
+    //
+    // Only one of those paths produces a confidence at all. `llm_primary` carries the model's own
+    // self-report. The catalog paths carry `score: Math.max(72, 95 - index * 3)` — a POSITION, not a
+    // judgement — and a hard-coded top-level 0.9 (or 0.62 for the transient fallback). With a
+    // shortlist of six, `95 - 3i` never drops below 80, so every catalog item bands to
+    // `lane_confidence: high` no matter what it is or what was asked for. That is how a bronzer need
+    // came back as three cleansers at `high` with `confidence_overall: 0.9`.
+    const confidenceBasis = deriveRecoConfidenceBasis(structuredSource);
+    // COUNT THE PATH. Recorded here, in the lane, because the `recommend_products` agent door emits
+    // no reco_requested event — a handler-side signal would miss the door #2155 was filed against.
+    //
+    // Labelled by DOOR, not by entry type: the agent door and the consumer direct lane both pass
+    // entryType 'direct', and measured 2026-09-09 the consumer lane answered llm_primary 16/16 while
+    // the agent door produced both. Labelling on entry type would have collapsed the one comparison
+    // this counter exists to make. `recoTriggerSource` separates them; the chat lane sets none, so
+    // the normalizer falls back to its entry type.
+    //
+    // The path label is structuredSource, NOT confidenceBasis: basis maps both catalog paths to
+    // 'positional', and the point is to see which promptless path served the turn.
+    if (!deferAnswerPathRecord) {
+      recordAuroraRecoAnswerPath({
+        door: recoTriggerSource,
+        entryType,
+        path: structuredSource,
+        served: finalRecommendations.length > 0,
+      });
+    }
     const generationResult = buildLegacyRecoGenerationResult({
+      confidenceBasis,
       norm,
       finalRecommendations,
       structuredSource,

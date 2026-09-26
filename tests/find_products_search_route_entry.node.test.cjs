@@ -24,12 +24,7 @@ function buildRuntime(overrides = {}) {
     buildFindProductsSearchRequestContract,
     resolveLegacyBeautyCacheOwnerBypass: () => ({ bypass: false, semanticContract: null }),
     normalizeAgentSource: (value) => String(value || '').trim().toLowerCase(),
-    runGuidanceServerOwnedLadderSearch: async () => null,
-    persistGuidanceSearchSeenProducts: async () => undefined,
     normalizeSearchUiSurface: (value) => String(value || '').trim().toLowerCase(),
-    normalizeRecommendationDecisionMode: (value) => String(value || '').trim().toLowerCase(),
-    searchExternalSeedOnlyProductsDirect: async () => null,
-    searchIngredientIntentProductsDirect: async () => null,
     ...overrides,
   });
 }
@@ -56,7 +51,7 @@ test('direct route source does not switch discovery owner to strict shop lane', 
   );
 });
 
-test('direct route explicit strict catalog surface uses strict shop lane', () => {
+test('strict shop lane keeps external offers eligible', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
     query: {
@@ -69,7 +64,8 @@ test('direct route explicit strict catalog surface uses strict shop lane', () =>
 
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.forceDirectInvokeMainPath, true);
-  assert.equal(routePlan.payload.search.allow_external_seed, false);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
   assert.equal(routePlan.payload.metadata.catalog_surface, 'agent_api');
   assert.equal(routePlan.payload.metadata.primary_lane, 'shop_invoke_strict');
   assert.equal(routePlan.payload.metadata.primary_retrieval_contract, 'shop_invoke_strict');
@@ -104,8 +100,46 @@ test('direct route preserves local mainline child marker into invoke payload', (
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.payload.search.local_mainline_child, true);
   assert.equal(routePlan.payload.metadata.local_mainline_child, true);
-  assert.equal(routePlan.payload.search.allow_external_seed, undefined);
-  assert.equal(routePlan.payload.search.external_seed_strategy, undefined);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
+});
+
+test('queryless cross-merchant browse reaches unified recall', () => {
+  let builderOptions = null;
+  const runtime = buildRuntime({
+    buildFindProductsMultiPayloadFromQuery: (query, options) => {
+      builderOptions = options;
+      return {
+        search: {
+          query: '',
+          search_all_merchants: query.search_all_merchants === 'true',
+          allow_external_seed: false,
+          external_seed_strategy: 'legacy',
+        },
+        metadata: {},
+      };
+    },
+  });
+
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      market: 'SG',
+      search_all_merchants: 'true',
+      allow_external_seed: 'false',
+    },
+  });
+
+  assert.equal(builderOptions.allowEmptyQuery, true);
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.payload.search.query, '');
+  assert.equal(routePlan.payload.search.search_all_merchants, true);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
+  assert.equal(routePlan.forceDirectInvokeMainPath, false);
+  assert.equal(routePlan.payload.search.catalog_surface, undefined);
+  assert.equal(routePlan.payload.search.commerce_surface, undefined);
+  assert.equal(routePlan.payload.metadata.primary_lane, undefined);
+  assert.equal(routePlan.payload.metadata.search_request_contract, undefined);
 });
 
 test('direct route child marker suppresses beauty semantic handoff reinjection', () => {

@@ -1,4 +1,5 @@
 const request = require('supertest');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../../src/services/catalogEntityResolutionSqlTag');
 
 jest.setTimeout(60000);
 
@@ -87,7 +88,7 @@ const norm = (sql) => String(sql || '').replace(/\s+/g, ' ').trim();
 // canonical-group call and silently makes the group fixtures no-ops (this cost
 // one debugging round when the group arms appeared unreachable).
 const isCanonicalGroupQuery = (sql) =>
-  norm(sql).includes('WITH offer_stats AS') && norm(sql).includes('FROM catalog_products cp');
+  norm(sql).includes(CANONICAL_ENTITY_GROUP_SQL_TAG) && norm(sql).includes('FROM catalog_products cp');
 const isBareSigQuery = (sql) =>
   norm(sql).includes(
     'SELECT merchant_id, platform, source_product_id, product_key FROM catalog_products WHERE pivota_signature_id = $1',

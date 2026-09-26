@@ -1,0 +1,124 @@
+# Every suite the hand-maintained allowlist ran before discovery became a glob, taken
+# verbatim from .github/workflows/pr-full-jest.yml at 205e9f1cd (the `node --test`
+# invocation at lines 1050-1163).
+#
+# This exists because the first version of the glob dropped 24 of these on the floor: it
+# globbed `tests/*.node.test.cjs` non-recursively, so 16 mcp-server/ and 7 safety-kernel/
+# money-path suites (UCP argument adapter, payment authorization contract, delegated
+# payment refusal, ...) plus tests/integration/agent_checkout_acp_ucp_doors stopped
+# running, and the PR's own accounting was denominated in `.node.test.cjs` so the loss was
+# invisible in its numbers. A glob is only an improvement on an allowlist if it covers
+# what the allowlist covered.
+#
+# tests/node_suite_gate.node.test.cjs asserts every line here is still discovered. This
+# file is HISTORY: it does not grow. New suites are covered by the glob, not by this list.
+mcp-server/test/commerceReadCache.test.js
+mcp-server/test/commerceToolSurface.test.js
+mcp-server/test/crossProtocolConformance.test.js
+mcp-server/test/inputSchemaGuard.test.js
+mcp-server/test/mcpBuyerIntake.test.js
+mcp-server/test/publicReadProjection.test.js
+mcp-server/test/publicReadSearchZeroResults.test.js
+mcp-server/test/ucpArgumentAdapter.test.js
+mcp-server/test/ucpCheckoutEscalation.test.js
+mcp-server/test/ucpDialectSurface.test.js
+mcp-server/test/ucpFulfillmentAddressContract.test.js
+mcp-server/test/ucpInsightsDialect.test.js
+mcp-server/test/ucpInsightsHostedSchema.test.js
+mcp-server/test/ucpResponseShaper.test.js
+mcp-server/test/ucpSpecVersion.test.js
+mcp-server/test/ucpToolVocabulary.test.js
+safety-kernel/test/buyerIntakeMerchantVariantFallback.test.js
+safety-kernel/test/canonicalExecutor_payment_link.test.js
+safety-kernel/test/delegatedPaymentRefusal.test.js
+safety-kernel/test/mcpOAuthResourceServer.test.js
+safety-kernel/test/protocol.test.js
+safety-kernel/test/resultSanitizer.test.js
+safety-kernel/test/ucpPaymentAuthorizationContract.test.js
+tests/acp_adapter_applies_mapper.node.test.cjs
+tests/acp_delegate_payment_refusal.node.test.cjs
+tests/acp_feed_flags.node.test.cjs
+tests/acp_feed_item.node.test.cjs
+tests/acp_feed_pagination.node.test.cjs
+tests/acp_feed_source.node.test.cjs
+tests/acp_spt_gateway_handoff.node.test.cjs
+tests/agent_identity_issuer_registry.node.test.cjs
+tests/agent_signals_intelligence_reads.node.test.cjs
+tests/agent_signals_recommend_products.node.test.cjs
+tests/ap2_checkout_binding.node.test.cjs
+tests/asserted_privilege_observation.node.test.cjs
+tests/aurora_bff_beauty_mainline_handoff.node.test.cjs
+tests/aurora_bff_v1_chat_rollout.node.test.cjs
+tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs
+tests/aurora_legacy_reco_prompt_contract.node.test.cjs
+tests/aurora_surface_auth.node.test.cjs
+tests/aurora_surface_auth_curl_wrapper.node.test.cjs
+tests/aurora_surface_auth_rollup.node.test.cjs
+tests/aurora_surface_host_guard.node.test.cjs
+tests/brand_query_filler_reduction.node.test.cjs
+tests/caller_identity.node.test.cjs
+tests/catalog_image_cache_offer_gallery.node.test.cjs
+tests/catalog_image_cache_stale_host.node.test.cjs
+tests/commerce_kernel_error_body.node.test.cjs
+tests/commerce_kernel_error_mapping.node.test.cjs
+tests/commerce_mcp_heartbeat_gate.node.test.cjs
+tests/commerce_mcp_oauth.node.test.cjs
+tests/commerce_mcp_route_heartbeat.node.test.cjs
+tests/commerce_search_self_invoke_budget.node.test.cjs
+tests/commerce_ucp_mcp_door.node.test.cjs
+tests/commerce_ucp_search_shared_cache.node.test.cjs
+tests/crawler_inline_price_prefix.node.test.cjs
+tests/external_seed_lane_reader_parity.node.test.cjs
+tests/fpm_stage_attribution.node.test.cjs
+tests/get_product_detail_sig_merchant_scope.node.test.cjs
+tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs
+tests/invoke_auth_introspect_load_shedding.node.test.cjs
+tests/invoke_auth_introspect_outage_cache.node.test.cjs
+tests/merchant_variant_source.node.test.cjs
+tests/payment_grant_issuer_registry.node.test.cjs
+tests/payment_method_verifier_composition.node.test.cjs
+tests/pdp_content_preservation_lane.node.test.cjs
+tests/pdp_identity_coverage_catchup.node.test.cjs
+tests/pdp_renderability.node.test.cjs
+tests/platform_config.node.test.cjs
+tests/platform_production_guards.node.test.cjs
+tests/price_decimal_comma_locale.node.test.cjs
+tests/price_text_shared_reader.node.test.cjs
+tests/product_entity_index_feed_election.node.test.cjs
+tests/public_feed_gate.node.test.cjs
+tests/public_read_chain_resolvability.node.test.cjs
+tests/public_read_chain_seed_routed_probe.node.test.cjs
+tests/public_read_mcp_heartbeat.node.test.cjs
+tests/reco_agent_door_catalog_gates.node.test.cjs
+tests/reco_alternatives_candidate_price_contract.node.test.cjs
+tests/reco_alternatives_price_coercion_guards.node.test.cjs
+tests/reco_answer_path_telemetry.node.test.cjs
+tests/reco_answer_provenance.node.test.cjs
+tests/reco_buyer_region_dimension.node.test.cjs
+tests/reco_card_price_label_currency.node.test.cjs
+tests/reco_card_price_tier_currency.node.test.cjs
+tests/reco_confidence_basis.node.test.cjs
+tests/reco_direct_recall_before_llm.node.test.cjs
+tests/reco_framework_prose_budget_currency.node.test.cjs
+tests/reco_gentleness_ranking.node.test.cjs
+tests/reco_implement_scope.node.test.cjs
+tests/reco_price_aware_recall.node.test.cjs
+tests/reco_recall_honest_queries.node.test.cjs
+tests/reco_recall_pool_cache.node.test.cjs
+tests/reco_scalar_price_currency.node.test.cjs
+tests/reco_scrub_step_vocabulary.node.test.cjs
+tests/reco_selector_prompt_declared_currency.node.test.cjs
+tests/reco_strict_conforming_fill.node.test.cjs
+tests/reco_token_anchored_recall.node.test.cjs
+tests/reco_unknown_served_tripwire.node.test.cjs
+tests/reco_widen_lane_domain_scope.node.test.cjs
+tests/recommendations_internal_key_double_send.node.test.cjs
+tests/recommendations_internal_key_gate.node.test.cjs
+tests/sourcing_sentinel_merchant_scope.node.test.cjs
+tests/ucp_checkout_id_bridge.node.test.cjs
+tests/ucp_conformance_probe.node.test.cjs
+tests/ucp_conformance_probe_io.node.test.cjs
+tests/ucp_order_webhook_receiver.node.test.cjs
+tests/ucp_totals_wire_vocabulary.node.test.cjs
+tests/ui_chat_access_guard.node.test.cjs
+tests/upstream_retry_deadline_budget.node.test.cjs

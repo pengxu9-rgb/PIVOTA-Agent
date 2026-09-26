@@ -1,11 +1,12 @@
 'use strict';
 
 const { createCloudRunIdTokenProvider } = require('./cloudRunIdentityToken');
-const { CART_STATUSES, CHECKOUT_STATUSES, httpsUrl } = require('./commerceStorefrontAudit');
+const { CART_STATUSES, CHECKOUT_STATUSES, STEP_REASONS, STEP_STATUSES, httpsUrl } = require('./commerceStorefrontAudit');
 
 const PLATFORM = new Set(['shopify', 'cafe24', 'woocommerce', 'bigcommerce', 'magento', 'custom', 'unknown']);
 const CHECKOUT_PROVIDER = new Set(['shopify', 'cafe24', 'stripe', 'adyen', 'antom', 'custom', 'unknown']);
 const OUTCOME = new Set(['challenge', 'network', 'timeout', 'not_checkout_reachable', 'invalid_probe']);
+const STEP_NAMES = new Set(['storefront_access', 'product_search', 'product_detail', 'add_to_cart', 'shipping_address', 'checkout']);
 
 function text(value, max = 255) {
   const normalized = String(value || '').trim();
@@ -40,6 +41,19 @@ function buildReceipt({ auditRunId, verificationRunId, workerId, probeId, result
     if (Number.isInteger(result.cart.quantity) && result.cart.quantity > 0) receipt.cart.quantity = result.cart.quantity;
     if (Number.isFinite(result.cart.cart_price) && result.cart.cart_price >= 0) receipt.cart.cart_price = result.cart.cart_price;
     if (/^[A-Z]{3}$/.test(String(result.cart.currency || ''))) receipt.cart.currency = result.cart.currency;
+  }
+  if (Array.isArray(result.steps)) {
+    const seen = new Set();
+    receipt.steps = result.steps.map((item) => {
+      const step = text(item && item.step, 32);
+      const status = text(item && item.status, 32);
+      const reason = text(item && item.reason, 64);
+      if (!STEP_NAMES.has(step) || !STEP_STATUSES.has(status) || (reason && !STEP_REASONS.has(reason)) || seen.has(step)) {
+        throw new Error('invalid commerce journey step');
+      }
+      seen.add(step);
+      return { step, status, ...(reason ? { reason } : {}) };
+    });
   }
   if (receipt.verification_status === 'succeeded' && !receipt.checkout) throw new Error('successful commerce probe requires checkout evidence');
   return receipt;

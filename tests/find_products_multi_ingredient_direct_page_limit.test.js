@@ -1,166 +1,65 @@
-// Strict ingredient-direct lane page-limit contract.
-//
-// The lane (query_source agent_products_ingredient_recall_direct) slices its
-// own page (safeOffset/safeLimit) before building the hit response, and the
-// op-level page-size trim (enforceFindProductsMultiRequestedPageSize) leaves
-// strict-contract bodies untouched — the shape is parity-locked. That exemption
-// is only sound if nothing re-inflates the body afterwards: the ADR-007
-// citable supplement appended at the same res.json choke point used to push
-// every cached citation item onto the strict body, shipping 48-52 products on
-// limit=10 requests whenever its per-query cache was warm at send time (and 10
-// when cold — the count flapped run to run). These tests pin the contract:
-// products.length never exceeds the requested limit for the strict lane, with
-// the supplement skipped there and still applied + trimmed on mainline bodies.
-
+// The strict ingredient lane owns pagination before the send-boundary trim.
+// Keep its exact page, total and contract stamps; the op wrapper must not
+// append a second result source or re-slice the already paged product list.
 const {
   buildIngredientIntentDirectBaseMetadata,
   buildIngredientIntentDirectHitResponse,
 } = require('../src/findProductsIngredientIntentDirectResponse');
 
-describe('ingredient-direct strict lane honors requested limit at the res.json choke point', () => {
-  let appendCitableSupplementItems;
-  let enforceFindProductsMultiRequestedPageSize;
-
+describe('ingredient-direct primary lane preserves requested pages', () => {
+  let enforcePageSize;
   beforeAll(() => {
     jest.resetModules();
-    jest.doMock('../src/auroraBff/routes', () => ({
-      mountAuroraBffRoutes: () => {},
-      __internal: {},
-    }));
-    const app = require('../src/server');
-    appendCitableSupplementItems = app._debug.appendCitableSupplementItems;
-    enforceFindProductsMultiRequestedPageSize =
-      app._debug.enforceFindProductsMultiRequestedPageSize;
+    jest.doMock('../src/auroraBff/routes', () => ({ mountAuroraBffRoutes: () => {}, __internal: {} }));
+    enforcePageSize = require('../src/server')._debug.enforceFindProductsMultiRequestedPageSize;
   });
-
-  const buildLaneProducts = (count) =>
-    Array.from({ length: count }, (_, i) => ({
-      product_id: `seed_${i + 1}`,
-      content_key: `ck_seed_${i + 1}`,
-      title: `Niacinamide Serum ${i + 1}`,
-      buyable: true,
-    }));
-
-  const buildCitableItems = (count) =>
-    Array.from({ length: count }, (_, i) => ({
-      product_id: `cit_${i + 1}`,
-      content_key: `ck_cit_${i + 1}`,
-      title: `Citable Item ${i + 1}`,
-      buyable: false,
-      source: 'canonical_citation',
-      search_recall_source: 'canonical_citation',
-    }));
-
-  const buildStrictLaneResponse = ({ merged = 19, limit = 10, page = 1 } = {}) => {
-    const mergedRecalledProducts = buildLaneProducts(merged);
-    const pagedProducts = mergedRecalledProducts.slice(0, limit);
+  const buildProducts = count => Array.from({ length: count }, (_, i) => ({
+    product_id: `seed_${i + 1}`, content_key: `ck_seed_${i + 1}`,
+    title: `Niacinamide Serum ${i + 1}`, buyable: true,
+  }));
+  function buildPage({ merged = 19, limit = 10, page = 1, rewrittenBridge = false } = {}) {
+    const products = buildProducts(merged);
+    const offset = (page - 1) * limit;
     const baseMetadata = buildIngredientIntentDirectBaseMetadata({
-      ingredientIntentDetected: true,
-      ingredientIntentIds: ['niacinamide'],
-      strictConstraintReason: 'ingredient_intent',
-      mergedRecalledProducts,
-      directServiceProducts: mergedRecalledProducts,
+      ingredientIntentDetected: true, ingredientIntentIds: ['niacinamide'],
+      strictConstraintReason: 'ingredient_intent', mergedRecalledProducts: products,
+      directServiceProducts: products,
     });
-    return buildIngredientIntentDirectHitResponse({
-      responseProducts: pagedProducts,
-      mergedRecalledProducts,
-      safePage: page,
-      baseMetadata,
-      ingredientIntentIds: ['niacinamide'],
-      ingredientIntentDetected: true,
+    const response = buildIngredientIntentDirectHitResponse({
+      responseProducts: products.slice(offset, offset + limit), mergedRecalledProducts: products,
+      safePage: page, baseMetadata, ingredientIntentIds: ['niacinamide'], ingredientIntentDetected: true,
     });
-  };
-
-  test('citable supplement is skipped for strict-contract bodies (products stay at the lane page)', () => {
-    const limit = 10;
-    const response = buildStrictLaneResponse({ merged: 19, limit });
-    expect(response.metadata.contract_bridge.resolved_contract).toBe('shop_invoke_strict');
-    expect(response.products).toHaveLength(limit);
-
-    const out = appendCitableSupplementItems(response, buildCitableItems(42));
-
-    expect(out.products).toHaveLength(limit);
-    expect(out.products.every((p) => p.search_recall_source !== 'canonical_citation')).toBe(true);
-    expect(out.metadata.citable_supplement_count).toBe(0);
-    expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
-  });
-
-  test('skip survives the pivot beauty contract rewrite of contract_bridge', () => {
-    // applyPivotBeautyContractToInvokeSearchResponse runs BEFORE the
-    // supplement in the res.json wrapper and overwrites
-    // contract_bridge.{attempted,resolved}_contract to 'pivot.agent.v1' for
-    // beauty-shaped requests — while spreading the rest of metadata
-    // untouched. The strict lane deliberately still serves pivot-contract
-    // ingredient queries, so the skip must key on the surviving stamps
-    // (top-level resolved_contract / strict_constraint_query), not on
-    // contract_bridge alone. Simulate exactly what the rewrite does to the
-    // bridge fields.
-    const limit = 10;
-    const response = buildStrictLaneResponse({ merged: 19, limit });
-    response.metadata.contract_bridge = {
-      ...response.metadata.contract_bridge,
-      attempted_contract: 'pivot.agent.v1',
-      resolved_contract: 'pivot.agent.v1',
+    if (rewrittenBridge) response.metadata.contract_bridge = {
+      ...response.metadata.contract_bridge, attempted_contract: 'pivot.agent.v1', resolved_contract: 'pivot.agent.v1',
     };
-    expect(response.metadata.strict_constraint_query).toBe(true);
-
-    const out = appendCitableSupplementItems(response, buildCitableItems(42));
-
-    expect(out.products).toHaveLength(limit);
-    expect(out.products.every((p) => p.search_recall_source !== 'canonical_citation')).toBe(true);
-    expect(out.metadata.citable_supplement_count).toBe(0);
-    expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
+    return enforcePageSize({ responseBody: response, searchParams: { query: 'niacinamide serum', limit, page }, queryText: 'niacinamide serum' });
+  }
+  test.each([false, true])('preserves disjoint complete and short pages, bridge rewritten=%s', rewrittenBridge => {
+    const first = buildPage({ page: 1, rewrittenBridge });
+    const second = buildPage({ page: 2, rewrittenBridge });
+    expect(first.products.map(p => p.product_id)).toEqual(buildProducts(10).map(p => p.product_id));
+    expect(second.products.map(p => p.product_id)).toEqual(buildProducts(19).slice(10).map(p => p.product_id));
+    expect(first).toMatchObject({ page: 1, page_size: 10, total: 19 });
+    expect(second).toMatchObject({ page: 2, page_size: 9, total: 19 });
+    expect(second.metadata).toMatchObject({ strict_constraint_query: true, resolved_contract: 'shop_invoke_strict' });
+    expect(new Set([...first.products, ...second.products].map(p => p.product_id)).size).toBe(19);
   });
-
-  test('strict bodies stamp skip telemetry even when the supplement cache is cold (no items)', () => {
-    // The skip check sits before the items-length early-return, so the
-    // count/skip_reason stamps are deterministic and do not flap with the
-    // supplement cache's warmth at send time.
-    const response = buildStrictLaneResponse({ merged: 19, limit: 10 });
-
-    const out = appendCitableSupplementItems(response, []);
-
-    expect(out.metadata.citable_supplement_count).toBe(0);
-    expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
+  test.each([1, 3, 10])('limit=%s retains the lane page without inflation', limit => {
+    const body = buildPage({ merged: 19, limit });
+    expect(body.products).toHaveLength(limit);
+    expect(body.page_size).toBe(limit);
+    expect(body.total).toBe(19);
   });
-
-  test('strict lane response never exceeds the requested limit through the full choke-point sequence', () => {
-    const limit = 10;
-    const response = buildStrictLaneResponse({ merged: 19, limit });
-
-    let finalBody = appendCitableSupplementItems(response, buildCitableItems(42));
-    finalBody = enforceFindProductsMultiRequestedPageSize({
-      responseBody: finalBody,
-      searchParams: { query: 'niacinamide serum', limit },
-      queryText: 'niacinamide serum',
-    });
-
-    expect(finalBody.products.length).toBeLessThanOrEqual(limit);
-    expect(finalBody.page_size).toBe(limit);
-    // total keeps reporting the full merged recall pool
-    expect(finalBody.total).toBe(19);
+  test('out-of-range page stays empty and retains the primary total', () => {
+    expect(buildPage({ page: 3 })).toMatchObject({ products: [], page: 3, page_size: 0, total: 19 });
   });
-
-  test('non-strict bodies still receive the supplement and get trimmed back to the explicit limit', () => {
-    const limit = 10;
-    const responseBody = {
-      status: 'success',
-      products: buildLaneProducts(limit),
-      total: limit,
-      page_size: limit,
+  test('non-strict mainline list is trimmed to the explicit limit without changing total', () => {
+    const body = enforcePageSize({ responseBody: {
+      status: 'success', products: buildProducts(52), total: 52, page_size: 52,
       metadata: { query_source: 'beauty_discovery_mainline' },
-    };
-
-    const appended = appendCitableSupplementItems(responseBody, buildCitableItems(42));
-    expect(appended.products).toHaveLength(52);
-    expect(appended.metadata.citable_supplement_count).toBe(42);
-
-    const out = enforceFindProductsMultiRequestedPageSize({
-      responseBody: appended,
-      searchParams: { query: 'brightening serum', limit },
-      queryText: 'brightening serum',
-    });
-    expect(out.products).toHaveLength(limit);
-    expect(out.metadata.page_size_enforcement.applied).toBe(true);
+    }, searchParams: { query: 'brightening serum', limit: 10 }, queryText: 'brightening serum' });
+    expect(body.products).toHaveLength(10);
+    expect(body.total).toBe(52);
+    expect(body.metadata.page_size_enforcement.applied).toBe(true);
   });
 });

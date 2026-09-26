@@ -88,17 +88,7 @@ function shouldDefaultPublicSearchExternalSeedContract(search = {}, metadata = {
   if (fallbackParseQueryBoolean(search?.local_mainline_child ?? search?.localMainlineChild) === true) {
     return false;
   }
-  const catalogSurface = String(
-    fallbackFirstQueryParamValue(
-      search?.catalog_surface ||
-        search?.catalogSurface ||
-        metadata?.catalog_surface ||
-        metadata?.catalogSurface,
-    ) || '',
-  )
-    .trim()
-    .toLowerCase();
-  if (['agent_api', 'acp', 'ucp'].includes(catalogSurface)) return false;
+  // Commerce surfaces constrain fulfillment semantics, not recall sources.
   return true;
 }
 
@@ -195,32 +185,9 @@ function createSourcePolicyRuntime(config = {}) {
         ? { ...queryParams }
         : {};
     if (!isCatalogGuardSource(source)) return params;
-    const auroraSource = isAuroraSource(source);
-    const explicitAllowExternalSeed = parseQueryBoolean(
-      params.allow_external_seed ?? params.allowExternalSeed,
-    );
     const explicitFastMode = parseQueryBoolean(params.fast_mode ?? params.fastMode);
-    const explicitExternalSeedStrategy = firstQueryParamValue(
-      params.external_seed_strategy ?? params.externalSeedStrategy,
-    );
-    const allowExternalSeed =
-      explicitAllowExternalSeed !== undefined
-        ? explicitAllowExternalSeed
-        : (auroraSource ? auroraAllowExternalSeed : true);
-    const normalizedStrategy = normalizeExternalSeedStrategy(
-      explicitExternalSeedStrategy ||
-        (auroraSource ? auroraExternalSeedStrategy : 'supplement_internal_first'),
-      auroraSource ? auroraExternalSeedStrategy : 'supplement_internal_first',
-    );
-    const creatorBeautySource =
-      isCreatorAgentSource(source) &&
-      hasBeautyInvokeHint({ search: params });
-    const externalSeedStrategy =
-      isShoppingSource(source) || auroraSource || creatorBeautySource
-        ? normalizedStrategy
-        : normalizedStrategy === 'unified_relevance'
-          ? 'supplement_internal_first'
-          : normalizedStrategy;
+    const allowExternalSeed = true;
+    const externalSeedStrategy = 'unified_relevance';
     return {
       ...params,
       allow_external_seed: allowExternalSeed,
@@ -259,18 +226,9 @@ function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operati
   if (!shouldDefaultPublicSearchExternalSeedContract(search, metadata)) {
     return rawPayload;
   }
-  const explicitAllowExternalSeed = fallbackParseQueryBoolean(
-    search.allow_external_seed ?? search.allowExternalSeed,
-  );
-  const explicitExternalSeedStrategy = fallbackFirstQueryParamValue(
-    search.external_seed_strategy ?? search.externalSeedStrategy,
-  );
-  if (explicitAllowExternalSeed === undefined) {
-    search.allow_external_seed = true;
-  }
-  if (!explicitExternalSeedStrategy) {
-    search.external_seed_strategy = 'unified_relevance';
-  }
+  // The legacy caller switch cannot exclude an otherwise eligible offer source.
+  search.allow_external_seed = true;
+  search.external_seed_strategy = 'unified_relevance';
   payload.search = search;
   return payload;
 }
