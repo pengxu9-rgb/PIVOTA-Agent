@@ -19365,22 +19365,22 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
 }
 
 const BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX = 'beauty/skincare/cleanse/';
+const BEAUTY_MOISTURIZE_CATEGORY_PATH_PREFIX = 'beauty/skincare/moisturize/';
 
-// True when a texture word ("foam") must not decide the product class: the query
-// names tanning (the self_tanner rule does not claim "bronzing foam", so the words
-// are checked here too), or it resolves a category path that is neither the
-// cleanse leaf nor one of its ancestors (e.g. "beauty/" for "hair foam" does not
-// contradict cleanser, "beauty/skincare/sun/" for "foam sunscreen" does).
-function beautyQueryNamesNonCleanserFamily(raw = '') {
-  if (/\b(self[-\s]?tan\w*|sunless|tanning|tanners?|bronz\w*)\b/i.test(raw) || /美黑|セルフタンニング/.test(raw)) {
-    return true;
-  }
+// True when a texture word ("foam", "cream", "lotion") must not decide the product
+// class because the query names a different one. The resolved category decides
+// when it is specific: outside the family's own path means another family
+// ("beauty/body/tanning/" for "self tan lotion", "beauty/skincare/sun/" for "foam
+// sunscreen"), inside it means none. Only when nothing specific resolves (no path,
+// or an ancestor such as "beauty/" for "hair foam") do the tanning words decide:
+// the self_tanner rule does not claim "bronzing foam". Checking the words first
+// would turn "bronzing lotion", which resolves the moisturize path, from a
+// moisturizer gate into a moisturize path gate that drops its tanning rows.
+function beautyQueryNamesOtherFamilyThan(raw = '', familyPathPrefix = '') {
   const prefix = String(resolveBeautyCategoryPathPrefixForQuery(raw) || '').toLowerCase();
-  if (!prefix) return false;
-  return !(
-    BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX.startsWith(prefix) ||
-    prefix.startsWith(BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX)
-  );
+  if (prefix.startsWith(familyPathPrefix)) return false;
+  if (prefix && !familyPathPrefix.startsWith(prefix)) return true;
+  return /\b(self[-\s]?tan\w*|sunless|tanning|tanners?|bronz\w*)\b/i.test(raw) || /美黑|セルフタンニング/.test(raw);
 }
 
 function inferBeautyMainlineIntent(queryText = '') {
@@ -19404,12 +19404,22 @@ function inferBeautyMainlineIntent(queryText = '') {
   // (16 serving-eligible rows) and then this rule gated it to cleanser, so the
   // ranker rejected all 16. The texture only implies cleanser when nothing else
   // in the query names a different family.
-  if (cleanserNamed || (/\bfoam\b/i.test(raw) && !beautyQueryNamesNonCleanserFamily(raw))) {
+  if (
+    cleanserNamed ||
+    (/\bfoam\b/i.test(raw) && !beautyQueryNamesOtherFamilyThan(raw, BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX))
+  ) {
     families.add('cleanser');
   }
+  const moisturizerNamed =
+    /\b(moisturi[sz]er|barrier|repair|cica|ceramide|panthenol|b5)\b/i.test(raw) ||
+    /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇/.test(raw);
+  // "cream" / "lotion" are textures in the same way: "MineTan self tan lotion"
+  // resolved beauty/body/tanning/ and this gate kept 4 of the 16 MineTan rows;
+  // "cream blush", "sunscreen lotion", "hair cream" and "cream cleanser" all
+  // picked up a moisturizer gate and moisturizer retrieval variants.
   if (
-    /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair|cica|ceramide|panthenol|b5|lotion)\b/i.test(raw) ||
-    /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇/.test(raw)
+    moisturizerNamed ||
+    (/\b(cream|lotion)\b/i.test(raw) && !beautyQueryNamesOtherFamilyThan(raw, BEAUTY_MOISTURIZE_CATEGORY_PATH_PREFIX))
   ) {
     families.add('moisturizer');
   }
