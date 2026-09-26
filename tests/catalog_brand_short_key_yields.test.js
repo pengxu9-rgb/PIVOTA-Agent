@@ -38,6 +38,8 @@ const ROWS = [
   { b: 'bubble', n: 3, nb: 3, nc: 3, nl: 3 },
   // an ordinary-word brand that is NOT beauty
   { b: 'hersteller', n: 12, nb: 0, nc: 12, nl: 0 },
+  // a non-beauty brand that CONTAINS the short key
+  { b: 'opi tools', n: 25, nb: 0, nc: 25, nl: 0 },
 ];
 
 const saved = {};
@@ -103,6 +105,18 @@ describe('flag ON: a short onboarded key yields to a regular brand anywhere in t
     // "olaplex tools" is the brand; "olaplex" inside it must not answer. OPI, elsewhere, may.
     expect(brandKey('olaplex tools opi')).toBe('catalog:opi');
   });
+
+  test('a short key INSIDE the refused brand is part of it, not a fallback (review of #2281)', () => {
+    expect(brandKey('opi tools')).toBeNull();
+    expect(brandKey('opi tools kit')).toBeNull();
+  });
+
+  test('brand_only and alias follow the brand that answers', () => {
+    const r = (q) => resolveBeautyBrandBrowseQuery(q);
+    expect(r('opi olaplex')).toEqual(expect.objectContaining({ brand_key: 'catalog:olaplex', brand_only: false }));
+    expect(r('bubble opi')).toEqual(expect.objectContaining({ brand_key: 'catalog:opi', alias: 'opi', brand_only: false }));
+    expect(r('OPI')).toEqual(expect.objectContaining({ brand_key: 'catalog:opi', brand_only: true }));
+  });
 });
 
 describe('flag ON: the deferred short key is the first QUALIFYING one', () => {
@@ -138,6 +152,7 @@ describe('flag OFF: byte-identical to #2274 (pinned, including the live defect)'
     ['bubble bath', null],
     ['bubble olaplex', null],
     ['bubble', 'catalog:bubble'],
+    ['opi tools', null],
   ])('%s -> %s', (q, expected) => {
     expect(brandKey(q)).toBe(expected);
   });

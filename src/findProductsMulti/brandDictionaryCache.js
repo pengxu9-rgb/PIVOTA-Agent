@@ -375,7 +375,8 @@ function matchCatalogBeautyBrandByStrippedName(coreQuery) {
 // that brand is predominantly beauty, returns { brand, alias, n, beauty_n,
 // categorized_n } where `brand` is the CANONICAL spaced key (so `roundlab` and
 // `round lab` resolve to one identity); otherwise null. The longest known brand
-// is THE brand: a non-beauty match never falls back to a shorter sub-span.
+// is THE brand: a non-beauty match never falls back to a shorter sub-span (with
+// GATEWAY_CATALOG_SHORT_KEY_YIELDS, a short key OUTSIDE that span still may).
 function matchCatalogBeautyBrand(normalizedQuery, options = {}) {
   if (!enabled() || !beautyContractEnabled()) return null;
   maybeRefresh();
@@ -384,9 +385,11 @@ function matchCatalogBeautyBrand(normalizedQuery, options = {}) {
   const shortKeysYield = shortKeysYieldEnabled();
   let deferredShortKey = null;
   let regularBrandRefused = false;
+  let refusedSpan = null; // [start, end) tokens of the refused longest regular brand
   // An ordinary word that is also a catalog brand ("bubble", "merit") must not outrank a
-  // short key: live 2026-09-26, "opi bubble bath" (an OPI shade) found the 3-row brand
-  // "bubble", which brandLexicon then refuses as ambiguous -- leaving no brand at all.
+  // short key: measured on prod brand stats 2026-09-26, deferring OPI without this would
+  // send "opi bubble bath" (an OPI shade) to the 3-row brand "bubble", which brandLexicon
+  // then refuses as ambiguous -- leaving no brand at all.
   const isWeakRegularKey = typeof options.isWeakRegularKey === 'function' ? options.isWeakRegularKey : () => false;
   let weakRegular = null;
   for (let size = Math.min(4, tokens.length); size >= 1; size -= 1) {
@@ -405,7 +408,12 @@ function matchCatalogBeautyBrand(normalizedQuery, options = {}) {
       // 2026-09-26, "opi olaplex" served 6 OPI rows. A short key is held back while the
       // scan looks for a regular brand elsewhere in the query; it answers only if none does.
       if (shortKeysYield && !admissibleKey(key)) {
-        if (!deferredShortKey && qualifiesAsBeautyBrand(stats)) deferredShortKey = { alias: span, ...stats };
+        // A short key inside the refused brand's own span is part of that brand ("opi tools"
+        // being a non-beauty brand): the longest brand is still THE brand.
+        const insideRefused = refusedSpan && i >= refusedSpan[0] && i + size <= refusedSpan[1];
+        if (!insideRefused && !deferredShortKey && qualifiesAsBeautyBrand(stats)) {
+          deferredShortKey = { alias: span, ...stats };
+        }
         continue;
       }
       if (regularBrandRefused) continue;
@@ -421,6 +429,7 @@ function matchCatalogBeautyBrand(normalizedQuery, options = {}) {
       // The longest regular brand is not beauty: no shorter regular span may answer (the
       // rule above), but a short key elsewhere in the query still can, whatever its position.
       regularBrandRefused = true;
+      refusedSpan = [i, i + size];
     }
   }
   return deferredShortKey || weakRegular;
