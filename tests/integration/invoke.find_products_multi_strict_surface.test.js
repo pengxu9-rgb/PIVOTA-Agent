@@ -82,7 +82,6 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED:
         process.env.EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED,
       EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS: process.env.EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS,
@@ -730,7 +729,6 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
 
   test('strict ingredient authoritative rail skips resolver-first fallback', async () => {
     mockDbRows([]);
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
 
     const resolveProductRef = jest.fn().mockResolvedValue({
       resolved: true,

@@ -21,11 +21,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       DATABASE_URL: process.env.DATABASE_URL,
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
-      PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED:
-        process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED,
-      PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
-        process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
       SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
       SEARCH_EXTERNAL_HARD_RULE_PRUNE: process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE,
       SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO:
@@ -70,9 +65,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.DATABASE_URL = 'postgres://test';
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    delete process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
-    delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     delete process.env.SEARCH_CACHE_VALIDATE;
     delete process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE;
     delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
@@ -114,23 +106,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       delete process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG;
     } else {
       process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = prevEnv.FIND_PRODUCTS_MULTI_ROUTE_DEBUG;
-    }
-    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
-        prevEnv.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY === undefined) {
-      delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
-    } else {
-      process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
-        prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     }
     if (prevEnv.SEARCH_CACHE_VALIDATE === undefined) {
       delete process.env.SEARCH_CACHE_VALIDATE;
@@ -1433,7 +1408,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
 
   test('shopping_agent cache miss lookup skips resolver fallback and stays on authoritative upstream', async () => {
-    process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED = 'true';
 
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

@@ -24,10 +24,6 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       FIND_PRODUCTS_MULTI_EXPANSION_MODE: process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
       FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE:
         process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
-      PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
-      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
-        process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
       FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS:
         process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS,
     };
@@ -41,9 +37,6 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
     process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
-    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
   });
 
   afterEach(() => {
@@ -79,22 +72,6 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     } else {
       process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE =
         prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
-    }
-    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
-        prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
     }
     if (prevEnv.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS === undefined) {
       delete process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS;
