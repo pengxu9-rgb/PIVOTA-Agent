@@ -36,9 +36,9 @@
 //                             path, including all upstream-routed traffic -- so it cannot, on its
 //                             own, split the Python door's lanes
 //   query_source              the response's own metadata.query_source: which lane actually
-//                             served the page, for EVERY lane. Measured 2026-09-26: 31% of 30 days
-//                             of traffic (discovery bridge, ingredient direct, early exits) set no
-//                             lane and recorded no stage, so which lane served it was unknowable
+//                             served the page, for EVERY lane -- including those that record no
+//                             stage and set no `lane` (discovery bridge, ingredient direct, early
+//                             exits). `lane` says which stage ran; this says what the page claims
 //   primary_path_used         the response's metadata.route_health.primary_path_used
 
 const MAX_CURRENCIES = 8;
@@ -143,8 +143,6 @@ function summariseServedProducts(products = []) {
   };
 }
 
-/** The lane that produced the rows: the LAST lane recorded, since every lane's failure path
- *  answers the request itself rather than falling through. */
 function capServedBy(raw) {
   if (typeof raw !== 'string') return null;
   const text = raw.trim();
@@ -166,6 +164,8 @@ function servedByFromBody(body) {
   };
 }
 
+/** The lane that produced the rows: the LAST lane recorded, since every lane's failure path
+ *  answers the request itself rather than falling through. */
 function laneFromStageBreakdown(stages = []) {
   const list = Array.isArray(stages) ? stages : [];
   for (let i = list.length - 1; i >= 0; i -= 1) {
