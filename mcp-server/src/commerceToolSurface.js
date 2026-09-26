@@ -43,6 +43,7 @@ import {
   ucpToNativeToolArgs,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
+import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -512,8 +513,19 @@ const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "
 function toParams(op, toolArgs) {
   const a = asObj(toolArgs);
   switch (op.id) {
-    case "search_catalog":
+    case "search_catalog": {
+      // Same limit the invoke route enforces (QUERY_TOO_LONG). Refused HERE so the agent gets an
+      // actionable argument error: past this point a 400 from the route surfaces as the kernel's
+      // retriable MERCHANT_UNAVAILABLE, and a retried over-long query is refused identically.
+      const maxChars = queryLengthLimit.resolveSearchQueryMaxChars();
+      if (typeof a.query === "string" && a.query.trim().length > maxChars) {
+        throw new ToolValidationError(
+          `${op.mcp}: \`query\` is ${a.query.trim().length} characters; the limit is ${maxChars}. ` +
+            "Send the product, brand or need in a few words.",
+        );
+      }
       return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
+    }
     case "get_product":
       return {
         payload: {
@@ -775,7 +787,7 @@ const INPUT_SCHEMAS = Object.freeze({
   search_catalog: {
     type: "object", additionalProperties: false,
     properties: {
-      query: { type: "string" }, merchant_id: { type: "string" }, category: { type: "string" },
+      query: { type: "string", maxLength: queryLengthLimit.resolveSearchQueryMaxChars() }, merchant_id: { type: "string" }, category: { type: "string" },
       price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2)." },
       in_stock_only: { type: "boolean" }, page: { type: "integer", minimum: 1 },
       page_size: { type: "integer", minimum: 1, maximum: 50 },

@@ -227,6 +227,7 @@ const {
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
+const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
@@ -39827,6 +39828,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
+  let queryTooLongRejected = false;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -39847,6 +39849,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return emit(body);
   })(res.json.bind(res));
   res.json = (body) => {
+    // A rejected over-long query goes out as-is: the enrichment below re-reads the request's
+    // query text (the pivot beauty contract check runs the brand lexicon over it), which is the
+    // cost the rejection exists to avoid.
+    if (queryTooLongRejected) return originalJson(body);
     let finalBody = body;
     try {
       const operation = String(debugRuntime.operation || req?.body?.operation || '')
@@ -40351,6 +40357,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     const { operation, payload } = parsed.data;
+    // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
+    const overlongQuery = findOverlongSearchQuery({ operation, payload });
+    if (overlongQuery) {
+      queryTooLongRejected = true;
+      logger.warn(
+        { gateway_request_id: gatewayRequestId, operation, ...overlongQuery },
+        'search query too long; rejected',
+      );
+      return res.status(400).json({
+        error: 'QUERY_TOO_LONG',
+        message: `The search query is ${overlongQuery.length} characters; the limit is ${overlongQuery.max_chars}.`,
+        field: overlongQuery.field,
+        max_chars: overlongQuery.max_chars,
+        length: overlongQuery.length,
+      });
+    }
+    // Over-long history (recent queries, earlier user turns) is parsed too but is not the query: it is
+    // cut to the limit so the request still searches. Both copies are cut, since downstream reads both.
+    const truncatedHistoryEntries =
+      truncateSearchHistory({ operation, payload }) +
+      (req?.body?.payload !== payload ? truncateSearchHistory({ operation, payload: req?.body?.payload }) : 0);
+    if (truncatedHistoryEntries > 0) {
+      logger.info(
+        { gateway_request_id: gatewayRequestId, operation, truncated_history_entries: truncatedHistoryEntries },
+        'search history truncated to the query length limit',
+      );
+    }
     const requestLevelContext =
       req?.body?.context && typeof req.body.context === 'object' && !Array.isArray(req.body.context)
         ? req.body.context
