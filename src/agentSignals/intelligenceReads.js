@@ -9,6 +9,7 @@
 const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
 const { intelToSignal } = require('./intelToSignal');
+const { gateOffersResolveResponse, offersGateBuyerMarket } = require('../offers/offersPriority');
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -188,6 +189,9 @@ function makeGetOffers(deps = {}) {
       product_group_id: p.product_group_id,
       currency: p.currency,
       limit,
+      // The request's own carriers, for the purchasability gate's market (`offersGateBuyerMarket`).
+      payload: p,
+      metadata: params && params.metadata,
     });
     const offers = res && Array.isArray(res.offers) ? res.offers : [];
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
@@ -307,9 +311,46 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
   return { offers, product_group_id: groupId };
 }
 
+/**
+ * The wired `fetchOffers` for `get_offers`: the backend `offers.resolve` op, THROUGH THE
+ * MERCHANT-PURCHASABILITY GATE, then `mapOffersResolveResponse`.
+ *
+ * ⚠️ THIS READ WAS A FOURTH, UNGATED PRODUCER OF PURCHASE CLAIMS. It called the backend directly and
+ * returned its offers — `execution_spec.cart_url`, checkout-shaped links — past the offers seam the
+ * invoke route runs (`prioritizeOffersResolveResponseGated`), so a merchant the gate declines kept
+ * its cart link on the agent door. `gateOffersResolveResponse` is that seam's decision and decline
+ * without its re-ordering (see there). docs/merchant-purchasability-gate.md §8, path 3.
+ *
+ * THE MARKET is `offersGateBuyerMarket(payload, metadata)`, the same carrier rule as the other
+ * offers seams — caller-supplied only, never a default. The `get_offers` tool schemas carry no
+ * market today, so under backend ENFORCEMENT this read is unkeyable and every merchant on it is
+ * declined (the client's `unkeyable_enforced` row); unenforced, it is today's answer.
+ *
+ * `gateOptions` exists for tests (an isolated client, an env); production passes none and gets the
+ * process singleton the other seams share.
+ */
+function makeOffersResolveFetchOffers({ invokeUpstream, gateOptions = {} } = {}) {
+  if (typeof invokeUpstream !== 'function') {
+    throw new Error('makeOffersResolveFetchOffers requires invokeUpstream');
+  }
+  return async function fetchOffers({ merchant_id, product_id, product_group_id, limit, payload, metadata } = {}) {
+    const upstream = await invokeUpstream('offers.resolve', {
+      product: { product_id, merchant_id },
+      limit: Math.min(Math.max(Number(limit) || 10, 1), 30),
+      commerceSurface: 'agent_api',
+    });
+    const gated = await gateOffersResolveResponse(upstream, {
+      ...gateOptions,
+      market: offersGateBuyerMarket(payload, metadata),
+    });
+    return mapOffersResolveResponse(gated, product_group_id || null);
+  };
+}
+
 module.exports = {
   makeGetAlternatives,
   makeGetOffers,
+  makeOffersResolveFetchOffers,
   makeGetIntel,
   mapOffersResolveResponse,
   DEFAULT_RELATIONS,

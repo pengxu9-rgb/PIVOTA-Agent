@@ -166,10 +166,7 @@ function readOfferStampedCheckoutUrl(offer) {
   );
 }
 
-/** Registrable-ish host of that URL, normalised the way the gate client normalises a domain. */
-function readOfferMerchantDomain(offer) {
-  const url = readOfferStampedCheckoutUrl(offer);
-  if (!url) return null;
+function hostOfUrl(url) {
   try {
     return new URL(url).hostname.toLowerCase().replace(/^www\./, '') || null;
   } catch {
@@ -177,9 +174,81 @@ function readOfferMerchantDomain(offer) {
   }
 }
 
+/**
+ * PIVOTA'S OWN ATTRIBUTED HOP — `<api base>/r?token=…`, what pivota-backend `_make_external_redirect_url`
+ * signs. Recognised by SHAPE (path `/r` + a `token`), not by host: the api base differs per
+ * environment, and the hop is what matters, not which of our hosts serves it.
+ */
+function isPivotaRedirectHop(value) {
+  const parsed = parseUrlish(value);
+  // The LAST path segment, so an api base that carries a path (`<base>/x` + `/r`) is still the hop.
+  return Boolean(parsed && /(^|\/)r\/?$/.test(parsed.pathname) && parsed.searchParams.has('token'));
+}
+
+/**
+ * Where the backend's execution spec says the hop lands: `compose_attributed_destinations` signs
+ * `primary = cart_url or pdp_url`, published as `execution_spec.cart_url` / `.pdp_url`;
+ * `merchant_domain` names the shop. CART FIRST, because the declined host is also the host the
+ * strip removes URLs from, and `resolve_cart_permalink` can build the cart on the shop domain rather
+ * than the PDP's — a decision keyed on the PDP's host would decline the merchant and leave its cart.
+ */
+function readExecutionSpecMerchantHost(offer) {
+  const spec = offer && typeof offer === 'object' ? offer.execution_spec : null;
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return null;
+  const httpHost = (value) => {
+    const parsed = parseUrlish(value);
+    return parsed ? hostKeyOf(parsed) || null : null;
+  };
+  const named = asString(spec.merchant_domain).toLowerCase().replace(/^www\./, '');
+  return (
+    httpHost(spec.cart_url) ||
+    httpHost(spec.pdp_url) ||
+    (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(named) ? named : null)
+  );
+}
+
+/**
+ * The merchant the gate asks about, normalised the way the gate client normalises a domain.
+ *
+ * ⚠️ THE STAMPED URL OF A BACKEND `offers.resolve` EXTERNAL OFFER IS NOT ON THE MERCHANT'S HOST.
+ * pivota-backend `routes/agent_shop_gateway.py` emits those rows with `affiliate_url: '<api
+ * base>/r?token=…'`, which `readOfferStampedCheckoutUrl` answers before `url` — so a gate keyed on
+ * the stamped host asked whether PIVOTA'S API was purchasable, for every merchant on the page. No
+ * fact exists for that host: under enforcement every such offer was declined whatever its merchant,
+ * and the strip (declined host only) then removed nothing. So:
+ *   - a stamped URL that is NOT the hop: its own host — exactly the previous rule, so a direct
+ *     checkout link is always decided and stripped on the host it points at;
+ *   - the hop (or no stamped link at all): where the hop lands — the execution spec (seed rows), then
+ *     `url` (catalog-offer rows: `url` is the destination the hop was minted for), then, only if
+ *     nothing names the merchant, the hop's own host;
+ *   - an offer that links nowhere: `null`, never asked about.
+ */
+function readOfferMerchantDomain(offer) {
+  const stamped = readOfferStampedCheckoutUrl(offer);
+  if (stamped && !isPivotaRedirectHop(stamped)) return hostOfUrl(stamped);
+  const generic = readGenericUrl(offer);
+  const landing =
+    readExecutionSpecMerchantHost(offer) ||
+    (stamped && generic && !isPivotaRedirectHop(generic) ? hostKeyOf(parseUrlish(generic)) : null);
+  if (landing) return landing;
+  return stamped ? hostOfUrl(stamped) : null;
+}
+
 function declinedSetOf(options) {
   const set = options && options.declinedDomains;
   return set instanceof Set && set.size > 0 ? set : null;
+}
+
+/**
+ * THE ONE SPELLING OF "THIS OFFER IS DECLINED". `enrichOfferCommerceMetadata` rewrites exactly these
+ * rows, and `gateOffersResolveResponse` hands exactly these rows to it — a second copy of the
+ * condition is how the two would come to disagree about which offer a decision applies to.
+ */
+function isOfferDeclined(offer, options) {
+  const declined = declinedSetOf(options);
+  if (!declined || !offer || typeof offer !== 'object' || Array.isArray(offer)) return false;
+  const domain = readOfferMerchantDomain(offer);
+  return Boolean(domain && declined.has(domain));
 }
 
 /**
@@ -219,7 +288,45 @@ const BUYABLE_SIGNAL_FIELDS = [
   'merchant_checkout_session', 'merchantCheckoutSession',
   'checkout_session', 'checkoutSession',
   'merchant_checkout_url', 'merchantCheckoutUrl',
+  // "Following the link lands in a prefilled cart" — the claim itself, whichever link carries it.
+  'cart_prefilled',
 ];
+
+/**
+ * THE EXECUTION SPEC'S CART HALF (backend `offers.resolve` rows only; no gateway row has a spec),
+ * removed from a declined row WHOSE HOP LANDS IN THE CART. `cart_url` goes by shape (arm 1). What is
+ * left of the cart after that is still a cart: `rail` names the checkout rail, `variant_id` is the
+ * numeric storefront variant the permalink encodes (with `merchant_domain`, an agent rebuilds
+ * `/cart/<variant_id>:1` itself), `expected_*` is the checkout total for that cart, and
+ * `tracking.param` / `join_mode` describe the cart hop. The PDP, the offer's own price and the click
+ * id stay. A REFERRAL row keeps its spec whole: its hop and its tracking describe the browse link
+ * the decline falls back to.
+ */
+const DECLINED_SPEC_FIELDS = [
+  'cart_url', 'rail', 'variant_id',
+  'expected_item_total', 'expected_currency', 'expected_quantity', 'expected_total_expires_at',
+];
+const DECLINED_SPEC_TRACKING_FIELDS = ['param', 'join_mode'];
+
+/** Does this row's `/r` hop land in the cart? Read on the row AS SERVED, before anything is stripped. */
+function redirectHopLandsInCart(offer) {
+  if (offer.cart_prefilled === true) return true;
+  const spec = offer.execution_spec;
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return false;
+  if (parseUrlish(spec.cart_url)) return true; // primary = cart_url or pdp_url
+  const tracking = spec.tracking && typeof spec.tracking === 'object' ? spec.tracking : {};
+  return asString(tracking.join_mode).toLowerCase() === 'cart_permalink';
+}
+
+function dropExecutionSpecCart(base) {
+  const spec = base.execution_spec;
+  // `base` is the deep copy `stripCheckoutUrlsDeep` built, so these deletes touch no caller's object.
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return;
+  for (const field of DECLINED_SPEC_FIELDS) delete spec[field];
+  if (spec.tracking && typeof spec.tracking === 'object' && !Array.isArray(spec.tracking)) {
+    for (const field of DECLINED_SPEC_TRACKING_FIELDS) delete spec.tracking[field];
+  }
+}
 
 function parseUrlish(value) {
   if (typeof value !== 'string') return null;
@@ -254,12 +361,19 @@ function normalizeUrlForCompare(value) {
  * a browse/referral result. A redirect offer whose only URL is the product page keeps it — the
  * stamped URL is only stripped by the byte-equal arm when it is itself checkout-shaped.
  */
-function isSuppressedCheckoutUrl(value, domain, stampedUrl, fieldName) {
+function isSuppressedCheckoutUrl(value, domain, stampedUrl, fieldName, hopLandsInCart = false) {
   const parsed = parseUrlish(value);
-  if (!parsed || hostKeyOf(parsed) !== domain) return false;
+  if (!parsed) return false;
   // ARM 1 — SHAPE. A cart/checkout path on the declined host, in ANY field, at any depth.
-  if (CHECKOUT_PATH_RE.test(parsed.pathname)) return true;
-  // ARM 2 — BYTE-EQUAL TO THE STAMPED URL, and UNCONDITIONAL on shape. The first cut gated this on
+  if (hostKeyOf(parsed) === domain && CHECKOUT_PATH_RE.test(parsed.pathname)) return true;
+  // ARM 3 — OUR OWN HOP, WHEN IT LANDS IN THE CART. The `/r` link is on Pivota's host, so neither
+  // host-keyed arm can see it, and a hop the backend signed with `primary = cart_url` IS the cart
+  // link one redirect later (the click lane skips the warm-handoff gate for a cart join). When the
+  // hop lands on the PDP it is the referral link the decline falls back TO, and it stays.
+  if (hopLandsInCart && isPivotaRedirectHop(value)) return true;
+  // ARM 2 — BYTE-EQUAL TO THE STAMPED URL, and UNCONDITIONAL on shape. (No host check: the stamped
+  // URL's host IS the declined host for every row but a hop row, and on a hop row the stamped URL in a
+  // checkout-NAMED field is still the "buy here" link.) The first cut gated this on
   // the stamped URL being checkout-SHAPED, i.e. it switched itself off in exactly the case the
   // shape arm had already failed to recognise — two guards that fail together are one guard.
   if (normalizeUrlForCompare(value) !== normalizeUrlForCompare(stampedUrl)) return false;
@@ -291,7 +405,7 @@ const DROP = Symbol('drop');
  *     CLOSED. Eight levels is far past anything an offer row carries, so this is a guard, not a
  *     behaviour.
  */
-function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0) {
+function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0, hopLandsInCart = false) {
   if (node === null || typeof node !== 'object') return node;
   if (depth > MAX_STRIP_DEPTH) return DROP;
   if (Array.isArray(node)) {
@@ -300,10 +414,10 @@ function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0) {
       if (typeof v === 'string') {
         // An array element has no field name of its own; it inherits the array's, which is why the
         // caller passes it down. Shape-matching applies either way.
-        if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, null)) out.push(v);
+        if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, null, hopLandsInCart)) out.push(v);
         continue;
       }
-      const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1);
+      const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1, hopLandsInCart);
       if (stripped !== DROP) out.push(stripped);
     }
     return out;
@@ -314,10 +428,10 @@ function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0) {
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (typeof v === 'string') {
-      if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, k)) out[k] = v;
+      if (!isSuppressedCheckoutUrl(v, domain, stampedUrl, k, hopLandsInCart)) out[k] = v;
       continue;
     }
-    const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1);
+    const stripped = stripCheckoutUrlsDeep(v, domain, stampedUrl, depth + 1, hopLandsInCart);
     if (stripped !== DROP) out[k] = stripped;
   }
   return out;
@@ -349,9 +463,8 @@ function enrichOfferCommerceMetadata(offer, options) {
   // `declinedDomains` is empty (and this is `false`) on every path where the switch is off, the
   // backend is not enforcing, or the read failed — i.e. the previous behaviour, byte for byte.
   // (No market under ENFORCEMENT is a decline since backend #2352: no fact can exist for it.)
-  const declined = declinedSetOf(options);
   const domain = readOfferMerchantDomain(offer);
-  const merchantNotPurchasable = Boolean(checkoutUrl && declined && declined.has(domain));
+  const merchantNotPurchasable = isOfferDeclined(offer, options);
 
   if (merchantNotPurchasable) {
     // ⚠️ A URL IS NOT THE ONLY THING THAT SAYS "BUYABLE HERE".
@@ -372,8 +485,10 @@ function enrichOfferCommerceMetadata(offer, options) {
     // annotates inside `buildOffersFromGroupMembers` and its callers annotate the result again), and
     // a conditional spread can only ADD a key. Removing explicitly makes the decision hold whichever
     // pass stamped it, and makes suppression idempotent.
-    const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl);
+    const hopLandsInCart = redirectHopLandsInCart(offer);
+    const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl, 0, hopLandsInCart);
     for (const field of BUYABLE_SIGNAL_FIELDS) delete base[field];
+    if (hopLandsInCart) dropExecutionSpecCart(base);
     // Both spellings, so `readPurchaseRoute` cannot find a stale camelCase twin.
     delete base.purchaseRoute;
     base.purchase_route = DECLINED_PURCHASE_ROUTE;
@@ -737,6 +852,37 @@ async function prioritizeOffersResolveResponseGated(upstreamData, options = {}) 
   return prioritizeOffersResolveResponse(upstreamData, { declinedDomains });
 }
 
+/**
+ * THE GATE ON AN `offers.resolve` RESPONSE THAT IS NOT RE-PRESENTED — the agent `get_offers` read.
+ *
+ * `get_offers` (src/agentSignals/intelligenceReads.js) fetched `offers.resolve` straight from the
+ * backend and projected it with `offersToSignals`, never passing the invoke route's seam above: a
+ * fourth producer of purchase claims that none of the three gated sites could see.
+ *
+ * NOT `prioritizeOffersResolveResponseGated`, deliberately. That one RE-ORDERS the page
+ * (`prioritizeOffers`) and stamps every row, with the switch off as much as on — right for the
+ * route whose output it has always been, and a change of today's `get_offers` answer (signal order,
+ * and the `best_offer` tie-break that reads it) for a read that never had it. What is shared is
+ * the part that decides: the SAME `resolveOfferPurchasabilityDecisions` (switch, singleton client,
+ * budget, deadline, fail-open, the unkeyable rule) and, for a declined row, the SAME
+ * `enrichOfferCommerceMetadata` decline — so a declined offer here is byte-equal to a declined
+ * offer on every other path. Every other row, and the order, is the backend's own.
+ *
+ * With no decline — switch off, not enforcing, a failed read, a purchase fact — the input is
+ * returned AS IS (the same reference): byte-identical by construction, not by snapshot.
+ */
+async function gateOffersResolveResponse(upstreamData, options = {}) {
+  const offers = readResolveResponseOffers(upstreamData);
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(offers, options);
+  if (declinedDomains.size === 0) return upstreamData;
+  const decision = { declinedDomains };
+  const gated = offers.map((offer) => (
+    isOfferDeclined(offer, decision) ? enrichOfferCommerceMetadata(offer, decision) : offer
+  ));
+  if (Array.isArray(upstreamData.offers)) return { ...upstreamData, offers: gated };
+  return { ...upstreamData, data: { ...upstreamData.data, offers: gated } };
+}
+
 module.exports = {
   GATE_BATCH_BUDGET_MS,
   offersGateBuyerMarket,
@@ -745,6 +891,7 @@ module.exports = {
   resolveOfferPurchasabilityDecisions,
   annotateOffersWithCommerceMetadataGated,
   prioritizeOffersResolveResponseGated,
+  gateOffersResolveResponse,
   annotateOffersWithCommerceMetadata,
   enrichOfferCommerceMetadata,
   compareOffersForPresentation,

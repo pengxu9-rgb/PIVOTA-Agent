@@ -517,14 +517,101 @@ Gated: **all three** of this gateway's purchase-offering paths for observed merc
 behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` and through the same `shouldOfferPurchase`, so there is
 one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
+> ⚠️ **Corrected 2026-09-27:** path 3's invoke-route call site has never run (see "The invoke route's
+> `offers.resolve` seam does not run" below), and `get_offers` was a fourth, ungated producer until
+> row 3b.
+
 | # | path | what it offers | market source | fallback when `offer === false` |
 |---|---|---|---|---|
 | 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule (`selectBuyerMarket`; on the click lane it has one carrier, `body.market`, so `"US,US"` is US and `"US,SG"` / `"USA"` are no market) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
 | 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market`, then `payload.market`, then `metadata.market` — the first that yields ONE ISO-2 market (§5 carrier rule; `offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with its price and its PDP/browse links; its "buyable here" signals are rewritten to the links-out vocabulary: `commerce_mode: links_out`, `checkout_handoff: redirect`, `purchase_route: affiliate_outbound` (see "A URL is not the only thing…" below) |
+| 3b | `src/agentSignals/intelligenceReads.js::makeOffersResolveFetchOffers` → `offersPriority.js::gateOffersResolveResponse` (the agent `get_offers` read, over both the native MCP and the UCP `cc.pivota.insights` doors) | the backend `offers.resolve` offers, projected by `offersToSignals`: `execution_spec.cart_url` (a prefilled cart on the merchant's own storefront) and any cart/checkout-shaped link | `offersGateBuyerMarket(payload, metadata)` — the same carrier rule as path 3. **Neither `get_offers` tool schema carries a market**, so today every call is UNKEYABLE: under enforcement every merchant on it is declined (`unkeyable_enforced`), unenforced it is today's answer (see the note below) | **the same decline as path 3, byte for byte** — a declined row is exactly `enrichOfferCommerceMetadata(offer, { declinedDomains })`, so its cart is DELETED at any depth — the URL, our `/r` hop when it lands in that cart, `cart_prefilled`, and (on a cart row) the spec's `rail` / `variant_id` / `expected_*` / `tracking.param` / `tracking.join_mode` — and it keeps its price, `execution_spec.pdp_url` and the click id. Unlike the invoke route this read is **not re-ordered**: only declined rows are rewritten, every other row and the order are the backend's own, and with no decline the response is returned as the same object (switch off = byte-identical by construction) |
 
 Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
 reason: the only difference a declined merchant produces is a URL that is not there.
+
+### Path 3b — `get_offers`, the producer none of the gated sites could see (2026-09-27)
+
+`get_offers` fetched `offers.resolve` straight from the backend (`invokeCommerceKernelRawUpstream`)
+and handed its offers to `offersToSignals`. It never met an annotate call, so the annotate-site pin
+(`F1` in `tests/merchant_purchasability_paths.node.test.cjs`) could not see it. It is now built by
+`makeOffersResolveFetchOffers`, which runs the response through `gateOffersResolveResponse` before
+projecting it; `src/server.js` wires `get_offers` through that factory and calls the raw op nowhere
+itself. A second structural test counts PRODUCERS (every place that sends `offers.resolve`
+upstream) rather than annotate sites, so the next one fails CI.
+
+**Not `prioritizeOffersResolveResponseGated`, on purpose.** That function re-orders the page
+(`prioritizeOffers`) and stamps every row whether the switch is on or off. `get_offers` never did
+either, and re-ordering would change its signal order and the `best_offer` tie-break with the
+switch OFF. What is shared is what decides: the same `resolveOfferPurchasabilityDecisions` and, for
+a declined row, the same `enrichOfferCommerceMetadata` decline (one predicate, `isOfferDeclined`,
+tells both which rows those are).
+
+**⚠️ THE GATE ASKED ABOUT PIVOTA, NOT THE MERCHANT, on every backend `offers.resolve` row.**
+The backend emits an external offer with `affiliate_url: <api base>/r?token=…`, and
+`readOfferStampedCheckoutUrl` answers `affiliate_url` before `url`, so `readOfferMerchantDomain`
+returned Pivota's own API host. No fact exists for that host. Under enforcement every such offer was
+declined whatever its merchant, and the strip, which removes URLs on the declined host only,
+removed nothing. The rule is now:
+
+* **a stamped URL that is not the hop:** its own host, exactly as before. A direct checkout link is
+  always decided and stripped on the host it points at.
+* **the hop** (a `/r` path with a `token`, recognised by shape rather than host): where it lands.
+  - Seed rows: `execution_spec.cart_url`'s host, then `pdp_url`'s, then `merchant_domain`. The
+    backend signs `primary = cart_url or pdp_url`. Cart first, because the declined host is the
+    host the strip works on, and the cart can sit on the shop domain.
+  - Catalog-offer rows, which have no spec: `url`, the destination the hop was minted for.
+  - Only when nothing names the merchant: the hop's own host.
+* **no stamped link but a spec:** the spec's host, so a spec cart is gated whether or not a hop sits
+  beside it. No backend row has this shape today, because the backend skips a row without a hop.
+
+Gateway-built rows have neither a hop nor a spec and are unchanged.
+
+**A declined row loses the cart behind the hop too.** The `/r` link is on Pivota's host, so neither
+host-keyed strip arm can see it. When the backend signed it with `primary = cart_url`
+(`cart_prefilled: true`, a spec `cart_url`, or `join_mode: cart_permalink`), it IS the cart link one
+redirect later, and the click lane skips the warm-handoff gate for a cart join
+(`is_already_cart_join`). So on a declined row it is deleted wherever it appears. So are
+`cart_prefilled` and, on that cart row, the spec's `rail`, `variant_id` (with `merchant_domain`,
+enough to rebuild `/cart/<variant_id>:1`), `expected_*` (the checkout total for that cart),
+`tracking.param` and `tracking.join_mode`. The PDP, the offer's own price and the click id stay. A
+hop that lands on the PDP (referral-only) is the referral link the decline falls back to, so it
+stays and its spec stays whole. The hop is recognised by its last path segment (`…/r?token=`), so
+an api base that carries a path is still recognised. None of these fields exists on a gateway-built
+row.
+
+**Residual, unchanged by this PR:** the gateway's own seed offers
+(`buildOfferPurchaseMetadataFromProduct`) set `url` and `external_redirect_url` to the same minted
+hop and carry no spec. On the three annotate sites they are still keyed on the hop's host, exactly
+as before. Giving them a destination needs the product's `destination_url` threaded onto the
+offer; that is a follow-up.
+
+> ⚠️ **ARMING NOTE for this path.** `get_offers` has no market carrier (`commerceToolSurface`'s
+> `get_offers` schema and the UCP `insights` envelope are both closed to `market`). So with the gate
+> armed against an **enforcing** backend, **every** `get_offers` offer loses its cart link; the
+> offers, prices and PDP links remain. That is the rule (no market → no fact → no purchase offer),
+> but it is a visible change. The fix is a market carrier on the tool, a follow-up.
+
+> ⚠️ **The mint is the better place for part of this.** The backend knows the fact at `/r` mint time
+> and could mint `referral_only` for a browse-only merchant. The gateway deletes the cart hop because
+> it cannot re-mint one. A backend follow-up.
+
+### ⚠️ The invoke route's `offers.resolve` seam does not run (measured 2026-09-27)
+
+Path 3's route call site (`if (operation === 'offers.resolve') { upstreamData = await
+prioritizeOffersResolveResponseGated(…) }`, after the upstream call in `handleInvokeRequest`) is
+**unreachable**. Earlier in the same handler, `if (operation === 'offers.resolve')` hands the request
+to `handleOffersResolveOperation` and **returns** on every outcome; `operation` is a `const`, and
+nothing between the two branches on mode. Measured with the gate ON, backend enforcing and
+`market: 'US'`: `POST /agent/shop/v1/invoke offers.resolve` served a browse-only merchant's
+`https://flowerbeauty.com/cart/1:1` verbatim, made **no** purchasability read, and stamped no
+`commerce_mode`, so `prioritizeOffersResolveResponse` never ran. **The invoke route's
+`offers.resolve` is therefore ungated today**, as are the two Aurora lanes that call the backend's
+`offers.resolve` directly (`src/auroraBff/routes.js` reco-PDP, `recoHybridResolveCandidates.js`).
+The producer census test lists all of them as KNOWN UNGATED. Gating the live branch needs its own
+decision on the market carrier, because the route reads `payload.offers.market`, which the §5 rule
+does not. That is a follow-up.
 
 ### Path 2 — the escalation door, and the claim this PR had to correct
 
