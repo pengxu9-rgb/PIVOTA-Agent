@@ -1545,6 +1545,10 @@ test('site6: Pivota\'s /r host is NEVER the merchant — a catalog offer and a s
   assert.equal(readOfferMerchantDomain({ affiliate_url: `${REDIRECT}x` }), null, 'nothing else to go on: not asked at all');
   // A merchant's OWN /r page (no token) is a merchant URL like any other.
   assert.equal(readOfferMerchantDomain({ url: 'https://shop.test/r' }), 'shop.test');
+  assert.equal(
+    readOfferMerchantDomain({ affiliate_url: 'https://shop.test/r', url: 'https://other.test/p/gloss' }),
+    'shop.test', 'a tokenless /r is the merchant\'s link, so its host wins over the fallbacks',
+  );
 
   const asked = [];
   const out = await gateOffersResolveResponse({ offers: [catalog, noDomain] }, {
