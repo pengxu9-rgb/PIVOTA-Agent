@@ -501,4 +501,76 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.exact_product_anchor).toBe('positive light tinted moisturizer');
     expect(contract.hard_constraints.category_path_prefix).toBeNull();
   });
+
+  // Lash route (2026-09-27), behind SEARCH_LASH_CATEGORY_ROUTE. beauty/makeup/eye/false-lashes held 594
+  // live rows while these queries classified other/ambiguous. Only explicit false-lash phrases route;
+  // everything else named with "lash" keeps its home, and with the flag off nothing changes at all.
+  describe('lash route', () => {
+    const { LASH_CATEGORY_ROUTE_FLAG } = require('../src/findProductsMulti/queryUnderstanding');
+    const LASHES = 'beauty/makeup/eye/false-lashes/';
+    const withFlag = (value, fn) => {
+      const prior = process.env[LASH_CATEGORY_ROUTE_FLAG];
+      if (value == null) delete process.env[LASH_CATEGORY_ROUTE_FLAG]; else process.env[LASH_CATEGORY_ROUTE_FLAG] = value;
+      try { return fn(); } finally {
+        if (prior == null) delete process.env[LASH_CATEGORY_ROUTE_FLAG]; else process.env[LASH_CATEGORY_ROUTE_FLAG] = prior;
+      }
+    };
+    const ACCEPTED = [
+      'false lashes', 'fake eyelashes', 'faux mink lashes', 'mink lashes', 'magnetic lashes', 'strip lashes',
+      'individual lashes', 'cluster lashes', 'wispy lashes', 'lash clusters', 'lash strips', 'lash glue',
+      'lash adhesive', 'eyelash glue', 'striplash adhesive', 'Duo Brush On Striplash Adhesive', 'KISS falsies',
+      'impress falsies', 'falsies press on', 'press on lashes', 'press-on lashes', 'diy lash extensions',
+      'falscara', 'Kylash False Lashes', 'best false lashes for beginners', '假睫毛', '睫毛胶',
+    ];
+
+    test.each(ACCEPTED)('flag ON: %s browses the false-lashes leaf', (query) => {
+      const contract = withFlag('on', () => buildSearchQualityContract({ rawQuery: query, market: 'US' }));
+      expect(contract.target_domain).toBe('beauty');
+      expect(contract.query_class).toBe('category_browse');
+      expect(contract.hard_constraints.category_path_prefix).toBe(LASHES);
+    });
+
+    test.each(ACCEPTED)('flag OFF: %s routes exactly as it does without the rule', (query) => {
+      const off = withFlag(null, () => buildSearchQualityContract({ rawQuery: query, market: 'US' }));
+      expect(off.hard_constraints.category_path_prefix).not.toBe(LASHES);
+      // "off" means the flag's own values too, not only an unset variable.
+      for (const value of ['', 'off', 'false', '0']) {
+        const same = withFlag(value, () => buildSearchQualityContract({ rawQuery: query, market: 'US' }));
+        expect(same.hard_constraints.category_path_prefix).toBe(off.hard_constraints.category_path_prefix);
+        expect(same.query_class).toBe(off.query_class);
+      }
+    });
+
+    test.each([
+      // Bare lash words are mascara, serum and lift territory too.
+      ['lashes', null],
+      ['eyelashes', null],
+      ['falsies', null],                                     // Maybelline's Falsies is a mascara line
+      ['maybelline falsies', null],
+      ['lash extensions', null],                             // the salon service
+      // A query that names another lash product keeps that product's home.
+      ['lash serum', 'beauty/skincare/treat/'],
+      ['lash growth serum', 'beauty/skincare/treat/'],
+      ['false lash effect mascara', 'beauty/makeup/eye/'],
+      ['falsies lash lift mascara', 'beauty/makeup/eye/'],
+      ['mascara', 'beauty/makeup/eye/'],
+      ['lash curler', null],
+      ['eyelash curler', null],
+      ['lash lift kit', null],
+      ['lash tint', null],
+      ['lash glue remover', null],
+      ['false lash remover', null],
+      ['lash primer', 'beauty/makeup/face/primer/'],
+      ['magnetic eyeliner', 'beauty/makeup/eye/eyeliner/'],
+    ])('flag ON: %s is not claimed by the lash route', (query, categoryPathPrefix) => {
+      const contract = withFlag('on', () => buildSearchQualityContract({ rawQuery: query, market: 'US' }));
+      expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+    });
+
+    test('the flag is read per call: a flip needs no reload', () => {
+      expect(withFlag(null, () => resolveBeautyCategoryPathPrefixFromText('lash glue'))).toBe('');
+      expect(withFlag('on', () => resolveBeautyCategoryPathPrefixFromText('lash glue'))).toBe(LASHES);
+      expect(withFlag(null, () => resolveBeautyCategoryPathPrefixFromText('lash glue'))).toBe('');
+    });
+  });
 });

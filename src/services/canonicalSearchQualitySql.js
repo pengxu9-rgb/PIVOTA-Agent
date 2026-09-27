@@ -224,9 +224,12 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   // budget before the JS gate gets a chance to see the actual cosmetic. Preserve
   // explicitly requested tools and included mirrors/brushes on cosmetic products.
   const toolPattern = '(^| )(brush(es)?|applicators?|tools?|accessor(y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)($| )';
-  const queryRequestsTool = /\b(?:brush(?:es)?|applicators?|tools?|accessor(?:y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)\b/i.test(contract.effective_query || '');
+  // "Brush-On" / "Brush On" is how a glue or powder is applied, not a brush: it neither asks for a
+  // tool nor makes a row one ("Duo Brush On Striplash Adhesive"; pivota-backend #2387).
+  const queryRequestsTool = /\b(?:brush(?:es)?|applicators?|tools?|accessor(?:y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)\b/i
+    .test(String(contract.effective_query || '').replace(/\bbrush[-\s]+on\b/gi, ' '));
   if ((hard.category_path_prefix || hard.exact_product_anchor) && !queryRequestsTool) {
-    const namedObject = `regexp_replace(${ownName}, '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
+    const namedObject = `regexp_replace(regexp_replace(${ownName}, '(^| )brush on( |$)', ' ', 'g'), '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
     where = `(${where}) AND NOT (${namedObject} ~ ${bind(toolPattern)})`;
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidence };
