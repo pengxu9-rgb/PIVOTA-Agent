@@ -30719,6 +30719,8 @@ async function getCommerceRemoteMcpAdapter() {
         mapOffersResolveResponse,
         candidateSnapshotNeedsHydration,
         hydrateCandidateSnapshotFromEntity,
+        buildIntelKbKeys,
+        intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts, classifyVerifyPriceResponse } = require('./agentSignals/recommendProducts');
       const {
@@ -30829,45 +30831,22 @@ async function getCommerceRemoteMcpAdapter() {
           // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
           // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
           isReviewed: isServableProductIntelBundle,
+          // The KB is keyed by `product:<identity>` for several identities (sig / canonical pg_/sig_ /
+          // per-listing source id) and by `url:<url>`. Hydrate the queried product — named by product_id,
+          // product_ref or pivota_signature_id — to its full identity set (same resolver get_alternatives
+          // uses) so one id matches however the KB was keyed. Flag-gated + fail-open inside the resolver →
+          // the request's own keys when off/unresolved. The key shapes live in buildIntelKbKeys.
           resolveKbKeys: async (p) => {
-            const keys = [];
-            const pushUrl = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `url:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            const push = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `product:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            // The KB is keyed by `product:<identity>` for several identities (sig / canonical
-            // pg_/sig_ / per-listing source id). Hydrate the queried product to its full identity
-            // set (same resolver get_alternatives uses) so a single product_id matches however the
-            // KB was keyed. Flag-gated + fail-open inside the resolver → bare keys when off/unresolved.
             let identity = null;
             try {
               identity = await resolveAnchorIdentityForRelationshipGraph({
-                product_id: p.product_id,
+                product_id: intelIdentityProductId(p),
                 merchant_id: p.merchant_id,
               });
             } catch {
               identity = null;
             }
-            if (identity) {
-              push(identity.canonical_entity_id);
-              push(identity.pivota_signature_id);
-              for (const sig of Array.isArray(identity.member_sig_ids) ? identity.member_sig_ids : []) push(sig);
-              for (const src of Array.isArray(identity.member_source_ids) ? identity.member_source_ids : []) push(src);
-              pushUrl(identity.canonical_url);
-            }
-            // Always include the request-provided identities (covers the flag-off / unresolved path).
-            push(p.pivota_signature_id);
-            push(p.product_id);
-            push(p.product_ref);
-            return keys;
+            return buildIntelKbKeys(p, identity);
           },
         }),
         // The need-anchored shortlist: Pivota's prompt-level recommendation lane (the engine behind

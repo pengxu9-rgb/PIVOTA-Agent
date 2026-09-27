@@ -343,6 +343,57 @@ function makeGetOffers(deps = {}) {
   };
 }
 
+// --- get_intel KB keys ------------------------------------------------------------------------------------
+// The KB is keyed `product:<id>` (sig_…, ext_…, a source id such as ulta:…) and `url:<url>` (exact,
+// case-sensitive). The request names the product by product_id, product_ref or pivota_signature_id, in any
+// of the forms parseProductRefArg reads. Every one of them used to be wrapped as `product:<raw value>`, so a
+// `product:sig_…` ref asked for `product:product:sig_…` and a Pivota product URL for `product:https://…` —
+// both measured live 2026-09-27 as reason:not_found, kb_key_count:1, for a sig whose intel product_id finds.
+function intelIdentityProductId(params = {}) {
+  const p = params || {};
+  for (const v of [p.product_id, p.product_ref, p.pivota_signature_id]) {
+    const id = parseProductRefArg(v).productId;
+    if (id) return id;
+  }
+  return null;
+}
+
+// Candidate KB keys, most specific first: the hydrated identity (when the resolver found one), then the
+// request's own ids. A `url:` ref (or a merchant URL) is looked up as the KB's own `url:` key; a `text:`
+// ref names no KB key.
+function buildIntelKbKeys(params = {}, identity = null) {
+  const p = params || {};
+  const keys = [];
+  const add = (key) => {
+    if (!keys.includes(key)) keys.push(key);
+  };
+  const product = (v) => {
+    const s = v == null ? '' : String(v).trim();
+    if (s) add(`product:${s}`);
+  };
+  const url = (v) => {
+    const s = v == null ? '' : String(v).trim();
+    if (s) add(`url:${s}`);
+  };
+  if (identity && typeof identity === 'object') {
+    product(identity.canonical_entity_id);
+    product(identity.pivota_signature_id);
+    for (const sig of Array.isArray(identity.member_sig_ids) ? identity.member_sig_ids : []) product(sig);
+    for (const src of Array.isArray(identity.member_source_ids) ? identity.member_source_ids : []) product(src);
+    url(identity.canonical_url);
+  }
+  // Always include the request-provided identities (covers the flag-off / unresolved path).
+  for (const v of [p.pivota_signature_id, p.product_id, p.product_ref]) {
+    const parsed = parseProductRefArg(v);
+    product(parsed.productId);
+    for (const ref of parsed.refs) {
+      const m = /^url:(.+)$/i.exec(ref);
+      if (m) url(m[1]);
+    }
+  }
+  return keys;
+}
+
 /**
  * get_intel — project the product-intelligence KB (why / fit / evidence) → a decision Signal.
  * The KB is keyed by `product:<identity>` keys; the agent's product identity may be any of several
@@ -381,8 +432,8 @@ function makeGetIntel(deps = {}) {
         kbKeys = [];
       }
     }
-    if ((!Array.isArray(kbKeys) || kbKeys.length === 0) && nonEmpty(productId)) {
-      kbKeys = [`product:${productId}`];
+    if (!Array.isArray(kbKeys) || kbKeys.length === 0) {
+      kbKeys = buildIntelKbKeys(p, null);
     }
     kbKeys = (Array.isArray(kbKeys) ? kbKeys : []).filter((k) => nonEmpty(k));
     if (kbKeys.length === 0) {
@@ -461,4 +512,6 @@ module.exports = {
   pairCurrencyFromOfferPrices,
   fillStoredAmountCurrencies,
   parseProductRefArg,
+  buildIntelKbKeys,
+  intelIdentityProductId,
 };
