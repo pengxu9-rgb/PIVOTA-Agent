@@ -2373,6 +2373,23 @@ describe('PDP grouped offers', () => {
       expect(served(await build({ servingCurrency: null }))).toEqual([['ext_opened_jpy', 'JPY']]);
     });
 
+    test('a PDP opened through the seed-lane alias keeps its own offer from the observed seller', async () => {
+      // get_pdp_v2 requested as merchant `external_seed`; the identity member is `merch_obs_...`
+      // (ADR-009). The opened JPY offer is the only member: dropping it would leave no buy option.
+      const openedOnly = [member('merch_obs_brand', 'ext_opened_jpy', 'JPY', 3800)];
+      const offersData = await build({ members: openedOnly, preferredMerchantId: 'external_seed' });
+      expect(served(offersData)).toEqual([['ext_opened_jpy', 'JPY']]);
+      // With siblings: still the opened one plus the buyer-currency siblings only.
+      expect(served(await build({ preferredMerchantId: 'external_seed' })))
+        .toEqual([['ext_opened_jpy', 'JPY'], ['ext_sibling_usd', 'USD']]);
+      // Only the seed-lane alias is widened: a PDP opened at a connected merchant does not claim a
+      // same-id seed listing as its own, so that listing is a sibling and must be in the buyer currency.
+      expect(await build({ members: openedOnly, preferredMerchantId: 'merch_store_connected' })).toBeNull();
+      const usdListing = [member('merch_obs_brand', 'ext_opened_jpy', 'USD', 28)];
+      expect(served(await build({ members: usdListing, preferredMerchantId: 'merch_store_connected' })))
+        .toEqual([['ext_opened_jpy', 'USD']]);
+    });
+
     test('with no opened product among the members (sibling fallback), none of another currency is kept', async () => {
       const offersData = await build({ preferredMerchantId: 'merch_obs_other', preferredProductId: 'ext_not_a_member' });
       expect(served(offersData)).toEqual([['ext_sibling_usd', 'USD']]);

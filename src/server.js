@@ -10750,10 +10750,12 @@ async function buildOffersFromGroupMembers(args) {
   const isOpenedProductMember = (member, p) => {
     const ids = [member?.product_id, p?.product_id].map((value) => String(value || '').trim()).filter(Boolean);
     if (preferredProductId) {
-      return (
-        ids.includes(preferredProductId) &&
-        (!preferredMerchantId || String(member?.merchant_id || '').trim() === preferredMerchantId)
-      );
+      if (!ids.includes(preferredProductId)) return false;
+      if (!preferredMerchantId || String(member?.merchant_id || '').trim() === preferredMerchantId) return true;
+      // A PDP opened through the seed lane names the lane's alias (`external_seed`) while its group
+      // member carries the per-brand observed seller (`merch_obs_...`, ADR-009): the same listing.
+      // A connected merchant still has to match exactly -- its product ids are only store-unique.
+      return isExternalSeedListingMerchantId(preferredMerchantId) && memberIsExternalSeedSupply(member);
     }
     return Boolean(canonicalMember) && member === canonicalMember;
   };
