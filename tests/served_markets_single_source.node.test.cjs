@@ -288,7 +288,12 @@ test('every lane takes its markets from laneMarkets, not by re-deriving from the
   const buyer = fs.readFileSync(path.join(ROOT, 'src/services/buyerMarket.js'), 'utf8');
   assert.ok(/markets: marketsForRequest\(requested, env\)/.test(buyer),
     'buyerMarket.js no longer falls back to marketsForRequest for an unpriced or silent request.');
-  assert.ok(/const served = servedMarkets\(env\);/.test(buyer) && !/servedMarkets\(env\)\[0\]/.test(buyer),
+  // Scoped to the BINDING function. silentRequestCurrency reads servedMarkets(env)[0] on purpose --
+  // the default market's CURRENCY for a request that names none -- and never touches `markets`
+  // (its own runtime test is in tests/buyer_market.node.test.cjs).
+  const bind = (buyer.match(/function resolveBuyerMarketScope\([\s\S]*?\n\}\n/) || [''])[0];
+  assert.ok(bind, 'resolveBuyerMarketScope not found in buyerMarket.js');
+  assert.ok(/const served = servedMarkets\(env\);/.test(bind) && !/servedMarkets\(env\)\[0\]/.test(bind),
     'buyerMarket.js no longer binds the served LIST for a buyer market.');
 });
 

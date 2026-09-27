@@ -134,3 +134,27 @@ test('live search price never overlays an already budget-filtered result for par
     else process.env.SERVE_LIVE_MERCHANT_PRICE = prior;
   }
 });
+
+// Peng 2026-09-26: a request that names NO market is a buyer in the default market, so its offers
+// are scoped to that market's currency -- whatever the flag, which is about NAMED markets.
+test('silentRequestCurrency: a silent request is priced in the default served market', () => {
+  const { silentRequestCurrency } = require(path.join(ROOT, 'src/services/buyerMarket'));
+  for (const env of [{}, ON, { [FLAG]: 'off' }]) {
+    // Silent, as the door's own parse reads it: nothing, blank, falsy, or not a market code.
+    for (const requested of [undefined, null, '', '   ', false, 'en-US', 'usa']) {
+      assert.strictEqual(silentRequestCurrency(requested, env), 'USD', `requested=${JSON.stringify(requested)}`);
+    }
+  }
+  // The deployment's default is servedMarkets()[0], not a hard-coded US.
+  assert.strictEqual(silentRequestCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'SG,US' }), 'SGD');
+  assert.strictEqual(silentRequestCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,JP' }), 'USD');
+});
+
+test('silentRequestCurrency: a named market is not silent -- resolveBuyerMarketScope owns it', () => {
+  for (const requested of ['SG', 'US', 'JP', ' sg ', 'ZZ', 'US,SG', ['SG']]) {
+    for (const env of [{}, ON]) {
+      const { silentRequestCurrency } = require(path.join(ROOT, 'src/services/buyerMarket'));
+      assert.strictEqual(silentRequestCurrency(requested, env), null, `requested=${JSON.stringify(requested)}`);
+    }
+  }
+});

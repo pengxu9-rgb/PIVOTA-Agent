@@ -73,6 +73,31 @@ function resolveBuyerMarketScope(requested, env = process.env) {
   return { markets, buyerMarket: named[0], buyerCurrency };
 }
 
+/**
+ * The currency a SILENT request's offers are scoped to: the deployment's default market's, or
+ * null when the request names a market (that case is `resolveBuyerMarketScope`'s, unchanged).
+ *
+ * Peng 2026-09-26: an offer priced in another currency is a wrong result -- "fallback results are
+ * essentially wrong results, we should not show them to the agent frontend". A named market is
+ * scoped by `buyerCurrency`; the leak was the request that names none. It binds the served
+ * partitions with no currency, and the 'US' partition holds every SGD seed and its catalog mirror
+ * (see the header), so a market-less shopper was served SGD pages: prod 09-20..09-26, 24 SGD-only
+ * + 13 SGD+USD pages, every one `market_source: defaulted` on the beauty mainline, every SGD row
+ * recalled by the canonical chain.
+ *
+ * A silent request is a buyer in the deployment's DEFAULT market -- servedMarkets()[0], the market
+ * `markets[0]` already names, and buyerRegion's DEFAULT_BUYER_REGION -- so its offers carry that
+ * market's currency. What it does NOT change: the partition bind (a silent request still binds
+ * the served list and the canonical `marketId`, exactly as before), a caller's explicit currency
+ * (the caller's, applied first), and a request naming a market this module cannot price (bound as
+ * a partition, as it always was). Independent of FIND_PRODUCTS_BUYER_MARKET: that flag is about
+ * reading a NAMED market as a currency; a silent request names none.
+ */
+function silentRequestCurrency(requested, env = process.env) {
+  if (parseMarketList(requested, null).length) return null;
+  return currencyForBuyerRegion(servedMarkets(env)[0]) || null;
+}
+
 // A budget's unit and the currency of the offers shown to a buyer are separate
 // choices. The rule-based parser reports a currency only when the query itself
 // names one (including a bare '$', which it has long treated as USD). The intent
@@ -90,5 +115,6 @@ module.exports = {
   FLAG,
   isEnabled,
   resolveBuyerMarketScope,
+  silentRequestCurrency,
   resolveBuyerBudgetConstraint,
 };

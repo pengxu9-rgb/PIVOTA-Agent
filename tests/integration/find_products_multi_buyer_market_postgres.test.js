@@ -9,10 +9,11 @@ const nock = require('nock');
 // and its canonical row carries recall_market 'US'; the 'SG' partition is empty; JP is a real
 // partition. So a buyer naming SG got nothing, and a buyer naming nothing got SGD and USD mixed.
 //
-// Pins: flag off is unchanged (a named SG still binds the empty partition, and a silent request
-// sends byte-identical SQL with the flag on); flag on, SG serves only SGD and finds the Meitu
-// product on both lanes; US serves only USD; a JP buyer keeps the JP partition; a caller's own
-// currency beats the buyer's.
+// Pins: flag off is unchanged for a NAMED market (a named SG still binds the empty partition);
+// a SILENT request is a default-market (US) buyer whatever the flag, so it serves only USD on both
+// lanes (Peng 2026-09-26 -- buyerMarket.silentRequestCurrency) and sends byte-identical SQL flag
+// off and on; flag on, SG serves only SGD and finds the Meitu product on both lanes; US serves only
+// USD; a JP buyer keeps the JP partition; a caller's own currency beats the buyer's.
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -162,14 +163,40 @@ suite('buyer market (Stage 0a) over both lanes, real PostgreSQL', () => {
     expect(out.calls.some((c) => c.lane === 'seed')).toBe(true);
   };
 
-  test('control, flag off: silent request mixes SGD and USD; a named SG binds the empty partition', async () => {
-    const silent = await serve(null, 'lip gloss');
-    bothLanesRan(silent);
-    expect(silent.currencies).toEqual(expect.arrayContaining(['SGD', 'USD']));
+  test('control, flag off: a named SG binds the empty partition', async () => {
     const sg = await serve(null, 'lip gloss', { market: 'SG' });
     bothLanesRan(sg);
     // Today's defect, pinned as today's behaviour when the flag is off.
     expect(sg.keys.filter((k) => ['jsm_gloss', 'sg_gloss_2', 'ck_sg_gloss'].includes(k))).toEqual([]);
+  });
+
+  // THE LEAK (prod 09-20..09-26: 24 SGD-only + 13 SGD+USD pages, all `market_source: defaulted`,
+  // every SGD row recalled by the canonical chain). A market-less shopper is a US buyer.
+  test.each([[null], ['on']])('flag %s, silent request: only USD, on BOTH lanes, in recall itself', async (flag) => {
+    const out = await serve(flag, 'lip gloss');
+    bothLanesRan(out);
+    expect(out.currencies).toEqual(['USD']);
+    expect([...out.keys].sort()).toEqual(['ck_us_gloss', 'us_gloss', 'us_gloss_2']);
+    // Refused IN SQL, not trimmed off the page: no lane even returned an SGD row.
+    const returned = out.calls.flatMap((c) => c.returned);
+    for (const sgd of ['jsm_gloss', 'sg_gloss_2', 'ck_sg_gloss']) expect(returned).not.toContain(sgd);
+    for (const lane of ['seed', 'canonical']) {
+      expect({ lane, usd: out.calls.filter((c) => c.lane === lane).some((c) => c.params.includes('USD')) }).toEqual({ lane, usd: true });
+    }
+  });
+
+  test('silent request with an undenominated budget: still only USD', async () => {
+    const out = await serve('on', 'lip gloss', { priceMax: 25 });
+    bothLanesRan(out);
+    expect(out.currencies).toEqual(['USD']);
+    expect(out.keys).not.toContain('ck_sg_gloss');
+    expect(out.keys).not.toContain('sg_gloss_2');
+  });
+
+  test('silent request with the caller\'s own currency: the caller\'s currency, not the default', async () => {
+    const out = await serve('on', 'lip gloss', { currency: 'SGD' });
+    expect(out.currencies).toEqual(['SGD']);
+    expect(out.keys).toContain('jsm_gloss');
   });
 
   test('flag on, silent request: byte-identical SQL and the same page as flag off', async () => {
