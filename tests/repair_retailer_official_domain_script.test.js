@@ -3,11 +3,12 @@
 // scripts/repairRetailerOfficialDomain.cjs: the #1785 repair of listings whose official_domain is a retailer
 // host. Prod dry run (2026-09-26): 428 rows, 210 approved -> review_required, 7 review_required -> approved.
 // These tests drive the REAL rebuild (buildIdentityListingFromProduct) and pin the safety rules added before
-// anyone runs --apply: active overrides are honoured, promotions are held unless allowed, the serving-impact
-// report counts only demotions that change serving, and the trust refresh follows every write.
+// anyone runs --apply: active overrides are honoured, promotions are held unless allowed, the serving impact
+// is predicted by the trust policy itself (deriveTrust on the upserter's join), and the trust refresh follows
+// every write.
 
 const {
-  parseArgs, planRow, servingImpact, summarize, run,
+  parseArgs, planRow, predictServing, summarize, run,
 } = require('../scripts/repairRetailerOfficialDomain.cjs');
 const { buildIdentityListingFromProduct } = require('../src/services/pdpIdentityGraph');
 
@@ -96,37 +97,93 @@ describe('planRow (the real rebuild)', () => {
   });
 });
 
-describe('servingImpact / summarize', () => {
-  test('only trust-public or live-read rows count as serving changes', () => {
-    expect(servingImpact([{ live_read_enabled: false, serving_decision: 'shadow', merchant_id: 'external_seed' }]).serving_changes).toBe(false);
-    expect(servingImpact([{ live_read_enabled: true, serving_decision: 'shadow' }]).serving_changes).toBe(true);
-    expect(servingImpact([{ live_read_enabled: false, serving_decision: 'public' }]).serving_changes).toBe(true);
-    expect(servingImpact([]).serving_changes).toBe(false); // no catalog row, not live: nothing served
+// A catalog row as catalogRowTrustUpserter's PRODUCT_JOIN_SQL returns it: an ulta mirror row of a retailer-sourced
+// observed seller, approved + live_read, which the real policy serves public.
+function joinRow(extra = {}) {
+  return {
+    product_key: 'k1', content_key: 'ck1', merchant_id: 'merch_obs_0e4ea7ad6e6d9e43', platform: 'external_seed',
+    source_system: 'external_product_seeds_mirror_v1', source_product_id: 'p1', source_domain: 'ulta.com', sync_status: null,
+    serving_eligible: true, pdp_seed_route_ok: true, row_has_priced_offer: true, row_is_elected_canonical: null,
+    pil_source_listing_ref: 'external_seed:p1', identity_status: 'approved', identity_confidence: 0.74,
+    live_read_enabled: true, review_required: false,
+    eps_id: 's1', eps_status: 'active', eps_domain: 'ulta.com', eps_last_seen_at: new Date(), eps_seed_kind: 'cross',
+    ...extra,
+  };
+}
+// Routes the three statements predictServing issues; `serving` is SERVING_SQL's ref -> product_key + stored verdict.
+function predictClient({ serving, rows }) {
+  const calls = [];
+  return {
+    calls,
+    query: async (sql, params) => {
+      calls.push(sql);
+      if (/crt\.serving_decision/.test(sql)) return { rows: serving };
+      if (/identity_override_one/.test(sql)) return { rows: rows.filter((r) => params[0].includes(r.product_key)) };
+      if (/catalog_source_quarantine/.test(sql)) return { rows: [] };
+      throw new Error('unrouted SQL: ' + sql.slice(0, 80));
+    },
+  };
+}
+const demotion = () => planRow({ row: storedRow(), rebuilt: rebuild(product()) });
+
+describe('predictServing (the real trust policy on the upserter join)', () => {
+  test('a plain demotion of a live, public retailer-sourced row goes shadow', async () => {
+    const out = await predictServing({ client: predictClient({
+      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'public' }], rows: [joinRow()] }), plans: [demotion()] });
+    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ product_key: 'k1', stored: 'public', before: 'public', after: 'shadow', override: null })]);
   });
 
-  test('the observed-seller exemption is merch_obs_ unless the seed is explicitly cross', () => {
-    expect(servingImpact([{ merchant_id: 'merch_obs_tula', seed_kind: 'self' }]).observed_seller_exempt).toBe(true);
-    expect(servingImpact([{ merchant_id: 'merch_obs_tula', seed_kind: null }]).observed_seller_exempt).toBe(true);
-    expect(servingImpact([{ merchant_id: 'merch_obs_tula', seed_kind: 'cross' }]).observed_seller_exempt).toBe(false);
-    expect(servingImpact([{ merchant_id: 'external_seed', seed_kind: 'self' }]).observed_seller_exempt).toBe(false);
+  test('an active force_exact_group override keeps the row public whatever the listing status (the 2026-09-27 miss)', async () => {
+    const out = await predictServing({ client: predictClient({
+      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'public' }],
+      rows: [joinRow({ override_id: 'o1', override_action_type: 'force_exact_group', override_active: true })] }), plans: [demotion()] });
+    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ before: 'public', after: 'public', override: 'force_exact_group' })]);
   });
 
-  test('the report breaks demotions down by brand x live_read x exemption and lists promotions', () => {
-    const d1 = planRow({ row: storedRow({ source_listing_ref: 'external_seed:p1' }), rebuilt: rebuild(product()) });
+  test('a stored verdict that a recompute would change is reported as the stored value, not assumed', async () => {
+    const out = await predictServing({ client: predictClient({
+      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'shadow' }],
+      rows: [joinRow({ identity_status: 'review_required', review_required: true, override_id: 'o1', override_action_type: 'force_exact_group', override_active: true })] }),
+    plans: [demotion()] });
+    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ stored: 'shadow', before: 'public', after: 'public' })]);
+  });
+
+  test('a catalog row whose identity join lands on ANOTHER listing is not this plan\'s to decide', async () => {
+    const out = await predictServing({ client: predictClient({
+      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'public' }],
+      rows: [joinRow({ pil_source_listing_ref: 'merch_x:other' })] }), plans: [demotion()] });
+    expect(out.size).toBe(0);
+  });
+
+  test('held and skipped plans are never predicted; no update plans means no queries', async () => {
+    const client = predictClient({ serving: [], rows: [] });
+    const hold = { kind: 'hold', ref: 'external_seed:p1' };
+    expect((await predictServing({ client, plans: [hold, { kind: 'skip', ref: 'x' }] })).size).toBe(0);
+    expect(client.calls).toHaveLength(0);
+  });
+});
+
+describe('summarize', () => {
+  test('the report breaks demotions down by brand x live_read, with override-held and stale rows called out', () => {
+    const d1 = demotion();
     const d2 = { ...d1, ref: 'external_seed:p2' };
+    const d3 = { ...d1, ref: 'external_seed:p3' };
     const promo = planRow({ row: storedRow({ identity_status: 'review_required', review_reason_codes: ['conflicting_gtin'],
       source_payload: product({ gtin: '00769915190311' }) }), rebuilt: rebuild(product({ gtin: '00769915190311' })) });
-    const serving = new Map([
-      ['external_seed:p1', [{ live_read_enabled: true, serving_decision: 'public', merchant_id: 'external_seed', product_key: 'k1' }]],
-      ['external_seed:p2', [{ live_read_enabled: false, serving_decision: 'shadow', merchant_id: 'external_seed', product_key: 'k2' }]],
+    const predictions = new Map([
+      ['external_seed:p1', [{ product_key: 'k1', live_read: true, stored: 'public', before: 'public', after: 'shadow', override: null }]],
+      ['external_seed:p2', [{ product_key: 'k2', live_read: true, stored: 'public', before: 'public', after: 'public', override: 'force_exact_group' }]],
+      ['external_seed:p3', [{ product_key: 'k3', live_read: false, stored: 'shadow', before: 'public', after: 'public', override: 'force_exact_group' }]],
     ]);
-    const r = summarize([d1, d2, promo], serving);
-    expect(r.demotions).toBe(2);
+    const r = summarize([d1, d2, d3, promo], predictions);
+    expect(r.demotions).toBe(3);
     expect(r.demotions_changing_serving).toBe(1);
     expect(r.demotion_table).toEqual(expect.arrayContaining([
-      expect.objectContaining({ brand: 'the ordinary', live_read: true, demoted: 1, serving_changes: 1, trust_public: 1 }),
-      expect.objectContaining({ brand: 'the ordinary', live_read: false, demoted: 1, serving_changes: 0 }),
+      expect.objectContaining({ brand: 'the ordinary', live_read: true, demoted: 2, serving_changes: 1, public_now: 2, stays_public_by_override: 1 }),
+      expect.objectContaining({ brand: 'the ordinary', live_read: false, demoted: 1, serving_changes: 0, public_now: 1, stays_public_by_override: 1 }),
     ]));
+    expect(r.stale_trust).toEqual([expect.objectContaining({ ref: 'external_seed:p3', stored: 'shadow', recomputed: 'public' })]);
+    expect(r.newly_public).toEqual([expect.objectContaining({ ref: 'external_seed:p3', override: 'force_exact_group' })]);
     expect(r.promotions).toEqual([expect.objectContaining({ kind: 'hold', previous_review_reason_codes: ['conflicting_gtin'] })]);
   });
 });
@@ -141,6 +198,8 @@ describe('run (fake client: routes by SQL, records writes)', () => {
         if (/UPDATE pdp_identity_listing/.test(sql)) { writes.push(params); return { rowCount: 1 }; }
         if (/GROUP BY 1, 2/.test(sql)) return { rows: [] };
         if (/crt\.serving_decision/.test(sql)) return { rows: serving };
+        if (/identity_override_one/.test(sql)) return { rows: [] };
+        if (/catalog_source_quarantine/.test(sql)) return { rows: [] };
         if (/count\(\*\) AS n/.test(sql)) return { rows: [{ n: '0' }] };
         if (/SELECT l\.\*/.test(sql)) return { rows };
         throw new Error('unrouted SQL: ' + sql.slice(0, 80));
