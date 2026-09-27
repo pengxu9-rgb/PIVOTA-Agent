@@ -30724,6 +30724,7 @@ async function getCommerceRemoteMcpAdapter() {
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
+        listCatalogOfferPricesForRefs,
       } = require('./auroraBff/productRelationshipGraph');
       const { getProductIntelKbEntry, getProductIntelKbEntries } = require('./auroraBff/productIntelKbStore');
       // Strict, independent gate for the agent surface (no consumer-flag fallback): off unless explicitly set.
@@ -30794,6 +30795,10 @@ async function getCommerceRemoteMcpAdapter() {
               if (hydrated) e.candidate_snapshot = hydrated;
             }
           },
+          // The stored amounts carry no currency (the builder never wrote one); pair each with the currency
+          // of its own listing's offers, and serve a price only in the buyer market's currency.
+          resolveOfferPrices: (refs) => listCatalogOfferPricesForRefs(refs),
+          servingCurrencyForMarket: (market) => resolveServingCurrency(market),
         }),
         // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
