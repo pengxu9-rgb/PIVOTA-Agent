@@ -369,8 +369,11 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     jest.doMock('../../src/services/discoveryFeed', () => {
       const actual = jest.requireActual('../../src/services/discoveryFeed');
       return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
-        products: [{ product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' }],
-        total: 1,
+        products: [
+          { product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' },
+          { product_id: 'sgd', title: 'Lip balm', price: 16, currency: 'SGD' },
+        ],
+        total: 2,
         metadata: {},
       })) };
     });
@@ -382,8 +385,11 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     });
     jest.dontMock('../../src/services/discoveryFeed');
     expect(resp.status).toBe(200);
-    expect(resp.body.products.map((product) => product.product_id)).toEqual(['usd']);
+    // The route is unchanged; what it serves an SG buyer is SGD only, flag or no flag (Peng
+    // 2026-09-26 -- the invoke door's servingCurrencyGuard drops the USD row).
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['sgd']);
     expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+    expect(resp.body.metadata.serving_currency_guard).toEqual({ serving_currency: 'SGD', dropped_count: 1, dropped_currencies: ['USD'] });
   });
 
   test('a named market and budget also keep the discovery route while buyer-market is off', async () => {
@@ -391,8 +397,11 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     jest.doMock('../../src/services/discoveryFeed', () => {
       const actual = jest.requireActual('../../src/services/discoveryFeed');
       return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
-        products: [{ product_id: 'existing', title: 'Lip balm', price: 20, currency: 'USD' }],
-        total: 1,
+        products: [
+          { product_id: 'existing', title: 'Lip balm', price: 20, currency: 'SGD' },
+          { product_id: 'usd', title: 'Lip balm', price: 12, currency: 'USD' },
+        ],
+        total: 2,
         metadata: {},
       })) };
     });
@@ -406,6 +415,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.status).toBe(200);
     expect(resp.body.products.map((product) => product.product_id)).toEqual(['existing']);
     expect(resp.body.metadata.public_search_discovery_bridge).toBe(true);
+    expect(resp.body.metadata.serving_currency_guard?.dropped_currencies).toEqual(['USD']);
   });
 
   test('REST GET forwards an explicit offer currency into constrained recall', async () => {

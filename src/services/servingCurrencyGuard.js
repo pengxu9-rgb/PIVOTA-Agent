@@ -13,10 +13,15 @@
 //
 // The serving currency is the one the door BOUND when the mainline ran (so this can never disagree
 // with that SQL: an SG buyer's SGD page is kept), else it is resolved from the request the same way
-// (`search.market || metadata.market`, silence = US). A row that carries a price but no currency is
-// dropped: it cannot be shown to be priced for the buyer. A row with no price at all (a card the
-// door already marked `price_absent_reason`) quotes no currency, right or wrong, and is left to the
-// lanes' own price policy.
+// (`search.market || metadata.market`, silence = US).
+//
+// A row priced in ANOTHER currency is dropped on every guarded operation. A row that quotes a price
+// but NO currency is dropped on find_products_multi only: its cards carry a currency (prod, 7d to
+// 2026-09-27: 2 of ~1,800 pages had an unknown one), so a missing one is a defect. The discovery
+// feed's full-detail cards carry no `currency` field at all (tests/integration/
+// invoke.get_discovery_feed_products_search.test.js), and nothing measures find_products', so there a
+// row with no currency is left alone rather than emptying the feed. A row with no price at all
+// (`price_absent_reason`) quotes no currency, right or wrong, and is left to the lanes' own policy.
 //
 // What this cannot see: a seed whose price_currency is blank but that a card builder stamped 'USD'.
 // That is refused in the seed SQL instead (seedSearchOfferScope.seedHasPriceCurrencySql).
@@ -24,6 +29,8 @@
 const { resolveServingCurrency } = require('./buyerMarket');
 
 const GUARDED_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed']);
+// Where a priced row with no currency is itself a defect (see above).
+const CURRENCY_REQUIRED_OPERATIONS = new Set(['find_products_multi']);
 const MAX_REPORTED_CURRENCIES = 8;
 
 function isPlainObject(value) {
@@ -62,15 +69,17 @@ function quotesAPrice(product) {
  * shrinks by as many, and `metadata.serving_currency_guard` says what was dropped.
  */
 function enforceServingCurrency({ operation, observation, payload, metadata, body } = {}) {
-  if (!GUARDED_OPERATIONS.has(String(operation || '').trim().toLowerCase())) return body;
+  const op = String(operation || '').trim().toLowerCase();
+  if (!GUARDED_OPERATIONS.has(op)) return body;
+  const currencyRequired = CURRENCY_REQUIRED_OPERATIONS.has(op);
   if (!isPlainObject(body) || !Array.isArray(body.products) || body.products.length === 0) return body;
   const servingCurrency = servingCurrencyFor({ observation, payload, metadata });
   const kept = [];
   const droppedCurrencies = new Set();
   for (const product of body.products) {
     const currency = isPlainObject(product) ? rowCurrency(product) : '';
-    const unpricedCard = isPlainObject(product) && !currency && !quotesAPrice(product);
-    if (unpricedCard || (servingCurrency && currency === servingCurrency)) kept.push(product);
+    const noCurrencyToJudge = isPlainObject(product) && !currency && !(currencyRequired && quotesAPrice(product));
+    if (noCurrencyToJudge || (servingCurrency && currency === servingCurrency)) kept.push(product);
     else droppedCurrencies.add(currency || 'unknown');
   }
   const droppedCount = body.products.length - kept.length;
@@ -94,6 +103,7 @@ function enforceServingCurrency({ operation, observation, payload, metadata, bod
 }
 
 module.exports = {
+  CURRENCY_REQUIRED_OPERATIONS,
   GUARDED_OPERATIONS,
   enforceServingCurrency,
   requestedMarketOf,

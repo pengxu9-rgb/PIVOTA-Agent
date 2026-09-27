@@ -22,6 +22,14 @@ function seedHasPriceCurrencySql(alias = '') {
   return `${seedNativeCurrencySql(alias)} <> ''`;
 }
 
+// The same refusal on the column alone -- pivota-backend #2389's exact rule -- for a statement that
+// must not detoast seed_data (discoveryFeed's brand by-id `picked` CTE). Stricter in the safe
+// direction: a seed priced only in its payload is refused there too.
+function seedHasColumnPriceCurrencySql(alias = '') {
+  const a = alias ? `${alias}.` : '';
+  return `nullif(trim(${a}price_currency), '') IS NOT NULL`;
+}
+
 // Use the same native-currency budget ranges as canonical SQL and the final
 // price gate. Values are bound, and malformed price text cannot abort recall.
 function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand = null, inStockOnly = false } = {}, params) {
@@ -57,4 +65,4 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   }
   return clauses.length ? `AND ${clauses.join(' AND ')}` : '';
 }
-module.exports = { buildSeedSearchOfferScope, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };
+module.exports = { buildSeedSearchOfferScope, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };

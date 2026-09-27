@@ -1,7 +1,7 @@
 const axios = require('axios');
 const logger = require('../logger');
 const { query } = require('../db');
-const { seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
+const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
@@ -9279,8 +9279,9 @@ async function fetchBrandScopedExternalSeedCandidates({
           ${buildDiscoveryCatalogServingGateJoinSql('cp')}
           WHERE eps.id = ANY($1::text[])
             -- A seed with no currency is not servable; here, not in the index-driven id probes,
-            -- so their plans are untouched (see buildDiscoveryAttachedSeedServingExistsSql).
-            AND ${seedHasPriceCurrencySql('eps')}
+            -- so their plans are untouched (see buildDiscoveryAttachedSeedServingExistsSql). The
+            -- column alone: this CTE must not detoast seed_data (see the note above).
+            AND ${seedHasColumnPriceCurrencySql('eps')}
           ${orderClause}
           LIMIT $2
         )

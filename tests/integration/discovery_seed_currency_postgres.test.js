@@ -8,8 +8,10 @@ const { Client } = require('pg');
 //     / beauty-interest statements;
 //   - the brand-scoped by-id fetch (fetchBrandScopedExternalSeedCandidates), whose index-driven id
 //     probes are deliberately left untouched.
-// The currency the card shows is read column -> seed_data.price_currency -> snapshot, so a row
-// priced only in its payload is kept; WHICH currency is the guard's call.
+// The shared predicate reads the currency the card shows (column -> seed_data.price_currency ->
+// snapshot), so a row priced only in its payload is kept there. The by-id fetch must not detoast
+// seed_data in its `picked` CTE, so it reads the column alone (#2389's rule) and refuses that row
+// too. WHICH currency is the guard's call.
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -97,13 +99,12 @@ suite('discovery seed statements refuse a currency-less seed, real PostgreSQL', 
     }
   });
 
-  test('the brand-scoped lane serves no currency-less seed', async () => {
+  test('the brand-scoped lane serves no currency-less seed, judged on the column', async () => {
     const { _internals } = require('../../src/services/discoveryFeed');
     const products = await _internals.fetchBrandScopedExternalSeedCandidates({ brandAliases: ['laneige'], limit: 24 });
     const ids = products.map((p) => String(p.external_seed_id || p.external_product_id || p.source_product_id || p.product_id)).sort();
     // The control: the lane really did reach this brand's rows.
     expect(ids.length).toBeGreaterThan(0);
-    expect(ids.filter((id) => ['null', 'blank', 'blank_everywhere'].includes(id))).toEqual([]);
-    expect(ids).toEqual(expect.arrayContaining(['usd', 'payload']));
+    expect(ids).toEqual(['sgd', 'usd']);
   });
 });

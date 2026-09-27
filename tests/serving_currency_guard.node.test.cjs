@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const { enforceServingCurrency, requestedMarketOf, servingCurrencyFor, GUARDED_OPERATIONS } =
+const { enforceServingCurrency, requestedMarketOf, servingCurrencyFor, GUARDED_OPERATIONS, CURRENCY_REQUIRED_OPERATIONS } =
   require(path.join(ROOT, 'src/services/servingCurrencyGuard'));
 
 const page = () => ({
@@ -79,11 +79,18 @@ test('a market with no known currency gets nothing', () => {
   }
 });
 
-test('every guarded operation is guarded; any other body is returned as the same object', () => {
-  for (const operation of GUARDED_OPERATIONS) {
-    assert.deepStrictEqual(ids(enforceServingCurrency({ operation, payload: {}, body: page() })), ['usd', 'usd_price_currency'], operation);
-  }
+test('every guarded operation drops another currency; only find_products_multi also drops a price with no currency', () => {
   assert.deepStrictEqual([...GUARDED_OPERATIONS].sort(), ['find_products', 'find_products_multi', 'get_discovery_feed']);
+  assert.deepStrictEqual([...CURRENCY_REQUIRED_OPERATIONS], ['find_products_multi']);
+  assert.deepStrictEqual(ids(enforceServingCurrency({ operation: 'find_products_multi', payload: {}, body: page() })), ['usd', 'usd_price_currency']);
+  // The discovery feed's full-detail cards carry no `currency` field at all: a missing one there is
+  // not evidence of a wrong price, so it is kept -- but SGD and JPY still go.
+  for (const operation of ['find_products', 'get_discovery_feed']) {
+    assert.deepStrictEqual(ids(enforceServingCurrency({ operation, payload: {}, body: page() })), ['usd', 'none', 'usd_price_currency'], operation);
+  }
+});
+
+test('any other operation, or a page with nothing to drop, is returned as the same object', () => {
   const body = page();
   assert.strictEqual(enforceServingCurrency({ operation: 'get_pdp_v2', payload: {}, body }), body);
   const clean = { products: [{ currency: 'USD' }], total: 1 };
