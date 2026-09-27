@@ -10,18 +10,43 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const { resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled, FLAG } = require(path.join(ROOT, 'src/services/buyerMarket'));
+const { resolveBuyerMarketScope, resolveBuyerBudgetConstraint, resolveServingCurrency, isEnabled, FLAG } = require(path.join(ROOT, 'src/services/buyerMarket'));
 const { marketsForRequest } = require(path.join(ROOT, 'src/services/servedMarkets'));
 const { extractIntentRuleBased } = require(path.join(ROOT, 'src/findProductsMulti/intent'));
 
 const ON = { [FLAG]: 'on' };
+
+// Peng 2026-09-26: a wrong-currency result is a wrong result. The same rule as the backend seed
+// lanes (pivota-backend #2389): silence is US, one priced market is its currency, anything else
+// serves nothing. Not behind the flag.
+test('serving currency: silence is USD, a priced market is its own currency, anything else is null', () => {
+  for (const silent of [undefined, null, '', '   ', false, 0, []]) {
+    assert.strictEqual(resolveServingCurrency(silent), 'USD', JSON.stringify(silent));
+  }
+  for (const [requested, currency] of [['US', 'USD'], [' us ', 'USD'], ['SG', 'SGD'], ['sg', 'SGD'], ['JP', 'JPY'],
+    ['KR', 'KRW'], ['GB', 'GBP'], [['SG'], 'SGD']]) {
+    assert.strictEqual(resolveServingCurrency(requested), currency, JSON.stringify(requested));
+  }
+  for (const unpriced of ['ZZ', 'DE', 'EU-DE', 'en-US', 'usa', 'US,SG', 'US SG', ['US', 'SG'], 'x']) {
+    assert.strictEqual(resolveServingCurrency(unpriced), null, JSON.stringify(unpriced));
+  }
+});
+
+test('the serving currency is resolved flag on AND flag off, whatever the partitions', () => {
+  for (const env of [{}, ON, { ...ON, CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,SG' }]) {
+    for (const requested of [undefined, '', 'US', 'SG', 'JP', 'ZZ', 'US,SG', 'en-US']) {
+      assert.strictEqual(resolveBuyerMarketScope(requested, env).servingCurrency, resolveServingCurrency(requested),
+        `requested=${JSON.stringify(requested)} env=${JSON.stringify(env)}`);
+    }
+  }
+});
 
 test('flag off: every input resolves exactly as marketsForRequest, with no buyer currency', () => {
   for (const requested of [undefined, null, '', '   ', 'SG', 'sg', 'US', 'JP', 'ZZ', 'US,SG', 'en-US', false, ['SG']]) {
     for (const env of [{}, { [FLAG]: 'off' }, { [FLAG]: '' }, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,JP' }]) {
       assert.deepStrictEqual(
         resolveBuyerMarketScope(requested, env),
-        { markets: marketsForRequest(requested, env), buyerMarket: null, buyerCurrency: null },
+        { markets: marketsForRequest(requested, env), buyerMarket: null, buyerCurrency: null, servingCurrency: resolveServingCurrency(requested) },
         `requested=${JSON.stringify(requested)} env=${JSON.stringify(env)}`,
       );
     }
@@ -34,20 +59,20 @@ test('flag values: on/true/1/yes enable, anything else does not', () => {
 });
 
 test('SG (the Meitu case): served partitions plus SG, priced in SGD', () => {
-  assert.deepStrictEqual(resolveBuyerMarketScope('SG', ON), { markets: ['US', 'SG'], buyerMarket: 'SG', buyerCurrency: 'SGD' });
+  assert.deepStrictEqual(resolveBuyerMarketScope('SG', ON), { markets: ['US', 'SG'], buyerMarket: 'SG', buyerCurrency: 'SGD', servingCurrency: 'SGD' });
   // The door's own parse: case and surrounding whitespace are presentation.
-  assert.deepStrictEqual(resolveBuyerMarketScope(' sg ', ON), { markets: ['US', 'SG'], buyerMarket: 'SG', buyerCurrency: 'SGD' });
+  assert.deepStrictEqual(resolveBuyerMarketScope(' sg ', ON), { markets: ['US', 'SG'], buyerMarket: 'SG', buyerCurrency: 'SGD', servingCurrency: 'SGD' });
 });
 
 test('a named SERVED market keeps the scalar bind (one element) and gains its currency', () => {
-  assert.deepStrictEqual(resolveBuyerMarketScope('US', ON), { markets: ['US'], buyerMarket: 'US', buyerCurrency: 'USD' });
+  assert.deepStrictEqual(resolveBuyerMarketScope('US', ON), { markets: ['US'], buyerMarket: 'US', buyerCurrency: 'USD', servingCurrency: 'USD' });
 });
 
 test('a populated non-served partition is KEPT alongside the served list, never swapped out', () => {
   // Prod 2026-09-17: JP holds 331 serving-eligible rows. Binding only ['US'] would delete them.
-  assert.deepStrictEqual(resolveBuyerMarketScope('JP', ON), { markets: ['US', 'JP'], buyerMarket: 'JP', buyerCurrency: 'JPY' });
+  assert.deepStrictEqual(resolveBuyerMarketScope('JP', ON), { markets: ['US', 'JP'], buyerMarket: 'JP', buyerCurrency: 'JPY', servingCurrency: 'JPY' });
   const env = { ...ON, CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,JP' };
-  assert.deepStrictEqual(resolveBuyerMarketScope('JP', env), { markets: ['US', 'JP'], buyerMarket: 'JP', buyerCurrency: 'JPY' });
+  assert.deepStrictEqual(resolveBuyerMarketScope('JP', env), { markets: ['US', 'JP'], buyerMarket: 'JP', buyerCurrency: 'JPY', servingCurrency: 'JPY' });
 });
 
 test('markets[0] is always a served (lane) market when a buyer currency applies', () => {
@@ -58,11 +83,11 @@ test('markets[0] is always a served (lane) market when a buyer currency applies'
   }
 });
 
-test('flag on, but nothing the door can price: unchanged (no new answer invented)', () => {
+test('flag on, but nothing the door can price: partitions unchanged (the serving currency decides what is served)', () => {
   for (const requested of [undefined, null, '', '   ', 'ZZ', 'DE', 'US,SG', 'en-US', false]) {
     assert.deepStrictEqual(
       resolveBuyerMarketScope(requested, ON),
-      { markets: marketsForRequest(requested, ON), buyerMarket: null, buyerCurrency: null },
+      { markets: marketsForRequest(requested, ON), buyerMarket: null, buyerCurrency: null, servingCurrency: resolveServingCurrency(requested) },
       JSON.stringify(requested),
     );
   }
@@ -135,26 +160,20 @@ test('live search price never overlays an already budget-filtered result for par
   }
 });
 
-// Peng 2026-09-26: a request that names NO market is a buyer in the default market, so its offers
-// are scoped to that market's currency -- whatever the flag, which is about NAMED markets.
-test('silentRequestCurrency: a silent request is priced in the default served market', () => {
-  const { silentRequestCurrency } = require(path.join(ROOT, 'src/services/buyerMarket'));
+// #2295 introduced the silent-request default as its own helper; it is now resolveServingCurrency's
+// silent branch, so one function owns the rule. The deployment's default is servedMarkets()[0].
+test('the silent default is the deployment\'s default market, whatever the flag', () => {
   for (const env of [{}, ON, { [FLAG]: 'off' }]) {
-    // Silent, as the door's own parse reads it: nothing, blank, falsy, or not a market code.
-    for (const requested of [undefined, null, '', '   ', false, 'en-US', 'usa']) {
-      assert.strictEqual(silentRequestCurrency(requested, env), 'USD', `requested=${JSON.stringify(requested)}`);
+    for (const requested of [undefined, null, '', '   ', false]) {
+      assert.strictEqual(resolveServingCurrency(requested, env), 'USD', `requested=${JSON.stringify(requested)}`);
     }
   }
-  // The deployment's default is servedMarkets()[0], not a hard-coded US.
-  assert.strictEqual(silentRequestCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'SG,US' }), 'SGD');
-  assert.strictEqual(silentRequestCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,JP' }), 'USD');
-});
-
-test('silentRequestCurrency: a named market is not silent -- resolveBuyerMarketScope owns it', () => {
-  for (const requested of ['SG', 'US', 'JP', ' sg ', 'ZZ', 'US,SG', ['SG']]) {
-    for (const env of [{}, ON]) {
-      const { silentRequestCurrency } = require(path.join(ROOT, 'src/services/buyerMarket'));
-      assert.strictEqual(silentRequestCurrency(requested, env), null, `requested=${JSON.stringify(requested)}`);
-    }
+  assert.strictEqual(resolveServingCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'SG,US' }), 'SGD');
+  assert.strictEqual(resolveServingCurrency(undefined, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,JP' }), 'USD');
+  // A named market never falls back to the default -- 'en-US' and 'usa' are markets no currency is
+  // known for (as #2389 reads them), not silence.
+  for (const requested of ['en-US', 'usa', 'ZZ', 'US,SG']) {
+    assert.strictEqual(resolveServingCurrency(requested, { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'SG,US' }), null, requested);
   }
+  assert.strictEqual(resolveServingCurrency('US', { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'SG,US' }), 'USD');
 });

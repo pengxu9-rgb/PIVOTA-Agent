@@ -116,7 +116,10 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
     try {
       for (const query of queries) {
         const res = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
-          payload: { search: { query, domain: 'beauty', market: 'SG', limit: 12 } }, metadata: { source: 'public_api', market: 'SG' } });
+          // US: the fixture is priced in USD (569 of 601 rows), and a buyer is served only its own
+          // market's currency (Peng 2026-09-26, buyerMarket.resolveServingCurrency). Naming SG here
+          // once served those USD rows to an SG buyer.
+          payload: { search: { query, domain: 'beauty', market: 'US', limit: 12 } }, metadata: { source: 'public_api', market: 'US' } });
         // Every query must actually run: a 429 or a failed canonical statement is an empty page
         // on BOTH sides and would compare as "unchanged".
         expect({ query, status: res.status }).toEqual({ query, status: 200 });
