@@ -21,6 +21,9 @@ const OperationEnum = z.enum([
   'get_product_detail',
   'get_pdp',
   'get_pdp_v2',
+  // Settled existence check for a PDP route id (src/services/pdpRouteIdExistence.js): lets the storefront
+  // 404 an id no table holds, instead of 500ing it as a possibly-transient read failure.
+  'pdp_route_id_exists',
   'checkout_handoff',
   'get_product_intel_v1',
   'get_product_feedback_v1',

@@ -131,10 +131,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // was folded into creator_direct; -4, the cross-merchant cache query-search stage (its cache
   // hit, early decision and strict-empty returns, and the outer-catch cache guard) was removed.
   // 2026-09-26: +1, the 400 QUERY_TOO_LONG reject for an over-long search query.
+  // 2026-09-27: +3, pdp_route_id_exists — its 200 answer, its 400 on a malformed id, and its 503 when the
+  // probe cannot answer (which must never be sent as exists:false).
   assert.equal(
     exits.length,
-    97,
-    `expected 97 response exits in handleInvokeRequest, saw ${exits.length}`,
+    100,
+    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
