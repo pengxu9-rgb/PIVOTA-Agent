@@ -10,7 +10,7 @@ const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
 const {
-  resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
+  resolveBuyerMarketScope, silentRequestCurrency, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
 } = require('./services/buyerMarket');
 
 const express = require('express');
@@ -22346,7 +22346,19 @@ async function searchBeautyExternalSeedProductsMainline({
   const servedOfferCurrency = buyerCurrency
     ? (callerOfferCurrency || buyerCurrency)
     : explicitOfferCurrency;
-  const primaryOfferScope = { currency: servedOfferCurrency || explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
+  // A request that names NO market is a buyer in the default market, so both recall lanes scope
+  // their offers to that market's currency: the 'US' partition holds every SGD seed and its
+  // catalog mirror, and without this a market-less shopper was served SGD pages. Only when nothing
+  // above chose a currency -- a named market, or a caller's own currency, keeps its answer -- and
+  // only the recall scope: the partition bind and the final-page filter are untouched.
+  // See buyerMarket.silentRequestCurrency.
+  const silentBuyerCurrency = servedOfferCurrency || explicitOfferCurrency || callerOfferCurrency
+    ? null
+    : silentRequestCurrency(search.market || metadata.market);
+  const primaryOfferScope = {
+    currency: servedOfferCurrency || explicitOfferCurrency || silentBuyerCurrency,
+    priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint),
+  };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
