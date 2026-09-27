@@ -2548,6 +2548,7 @@ module.exports = {
   __internal: {
     BEAUTY_TEXT_PATTERNS,
     SOURCE_PRIORITY,
+    TRANSITIVE_HOP_DECAY_FLOOR,
     clamp01,
     compareScoredCandidates,
     createFamilyDedupeIndex,
