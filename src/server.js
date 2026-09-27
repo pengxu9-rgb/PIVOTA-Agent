@@ -29314,7 +29314,207 @@ async function introspectInvokeApiKeyOverNetwork(apiKey, signal) {
   return result;
 }
 
-async function requireExternalInvokeAuth(req, res, next) {
+// ---------------- X-Checkout-Token verification ----------------
+//
+// Checkout tokens are minted AND signed by pivota-backend (routes/agent_checkout_intents.py
+// mint_checkout_token: `v1.<payload_b64url>.<hmac_sha256_b64url>`, payload carries agent_id, exp,
+// merchant_ids and scopes). The gateway does not hold CHECKOUT_TOKEN_SECRET and must not: whoever
+// holds it can mint tokens. So it asks the backend — the same internal introspect endpoint it
+// already uses for API keys, which judges the token with the very function the agent API
+// authenticates it with (verify_checkout_token_claims) and also refuses a deleted agent.
+//
+// Before this, requireExternalInvokeAuth accepted ANY non-empty X-Checkout-Token as authentication,
+// with no check at all, and every operation behind it was open to an anonymous caller.
+//
+// Fail closed everywhere: no introspect config, a backend that refuses our internal key, a timeout,
+// a 5xx, an unrecognisable answer — all refuse the request. Unlike API keys there is no stale-if-error
+// replay and no emergency fallback: a checkout token is a short-lived buyer credential, and a checkout
+// that waits out a backend blip loses nothing a forged token would gain.
+
+// Shape only — it never ACCEPTS anything, it just saves a backend round trip on obvious garbage. The
+// signature is a base64url SHA-256 HMAC with padding stripped: exactly 43 characters.
+const CHECKOUT_TOKEN_SHAPE = /^(?:v1\.)?[A-Za-z0-9_-]{2,16384}\.[A-Za-z0-9_-]{43}$/;
+const CHECKOUT_TOKEN_VERDICT_POSITIVE_TTL_MS = 60 * 1000;
+const CHECKOUT_TOKEN_VERDICT_NEGATIVE_TTL_MS = 30 * 1000;
+const CHECKOUT_TOKEN_VERDICT_CACHE_MAX = 5000;
+const checkoutTokenVerdictCache = new Map();
+
+// WHERE a token alone may authenticate: the checkout operations of the legacy invoke doors, and nowhere
+// else. On that path every one of these operations forwards the token itself upstream
+// (buildInvokeUpstreamAuthHeaders({ checkoutToken })), so pivota-backend enforces the token's own scope
+// and merchant binding a second time on the call it actually serves. Everywhere else behind
+// requireExternalInvokeAuth the token would authenticate the CHANNEL while the upstream call went out
+// under the gateway's own PIVOTA_API_KEY (gateway-local reads, the commerce kernel behind the strict
+// route, /mcp and /ucp/mcp) or reached surfaces the backend itself refuses a checkout token on
+// (photos) — so there a token-only request is simply a request with no credential. Only
+// registerExternalInvokeRoute opts in; a door that says nothing accepts no checkout token.
+//
+// The list is the checkout lane agent.pivota.cc routes (CHECKOUT_SAFE_OPERATIONS in pivota-agent-ui's
+// gateway proxy, less record_payment_offer_evidence, which is not an invoke operation here).
+const CHECKOUT_TOKEN_INVOKE_OPERATIONS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'confirm_payment',
+  'get_order_status',
+]);
+
+function isCheckoutTokenInvokeOperation(req) {
+  return CHECKOUT_TOKEN_INVOKE_OPERATIONS.has(String(req?.body?.operation || '').trim());
+}
+
+function getCachedCheckoutTokenVerdict(cacheKey, nowMs = Date.now()) {
+  const entry = checkoutTokenVerdictCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expires_at_ms <= nowMs) {
+    checkoutTokenVerdictCache.delete(cacheKey);
+    return null;
+  }
+  return entry.verdict;
+}
+
+function putCachedCheckoutTokenVerdict(cacheKey, verdict, nowMs = Date.now()) {
+  let ttlMs = verdict.valid ? CHECKOUT_TOKEN_VERDICT_POSITIVE_TTL_MS : CHECKOUT_TOKEN_VERDICT_NEGATIVE_TTL_MS;
+  // A positive verdict never outlives the token it describes.
+  if (verdict.valid && verdict.expires_at_ms) ttlMs = Math.min(ttlMs, verdict.expires_at_ms - nowMs);
+  if (!(ttlMs > 0)) return;
+  if (checkoutTokenVerdictCache.size >= CHECKOUT_TOKEN_VERDICT_CACHE_MAX) {
+    const oldest = checkoutTokenVerdictCache.keys().next().value;
+    if (oldest !== undefined) checkoutTokenVerdictCache.delete(oldest);
+  }
+  checkoutTokenVerdictCache.set(cacheKey, { verdict, expires_at_ms: nowMs + ttlMs });
+}
+
+function checkoutTokenIntrospectError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+// Returns { valid, agent_id, is_active, scopes, expires_at_ms, cache_hit } or throws (=> 503).
+async function introspectCheckoutToken(token) {
+  const cacheKey = hashSecretForCache(token);
+  const cached = getCachedCheckoutTokenVerdict(cacheKey);
+  if (cached) return { ...cached, cache_hit: true };
+
+  if (!AGENT_AUTH_INTROSPECT_URL || !AGENT_AUTH_INTROSPECT_INTERNAL_KEY) {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_NOT_CONFIGURED', 'agent auth introspect is not configured');
+  }
+
+  let response;
+  try {
+    response = await axios.post(
+      AGENT_AUTH_INTROSPECT_URL,
+      { checkout_token: token },
+      {
+        timeout: AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+        },
+        validateStatus: () => true,
+      },
+    );
+  } catch (err) {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_UNAVAILABLE', err?.message || 'introspect request failed');
+  }
+  if (response.status < 200 || response.status >= 300) {
+    // Includes a backend too old to know `checkout_token` (it 422s a body without api_key): that
+    // refuses every token-only request until the backend ships, which is the safe order.
+    throw checkoutTokenIntrospectError(
+      response.status >= 500 ? 'AUTH_INTROSPECT_UNAVAILABLE' : 'AUTH_INTROSPECT_REJECTED',
+      `checkout token introspect status=${response.status}`,
+    );
+  }
+
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const expiresAtSec = Number(data.expires_at);
+  const verdict = {
+    // `auth_source` must say the backend judged a CHECKOUT TOKEN. An answer about anything else — an
+    // API-key verdict, a soft error — is not a verdict on this token.
+    valid: data.valid === true && data.auth_source === 'checkout_token' && Boolean(String(data.agent_id || '').trim()),
+    agent_id: String(data.agent_id || '').trim() || null,
+    is_active: data.is_active !== false,
+    scopes: Array.isArray(data.scopes) ? data.scopes.map((s) => String(s || '').trim()).filter(Boolean) : [],
+    expires_at_ms: Number.isFinite(expiresAtSec) && expiresAtSec > 0 ? expiresAtSec * 1000 : null,
+  };
+  if (data.auth_source === 'error') {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_UNAVAILABLE', 'checkout token introspect returned an error result');
+  }
+  putCachedCheckoutTokenVerdict(cacheKey, verdict);
+  return { ...verdict, cache_hit: false };
+}
+
+async function authenticateCheckoutTokenOnly(req, res, next, checkoutToken) {
+  const tokenFingerprint = fingerprintSecret(checkoutToken);
+  const refuse = (status, error, message, reason) => {
+    logger.warn(
+      { path: req?.path || null, checkout_token_fingerprint: tokenFingerprint, reason },
+      'invoke auth rejected: checkout token',
+    );
+    return res.status(status).json({ error, message });
+  };
+
+  if (!CHECKOUT_TOKEN_SHAPE.test(checkoutToken)) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'shape');
+  }
+
+  let verdict;
+  try {
+    verdict = await introspectCheckoutToken(checkoutToken);
+  } catch (err) {
+    logger.error(
+      {
+        path: req?.path || null,
+        checkout_token_fingerprint: tokenFingerprint,
+        code: err?.code || null,
+        err: err?.message || String(err),
+      },
+      'invoke auth: checkout token introspection unavailable',
+    );
+    return res.status(503).json({
+      error: 'AUTH_INTROSPECT_UNAVAILABLE',
+      message: 'Authentication service unavailable',
+    });
+  }
+
+  if (verdict.valid !== true) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'invalid');
+  }
+  if (verdict.expires_at_ms && verdict.expires_at_ms <= Date.now()) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'expired');
+  }
+  if (verdict.is_active === false) {
+    return refuse(403, 'FORBIDDEN', 'Agent is deactivated', 'agent_inactive');
+  }
+  // Every token minted today carries scopes ["checkout"]; one that does not was not minted for this.
+  if (!verdict.scopes.includes('checkout')) {
+    return refuse(403, 'FORBIDDEN', 'Checkout token not authorized for this operation', 'scope');
+  }
+
+  req.invokeAuth = {
+    key_fingerprint: null,
+    auth_source: 'x-checkout-token',
+    auth_mode: 'checkout_token',
+    agent_id: verdict.agent_id,
+    // Never the token: raw_token is read as a caller API KEY upstream (getInvokeAuthApiKey). The token
+    // itself still travels upstream as X-Checkout-Token wherever the request handler forwards it.
+    raw_token: null,
+    cache_hit: verdict.cache_hit === true,
+    introspect_auth_source: 'checkout_token',
+    checkout_token_fingerprint: tokenFingerprint,
+    checkout_token_scopes: verdict.scopes,
+    auth_degraded: false,
+    auth_degraded_reason: null,
+  };
+  return next();
+}
+
+// `acceptsCheckoutToken(req)` is the door's opt-in for token-only authentication (see
+// CHECKOUT_TOKEN_INVOKE_OPERATIONS). It is a DEFAULT parameter on purpose: Express reads a middleware's
+// arity (fn.length) and treats a 4-parameter function as an error handler, and a defaulted parameter does
+// not count toward fn.length — so `app.post(path, requireExternalInvokeAuth, ...)` keeps working.
+async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken = null } = {}) {
   if (shouldBypassInvokeAuthForTest()) {
     req.invokeAuth = {
       key_fingerprint: null,
@@ -29328,22 +29528,21 @@ async function requireExternalInvokeAuth(req, res, next) {
     return next();
   }
 
-  const checkoutToken = String(
-    req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
-  ).trim();
-  if (checkoutToken) {
-    req.invokeAuth = {
-      key_fingerprint: null,
-      auth_source: 'x-checkout-token',
-      auth_mode: 'checkout_token',
-      agent_id: null,
-      raw_token: null,
-      cache_hit: false,
-    };
-    return next();
-  }
-
   const provided = extractInvokeAuthToken(req);
+  // An API key, when present, is THE credential; an X-Checkout-Token beside it is buyer context that
+  // rides upstream, where pivota-backend verifies it on every call it is forwarded to. Only a request
+  // carrying the token ALONE is authenticated by it — and then only after the backend has vouched for
+  // it (authenticateCheckoutTokenOnly). This used to accept ANY non-empty header as authentication.
+  if (!provided) {
+    const checkoutToken = String(
+      req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
+    ).trim();
+    if (checkoutToken && typeof acceptsCheckoutToken === 'function' && acceptsCheckoutToken(req)) {
+      return authenticateCheckoutTokenOnly(req, res, next, checkoutToken);
+    }
+    // Otherwise the token is not a credential here and the request falls through to the API-key
+    // refusal below, exactly as if it had carried nothing.
+  }
   const keyFingerprint = fingerprintSecret(provided);
   if (!provided) {
     return res.status(401).json({
@@ -50930,8 +51129,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
+function authenticateExternalInvokeRoute(req, res, next) {
+  return requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken: isCheckoutTokenInvokeOperation });
+}
+
 function registerExternalInvokeRoute(path, clientChannel) {
-  app.post(path, requireExternalInvokeAuth, async (req, res) => {
+  app.post(path, authenticateExternalInvokeRoute, async (req, res) => {
     return INVOKE_AUTH_CONTEXT.run(
       {
         api_key: req?.invokeAuth?.raw_token || null,
@@ -51102,6 +51305,11 @@ module.exports._debug = {
   // outage-servable. Route tests can show one outcome but not the TTL boundaries or the
   // no-life-extension rule — those need deterministic clocks, so the cache trio is exported and
   // driven with explicit `nowMs`.
+  // X-Checkout-Token verification: the verdict cache (cleared between tests; its TTL clamp to the
+  // token's own expiry is asserted directly) and the scope rule.
+  checkoutTokenVerdictCache,
+  putCachedCheckoutTokenVerdict,
+  getCachedCheckoutTokenVerdict,
   invokeAuthCache,
   getCachedInvokeAuthResult,
   putCachedInvokeAuthResult,
