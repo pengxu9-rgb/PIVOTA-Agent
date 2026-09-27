@@ -202,3 +202,21 @@ test('a real Shopify variant id is still used, even on a card whose source_produ
     { amount: 12.99, currency: 'USD' });
   assert.equal(verifiedPrice(shades, targetOf({ ...brand, source_variant_id: 'kiss-kiss-haunt' }).variant), null);
 });
+
+test('restating the source_product_id follows isRestatedProductId, in its argument order', () => {
+  const pdp = 'https://www.kissusa.com/products/kiss-professional-tippy-toes';
+  // A slug over 128 chars is bounded (first 119 + '-' + 8 hex, #2391's bounded_source_product_id); the
+  // canonical sku restates that bounded value, and so does the card.
+  const bounded =
+    'kiss-kiss-professional-full-cover-press-on-fake-toenails-tippy-toes-130-toenails-includes-nail-glue-solid-white-short-s-1d9aaaa1';
+  const long = { product_key: 'ext:kiss-kiss-professional-full-cover-press-on-fake-toenails-tippy-toes-130-toenails-includes-nail-glue-solid-white-short-squoval-pedicure::1d9aaaa1',
+    source_product_id: bounded, destination_url: pdp };
+  assert.equal(bounded.length, 128);
+  assert.equal(long.product_key.length, 148);
+  assert.equal(targetOf({ ...long, source_variant_id: bounded }).variant, '');
+  // the product id plus a separator restates it too, as the safety kernel judges it
+  const slug = { product_key: 'ext:kiss-haunt-nails::0badc0de', source_product_id: 'kiss-haunt-nails', destination_url: pdp };
+  assert.equal(targetOf({ ...slug, source_variant_id: 'kiss-haunt-nails:1' }).variant, '');
+  // but a variant id is never judged a restatement because the PRODUCT id extends IT
+  assert.equal(targetOf({ ...slug, source_variant_id: 'kiss' }).variant, 'kiss');
+});
