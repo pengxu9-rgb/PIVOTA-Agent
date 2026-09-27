@@ -28,6 +28,7 @@ const ENV_KEYS = [
   'AGENT_AUTH_INTROSPECT_INTERNAL_KEY',
 ];
 let previousEnv = null;
+let recommendCalls = [];
 
 function buildBottleProduct() {
   return {
@@ -54,6 +55,7 @@ function buildBottleProduct() {
 async function startServerWithRecommendationResult(recommendationResult) {
   jest.resetModules();
   nock.cleanAll();
+  recommendCalls = [];
   previousEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   process.env.API_MODE = 'REAL';
   process.env.PIVOTA_API_BASE = API_BASE;
@@ -80,7 +82,10 @@ async function startServerWithRecommendationResult(recommendationResult) {
 
   const actualRecommendationEngine = jest.requireActual('../../src/services/RecommendationEngine');
   jest.doMock('../../src/services/RecommendationEngine', () => ({
-    recommend: jest.fn(async () => recommendationResult),
+    recommend: jest.fn(async (args) => {
+      recommendCalls.push(args);
+      return recommendationResult;
+    }),
     getCacheStats: jest.fn(() => ({
       enabled: true,
       ttl_ms: 600000,
@@ -248,6 +253,70 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke PDP similar contracts', () => {
       expect(similarModule.data).toBeNull();
       expect(similarModule.reason).toBe('unavailable');
       expect(body.metadata.similar_status).toBe('unavailable');
+    } finally {
+      await stopServer(server);
+    }
+  });
+  // Peng 2026-09-26: a similar product priced in another currency than the buyer's never reaches the
+  // agent frontend. Measured on prod 2026-09-27: 39 serving-eligible similar candidates are priced
+  // in JPY, and a US (market-less) PDP could show them.
+  test('similar products are served only in the buyer currency, on both surfaces', async () => {
+    const card = (id, extra) => ({
+      product_id: id,
+      merchant_id: 'merch_similar_test',
+      title: `Similar ${id}`,
+      image_url: `https://cdn.example.test/${id}.jpg`,
+      description: 'A verified similar product highlight for PDP card presentation.',
+      card_highlight_status: 'ready',
+      card_highlight: 'Same routine fit with a stronger finish.',
+      ...extra,
+    });
+    const { server, baseUrl } = await startServerWithRecommendationResult({
+      strategy: 'related_products',
+      status: 'success',
+      items: [
+        card('sim_usd', { price: 21, currency: 'USD' }),
+        card('sim_jpy', { price: 2400, currency: 'JPY' }),
+        card('sim_sgd', { price: { amount: 30, currency: 'SGD' }, currency: 'USD' }),
+      ],
+      metadata: { similar_status: 'ready' },
+    });
+    const invoke = async (body) => {
+      const response = await fetch(`${baseUrl}/agent/shop/v1/invoke`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const pdpSimilarIds = (body) => {
+      const module = (body.modules || []).find((m) => m?.type === 'similar');
+      return (module?.data?.items || []).map((item) => item.product_id);
+    };
+    const pdp = (market) => invoke({
+      operation: 'get_pdp_v2',
+      payload: {
+        product: { merchant_id: MERCHANT_ID, product_id: PRODUCT_ID },
+        include: ['similar'],
+        ...(market ? { market } : {}),
+      },
+    });
+
+    try {
+      const silent = await pdp(null);
+      expect(silent.status).toBe(200);
+      expect(pdpSimilarIds(silent.body)).toEqual(['sim_usd']);
+      const jp = await pdp('JP');
+      expect(pdpSimilarIds(jp.body)).toEqual(['sim_jpy']);
+      expect(recommendCalls.map((args) => args.serving_currency)).toEqual(['USD', 'JPY']);
+
+      const similar = await invoke({
+        operation: 'find_similar_products',
+        payload: { similar: { merchant_id: MERCHANT_ID, product_id: PRODUCT_ID, limit: 6 } },
+      });
+      expect(similar.status).toBe(200);
+      expect(similar.body.products.map((p) => p.product_id)).toEqual(['sim_usd']);
+      expect(recommendCalls[recommendCalls.length - 1].serving_currency).toBe('USD');
     } finally {
       await stopServer(server);
     }

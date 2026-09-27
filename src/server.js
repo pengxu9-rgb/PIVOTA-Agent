@@ -11,6 +11,7 @@ const {
 } = require('./services/servedMarkets');
 const {
   resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
+  resolveServingCurrency,
 } = require('./services/buyerMarket');
 
 const express = require('express');
@@ -306,7 +307,11 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
 const marketTelemetry = require('./services/marketTelemetry');
-const { enforceServingCurrency } = require('./services/servingCurrencyGuard');
+const {
+  enforceServingCurrency,
+  filterProductsToServingCurrency,
+  servingCurrencyFor,
+} = require('./services/servingCurrencyGuard');
 const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -4444,7 +4449,10 @@ function buildPdpSimilarInflightKey(args = {}) {
     args?.options?.no_cache || args?.options?.cache_bypass || args?.options?.bypass_cache,
   );
   const excludeKey = collectPdpSimilarExcludeKeyTokens(args?.options).join(',');
-  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}::${excludeKey}`;
+  // Two buyers in different currencies must not share one in-flight recall (recommend() scopes it).
+  const servingCurrency =
+    args?.serving_currency === undefined ? 'default' : String(args.serving_currency || 'none');
+  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${servingCurrency}::${bypass ? '1' : '0'}::${excludeKey}`;
 }
 
 function collectPdpSimilarExcludeKeyTokens(options = {}) {
@@ -4706,6 +4714,11 @@ function buildPdpSimilarFetchArgs({
   excludeItems = [],
   excludeIds = [],
   requestMode = 'first_paint',
+  // The buyer's serving currency; undefined reads it the way the invoke door's guard does, from the
+  // payload AND the request metadata -- reading the payload alone would filter an SG buyer whose
+  // market rides in metadata to USD while the door keeps SGD, and empty their page.
+  servingCurrency,
+  metadata = {},
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
   const resolvedCandidateLimit =
@@ -4744,6 +4757,8 @@ function buildPdpSimilarFetchArgs({
         canonicalProductForPdp?.currency ||
         canonicalProduct?.currency ||
         'USD',
+      serving_currency:
+        servingCurrency === undefined ? servingCurrencyFor({ payload, metadata }) : servingCurrency,
       options: {
         debug,
         candidate_limit: resolvedCandidateLimit,
@@ -10492,6 +10507,12 @@ async function buildOffersFromGroupMembers(args) {
   // The request's buyer market, for the merchant-purchasability gate below. Undefined = unkeyable:
   // declined under backend enforcement, else today's exact shape (logged `merchant_purchasability_unkeyable`).
   const buyerMarket = args?.buyerMarket;
+  // The currency a SIBLING offer must be priced in (Peng 2026-09-26: no result in another currency
+  // than the buyer's). The offer for the product the buyer opened is kept whatever its currency --
+  // that is a by-id read of what they already hold. A caller that passes none gets the rule applied
+  // to its buyerMarket (none = the default market, USD); null = a market nothing is priced for.
+  const offerServingCurrency =
+    args?.servingCurrency === undefined ? resolveServingCurrency(buyerMarket) : args.servingCurrency || null;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
@@ -10726,7 +10747,20 @@ async function buildOffersFromGroupMembers(args) {
     `pg:pid:${String(canonicalProductRef?.product_id || products[0]?.product_id || products[0]?.id || '').trim()}`;
 
   const buildOfferRowsStartedAt = Date.now();
-  const offers = offerEligibleFetched.map(({ member, product: p }) => {
+  const isOpenedProductMember = (member, p) => {
+    const ids = [member?.product_id, p?.product_id].map((value) => String(value || '').trim()).filter(Boolean);
+    if (preferredProductId) {
+      if (!ids.includes(preferredProductId)) return false;
+      if (!preferredMerchantId || String(member?.merchant_id || '').trim() === preferredMerchantId) return true;
+      // A PDP opened through the seed lane names the lane's alias (`external_seed`) while its group
+      // member carries the per-brand observed seller (`merch_obs_...`, ADR-009): the same listing.
+      // A connected merchant still has to match exactly -- its product ids are only store-unique.
+      return isExternalSeedListingMerchantId(preferredMerchantId) && memberIsExternalSeedSupply(member);
+    }
+    return Boolean(canonicalMember) && member === canonicalMember;
+  };
+  const offerKeptForCurrency = [];
+  const builtOffers = offerEligibleFetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
     const offerSourceKind = firstNonEmptyString(
       member?.source_kind,
@@ -10794,6 +10828,11 @@ async function buildOffersFromGroupMembers(args) {
       currency,
       p,
       selectedVariant,
+    );
+    const offerCurrency = String(offerPrice?.currency || currency || '').trim().toUpperCase();
+    offerKeptForCurrency.push(
+      isOpenedProductMember(member, p) ||
+        (Boolean(offerServingCurrency) && offerCurrency === offerServingCurrency),
     );
 
     return {
@@ -10866,7 +10905,10 @@ async function buildOffersFromGroupMembers(args) {
       risk_tier: 'standard',
     };
   });
+  const offers = builtOffers.filter((_, index) => offerKeptForCurrency[index]);
+  const servingCurrencyFilteredOfferCount = builtOffers.length - offers.length;
   timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
+  if (!offers.length) return null;
 
   const { offers: dedupedOffers, removed: dedupedOfferCount } = dedupeEquivalentOffers(offers);
   const {
@@ -10930,6 +10972,8 @@ async function buildOffersFromGroupMembers(args) {
             same_merchant_collapsed_offer_count: sameMerchantCollapsedOfferCount,
             transaction_held_offer_count: transactionHeldOfferCount,
             source_quarantine_filtered_count: sourceQuarantineFilteredCount,
+            serving_currency: offerServingCurrency,
+            serving_currency_filtered_offer_count: servingCurrencyFilteredOfferCount,
           },
         }
       : {}),
@@ -28177,8 +28221,11 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
   }
 }
 
-function filterPublicVisibleSimilarProducts(products) {
-  return (Array.isArray(products) ? products : []).filter((product) => {
+// `servingCurrency`: the buyer's (servingCurrencyFor). A caller with no request to read it from
+// gets the rule's silence -- the default market's currency -- so no similar surface can serve a
+// product priced in another one (Peng 2026-09-26).
+function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
+  const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
     const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
@@ -28186,6 +28233,10 @@ function filterPublicVisibleSimilarProducts(products) {
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
+  return filterProductsToServingCurrency(
+    publicProducts,
+    servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency,
+  );
 }
 
 function dedupeSimilarCandidatesByMerchantProductId(products) {
@@ -28431,6 +28482,7 @@ async function prewarmPdpSimilarForProduct({
   canonicalProduct = {},
   checkoutToken = null,
   bypassCache = false,
+  servingCurrency,
 } = {}) {
   if (bypassCache) return;
   const componentCandidates = collectPdpComponentSimilarCandidates(canonicalProductForPdp);
@@ -28443,6 +28495,7 @@ async function prewarmPdpSimilarForProduct({
     debug: false,
     excludeItems: componentCandidates,
     requestMode: 'background',
+    servingCurrency,
   });
   const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
   const relatedProducts = Array.isArray(relatedProductsEnvelope?.items)
@@ -37481,7 +37534,7 @@ function buildProductOverviewDataFromProductIntel(productIntel = {}) {
   };
 }
 
-function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
+function mergeRecommendationModuleWithEnvelope(moduleData, envelope, { servingCurrency } = {}) {
   if (!moduleData || typeof moduleData !== 'object') return null;
   const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
   const moduleMetadata = moduleData.metadata && typeof moduleData.metadata === 'object' ? moduleData.metadata : {};
@@ -37490,7 +37543,7 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
     : Array.isArray(moduleData.items)
       ? moduleData.items
       : null;
-  const publicItems = rawItems ? filterPublicVisibleSimilarProducts(rawItems) : null;
+  const publicItems = rawItems ? filterPublicVisibleSimilarProducts(rawItems, { servingCurrency }) : null;
   const finalFilteredCount = rawItems && publicItems
     ? Math.max(0, rawItems.length - publicItems.length)
     : 0;
@@ -37507,13 +37560,13 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   };
 }
 
-function sanitizePdpSimilarResponseModules(modules) {
+function sanitizePdpSimilarResponseModules(modules, { servingCurrency } = {}) {
   if (!Array.isArray(modules)) return modules;
   return modules.map((module) => {
     if (module?.type !== 'similar' || !module.data || typeof module.data !== 'object') return module;
     const rawItems = Array.isArray(module.data.items) ? module.data.items : null;
     if (!rawItems) return module;
-    const publicItems = filterPublicVisibleSimilarProducts(rawItems);
+    const publicItems = filterPublicVisibleSimilarProducts(rawItems, { servingCurrency });
     const filteredCount = Math.max(0, rawItems.length - publicItems.length);
     if (filteredCount <= 0) return module;
     const currentMetadata =
@@ -41382,6 +41435,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	  if (operation === 'get_pdp_v2') {
 	    const pdpV2StartedAt = Date.now();
+	    // The currency every similar product and every sibling offer on this page must be priced in:
+	    // the invoke door's own read of the buyer's market (silence = the default market, USD).
+	    const pdpServingCurrency = servingCurrencyFor({ payload, metadata: req?.body?.metadata });
 	    const pdpV2PhaseTimings = {};
 	    const pdpV2ModuleTimings = {};
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
@@ -43340,6 +43396,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 debug,
                 excludeItems: preSimilarComponentCandidates,
                 requestMode: similarRequestMode,
+                servingCurrency: pdpServingCurrency,
               });
               if (skipSimilarFetchForAccessory) {
                 if (isPdpRelationshipGraphServingEnabled()) {
@@ -43380,6 +43437,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     canonicalProduct,
                     checkoutToken,
                     bypassCache: false,
+                    servingCurrency: pdpServingCurrency,
                   }).catch((err) => {
                     logger.debug?.(
                       {
@@ -43653,7 +43711,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { bypassCache },
         );
         markPdpV2Checkpoint('after_similar_sig_hydration');
-        const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+        const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
+          servingCurrency: pdpServingCurrency,
+        });
         const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
@@ -44232,6 +44292,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypassCache,
               limit: payload?.offers?.limit || 10,
               buyerMarket: offersGateBuyerMarket(payload, metadata),
+              servingCurrency: pdpServingCurrency,
               preferredMerchantId: requestedMerchantId || null,
               preferredProductId: selectedCommerceProductIdForPdp || null,
               debug,
@@ -44392,6 +44453,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     bypassCache,
                     limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
                     buyerMarket: offersGateBuyerMarket(payload, metadata),
+                    servingCurrency: pdpServingCurrency,
                     preferredMerchantId: requestedMerchantId || null,
                     preferredProductId: selectedCommerceProductIdForPdp || null,
                     debug,
@@ -44820,7 +44882,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const data =
           hideEmptySimilarModule
             ? null
-            : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
+            : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope, {
+                servingCurrency: pdpServingCurrency,
+              }) ||
           (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
             relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
             relatedProductsEnvelope?.status === 'empty' ||
@@ -44867,7 +44931,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.capabilities?.clientVersion ||
           null,
       };
-      const responseModules = sanitizePdpSimilarResponseModules(modules);
+      const responseModules = sanitizePdpSimilarResponseModules(modules, {
+        servingCurrency: pdpServingCurrency,
+      });
       const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
       markPdpV2Checkpoint('before_response_assembly');
@@ -47502,12 +47568,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : { merchant_id: effectiveMerchantId || null, product_id: effectiveProductId });
 
             const similarRecallStartedAt = Date.now();
+            // The buyer's serving currency, read the way the invoke door's guard reads it.
+            const similarServingCurrency = servingCurrencyFor({ payload, metadata: req?.body?.metadata });
             const rec = await resolvePdpSimilarWithBudget(
               fetchSimilarProductsDeduped({
                 pdp_product: baseProduct,
                 k: directCandidateLimit,
                 locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
                 currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+                serving_currency: similarServingCurrency,
                 options: {
                   debug: debugEnabled,
                   candidate_limit: directCandidateLimit,
@@ -47553,7 +47622,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             );
             directRouteTimingMs.visible_sig_hydration = Date.now() - visibleSigHydrationStartedAt;
             const publicFilterStartedAt = Date.now();
-            const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+            const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
+              servingCurrency: similarServingCurrency,
+            });
             const products = publicSimilarCandidates.slice(0, limit);
             directRouteTimingMs.public_filter = Date.now() - publicFilterStartedAt;
             directRouteTimingMs.total = Date.now() - directRouteStartedAt;

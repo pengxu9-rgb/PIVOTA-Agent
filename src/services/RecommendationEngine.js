@@ -23,6 +23,21 @@ const {
 } = require('./activeCatalogSourceSql');
 const { isExternalSeedLaneProduct, seedRoutedLaneSql } = require('./externalSeedLane');
 const { notTestMerchantSql } = require('./testMerchantPolicy');
+const { resolveServingCurrency } = require('./buyerMarket');
+const {
+  catalogProductPricedOnlyInCurrencySql,
+  seedNativeCurrencySql,
+} = require('./seedSearchOfferScope');
+
+// The currency every recommended product must be priced in (Peng 2026-09-26: a result priced in
+// another currency must never reach the agent frontend). A caller that says nothing gets the rule's
+// silence -- the default market's currency, USD -- so a call site that never heard of this cannot
+// serve SGD or JPY recommendations. null (an unpriceable market) means recommend nothing.
+function resolveRecommendationServingCurrency(value) {
+  if (value === undefined) return resolveServingCurrency(undefined);
+  const currency = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : null;
+}
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -2655,10 +2670,12 @@ async function fetchCatalogCandidates({
   overfetchMultiplier = 3,
   queryTimeoutCapMs = null,
   signal = null,
+  servingCurrency,
 }) {
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_catalog_candidates');
   }
+  const recommendationCurrency = resolveRecommendationServingCurrency(servingCurrency);
 
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const safeMinFocusedCandidates = Math.max(
@@ -2696,6 +2713,7 @@ async function fetchCatalogCandidates({
     intent_family_hint: intentFamily || null,
     source_merchant_hint: sourceMerchant || null,
     overfetch_multiplier: safeOverfetchMultiplier,
+    serving_currency: recommendationCurrency,
     timed_out: false,
     aborted: false,
   };
@@ -2800,6 +2818,15 @@ async function fetchCatalogCandidates({
     stats.reason = 'no_catalog_match_hints';
     return attachCatalogFetchStats([]);
   }
+  if (!recommendationCurrency) {
+    stats.reason = 'no_serving_currency';
+    return attachCatalogFetchStats([]);
+  }
+  const servingCurrencyParam = addParam(recommendationCurrency);
+  const catalogOrderSql = `
+        ${orderClauses.length ? `${orderClauses.join(',\n  ')},` : ''}
+        cp.updated_at DESC NULLS LAST,
+        cp.product_key ASC`;
 
   const effectiveTimeoutMs =
     queryTimeoutCapMs != null
@@ -2810,11 +2837,17 @@ async function fetchCatalogCandidates({
     Math.max(safeLimit, safeMinFocusedCandidates * safeOverfetchMultiplier),
   );
   const limitParam = addParam(queryLimit);
+  // The currency check runs on the ordered head only (prod 2026-09-27: probing all ~1,400 rows of a
+  // category path before the top-N sort took the statement from ~40ms to ~130ms). 2x headroom: a
+  // wrong-currency product is ~0.3% of serving candidates, so the page is not short in practice,
+  // and where one is the buyer gets fewer candidates, never a wrong-currency one.
+  const currencyHeadLimitParam = addParam(queryLimit * 2);
   const useSingleRoundTripCatalogQuery = Boolean(catalogCategoryPath && externalSeedSourceOnly);
   stats.query_roundtrip_mode = useSingleRoundTripCatalogQuery ? 'single_query' : 'statement_timeout_transaction';
 
   try {
     const catalogSql = `
+      WITH currency_head AS (
       SELECT
         cp.product_key,
         cp.content_key,
@@ -2841,7 +2874,8 @@ async function fetchCatalogCandidates({
         '{}'::jsonb AS product_payload,
         cp.pivota_signature_id,
         cp.pivota_canonical_url,
-        cp.updated_at
+        cp.updated_at,
+        row_number() OVER (ORDER BY ${catalogOrderSql}) AS currency_head_rank
       FROM catalog_products cp
       ${externalSeedSourceOnly ? '' : 'LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id'}
       LEFT JOIN external_product_seeds eps_catalog
@@ -2894,10 +2928,16 @@ async function fetchCatalogCandidates({
         AND coalesce(nullif(trim(cp.title), ''), '') <> ''
         AND coalesce(nullif(trim(cp.image_url), ''), '') <> ''
         AND (${matchClauses.join(' OR ')})
-      ORDER BY
-        ${orderClauses.length ? `${orderClauses.join(',\n  ')},` : ''}
-        cp.updated_at DESC NULLS LAST,
-        cp.product_key ASC
+      ORDER BY ${catalogOrderSql}
+      LIMIT ${currencyHeadLimitParam}
+      )
+      SELECT currency_head.*
+      FROM currency_head
+      -- Only products priced in the buyer's currency (a blank one is refused): the eps_catalog
+      -- join above prices only mirror rows, so a minted product priced by its attached SGD seed
+      -- would otherwise reach a US buyer as a 'USD' card.
+      WHERE ${catalogProductPricedOnlyInCurrencySql('currency_head', servingCurrencyParam)}
+      ORDER BY currency_head.currency_head_rank
       LIMIT ${limitParam}
     `;
     const res = await withSoftTimeout(
@@ -4598,10 +4638,13 @@ async function fetchExternalCandidates({
   deepDomainRecall = false,
   queryTimeoutCapMs = null,
   signal = null,
+  servingCurrency,
 }) {
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_external_candidates');
   }
+  const recommendationCurrency = resolveRecommendationServingCurrency(servingCurrency);
+  if (!recommendationCurrency) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const safeMinFocusedCandidates = Math.max(
     1,
@@ -4668,6 +4711,7 @@ async function fetchExternalCandidates({
                 OR lower(coalesce(seed_data #>> '{snapshot,transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
                 OR coalesce(seed_data #>> '{snapshot,transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
               )
+              AND ${seedNativeCurrencySql()} = '${recommendationCurrency}'
   `;
   const attachedSeedRecallFilterSql = deepDomainRecall ? '' : 'AND attached_product_key IS NULL';
 
@@ -5924,12 +5968,21 @@ async function recommend({
   k = PDP_RECS_DEFAULT_K,
   locale = 'en-US',
   currency = null,
+  serving_currency: requestedServingCurrency,
   options = {},
 }) {
   const rawBaseProduct = pdp_product || {};
   const baseProductId = getProductId(rawBaseProduct);
   if (!baseProductId) {
     return { items: [], debug: { error: 'missing_product_id' } };
+  }
+  const servingCurrency = resolveRecommendationServingCurrency(requestedServingCurrency);
+  if (!servingCurrency) {
+    return {
+      status: 'empty',
+      items: [],
+      metadata: { serving_currency: null, serving_currency_reason: 'buyer_market_unpriceable' },
+    };
   }
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
@@ -5971,6 +6024,7 @@ async function recommend({
     candidate_k: candidateK,
     locale: String(locale || 'en-US'),
     currency: baseCurrency,
+    serving_currency: servingCurrency,
     recent_view_keys: normalizedRecentViews.map((item) => buildCandidateKey(item)),
     exclude_product_ids: Array.from(excludedCandidates.productIds).sort(),
     exclude_exact_keys: Array.from(excludedCandidates.exactKeys).sort(),
@@ -6094,6 +6148,7 @@ async function recommend({
         overfetchMultiplier: effectiveCatalogOverfetchMultiplier,
         queryTimeoutCapMs: effectiveCatalogFetchTimeoutMs,
         signal: catalogCandidatesAbortController?.signal || null,
+        servingCurrency,
       }),
       effectiveCatalogFetchTimeoutMs,
       [],
@@ -6173,6 +6228,7 @@ async function recommend({
             deepDomainRecall: baseProductIsExternal,
             queryTimeoutCapMs: effectiveExternalFetchTimeoutMs,
             signal: externalCandidatesAbortController?.signal || null,
+            servingCurrency,
           }),
       effectiveExternalFetchTimeoutMs,
       [],
