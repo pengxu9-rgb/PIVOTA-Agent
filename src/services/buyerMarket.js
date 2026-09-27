@@ -28,8 +28,11 @@
 //   - It never infers a market from a currency, a language or a header (buyerRegion.js owns
 //     region -> currency, one direction only).
 //   - A market it cannot price (no currency for it, or more than one market named) is left
-//     EXACTLY as it was: bound as a partition. That is today's behaviour, not a new answer.
-//   - A caller's explicit currency still wins over the buyer's.
+//     EXACTLY as it was: bound as a partition. Its servingCurrency is null, though, so the
+//     door serves it nothing (resolveServingCurrency, 2026-09-27).
+//   - A caller's explicit currency no longer wins over the buyer's for the OFFERS served (it
+//     did until 2026-09-27; Peng's currency rule overturned that). It still denotes a budget's
+//     unit (resolveBuyerBudgetConstraint).
 //
 // ⚠️ BEHAVIOUR CHANGE WHEN ON: a caller naming `US` stops seeing the SGD rows filed under the
 // US partition -- which is correct (a US buyer was never meant to see SGD prices), and is why
@@ -47,6 +50,35 @@ function isEnabled(env = process.env) {
 }
 
 /**
+ * THE CURRENCY EVERY SERVED ROW MUST BE PRICED IN -- or null, which means serve nothing.
+ *
+ * Peng 2026-09-26: a result priced in another currency is a wrong result and must never reach
+ * the agent frontend. Measured on prod over the 7 days before this change: of the market-less
+ * find_products_multi pages, 24 were SGD-only and 13 mixed SGD+USD -- the SGD seeds are filed
+ * under the 'US' partition (see the top of this file), so binding ['US'] cannot keep them out.
+ *
+ * The rule is the backend's (#2389, external_seed_search.fetch_external_seed_rows), spelled once
+ * here for this door:
+ *   - no market (absent, empty, whitespace)  -> the deployment's default market, servedMarkets()[0]
+ *     -- the market `markets[0]` already names, US in prod (#2389's DEFAULT_SEED_SERVING_MARKET) --
+ *     so USD
+ *   - exactly one market with a known currency -> that currency (SG -> SGD, JP -> JPY)
+ *   - anything else the caller wrote (an unpriced code 'ZZ'/'DE', a locale 'en-US', two markets
+ *     'US,SG') -> null: nothing can be shown to be priced for that buyer, so nothing is served.
+ *
+ * Unlike the partition widening below, this is NOT behind FIND_PRODUCTS_BUYER_MARKET: which
+ * partitions a lane reads is a rollout choice, but a wrong-currency page is wrong either way.
+ * It never infers a market from a currency, and a caller's `currency` does not override it.
+ */
+function resolveServingCurrency(requested, env = process.env) {
+  const named = parseMarketList(requested, null);
+  if (named.length === 1) return currencyForBuyerRegion(named[0]) || null;
+  // Two markets ('US,SG') or text that is no market ('en-US') is null. Only silence is the default.
+  const written = Array.isArray(requested) ? requested.join(',') : (requested ? String(requested) : '');
+  return written.trim() ? null : (currencyForBuyerRegion(servedMarkets(env)[0]) || null);
+}
+
+/**
  * What one request binds. `requested` is the door's own raw value (`search.market ||
  * metadata.market`), passed through unchanged -- this function applies the door's parsing,
  * it never re-derives the door's precedence.
@@ -56,13 +88,16 @@ function isEnabled(env = process.env) {
  *                  so `markets[0]` is still a lane market)
  *   buyerMarket    the single named market, when it was read as a buyer market; else null
  *   buyerCurrency  that market's currency; else null
+ *   servingCurrency  the currency every served row must carry, flag or no flag -- see
+ *                  resolveServingCurrency; null means serve nothing
  *
  * With the flag off -- or when the request names no market, several markets, or one this
- * module cannot price -- `markets` is exactly `marketsForRequest(requested)` and the other
- * two are null, so the SQL is the SQL that shipped before.
+ * module cannot price -- `markets` is exactly `marketsForRequest(requested)` and `buyerMarket`
+ * / `buyerCurrency` are null. `servingCurrency` is resolved either way.
  */
 function resolveBuyerMarketScope(requested, env = process.env) {
-  const unchanged = { markets: marketsForRequest(requested, env), buyerMarket: null, buyerCurrency: null };
+  const servingCurrency = resolveServingCurrency(requested, env);
+  const unchanged = { markets: marketsForRequest(requested, env), buyerMarket: null, buyerCurrency: null, servingCurrency };
   if (!isEnabled(env)) return unchanged;
   const named = parseMarketList(requested, null);
   if (named.length !== 1) return unchanged;
@@ -70,32 +105,7 @@ function resolveBuyerMarketScope(requested, env = process.env) {
   if (!buyerCurrency) return unchanged;
   const served = servedMarkets(env);
   const markets = served.includes(named[0]) ? served : [...served, named[0]];
-  return { markets, buyerMarket: named[0], buyerCurrency };
-}
-
-/**
- * The currency a SILENT request's offers are scoped to: the deployment's default market's, or
- * null when the request names a market (that case is `resolveBuyerMarketScope`'s, unchanged).
- *
- * Peng 2026-09-26: an offer priced in another currency is a wrong result -- "fallback results are
- * essentially wrong results, we should not show them to the agent frontend". A named market is
- * scoped by `buyerCurrency`; the leak was the request that names none. It binds the served
- * partitions with no currency, and the 'US' partition holds every SGD seed and its catalog mirror
- * (see the header), so a market-less shopper was served SGD pages: prod 09-20..09-26, 24 SGD-only
- * + 13 SGD+USD pages, every one `market_source: defaulted` on the beauty mainline, every SGD row
- * recalled by the canonical chain.
- *
- * A silent request is a buyer in the deployment's DEFAULT market -- servedMarkets()[0], the market
- * `markets[0]` already names, and buyerRegion's DEFAULT_BUYER_REGION -- so its offers carry that
- * market's currency. What it does NOT change: the partition bind (a silent request still binds
- * the served list and the canonical `marketId`, exactly as before), a caller's explicit currency
- * (the caller's, applied first), and a request naming a market this module cannot price (bound as
- * a partition, as it always was). Independent of FIND_PRODUCTS_BUYER_MARKET: that flag is about
- * reading a NAMED market as a currency; a silent request names none.
- */
-function silentRequestCurrency(requested, env = process.env) {
-  if (parseMarketList(requested, null).length) return null;
-  return currencyForBuyerRegion(servedMarkets(env)[0]) || null;
+  return { markets, buyerMarket: named[0], buyerCurrency, servingCurrency };
 }
 
 // A budget's unit and the currency of the offers shown to a buyer are separate
@@ -115,6 +125,6 @@ module.exports = {
   FLAG,
   isEnabled,
   resolveBuyerMarketScope,
-  silentRequestCurrency,
+  resolveServingCurrency,
   resolveBuyerBudgetConstraint,
 };

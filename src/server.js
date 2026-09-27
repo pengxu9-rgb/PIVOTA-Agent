@@ -1,4 +1,4 @@
-const { buildSeedSearchOfferScope } = require('./services/seedSearchOfferScope');
+const { buildSeedSearchOfferScope, seedHasPriceCurrencySql } = require('./services/seedSearchOfferScope');
 const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
@@ -10,7 +10,7 @@ const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
 const {
-  resolveBuyerMarketScope, silentRequestCurrency, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
+  resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
 } = require('./services/buyerMarket');
 
 const express = require('express');
@@ -306,6 +306,7 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
 const marketTelemetry = require('./services/marketTelemetry');
+const { enforceServingCurrency } = require('./services/servingCurrencyGuard');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   titleLooksLikeMultiProductSet,
@@ -3066,6 +3067,7 @@ ${selectColumns}
     WHERE status = 'active'
       AND attached_product_key IS NULL
       AND ${stageMkt.sql}
+      AND ${seedHasPriceCurrencySql()}
       AND (
         ${structuredIngredientEvidenceClauses.join(' OR ')}
       )
@@ -16027,6 +16029,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
           WHERE status = 'active'
             AND attached_product_key IS NULL
             AND ${apparelMkt.sql}
+            AND ${seedHasPriceCurrencySql()}
             ${toolClause}
             AND ${filters.join('\n            AND ')}
           ORDER BY ${orderClause}
@@ -22162,10 +22165,14 @@ async function searchBeautyExternalSeedProductsMainline({
   // the offers below. `market` therefore stays a LANE market: canonical's `marketId` filters
   // on it, and the buyer's code there would bind the empty partition. Flag off, or a market it
   // cannot price: exactly `marketsForRequest(...)`, as before.
-  const { markets, buyerCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  //
+  // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
+  // request is a US request (USD), a named priced market is its own currency, and anything else
+  // is null and served nothing. See resolveServingCurrency.
+  const { markets, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
-    search, metadata, markets, buyerCurrency,
+    search, metadata, markets, buyerCurrency, servingCurrency,
   });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
@@ -22201,6 +22208,40 @@ async function searchBeautyExternalSeedProductsMainline({
     throw Object.assign(new Error('The primary search result window is limited to 200 items.'), {
       code: 'PRIMARY_SEARCH_WINDOW_EXCEEDED', status: 400,
     });
+  }
+  if (!servingCurrency) {
+    // A market no currency is known for ('ZZ', 'en-US', 'US,SG'): no row can be shown to be
+    // priced for this buyer, so none is served -- the backend seed lanes answer the same (#2389).
+    // No SQL runs.
+    return {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: safePage,
+      page_size: 0,
+      reply: null,
+      metadata: {
+        ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+        query_source: 'beauty_mainline_buyer_market_unpriced',
+        fetched_at: new Date().toISOString(),
+        search_decision: {
+          final_decision: 'strict_empty',
+          decision_authority: 'buyer_market_currency',
+          decision_locked: true,
+          decision_lock_reason: 'buyer_market_has_no_pricing_currency',
+        },
+        route_health: {
+          primary_path_used: 'beauty_mainline_buyer_market_unpriced',
+          fallback_triggered: false,
+          fallback_reason: null,
+          canonical_path_executed: false,
+          final_returned_count: 0,
+        },
+        proxy_search_fallback: { applied: false, reason: null },
+        contract_bridge: { legacy_fallback: false },
+      },
+    };
   }
   const contractSafeEmpty = isSearchQualityContractSafeEmptyContract(searchQualityContract);
   if (contractSafeEmpty) {
@@ -22338,27 +22379,13 @@ async function searchBeautyExternalSeedProductsMainline({
     callerCurrency: callerOfferCurrency,
     queryCurrency: queryBudgetCurrency,
   });
-  // A structured currency controls the served offer currency; otherwise the
-  // named buyer's currency scopes both recall lanes and the final page.
-  const explicitOfferCurrency = budgetConstraint
-    ? null
-    : (buyerCurrency && !callerOfferCurrency ? buyerCurrency : callerOfferCurrency);
-  const servedOfferCurrency = buyerCurrency
-    ? (callerOfferCurrency || buyerCurrency)
-    : explicitOfferCurrency;
-  // A request that names NO market is a buyer in the default market, so both recall lanes scope
-  // their offers to that market's currency: the 'US' partition holds every SGD seed and its
-  // catalog mirror, and without this a market-less shopper was served SGD pages. Only when nothing
-  // above chose a currency -- a named market, or a caller's own currency, keeps its answer -- and
-  // only the recall scope: the partition bind and the final-page filter are untouched.
-  // See buyerMarket.silentRequestCurrency.
-  const silentBuyerCurrency = servedOfferCurrency || explicitOfferCurrency || callerOfferCurrency
-    ? null
-    : silentRequestCurrency(search.market || metadata.market);
-  const primaryOfferScope = {
-    currency: servedOfferCurrency || explicitOfferCurrency || silentBuyerCurrency,
-    priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint),
-  };
+  // The buyer's market decides the offer currency, on both recall lanes (so a product with a
+  // USD and an SGD offer recalls its USD one) and again on the final page -- for a silent request
+  // too (#2295 scoped only its recall). A caller's own `currency` only denotes a budget's unit
+  // above: letting it pick the offers is how a US request could still be answered in SGD (Peng
+  // 2026-09-26).
+  const servedOfferCurrency = servingCurrency;
+  const primaryOfferScope = { currency: servedOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22555,9 +22582,9 @@ async function searchBeautyExternalSeedProductsMainline({
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
   const budgetEligibleProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
-  const rankedProducts = servedOfferCurrency
-    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === servedOfferCurrency.trim().toUpperCase())
-    : budgetEligibleProducts;
+  const rankedProducts = budgetEligibleProducts.filter(
+    product => String(product.currency || '').trim().toUpperCase() === servedOfferCurrency,
+  );
   const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,
@@ -40158,6 +40185,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
+    // Peng 2026-09-26: no row priced in another currency than the buyer's leaves this door,
+    // whichever lane built the page. Before pagination, so a dropped row cannot hold a slot.
+    // Not wrapped: it is pure and cannot throw on any body shape (servingCurrencyGuard tests).
+    finalBody = enforceServingCurrency({
+      operation: finalOperation,
+      observation: marketObservation,
+      payload: req?.body?.payload,
+      metadata: req?.body?.metadata,
+      body: finalBody,
+    });
     if (isShoppingAgentFindProductsMultiRequest(req, finalOperation)) {
       // Every search card must have a canonical, currency-qualified price (or
       // a priced seller offer that has been materialized as that card price).

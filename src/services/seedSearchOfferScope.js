@@ -6,11 +6,27 @@ const fields = ["seed_data->>'brand_name'", "seed_data#>>'{snapshot,brand_name}'
       "seed_data->>'vendor_name'", "seed_data->>'vendor'", "seed_data#>>'{derived,recall,brand_name}'", "seed_data#>>'{derived,recall,brand}'"];
 const SEED_OWN_BRAND_SQL = `coalesce(${fields.map(field => `nullif(trim(${field}), '')`).join(',')}, '')`;
 
+// A seed's own currency: the column, then the payload copies -- the order every seed card builder
+// reads (buildBeautyExternalSeedMainlineProduct, buildExternalSeedProduct), so the SQL judges the
+// currency the card will show. Blank everywhere is ''.
+function seedNativeCurrencySql(alias = '') {
+  const a = alias ? `${alias}.` : '';
+  return `upper(trim(coalesce(nullif(trim(${a}price_currency), ''), nullif(trim(${a}seed_data->>'price_currency'), ''), nullif(trim(${a}seed_data#>>'{snapshot,price_currency}'), ''), '')))`;
+}
+
+// A seed with no currency at all is never served (Peng 2026-09-26; pivota-backend #2389 refuses
+// NULL the same way). The card builders stamp 'USD' on such a row, so after recall it looks like a
+// US price -- only the SQL can still tell it has none. For lanes that cannot bind the buyer's
+// currency; the invoke door's servingCurrencyGuard then enforces WHICH currency.
+function seedHasPriceCurrencySql(alias = '') {
+  return `${seedNativeCurrencySql(alias)} <> ''`;
+}
+
 // Use the same native-currency budget ranges as canonical SQL and the final
 // price gate. Values are bound, and malformed price text cannot abort recall.
 function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand = null, inStockOnly = false } = {}, params) {
   const bind = value => { params.push(value); return `$${params.length}`; };
-  const nativeCurrency = "upper(trim(coalesce(nullif(trim(price_currency), ''), nullif(trim(seed_data->>'price_currency'), ''), nullif(trim(seed_data#>>'{snapshot,price_currency}'), ''), '')))";
+  const nativeCurrency = seedNativeCurrencySql();
   const rawPrice = "coalesce(nullif(trim(price_amount::text), ''), nullif(trim(seed_data->>'price_amount'), ''), nullif(trim(seed_data#>>'{snapshot,price_amount}'), ''), '')";
   const nativePrice = `(CASE WHEN ${rawPrice} ~ '^[ ]*[0-9]+([.][0-9]+)?[ ]*$' THEN (${rawPrice})::numeric END)`;
   const clauses = [`${nativePrice} > 0`];
@@ -41,4 +57,4 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   }
   return clauses.length ? `AND ${clauses.join(' AND ')}` : '';
 }
-module.exports = { buildSeedSearchOfferScope, SEED_OWN_BRAND_SQL };
+module.exports = { buildSeedSearchOfferScope, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };

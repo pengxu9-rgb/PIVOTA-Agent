@@ -12,7 +12,7 @@ const request = require('supertest');
 // a DATABASE_URL), because without it the door returns before it binds anything and records
 // no lane -- which is how two wiring mutants (products key, stage breakdown) survived review.
 
-const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound', 'market_buyer_currency',
+const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound', 'market_buyer_currency', 'market_serving_currency',
   'served_currencies', 'served_currency_mismatch', 'served_price_sources'];
 
 describe('market telemetry on the invoke completion log line', () => {
@@ -92,9 +92,21 @@ describe('market telemetry on the invoke completion log line', () => {
     expect(boundInSql()).toContain('SGD');
   });
 
-  test('Stage 0a off: no buyer currency is logged or bound', async () => {
+  test('Stage 0a off: no buyer currency is logged, but the SGD serving currency is still bound and logged', async () => {
+    // Peng 2026-09-26: the currency rule is not behind the flag -- an SG buyer is served only SGD.
     await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
     expect(logged[0].market_buyer_currency).toBeNull();
+    expect(logged[0].market_bound).toEqual(['SG']);
+    expect(logged[0].market_serving_currency).toBe('SGD');
+    expect(boundInSql()).toContain('SGD');
+  });
+
+  test('a silent request is served, bound and logged as USD', async () => {
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5 } });
+    expect(logged[0].market_source).toBe('defaulted');
+    expect(logged[0].market_buyer_currency).toBeNull();
+    expect(logged[0].market_serving_currency).toBe('USD');
+    expect(boundInSql()).toContain('USD');
     expect(boundInSql()).not.toContain('SGD');
   });
 

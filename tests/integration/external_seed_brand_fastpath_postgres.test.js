@@ -28,7 +28,7 @@ suite('external seed brand fastpath on PostgreSQL', () => {
 
   // Same as seedRow but the caller supplies the whole seed_data, so a row can be named by a
   // lower link of the brand chain (snapshot.brand) or by nothing at all (domain only).
-  const seedRowRaw = async ({ id, seedData, title, domain = 'shop.example' }) => {
+  const seedRowRaw = async ({ id, seedData, title, domain = 'shop.example', priceCurrency = 'USD' }) => {
     const key = `pk_${id}`;
     await db.query(
       `INSERT INTO catalog_products(product_key, content_key, pivota_signature_id, pivota_canonical_url, canonical_url, title)
@@ -43,9 +43,9 @@ suite('external seed brand fastpath on PostgreSQL', () => {
       `INSERT INTO external_product_seeds(id, external_product_id, market, tool, destination_url, canonical_url,
          domain, title, image_url, price_amount, price_currency, availability, seed_data, updated_at, created_at,
          status, attached_product_key)
-       VALUES ($1, $1, 'US', 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, 'USD', 'in_stock',
+       VALUES ($1, $1, 'US', 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, $7, 'in_stock',
          $5, now(), now(), 'active', $6)`,
-      [id, `https://shop.example/${id}`, domain, title, JSON.stringify(seedData), key],
+      [id, `https://shop.example/${id}`, domain, title, JSON.stringify(seedData), key, priceCurrency],
     );
   };
 
@@ -112,6 +112,18 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     // Another market, same brand as a US row, so the market predicate has something to exclude.
     // Every other fixture is US, which left `AND market = $1` deletable with the suite green.
     await seedRow({ id: 'scope_other_market', brand: 'Fenty Beauty', title: 'Gloss Bomb KR', market: 'KR' });
+    // Currency (Peng 2026-09-26): a seed with no currency anywhere is never served -- the card builder
+    // would stamp it 'USD'. The payload copy counts (the builder reads it), and WHICH currency is
+    // the invoke door's servingCurrencyGuard's call, not this lane's.
+    await seedRowRaw({ id: 'cur_usd', seedData: { brand: 'Laneige' }, title: 'Water Sleeping Mask' });
+    await seedRowRaw({ id: 'cur_null', seedData: { brand: 'Laneige' }, title: 'Lip Sleeping Mask', priceCurrency: null });
+    await seedRowRaw({ id: 'cur_blank', seedData: { brand: 'Laneige' }, title: 'Cream Skin', priceCurrency: '  ' });
+    await seedRowRaw({ id: 'cur_payload', seedData: { brand: 'Laneige', price_currency: 'SGD' }, title: 'Bouncy Cream', priceCurrency: null });
+    // The broad arm (runs only when the exact arm finds no brand key): rows named Innisfree only in
+    // their title, so the exact arm matches none of them.
+    await seedRowRaw({ id: 'broad_usd', seedData: { brand: 'Reseller Co' }, title: 'Innisfree Green Tea Seed Serum' });
+    await seedRowRaw({ id: 'broad_null', seedData: { brand: 'Reseller Co' }, title: 'Innisfree Volcanic Pore Clay Mask', priceCurrency: null });
+    await seedRowRaw({ id: 'cur_snapshot', seedData: { brand: 'Laneige', snapshot: { price_currency: 'usd' } }, title: 'Water Bank', priceCurrency: '' });
   }, 60000);
 
   afterAll(async () => {
@@ -160,6 +172,19 @@ suite('external seed brand fastpath on PostgreSQL', () => {
   };
 
   const exactCall = (issued) => issued.find((call) => call.sql.includes('total_rows')) || null;
+
+  test('a seed with no currency anywhere is refused by the SQL; column, payload or snapshot currency is kept', async () => {
+    const out = await runFastpath('Laneige');
+    expect(out.strategy).toBe('brand_search_external_seed_mainline_exact');
+    expect(out.ids).toEqual(['cur_payload', 'cur_snapshot', 'cur_usd']);
+  });
+
+  test('the broad arm refuses a seed with no currency too', async () => {
+    const out = await runFastpath('Innisfree');
+    expect(out.strategy).not.toBe('brand_search_external_seed_mainline_exact');
+    expect(out.ids).toContain('broad_usd');
+    expect(out.ids).not.toContain('broad_null');
+  });
 
   test('a brand stored with capitals is matched by the exact arm', async () => {
     const fenty = await runFastpath('Fenty Beauty');

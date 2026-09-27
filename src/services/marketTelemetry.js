@@ -29,9 +29,15 @@
 //   market_buyer_currency     the currency the named market was read as (Stage 0a,
 //                             FIND_PRODUCTS_BUYER_MARKET); null when the market was bound as a
 //                             partition, the flag is off, or the door never bound
+//   market_serving_currency   the currency every served row had to carry (flag or no flag; a
+//                             silent request is USD); null when the market has none, so the
+//                             door served nothing, or the door never bound
 //   served_currencies         the distinct currencies on the served page
 //   served_currency_mismatch  true when the page mixes more than one KNOWN currency
 //   served_price_sources      row counts by recall source (a stand-in for price copy -- see below)
+//   serving_currency_dropped  rows the invoke door's serving-currency guard removed from this page
+//                             (servingCurrencyGuard); ABSENT when it removed none. Any value is a
+//                             lane that recalled a wrong-currency row and is worth fixing at source
 //   lane                      the beauty direct lane that answered; ABSENT for every other
 //                             path, including all upstream-routed traffic -- so it cannot, on its
 //                             own, split the Python door's lanes
@@ -73,7 +79,7 @@ function describeRequested(search, metadata) {
  * Called BY THE DOOR, beside its bind, with the values it bound. `store` is the per-request
  * observation object (null outside a request). Never throws.
  */
-function observeBoundMarket(store, { search, metadata, markets, buyerCurrency } = {}) {
+function observeBoundMarket(store, { search, metadata, markets, buyerCurrency, servingCurrency } = {}) {
   if (!store || typeof store !== 'object') return;
   try {
     const described = describeRequested(search, metadata);
@@ -82,6 +88,7 @@ function observeBoundMarket(store, { search, metadata, markets, buyerCurrency } 
     store.market_source = described.source;
     store.market_bound = Array.isArray(markets) ? [...markets] : null;
     store.market_buyer_currency = buyerCurrency || null;
+    store.market_serving_currency = servingCurrency || null;
   } catch (_) {
     // Telemetry must never be able to fail the surface it measures.
   }
@@ -104,6 +111,7 @@ function describeUnboundRequest(payload, metadata) {
     market_source: described.source,
     market_bound: null,
     market_buyer_currency: null,
+    market_serving_currency: null,
   };
 }
 
@@ -189,13 +197,18 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
       market_source: observation.market_source,
       market_bound: observation.market_bound,
       market_buyer_currency: observation.market_buyer_currency || null,
+      market_serving_currency: observation.market_serving_currency || null,
     }
     : describeUnboundRequest(payload, metadata);
   const products = body && typeof body === 'object' && !Array.isArray(body) ? body.products : null;
   const lane = laneFromStageBreakdown(stages);
+  const guard = body && typeof body === 'object' && !Array.isArray(body) && body.metadata
+    && typeof body.metadata === 'object' ? body.metadata.serving_currency_guard : null;
+  const dropped = guard && typeof guard === 'object' ? Number(guard.dropped_count) : NaN;
   return {
     ...market,
     ...summariseServedProducts(products),
+    ...(Number.isFinite(dropped) && dropped > 0 ? { serving_currency_dropped: dropped } : {}),
     ...(lane ? { lane } : {}),
     ...servedByFromBody(body),
   };
