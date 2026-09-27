@@ -877,6 +877,36 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// pg_ product group -> the Pivota signature of the member its PDP should render.
+//
+// get_pdp_v2's `subject: product_group` lane used to hand the group's canonical_product_ref straight to
+// fetch_canonical_product. That ref carries the row's own source_product_id, and for a P3 minted
+// canonical (source_system='catalog_enrichment_agent_v1') that id is a NAME SLUG no content store
+// answers on: the seed is attached by attached_product_key and its route id is the seed's
+// external_product_id. Only the SIGNATURE resolver learned that translation (lane 1 of its seed LATERAL,
+// tests/integration/get_pdp_v2_minted_canonical_seed_route.test.js), so the same row rendered 200 at
+// /products/sig_... and 404 PRODUCT_NOT_FOUND at /products/pg_...
+// Measured on prod 2026-09-27: of 22,012 pg_ groups with a signed member, this resolver's pick is a
+// minted row for 14,464, and 12,175 of those have a published member. In a 74-group sample stratified
+// by the pick's lane, all 20 minted-pick groups whose sig answered 200 answered 404 on the pg_ route, and
+// every other group got the same answer on both routes (bar 2 transient 503s on the sig side).
+//
+// So the group lane defers to the signature lane rather than growing a second copy of its seed
+// translation, eligibility prefetch and identity hydration. This returns the sig of the SAME row the
+// group lane already chose (canonical_product_ref): which member renders does not change, only the path
+// it renders through.
+//
+// null = no signed member (or no DB); the caller keeps the group lane. Errors propagate: the caller
+// decides whether a failed lookup falls back.
+async function resolveProductGroupSubjectSignatureId({ productGroupId, queryFn } = {}) {
+  const groupId = asString(productGroupId);
+  if (!/^pg_/i.test(groupId)) return null;
+  const group = await resolveCanonicalCatalogEntityGroup({ productGroupId: groupId, queryFn });
+  const sigId = asString(group?.canonical_product_ref?.pivota_signature_id);
+  return isSigId(sigId) ? sigId : null;
+}
+
+// ---------------------------------------------------------------------------------------------------
 // sig_ -> the merchant's OWN platform product id, for the merchant-scoped detail lane.
 //
 // `search_catalog` hands every row back with its Pivota signature as the top-level `product_id`, and
@@ -1119,6 +1149,7 @@ async function applyCanonicalAnchorRefs(products, { queryFn } = {}) {
 
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
+  resolveProductGroupSubjectSignatureId,
   resolveMerchantScopedSourceProductId,
   resolveRelationshipGraphRefsToCanonicalEntities,
   resolveAnchorIdentityForRelationshipGraph,

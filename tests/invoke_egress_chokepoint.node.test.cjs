@@ -136,7 +136,7 @@ test('res.json is the only way a response leaves the invoke route', () => {
   assert.equal(
     exits.length,
     100,
-    `expected 97 response exits in handleInvokeRequest, saw ${exits.length}`,
+    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(

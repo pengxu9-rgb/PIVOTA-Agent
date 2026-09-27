@@ -456,3 +456,80 @@ describe('catalogEntityResolution', () => {
     });
   });
 });
+
+describe('resolveProductGroupSubjectSignatureId', () => {
+  const ORIGINAL_ENV = process.env;
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+    jest.resetModules();
+  });
+
+  function load() {
+    process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+    return require('../../src/services/catalogEntityResolution');
+  }
+
+  test("returns the sig of the member the group lane picks, looked up by the pg_ id", async () => {
+    const { resolveProductGroupSubjectSignatureId } = load();
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        {
+          content_key: 'ck_g',
+          product_key: 'ext:retailer:abc',
+          merchant_id: 'merch_obs_retailer',
+          platform: 'external_seed',
+          source_product_id: 'retailer:abc',
+          pivota_signature_id: 'sig_mintedmember',
+          internal_product_group_id: 'pg_g',
+          is_primary: true,
+          pdp_lifecycle_stage: 'published',
+        },
+        {
+          content_key: 'ck_g',
+          product_key: 'prod::external_seed::external_seed::ext_1',
+          merchant_id: 'merch_obs_brand',
+          platform: 'external_seed',
+          source_product_id: 'ext_1',
+          pivota_signature_id: 'sig_mirrormember',
+          internal_product_group_id: 'pg_g',
+          is_primary: false,
+          pdp_lifecycle_stage: 'candidate',
+        },
+      ],
+    }));
+    await expect(resolveProductGroupSubjectSignatureId({ productGroupId: 'pg_g', queryFn })).resolves.toBe(
+      'sig_mintedmember',
+    );
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryFn.mock.calls[0];
+    expect(String(sql)).toContain('pgm.product_group_id = $1');
+    expect(params).toEqual(['pg_g']);
+  });
+
+  test('null without a query for an id outside the pg_ namespace', async () => {
+    const { resolveProductGroupSubjectSignatureId } = load();
+    const queryFn = jest.fn();
+    await expect(
+      resolveProductGroupSubjectSignatureId({ productGroupId: 'sig_abc', queryFn }),
+    ).resolves.toBeNull();
+    await expect(resolveProductGroupSubjectSignatureId({ productGroupId: '', queryFn })).resolves.toBeNull();
+    expect(queryFn).not.toHaveBeenCalled();
+  });
+
+  test('null when the group has no signed member', async () => {
+    const { resolveProductGroupSubjectSignatureId } = load();
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await expect(resolveProductGroupSubjectSignatureId({ productGroupId: 'pg_empty', queryFn })).resolves.toBeNull();
+  });
+
+  test('a DB error propagates, so the caller decides the fallback', async () => {
+    const { resolveProductGroupSubjectSignatureId } = load();
+    const queryFn = jest.fn(async () => {
+      throw new Error('connection terminated');
+    });
+    await expect(
+      resolveProductGroupSubjectSignatureId({ productGroupId: 'pg_g', queryFn }),
+    ).rejects.toThrow('connection terminated');
+  });
+});

@@ -81,6 +81,7 @@ test('relationshipEdgeToSignal: currency read tolerates producer key variants (p
     sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49 } }),
   );
   assert.equal(none.value.related.currency, null);
+  assert.equal(none.value.related.price, null, 'and the amount is withheld with it, never served bare');
 });
 
 test('related_product → signal_type "related"', () => {
