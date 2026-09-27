@@ -433,13 +433,18 @@ The doors that hand this gate a market read it from several carriers, in a fixed
 | **`offers.resolve`** | **`payload.offers.market`**, `payload.market`, `metadata.market` | `offersResolveGateBuyerMarket` |
 | resolver lane | `metadata.market`, `payload.market` | `checkoutHandoffResolver.requestBuyerMarket` |
 
-**Why `offers.resolve` has its own order.** The gate must key on the market the door resolved its
-offers FOR. The route documents its market at `payload.offers.market` (src/schema.js) and
-`normalizeOffersResolveInput` resolves for `offers.market || payload.market`, forwarding `metadata`
-to the backend beside it — so that is the order, most specific first. `search.market` is NOT a
-carrier there: the door never reads or forwards it, and keying on it would gate offers resolved for
-one market against a fact about another (a request whose only market is `search.market` is unkeyable
-on this door). It is a separate reader, not a new carrier in `offersGateBuyerMarket`, because
+**Why `offers.resolve` has its own order.** Its first two carriers are the ones the door resolves its
+offers FOR: the route documents its market at `payload.offers.market` (src/schema.js) and
+`normalizeOffersResolveInput` sends the backend `offers.market || payload.market`, so a request that
+names a market there is gated on the same market it was served for. `metadata.market` comes last, and
+for a different reason: the backend's offers.resolve does NOT read it (`_normalize_offers_resolve_payload`
+reads `payload.market` only), so a request whose only market is `metadata.market` — the agent UI's
+shape (§2) — is resolved market-less and GATED on `metadata.market`. That is deliberate: it is the
+gateway-wide carrier every caller is told to use for its buyer's market, and the claim this gate makes
+is about that buyer, not about how the backend chose the rows. `search.market` is NOT a carrier here:
+`search` is the search operations' payload object, offers.resolve's schema has none and the door never
+reads or forwards it, so honouring it would add a carrier no caller of this door is documented to send
+(a request whose only market is `search.market` is unkeyable on this door). It is a separate reader, not a new carrier in `offersGateBuyerMarket`, because
 `get_pdp_v2` also carries a `payload.offers` object (its `limit`) and widening the shared reader would
 change that door. One accepted divergence: the route itself takes the first NON-EMPTY value
 (`offers.market: "USA"` goes upstream as `USA`) while the gate takes the first VALID one (rule 1
@@ -633,7 +638,7 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 | 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule (`selectBuyerMarket`; on the click lane it has one carrier, `body.market`, so `"US,US"` is US and `"US,SG"` / `"USA"` are no market) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
 | 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market`, then `payload.market`, then `metadata.market` — the first that yields ONE ISO-2 market (§5 carrier rule; `offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with its price and its PDP/browse links; its "buyable here" signals are rewritten to the links-out vocabulary: `commerce_mode: links_out`, `checkout_handoff: redirect`, `purchase_route: affiliate_outbound` (see "A URL is not the only thing…" below) |
-| 3′ | `src/offers/offersPriority.js::gateOffersResolveResponse` — the `offers.resolve` door (site 6), called in `src/server.js`'s early `operation === 'offers.resolve'` branch on `handled.response`, before it is sent | the backend's offers, served verbatim (cart URLs included) | `payload.offers.market`, then `payload.market`, then `metadata.market` (§5 carrier rule; `offersResolveGateBuyerMarket` — this door's own carriers, see §5) | the SAME delete-on-decline rewrite (`enrichOfferCommerceMetadata`'s decline branch), applied **only to declined offers**, in both envelope copies (`offers` and `data.offers`). Every other offer is passed through by reference, and with nothing declined the envelope itself is returned by reference — this door never prioritized or stamped its offers, so it still does not |
+| 3′ | `src/offers/offersPriority.js::gateOffersResolveResponse` — the `offers.resolve` door (site 6), called in `src/server.js`'s early `operation === 'offers.resolve'` branch on `handled.response`, before it is sent | the backend's offers, served verbatim (cart URLs included) | `payload.offers.market`, then `payload.market`, then `metadata.market` (§5 carrier rule; `offersResolveGateBuyerMarket` — this door's own carriers, see §5) | the SAME delete-on-decline rewrite (`enrichOfferCommerceMetadata`'s decline branch), applied **only to declined offers**, in both envelope copies (`offers` and `data.offers`). The merchant is `execution_spec.merchant_domain` (the backend's seed offer links through Pivota's own `/r` host), and a declined seed offer that the backend built a cart for loses the cart three ways it carries it: `execution_spec.cart_url`, the `/r` hop in `affiliate_url` (its dest IS that cart when `cart_prefilled: true`), and the `rail: shopify_cart` / `cart_prefilled: true` claims (→ `referral` / `false`). See "The backend's seed offer" below. Every other offer is passed through by reference, and with nothing declined the envelope itself is returned by reference — this door never prioritized or stamped its offers, so it still does not |
 
 Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
 reason: the only difference a declined merchant produces is a URL that is not there.
@@ -740,6 +745,31 @@ froze with a flag — reads the very signals the strip removes and answers
 `merchant_embedded_checkout` for a merchant we have just declined to sell for. There is no label to
 freeze now: `purchase_route` makes the row externally-routed, so a later pass recomputes the same
 values and suppression stays idempotent.
+
+**The backend's seed offer — the shape `offers.resolve` actually serves.** pivota-backend's external-seed
+offer (`routes/agent_shop_gateway.py`, `external_offers.append`) carries `affiliate_url: <api>/r?token=…`
+— Pivota's OWN redirect — beside `execution_spec: {merchant_domain, pdp_url, cart_url, rail, tracking}`
+and `cart_prefilled`. The first cut of site 6 read the merchant off the stamped URL, so it asked the gate
+about `api.pivota.cc` for every seed offer on the page, and its strip (host-scoped to that answer) removed
+nothing: under enforcement a browse-only merchant's `execution_spec.cart_url`, `rail: shopify_cart` and
+`cart_prefilled: true` were all still served. Its fixtures used a gateway-built `checkout_url` shape the
+backend never emits, which is why the tests were green. So:
+
+* `readOfferMerchantDomain` prefers `execution_spec.merchant_domain` (a bare host or a URL, normalised as
+  the client does) and falls back to the stamped URL. Gateway-built offers carry no `execution_spec`, so
+  every other site reads exactly what it read before.
+* A declined offer with an `execution_spec` loses `cart_url`. When the backend built a cart
+  (`cart_url` set, or `cart_prefilled: true` — `_cart_prefilled_claim` is true exactly then) the `/r`
+  token's dest IS that cart, so the off-host hop in `affiliate_url` is a checkout link and is deleted too;
+  `cart_prefilled` becomes `false` and `rail` becomes `referral` (the backend's own no-cart values). A
+  COLD seed offer (`cart_prefilled` false or null, no cart) keeps its `/r` hop: it lands on the product
+  page, which is the browse link the offer falls back to. `execution_spec.pdp_url` and
+  `source.canonical_url` survive either way.
+* ⚠️ **Accepted cost: a declined cart offer has no `/r` hop left, so a click on it writes no
+  `surface_click_events` row.** Its `execution_spec.pdp_url` still carries the click id, so the
+  order-side join survives. The gateway cannot re-mint a `/r` token to the PDP; the clean shape — a `/r`
+  hop degraded to the PDP, as `checkout_preflight`'s `degraded_to_referral` already does — can only be
+  produced by the backend, and consulting purchasability there is a backend follow-up.
 
 **The URL matcher recognises the shapes that actually occur.** Anchoring a cart/checkout path at the
 start of the path missed `https://merchant.com/12345678/checkouts/abcdef` (classic Shopify, shop-id

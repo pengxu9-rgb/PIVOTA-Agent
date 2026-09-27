@@ -166,8 +166,38 @@ function readOfferStampedCheckoutUrl(offer) {
   );
 }
 
-/** Registrable-ish host of that URL, normalised the way the gate client normalises a domain. */
+function readExecutionSpec(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  const spec = o ? o.execution_spec : null;
+  return spec && typeof spec === 'object' && !Array.isArray(spec) ? spec : null;
+}
+
+/** A bare host (`normalize_shop_host`'s output) or a URL, as a gate domain; anything else is null. */
+function hostFromDomainish(value) {
+  const s = asString(value).toLowerCase();
+  if (!s) return null;
+  let host = s;
+  if (/^https?:\/\//.test(s)) {
+    try { host = new URL(s).hostname; } catch { return null; }
+  }
+  host = host.replace(/^www\./, '');
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
+}
+
+/**
+ * The MERCHANT this offer sells for, normalised the way the gate client normalises a domain.
+ *
+ * ⚠️ THE STAMPED URL IS NOT ALWAYS ON THE MERCHANT'S HOST. The backend's external-seed offer (pivota-backend
+ * routes/agent_shop_gateway.py, `offers.resolve`) carries `affiliate_url: <public api>/r?token=…` — Pivota's
+ * OWN redirect — beside `execution_spec: { merchant_domain, cart_url: <merchant>/cart/<vid>:1?…, rail }`.
+ * Reading the host off the stamped URL asked the gate about `api.pivota.cc` for every seed offer on the page
+ * and stripped nothing on the merchant's host. So the backend's own statement of the merchant wins when it
+ * is present; gateway-built offers carry no `execution_spec` and read the stamped URL exactly as before.
+ */
 function readOfferMerchantDomain(offer) {
+  const spec = readExecutionSpec(offer);
+  const named = spec ? hostFromDomainish(spec.merchant_domain) : null;
+  if (named) return named;
   const url = readOfferStampedCheckoutUrl(offer);
   if (!url) return null;
   try {
@@ -351,7 +381,10 @@ function enrichOfferCommerceMetadata(offer, options) {
   // (No market under ENFORCEMENT is a decline since backend #2352: no fact can exist for it.)
   const declined = declinedSetOf(options);
   const domain = readOfferMerchantDomain(offer);
-  const merchantNotPurchasable = Boolean(checkoutUrl && declined && declined.has(domain));
+  const spec = readExecutionSpec(offer);
+  // A backend offer's cart can sit ONLY in `execution_spec` (no stamped URL at all), and that is still
+  // a checkout to withhold. Gateway-built offers carry no spec, so for them this is the old condition.
+  const merchantNotPurchasable = Boolean((checkoutUrl || spec) && declined && declined.has(domain));
 
   if (merchantNotPurchasable) {
     // ⚠️ A URL IS NOT THE ONLY THING THAT SAYS "BUYABLE HERE".
@@ -374,6 +407,30 @@ function enrichOfferCommerceMetadata(offer, options) {
     // pass stamped it, and makes suppression idempotent.
     const base = stripCheckoutUrlsDeep(offer, domain, checkoutUrl);
     for (const field of BUYABLE_SIGNAL_FIELDS) delete base[field];
+
+    // ⚠️ THE BACKEND'S SEED OFFER SELLS THROUGH A LINK ON PIVOTA'S HOST, NOT THE MERCHANT'S.
+    // `affiliate_url` is `<api>/r?token=…`, and when the backend built a cart for it the token's `dest`
+    // IS that cart: `cart_prefilled: true` is the backend's own statement that following the link lands
+    // in a pre-filled cart (`_cart_prefilled_claim`: True exactly when `execution_spec.cart_url` is set).
+    // The strip above cannot see that — the link is not on the merchant's host and not cart-shaped — so
+    // it is decided here, from the UNSTRIPPED row: a cart hop is a checkout URL and goes, with the claims
+    // that describe it. `rail` / `cart_prefilled` take the backend's own no-cart values. A hop that lands
+    // on the product page (`cart_prefilled` false or null, no cart_url) is the browse link and STAYS.
+    // The spec's `pdp_url` and `source.canonical_url` survive the strip, so the offer keeps its PDP.
+    if (spec) {
+      const landsInCart = Boolean(asString(spec.cart_url)) || offer.cart_prefilled === true;
+      if (landsInCart) {
+        for (const field of ['affiliate_url', 'affiliateUrl']) {
+          const hop = parseUrlish(base[field]);
+          if (hop && hostKeyOf(hop) !== domain) delete base[field];
+        }
+        base.cart_prefilled = false;
+      }
+      if (base.execution_spec && typeof base.execution_spec === 'object') {
+        delete base.execution_spec.cart_url;
+        if (landsInCart || base.execution_spec.rail === 'shopify_cart') base.execution_spec.rail = 'referral';
+      }
+    }
     // Both spellings, so `readPurchaseRoute` cannot find a stale camelCase twin.
     delete base.purchaseRoute;
     base.purchase_route = DECLINED_PURCHASE_ROUTE;
@@ -611,9 +668,9 @@ async function gateOffersResolveResponse(response, options = {}) {
   );
   if (declinedDomains.size === 0) return response;
 
-  // `readOfferMerchantDomain` is non-null only when the offer has a stamped URL, which is exactly the
-  // condition `enrichOfferCommerceMetadata` takes its decline branch on — so every offer sent there
-  // is declined, and every other offer is passed through untouched.
+  // `readOfferMerchantDomain` is non-null only when the offer has an `execution_spec` or a stamped URL,
+  // which is exactly the condition `enrichOfferCommerceMetadata` takes its decline branch on — so every
+  // offer sent there is declined, and every other offer is passed through untouched.
   const decline = (offers) => offers.map((offer) => (
     declinedDomains.has(readOfferMerchantDomain(offer))
       ? enrichOfferCommerceMetadata(offer, { declinedDomains })

@@ -46646,10 +46646,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // MERCHANT-PURCHASABILITY GATE (path 3, site 6). This branch returns on every path, so the gate
         // runs HERE, on the envelope, before it is sent — a call further down this handler is never
         // reached. Keyed on this door's own carriers (`payload.offers.market` first). Nothing declined
-        // => the same object back, so switch off the response is byte-identical.
-        const gatedResponse = await gateOffersResolveResponse(handled.response, {
-          market: offersResolveGateBuyerMarket(payload, metadata),
-        });
+        // => the same object back, so switch off the response is byte-identical. A bug in the gate
+        // FAILS OPEN (the ungated envelope, logged) rather than falling into the no-offer catch below.
+        let gatedResponse = handled.response;
+        try {
+          gatedResponse = await gateOffersResolveResponse(handled.response, {
+            market: offersResolveGateBuyerMarket(payload, metadata),
+          });
+        } catch (gateErr) {
+          logger.error(
+            { err: gateErr?.message || String(gateErr) },
+            'offers.resolve purchasability gate threw; serving the ungated envelope',
+          );
+        }
         return res.status(Number(handled.statusCode || 200) || 200).json(gatedResponse);
       }
       return res.status(500).json({

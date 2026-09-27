@@ -830,28 +830,73 @@ describe('product-intel doors: the UI’s metadata.market reaches the offers gat
 // ---------------------------------------------------------------------------
 
 const RESOLVE_HOST = 'gloss-shop.example';
-const RESOLVE_CART = 'https://gloss-shop.example/cart/4511:1';
 const PEER_HOST = 'peer-shop.example';
-const PEER_CART = 'https://peer-shop.example/cart/99:1';
+// Pivota's own redirect host. The backend's seed offer links THROUGH it, so it is never the merchant.
+const REDIRECT_BASE = 'https://api.pivota.cc/r?token=';
 
-function glossOffer() {
+// THE SHAPE THE BACKEND ACTUALLY EMITS for an external-seed offer on offers.resolve (pivota-backend
+// routes/agent_shop_gateway.py, `external_offers.append`): the link is Pivota's `/r` hop, the merchant is
+// named in `execution_spec.merchant_domain`, and when a cart was built `execution_spec.cart_url` holds it,
+// `rail` is `shopify_cart` and `cart_prefilled` is true — the `/r` token's dest IS that cart. `cart: false`
+// is the cold (PDP) shape: no cart_url, the claim null or false.
+function seedOffer(host, id, { cart = true, claim = cart ? true : null } = {}) {
   return {
-    offer_id: 'of:internal_checkout:merch_gloss:7700001:1',
-    merchant_id: 'merch_gloss',
-    purchase_route: 'internal_checkout',
-    checkout_url: RESOLVE_CART,
-    price: { amount: 18, currency: 'USD' },
+    offer_id: `of:external_seed:${host}:${id}`,
+    merchant_id: host,
+    merchant_name: 'Gloss Shop',
+    seller: 'Gloss Shop',
+    price: 18,
+    currency: 'USD',
+    in_stock: true,
+    purchase_route: 'affiliate_outbound',
+    affiliate_url: `${REDIRECT_BASE}tok_${id}`,
+    cart_prefilled: claim,
+    execution_spec: {
+      merchant_domain: host,
+      pdp_url: `https://${host}/products/gloss?pivota_click_id=clk_${id}`,
+      cart_url: cart ? `https://${host}/cart/4511${id}:1?attributes[pivota_click_id]=clk_${id}` : null,
+      variant_id: cart ? `4511${id}` : null,
+      rail: claim === null ? null : cart ? 'shopify_cart' : 'referral',
+      expires_at: '2026-10-01T00:00:00Z',
+      tracking: { click_id: `clk_${id}`, param: 'pivota_click_id', join_mode: cart ? 'cart_attribute' : 'referral_param' },
+    },
+    internal_checkout_items: null,
+    confidence: 0.9,
+    source: {
+      type: 'external_seed',
+      seed_id: `seed_${id}`,
+      canonical_url: `https://${host}/products/gloss`,
+      destination_url: `https://${host}/products/gloss`,
+    },
   };
 }
+const glossOffer = () => seedOffer(RESOLVE_HOST, '1');
+const peerOffer = () => seedOffer(PEER_HOST, '2');
 
-function peerOffer() {
-  return {
-    offer_id: 'of:internal_checkout:merch_peer:7700001:1',
-    merchant_id: 'merch_peer',
-    purchase_route: 'internal_checkout',
-    checkout_url: PEER_CART,
-    price: { amount: 19, currency: 'USD' },
-  };
+// Every way a served value can still say "buy here" for `host`: a checkout-named key on the host
+// (checkoutUrlsOnHost), a cart/checkout path on the host under ANY key, or Pivota's `/r` cart hop.
+function sellingLinks(node, host, out = [], depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 12) return out;
+  for (const [k, v] of Object.entries(node)) {
+    if (typeof v === 'string') {
+      if (v.includes(`${host}/cart`) || v.includes(`${host}/checkout`) || v.startsWith(REDIRECT_BASE)) out.push(`${k}=${v}`);
+    } else {
+      sellingLinks(v, host, out, depth + 1);
+    }
+  }
+  return [...new Set([...out, ...checkoutUrlsOnHost(node, host)])];
+}
+
+// A declined seed offer: it SURVIVES with its price and its PDP links, and nothing on it sells.
+function expectSeedDeclined(res, offer, host) {
+  expectDeclined(res, offer, host);
+  expect(sellingLinks(offer, host)).toEqual([]);
+  expect(offer.cart_prefilled).toBe(false);
+  expect(offer.execution_spec.rail).toBe('referral');
+  expect(offer.execution_spec.merchant_domain).toBe(host);
+  expect(offer.execution_spec.pdp_url).toMatch(new RegExp(`^https://${host}/products/`));
+  expect(offer.source.canonical_url).toBe(`https://${host}/products/gloss`);
+  expect(offer.price).toBe(18);
 }
 
 function resolveUpstreamBody(offers = [glossOffer()]) {
@@ -916,8 +961,8 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     expect(res.body.offers).toHaveLength(1);
     expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
     expect(checkoutUrlsOnHost(res.body, RESOLVE_HOST)).toEqual([]);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
-    expect(res.body.offers[0].price).toEqual({ amount: 18, currency: 'USD' });
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expect(sellingLinks(res.body, RESOLVE_HOST)).toEqual([]);
     expect(res.body.offers_count).toBe(1);
   });
 
@@ -931,7 +976,7 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     });
 
     expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'SG')]);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
   });
 
   test('precedence: payload.offers.market, then payload.market, then metadata.market', async () => {
@@ -961,7 +1006,7 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     });
 
     expect(reads).toEqual([probeRead(RESOLVE_HOST)]);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
   });
 
   test('NO market anywhere + enforcing: the probe only, and the offer is declined as unkeyable (never defaulted to US)', async () => {
@@ -976,7 +1021,7 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     });
 
     expect(reads).toEqual([probeRead(RESOLVE_HOST)]);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
   });
 
   test('upstream offers under data.offers only: BOTH copies in the envelope lose the cart URL', async () => {
@@ -992,9 +1037,9 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
     expect(res.body.offers).toHaveLength(1);
     expect(res.body.data.offers).toHaveLength(1);
-    expect(checkoutUrlsOnHost(res.body, RESOLVE_HOST)).toEqual([]);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
-    expectDeclined(res, res.body.data.offers[0], RESOLVE_HOST);
+    expect(sellingLinks(res.body, RESOLVE_HOST)).toEqual([]);
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expectSeedDeclined(res, res.body.data.offers[0], RESOLVE_HOST);
   });
 
   test('two merchants, one browse_only: only that offer is rewritten; the other is served verbatim, in order', async () => {
@@ -1008,9 +1053,32 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
     });
 
     expect([...reads].sort()).toEqual([keyedRead(PEER_HOST, 'US'), keyedRead(RESOLVE_HOST, 'US')].sort());
-    expect(res.body.offers.map((o) => o.merchant_id)).toEqual(['merch_gloss', 'merch_peer']);
-    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expect(res.body.offers.map((o) => o.merchant_id)).toEqual([RESOLVE_HOST, PEER_HOST]);
+    expectSeedDeclined(res, res.body.offers[0], RESOLVE_HOST);
     expect(res.body.offers[1]).toStrictEqual(peerOffer());
+  });
+
+  test.each([
+    ['null (warm-eligible, unknown)', null],
+    ['false (a bare PDP)', false],
+  ])('a COLD seed offer (cart_prefilled %s) declined: its /r hop lands on the PDP, so it is the browse link and STAYS', async (_label, claim) => {
+    const reads = installOpsBackend({ tierFor: () => 'browse_only' });
+    const { app } = loadResolveServer();
+    const cold = seedOffer(RESOLVE_HOST, '3', { cart: false, claim });
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+      upstream: resolveUpstreamBody([cold]),
+    });
+
+    expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
+    const [offer] = res.body.offers;
+    expectDeclined(res, offer, RESOLVE_HOST);
+    expect(offer.affiliate_url).toBe(cold.affiliate_url);
+    expect(offer.cart_prefilled).toBe(claim);
+    expect(offer.execution_spec.rail).toBe(cold.execution_spec.rail);
+    expect(Object.prototype.hasOwnProperty.call(offer.execution_spec, 'cart_url')).toBe(false);
   });
 
   test.each([
@@ -1027,7 +1095,27 @@ describe('offers.resolve (site 6): the envelope is gated before it is sent', () 
 
     expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
     expect(res.body.offers[0]).toStrictEqual(glossOffer());
-    expect(res.body.offers[0].checkout_url).toBe(RESOLVE_CART);
+    expect(res.body.offers[0].execution_spec.cart_url).toBe(glossOffer().execution_spec.cart_url);
+  });
+
+  test('a gate that THROWS fails open at the door: the ungated envelope is served, not the no-offer failure', async () => {
+    jest.doMock('../../src/offers/offersPriority', () => ({
+      ...jest.requireActual('../../src/offers/offersPriority'),
+      gateOffersResolveResponse: async () => { throw new Error('gate exploded'); },
+    }));
+    let app;
+    try {
+      installOpsBackend({ tierFor: () => 'browse_only' });
+      ({ app } = loadResolveServer());
+    } finally {
+      jest.dontMock('../../src/offers/offersPriority');
+    }
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+    });
+    expect(res.body.reason_code).not.toBe('no_offer_available');
+    expect(res.body.offers).toStrictEqual([glossOffer()]);
   });
 
   test('SWITCH OFF: nothing is asked and the response is BYTE-IDENTICAL to the ungated envelope', async () => {
