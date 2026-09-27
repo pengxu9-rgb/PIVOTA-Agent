@@ -182,8 +182,10 @@ suite('buyer market (Stage 0a) over both lanes, real PostgreSQL', () => {
     // The seed SQL itself refused them -- not a later page filter the builder's 'USD' stamp would pass.
     const seedReturned = silent.calls.filter((c) => c.lane === 'seed').flatMap((c) => c.returned);
     for (const refused of ['jsm_gloss', 'sg_gloss_2', 'kr_gloss', 'null_gloss', 'blank_gloss']) expect(seedReturned).not.toContain(refused);
-    // ...and the canonical lane refused the SGD mirror in its own SQL too (#2295's pin).
-    expect(silent.calls.flatMap((c) => c.returned)).not.toContain('ck_sg_gloss');
+    // ...and NO lane returned an SGD row -- the leak was the canonical lane (the SG seeds' catalog
+    // mirrors, recall_market US, SGD-only offers), so it must be refused in that SQL too (#2295's pin).
+    const everyLane = silent.calls.flatMap((c) => c.returned);
+    for (const sgd of ['jsm_gloss', 'sg_gloss_2', 'ck_sg_gloss', 'kr_gloss']) expect(everyLane).not.toContain(sgd);
     expect(silent.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
   });
 

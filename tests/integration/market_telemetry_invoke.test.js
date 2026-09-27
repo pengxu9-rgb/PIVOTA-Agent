@@ -101,6 +101,15 @@ describe('market telemetry on the invoke completion log line', () => {
     expect(boundInSql()).toContain('SGD');
   });
 
+  test('a market with no known currency bound nothing, and says so beside its empty page', async () => {
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'en-US' } });
+    expect(logged[0].market_observed).toBe(true);
+    expect(logged[0].market_bound).toBeNull();
+    expect(logged[0].market_serving_currency).toBeNull();
+    expect(logged[0].served_currencies).toEqual([]);
+    expect(sqlParams).toEqual([]);
+  });
+
   test('a silent request is served, bound and logged as USD', async () => {
     await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5 } });
     expect(logged[0].market_source).toBe('defaulted');

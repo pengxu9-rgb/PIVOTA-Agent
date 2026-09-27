@@ -22171,8 +22171,10 @@ async function searchBeautyExternalSeedProductsMainline({
   // is null and served nothing. See resolveServingCurrency.
   const { markets, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
+  // A market with no known currency runs no SQL (the early return below), so it bound nothing:
+  // logging `markets` there would read ['US'] beside an empty page.
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
-    search, metadata, markets, buyerCurrency, servingCurrency,
+    search, metadata, markets: servingCurrency ? markets : null, buyerCurrency, servingCurrency,
   });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
