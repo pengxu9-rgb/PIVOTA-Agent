@@ -27,9 +27,15 @@ function targetOf(card) {
     // key) or a derived placeholder (`default`, `<id>-default`) names no variant the store sells: treat it
     // as absent, so the price is verified by the URL's ?variant= or by every variant agreeing, instead of
     // failing as variant_missing.
+    // The canonical sku restates the product key only while it fits catalog_skus.source_variant_id
+    // (VARCHAR(128)). A longer key gets the product's bounded source_product_id instead (pivota-backend
+    // #2391), so the product id it restates may be either. `product_id` is no substitute: on a canonical
+    // card it is the pivota_signature_id whenever the product has one.
     let own = String(card.source_variant_id || '').trim();
     const productKey = String(card.product_key || card.catalog_product_key || '').trim();
-    if (own && (isRestatedProductId(own, productKey) || own === 'default' || own.endsWith('-default'))) own = '';
+    const sourceProductId = String(card.source_product_id || '').trim();
+    if (own && (isRestatedProductId(own, productKey) || isRestatedProductId(own, sourceProductId)
+      || own === 'default' || own.endsWith('-default'))) own = '';
     const variant = String(own || url.searchParams.get('variant') || '').trim();
     return { url: `${url.origin}/products/${match[1]}.json`, variant };
   } catch {
