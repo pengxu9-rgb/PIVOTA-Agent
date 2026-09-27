@@ -59,8 +59,31 @@ function loadServerWithDb() {
   return { app, db };
 }
 
-function listing(seller, { inStock = true, bare = false } = {}) {
+function listing(seller, { inStock = true, bare = false, withVariants = false } = {}) {
   const sellerFields = bare ? {} : { merchant_name: seller.merchant_name, url: seller.url };
+  const variantPrefix = seller === JP ? 'jp_v' : 'us_v';
+  const variantFields = withVariants
+    ? {
+        variants: [
+          {
+            variant_id: `${variantPrefix}_30ml`,
+            sku: `${variantPrefix}_30ml`,
+            title: '30 mL',
+            options: [{ name: 'Size', value: '30 mL' }],
+            price: { amount: seller.amount, currency: seller.currency },
+            in_stock: inStock,
+          },
+          {
+            variant_id: `${variantPrefix}_50ml`,
+            sku: `${variantPrefix}_50ml`,
+            title: '50 mL',
+            options: [{ name: 'Size', value: '50 mL' }],
+            price: { amount: seller.amount * 1.5, currency: seller.currency },
+            in_stock: inStock,
+          },
+        ],
+      }
+    : {};
   return {
     source_listing_ref: `${seller.merchant_id}:${seller.product_id}`,
     merchant_id: seller.merchant_id,
@@ -81,6 +104,7 @@ function listing(seller, { inStock = true, bare = false } = {}) {
       product_id: seller.product_id,
       merchant_id: seller.merchant_id,
       ...sellerFields,
+      ...variantFields,
       title: 'Holy Hyssop Serum 12:1',
       brand: 'Arencia',
       description: 'Soothing hyssop serum.',
@@ -92,8 +116,9 @@ function listing(seller, { inStock = true, bare = false } = {}) {
   };
 }
 
-function mockCatalog(db, { usInStock = true, usBare = false } = {}) {
-  const us = () => listing(US, { inStock: usInStock, bare: usBare });
+function mockCatalog(db, { usInStock = true, usBare = false, withVariants = false } = {}) {
+  const us = () => listing(US, { inStock: usInStock, bare: usBare, withVariants });
+  const jp = () => listing(JP, { withVariants });
   db.query.mockImplementation(async (sql, params) => {
     const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
     if (normalizedSql.includes('surviving_members AS')) {
@@ -124,14 +149,14 @@ function mockCatalog(db, { usInStock = true, usBare = false } = {}) {
     }
     if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
       const productId = (params || []).find((p) => p === JP.product_id || p === US.product_id);
-      return { rows: [productId === US.product_id ? us() : listing(JP)] };
+      return { rows: [productId === US.product_id ? us() : jp()] };
     }
     if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('sellable_item_group_id = $1')) {
       // JP first: the content member the prod group resolved to.
-      return { rows: [listing(JP), us()] };
+      return { rows: [jp(), us()] };
     }
     if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('product_line_id = $1')) {
-      return { rows: [listing(JP), us()] };
+      return { rows: [jp(), us()] };
     }
     return { rows: [] };
   });
@@ -156,7 +181,7 @@ async function getPdp(app, productId, extraPayload = {}) {
     .send({
       operation: 'get_pdp_v2',
       payload: {
-        include: ['offers'],
+        include: ['offers', 'variant_selector'],
         product_ref: { merchant_id: 'external_seed', product_id: productId },
         ...extraPayload,
       },
@@ -164,7 +189,13 @@ async function getPdp(app, productId, extraPayload = {}) {
     .expect(200);
   const canonical = res.body.modules.find((module) => module.type === 'canonical');
   const offers = res.body.modules.find((module) => module.type === 'offers');
-  return { card: canonical?.data?.pdp_payload?.product, canonical: canonical?.data, offers: offers?.data };
+  return {
+    card: canonical?.data?.pdp_payload?.product,
+    canonical: canonical?.data,
+    offers: offers?.data,
+    metadata: res.body.metadata,
+    modules: res.body.modules,
+  };
 }
 
 function currenciesIn(value) {
@@ -196,7 +227,7 @@ describe('get_pdp_v2 canonical card: seller identity agrees with the price shown
     mockCatalog(db);
     mockUpstreamGroupMisses();
 
-    const { card, canonical, offers } = await getPdp(app, openedProductId);
+    const { card, canonical, offers, metadata } = await getPdp(app, openedProductId);
 
     const usOffer = (offers?.offers || []).find((offer) => offer.product_id === US.product_id);
     expect(usOffer).toEqual(
@@ -216,6 +247,15 @@ describe('get_pdp_v2 canonical card: seller identity agrees with the price shown
     expect(card.merchant_id).toBe(US.merchant_id);
     expect([undefined, US.merchant_name]).toContain(card.merchant_name);
     expect(canonical.canonical_payload_product_ref).toEqual(
+      expect.objectContaining({ merchant_id: US.merchant_id, product_id: US.product_id }),
+    );
+    expect(canonical.selected_commerce_ref).toEqual(
+      expect.objectContaining({ merchant_id: US.merchant_id, product_id: US.product_id }),
+    );
+    expect(metadata.pdp_provenance.canonical_payload_product_ref).toEqual(
+      expect.objectContaining({ merchant_id: US.merchant_id, product_id: US.product_id }),
+    );
+    expect(metadata.pdp_provenance.selected_commerce_ref).toEqual(
       expect.objectContaining({ merchant_id: US.merchant_id, product_id: US.product_id }),
     );
     // Nothing seller-scoped on the card still points at the JP listing, and no JPY is shown.
@@ -247,20 +287,48 @@ describe('get_pdp_v2 canonical card: seller identity agrees with the price shown
     expect(JSON.stringify(card)).not.toMatch(/Arencia Japan|arencia\.jp/);
   });
 
-  test('with the US listing out of stock the default offer is the JP one, and a US buyer is still not quoted JPY', async () => {
+  test('with the US listing out of stock a US buyer is still not quoted JPY, and the default offer is the card\'s', async () => {
     const { app, db } = loadServerWithDb();
     mockCatalog(db, { usInStock: false });
     mockUpstreamGroupMisses();
 
     const { card, offers } = await getPdp(app, JP.product_id);
 
+    // The in-stock JPY offer used to become the default here (raw-amount sorts across currencies),
+    // while the card showed the USD seller. Both now name the same offer.
     const defaultOffer = (offers?.offers || []).find((offer) => offer.offer_id === offers.default_offer_id);
-    expect(defaultOffer).toEqual(expect.objectContaining({ product_id: JP.product_id }));
+    expect(defaultOffer).toEqual(expect.objectContaining({ product_id: US.product_id, merchant_id: US.merchant_id }));
+    expect(offers.best_price_offer_id).toBe(defaultOffer.offer_id);
+    expect((offers.offers || []).map((offer) => offer.product_id).sort()).toEqual([JP.product_id, US.product_id].sort());
     expect(card.price.current).toEqual({ amount: 15, currency: 'USD' });
     expect(card.product_id).toBe(US.product_id);
     expect(card.merchant_id).toBe(US.merchant_id);
     expect(card.availability).toEqual({ in_stock: false });
     expect(currenciesIn(card)).toEqual(['USD']);
+  });
+
+  test('with size variants, both variant selectors offer the US listing\'s variants, not the JP listing\'s', async () => {
+    const { app, db } = loadServerWithDb();
+    mockCatalog(db, { withVariants: true });
+    mockUpstreamGroupMisses();
+
+    const { card, offers, modules } = await getPdp(app, JP.product_id);
+
+    expect(card.product_id).toBe(US.product_id);
+    expect(card.price.current).toEqual({ amount: 15, currency: 'USD' });
+    const variantIds = (variants) => (variants || []).map((variant) => variant.variant_id).sort();
+    expect(variantIds(card.variants)).toEqual(['us_v_30ml', 'us_v_50ml']);
+    const cardSelector = card && modules
+      .find((module) => module.type === 'canonical')
+      .data.pdp_payload.modules.find((module) => module.type === 'variant_selector');
+    const responseSelector = modules.find((module) => module.type === 'variant_selector');
+    expect(variantIds(cardSelector?.data?.variants)).toEqual(['us_v_30ml', 'us_v_50ml']);
+    expect(variantIds(responseSelector?.data?.variants)).toEqual(['us_v_30ml', 'us_v_50ml']);
+    expect(responseSelector.data.selected_variant_id).toBe(card.default_variant_id);
+    // The JP listing's variants now live only in its own offer.
+    const outsideOffers = JSON.stringify(modules.filter((module) => module.type !== 'offers'));
+    expect(outsideOffers).not.toMatch(/jp_v_|JPY/);
+    expect(JSON.stringify(offers.offers.find((offer) => offer.product_id === JP.product_id))).toMatch(/jp_v_/);
   });
 
   test('a JP buyer is shown the JP seller at 2400 JPY: the card keeps its own listing', async () => {
