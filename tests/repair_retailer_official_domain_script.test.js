@@ -133,19 +133,21 @@ describe('predictServing (the real trust policy on the upserter join)', () => {
     expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ product_key: 'k1', stored: 'public', before: 'public', after: 'shadow', override: null })]);
   });
 
-  test('an active force_exact_group override keeps the row public whatever the listing status (the 2026-09-27 miss)', async () => {
+  test('the prediction follows the trust policy on overrides: force_exact_group is grouping-only since c1.v0.9', async () => {
+    // Until c1.v0.9 this override kept the demoted row public (the 2026-09-27 miss); the predictor must track the
+    // policy either way, which is why it calls deriveTrust instead of restating it.
     const out = await predictServing({ client: predictClient({
       serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'public' }],
       rows: [joinRow({ override_id: 'o1', override_action_type: 'force_exact_group', override_active: true })] }), plans: [demotion()] });
-    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ before: 'public', after: 'public', override: 'force_exact_group' })]);
+    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ before: 'public', after: 'shadow', override: 'force_exact_group' })]);
   });
 
   test('a stored verdict that a recompute would change is reported as the stored value, not assumed', async () => {
     const out = await predictServing({ client: predictClient({
-      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'shadow' }],
-      rows: [joinRow({ identity_status: 'review_required', review_required: true, override_id: 'o1', override_action_type: 'force_exact_group', override_active: true })] }),
+      serving: [{ ref: 'external_seed:p1', product_key: 'k1', serving_decision: 'public' }],
+      rows: [joinRow({ identity_status: 'review_required', review_required: true })] }),
     plans: [demotion()] });
-    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ stored: 'shadow', before: 'public', after: 'public' })]);
+    expect(out.get('external_seed:p1')).toEqual([expect.objectContaining({ stored: 'public', before: 'shadow', after: 'shadow' })]);
   });
 
   test('a catalog row whose identity join lands on ANOTHER listing is not this plan\'s to decide', async () => {
