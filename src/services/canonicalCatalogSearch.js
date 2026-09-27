@@ -260,6 +260,8 @@ function isCandidateKeyPrefilterEnabled(env = process.env) {
 //   * The plain `p.product_payload` projection stays a pointer: carrying the decompressed value (up to
 //     940KB for one prod row) through the pre-LIMIT sort would make the sort spill.
 //   * The candidate-key prefilter's subquery is left alone: its inner `p` is a different row.
+//   * It applies only when the candidate-key prefilter is on for the query (brand/merchant-scoped and
+//     non-category queries keep the per-reference form); see the gate at the call site.
 // Measured on a prod-scale local catalog: same outputs, 419k -> 60k buffers for the filter+rank reads.
 const SINGLE_PAYLOAD_READ_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
 
@@ -1584,7 +1586,15 @@ async function fetchCanonicalChainRows(args = {}) {
   }
   // See isSinglePayloadReadEnabled. `pl` is applied to every interpolated fragment of the candidate
   // CTE; the literal text (including the plain p.product_payload projection) is never rewritten.
-  const singlePayloadRead = isSinglePayloadReadEnabled();
+  //
+  // Only behind the candidate-key prefilter. The lateral runs once for every row that reaches the join,
+  // and only predicates that read `p` alone are pushed below it; the category/brand filters read
+  // pp.product_payload, so without the prefilter's key list in front the lateral decompresses the
+  // payload of every catalog row the p-only predicates let through. Measured in prod, 2026-09-27 (prod
+  // flags, prefilter on): the ordinary serum 138ms -> 3.7s, la roche-posay sunscreen 30ms -> 3.6s, rare
+  // beauty lipstick 69ms -> 5.5s, ~5k -> ~700k buffers, with the same rows. With the prefilter the
+  // lateral runs at most once per prefiltered key, which is where the gain was measured.
+  const singlePayloadRead = candidateKeyPrefilter && isSinglePayloadReadEnabled();
   const pl = (fragment) => (singlePayloadRead ? readPayloadOnce(fragment) : fragment);
   const payloadLateralSql = singlePayloadRead
     ? "\n      CROSS JOIN LATERAL (SELECT jsonb_path_query_first(p.product_payload, '$') AS product_payload OFFSET 0) pp"
@@ -2126,7 +2136,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ON ips.content_key = p.content_key
        AND ips.${eligibilityColumn} = TRUE
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id${payloadLateralSql}
-      WHERE ${candidateKeyPrefilter ? whereClause : pl(whereClause)}
+      WHERE ${whereClause}
         AND ${pl(activeCatalogProductSourceWhere('p', 'm'))}
         ${pl(externalSeedUnavailableWhere)}
         ${pl(candidateOfferWhere)}
