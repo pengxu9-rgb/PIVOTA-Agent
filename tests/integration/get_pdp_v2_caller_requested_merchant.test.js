@@ -358,6 +358,24 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
   });
 
   describe('the canonical-catalog-group arm', () => {
+    test('a sig_ card whose only offer is its own listing is not re-projected onto it', async () => {
+      // The card's product_id is the public sig id and it carries no source_product_id; the row it was
+      // resolved from names the listing. Projecting it onto its own offer swapped the Pivota URL for
+      // the merchant's, stamped the sig id as its content ref and thinned its variants.
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OBS_MERCHANT) });
+
+      const res = await pdp(app, { merchant_id: SENTINEL, product_id: SIG_ID });
+
+      expect(res.status).toBe(200);
+      const canonical = res.body.modules.find((module) => module.type === 'canonical');
+      const card = canonical.data.pdp_payload.product;
+      expect(card.product_id).toBe(SIG_ID);
+      expect(card.seller_source).toBeUndefined();
+      expect(card.content_product_ref).toBeUndefined();
+      expect(canonical.data.canonical_payload_product_ref).toEqual(expect.objectContaining({ product_id: SIG_ID }));
+    });
+
     test('a sig_ request whose group elects another seller keeps the signature reason', async () => {
       const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OTHER_MERCHANT) });

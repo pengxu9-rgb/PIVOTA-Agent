@@ -2042,6 +2042,106 @@ describe('PDP grouped offers', () => {
       expect(card.price.current).toEqual({ amount: 15, currency: 'USD' });
     });
 
+    test('a sig_ card naming no listing is its own offer\'s card when the seller is the same', () => {
+      const app = require('../src/server');
+      const sigCard = {
+        product: {
+          product_id: 'sig_arenciaus',
+          merchant_id: US.merchant_id,
+          title: 'Holy Hyssop Serum 12:1',
+          url: 'https://agent.pivota.cc/products/sig_arenciaus',
+          destination_url: 'https://agent.pivota.cc/products/sig_arenciaus',
+          price: { current: { amount: 15, currency: 'USD' } },
+        },
+      };
+      const ownOffers = { offer_source: 'group_fused', default_offer_id: 'of_us', best_price_offer_id: 'of_us', offers: [usOffer] };
+
+      for (const options of [{ servingCurrency: 'USD' }, { servingCurrency: 'USD', cardListingId: US.product_id }]) {
+        const card = app._debug.hydrateCanonicalPdpPayloadFromOffers(sigCard, ownOffers, options).product;
+        expect(card).toEqual(
+          expect.objectContaining({
+            product_id: 'sig_arenciaus',
+            url: 'https://agent.pivota.cc/products/sig_arenciaus',
+            destination_url: 'https://agent.pivota.cc/products/sig_arenciaus',
+          }),
+        );
+        expect(card.seller_source).toBeUndefined();
+      }
+
+      // The listing the caller resolved it from is a different one: that IS another seller's card.
+      const otherListing = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+        { product: { ...sigCard.product, merchant_id: JP.merchant_id } },
+        ownOffers,
+        { servingCurrency: 'USD', cardListingId: JP.product_id },
+      ).product;
+      expect(otherListing).toEqual(
+        expect.objectContaining({ product_id: 'sig_arenciaus', source_product_id: US.product_id, merchant_id: US.merchant_id }),
+      );
+      expect(otherListing.content_product_ref).toEqual({ merchant_id: JP.merchant_id, product_id: JP.product_id });
+    });
+
+    test('the price module drops the content seller\'s compare-at and promotions with its price', () => {
+      const app = require('../src/server');
+      const card = jpCard();
+      card.modules = [
+        {
+          module_id: 'm_price',
+          type: 'price_promo',
+          data: {
+            price: { amount: 2400, currency: 'JPY' },
+            compare_at: { amount: 3000, currency: 'JPY' },
+            promotions: [{ label: '20% off (JP store)' }],
+          },
+        },
+      ];
+      const projected = app._debug.hydrateCanonicalPdpPayloadFromOffers(card, offersData('of_us'), { servingCurrency: 'USD' });
+      expect(projected.modules.find((module) => module.type === 'price_promo').data).toEqual({
+        price: { amount: 15, currency: 'USD' },
+        promotions: [],
+      });
+
+      // Same listing, same currency: its own compare-at and promotions stay.
+      const own = app._debug.hydrateCanonicalPdpPayloadFromOffers(card, offersData('of_jp'), { servingCurrency: 'JPY' });
+      expect(own.modules.find((module) => module.type === 'price_promo').data).toEqual({
+        price: { amount: 2400, currency: 'JPY' },
+        compare_at: { amount: 3000, currency: 'JPY' },
+        promotions: [{ label: '20% off (JP store)' }],
+      });
+    });
+
+    test('the card\'s variant selector is rebuilt from the offer\'s variants', () => {
+      const app = require('../src/server');
+      const card = jpCard();
+      card.modules = [
+        {
+          module_id: 'm_variant',
+          type: 'variant_selector',
+          data: {
+            selected_variant_id: 'jp_v_30ml',
+            variants: [{ variant_id: 'jp_v_30ml', options: [{ name: 'Size', value: '30 mL' }] }],
+            product_line_options: [{ option_id: 'a' }, { option_id: 'b' }],
+          },
+        },
+      ];
+      const variantOffer = {
+        ...usOffer,
+        selected_variant_id: 'us_v_30ml',
+        variants: [
+          { variant_id: 'us_v_30ml', title: '30 mL', options: [{ name: 'Size', value: '30 mL' }], price: { current: { amount: 15, currency: 'USD' } } },
+          { variant_id: 'us_v_50ml', title: '50 mL', options: [{ name: 'Size', value: '50 mL' }], price: { current: { amount: 22, currency: 'USD' } } },
+        ],
+      };
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+        card,
+        { offer_source: 'group_fused', default_offer_id: 'of_us', best_price_offer_id: 'of_us', offers: [variantOffer, jpOffer] },
+        { servingCurrency: 'USD' },
+      );
+      const selector = payload.modules.find((module) => module.type === 'variant_selector').data;
+      expect(selector.selected_variant_id).toBe('us_v_30ml');
+      expect(selector.variants.map((variant) => variant.variant_id)).toEqual(['us_v_30ml', 'us_v_50ml']);
+      expect(selector.product_line_options).toEqual([{ option_id: 'a' }, { option_id: 'b' }]);
+    });
+
     test('a JP buyer: the card stays the JP listing at 2400 JPY and names no other seller', () => {
       const app = require('../src/server');
       const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(jpCard(), offersData('of_jp'), {
@@ -2554,6 +2654,18 @@ describe('PDP grouped offers', () => {
       return offersData;
     };
     const served = (offersData) => (offersData?.offers || []).map((offer) => [offer.product_id, offer.price?.currency]).sort();
+
+    test('a market-less buyer\'s default and best-price offer are priced in USD, even when the opened JPY product is preferred', async () => {
+      const offersData = await build();
+      const offerById = new Map(offersData.offers.map((offer) => [offer.offer_id, offer]));
+      // Raw-amount sorts across currencies: the opened JPY product was the preferred default.
+      expect(offerById.get(offersData.default_offer_id)).toEqual(expect.objectContaining({ product_id: 'ext_sibling_usd' }));
+      expect(offerById.get(offersData.best_price_offer_id)).toEqual(expect.objectContaining({ product_id: 'ext_sibling_usd' }));
+      // A JP buyer's default is the opened product.
+      const jp = await build({ buyerMarket: 'JP', servingCurrency: undefined });
+      const jpById = new Map(jp.offers.map((offer) => [offer.offer_id, offer]));
+      expect(jpById.get(jp.default_offer_id)).toEqual(expect.objectContaining({ product_id: 'ext_opened_jpy' }));
+    });
 
     test('a market-less buyer keeps the product they opened and only USD siblings', async () => {
       const offersData = await build();

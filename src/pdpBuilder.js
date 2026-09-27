@@ -1857,6 +1857,31 @@ function buildVariantSelectorOptions(selectorVariants, defaultVariant) {
   }));
 }
 
+// The variant_selector module data for a variant list, as buildPdpPayload composes it. Used when the
+// card's variants are replaced after the payload was built (the card re-projected onto the default
+// offer's listing): the selector must offer that listing's variants, not the content listing's.
+// product_line_options are product-level (other sizes/shades of the line) and carry over.
+function buildVariantSelectorModuleData(variants, selectedVariantId, previousData = null) {
+  const selectorVariants = buildVariantSelectorVariants(variants);
+  const selected =
+    selectorVariants.find((variant) => variant.variant_id === asNonEmptyString(selectedVariantId)) ||
+    (Array.isArray(variants) ? variants.find((variant) => asNonEmptyString(variant?.variant_id) === asNonEmptyString(selectedVariantId)) : null) ||
+    selectorVariants[0] ||
+    null;
+  const selectorOptions = buildVariantSelectorOptions(selectorVariants, selected);
+  const productLineOptions = Array.isArray(previousData?.product_line_options) ? previousData.product_line_options : [];
+  if (!selectorVariants.length && productLineOptions.length <= 1) return null;
+  return {
+    ...(selected?.variant_id ? { selected_variant_id: selected.variant_id } : {}),
+    ...(selectorVariants.length ? { variants: selectorVariants } : {}),
+    ...(selectorOptions.length ? { options: selectorOptions } : {}),
+    ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
+    ...(productLineOptions.length > 1 && previousData?.product_line_option_name
+      ? { product_line_option_name: previousData.product_line_option_name }
+      : {}),
+  };
+}
+
 function buildImplicitSingleVariant(variant) {
   return {
     ...variant,
@@ -5294,6 +5319,7 @@ function buildPdpPayload(args) {
 
 module.exports = {
   buildPdpPayload,
+  buildVariantSelectorModuleData,
   buildBundleCompositionModuleData,
   detectTemplateHint,
   resolvePdpSchemaProfile,
