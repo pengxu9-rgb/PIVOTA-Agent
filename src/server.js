@@ -30857,8 +30857,8 @@ async function getCommerceRemoteMcpAdapter() {
       const {
         makeGetAlternatives,
         makeGetOffers,
+        makeOffersResolveFetchOffers,
         makeGetIntel,
-        mapOffersResolveResponse,
         candidateSnapshotNeedsHydration,
         hydrateCandidateSnapshotFromEntity,
       } = require('./agentSignals/intelligenceReads');
@@ -30941,16 +30941,10 @@ async function getCommerceRemoteMcpAdapter() {
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
         // `offers[]` is already in offerToSignal shape; mapOffersResolveResponse normalizes the envelope.
         // Single-offer products yield best_offer + an empty competition set (no fabricated competition).
+        // MERCHANT-PURCHASABILITY GATE: the factory runs the response through `gateOffersResolveResponse`
+        // (path 3's decision + decline, no re-order) before projecting it — see makeOffersResolveFetchOffers.
         get_offers: makeGetOffers({
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit }) =>
-            mapOffersResolveResponse(
-              await invokeCommerceKernelRawUpstream('offers.resolve', {
-                product: { product_id, merchant_id },
-                limit: Math.min(Math.max(Number(limit) || 10, 1), 30),
-                commerceSurface: 'agent_api',
-              }),
-              product_group_id || null,
-            ),
+          fetchOffers: makeOffersResolveFetchOffers({ invokeUpstream: invokeCommerceKernelRawUpstream }),
         }),
         // Why/fit/evidence from the product-intelligence KB (chat-only until now) → decision Signal.
         // resolveKbKeys builds the candidate `product:<identity>` keys from the request identity so the

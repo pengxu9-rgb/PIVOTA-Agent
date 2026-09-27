@@ -1254,3 +1254,419 @@ test('QUIET LOOP: the offers batch still settles when its deadline is the ONLY t
   assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the batch still pending — an unref'd deadline:\n${out}`);
   assert.ok(out.includes('SETTLED:0'), `expected the batch to fail open on its deadline, got:\n${out}`);
 });
+
+// =========================================================================================================
+// PATH 3, THE get_offers READ — the fourth producer (src/agentSignals/intelligenceReads.js)
+// =========================================================================================================
+//
+// `get_offers` fetched `offers.resolve` from the backend and projected it with `offersToSignals`, past
+// every gated site above. These tests drive the REAL `makeGetOffers` over the REAL
+// `makeOffersResolveFetchOffers` (only the backend transport is stubbed) with the REAL client, and use
+// the SHAPE THE BACKEND EMITS for an external offer (pivota-backend routes/agent_shop_gateway.py): a
+// Pivota `/r` hop as `affiliate_url`, NO `url`, and the destinations in `execution_spec`. The house
+// `offer()` fixture above carries a plain storefront `url`, which no backend offers.resolve row does —
+// a gate tested only against it asks about the right host for a reason production never has.
+
+const { gateOffersResolveResponse, enrichOfferCommerceMetadata } = require('../src/offers/offersPriority');
+const {
+  makeGetOffers,
+  makeOffersResolveFetchOffers,
+  mapOffersResolveResponse,
+} = require('../src/agentSignals/intelligenceReads');
+const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+const PEER = 'example-shop.test';
+
+/** One backend `offers.resolve` external offer, as `agent_shop_gateway.py` builds it. */
+function backendOffer(id, host, { cart = true } = {}) {
+  const click = `clk_${id}`;
+  return {
+    offer_id: id,
+    merchant_id: host,
+    merchant_name: `Seller ${id}`,
+    seller: `Seller ${id}`,
+    price: 14.95,
+    currency: 'USD',
+    in_stock: true,
+    purchase_route: 'affiliate_outbound',
+    affiliate_url: `https://api.pivota.cc/r?token=tok_${id}.sig`,
+    cart_prefilled: cart,
+    execution_spec: {
+      merchant_domain: host,
+      pdp_url: `https://${host}/products/lip-gloss?utm_source=pivota&pvt_click_id=${click}`,
+      cart_url: cart ? `https://${host}/cart/40064041844877:1?attributes[pivota_click_id]=${click}` : null,
+      variant_id: '40064041844877',
+      rail: 'shopify_cart',
+      expires_at: '2026-10-01T00:00:00Z',
+      expected_item_total: 14.95,
+      expected_currency: 'USD',
+      expected_quantity: 1,
+      tracking: {
+        click_id: click,
+        param: cart ? 'attributes[pivota_click_id]' : 'pvt_click_id',
+        join_mode: cart ? 'cart_permalink' : 'referral_only',
+      },
+    },
+  };
+}
+
+function backendResponse() {
+  return {
+    status: 'success',
+    offers: [backendOffer('o1', MERCHANT), backendOffer('o2', PEER)],
+    mapping: { canonical_product_group_id: 'pg_1' },
+  };
+}
+
+/**
+ * `get_offers` exactly as src/server.js wires it, with the backend stubbed at `invokeUpstream` and the
+ * gate given an isolated env + client. `fetched` is what the projection was handed.
+ */
+function wiredGetOffers({ env, shouldOfferPurchase, upstream = backendResponse() }) {
+  const upstreamCalls = [];
+  const inner = makeOffersResolveFetchOffers({
+    invokeUpstream: async (op, payload) => { upstreamCalls.push({ op, payload }); return upstream; },
+    gateOptions: { env, shouldOfferPurchase },
+  });
+  const seen = { fetched: null, upstreamCalls };
+  const handler = makeGetOffers({ fetchOffers: async (args) => (seen.fetched = await inner(args)) });
+  return { handler, seen };
+}
+
+/** get_offers as it was before this change: backend straight into the projection. */
+function ungatedGetOffers(upstream = backendResponse()) {
+  return makeGetOffers({ fetchOffers: async ({ product_group_id }) => mapOffersResolveResponse(upstream, product_group_id || null) });
+}
+
+const REQUEST = { payload: { product_id: 'p1', merchant_id: 'm1' }, metadata: { market: MARKET } };
+
+function signalFor(out, id) {
+  return out.signals.find((s) => s.value.merchant_name === `Seller ${id}`);
+}
+
+test('get_offers: the gate asks about the MERCHANT, never about Pivota\'s own /r host', () => {
+  // The defect this pins: `readOfferStampedCheckoutUrl` answers `affiliate_url` first, and on a backend
+  // row that is `https://api.pivota.cc/r?token=…`. The gate then asked whether PIVOTA was purchasable.
+  assert.equal(readOfferMerchantDomain(backendOffer('o1', MERCHANT)), MERCHANT);
+  assert.equal(readOfferMerchantDomain(backendOffer('o1', `www.${MERCHANT}`)), MERCHANT);
+  // A referral-only row has no cart; the hop's destination is the PDP.
+  assert.equal(readOfferMerchantDomain(backendOffer('o1', MERCHANT, { cart: false })), MERCHANT);
+  // Both destinations withheld: the named shop.
+  const named = backendOffer('o1', MERCHANT);
+  named.execution_spec = { ...named.execution_spec, cart_url: null, pdp_url: null };
+  assert.equal(readOfferMerchantDomain(named), MERCHANT);
+  // Nothing usable in the spec: the stamped URL's host, as before.
+  const blank = backendOffer('o1', MERCHANT);
+  blank.execution_spec = { merchant_domain: '   ', cart_url: 'javascript:alert(1)', pdp_url: null };
+  assert.equal(readOfferMerchantDomain(blank), 'api.pivota.cc');
+  // A cart link in the spec is a link, /r hop or not.
+  const { affiliate_url: _drop, ...specOnly } = backendOffer('o1', MERCHANT);
+  assert.equal(readOfferMerchantDomain(specOnly), MERCHANT);
+  // Links nowhere at all: never asked.
+  assert.equal(readOfferMerchantDomain({ offer_id: 'o1', execution_spec: { merchant_domain: '' } }), null);
+  // A gateway-built row (no spec) is exactly what it was.
+  assert.equal(readOfferMerchantDomain(offer('o1', MERCHANT)), MERCHANT);
+  // The backend CATALOG-offer row: `url` is the destination the hop was minted for, no spec.
+  assert.equal(readOfferMerchantDomain({
+    url: `https://www.${PEER}/p/lip-gloss`, affiliate_url: 'https://api.pivota.cc/r?token=t.s', cart_prefilled: null,
+  }), PEER);
+  // A DIRECT checkout link is decided on its own host, whatever a spec says — the host the decision
+  // is taken on is the host the strip works on, and a direct link must never be left standing.
+  assert.equal(readOfferMerchantDomain({
+    checkout_url: 'https://shop-a.test/checkouts/cn/abc', execution_spec: { cart_url: 'https://shop-b.test/cart/1:1' },
+  }), 'shop-a.test');
+  // Only the hop's SHAPE marks it — its LAST path segment — not its host.
+  assert.equal(readOfferMerchantDomain({
+    affiliate_url: 'https://api.pivota.test/v1/r?token=x', execution_spec: { merchant_domain: MERCHANT },
+  }), MERCHANT);
+  assert.equal(readOfferMerchantDomain({
+    affiliate_url: 'https://agent.staging.pivota.test/r/?token=x', execution_spec: { merchant_domain: MERCHANT },
+  }), MERCHANT);
+  assert.equal(readOfferMerchantDomain({ affiliate_url: 'https://merchant.test/r?ref=abc' }), 'merchant.test');
+});
+
+test('get_offers: a cart on ANOTHER host than the PDP is keyed and stripped on the CART\'s host', async () => {
+  // `resolve_cart_permalink` builds the cart on the shop domain, which need not be the PDP's host.
+  // The declined host is the host the strip removes URLs from, so it must be the cart's.
+  const shop = 'flower-beauty.myshopify.com';
+  const row = backendOffer('o1', MERCHANT);
+  row.execution_spec = { ...row.execution_spec, cart_url: `https://${shop}/cart/40064041844877:1` };
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const out = await gateOffersResolveResponse({ offers: [row] }, {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.deepEqual(backend.calls.map((c) => new URL(c.url).searchParams.get('domain')), [shop]);
+  assert.ok(!JSON.stringify(out.offers[0]).includes('/cart/'), JSON.stringify(out.offers[0]));
+});
+
+test('get_offers: a declined REFERRAL-ONLY row keeps its /r hop — it lands on the PDP, and it IS the fallback', async () => {
+  const row = backendOffer('o1', MERCHANT, { cart: false });
+  row.cart_prefilled = false;
+  const out = await gateOffersResolveResponse({ offers: [row] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }),
+  });
+  assert.equal(out.offers[0].affiliate_url, row.affiliate_url);
+  // Its spec describes the browse link the decline falls back to, so it stays whole.
+  assert.deepEqual(out.offers[0].execution_spec, row.execution_spec);
+  assert.equal(out.offers[0].purchase_route, 'affiliate_outbound');
+});
+
+test('get_offers: a declined CATALOG-offer row (url + /r, no spec) is decided on the retailer and keeps its PDP', async () => {
+  const row = {
+    offer_id: 'of:catalog_offer:1', merchant_id: 'm_ret', merchant_name: 'Retailer', price: 12, currency: 'USD',
+    url: `https://${PEER}/p/lip-gloss`, purchase_route: 'affiliate_outbound',
+    affiliate_url: 'https://api.pivota.cc/r?token=t.s', cart_prefilled: null,
+  };
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = gateEnv();
+  const out = await gateOffersResolveResponse({ offers: [row] }, {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.deepEqual(backend.calls.map((c) => new URL(c.url).searchParams.get('domain')), [PEER]);
+  assert.equal(out.offers[0].url, row.url, 'a PDP is the fallback, never stripped');
+  assert.equal(out.offers[0].affiliate_url, row.affiliate_url, 'a hop to a PDP is a referral, and stays');
+});
+
+test('get_offers: an offer whose ONLY link is the spec cart is still gated', async () => {
+  const { affiliate_url: _drop, ...row } = backendOffer('o1', MERCHANT);
+  const out = await gateOffersResolveResponse({ offers: [row] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }),
+  });
+  assert.ok(!JSON.stringify(out.offers[0]).includes('/cart/'), JSON.stringify(out.offers[0]));
+  assert.equal(out.offers[0].purchase_route, 'affiliate_outbound');
+  assert.equal(out.offers[0].execution_spec.pdp_url, row.execution_spec.pdp_url);
+});
+
+test('get_offers: SWITCH OFF is byte-identical to today, and nothing is asked', async () => {
+  const backend = fakeBackend(BROWSE_ONLY);
+  const env = offEnv();
+  const gate = realGate({ env, backend, logger: fakeLogger() });
+  const { handler, seen } = wiredGetOffers({ env, shouldOfferPurchase: gate });
+
+  const out = await handler(REQUEST);
+
+  assert.deepEqual(out, await ungatedGetOffers()(REQUEST));
+  assert.equal(gate.calls, 0, 'switch off: the gate must not be consulted');
+  assert.equal(backend.calls.length, 0);
+  // The upstream request itself is unchanged.
+  assert.deepEqual(seen.upstreamCalls, [{
+    op: 'offers.resolve',
+    payload: { product: { product_id: 'p1', merchant_id: 'm1' }, limit: 10, commerceSurface: 'agent_api' },
+  }]);
+  // And with no decline the response object is passed through as is — not rebuilt.
+  const upstream = backendResponse();
+  assert.equal(await gateOffersResolveResponse(upstream, { env, market: MARKET, shouldOfferPurchase: gate }), upstream);
+});
+
+test('get_offers: KEYED + purchase => every offer kept, byte-identical', async () => {
+  const backend = fakeBackend(PURCHASE);
+  const env = gateEnv();
+  const { handler } = wiredGetOffers({ env, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+
+  const out = await handler(REQUEST);
+
+  assert.deepEqual(out, await ungatedGetOffers()(REQUEST));
+  const asked = backend.calls.map((c) => new URL(c.url).searchParams);
+  assert.deepEqual(asked.map((q) => q.get('domain')).sort(), [PEER, MERCHANT].sort(),
+    'one question per MERCHANT — never about api.pivota.cc');
+  assert.ok(asked.every((q) => q.get('market') === MARKET), 'keyed on the request\'s market');
+});
+
+test('get_offers: KEYED + browse_only => the declined merchant is stripped, byte-equal to a gate decline; the peer is untouched', async () => {
+  const backend = fakeBackend((domain) => (domain === MERCHANT ? BROWSE_ONLY : PURCHASE));
+  const env = gateEnv();
+  const { handler, seen } = wiredGetOffers({ env, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+
+  const out = await handler(REQUEST);
+
+  const raw = backendResponse().offers;
+  const [declinedRow, peerRow] = seen.fetched.offers;
+  // BYTE-EQUAL TO A GATE DECLINE: the same row every other path-3 site serves for this decision.
+  assert.deepEqual(declinedRow, enrichOfferCommerceMetadata(raw[0], { declinedDomains: new Set([MERCHANT]) }));
+  // The peer, and the order, are the backend's own.
+  assert.deepEqual(peerRow, raw[1]);
+  assert.deepEqual(seen.fetched.offers.map((o) => o.offer_id), ['o1', 'o2']);
+
+  // DELETED, not flagged: the merchant's cart is nowhere on the row, at any depth — not as a URL,
+  // not behind our own /r hop (which the backend signed with `primary = cart_url`), and not as the
+  // parts an agent could rebuild it from.
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  assert.ok(!JSON.stringify(declinedRow).includes('/cart/'), JSON.stringify(declinedRow));
+  assert.ok(!JSON.stringify(declinedRow).includes('/r?token='), 'the hop into the cart must go too');
+  for (const k of ['cart_url', 'rail', 'variant_id', 'expected_item_total', 'expected_currency']) {
+    assert.ok(!has(declinedRow.execution_spec, k), k);
+  }
+  for (const k of ['param', 'join_mode']) assert.ok(!has(declinedRow.execution_spec.tracking, k), k);
+  assert.ok(!has(declinedRow, 'affiliate_url'));
+  assert.ok(!has(declinedRow, 'cart_prefilled'));
+  // What the fallback IS stays: the PDP, the merchant, the price facts, the click id the PDP carries.
+  assert.equal(declinedRow.execution_spec.pdp_url, raw[0].execution_spec.pdp_url);
+  assert.equal(declinedRow.execution_spec.merchant_domain, MERCHANT);
+  assert.equal(declinedRow.execution_spec.tracking.click_id, 'clk_o1');
+  assert.ok(!Object.prototype.hasOwnProperty.call(declinedRow, 'merchant_checkout_url'));
+  assert.equal(declinedRow.purchase_route, 'affiliate_outbound');
+  assert.equal(declinedRow.commerce_mode, 'links_out');
+  assert.equal(declinedRow.checkout_handoff, 'redirect');
+
+  // ON THE WIRE: the offer survives with its price and its browse link; its cart is gone.
+  assert.equal(out.signals.length, 2, 'the OFFER survives: browse/referral is what is left');
+  const declinedSignal = signalFor(out, 'o1');
+  assert.deepEqual(declinedSignal, offerToSignal(declinedRow, { productId: 'p1' }));
+  assert.equal(declinedSignal.value.execution_spec.cart_url, null);
+  assert.equal(declinedSignal.value.execution_spec.rail, null);
+  assert.equal(declinedSignal.value.execution_spec.variant_id, null);
+  assert.equal(declinedSignal.value.affiliate_url, null);
+  assert.equal(declinedSignal.value.cart_prefilled, null, '"nobody said", not a claim about a link that is gone');
+  assert.equal(declinedSignal.value.execution_spec.pdp_url, raw[0].execution_spec.pdp_url);
+  assert.equal(declinedSignal.value.price, 14.95);
+  assert.deepEqual(signalFor(out, 'o2'), offerToSignal(raw[1], { productId: 'p1' }));
+});
+
+test('get_offers: UNKEYABLE + ENFORCED => every merchant declined — one market-less read, never a default market', async () => {
+  const backend = fakeBackend(PURCHASE); // would say "purchase" to ANY keyed question
+  const logger = fakeLogger();
+  const env = gateEnv();
+  const { handler, seen } = wiredGetOffers({ env, shouldOfferPurchase: realGate({ env, backend, logger }) });
+
+  // What every get_offers request looks like today: neither tool schema carries a market.
+  const out = await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
+
+  assert.equal(backend.calls.length, 1, 'one enforcement read, not one per merchant');
+  assert.equal(new URL(backend.calls[0].url).searchParams.has('market'), false, 'a defaulted market would be here');
+  const raw = backendResponse().offers;
+  const everyDeclined = new Set([MERCHANT, PEER]);
+  assert.deepEqual(seen.fetched.offers, raw.map((o) => enrichOfferCommerceMetadata(o, { declinedDomains: everyDeclined })));
+  for (const s of out.signals) assert.equal(s.value.execution_spec.cart_url, null);
+  assert.equal(out.signals.length, 2, 'declined, not dropped');
+  assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable' && l.level === 'warn'));
+});
+
+test('get_offers: UNKEYABLE + NOT enforced / enforcement read failing => today\'s answer', async () => {
+  const env = gateEnv();
+  const baseline = await ungatedGetOffers()({ payload: { product_id: 'p1' } });
+  for (const [name, backend] of [
+    ['not enforced', fakeBackend(NOT_ENFORCED)],
+    ['500', fakeBackend(BROWSE_ONLY, { status: 500, ok: false })],
+    ['throw', fakeBackend(BROWSE_ONLY, { throws: new Error('ECONNREFUSED') })],
+  ]) {
+    const { handler } = wiredGetOffers({ env, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    assert.deepEqual(await handler({ payload: { product_id: 'p1' } }), baseline, name);
+  }
+});
+
+test('get_offers: the market comes from the request\'s carriers by the §5 rule — payload, then metadata', async () => {
+  for (const [request, expected] of [
+    [{ payload: { product_id: 'p1', market: 'SG' }, metadata: { market: 'US' } }, 'SG'],
+    [{ payload: { product_id: 'p1' }, metadata: { market: 'GB' } }, 'GB'],
+    [{ payload: { product_id: 'p1', market: 'US,SG' }, metadata: { market: 'JP' } }, 'JP'],
+  ]) {
+    const backend = fakeBackend(PURCHASE);
+    const env = gateEnv();
+    const { handler } = wiredGetOffers({ env, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    await handler(request);
+    assert.ok(backend.calls.length > 0);
+    for (const c of backend.calls) assert.equal(new URL(c.url).searchParams.get('market'), expected, JSON.stringify(request));
+  }
+});
+
+test('get_offers: the seam gates the `data.offers` envelope too, and a gate that THROWS fails open', async () => {
+  const env = gateEnv();
+  const wrapped = { status: 'success', data: { offers: backendResponse().offers } };
+  const out = await gateOffersResolveResponse(wrapped, {
+    env, market: MARKET, shouldOfferPurchase: async () => ({ offer: false, source: 'gate' }),
+  });
+  assert.ok(!JSON.stringify(out.data.offers).includes('/cart/'));
+  assert.equal(out.data.offers.length, 2);
+  const thrown = await gateOffersResolveResponse(wrapped, {
+    env, market: MARKET, shouldOfferPurchase: async () => { throw new Error('gate exploded'); },
+  });
+  assert.equal(thrown, wrapped, 'a gate bug must never strip an offer');
+});
+
+test('path3/offers: prioritizeOffersResolveResponseGated on the SAME backend shape asks about the merchant and strips its cart', async () => {
+  // `prioritizeOffersResolveResponseGated` reads the domain through the same function, so the /r fix
+  // reaches it too. (It is the invoke route's seam function — which, see the STRUCTURAL test below,
+  // never runs on that route today.)
+  const backend = fakeBackend((domain) => (domain === MERCHANT ? BROWSE_ONLY : PURCHASE));
+  const env = gateEnv();
+  const out = await prioritizeOffersResolveResponseGated(backendResponse(), {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }),
+  });
+  assert.ok(!backend.calls.some((c) => new URL(c.url).searchParams.get('domain') === 'api.pivota.cc'));
+  const declined = out.offers.find((o) => o.offer_id === 'o1');
+  assert.ok(!JSON.stringify(declined).includes('/cart/'));
+  assert.ok(JSON.stringify(out.offers.find((o) => o.offer_id === 'o2')).includes('/cart/'));
+});
+
+test('STRUCTURAL: every producer of `offers.resolve` offers is gated — a new one fails here', () => {
+  // WHY. The three annotate sites (F1) and the route seam were all "gated", and `get_offers` still
+  // served an ungated cart: it fetched `offers.resolve` itself and never met an annotate call. F1
+  // counts annotate call sites, so a producer that never annotates is invisible to it. This pins
+  // EVERY code line that spells the op — in any quote style, as a call argument, an `operation:`, a
+  // constant or a list entry — so a new producer cannot be written without changing this census,
+  // however it names the op. Each line is classified below.
+  const root = path.join(__dirname, '..');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+    return /\.(c|m)?js$/.test(e.name) ? [full] : [];
+  });
+  const LITERAL = /(['"`])offers\.resolve\1/;
+  const found = [];
+  for (const file of [...walk(path.join(root, 'src')), ...walk(path.join(root, 'mcp-server', 'src')), ...walk(path.join(root, 'safety-kernel', 'src'))]) {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (!LITERAL.test(t) || /^(\/\/|\*|\/\*)/.test(t)) continue;
+      found.push(`${path.relative(root, file).split(path.sep).join('/')} | ${t}`);
+    }
+  }
+  assert.deepEqual(found.sort(), [
+    // PRODUCER, GATED — the agent read. Proven below.
+    "src/agentSignals/intelligenceReads.js | const upstream = await invokeUpstream('offers.resolve', {",
+    // Names the op; sends nothing.
+    "mcp-server/src/operationMap.js | \"offers.resolve\",",
+    "safety-kernel/src/invokeHandler.js | 'get_product_detail', 'get_pdp', 'get_pdp_v2', 'offers.resolve', 'resolve_product_candidates',",
+    "src/api/gateway/invocation/buildInvokeIngressGatewayInput.js | 'offers.resolve',",
+    "src/attribution/issuingAgentAssertion.js | const ISSUING_OPS = Object.freeze(new Set(['offers.resolve']));",
+    "src/schema.js | 'offers.resolve',",
+    "src/server.js | 'offers.resolve',",
+    "src/server.js | 'offers.resolve': {",
+    "src/server.js | source: 'offers.resolve',",
+    "src/server.js | source: 'offers.resolve',",
+    "src/server.js | source: 'offers.resolve',",
+    "src/server.js | source: 'offers.resolve',",
+    // ⚠️ KNOWN UNGATED — the invoke route. `if (operation === 'offers.resolve')` #1 hands the request to
+    // `handleOffersResolveOperation`, whose cache search (`operation: 'offers.resolve'`) is the LIVE
+    // producer, and RETURNS on every outcome. Branch #2 — the "path 3" seam
+    // `prioritizeOffersResolveResponseGated`, after the upstream call — and the switch's
+    // `case 'offers.resolve'` with its `operation:` are therefore UNREACHABLE (`operation` is a const;
+    // nothing in between branches on mode). Measured 2026-09-27, gate ON, market US: a browse_only
+    // merchant's `/cart/1:1` came back verbatim, no purchasability read, no `commerce_mode` stamped.
+    // docs/merchant-purchasability-gate.md §8. Follow-up.
+    "src/server.js | case 'offers.resolve': {",
+    "src/server.js | if (operation === 'offers.resolve') {",
+    "src/server.js | if (operation === 'offers.resolve') {",
+    "src/server.js | operation: 'offers.resolve',",
+    "src/server.js | operation: 'offers.resolve',",
+    // ⚠️ KNOWN UNGATED — Aurora consumer lanes calling the backend's `offers.resolve` directly
+    // (routes.js: the reco-PDP primary call, and its local fallback into the invoke route above).
+    "src/auroraBff/routes.js | operation: 'offers.resolve',",
+    "src/auroraBff/routes.js | operation: 'offers.resolve',",
+    "src/auroraBff/usecases/recoHybridResolveCandidates.js | operation: 'offers.resolve',",
+  ].sort(), 'a NEW line naming offers.resolve — a new producer or a new name for one — must be gated and classified here');
+
+  // The gating proof for the agent read: the factory's ONLY upstream call feeds the gate, and the
+  // gate's output — not the raw response — is what reaches the projection.
+  const reads = fs.readFileSync(path.join(root, 'src', 'agentSignals', 'intelligenceReads.js'), 'utf8');
+  const factory = reads.slice(reads.indexOf('function makeOffersResolveFetchOffers('));
+  const body = factory.slice(0, factory.indexOf('\n}\n'));
+  assert.match(body, /const upstream = await invokeUpstream\('offers\.resolve'/);
+  assert.match(body, /const gated = await gateOffersResolveResponse\(upstream, \{/);
+  assert.match(body, /market: offersGateBuyerMarket\(payload, metadata\)/);
+  assert.match(body, /return mapOffersResolveResponse\(gated,/);
+  // And server.js wires get_offers through that factory, and calls the raw op nowhere itself.
+  const server = fs.readFileSync(path.join(root, 'src', 'server.js'), 'utf8');
+  assert.match(server, /get_offers: makeGetOffers\(\{\s*fetchOffers: makeOffersResolveFetchOffers\(\{ invokeUpstream: invokeCommerceKernelRawUpstream \}\),\s*\}\)/);
+  assert.doesNotMatch(server, /invokeCommerceKernelRawUpstream\(\s*['"]offers\.resolve['"]/);
+});
