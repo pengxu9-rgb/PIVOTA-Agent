@@ -2303,13 +2303,21 @@ function sourceHasProductIntel(candidate) {
   return sourceTypesFromRefs(candidate.source_refs).includes('product_intel_kb');
 }
 
+// Two-hop score = direct score * (floor + (1 - floor) * hop confidence): a perfect path keeps the
+// direct score, a 0.55 path (the recall cutoff) keeps 89% of it.
+const TRANSITIVE_HOP_DECAY_FLOOR = 0.75;
+
 function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   const anchorToBridge = clamp01(bridge?.similarity_score ?? bridge?.score_total, 0);
   const bridgeToCandidate = clamp01(candidate?.similarity_score ?? candidate?.score_total, 0);
   const hopConfidence = Math.sqrt(anchorToBridge * bridgeToCandidate);
   if (hopConfidence < 0.55) return null;
 
-  const baseScore = scoreCandidateForAnchor(anchor, candidate, {
+  // The second-hop row's similarity_score / score_total describe it against the BRIDGE. They must
+  // not reach scoreCandidateForAnchor, which would read them as an explicit score against the
+  // anchor and make every two-hop candidate as strong as its bridge's own best match.
+  const { similarity_score: _bridgeSim, score_total: _bridgeTotal, vector_score: _bridgeVector, score_breakdown: _bridgeBreakdown, ...directCandidate } = candidate;
+  const baseScore = scoreCandidateForAnchor(anchor, directCandidate, {
     intelMatch: sourceHasProductIntel(candidate),
   });
   if (baseScore.category_use_case_match < 0.25 && baseScore.score_total < 0.35) return null;
@@ -2328,12 +2336,13 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
       clamp01(candidate.ingredient_functional_similarity, 0),
     ) * 0.85,
   ));
-  const scoreTotal = clamp01(Math.max(
-    baseScore.score_total,
-    categoryUseCase,
-    ingredientSimilarity,
-    hopConfidence * 0.92,
-  ));
+  // A two-hop candidate's score is the DIRECT pair score for (anchor, candidate) — the same
+  // evidence formula as a first-hop candidate — decayed by the path confidence. It can never exceed
+  // the direct score: before #2290 this was max(direct, bridged category, bridged ingredient,
+  // hop * 0.92), so a candidate whose direct score was 0.788 (identical tag list) came back at 1.0
+  // through a bridge and outranked every first-hop candidate in the top-24 and the fan-in ranking.
+  // The bridged category / ingredient components above are kept for the builder's category gate.
+  const scoreTotal = clamp01(baseScore.score_total * (TRANSITIVE_HOP_DECAY_FLOOR + (1 - TRANSITIVE_HOP_DECAY_FLOOR) * hopConfidence));
   const transitiveScore = {
     ...baseScore,
     category_use_case_match: Number(categoryUseCase.toFixed(4)),
