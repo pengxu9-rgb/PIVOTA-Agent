@@ -30,7 +30,8 @@ jest.mock('../../src/auroraBff/productRelationshipGraphSources', () => {
   };
 });
 
-const { buildInputsFromDb, main } = require('../../scripts/build-product-relationship-graph');
+const { buildInputsFromDb, main, affectedScopeProvided } = require('../../scripts/build-product-relationship-graph');
+const sources = require('../../src/auroraBff/productRelationshipGraphSources');
 
 function product(id, name, overrides = {}) {
   return {
@@ -84,6 +85,26 @@ describe('niche_specialist candidates follow the affected-products scope', () =>
     expect(payload.sourceDiagnostics.need_candidate_pool_size).toBe(3);
   });
 
+  test('an explicit but EMPTY scope (manifest `[]`) means no anchors and no niche edges, and loads no sources', async () => {
+    sources.loadProductRelationshipGraphSourceInputs.mockClear();
+    const payload = await buildInputsFromDb({ limit: 50, affectedRefs: [], affectedScopeProvided: true, includeNeedNodes: true });
+
+    expect(payload.anchors).toEqual([]);
+    expect(payload.needCandidatesById).toEqual({});
+    expect(payload.sourceDiagnostics.affected_scope_empty).toBe(true);
+    expect(payload.sourceDiagnostics.need_candidate_pool).toBe('affected');
+    expect(payload.sourceDiagnostics.need_candidate_pool_size).toBe(0);
+    expect(sources.loadProductRelationshipGraphSourceInputs).not.toHaveBeenCalled();
+  });
+
+  test('only an ABSENT scope flag means a full run: the CLI reports the scope as provided for an empty manifest', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-empty-'));
+    fs.writeFileSync(path.join(dir, 'empty.json'), '[]');
+    expect(affectedScopeProvided(['node', 'build', '--affected-products-file', path.join(dir, 'empty.json')])).toBe(true);
+    expect(affectedScopeProvided(['node', 'build', '--market', 'US'])).toBe(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('accepts: --skip-need-nodes still yields no need candidates in either mode', async () => {
     const scoped = await buildInputsFromDb({ limit: 50, affectedRefs: ['touched'], includeNeedNodes: false });
     const full = await buildInputsFromDb({ limit: 50, affectedRefs: [], includeNeedNodes: false });
@@ -109,7 +130,7 @@ describe('dry run reports the whole-graph fan-in cap without writing', () => {
     };
     fs.writeFileSync(path.join(dir, 'input.json'), JSON.stringify(input));
     // 6 anchors already stored for the hub -> only 2 of this build's 4 may be added.
-    dbState.existingRows = Array.from({ length: 6 }, (_, i) => ({ candidate_ref: 'product:hub', anchor_ref: `product:stored${i}` }));
+    dbState.existingRows = Array.from({ length: 6 }, (_, i) => ({ candidate_ref: 'product:hub', anchor_ref: `product:stored${i}`, label_state: 'ai_approved', unexpired: true, fresh: false }));
     process.argv = ['node', 'build', '--input', path.join(dir, 'input.json'), '--skip-need-nodes', '--review-status', 'pending', '--max-anchors-per-candidate', '8', '--out', path.join(dir, 'out.json')];
 
     await main();
