@@ -34,7 +34,9 @@ function seedHasColumnPriceCurrencySql(alias = '') {
 // only when nothing that can price its card says otherwise: not the seed it mirrors (source id),
 // not a seed attached to it (minted lane), not one of its offers. A blank currency on any of them
 // is "otherwise" too -- the card builders stamp 'USD' on it. A product none of them prices is left
-// alone: its card quotes no price. Measured on prod 2026-09-27: 614 serving-eligible similar
+// alone: its card quotes no price. A suppressed offer prices nothing, so it is not asked. Stricter
+// than the search mainline ON PURPOSE: a product with live offers in two currencies (the mainline
+// would serve the buyer's one) is not recommended -- a recommendation card cannot say which it is. Measured on prod 2026-09-27: 614 serving-eligible similar
 // candidates carry no seed join and are priced only by an attached SGD seed + SGD offer.
 function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam) {
   return `NOT EXISTS (
@@ -50,6 +52,7 @@ function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam) {
     AND NOT EXISTS (
       SELECT 1 FROM catalog_offers o_cur
       WHERE o_cur.product_key = ${cpAlias}.product_key
+        AND o_cur.suppressed_at IS NULL
         AND upper(trim(coalesce(o_cur.currency, ''))) <> ${currencyParam}
     )`;
 }

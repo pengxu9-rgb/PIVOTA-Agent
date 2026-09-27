@@ -4714,8 +4714,11 @@ function buildPdpSimilarFetchArgs({
   excludeItems = [],
   excludeIds = [],
   requestMode = 'first_paint',
-  // The buyer's serving currency (servingCurrencyFor); undefined reads it from the payload alone.
+  // The buyer's serving currency; undefined reads it the way the invoke door's guard does, from the
+  // payload AND the request metadata -- reading the payload alone would filter an SG buyer whose
+  // market rides in metadata to USD while the door keeps SGD, and empty their page.
   servingCurrency,
+  metadata = {},
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
   const resolvedCandidateLimit =
@@ -4755,7 +4758,7 @@ function buildPdpSimilarFetchArgs({
         canonicalProduct?.currency ||
         'USD',
       serving_currency:
-        servingCurrency === undefined ? servingCurrencyFor({ payload }) : servingCurrency,
+        servingCurrency === undefined ? servingCurrencyFor({ payload, metadata }) : servingCurrency,
       options: {
         debug,
         candidate_limit: resolvedCandidateLimit,

@@ -90,7 +90,7 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
       product_type text, category text, category_path text, canonical_url text, image_url text,
       pivota_signature_id text, pivota_canonical_url text, updated_at timestamptz, sync_status text, source_domain text)`);
     await db.query(`CREATE TABLE index_pipeline_state(content_key text PRIMARY KEY, serving_eligible boolean)`);
-    await db.query(`CREATE TABLE catalog_offers(offer_id text PRIMARY KEY, product_key text, sku_key text, currency text)`);
+    await db.query(`CREATE TABLE catalog_offers(offer_id text PRIMARY KEY, product_key text, sku_key text, currency text, suppressed_at timestamptz)`);
 
     // --- similar recommendations (catalog_products lane) ---
     // Mirror rows priced by the seed they mirror (the eps_catalog join).
@@ -103,6 +103,10 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
     // A seed that says USD while the product's own offer is SGD (prod: 14 such rows) is ambiguous.
     await insertSeed({ externalId: 'ext_sim_conflict', title: 'Similar conflict', currency: 'USD' });
     await insertCatalogProduct({ productKey: 'mirror_conflict', sourceSystem: 'external_product_seeds_mirror_v1', sourceProductId: 'ext_sim_conflict', offerCurrencies: ['SGD'] });
+    // A suppressed SGD offer prices nothing: this USD product stays recommendable to a US buyer.
+    await insertSeed({ externalId: 'ext_sim_suppressed', title: 'Similar suppressed', currency: 'USD' });
+    await insertCatalogProduct({ productKey: 'mirror_usd_suppressed_sgd', sourceSystem: 'external_product_seeds_mirror_v1', sourceProductId: 'ext_sim_suppressed', offerCurrencies: ['USD', 'SGD'] });
+    await db.query(`UPDATE catalog_offers SET suppressed_at = now() WHERE product_key = 'mirror_usd_suppressed_sgd' AND currency = 'SGD'`);
     // Minted rows: no eps_catalog join at all; priced by the seed ATTACHED to them (prod: 614 SGD).
     await insertCatalogProduct({ productKey: 'minted_sgd', sourceSystem: 'catalog_enrichment_agent_v1', sourceProductId: 'cea_minted_sgd', offerCurrencies: ['SGD'] });
     await insertSeed({ externalId: 'ext_attached_sgd', title: 'Attached SGD', currency: 'SGD', attachedProductKey: 'minted_sgd', tool: '*' });
@@ -202,8 +206,8 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
         statements = [];
         const products = await fetchFor(servingCurrency);
         // Priced by its mirrored seed, and minted priced by its attached seed -- the controls.
-        expect(recalledKeys()).toEqual(['minted_usd', 'mirror_usd']);
-        expect(products.map((p) => [p.product_key, p.currency])).toEqual([['mirror_usd', 'USD']]);
+        expect(recalledKeys()).toEqual(['minted_usd', 'mirror_usd', 'mirror_usd_suppressed_sgd']);
+        expect(products.map((p) => [p.product_key, p.currency]).sort()).toEqual([['mirror_usd', 'USD'], ['mirror_usd_suppressed_sgd', 'USD']]);
       }
     });
 
@@ -235,7 +239,7 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
       expect(statements.filter((s) => s.error)).toEqual([]);
       expect(statements.length).toBeGreaterThan(0);
       // Every unattached USD seed on the domain (the catalog-level conflict row is a USD SEED).
-      expect(seedRowsReturned()).toEqual(['ext_bha_usd', 'ext_sim_conflict', 'ext_sim_usd']);
+      expect(seedRowsReturned()).toEqual(['ext_bha_usd', 'ext_sim_conflict', 'ext_sim_suppressed', 'ext_sim_usd']);
       statements = [];
       await fetchExternal('SGD');
       expect(seedRowsReturned()).toEqual(['ext_bha_payload_sgd', 'ext_bha_sgd']);
