@@ -67,6 +67,115 @@ function hydrateCandidateSnapshotFromEntity(snapshot, entity) {
   };
 }
 
+// --- currency of a stored amount, from the listing's own offers ---------------------------------------------
+// The builder stored bare amounts: prod 2026-09-27, all 4,964 serving edges with a candidate price had no
+// currency key, and no edge's price_evidence had one. The catalog-row repair above cannot help seed rows —
+// their product_payload carries no price; price and currency live on catalog_offers. So a stored amount is
+// paired with the currency of the offers the SAME ref resolves to, and only when every offer whose price
+// equals that amount agrees on ONE currency. No match, or two currencies, → no currency, and the projection
+// withholds the amount. Never the market's currency: a SGD seed filed under the US partition is exactly the
+// row a market default would mislabel.
+function amountCents(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+}
+
+function pairCurrencyFromOfferPrices(amount, offerPrices) {
+  const cents = amountCents(amount);
+  if (cents == null || !Array.isArray(offerPrices)) return null;
+  const currencies = new Set();
+  for (const offer of offerPrices) {
+    if (!offer || typeof offer !== 'object') continue;
+    const code = typeof offer.currency === 'string' ? offer.currency.trim().toUpperCase() : '';
+    if (!/^[A-Z]{3}$/.test(code)) continue;
+    const amounts = Array.isArray(offer.amounts) ? offer.amounts : [];
+    if (amounts.some((a) => amountCents(a) === cents)) currencies.add(code);
+  }
+  return currencies.size === 1 ? [...currencies][0] : null;
+}
+
+function storedAmountWithoutCurrency(snapshot, amount) {
+  const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  return amountCents(amount) != null && !snapshotHasOwnCurrency(snap);
+}
+
+// Fill `currency` on candidate_snapshot / anchor_snapshot where each holds (or, for the anchor, the
+// comparison holds) an amount without one. Mutates the edges it was given, like hydrateCandidates.
+// Returns { needed, filled } for metadata.
+async function fillStoredAmountCurrencies(edges, resolveOfferPrices) {
+  const needs = [];
+  for (const e of Array.isArray(edges) ? edges : []) {
+    if (!e || typeof e !== 'object') continue;
+    const cand = e.candidate_snapshot;
+    if (e.candidate_product_ref && storedAmountWithoutCurrency(cand, cand && cand.price)) {
+      needs.push({ edge: e, key: 'candidate_snapshot', ref: e.candidate_product_ref, amount: cand.price });
+    }
+    // The comparison's anchor amount is the one an agent sees; the anchor snapshot is where the mapper
+    // reads its currency.
+    const anchorAmount = e.price_evidence && typeof e.price_evidence === 'object' ? e.price_evidence.anchor_price_amount : null;
+    if (e.anchor_ref && storedAmountWithoutCurrency(e.anchor_snapshot, anchorAmount)) {
+      needs.push({ edge: e, key: 'anchor_snapshot', ref: e.anchor_ref, amount: anchorAmount });
+    }
+  }
+  if (!needs.length) return { needed: 0, filled: 0 };
+  const refs = [...new Set(needs.map((n) => String(n.ref).trim().toLowerCase()))];
+  const byRef = await resolveOfferPrices(refs);
+  if (!byRef || typeof byRef.get !== 'function') return { needed: needs.length, filled: 0 };
+  let filled = 0;
+  for (const n of needs) {
+    const currency = pairCurrencyFromOfferPrices(n.amount, byRef.get(String(n.ref).trim().toLowerCase()));
+    if (!currency) continue;
+    const snap = n.edge[n.key] && typeof n.edge[n.key] === 'object' ? n.edge[n.key] : {};
+    n.edge[n.key] = { ...snap, currency };
+    filled += 1;
+  }
+  return { needed: needs.length, filled };
+}
+
+// --- product_ref → anchor identity -------------------------------------------------------------------------
+// The graph stores anchors as `product:<id>` (sig_…, ext_…, pg_…, a source id), `url:<url>` or
+// `text:<brand>:<name>`. An agent holds the forms search_catalog / get_product hand out: a bare
+// `pivota_signature_id` (sig_…), a `product_id`, a `pivota_canonical_url`
+// (https://agent.pivota.cc/products/<id>) — or a `product:sig_…` ref from a previous get_alternatives. Only
+// the three graph namespaces are read as prefixes: `retailer:…` / `ulta:…` are ids whose colon is part of
+// the id. Anything naming a product id takes the SAME path as `product_id` (identity hydration + every ref
+// form), so the two arguments can never disagree about which edges a product has.
+const PIVOTA_PRODUCT_URL = /^https?:\/\/(?:[a-z0-9-]+\.)*pivota\.cc\/products\/([^/?#]+)/i;
+
+function parseProductRefArg(value) {
+  const ref = nonEmpty(value) ? value.trim() : '';
+  if (!ref) return { productId: null, refs: [] };
+  if (/^https?:\/\//i.test(ref)) {
+    const m = PIVOTA_PRODUCT_URL.exec(ref);
+    if (!m) return { productId: null, refs: [`url:${ref}`] };
+    let id = m[1];
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      /* keep the raw segment */
+    }
+    return { productId: id, refs: [] };
+  }
+  const ns = /^(product|url|text):(.+)$/i.exec(ref);
+  if (ns && ns[1].toLowerCase() === 'product') return { productId: ns[2].trim(), refs: [ref] };
+  if (ns) return { productId: null, refs: [ref] };
+  return { productId: ref, refs: [] };
+}
+
+function uniqueRefs(refs) {
+  const seen = new Set();
+  const out = [];
+  for (const r of refs) {
+    if (!nonEmpty(r)) continue;
+    const k = r.trim().toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r.trim());
+  }
+  return out;
+}
+
 /**
  * get_alternatives — project relationship-graph edges → alternative/related Signals.
  * @param {{
@@ -90,10 +199,32 @@ function makeGetAlternatives(deps = {}) {
     // stored candidate_snapshot has NO title in prod (titles are resolved at read-time), so without this
     // get_alternatives returns brand-only, title-less candidates. Fail-open in the injected impl.
     hydrateCandidates,
+    // Optional async (lowercased refs[]) => Map<ref, Array<{currency, amounts[]}>>: the offers each ref
+    // resolves to. Pairs a stored bare amount with its listing's currency (fillStoredAmountCurrencies).
+    // Fail-open: absence/throw leaves the amounts currency-less, and the projection then withholds them.
+    resolveOfferPrices,
+    // Optional (market) => currency|null: the one currency a price may be served in for that market.
+    // Absent = no market check; null = the market cannot be priced, so no price is served.
+    servingCurrencyForMarket,
   } = deps;
   if (typeof listApprovedRelationshipEdgesForAnchor !== 'function') {
     throw new Error('makeGetAlternatives requires listApprovedRelationshipEdgesForAnchor');
   }
+
+  async function anchorRefsForProductId(productId, merchantId) {
+    if (typeof buildAnchorRefsFromProduct !== 'function') return [productId];
+    let anchorProduct = { product_id: productId, merchant_id: merchantId };
+    if (typeof hydrateAnchorProduct === 'function') {
+      try {
+        anchorProduct = (await hydrateAnchorProduct(anchorProduct)) || anchorProduct;
+      } catch {
+        /* fail-open: keep thin refs so source-keyed (ext_) edges still match */
+      }
+    }
+    const refs = buildAnchorRefsFromProduct(anchorProduct);
+    return Array.isArray(refs) ? refs : [];
+  }
+
   return async function getAlternatives(params = {}) {
     const p = (params && params.payload) || params || {};
     const anchorId = nonEmpty(p.product_ref) ? p.product_ref : nonEmpty(p.product_id) ? p.product_id : null;
@@ -104,24 +235,16 @@ function makeGetAlternatives(deps = {}) {
       return { subject, signals: [], metadata: { reason: 'disabled' } };
     }
 
-    // Anchor refs: an explicit product_ref, else built from {product_id, merchant_id}.
-    let anchorRefs;
-    if (nonEmpty(p.product_ref)) {
-      anchorRefs = [p.product_ref];
-    } else if (typeof buildAnchorRefsFromProduct === 'function') {
-      let anchorProduct = { product_id: p.product_id, merchant_id: p.merchant_id };
-      if (typeof hydrateAnchorProduct === 'function') {
-        try {
-          anchorProduct = (await hydrateAnchorProduct(anchorProduct)) || anchorProduct;
-        } catch {
-          /* fail-open: keep thin refs so source-keyed (ext_) edges still match */
-        }
-      }
-      anchorRefs = buildAnchorRefsFromProduct(anchorProduct);
-    } else {
-      anchorRefs = nonEmpty(p.product_id) ? [p.product_id] : [];
+    // Anchor refs: every graph-namespaced ref product_ref names verbatim, plus the full ref set of each
+    // product id named (product_id, and the id inside product_ref) — see parseProductRefArg.
+    const fromRef = parseProductRefArg(p.product_ref);
+    const productIds = uniqueRefs([nonEmpty(p.product_id) ? p.product_id : null, fromRef.productId]);
+    let anchorRefs = fromRef.refs.slice();
+    for (const productId of productIds) {
+      anchorRefs = anchorRefs.concat(await anchorRefsForProductId(productId, p.merchant_id));
     }
-    if (!Array.isArray(anchorRefs) || anchorRefs.length === 0) {
+    anchorRefs = uniqueRefs(anchorRefs);
+    if (anchorRefs.length === 0) {
       return { subject, signals: [], metadata: { reason: 'no_anchor' } };
     }
 
@@ -153,16 +276,36 @@ function makeGetAlternatives(deps = {}) {
       }
     }
 
+    // Pair each stored bare amount with its listing's offer currency. Fail-open: a miss leaves the amount
+    // currency-less and the projection withholds it.
+    let currencyFill = null;
+    if (typeof resolveOfferPrices === 'function' && Array.isArray(edges) && edges.length) {
+      try {
+        currencyFill = await fillStoredAmountCurrencies(edges, resolveOfferPrices);
+      } catch {
+        currencyFill = { error: true };
+      }
+    }
+
+    const servingCurrency =
+      typeof servingCurrencyForMarket === 'function' ? servingCurrencyForMarket(market) || null : undefined;
     const signals = relationshipEdgesToSignals(edges, {
       anchorId,
       maxPriceRatio: typeof p.max_price_ratio === 'number' ? p.max_price_ratio : null,
       includeDupes,
       limit,
+      servingCurrency,
     });
     return {
       subject,
       signals,
-      metadata: { relation_types: relationTypes, anchor_ref_count: anchorRefs.length, edge_count: Array.isArray(edges) ? edges.length : 0 },
+      metadata: {
+        relation_types: relationTypes,
+        anchor_ref_count: anchorRefs.length,
+        edge_count: Array.isArray(edges) ? edges.length : 0,
+        ...(servingCurrency !== undefined ? { serving_currency: servingCurrency } : {}),
+        ...(currencyFill ? { price_currency_fill: currencyFill } : {}),
+      },
     };
   };
 }
@@ -198,6 +341,57 @@ function makeGetOffers(deps = {}) {
       metadata: { offer_count: offers.length, product_group_id: (res && res.product_group_id) || p.product_group_id || null },
     };
   };
+}
+
+// --- get_intel KB keys ------------------------------------------------------------------------------------
+// The KB is keyed `product:<id>` (sig_…, ext_…, a source id such as ulta:…) and `url:<url>` (exact,
+// case-sensitive). The request names the product by product_id, product_ref or pivota_signature_id, in any
+// of the forms parseProductRefArg reads. Every one of them used to be wrapped as `product:<raw value>`, so a
+// `product:sig_…` ref asked for `product:product:sig_…` and a Pivota product URL for `product:https://…` —
+// both measured live 2026-09-27 as reason:not_found, kb_key_count:1, for a sig whose intel product_id finds.
+function intelIdentityProductId(params = {}) {
+  const p = params || {};
+  for (const v of [p.product_id, p.product_ref, p.pivota_signature_id]) {
+    const id = parseProductRefArg(v).productId;
+    if (id) return id;
+  }
+  return null;
+}
+
+// Candidate KB keys, most specific first: the hydrated identity (when the resolver found one), then the
+// request's own ids. A `url:` ref (or a merchant URL) is looked up as the KB's own `url:` key; a `text:`
+// ref names no KB key.
+function buildIntelKbKeys(params = {}, identity = null) {
+  const p = params || {};
+  const keys = [];
+  const add = (key) => {
+    if (!keys.includes(key)) keys.push(key);
+  };
+  const product = (v) => {
+    const s = v == null ? '' : String(v).trim();
+    if (s) add(`product:${s}`);
+  };
+  const url = (v) => {
+    const s = v == null ? '' : String(v).trim();
+    if (s) add(`url:${s}`);
+  };
+  if (identity && typeof identity === 'object') {
+    product(identity.canonical_entity_id);
+    product(identity.pivota_signature_id);
+    for (const sig of Array.isArray(identity.member_sig_ids) ? identity.member_sig_ids : []) product(sig);
+    for (const src of Array.isArray(identity.member_source_ids) ? identity.member_source_ids : []) product(src);
+    url(identity.canonical_url);
+  }
+  // Always include the request-provided identities (covers the flag-off / unresolved path).
+  for (const v of [p.pivota_signature_id, p.product_id, p.product_ref]) {
+    const parsed = parseProductRefArg(v);
+    product(parsed.productId);
+    for (const ref of parsed.refs) {
+      const m = /^url:(.+)$/i.exec(ref);
+      if (m) url(m[1]);
+    }
+  }
+  return keys;
 }
 
 /**
@@ -238,8 +432,8 @@ function makeGetIntel(deps = {}) {
         kbKeys = [];
       }
     }
-    if ((!Array.isArray(kbKeys) || kbKeys.length === 0) && nonEmpty(productId)) {
-      kbKeys = [`product:${productId}`];
+    if (!Array.isArray(kbKeys) || kbKeys.length === 0) {
+      kbKeys = buildIntelKbKeys(p, null);
     }
     kbKeys = (Array.isArray(kbKeys) ? kbKeys : []).filter((k) => nonEmpty(k));
     if (kbKeys.length === 0) {
@@ -315,4 +509,9 @@ module.exports = {
   DEFAULT_RELATIONS,
   candidateSnapshotNeedsHydration,
   hydrateCandidateSnapshotFromEntity,
+  pairCurrencyFromOfferPrices,
+  fillStoredAmountCurrencies,
+  parseProductRefArg,
+  buildIntelKbKeys,
+  intelIdentityProductId,
 };

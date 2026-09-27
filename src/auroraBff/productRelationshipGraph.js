@@ -4,6 +4,7 @@ const logger = require('../logger');
 const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
+const { refKeyMatchSql, productGroupRefKeyMatchSql } = require('../services/relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
@@ -1433,6 +1434,70 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
   return refs;
 }
 
+// The live offers behind each edge ref, for pairing a stored bare amount with its currency
+// (intelligenceReads.fillStoredAmountCurrencies). A ref's key is matched the way the canonical resolver
+// matches it — the indexed source_product_id / product_key / pivota_signature_id branches, plus a
+// `product:pg_…` group through its members — but only `product:` is stripped: `retailer:…` / `ulta:…` keys
+// carry their colon. Returns Map<lowercased input ref, Array<{currency, amounts}>>; offers without a
+// currency are left out (they cannot name one).
+const OFFER_PRICE_REF_KEY_COLUMNS = Object.freeze(['source_product_id', 'product_key', 'pivota_signature_id']);
+const OFFER_PRICE_MAX_REFS = 200;
+
+async function listCatalogOfferPricesForRefs(refs = [], { queryFn = query } = {}) {
+  const inputs = Array.from(new Set(
+    (Array.isArray(refs) ? refs : [refs]).map((ref) => normalizeLower(ref, 512)).filter(Boolean),
+  )).slice(0, OFFER_PRICE_MAX_REFS);
+  const out = new Map();
+  if (!inputs.length) return out;
+  try {
+    const res = await queryFn(
+      `
+        WITH input_refs AS (
+          SELECT DISTINCT raw AS input_ref, regexp_replace(raw, '^product:', '') AS ref_key
+          FROM unnest($1::text[]) AS raw
+        ),
+        matched AS (
+          ${OFFER_PRICE_REF_KEY_COLUMNS.map((column) => `
+          SELECT i.input_ref, cp.product_key
+          FROM input_refs i
+          JOIN catalog_products cp ON ${refKeyMatchSql(column, 'cp', 'i.ref_key')}`).join(`
+          UNION`)}
+          UNION
+          SELECT i.input_ref, cp.product_key
+          FROM input_refs i
+          JOIN product_group_members pgm ON ${productGroupRefKeyMatchSql('pgm', 'i.ref_key')}
+          JOIN catalog_products cp
+            ON cp.merchant_id = pgm.merchant_id
+           AND cp.platform = pgm.platform
+           AND cp.source_product_id = pgm.platform_product_id
+        )
+        SELECT m.input_ref, o.currency, o.list_price, o.merchant_effective_price, o.estimated_best_price
+        FROM matched m
+        JOIN catalog_offers o ON o.product_key = m.product_key
+        WHERE o.suppressed_at IS NULL
+          AND o.currency IS NOT NULL
+        LIMIT 5000
+      `,
+      [inputs],
+    );
+    for (const row of Array.isArray(res?.rows) ? res.rows : []) {
+      const ref = normalizeLower(row.input_ref, 512);
+      const currency = normalizeString(row.currency, 8);
+      if (!ref || !currency) continue;
+      const amounts = [row.list_price, row.merchant_effective_price, row.estimated_best_price]
+        .map(toNumberOrNull)
+        .filter((n) => n != null);
+      if (!out.has(ref)) out.set(ref, []);
+      out.get(ref).push({ currency: currency.toUpperCase(), amounts });
+    }
+  } catch (err) {
+    const code = normalizeString(err && err.code, 20);
+    if (code === 'NO_DATABASE' || code === '42P01') return out;
+    throw err;
+  }
+  return out;
+}
+
 async function getRelationshipGraphCandidatesForAnchor({
   anchor,
   market = DEFAULT_MARKET,
@@ -1773,6 +1838,7 @@ module.exports = {
   stripRelationshipRefPrefix,
   buildAnchorRefsFromProduct,
   expandAnchorRefsWithGroupSiblings,
+  listCatalogOfferPricesForRefs,
   listApprovedRelationshipEdgesForAnchor,
   listApprovedRelationshipEdgesForAnchorUncollapsed,
   collapseApprovedRelationshipEdgesToFamilies,

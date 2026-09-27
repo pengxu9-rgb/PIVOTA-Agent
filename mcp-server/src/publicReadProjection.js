@@ -91,6 +91,41 @@ function publicProductId(p) {
 }
 const PIVOTA_HOST_RE = /^https:\/\/[^/]*\bpivota\.(cc|ai|com)\b/i;
 
+// A relationship-graph ref, or the caller's own product argument echoed back as subject.id → the public
+// product id, or null when it names none. get_alternatives' related.ref is a GRAPH ref (`product:sig_…`),
+// and served verbatim it became product_id "product:sig_…" and pivota_url …/products/product:sig_… — a
+// page that answers HTTP 500 (live, 2026-09-27), while …/products/sig_… renders. A get_intel caller's
+// merchant URL was likewise echoed into …/products/https://www.ulta.com/…. Only `product:` wraps an id
+// (`url:` / `text:` refs and non-Pivota URLs name no Pivota product); a Pivota product URL yields its id; a
+// colon inside an id (ulta:…, retailer:…) is part of the id. Anything outside the id alphabet — which
+// includes every other URL, since '/' is not in it — is refused rather than pasted into a Pivota URL.
+const PIVOTA_PRODUCT_PAGE_RE = /^https?:\/\/(?:[a-z0-9-]+\.)*pivota\.(?:cc|ai|com)\/products\/([^/?#]+)/i;
+const PUBLIC_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/;
+
+function publicIdFromRef(v) {
+  const s = str(v);
+  if (!s) return null;
+  let id = s;
+  const page = PIVOTA_PRODUCT_PAGE_RE.exec(s);
+  if (page) {
+    try {
+      id = decodeURIComponent(page[1]);
+    } catch {
+      id = page[1];
+    }
+  }
+  const ns = /^(product|url|text):(.*)$/i.exec(id);
+  if (ns) {
+    if (ns[1].toLowerCase() !== 'product') return null;
+    id = ns[2].trim();
+  }
+  return PUBLIC_ID_RE.test(id) ? id : null;
+}
+
+function pivotaProductUrl(id, base) {
+  return id ? `${base}/products/${id}` : null;
+}
+
 function pdpUrl(p, base) {
   // The citable URL must be a PIVOTA-hosted canonical URL. Row URL fields are NOT trustworthy: for reseller/
   // referral rows even `pivota_canonical_url` is the reseller's page (e.g. ulta.com — verified in the live
@@ -355,9 +390,9 @@ function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
 
 function projectGetIntel(raw, { base = DEFAULT_PDP_BASE } = {}) {
   const r = isObj(raw) ? raw : {};
-  const productId = isObj(r.subject) ? str(r.subject.id) : null;
+  const productId = isObj(r.subject) ? publicIdFromRef(r.subject.id) : null;
   const sig = arr(r.signals)[0];
-  const pivota_url = productId ? `${base}/products/${productId}` : null;
+  const pivota_url = pivotaProductUrl(productId, base);
   const urlPart = pivota_url ? { pivota_url } : {};
   if (!isObj(sig)) {
     // intel:null must be PRESENT (honest "nothing reviewed"), so this shape is not compacted.
@@ -378,7 +413,7 @@ function projectGetIntel(raw, { base = DEFAULT_PDP_BASE } = {}) {
 
 function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
   const r = isObj(raw) ? raw : {};
-  const anchorId = isObj(r.subject) ? str(r.subject.id) : null;
+  const anchorId = isObj(r.subject) ? publicIdFromRef(r.subject.id) : null;
   const alternatives = arr(r.signals)
     .map((sig) => {
       if (!isObj(sig)) return null;
@@ -388,7 +423,7 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
       const priceAmt = finiteNum(related.price);
       const priceCurrency = str(related.currency);
       const ratio = isObj(v.price_comparison) ? finiteNum(v.price_comparison.price_ratio) : null;
-      const productId = str(related.ref) || null;
+      const productId = publicIdFromRef(related.ref);
       return compact({
         product_id: productId,
         brand: clamp(related.brand, 120),
@@ -404,7 +439,7 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
         watchouts: strList(v.watchouts, MAX_LIST_ITEMS),
         grade: str(e.grade) ? e.grade.toUpperCase() : null,
         citations: strList(e.sources, MAX_CITATIONS, 300),
-        pivota_url: productId ? `${base}/products/${productId}` : null,
+        pivota_url: pivotaProductUrl(productId, base),
       });
     })
     .filter(Boolean)
@@ -481,6 +516,7 @@ export {
   projectGetProduct,
   projectGetIntel,
   projectGetAlternatives,
+  publicIdFromRef,
   findLeakedFields,
   DENYLIST_FIELDS,
   MAX_RESPONSE_BYTES,
