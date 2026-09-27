@@ -139,7 +139,7 @@ function seedDetailRow() {
   };
 }
 
-function install(db, { groupQueryThrows = false } = {}) {
+function install(db, { groupQueryThrows = false, signatureRowOverrides = {} } = {}) {
   const seen = [];
   db.query.mockImplementation(async (sql, params) => {
     seen.push({ sql: String(sql || ''), params });
@@ -148,7 +148,7 @@ function install(db, { groupQueryThrows = false } = {}) {
       return { rows: groupRows() };
     }
     if (isExactSigQuery(sql)) {
-      return { rows: params?.[0] === MINTED_SIG ? [mintedSignatureRow()] : [] };
+      return { rows: params?.[0] === MINTED_SIG ? [{ ...mintedSignatureRow(), ...signatureRowOverrides }] : [] };
     }
     if (isSeedDetailQuery(sql)) return { rows: [seedDetailRow()] };
     return { rows: [] };
@@ -259,5 +259,54 @@ describe('get_pdp_v2 product_group subject -> member signature lane', () => {
     const identity = res.body?.metadata?.identity_resolution || {};
     expect(identity).not.toHaveProperty('requested_product_group_id');
     expect(seen.some((q) => isCanonicalGroupQuery(q.sql) && q.params?.includes(GROUP_ID))).toBe(false);
+  });
+
+  // Post-deploy monitoring counts pg_ traffic from the log, and on a re-routed request
+  // requested_product_id is the SIG, so the pg_ id has to ride on the line itself.
+  function spyLogger() {
+    const logger = require('../../src/logger');
+    return jest.spyOn(logger, 'info');
+  }
+  const logFields = (spy, msg) =>
+    spy.mock.calls.filter((call) => call[1] === msg).map((call) => call[0] || {});
+
+  test("the 'get_pdp_v2 completed' line carries the pg_ id of a re-routed request, null for a sig request", async () => {
+    const { app, db } = loadServerWithDb();
+    install(db);
+    const spy = spyLogger();
+
+    const viaGroup = await invoke(app, groupSubject);
+    expect(viaGroup.status).toBe(200);
+    const groupLines = logFields(spy, 'get_pdp_v2 completed');
+    expect(groupLines).toHaveLength(1);
+    expect(groupLines[0].requested_product_group_id).toBe(GROUP_ID);
+    expect(groupLines[0].requested_product_id).toBe(MINTED_SIG);
+
+    spy.mockClear();
+    const viaSig = await invoke(app, { product_ref: { product_id: MINTED_SIG } });
+    expect(viaSig.status).toBe(200);
+    const sigLines = logFields(spy, 'get_pdp_v2 completed');
+    expect(sigLines).toHaveLength(1);
+    expect(sigLines[0].requested_product_group_id).toBeNull();
+  });
+
+  test('the serving-eligibility block line carries the pg_ id too', async () => {
+    const { app, db } = loadServerWithDb();
+    install(db, {
+      signatureRowOverrides: {
+        signature_serving_eligible: false,
+        signature_blocker_code: 'low_quality',
+        signature_blocker_detail: 'content quality below threshold',
+        signature_content_quality_score: 0.1,
+      },
+    });
+    const spy = spyLogger();
+
+    const res = await invoke(app, groupSubject);
+    expect(res.status).toBe(404);
+    expect(res.body?.error).toBe('PRODUCT_NOT_SERVABLE');
+    const blocked = logFields(spy, 'get_pdp_v2 blocked by serving eligibility gate');
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0].requested_product_group_id).toBe(GROUP_ID);
   });
 });

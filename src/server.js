@@ -43108,6 +43108,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   reason: details.reason,
                   blocker_code: details.blocker_code || null,
                   content_key: details.content_key || null,
+                  requested_product_group_id: pdpV2ProductGroupSubjectId,
                 },
                 'get_pdp_v2 blocked by serving eligibility gate',
               );
@@ -45329,6 +45330,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalization_applied: canonicalizationApplied,
           canonicalization_reason_code: canonicalizationReasonCode || null,
           identity_resolution_source: identityResolutionSource,
+          // The pg_ id a bare product_group subject asked for before it was answered as its member's
+          // sig (#2313); null otherwise. requested_product_id above is that sig, so without this the
+          // pg_ traffic on this line is indistinguishable from direct sig requests.
+          requested_product_group_id: pdpV2ProductGroupSubjectId,
           include: includeList,
           modules_returned: modules.map((module) => module.type),
           missing_modules: missing.map((module) => module.type),
