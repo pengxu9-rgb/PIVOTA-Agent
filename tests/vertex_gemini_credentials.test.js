@@ -13,6 +13,7 @@ const ENV_KEYS = [
   'GOOGLE_APPLICATION_CREDENTIALS_JSON',
   'GOOGLE_APPLICATION_CREDENTIALS',
   'K_SERVICE',
+  'CLOUD_RUN_JOB',
   'GAE_SERVICE',
   'GCE_METADATA_HOST',
 ];
@@ -229,6 +230,23 @@ describe('vertexGemini credential source', () => {
     expect(options.vertexai).toBe(true);
     expect(options.googleAuthOptions).toBeUndefined();
     expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
+  });
+
+  test('a Cloud Run JOB is a metadata-server credential source on its first call', () => {
+    // Cloud Run jobs set CLOUD_RUN_JOB, not K_SERVICE. Without this marker the gate falls to the
+    // background probe and answers false on the first call, which is the only call a one-shot job
+    // script makes (relgraph-sync ai_review failed this way on 2026-09-27).
+    const seam = loadSeam({
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'proj-metadata',
+      CLOUD_RUN_JOB: 'relgraph-sync',
+    });
+    expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
+  });
+
+  test('with no runtime marker and no credential the first call still fails closed', () => {
+    const seam = loadSeam({ VERTEX_AI_ENABLED: 'true', GOOGLE_CLOUD_PROJECT: 'proj-none' });
+    expect(seam.credentialsAvailable('ak-ignored')).toBe(false);
   });
 
   describe('a credential that is present but unusable', () => {

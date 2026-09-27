@@ -202,7 +202,9 @@ function credentialSourceConfigured() {
   }
   return Boolean(
     String(process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim() ||
-      process.env.K_SERVICE || // Cloud Run
+      process.env.K_SERVICE || // Cloud Run service
+      process.env.CLOUD_RUN_JOB || // Cloud Run job: jobs do not set K_SERVICE, and a one-shot script's
+      // first call is its only call, so a probe that answers on the second call never helps it.
       process.env.GAE_SERVICE || // App Engine
       process.env.GCE_METADATA_HOST,
   );

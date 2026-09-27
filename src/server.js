@@ -321,6 +321,7 @@ const {
 } = beautyRelevanceGate;
 const {
   resolveCanonicalCatalogEntityGroup,
+  resolveProductGroupSubjectSignatureId,
   resolveMerchantScopedSourceProductId,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
@@ -560,6 +561,13 @@ const PIVOT_BEAUTY_CONTRACT_V1_ENABLED = parseBooleanEnv(
 const CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED = parseBooleanEnv(
   process.env.CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED,
   false,
+);
+// get_pdp_v2 serves a `subject: product_group` pg_ id through the signature lane of the member the
+// group lane already picks (see resolveProductGroupSubjectSignatureId). Kill switch only: off restores
+// the group lane, which 404s every group whose pick is a P3 minted canonical.
+const PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED = parseBooleanEnv(
+  process.env.PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED,
+  true,
 );
 const PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
@@ -30902,11 +30910,14 @@ async function getCommerceRemoteMcpAdapter() {
         mapOffersResolveResponse,
         candidateSnapshotNeedsHydration,
         hydrateCandidateSnapshotFromEntity,
+        buildIntelKbKeys,
+        intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts, classifyVerifyPriceResponse } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
+        listCatalogOfferPricesForRefs,
       } = require('./auroraBff/productRelationshipGraph');
       const { getProductIntelKbEntry, getProductIntelKbEntries } = require('./auroraBff/productIntelKbStore');
       // Strict, independent gate for the agent surface (no consumer-flag fallback): off unless explicitly set.
@@ -30977,6 +30988,10 @@ async function getCommerceRemoteMcpAdapter() {
               if (hydrated) e.candidate_snapshot = hydrated;
             }
           },
+          // The stored amounts carry no currency (the builder never wrote one); pair each with the currency
+          // of its own listing's offers, and serve a price only in the buyer market's currency.
+          resolveOfferPrices: (refs) => listCatalogOfferPricesForRefs(refs),
+          servingCurrencyForMarket: (market) => resolveServingCurrency(market),
         }),
         // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
@@ -31007,45 +31022,22 @@ async function getCommerceRemoteMcpAdapter() {
           // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
           // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
           isReviewed: isServableProductIntelBundle,
+          // The KB is keyed by `product:<identity>` for several identities (sig / canonical pg_/sig_ /
+          // per-listing source id) and by `url:<url>`. Hydrate the queried product — named by product_id,
+          // product_ref or pivota_signature_id — to its full identity set (same resolver get_alternatives
+          // uses) so one id matches however the KB was keyed. Flag-gated + fail-open inside the resolver →
+          // the request's own keys when off/unresolved. The key shapes live in buildIntelKbKeys.
           resolveKbKeys: async (p) => {
-            const keys = [];
-            const pushUrl = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `url:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            const push = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `product:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            // The KB is keyed by `product:<identity>` for several identities (sig / canonical
-            // pg_/sig_ / per-listing source id). Hydrate the queried product to its full identity
-            // set (same resolver get_alternatives uses) so a single product_id matches however the
-            // KB was keyed. Flag-gated + fail-open inside the resolver → bare keys when off/unresolved.
             let identity = null;
             try {
               identity = await resolveAnchorIdentityForRelationshipGraph({
-                product_id: p.product_id,
+                product_id: intelIdentityProductId(p),
                 merchant_id: p.merchant_id,
               });
             } catch {
               identity = null;
             }
-            if (identity) {
-              push(identity.canonical_entity_id);
-              push(identity.pivota_signature_id);
-              for (const sig of Array.isArray(identity.member_sig_ids) ? identity.member_sig_ids : []) push(sig);
-              for (const src of Array.isArray(identity.member_source_ids) ? identity.member_source_ids : []) push(src);
-              pushUrl(identity.canonical_url);
-            }
-            // Always include the request-provided identities (covers the flag-off / unresolved path).
-            push(p.pivota_signature_id);
-            push(p.product_id);
-            push(p.product_ref);
-            return keys;
+            return buildIntelKbKeys(p, identity);
           },
         }),
         // The need-anchored shortlist: Pivota's prompt-level recommendation lane (the engine behind
@@ -41674,6 +41666,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           latencyMs,
         });
 	    };
+      // Set when a pg_ subject was re-routed onto its member's signature (see the block before the
+      // signature lane). Read by every identity_resolution this request emits, so a pg_ request that
+      // now reports its sig as requested_product_id still says which group the caller asked for.
+      let pdpV2ProductGroupSubjectId = null;
       const buildPdpV2IdentityResolution = ({
         requestedProductId = null,
         requestedMerchantId = null,
@@ -41692,6 +41688,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalization_reason_code: canonicalizationReasonCode || null,
         entry_precheck_missing: Boolean(entryPrecheckMissing),
         resolution_source: resolutionSource || null,
+        ...(pdpV2ProductGroupSubjectId ? { requested_product_group_id: pdpV2ProductGroupSubjectId } : {}),
       });
       const buildPdpV2RouteHealth = ({
         requestedProductId = null,
@@ -41890,6 +41887,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      // trees).
 		      let canonicalizationGroupElectionApplied = false;
 		      let identityResolutionSource = 'requested_route';
+          // PG_ SUBJECT -> ITS MEMBER'S SIGNATURE. A bare `subject: product_group` pg_ request is
+          // answered as the request for the sig of the member the group lane would render, so it
+          // takes the signature lane below (seed-route translation for P3 minted rows, prefetched
+          // serving eligibility, identity hydration) instead of the group lane, whose
+          // canonical_product_ref carries a minted row's name-slug source_product_id and 404s at
+          // fetch_canonical_product. Prod 2026-09-27: 14,464 of 22,012 signed pg_ groups pick a
+          // minted row. Only when the caller named nothing else: a product id, variant, offer or
+          // pinned seller keeps today's lanes. A failed lookup also keeps the group lane, which is
+          // exactly the pre-fix behaviour, never a new failure.
+          if (
+            PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED &&
+            !productId &&
+            !variantId &&
+            !offerId &&
+            !requestedMerchantId &&
+            payload.subject &&
+            typeof payload.subject === 'object' &&
+            String(payload.subject.type || '').trim().toLowerCase() === 'product_group'
+          ) {
+            const subjectGroupId = String(payload.subject.id || '').trim();
+            if (/^pg_/i.test(subjectGroupId)) {
+              const resolveSubjectSignatureStartedAt = Date.now();
+              const subjectSigId = await resolveProductGroupSubjectSignatureId({
+                productGroupId: subjectGroupId,
+                queryFn: query,
+              }).catch((err) => {
+                logger.warn(
+                  { err: err?.message || String(err), product_group_id: subjectGroupId },
+                  'get_pdp_v2 product_group subject signature lookup failed; keeping the group lane',
+                );
+                return null;
+              });
+              markPdpV2Phase('resolve_product_group_subject_signature', resolveSubjectSignatureStartedAt);
+              if (subjectSigId) {
+                productId = subjectSigId;
+                pdpV2ProductGroupSubjectId = subjectGroupId;
+              }
+            }
+          }
 		      const requestedProductIdForDiagnostics = productId || null;
           // ADR-009 — THE SELLER THE CALLER ADDRESSED, frozen here.
           //
@@ -42174,7 +42210,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const subjectId = subject ? String(subject.id || '').trim() : '';
 
 	      const offerProductGroupId = String(parsedOffer?.product_group_id || '').trim() || null;
-	      const hasExplicitProductGroup = subjectType === 'product_group' && subjectId;
+	      // A pg_ subject already re-routed onto its member's sig is, from here on, that sig request:
+	      // none of the explicit-group lanes may run for it, or the group lane would overwrite the
+	      // signature lane's ref with the one that 404s.
+	      const hasExplicitProductGroup =
+	        subjectType === 'product_group' && subjectId && !pdpV2ProductGroupSubjectId;
 
 	      if (!productId && !variantId && !offerProductGroupId && !hasExplicitProductGroup) {
 	        return res.status(400).json({
@@ -42507,7 +42547,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        });
 		      }
 	      const resolveSubjectGroupStartedAt = Date.now();
-	      if (subjectType === 'product_group' && subjectId) {
+	      if (hasExplicitProductGroup) {
 	        try {
 	          let fetchedGroup = await resolveCanonicalCatalogEntityGroup({
 	            productGroupId: subjectId,
