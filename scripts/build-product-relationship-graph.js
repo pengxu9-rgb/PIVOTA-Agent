@@ -3,7 +3,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { closePool, query } = require('../src/db');
+const { closePool, query, withClient } = require('../src/db');
+const {
+  DEFAULT_QUEUED_FRESH_DAYS,
+  capCandidateFanInGlobal,
+  fanInLockKey,
+  isCappedEdge,
+  loadStoredAnchorsByCandidate,
+} = require('../src/auroraBff/relationshipFanIn');
 const {
   buildProductRelationshipGraphDryRun,
   CURATED_NEED_NODES,
@@ -255,6 +262,25 @@ function readRefsFile(filePath) {
     return collectRefsFromManifest(JSON.parse(body));
   }
   return parseDelimitedList(body);
+}
+
+const AFFECTED_SCOPE_ARGS = [
+  'affected-refs',
+  'external-product-ids',
+  'sig-ids',
+  'content-keys',
+  'affected-refs-file',
+  'affected-products-file',
+  'external-product-ids-file',
+  'sig-ids-file',
+  'content-keys-file',
+];
+
+// True when the caller SAID which products this run touches, even if the list is empty. The
+// routine job always passes --affected-products-file; on a quiet day the manifest is `[]`, and
+// that must mean "no products" (no anchors, no niche edges), not "no scope given" (full run).
+function affectedScopeProvided(argv = process.argv) {
+  return AFFECTED_SCOPE_ARGS.some((name) => argv.includes(`--${name}`));
 }
 
 function collectAffectedRefsFromArgs() {
@@ -836,6 +862,7 @@ async function buildInputsFromDb({
   anchorOffset = 0,
   market = 'US',
   affectedRefs = [],
+  affectedScopeProvided: scopeProvided = Array.isArray(affectedRefs) && affectedRefs.length > 0,
   maxPerAnchor = 24,
   includeTransitiveRecall = true,
   maxBridgePerAnchor = 8,
@@ -847,6 +874,28 @@ async function buildInputsFromDb({
   approvedLiveExternalSeedAnchorLimit = sourceLimit,
   missingCandidateLabelsOnly = false,
 } = {}) {
+  if (scopeProvided && !(Array.isArray(affectedRefs) && affectedRefs.length)) {
+    // An explicit, empty scope: this run touches no products. Nothing to anchor, no need-node
+    // candidates, and no source load (the pool would only feed niche edges outside the scope).
+    return {
+      anchors: [],
+      candidatesByAnchor: {},
+      needCandidatesById: {},
+      needs: includeNeedNodes ? CURATED_NEED_NODES : [],
+      sourceCounts: null,
+      sourceDiagnostics: {
+        database_configured: Boolean(process.env.DATABASE_URL),
+        products_available: 0,
+        affected_ref_count: 0,
+        affected_anchor_count: 0,
+        affected_scope_empty: true,
+        need_candidate_pool: 'affected',
+        need_candidate_pool_size: 0,
+        source_counts: null,
+        builder_options: { affected_refs_scoped: true, include_need_nodes: includeNeedNodes },
+      },
+    };
+  }
   const sourceInputs = await loadProductRelationshipGraphSourceInputs({
     queryFn: query,
     limit: sourceLimit,
@@ -872,13 +921,19 @@ async function buildInputsFromDb({
   }
   const products = sourceInputs.products || [];
   const affectedScopedProducts = filterAffectedAnchors(products, affectedRefs);
-  const anchorUniverse = Array.isArray(affectedRefs) && affectedRefs.length
+  const affectedScoped = scopeProvided;
+  const anchorUniverse = affectedScoped
     ? affectedScopedProducts
     : includeApprovedLiveExternalSeedAnchors && sourceInputs.approvedLiveExternalSeedAnchors?.length
     ? sourceInputs.approvedLiveExternalSeedAnchors
     : products;
   const offset = Math.max(0, Number(anchorOffset) || 0);
   const anchors = anchorUniverse.slice(offset, offset + limit);
+  // Need-node (niche_specialist) candidates come from the products this run touches. Before
+  // 2026-09-27 they came from the whole source pool regardless of --affected-*, so every shard
+  // re-emitted the same ~86 global niche edges (0 of them in its own scope) and per-shard counts
+  // could not be summed. A run with no affected refs keeps the whole pool.
+  const needCandidatePool = affectedScoped ? affectedScopedProducts : products;
   return {
     anchors,
     candidatesByAnchor: buildCandidatesByAnchorFromSources({
@@ -893,7 +948,7 @@ async function buildInputsFromDb({
       maxTransitivePerAnchor,
       fanOutFamilyCandidatesToSiblingAnchors,
     }),
-    needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(products) : {},
+    needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(needCandidatePool) : {},
     needs: includeNeedNodes ? CURATED_NEED_NODES : [],
     sourceCounts: sourceInputs.source_counts,
     sourceDiagnostics: {
@@ -901,6 +956,8 @@ async function buildInputsFromDb({
       products_available: products.length,
       affected_ref_count: Array.isArray(affectedRefs) ? affectedRefs.length : 0,
       affected_anchor_count: affectedScopedProducts.length,
+      need_candidate_pool: affectedScoped ? 'affected' : 'all',
+      need_candidate_pool_size: needCandidatePool.length,
       source_counts: sourceInputs.source_counts,
       builder_options: {
         source_limit: sourceLimit,
@@ -934,6 +991,11 @@ async function main() {
   const defaultLabelState = resolveDefaultLabelState(reviewStatusArg);
   const maxPerAnchor = numberArg('max-per-anchor', 24, { min: 1, max: 100 });
   const maxAnchorsPerCandidate = numberArg('max-anchors-per-candidate', DEFAULT_MAX_ANCHORS_PER_CANDIDATE, { min: 1, max: 1000 });
+  const fanInQueuedFreshDays = numberArg(
+    'fan-in-queued-fresh-days',
+    Number(process.env.RELGRAPH_FAN_IN_QUEUED_FRESH_DAYS) || DEFAULT_QUEUED_FRESH_DAYS,
+    { min: 1, max: 365 },
+  );
   const includeTransitiveRecall = !hasFlag('no-transitive-recall');
   const maxBridgePerAnchor = numberArg('max-bridge-per-anchor', 8, { min: 1, max: 24 });
   const maxBridgeCandidates = numberArg('max-bridge-candidates', 8, { min: 1, max: 24 });
@@ -962,6 +1024,7 @@ async function main() {
     anchorOffset,
     market,
     affectedRefs,
+    affectedScopeProvided: affectedScopeProvided(),
     maxPerAnchor,
     includeTransitiveRecall,
     maxBridgePerAnchor,
@@ -1012,32 +1075,73 @@ async function main() {
     }
   }
 
+  // Global fan-in cap (whole stored graph, not just this build). The cap is decided AFTER
+  // classification and only over edges that will persist in a counting state: a
+  // prefilter_rejected edge never serves and must not spend a slot a viable lower-scored anchor
+  // needs. Read-only pre-pass in every mode so the dry-run summary reports what a write would
+  // drop; the apply path recounts per candidate inside its own transaction and lock (see
+  // persistEdgesWithGlobalFanInCap).
+  const classifyPure = (edge) => classifyEdgeForPrefilter({
+    edge,
+    defaultLabelState,
+    anchorAttrs: attrsByKey.get(normalizeKey(edge.anchor_ref)),
+    candidateAttrs: attrsByKey.get(normalizeKey(edge.candidate_product_ref)),
+  });
+  const countingEdges = report.edges.filter((edge) => isCappedEdge(edge) && classifyPure(edge).label_state !== 'prefilter_rejected');
+  const globalCap = capCandidateFanInGlobal(
+    countingEdges,
+    await loadStoredAnchorsByCandidate({
+      candidateRefs: countingEdges.map((edge) => edge.candidate_product_ref),
+      market,
+      queryFn: query,
+      queuedFreshDays: fanInQueuedFreshDays,
+    }),
+    { cap: maxAnchorsPerCandidate },
+  );
+  const removedKeys = new Set([...globalCap.dropped, ...globalCap.skipped].map((row) => edgePairKey(row.anchor_ref, row.candidate_ref, row.metrics.relation_type)));
+  report.edges = report.edges.filter((edge) => !removedKeys.has(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)));
+  report.rejected_edges.push(...globalCap.dropped, ...globalCap.skipped);
+  report.summary.edge_count = report.edges.length;
+  report.summary.rejected_count = report.rejected_edges.length;
+  report.summary.relation_counts = report.edges.reduce((acc, edge) => {
+    acc[edge.relation_type] = Number(acc[edge.relation_type] || 0) + 1;
+    return acc;
+  }, {});
+
   let applied = 0;
   let prefilterRejected = 0;
   let prefilterPassed = 0;
   let prefilterSkipped = 0;
+  let fanInCappedAtWrite = 0;
   if (hasFlag('apply')) {
-    for (const edge of report.edges) {
-      const anchorAttrs = attrsByKey.get(normalizeKey(edge.anchor_ref));
-      const candidateAttrs = attrsByKey.get(normalizeKey(edge.candidate_product_ref));
+    const classify = (edge) => {
       const classification = classifyEdgeForPrefilter({
         edge,
         defaultLabelState,
-        anchorAttrs,
-        candidateAttrs,
+        anchorAttrs: attrsByKey.get(normalizeKey(edge.anchor_ref)),
+        candidateAttrs: attrsByKey.get(normalizeKey(edge.candidate_product_ref)),
       });
       if (classification.bucket === 'rejected') prefilterRejected += 1;
       else if (classification.bucket === 'passed') prefilterPassed += 1;
       else if (classification.bucket === 'skipped') prefilterSkipped += 1;
-
-      // eslint-disable-next-line no-await-in-loop
-      await upsertRelationshipCandidateLabel({
-        ...edge,
-        edge_id: edge.id,
-        label_state: classification.label_state,
-        prefilter_reasons: classification.prefilter_reasons,
-      });
-      applied += 1;
+      return classification;
+    };
+    const persisted = await persistEdgesWithGlobalFanInCap({
+      edges: report.edges,
+      market,
+      cap: maxAnchorsPerCandidate,
+      queuedFreshDays: fanInQueuedFreshDays,
+      classify,
+    });
+    applied = persisted.applied;
+    fanInCappedAtWrite = persisted.dropped.length;
+    const removedAtWrite = [...persisted.dropped, ...persisted.skipped];
+    if (removedAtWrite.length) {
+      const keys = new Set(removedAtWrite.map((row) => edgePairKey(row.anchor_ref, row.candidate_ref, row.metrics.relation_type)));
+      report.edges = report.edges.filter((edge) => !keys.has(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)));
+      report.rejected_edges.push(...removedAtWrite);
+      report.summary.edge_count = report.edges.length;
+      report.summary.rejected_count = report.rejected_edges.length;
     }
   }
 
@@ -1063,6 +1167,14 @@ async function main() {
       prefilter_passed_count: prefilterPassed,
       prefilter_skipped_count: prefilterSkipped,
       review_priority_ordered: reviewPriorityOrdered,
+      max_anchors_per_candidate_global: globalCap.cap,
+      fan_in_candidates_checked_global: globalCap.candidates_checked,
+      fan_in_max_existing_anchors_global: globalCap.max_existing_anchors,
+      fan_in_max_before_cap_global: globalCap.max_fan_in_global_before_cap,
+      fan_in_capped_count_global: globalCap.dropped.length + fanInCappedAtWrite,
+      fan_in_capped_at_write_count_global: fanInCappedAtWrite,
+      fan_in_skipped_unwritable_count_global: globalCap.skipped.length,
+      fan_in_queued_fresh_days: fanInQueuedFreshDays,
     },
   };
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
@@ -1081,6 +1193,98 @@ async function main() {
     fs.writeFileSync(outPath, `${JSON.stringify(finalReport, null, 2)}\n`, 'utf8');
   }
   process.stdout.write(`${JSON.stringify(finalReport.summary, null, 2)}\n`);
+}
+
+// Write path for one build. Non-capped relations (related_product, niche_specialist) upsert
+// directly. Dupe / competitive_alternative edges are grouped by candidate; each group runs in ONE
+// transaction that takes pg_advisory_xact_lock on the candidate, recounts the candidate's stored
+// anchors (live + queued, not expired), keeps at most (cap - existing) new anchors best-first and
+// upserts only those. The lock makes two writers on one candidate serialise; the recount inside
+// it makes the second writer see the first writer's rows.
+function edgePairKey(anchorRef, candidateRef, relationType) {
+  return `${normalizeLower(anchorRef, 260)}|${normalizeLower(candidateRef, 260)}|${normalizeLower(relationType, 64)}`;
+}
+
+const COUNTING_LABEL_STATES = new Set(['generated', 'review_ready']);
+
+async function persistEdgesWithGlobalFanInCap({
+  edges = [],
+  market = 'US',
+  cap,
+  queuedFreshDays = DEFAULT_QUEUED_FRESH_DAYS,
+  classify = () => ({ label_state: 'generated', prefilter_reasons: null }),
+  runInClient = withClient,
+  queryFn = query,
+} = {}) {
+  let applied = 0;
+  const dropped = [];
+  const skipped = [];
+  // Classification comes first: it decides the label_state a row will land in, and only rows
+  // that land in a counting state may spend a fan-in slot.
+  const classified = edges.map((edge) => ({ edge, classification: classify(edge) }));
+  const upsert = async ({ edge, classification }, queryFnForRow) => {
+    await upsertRelationshipCandidateLabel({
+      ...edge,
+      edge_id: edge.id,
+      label_state: classification.label_state,
+      prefilter_reasons: classification.prefilter_reasons,
+    }, { queryFn: queryFnForRow });
+    applied += 1;
+  };
+
+  const byCandidate = new Map();
+  for (const row of classified) {
+    if (!isCappedEdge(row.edge)) {
+      // eslint-disable-next-line no-await-in-loop
+      await upsert(row, queryFn);
+      continue;
+    }
+    const key = normalizeLower(row.edge.candidate_product_ref, 260);
+    if (!byCandidate.has(key)) byCandidate.set(key, []);
+    byCandidate.get(key).push(row);
+  }
+
+  for (const [candidateRef, group] of Array.from(byCandidate.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    // eslint-disable-next-line no-await-in-loop
+    await runInClient(async (client) => {
+      const clientQuery = (text, params) => client.query(text, params);
+      await clientQuery('BEGIN');
+      try {
+        await clientQuery('SELECT pg_advisory_xact_lock(hashtext($1))', [fanInLockKey(candidateRef)]);
+        const stored = await loadStoredAnchorsByCandidate({ candidateRefs: [candidateRef], market, queryFn: clientQuery, queuedFreshDays });
+        const unwritable = (stored.get(candidateRef) || {}).unwritable || new Set();
+        const byKey = new Map(group.map((row) => [edgePairKey(row.edge.anchor_ref, row.edge.candidate_product_ref, row.edge.relation_type), row]));
+        const counting = group.filter((row) => COUNTING_LABEL_STATES.has(row.classification.label_state)).map((row) => row.edge);
+        const decision = capCandidateFanInGlobal(counting, stored, { cap });
+        for (const edge of decision.kept) {
+          // eslint-disable-next-line no-await-in-loop
+          await upsert(byKey.get(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)), clientQuery);
+        }
+        // Non-counting rows (prefilter_rejected) take no slot; they are written unless the stored
+        // row cannot be changed by a builder write (then the upsert would no-op anyway).
+        for (const row of group) {
+          if (COUNTING_LABEL_STATES.has(row.classification.label_state)) continue;
+          if (unwritable.has(normalizeLower(row.edge.anchor_ref, 260))) {
+            skipped.push({ anchor_ref: row.edge.anchor_ref, candidate_ref: row.edge.candidate_product_ref, errors: ['stored_row_not_writable'], metrics: { relation_type: row.edge.relation_type, score_total: row.edge.score_total } });
+            continue;
+          }
+          // eslint-disable-next-line no-await-in-loop
+          await upsert(row, clientQuery);
+        }
+        dropped.push(...decision.dropped);
+        skipped.push(...decision.skipped);
+        await clientQuery('COMMIT');
+      } catch (err) {
+        try {
+          await clientQuery('ROLLBACK');
+        } catch {
+          // the original error is the one to surface
+        }
+        throw err;
+      }
+    });
+  }
+  return { applied, dropped, skipped };
 }
 
 async function runCli({ runMain = main, closeDbPool = closePool } = {}) {
@@ -1104,6 +1308,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  main,
+  affectedScopeProvided,
+  persistEdgesWithGlobalFanInCap,
   buildInputsFromDb,
   buildCandidateMap,
   buildNeedCandidateMap,
