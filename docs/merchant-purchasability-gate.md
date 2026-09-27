@@ -765,11 +765,25 @@ backend never emits, which is why the tests were green. So:
   COLD seed offer (`cart_prefilled` false or null, no cart) keeps its `/r` hop: it lands on the product
   page, which is the browse link the offer falls back to. `execution_spec.pdp_url` and
   `source.canonical_url` survive either way.
-* ⚠️ **Accepted cost: a declined cart offer has no `/r` hop left, so a click on it writes no
-  `surface_click_events` row.** Its `execution_spec.pdp_url` still carries the click id, so the
-  order-side join survives. The gateway cannot re-mint a `/r` token to the PDP; the clean shape — a `/r`
-  hop degraded to the PDP, as `checkout_preflight`'s `degraded_to_referral` already does — can only be
-  produced by the backend, and consulting purchasability there is a backend follow-up.
+  The same decline also removes `execution_spec.variant_id` — "the numeric storefront variant id a cart
+  permalink can be built from"; beside `merchant_domain` it IS the cart, one string template away — and
+  rewrites `execution_spec.tracking` to the backend's no-cart values (`join_mode: referral_only`,
+  `param: pvt_click_id`, which is what `pdp_url` actually carries). `click_id` is kept.
+* **Pivota's `/r` host is never a merchant.** A stamped URL of the `<api>/r?token=…` shape (a backend
+  `catalog_offer`, or a seed offer with no usable `merchant_domain`) falls back to where the offer's own
+  links land: `url`, then `source.canonical_url` / `destination_url` / `domain`; with none of those the
+  offer is not asked about at all. A catalog offer's hop is referral-only (the backend builds it with no
+  cart variant), so a declined catalog offer keeps it.
+* ⚠️ **Accepted cost: a declined Shopify cart offer loses its ORDER-SIDE attribution.** Carts are only
+  built for Shopify (`resolve_cart_permalink`), and there the cart attribute was the only order-side
+  carrier; `pdp_url`'s `pvt_click_id` / `utm_content` are click-side only (backend
+  `services/outbound_links_service.py`), and `pdp_url` is null when its host differs from the cart's.
+  The backend has also already written an issued-click row for the withheld hop at resolve time
+  (`_record_issued_clicks`), so issued-click counts include links this door did not serve. The gateway
+  cannot re-mint a `/r` token to the PDP; the clean shape — a `/r` hop degraded to the PDP, as
+  `checkout_preflight`'s `degraded_to_referral` already produces, with the click recorded against what
+  was actually served — can only come from the backend, and consulting purchasability there is a
+  backend follow-up. All of this is dark until the gate is armed with the backend enforcing.
 
 **The URL matcher recognises the shapes that actually occur.** Anchoring a cart/checkout path at the
 start of the path missed `https://merchant.com/12345678/checkouts/abcdef` (classic Shopify, shop-id

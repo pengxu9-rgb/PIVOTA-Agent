@@ -200,11 +200,29 @@ function readOfferMerchantDomain(offer) {
   if (named) return named;
   const url = readOfferStampedCheckoutUrl(offer);
   if (!url) return null;
+  let parsed;
   try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '') || null;
+    parsed = new URL(url);
   } catch {
     return null;
   }
+  if (!isPivotaRedirect(parsed)) return parsed.hostname.toLowerCase().replace(/^www\./, '') || null;
+  // THE STAMPED URL IS PIVOTA'S OWN `/r` HOP (a backend catalog offer, or a seed offer without a usable
+  // `merchant_domain`). That host is never a merchant: asking about it keys the page on a fact that
+  // cannot exist. The merchant is where the offer's own links land.
+  // (The offer's `source` BLOCK — where the row came from — not a gate decision's `source`.)
+  const { url: genericUrl, source: origin } = offer;
+  const from = origin && typeof origin === 'object' && !Array.isArray(origin) ? origin : {};
+  for (const candidate of [genericUrl, from.canonical_url, from.destination_url, from.domain]) {
+    const host = hostFromDomainish(candidate);
+    if (host) return host;
+  }
+  return null;
+}
+
+/** `<api>/r?token=…` — pivota-backend `_make_external_redirect_url`'s shape. Path AND token, so a merchant's own `/r` page is not it. */
+function isPivotaRedirect(parsed) {
+  return parsed.pathname === '/r' && parsed.searchParams.has('token');
 }
 
 function declinedSetOf(options) {
@@ -368,6 +386,9 @@ function stripCheckoutUrlsDeep(node, domain, stampedUrl, depth = 0) {
  */
 const DECLINED_PURCHASE_ROUTE = 'affiliate_outbound';
 const DECLINED_CHECKOUT_HANDOFF = 'redirect';
+/** pivota-backend's no-cart tracking vocabulary (`join_mode` / `REFERRAL_CLICK_PARAM`, services/outbound_links_service.py). */
+const DECLINED_JOIN_MODE = 'referral_only';
+const DECLINED_CLICK_PARAM = 'pvt_click_id';
 
 function enrichOfferCommerceMetadata(offer, options) {
   if (!offer || typeof offer !== 'object' || Array.isArray(offer)) return offer;
@@ -426,9 +447,21 @@ function enrichOfferCommerceMetadata(offer, options) {
         }
         base.cart_prefilled = false;
       }
-      if (base.execution_spec && typeof base.execution_spec === 'object') {
-        delete base.execution_spec.cart_url;
-        if (landsInCart || base.execution_spec.rail === 'shopify_cart') base.execution_spec.rail = 'referral';
+      const outSpec = base.execution_spec;
+      if (outSpec && typeof outSpec === 'object') {
+        delete outSpec.cart_url;
+        if (landsInCart) {
+          outSpec.rail = 'referral';
+          // `variant_id` is "the numeric storefront variant id a cart permalink can be built from" — with
+          // `merchant_domain` beside it, that IS the cart, one string template away. And the tracking block
+          // must stop describing a cart join: the backend's own no-cart values (`compose_attributed_destinations`:
+          // `referral_only`, `REFERRAL_CLICK_PARAM`), which is also what `pdp_url` actually carries.
+          delete outSpec.variant_id;
+          if (outSpec.tracking && typeof outSpec.tracking === 'object' && !Array.isArray(outSpec.tracking)) {
+            outSpec.tracking.join_mode = DECLINED_JOIN_MODE;
+            outSpec.tracking.param = DECLINED_CLICK_PARAM;
+          }
+        }
       }
     }
     // Both spellings, so `readPurchaseRoute` cannot find a stale camelCase twin.

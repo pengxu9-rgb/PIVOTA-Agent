@@ -853,12 +853,14 @@ function seedOffer(host, id, { cart = true, claim = cart ? true : null } = {}) {
     cart_prefilled: claim,
     execution_spec: {
       merchant_domain: host,
-      pdp_url: `https://${host}/products/gloss?pivota_click_id=clk_${id}`,
+      pdp_url: `https://${host}/products/gloss?pvt_click_id=clk_${id}`,
       cart_url: cart ? `https://${host}/cart/4511${id}:1?attributes[pivota_click_id]=clk_${id}` : null,
       variant_id: cart ? `4511${id}` : null,
       rail: claim === null ? null : cart ? 'shopify_cart' : 'referral',
       expires_at: '2026-10-01T00:00:00Z',
-      tracking: { click_id: `clk_${id}`, param: 'pivota_click_id', join_mode: cart ? 'cart_attribute' : 'referral_param' },
+      tracking: cart
+        ? { click_id: `clk_${id}`, param: 'attributes[pivota_click_id]', join_mode: 'cart_permalink' }
+        : { click_id: `clk_${id}`, param: 'pvt_click_id', join_mode: 'referral_only' },
     },
     internal_checkout_items: null,
     confidence: 0.9,
@@ -897,6 +899,9 @@ function expectSeedDeclined(res, offer, host) {
   expect(offer.execution_spec.pdp_url).toMatch(new RegExp(`^https://${host}/products/`));
   expect(offer.source.canonical_url).toBe(`https://${host}/products/gloss`);
   expect(offer.price).toBe(18);
+  // Nothing a cart can be rebuilt from, and no cart-join tracking.
+  expect(Object.prototype.hasOwnProperty.call(offer.execution_spec, 'variant_id')).toBe(false);
+  expect(offer.execution_spec.tracking).toEqual(expect.objectContaining({ join_mode: 'referral_only', param: 'pvt_click_id' }));
 }
 
 function resolveUpstreamBody(offers = [glossOffer()]) {
