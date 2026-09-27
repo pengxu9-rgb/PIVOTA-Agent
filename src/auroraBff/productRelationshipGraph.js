@@ -5,6 +5,7 @@ const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
+const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
 const familyIdentityKey =
@@ -292,10 +293,37 @@ function normalizeUpperEvidenceGrade(value) {
   return '';
 }
 
+const PRICE_EVIDENCE_CURRENCY_KEYS = [
+  'anchor_price_currency',
+  'anchorPriceCurrency',
+  'candidate_price_currency',
+  'candidatePriceCurrency',
+];
+
+function snapshotPriceCurrency(snapshot) {
+  const obj = isPlainObject(snapshot) ? snapshot : {};
+  return readPriceWithCurrency(
+    [[obj, 'price'], [obj, 'price_amount'], [obj, 'priceAmount'], [obj, 'sale_price'], [obj, 'salePrice']],
+    toNumberOrNull,
+  ).currency;
+}
+
+// A ratio across two currencies compares nothing, whatever wrote it. Evidence written with currency
+// keys (the builder since 2026-09-27) is authoritative: a null price_ratio there is a REFUSED ratio,
+// not a missing one, and is never rebuilt from the amounts. Older evidence has no currency keys; its
+// ratio is still rebuilt from the amounts unless the two snapshots name different currencies.
 function getPriceRatio(edge) {
   const price = isPlainObject(edge.price_evidence) ? edge.price_evidence : {};
+  const anchorCurrency =
+    normalizeCurrencyCode(price.anchor_price_currency ?? price.anchorPriceCurrency) ||
+    snapshotPriceCurrency(edge.anchor_snapshot);
+  const candidateCurrency =
+    normalizeCurrencyCode(price.candidate_price_currency ?? price.candidatePriceCurrency) ||
+    snapshotPriceCurrency(edge.candidate_snapshot);
+  if (anchorCurrency && candidateCurrency && anchorCurrency !== candidateCurrency) return null;
   const explicit = toNumberOrNull(price.price_ratio ?? price.priceRatio);
   if (explicit != null) return explicit;
+  if (PRICE_EVIDENCE_CURRENCY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(price, key))) return null;
   const anchorPrice = toNumberOrNull(
     price.anchor_price_amount ?? price.anchorPriceAmount ?? extractPrice(edge.anchor_snapshot),
   );

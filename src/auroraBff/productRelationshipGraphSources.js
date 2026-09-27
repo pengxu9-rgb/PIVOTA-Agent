@@ -1,3 +1,5 @@
+const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
 
@@ -504,18 +506,26 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     intelCore?.best_for,
   );
   const category = pickFirstString(row.category, product.category, product.product_type, categoryTaxonomy[0]);
-  const price = toNumberOrNull(
-    row.price ??
-      row.price_amount ??
-      row.priceAmount ??
-      product.price ??
-      product.price_amount ??
-      product.priceAmount ??
-      product.sale_price ??
-      product.salePrice ??
-      firstVariant.price ??
-      firstVariant.price_amount,
+  // The amount and its currency come from ONE record. `product` is a spread of seed_data /
+  // product_data / snapshot, so its price fields are read from the layer the spread would take them
+  // from, and that layer's currency goes with them.
+  const productLayers = [seedData, productData, snapshot];
+  const pricedAt = readPriceWithCurrency(
+    [
+      [row, 'price'],
+      [row, 'price_amount'],
+      [row, 'priceAmount'],
+      [productLayers, 'price'],
+      [productLayers, 'price_amount'],
+      [productLayers, 'priceAmount'],
+      [productLayers, 'sale_price'],
+      [productLayers, 'salePrice'],
+      [firstVariant, 'price'],
+      [firstVariant, 'price_amount'],
+    ],
+    toNumberOrNull,
   );
+  const price = pricedAt.amount;
   const availability = pickFirstString(
     row.availability,
     row.availability_status,
@@ -655,6 +665,9 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     category,
     category_taxonomy: categoryTaxonomy,
     price,
+    // Always present beside `price` (null when unknown), so a merge that spreads one record over
+    // another moves the amount and its currency together.
+    price_currency: pricedAt.currency,
     ...(availability ? { availability } : {}),
     ...(url ? { url } : {}),
     ...(description ? { description } : {}),
@@ -2038,11 +2051,12 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
   );
   const base = Math.max(explicitScore, categoryUseCase);
   const similarityScore = clamp01(base + (1 - base) * pairEvidence, 0);
-  const anchorPrice = toNumberOrNull(anchor.price);
   const candidatePrice = toNumberOrNull(candidate.price);
-  const priceAdvantage = anchorPrice != null && candidatePrice != null && anchorPrice > 0
-    ? clamp01(1 - Math.min(candidatePrice / anchorPrice, 1), 0)
-    : 0;
+  const priceRatio = comparablePriceRatio(
+    readPriceWithCurrency([[anchor, 'price']], toNumberOrNull),
+    readPriceWithCurrency([[candidate, 'price']], toNumberOrNull),
+  );
+  const priceAdvantage = priceRatio == null ? 0 : clamp01(1 - Math.min(priceRatio, 1), 0);
 
   return {
     category_use_case_match: Number(categoryUseCase.toFixed(4)),
@@ -2069,9 +2083,16 @@ function compareScoredCandidates(a, b) {
   if (Math.abs(catDelta) > 0.0001) return catDelta;
   const gradeDelta = (EVIDENCE_GRADE_RANK[normalizeEvidenceGrade(b.evidence_grade)] || 0) - (EVIDENCE_GRADE_RANK[normalizeEvidenceGrade(a.evidence_grade)] || 0);
   if (gradeDelta) return gradeDelta;
-  const priceA = toNumberOrNull(a.price);
-  const priceB = toNumberOrNull(b.price);
-  if (priceA != null && priceB != null && priceA !== priceB) return priceA - priceB;
+  // Cheaper first, but only between two amounts in one known currency.
+  const priceA = readPriceWithCurrency([[a, 'price']], toNumberOrNull);
+  const priceB = readPriceWithCurrency([[b, 'price']], toNumberOrNull);
+  if (
+    priceA.amount != null &&
+    priceB.amount != null &&
+    priceA.currency &&
+    priceA.currency === priceB.currency &&
+    priceA.amount !== priceB.amount
+  ) return priceA.amount - priceB.amount;
   return normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref));
 }
 
