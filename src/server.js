@@ -41,6 +41,7 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
@@ -41366,6 +41367,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       return res.status(502).json({
         error: err?.code || 'GET_DISCOVERY_FEED_FAILED',
         message: err?.message || 'Failed to build discovery feed',
+      });
+    }
+  }
+
+  if (operation === 'pdp_route_id_exists') {
+    // Read-only, DB-only. The probe never catches its own query: ANY failure here answers 503, never
+    // `exists: false` — a false "absent" becomes a cached 404 on a live product (see the module header).
+    const routeProductId = effectivePayload?.product_ref?.product_id ?? effectivePayload?.product_id;
+    try {
+      const existence = await probePdpRouteIdExistence(routeProductId, {
+        queryFn: process.env.DATABASE_URL ? query : undefined,
+      });
+      return res.status(200).json({ status: 'success', ...existence });
+    } catch (err) {
+      if (err?.code === 'INVALID_ROUTE_ID') {
+        return res.status(400).json({ error: 'INVALID_REQUEST', message: err.message });
+      }
+      logger.warn(
+        { err: err?.message || String(err), code: err?.code || null, operation },
+        'pdp_route_id_exists could not answer; the caller must not treat the id as absent',
+      );
+      return res.status(503).json({
+        error: 'PDP_ROUTE_ID_EXISTENCE_UNAVAILABLE',
+        message: 'Existence could not be determined',
       });
     }
   }
