@@ -8,7 +8,8 @@
 `tests/merchant_purchasability_gate.node.test.cjs` and
 `tests/merchant_purchasability_paths.node.test.cjs` (the pins).
 
-**All three purchase-offering paths are now gated.** Path 3 has four annotate call sites: three in
+**All three purchase-offering paths are gated — except one door of path 3: `offers.resolve` is NOT
+(see the §8 correction, 2026-09-27).** Path 3 has four annotate call sites: three in
 `src/server.js` and a fourth inside `offersPriority.js` itself (`summarizeOfferCommerceMetadata`,
 which `prioritizeOffersResolveResponse` calls).
 One switch, one `shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
@@ -129,7 +130,7 @@ What differs between lanes is only what each may still do without knowing it:
 | lane | may do for a silent request | may NOT do |
 |---|---|---|
 | **serve** — search, discovery, PDP content, similar, the offer rows themselves | show the deployment's default-market catalogue, priced in that market's currency (`resolveServingCurrency(undefined)` = `servedMarkets()[0]`'s currency, USD in prod — #2298 / #2295) | present that default as the buyer's market |
-| **claim** — anything that says "you can buy this here": the purchasability gate on every seam (§8), a warm cart, a priced in-chat preview, `merchant_checkout_url`, `orderable_offer` | nothing keyed on a market: under enforcement the merchant is browse-only (`unkeyable_enforced`, §5) | key a fact, a cart or a checkout on the defaulted market |
+| **claim** — anything that says "you can buy this here": the purchasability gate on every gated seam (§8), a warm cart, a priced in-chat preview, `merchant_checkout_url`, `orderable_offer` | nothing keyed on a market: under enforcement the merchant is browse-only (`unkeyable_enforced`, §5). (`offers.resolve` is not a gated seam yet — §8 correction — so today it makes no claim decision at all) | key a fact, a cart or a checkout on the defaulted market |
 
 **Why this and not "silence = US everywhere".** Serving a default catalogue to someone whose market
 we do not know is a presentation choice: it is honest as long as every price shown carries its
@@ -150,12 +151,26 @@ market — and nothing on a claim path may read it, `servedMarkets()`, `primaryM
 read the market ONLY through `selectBuyerMarket` (§5), which has no default.
 
 **What a caller must do to get purchase affordances: name its buyer's market.** One ISO-3166 alpha-2
-code in `metadata.market` (or `search.market` / `payload.market`), e.g. `"US"`. Both readers accept
-it the same way — trimmed, case-insensitive: `resolveServingCurrency("us")` = `USD` and
-`selectBuyerMarket(…, " US ")` = `US`. A locale (`"en-US"`) or a list (`"US,SG"`) is NOT a market:
-the gate treats it as silence (unkeyable), and the serving lanes serve NOTHING for it
-(`resolveServingCurrency` = `null`: no currency can be shown to be the buyer's). A caller must never
-send either.
+code the gateway can price (`currencyForBuyerRegion`), in ONE carrier — `metadata.market` is the
+simplest — e.g. `"US"`. For that input, and only for it, every reader agrees — trimmed,
+case-insensitive: `resolveServingCurrency("us")` = `USD` and `selectBuyerMarket(…, " US ")` = `US`.
+
+Anything else is NOT a market and a caller must never send it, because the readers do not agree on it:
+
+* a locale (`"en-US"`) or a list (`"US,SG"`): the gate treats it as silence (unkeyable); the search
+  lanes serve nothing (`resolveServingCurrency` = `null`) — but the product-intel offers build passes
+  the GATE's market into `resolveServingCurrency`, so there it is silence and serves USD;
+* other separators (`"US;US"`, `"US|US"`): the gate's `carrierMarket` splits on `[\s,;|]` and reads
+  `US`; `parseMarketList` splits on `[,\s]` only and serving gets `null`;
+* **carrier order differs by reader**: serving reads `search.market || metadata.market` (raw
+  truthiness), the offers gate `search` → `payload` → `metadata` (first VALID wins), the resolver lane
+  `metadata` → `payload`, the `/r` mint `search || payload || metadata` (raw). So
+  `{search:{market:"en-US"}}` + `metadata.market:"US"` serves nothing but keys the gate on US, and
+  `payload.market:"SG"` + `metadata.market:"US"` serves USD but keys claims on SG.
+
+None of these is a DEFAULTED market, so none breaks the rule above, but they are one input read by
+several parsers and orders. Converging them on `selectBuyerMarket`'s parser and one carrier order is
+a follow-up.
 
 **The agent UI (agent.pivota.cc)** sent no market on any call until pivota-agent-ui
 `fix/send-buyer-market` — only `metadata.scope.region`, parsed from `navigator.language` (null on
@@ -166,7 +181,7 @@ merchant on every PDP went links-out. The UI now sends `metadata.market` on ever
 card in USD, and has no market selector and no account country before checkout. That is a fact the
 storefront states about itself, not a default the gateway substitutes; when the UI gains a market
 selector or reads a signed-in shipping country, that replaces the constant. **The gateway does NOT
-fall back to `scope.region`**, and a mutant that does is killed by
+fall back to `scope.region`** (no reader of it exists on any lane), and a mutant that does is killed by
 `tests/integration/get_pdp_v2_purchasability_gate_market.test.js`.
 
 **What naming `US` changes on the SERVING side (census at bf6ae5adf, prod flags:
@@ -179,8 +194,9 @@ way and no gateway cache key reads the market; the only fields that differ are
 * `find_products*` upstream bodies forward `market: "US"` to the backend, which then applies its own
   USD expectation and keys a separate seed-cache entry; minted `/r` links carry `market_observed`;
 * budgets gain a `USD` unit; telemetry reads `explicit_metadata` instead of `defaulted`;
-* the public-beauty price-scope branch (`namedPublicBeautyMarket`) is NOT reachable by the UI (it needs
-  the public search rail and `catalog_surface: beauty`; the UI sends `agent_api`).
+* the public-beauty price-scope branch (`namedPublicBeautyMarket`) is NOT reachable by the UI: both of
+  its entry arms need the public search rail, and the UI's `source: shopping_agent` classifies as
+  `authoritative_shopping`.
 
 Measured through the UI's own proxy, same bodies silent vs `metadata.market: "US"`: **15/15**
 `find_products_multi` queries returned the same products in the same order, all USD, at the same
@@ -189,6 +205,12 @@ the claim, not the catalogue — which is the rule.
 
 > ⚠️ **OPERATOR: keep `MERCHANT_PURCHASABILITY_GATE_ENABLED` OFF until the UI change is deployed.**
 > Armed before that, with the backend enforcing, it declines every merchant on every agent-UI PDP.
+
+**Known exception to the SERVING rule (not a claim path):** Aurora's offers-resolve card
+(`src/auroraBff/routes.js`, `const market = String(parsed.data.market || 'US')…`) resolves priced
+offers with an `affiliate_url` for a silent request and ECHOES `market: 'US'` in its
+`offers_resolved` card — presenting the default as the buyer's market. It keys no purchasability
+fact, so it does not break the claim rule; the echo is a follow-up.
 
 ---
 
@@ -582,7 +604,8 @@ manual `deploy_gateway.sh` run, and even then it is inert until step 9 of §6.
 
 ## 8. What is gated, and what is NOT
 
-Gated: **all three** of this gateway's purchase-offering paths for observed merchants. All three run
+Gated: **all three** of this gateway's purchase-offering paths for observed merchants — **except the
+`offers.resolve` door of path 3, which is not (correction below the table).** All three run
 behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` and through the same `shouldOfferPurchase`, so there is
 one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
@@ -602,8 +625,20 @@ reason: the only difference a declined merchant produces is a URL that is not th
 > `tests/integration/get_pdp_v2_purchasability_gate_market.test.js` ("KNOWN GAP", a `test.failing`
 > that states the wanted behaviour, plus the "TODAY" pin). The route's own documented market slot,
 > `payload.offers.market`, is not a gate carrier either (`offersGateBuyerMarket` reads
-> `search.market`, `payload.market`, `metadata.market`). Fixing both is a follow-up; the PDP,
-> product-intel and coverage sites ARE reached, and are pinned end to end in the same file.
+> `search.market`, `payload.market`, `metadata.market`). Fixing both is a follow-up.
+>
+> What the same file DOES pin end to end, through the real invoke route with the gate on:
+> * **`get_pdp_v2`** (group build, sibling build, pre-stamp pass): the read is keyed on the request's
+>   market, and a declined merchant's cart URL leaves every field of the offers module while a kept
+>   one keeps it; carrier precedence (`search` → `payload` → `metadata`) is pinned too.
+> * **product-intel and coverage**: the MARKET is pinned (the ops read is keyed on it); a decline is
+>   NOT observable there, because those builders emit only offer pointers and the structured-data
+>   mode, and every offer with a host is already `links_out` — a mutant that ignores the decision
+>   survives. That is a property of those responses, not a pin.
+> * **Open question, pinned as TODAY:** a declined merchant's destination URL still ships on the
+>   page-level `modules[0].data.pdp_payload.product` (`destination_url`, `external_redirect_url`).
+>   The gate strips the offers module only; whether a client reads that field as "buy here" is
+>   undecided.
 
 ### Path 2 — the escalation door, and the claim this PR had to correct
 
