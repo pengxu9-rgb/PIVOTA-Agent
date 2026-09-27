@@ -2921,8 +2921,31 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
     'canonical_url',
     'url',
     'product_url',
+    'source_url',
+    'sourceUrl',
+    // Who sells it. The offer built from this product names its seller from these fields.
+    'seller_of_record',
+    'sellerOfRecord',
+    'seller_name',
+    'sellerName',
+    'store_name',
+    'storeName',
+    'merchant_name',
+    'merchantName',
     ...savingsFields,
   ];
+  // The product above carries the CONTENT listing's payload. When the selected seller is a different
+  // listing, every commerce field that listing's payload does not restate must go, not stay behind
+  // under the selected seller's ids. On the two-seller Arencia group (JP 2400 JPY, US 15 USD;
+  // tests/integration/get_pdp_v2_card_seller_matches_price) opening the US listing labelled its $15
+  // offer with the JP store's name, because the JP listing supplied the content.
+  const selectedRef = {
+    merchant_id: selectedMerchantId,
+    product_id: asString(selectedListing?.product_id || selectedPayload.product_id || selectedPayload.id),
+  };
+  if (!sameListingRef(next, selectedRef)) {
+    for (const key of [...directFields, ...SAVINGS_PRESENTATION_FIELDS]) delete next[key];
+  }
   for (const key of directFields) {
     if (selectedPayload[key] !== undefined) next[key] = selectedPayload[key];
   }
@@ -2941,9 +2964,7 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
   }
 
   next.merchant_id = asString(selectedListing?.merchant_id || selectedPayload.merchant_id) || next.merchant_id;
-  next.product_id =
-    asString(selectedListing?.product_id || selectedPayload.product_id || selectedPayload.id) ||
-    next.product_id;
+  next.product_id = selectedRef.product_id || next.product_id;
   return next;
 }
 

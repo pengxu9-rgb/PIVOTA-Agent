@@ -9545,9 +9545,20 @@ function findPositiveOfferById(offers, offerId) {
   return offers.find((offer) => String(offer?.offer_id || offer?.id || '').trim() === id && readPositiveOfferMoney(offer));
 }
 
-function pickOfferForCanonicalPdpPrice(offersData) {
-  const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
-  if (!offers.length) return null;
+// The offer whose price the canonical card shows. When a serving currency is given and any offer is
+// priced in it, only those offers are candidates: the default/best-price ids come from a sort that
+// compares raw amounts across currencies (15 USD "beats" 2400 JPY), so they can name an offer the
+// buyer must not be quoted. What can remain outside the serving currency is only the opened product's
+// own offer, which the offers module keeps as a by-id read (#2301); with nothing else priced it is
+// still the card's offer, exactly as before.
+function pickOfferForCanonicalPdpPrice(offersData, { servingCurrency = null } = {}) {
+  const allOffers = Array.isArray(offersData?.offers) ? offersData.offers : [];
+  if (!allOffers.length) return null;
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  const inServingCurrency = currency
+    ? allOffers.filter((offer) => readOfferCurrency(offer) === currency && readPositiveOfferMoney(offer))
+    : [];
+  const offers = inServingCurrency.length ? inServingCurrency : allOffers;
 
   const defaultOffer = findPositiveOfferById(offers, offersData?.default_offer_id);
   if (defaultOffer && offerHasAvailableInventory(defaultOffer)) return defaultOffer;
@@ -9749,22 +9760,146 @@ function hydrateCanonicalPdpMediaFromOfferImages(pdpPayload, product, offerImage
   return nextPayload;
 }
 
-function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
+// The seller listing a card is built from. A signature-route card's product_id is the public page id
+// (`sig_...`, applyCatalogIdentityToPdpProduct); its listing is source_product_id.
+function readCanonicalCardListingId(product) {
+  const productId = String(product?.product_id || product?.id || '').trim();
+  if (!isPivotaSignatureProductId(productId)) return productId;
+  return firstNonEmptyString(product?.source_product_id, product?.platform_product_id) || productId;
+}
+
+function isPivotaPublicProductUrl(url) {
+  return String(url || '').trim().startsWith(buildPublicProductUrl(''));
+}
+
+// Does this offer sell the very listing the card is built from? The same rule as the opened-product
+// match in buildOffersFromGroupMembers (#2301): the product id plus the exact merchant, or, in the
+// seed lane, any external-seed supply on both sides — a card opened through the lane's alias names
+// the observed seller's listing by the alias (ADR-009). A connected merchant must match exactly: its
+// product ids are only store-unique.
+function offerSellsCardListing(product, offer) {
+  const productId = readCanonicalCardListingId(product);
+  if (!productId || productId !== String(offer?.product_id || '').trim()) return false;
+  const cardMerchantId = String(product?.merchant_id || '').trim();
+  if (cardMerchantId === String(offer?.merchant_id || '').trim()) return true;
+  return isExternalSeedListingMerchantId(cardMerchantId) && memberIsExternalSeedSupply(offer);
+}
+
+// Card fields that describe ONE seller's listing rather than the product: who sells it, where to buy
+// it, what the buyer selects and what it costs. Content (title, description, media, brand, category,
+// ingredients) is the product's and stays with the content member.
+const CANONICAL_CARD_SELLER_SCOPED_FIELDS = [
+  'merchant_name',
+  'seller_name',
+  'store_name',
+  'platform',
+  'platform_product_id',
+  'source_product_id',
+  'product_key',
+  'purchase_route',
+  'commerce_mode',
+  'checkout_handoff',
+  'checkout_mode',
+  'external_redirect_url',
+  'url',
+  'product_url',
+  'canonical_url',
+  'destination_url',
+  'source_url',
+  'default_variant_id',
+  'variants',
+  'purchase_grain',
+  'availability',
+  'in_stock',
+  'shipping',
+  'returns',
+  'sku_id',
+  'variant_id',
+  ...SAVINGS_PRESENTATION_FIELDS,
+];
+
+// The card shows `offer`'s price, and `offer` sells a different listing than the one the card's
+// content came from (the group's content member is picked by content quality/key order, the price by
+// the buyer's default offer). Then the seller named on the card must be the offer's seller: prod
+// 2026-09-27, sig_13336cf3c9eba86550f9f093 carded arencia_jp (JP seller) at the US seller's $15.
+// Every seller-scoped field is taken from the offer or dropped — never left naming the content member.
+// A signature-route card keeps its public page id and route fields (pivota_signature_id,
+// pivota_canonical_url, a Pivota canonical_url): those address the product page, not a seller.
+function projectCanonicalCardSellerFromOffer(product, offer, money) {
+  const listingId = String(offer.product_id).trim();
+  const contentRef = {
+    merchant_id: String(product.merchant_id || '').trim() || null,
+    product_id: readCanonicalCardListingId(product) || null,
+  };
+  const next = { ...product };
+  CANONICAL_CARD_SELLER_SCOPED_FIELDS.forEach((field) => delete next[field]);
+  if (isPivotaPublicProductUrl(product.canonical_url)) next.canonical_url = product.canonical_url;
+  if (isPivotaSignatureProductId(product.product_id)) {
+    next.source_product_id = listingId;
+  } else {
+    next.product_id = listingId;
+    if (product.id !== undefined) next.id = listingId;
+  }
+  next.merchant_id = String(offer.merchant_id || '').trim() || undefined;
+  if (offer.merchant_name) next.merchant_name = offer.merchant_name;
+  if (offer.purchase_route) next.purchase_route = offer.purchase_route;
+  if (offer.checkout_mode) next.checkout_mode = offer.checkout_mode;
+  if (offer.external_redirect_url) next.external_redirect_url = offer.external_redirect_url;
+  if (offer.url) next.url = offer.url;
+  if (offer.source_url) next.source_url = offer.source_url;
+  if (offer.shipping) next.shipping = offer.shipping;
+  if (offer.returns) next.returns = offer.returns;
+  Object.assign(next, pickSavingsPresentationFields(offer));
+  const inStock = offer.inventory?.in_stock;
+  next.availability = typeof inStock === 'boolean' ? { in_stock: inStock } : {};
+
+  // Variant ids and prices are the seller's too (a JPY-priced JP variant under a USD card is both a
+  // wrong seller and a wrong currency). An offer without variants is its own purchasable unit, which
+  // pdpBuilder states as one variant whose id is the product id (purchase_grain 'product').
+  const offerVariants = (Array.isArray(offer.variants) ? offer.variants : []).filter((variant) =>
+    String(variant?.variant_id || '').trim(),
+  );
+  if (offerVariants.length) {
+    const selectedVariantId = String(offer.selected_variant_id || offer.variant_id || '').trim();
+    next.variants = offerVariants;
+    next.default_variant_id = offerVariants.some((variant) => variant.variant_id === selectedVariantId)
+      ? selectedVariantId
+      : offerVariants[0].variant_id;
+    next.purchase_grain = 'variant';
+  } else {
+    next.variants = [
+      {
+        variant_id: listingId,
+        sku_id: listingId,
+        title: 'Default',
+        options: [],
+        price: { current: { amount: money.amount, currency: money.currency } },
+        availability: next.availability,
+      },
+    ];
+    next.default_variant_id = listingId;
+    next.purchase_grain = 'product';
+  }
+  next.seller_source = 'default_offer';
+  next.content_product_ref = contentRef;
+  return next;
+}
+
+function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData, { servingCurrency = null } = {}) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
-  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
+  let product = pdpPayload.product && typeof pdpPayload.product === 'object'
     ? { ...pdpPayload.product }
     : null;
   if (!product) return pdpPayload;
 
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
-  let selectedOffer = pickOfferForCanonicalPdpPrice(offersData);
+  // Price and media are picked separately: media is product content and may be borrowed from any
+  // offer, but the price must come from the offer whose seller the card then names.
+  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData, { servingCurrency });
   let selectedOfferImageUrls = collectOfferImageUrls(selectedOffer);
   if (!selectedOfferImageUrls.length) {
     const imageBearingOffer = offers.find((offer) => collectOfferImageUrls(offer).length > 0);
-    if (imageBearingOffer) {
-      selectedOffer = imageBearingOffer;
-      selectedOfferImageUrls = collectOfferImageUrls(imageBearingOffer);
-    }
+    if (imageBearingOffer) selectedOfferImageUrls = collectOfferImageUrls(imageBearingOffer);
   }
   const selectedOfferMoney = readPositiveOfferMoney(selectedOffer);
 
@@ -9780,8 +9915,11 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
 
   let projectedOfferPrice = null;
   if (selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
+    const offerIsCardListing = offerSellsCardListing(product, selectedOffer);
+    // Another listing's price replaces the content member's whole price object: its other keys
+    // (compare-at, original) are that seller's, possibly in that seller's currency.
     const existingPrice =
-      product.price && typeof product.price === 'object' && !Array.isArray(product.price)
+      offerIsCardListing && product.price && typeof product.price === 'object' && !Array.isArray(product.price)
         ? product.price
         : {};
     projectedOfferPrice = {
@@ -9801,8 +9939,12 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
       },
     };
     product.price_amount = projectedOfferPrice.amount;
+    if (product.priceAmount !== undefined) product.priceAmount = projectedOfferPrice.amount;
     product.currency = projectedOfferPrice.currency;
     product.price_source = 'default_offer';
+    if (!offerIsCardListing) {
+      product = projectCanonicalCardSellerFromOffer(product, selectedOffer, projectedOfferPrice);
+    }
   } else if (shouldHydratePrice) {
     delete product.price;
     delete product.price_amount;
@@ -44592,8 +44734,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             if (!offersData.default_offer_id) offersData.default_offer_id = fallbackOfferId;
             if (!offersData.best_price_offer_id) offersData.best_price_offer_id = fallbackOfferId;
           }
-          canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData);
+          canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
+            servingCurrency: pdpServingCurrency,
+          });
           modules[0].data.pdp_payload = canonicalPayload;
+          if (canonicalPayload?.product?.seller_source === 'default_offer') {
+            // The card now names the default offer's listing; the ref that describes the card must too.
+            modules[0].data.canonical_payload_product_ref = {
+              merchant_id: canonicalPayload.product.merchant_id || null,
+              product_id: canonicalPayload.product.product_id || null,
+              platform: null,
+            };
+          }
           if (wantsOffers) {
             modules.push({
               type: 'offers',
