@@ -27,6 +27,7 @@
 // That is refused in the seed SQL instead (seedSearchOfferScope.seedHasPriceCurrencySql).
 
 const { resolveServingCurrency } = require('./buyerMarket');
+const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 
 const GUARDED_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed']);
 // Where a priced row with no currency is itself a defect (see above).
@@ -52,9 +53,19 @@ function servingCurrencyFor({ observation, payload, metadata } = {}) {
   return resolveServingCurrency(requestedMarketOf(payload, metadata));
 }
 
+// The currency a card is priced in, read by the SAME function the shopping-agent price contract
+// reads it with (resolveCanonicalSearchProductPrice: currency / currency_code / price_currency /
+// priceCurrency, a nested price object, offers[], variants[], the seed snapshot). Reading fewer
+// fields than the contract dropped a USD card whose currency sat only in variants[] as 'unknown',
+// and let an SGD card shaped that way through the lenient operations. When no amount and currency
+// pair can be read, a currency the card still writes down is what it claims to be priced in.
 function rowCurrency(product) {
+  const priced = resolveCanonicalSearchProductPrice(product);
+  if (priced) return priced.currency;
   const nested = isPlainObject(product.price) ? product.price.currency : null;
-  return String(product.currency || product.price_currency || nested || '').trim().toUpperCase();
+  const written = [product.currency, product.currency_code, product.price_currency, product.priceCurrency, nested]
+    .find((value) => value !== null && value !== undefined && String(value).trim() !== '');
+  return String(written || '').trim().toUpperCase();
 }
 
 const present = (value) => value !== null && value !== undefined && String(value).trim() !== '';

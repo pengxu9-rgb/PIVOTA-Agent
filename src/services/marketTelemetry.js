@@ -37,7 +37,11 @@
 //   served_price_sources      row counts by recall source (a stand-in for price copy -- see below)
 //   serving_currency_dropped  rows the invoke door's serving-currency guard removed from this page
 //                             (servingCurrencyGuard); ABSENT when it removed none. Any value is a
-//                             lane that recalled a wrong-currency row and is worth fixing at source
+//                             lane that recalled a wrong-currency row and is worth fixing at source.
+//                             Logged for EVERY guarded operation, not only find_products_multi:
+//                             get_discovery_feed (~82k requests a week) is guarded too, and its drops
+//                             were invisible. Other operations get this pair and nothing else.
+//   serving_currency_dropped_currencies  what it dropped ('unknown' = a price with no currency)
 //   lane                      the beauty direct lane that answered; ABSENT for every other
 //                             path, including all upstream-routed traffic -- so it cannot, on its
 //                             own, split the Python door's lanes
@@ -188,8 +192,24 @@ function laneFromStageBreakdown(stages = []) {
  * read from it HERE, so that reading is testable rather than a seam in the handler.
  * Returns `{}` for any operation other than find_products_multi.
  */
+// The guard's own list, so an operation it guards cannot go unlogged.
+const { GUARDED_OPERATIONS } = require('./servingCurrencyGuard');
+const MAX_DROPPED_CURRENCIES = 8;
+
+function servingCurrencyDrops(body) {
+  const metadata = body && typeof body === 'object' && !Array.isArray(body) ? body.metadata : null;
+  const guard = metadata && typeof metadata === 'object' ? metadata.serving_currency_guard : null;
+  const dropped = guard && typeof guard === 'object' ? Number(guard.dropped_count) : NaN;
+  if (!Number.isFinite(dropped) || dropped <= 0) return {};
+  const currencies = Array.isArray(guard.dropped_currencies)
+    ? guard.dropped_currencies.map((code) => String(code).slice(0, 16)).slice(0, MAX_DROPPED_CURRENCIES)
+    : [];
+  return { serving_currency_dropped: dropped, serving_currency_dropped_currencies: currencies };
+}
+
 function buildMarketTelemetry({ operation, observation, payload, metadata, body, stages } = {}) {
-  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return {};
+  const op = String(operation || '').trim().toLowerCase();
+  if (op !== 'find_products_multi') return GUARDED_OPERATIONS.has(op) ? servingCurrencyDrops(body) : {};
   const market = observation && observation.market_observed === true
     ? {
       market_observed: true,
@@ -202,13 +222,10 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
     : describeUnboundRequest(payload, metadata);
   const products = body && typeof body === 'object' && !Array.isArray(body) ? body.products : null;
   const lane = laneFromStageBreakdown(stages);
-  const guard = body && typeof body === 'object' && !Array.isArray(body) && body.metadata
-    && typeof body.metadata === 'object' ? body.metadata.serving_currency_guard : null;
-  const dropped = guard && typeof guard === 'object' ? Number(guard.dropped_count) : NaN;
   return {
     ...market,
     ...summariseServedProducts(products),
-    ...(Number.isFinite(dropped) && dropped > 0 ? { serving_currency_dropped: dropped } : {}),
+    ...servingCurrencyDrops(body),
     ...(lane ? { lane } : {}),
     ...servedByFromBody(body),
   };
