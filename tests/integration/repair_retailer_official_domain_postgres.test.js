@@ -97,7 +97,8 @@ suite('repairRetailerOfficialDomain (PostgreSQL)', () => {
     // D: would be promoted by the rebuild, no override -> HELD
     await listing('external_seed:pd', { identity_status: 'review_required', review_required: true, review_reason_codes: ['conflicting_gtin'],
       source_payload: payload('pd', { gtin: '00769915190328' }) });
-    // E: live + public, with an active force_exact_group override -> the trust policy keeps it public after the demotion
+    // E: live + public, with an active force_exact_group override. Since trust policy c1.v0.9 the override only groups,
+    // so the demotion shadows E like A (until c1.v0.9 it kept E public -- the 2026-09-27 miss)
     await listing('external_seed:pe', { live_read_enabled: true, source_payload: payload('pe') });
     await db.query("INSERT INTO pdp_identity_override (id, source_listing_ref, action_type, payload) VALUES ('o2','external_seed:pe','force_exact_group','{\"target_sellable_item_group_id\":\"g_x\"}')");
     for (const pid of ['pa', 'pb', 'pc', 'pd', 'pe']) await catalogRow(pid);
@@ -118,15 +119,15 @@ suite('repairRetailerOfficialDomain (PostgreSQL)', () => {
     expect(await trustOf()).toEqual({ k_pa: 'public', k_pb: 'shadow', k_pc: 'shadow', k_pd: 'shadow', k_pe: 'public' });
   });
 
-  test('dry run: predicts serving with the trust policy (override-held rows stay public) and writes nothing', async () => {
+  test('dry run: predicts serving with the trust policy and writes nothing', async () => {
     const before = (await db.query('SELECT source_listing_ref, identity_status, official_domain FROM pdp_identity_listing ORDER BY 1')).rows;
     const trustBefore = await trustOf();
     const lines = [];
     const out = await run({ client: db, apply: false, log: (l) => lines.push(l), refreshTrust: jest.fn() });
     expect(out.report.demotions).toBe(3); // pa, pb, pe
-    expect(out.report.demotions_changing_serving).toBe(1); // only pa: pe is held public by force_exact_group
+    expect(out.report.demotions_changing_serving).toBe(2); // pa and pe: force_exact_group no longer holds pe public
     expect(out.report.demotion_table).toEqual(expect.arrayContaining([
-      expect.objectContaining({ brand: 'the ordinary', live_read: true, demoted: 2, serving_changes: 1, public_now: 2, stays_public_by_override: 1 }),
+      expect.objectContaining({ brand: 'the ordinary', live_read: true, demoted: 2, serving_changes: 2, public_now: 2, stays_public_by_override: 0 }),
       expect.objectContaining({ brand: 'the ordinary', live_read: false, demoted: 1, serving_changes: 0, public_now: 0 }),
     ]));
     expect(out.report.stale_trust).toEqual([]);
@@ -148,8 +149,8 @@ suite('repairRetailerOfficialDomain (PostgreSQL)', () => {
     expect(applied.touched.sort()).toEqual(['external_seed:pa', 'external_seed:pb', 'external_seed:pc', 'external_seed:pe']);
     const after = await trustOf();
     for (const [key, decision] of Object.entries(predicted)) expect([key, after[key]]).toEqual([key, decision]);
-    // pa demoted and shadowed; pe demoted but held public by its force_exact_group override (as predicted)
-    expect(after).toEqual({ k_pa: 'shadow', k_pb: 'shadow', k_pc: 'shadow', k_pd: 'shadow', k_pe: 'public' });
+    // pa and pe demoted and shadowed (pe's force_exact_group only groups since c1.v0.9), as predicted
+    expect(after).toEqual({ k_pa: 'shadow', k_pb: 'shadow', k_pc: 'shadow', k_pd: 'shadow', k_pe: 'shadow' });
 
     const rows = Object.fromEntries((await db.query(`SELECT source_listing_ref, identity_status, review_required, matched_by_rule,
       official_domain, official_url, live_read_enabled, sellable_item_group_id, review_reason_codes FROM pdp_identity_listing`)).rows

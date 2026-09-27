@@ -481,15 +481,43 @@ test('first-party: hard gates (suppression, IPS, sync_status) STILL block regard
 
 // ---- OVERRIDES --------------------------------------------------------------
 
-test('active force_exact_group override forces approved + confidence 1', () => {
+// c1.v0.9: force_exact_group GROUPS (the identity graph applies it -- see
+// tests/pdp_identity_graph_force_exact_group_groups_only.test.js) but does not approve identity.
+test('active force_exact_group no longer approves a review_required listing: it shadows, override still recorded', () => {
   const trust = call({
-    identity: approvedIdentity({ identity_status: 'review_required', identity_confidence: 0.2 }),
+    identity: approvedIdentity({ identity_status: 'review_required', review_required: true, identity_confidence: 0.54 }),
     override: { id: 'ov_99', action_type: 'force_exact_group', active: true },
   });
-  assert.equal(trust.identity_status, 'approved');
-  assert.equal(trust.identity_confidence, 1.0);
-  assert.equal(trust.serving_decision, 'public');
+  assert.equal(trust.identity_status, 'review_required');
+  assert.equal(trust.identity_confidence, 0.54);
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
   assert.equal(trust.manual_override_id, 'ov_99');
+});
+
+test('active force_exact_group on an approved, live listing: public on the listing identity and confidence', () => {
+  const trust = call({
+    identity: approvedIdentity({ identity_confidence: 0.8 }),
+    override: { id: 'ov_98', action_type: 'force_exact_group', active: true },
+  });
+  assert.equal(trust.identity_status, 'approved');
+  assert.equal(trust.identity_confidence, 0.8);
+  assert.equal(trust.serving_decision, 'public');
+  // the group the graph assigned is still what trust reports
+  assert.equal(trust.matched_sellable_item_group_id, 'sig_1c7611cfd2520d64ad08f3c36b2ef016');
+});
+
+test('active force_exact_group no longer lifts an approved but live_read-off cross-seed row out of shadow', () => {
+  // The 12 approved rows of the 2026-09-27 measurement: a retailer-sourced observed seller ('cross'),
+  // approved but live_read_enabled=false -> IDENTITY_LIVE_READ_DISABLED. Before c1.v0.9 the override
+  // set liveRead=true and served them public.
+  const trust = callObservedSeller({
+    product: observedSellerProduct({ seed_kind: 'cross' }),
+    identity: approvedIdentity({ source_listing_ref: 'merch_obs_8887b6c53f029191:ext_4242', live_read_enabled: false }),
+    override: { id: 'ov_97', action_type: 'force_exact_group', active: true },
+  });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED));
 });
 
 test('active force_review_required override degrades to shadow', () => {
@@ -768,7 +796,11 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // the old trio did not, so the serving blast radius is 0 — the bump is for
   // the DERIVATION change the twin has to agree with. This repo is again the
   // SECOND half: pivota-backend adr009/trust-policy-lane-parity merges FIRST.
-  assert.equal(POLICY_VERSION, 'c1.v0.8');
+  //
+  // c1.v0.8 -> c1.v0.9 on 2026-09-27: force_exact_group became grouping-only in
+  // deriveIdentity. Measured 29 prod rows 'public' -> 'shadow'. Again the
+  // SECOND half: the pivota-backend twin merges FIRST.
+  assert.equal(POLICY_VERSION, 'c1.v0.9');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
