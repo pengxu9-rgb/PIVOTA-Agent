@@ -29,7 +29,9 @@
 const { resolveServingCurrency } = require('./buyerMarket');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 
-const GUARDED_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed']);
+// find_similar_products (2026-09-27): its handler already filters strictly
+// (filterProductsToServingCurrency); the door re-checks the body it sends, like every other page.
+const GUARDED_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed', 'find_similar_products']);
 // Where a priced row with no currency is itself a defect (see above).
 const CURRENCY_REQUIRED_OPERATIONS = new Set(['find_products_multi']);
 const MAX_REPORTED_CURRENCIES = 8;
@@ -72,6 +74,41 @@ const present = (value) => value !== null && value !== undefined && String(value
 
 function quotesAPrice(product) {
   return [product.price, product.price_amount, product.price_min].some(present);
+}
+
+// Every currency a card writes down, wherever it writes it. A similar-products card is assembled in
+// stages (recall stamps a currency, card enrichment may copy in a price object with its own), so the
+// two can disagree; a card is priced in the serving currency only if every one of them says so.
+function statedCurrencies(product) {
+  const nested = isPlainObject(product.price) ? product.price.currency : null;
+  const pricing = isPlainObject(product.pricing) && isPlainObject(product.pricing.current)
+    ? product.pricing.current.currency
+    : null;
+  return new Set(
+    [rowCurrency(product), product.currency, product.currency_code, product.price_currency, product.priceCurrency, nested, pricing]
+      .filter(present)
+      .map((value) => String(value).trim().toUpperCase()),
+  );
+}
+
+/**
+ * The recommendation surfaces' filter (find_similar_products, get_pdp_v2's similar module, product
+ * intel): products NEW to the buyer, so a priced card is kept only when every currency it states is
+ * the serving currency. A priced card stating none is dropped (the recall stamps 'USD' on a blank
+ * seed, so none left means the price came from somewhere the rule never saw). A card quoting no price
+ * is kept. A null servingCurrency -- a market nothing is priced for -- keeps nothing.
+ */
+function filterProductsToServingCurrency(products, servingCurrency) {
+  const list = Array.isArray(products) ? products : [];
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  return list.filter((product) => {
+    if (!currency) return false;
+    if (!isPlainObject(product)) return true;
+    const priced = Boolean(resolveCanonicalSearchProductPrice(product)) || quotesAPrice(product);
+    if (!priced) return true;
+    const stated = statedCurrencies(product);
+    return stated.size > 0 && [...stated].every((value) => value === currency);
+  });
 }
 
 /**
@@ -117,6 +154,7 @@ module.exports = {
   CURRENCY_REQUIRED_OPERATIONS,
   GUARDED_OPERATIONS,
   enforceServingCurrency,
+  filterProductsToServingCurrency,
   requestedMarketOf,
   servingCurrencyFor,
 };

@@ -8,8 +8,10 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const { enforceServingCurrency, requestedMarketOf, servingCurrencyFor, GUARDED_OPERATIONS, CURRENCY_REQUIRED_OPERATIONS } =
-  require(path.join(ROOT, 'src/services/servingCurrencyGuard'));
+const {
+  enforceServingCurrency, filterProductsToServingCurrency, requestedMarketOf, servingCurrencyFor, GUARDED_OPERATIONS,
+  CURRENCY_REQUIRED_OPERATIONS,
+} = require(path.join(ROOT, 'src/services/servingCurrencyGuard'));
 
 const page = () => ({
   status: 'success',
@@ -98,7 +100,7 @@ test('a market with no known currency gets nothing', () => {
 });
 
 test('every guarded operation drops another currency; only find_products_multi also drops a price with no currency', () => {
-  assert.deepStrictEqual([...GUARDED_OPERATIONS].sort(), ['find_products', 'find_products_multi', 'get_discovery_feed']);
+  assert.deepStrictEqual([...GUARDED_OPERATIONS].sort(), ['find_products', 'find_products_multi', 'find_similar_products', 'get_discovery_feed']);
   assert.deepStrictEqual([...CURRENCY_REQUIRED_OPERATIONS], ['find_products_multi']);
   assert.deepStrictEqual(ids(enforceServingCurrency({ operation: 'find_products_multi', payload: {}, body: page() })), ['usd', 'usd_price_currency']);
   // The discovery feed's full-detail cards carry no `currency` field at all: a missing one there is
@@ -131,4 +133,32 @@ test('requestedMarketOf reads the door\'s precedence: search.market || metadata.
   assert.strictEqual(requestedMarketOf({ search: { market: '' } }, { market: 'US' }), 'US');
   assert.strictEqual(requestedMarketOf({ search: 'oops', market: 'JP' }, {}), 'JP');
   assert.strictEqual(requestedMarketOf(null, null), undefined);
+});
+
+// The recommendation surfaces' filter (similar products): every product there is NEW to the buyer.
+test('a similar card is kept only when every currency it states is the serving one', () => {
+  const cards = [
+    { product_id: 'usd', price: 20, currency: 'USD' },
+    { product_id: 'usd_nested', price: { amount: 20, currency: 'usd' } },
+    { product_id: 'sgd', price: 20, currency: 'SGD' },
+    // Recall stamped USD, card enrichment then copied in an SGD price object: which is it? Neither.
+    { product_id: 'stamped_usd_sgd_price', price: { amount: 30, currency: 'SGD' }, currency: 'USD' },
+    { product_id: 'pricing_jpy', price: 20, currency: 'USD', pricing: { current: { amount: 2000, currency: 'JPY' } } },
+    { product_id: 'priced_no_currency', price: 20 },
+    { product_id: 'unpriced', title: 'no price at all', currency: 'USD' },
+    { product_id: 'unpriced_sgd_label', title: 'no price at all', currency: 'SGD' },
+  ];
+  const kept = (currency) => filterProductsToServingCurrency(cards, currency).map((p) => p.product_id);
+  assert.deepStrictEqual(kept('USD'), ['usd', 'usd_nested', 'unpriced', 'unpriced_sgd_label']);
+  assert.deepStrictEqual(kept('SGD'), ['sgd', 'unpriced', 'unpriced_sgd_label']);
+  // A market nothing is priced in keeps nothing -- not even an unpriced card.
+  assert.deepStrictEqual(kept(null), []);
+  assert.deepStrictEqual(kept(''), []);
+  assert.deepStrictEqual(filterProductsToServingCurrency(null, 'USD'), []);
+});
+
+test('find_similar_products is guarded at the door, leniently like the discovery feed', () => {
+  const body = { products: [{ product_id: 'usd', currency: 'USD' }, { product_id: 'jpy', currency: 'JPY' }, { product_id: 'none', price: 3 }] };
+  assert.deepStrictEqual(ids(enforceServingCurrency({ operation: 'find_similar_products', payload: { market: 'US' }, body })), ['usd', 'none']);
+  assert.deepStrictEqual(ids(enforceServingCurrency({ operation: 'find_similar_products', payload: { market: 'JP' }, body })), ['jpy', 'none']);
 });

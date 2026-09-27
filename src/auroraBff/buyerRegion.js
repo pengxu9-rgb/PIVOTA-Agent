@@ -33,11 +33,15 @@ const BUYER_REGION_SOURCE_DEFAULTED = 'defaulted';
 // (RECO_PRICE_CEILING_KNOWN_CURRENCIES), and every one of them is held by real servable supply
 // measured on prod 2026-08-21 (GBP 780, EUR 608, JPY 333, AUD 26, SEK 25, KRW 23, HKD 22, SGD 14,
 // CAD 12). A region NOT in this map resolves to no currency at all -- see currencyForBuyerRegion.
+// Kept identical to pivota-backend services/region_pricing.REGION_PRICING_CURRENCY (HR and FI joined
+// FR on EUR there; added here 2026-09-27) -- the gateway and the backend must price a buyer alike.
 const BUYER_REGION_CURRENCY = Object.freeze({
   US: 'USD',
   GB: 'GBP',
   JP: 'JPY',
   FR: 'EUR',
+  HR: 'EUR',
+  FI: 'EUR',
   AU: 'AUD',
   SE: 'SEK',
   KR: 'KRW',

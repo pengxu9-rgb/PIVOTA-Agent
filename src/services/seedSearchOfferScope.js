@@ -30,6 +30,30 @@ function seedHasColumnPriceCurrencySql(alias = '') {
   return `nullif(trim(${a}price_currency), '') IS NOT NULL`;
 }
 
+// A catalog product may be recommended to a buyer priced in `currencyParam` (a bound placeholder)
+// only when nothing that can price its card says otherwise: not the seed it mirrors (source id),
+// not a seed attached to it (minted lane), not one of its offers. A blank currency on any of them
+// is "otherwise" too -- the card builders stamp 'USD' on it. A product none of them prices is left
+// alone: its card quotes no price. Measured on prod 2026-09-27: 614 serving-eligible similar
+// candidates carry no seed join and are priced only by an attached SGD seed + SGD offer.
+function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam) {
+  return `NOT EXISTS (
+      SELECT 1 FROM external_product_seeds eps_cur
+      WHERE eps_cur.external_product_id = ${cpAlias}.source_product_id AND eps_cur.status = 'active'
+        AND ${seedNativeCurrencySql('eps_cur')} <> ${currencyParam}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM external_product_seeds eps_cur
+      WHERE eps_cur.attached_product_key = ${cpAlias}.product_key AND eps_cur.status = 'active'
+        AND ${seedNativeCurrencySql('eps_cur')} <> ${currencyParam}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM catalog_offers o_cur
+      WHERE o_cur.product_key = ${cpAlias}.product_key
+        AND upper(trim(coalesce(o_cur.currency, ''))) <> ${currencyParam}
+    )`;
+}
+
 // Use the same native-currency budget ranges as canonical SQL and the final
 // price gate. Values are bound, and malformed price text cannot abort recall.
 function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand = null, inStockOnly = false } = {}, params) {
@@ -65,4 +89,4 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   }
   return clauses.length ? `AND ${clauses.join(' AND ')}` : '';
 }
-module.exports = { buildSeedSearchOfferScope, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };
+module.exports = { buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };

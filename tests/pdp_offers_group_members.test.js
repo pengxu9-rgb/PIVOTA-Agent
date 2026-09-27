@@ -2323,4 +2323,60 @@ describe('PDP grouped offers', () => {
       }),
     );
   });
+  describe('sibling offers are priced in the buyer currency (Peng 2026-09-26)', () => {
+    const member = (merchantId, productId, currency, amount) => ({
+      merchant_id: merchantId,
+      product_id: productId,
+      source_kind: 'external_seed',
+      source_payload: {
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        merchant_name: merchantId,
+        price: { amount, currency },
+        currency,
+      },
+    });
+    // Prod 2026-09-27: 12 sellable-item groups mix a JPY or EUR seller with USD ones.
+    const members = [
+      member('merch_obs_brand', 'ext_opened_jpy', 'JPY', 3800),
+      member('merch_obs_us', 'ext_sibling_usd', 'USD', 28),
+      member('merch_obs_jp', 'ext_sibling_jpy', 'JPY', 3500),
+      member('merch_obs_eu', 'ext_sibling_eur', 'EUR', 26),
+    ];
+    const build = async (extra = {}) => {
+      const app = require('../src/server');
+      const offersData = await app._debug.buildOffersFromGroupMembers({
+        productGroupId: 'sig_krave_gbr',
+        debug: true,
+        members,
+        preferredMerchantId: 'merch_obs_brand',
+        preferredProductId: 'ext_opened_jpy',
+        ...extra,
+      });
+      return offersData;
+    };
+    const served = (offersData) => (offersData?.offers || []).map((offer) => [offer.product_id, offer.price?.currency]).sort();
+
+    test('a market-less buyer keeps the product they opened and only USD siblings', async () => {
+      const offersData = await build();
+      expect(served(offersData)).toEqual([['ext_opened_jpy', 'JPY'], ['ext_sibling_usd', 'USD']]);
+      expect(offersData.offers_count).toBe(2);
+      expect(offersData.diagnostics).toEqual(expect.objectContaining({
+        serving_currency: 'USD',
+        serving_currency_filtered_offer_count: 2,
+      }));
+    });
+
+    test('the buyer market decides: a JP buyer keeps JPY siblings, an unpriceable one only the opened product', async () => {
+      expect(served(await build({ buyerMarket: 'JP' }))).toEqual([['ext_opened_jpy', 'JPY'], ['ext_sibling_jpy', 'JPY']]);
+      expect(served(await build({ servingCurrency: 'EUR' }))).toEqual([['ext_opened_jpy', 'JPY'], ['ext_sibling_eur', 'EUR']]);
+      expect(served(await build({ servingCurrency: null }))).toEqual([['ext_opened_jpy', 'JPY']]);
+    });
+
+    test('with no opened product among the members (sibling fallback), none of another currency is kept', async () => {
+      const offersData = await build({ preferredMerchantId: 'merch_obs_other', preferredProductId: 'ext_not_a_member' });
+      expect(served(offersData)).toEqual([['ext_sibling_usd', 'USD']]);
+      expect(await build({ preferredProductId: 'ext_not_a_member', servingCurrency: 'SGD' })).toBeNull();
+    });
+  });
 });

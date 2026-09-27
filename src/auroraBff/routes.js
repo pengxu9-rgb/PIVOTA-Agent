@@ -1,6 +1,7 @@
 const { recommendationIdentityConflict, sameRecommendationProduct } = require('../shared/recoProductIdentity');
 const vertexGemini = require('../llm/vertexGemini');
 const { servedMarkets } = require('../services/servedMarkets');
+const { seedNativeCurrencySql } = require('../services/seedSearchOfferScope');
 const axios = require('axios');
 const { resolveSearchQueryMaxChars } = require('../findProductsMulti/queryLengthLimit');
 // SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
@@ -8901,6 +8902,30 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
   )`;
 }
 
+// The currency a local external-seed row must be priced in for this buyer (Peng 2026-09-26: a result
+// in another currency must never reach the agent frontend). The region is the request's buyer_region
+// (ctx or the reco target context); none, or an unreadable one, is US -- buyerRegionFromContext's
+// default -- so USD. A region this deployment prices nothing in has no currency: null, serve nothing.
+// The SGD seeds sit in the US partition, so `market = ANY(...)` alone never kept them out.
+function resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext } = {}) {
+  const region = buyerRegionFromContext({
+    buyer_region: buyerRegion !== undefined && buyerRegion !== null ? buyerRegion : targetContext?.buyer_region,
+  });
+  return currencyForBuyerRegion(region) || null;
+}
+
+function buildLocalExternalSeedUnpriceableResult(transportPolicyMode) {
+  return {
+    ok: false,
+    products: [],
+    reason: 'buyer_region_unpriceable',
+    actual_http_attempt_count: 0,
+    attempted_base_urls: [],
+    attempted_paths: [],
+    transport_policy_mode: transportPolicyMode,
+  };
+}
+
 const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
   id,
   external_product_id,
@@ -9944,6 +9969,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   queryTimeoutMs = 1600,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  servingCurrency = resolveLocalExternalSeedServingCurrency({ targetContext }),
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
   const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
@@ -9974,7 +10000,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
     }
   };
 
-  if (stageDefinitions.length === 0) {
+  if (stageDefinitions.length === 0 || !servingCurrency) {
     return {
       rows: [],
       stageDebug: [],
@@ -10020,6 +10046,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
+        AND ${seedNativeCurrencySql()} = ${bind(servingCurrency)}::text
     `;
     if (seenSqlIds.size > 0) {
       sql += `
@@ -10356,6 +10383,7 @@ async function searchLocalExternalSeedProducts({
   queryTimeoutMs = null,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  buyerRegion,
 } = {}) {
   const q = String(query || '').trim();
   if (!q) {
@@ -10406,6 +10434,8 @@ async function searchLocalExternalSeedProducts({
   // take NO request override, so the deployment's served list is the whole answer here.
   const market = servedMarkets();
   const tool = 'creator_agents';
+  const servingCurrency = resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext });
+  if (!servingCurrency) return buildLocalExternalSeedUnpriceableResult(transportPolicyMode);
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
     queryTimeoutMs != null &&
@@ -10454,6 +10484,7 @@ async function searchLocalExternalSeedProducts({
         queryTimeoutMs: effectiveQueryTimeoutMs,
         minRowsBeforeStageStop,
         continueAfterPreciseStage,
+        servingCurrency,
       });
       const rows = Array.isArray(staged?.rows) ? staged.rows : [];
       const rankPoolCap = resolveLocalExternalSeedSupportRankPoolCap({
@@ -10512,11 +10543,12 @@ async function searchLocalExternalSeedProducts({
         WHERE status = 'active'
           AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
+          AND ${seedNativeCurrencySql()} = $5::text
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $4
       `,
-      [market, tool, patterns, rowCap],
+      [market, tool, patterns, rowCap, servingCurrency],
     );
     const rows = Array.isArray(res?.rows) ? res.rows : [];
     const surfacingCandidates = rankPurchasableRecoveryCandidates(
@@ -10587,6 +10619,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   targetContext = null,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  buyerRegion,
 } = {}) {
   const normalizedQueries = uniqCaseInsensitiveStrings(
     (Array.isArray(queries) ? queries : [])
@@ -10606,6 +10639,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       targetContext,
       minRowsBeforeStageStop,
       continueAfterPreciseStage,
+      buyerRegion,
     });
   }
 
@@ -10627,6 +10661,8 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   // take NO request override, so the deployment's served list is the whole answer here.
   const market = servedMarkets();
   const tool = 'creator_agents';
+  const servingCurrency = resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext });
+  if (!servingCurrency) return buildLocalExternalSeedUnpriceableResult(transportPolicyMode);
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
     normalizedQueries.flatMap((query) => buildLocalExternalSeedSearchPatterns(query, {
@@ -10661,6 +10697,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       targetContext,
       minRowsBeforeStageStop,
       continueAfterPreciseStage,
+      servingCurrency,
     });
     const rows = Array.isArray(staged?.rows) ? staged.rows : [];
     const rankPoolCap = resolveLocalExternalSeedSupportRankPoolCap({
@@ -25613,6 +25650,7 @@ async function runBeautyMainlineLocalHandoffSearch({
             role: args?.role || null,
             preferredStep: args?.preferredStep || args?.targetStepFamily || '',
             targetContext,
+            buyerRegion: ctx?.buyer_region,
             ...(localQueryTimeoutMs ? { queryTimeoutMs: localQueryTimeoutMs } : {}),
           });
           const reason = pickFirstTrimmed(out?.reason, out?.ok === true ? 'ok' : 'empty') || 'empty';
@@ -30193,6 +30231,7 @@ async function buildPurchasableFallbackCandidates({
         transportPolicyMode: effectiveTransportPolicy.mode,
         role,
         preferredStep,
+        buyerRegion: targetContext?.buyer_region,
       })
     : null;
 
@@ -30227,6 +30266,7 @@ async function buildPurchasableFallbackCandidates({
         transportPolicyMode: effectiveTransportPolicy.mode,
         role,
         preferredStep,
+        buyerRegion: targetContext?.buyer_region,
       });
     }
   }
@@ -81015,6 +81055,7 @@ async function collectExternalSeedPoolAlternatives({
           preferredStep: localSeedSearchRole.preferred_step,
           minRowsBeforeStageStop: Math.min(3, normalizedLimit),
           continueAfterPreciseStage: true,
+          buyerRegion: ctx?.buyer_region,
         }),
       }]
     : await Promise.allSettled(
@@ -81025,6 +81066,7 @@ async function collectExternalSeedPoolAlternatives({
         transportPolicyMode: 'reco_alternatives_pool',
         role: localSeedSearchRole,
         preferredStep: localSeedSearchRole.preferred_step,
+        buyerRegion: ctx?.buyer_region,
       })),
     );
   poolStageTimingsMs.local_authority_search = Math.max(0, Math.round(Date.now() - localSearchStartedAt));
