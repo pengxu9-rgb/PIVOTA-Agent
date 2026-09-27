@@ -42,10 +42,13 @@
  *      write triggers), so serving follows the identity change now instead of up
  *      to 6h later on the next trust cron. --no-trust-refresh opts out.
  *
- * The dry run also reports SERVING IMPACT: which approved -> review_required rows
- * actually change serving (currently trust-public, or live_read_enabled — the two
- * inputs every identity gate reads), broken down by brand x live_read_enabled x
- * observed-seller exemption.
+ * The dry run also reports SERVING IMPACT, predicted with the trust cron's own code: every
+ * catalog row a planned listing decides is loaded through catalogRowTrustUpserter's join and
+ * run through catalogTrustPolicy.deriveTrust twice -- as it stands, and with the planned
+ * identity fields -- so overrides (an active force_exact_group keeps a row public whatever
+ * the listing status), exemptions and every other gate are exactly the ones the refresh
+ * applies. It also lists rows whose STORED trust already differs from a recompute: the
+ * refresh changes those regardless of the repair (2026-09-27: one listing went public that way).
  *
  * Dry-run by default:
  *   node ./scripts/repairRetailerOfficialDomain.cjs                      # report only
@@ -66,9 +69,6 @@ const {
   buildIdentityListingFromProduct,
   _internals: { applyIdentityOverrides },
 } = require('../src/services/pdpIdentityGraph');
-// The trust policy's own observed-seller test (catalogTrustPolicy.js uses the same helper), so the
-// exemption this report prints cannot drift from the one serving applies.
-const { isObservedSellerMerchantId } = require('../src/services/externalSeedLane');
 
 const MIN_SIBLINGS = 3;
 
@@ -190,24 +190,49 @@ function planRow({ row, rebuilt, overrides = [], brandDomain = new Map(), allowP
   return { ...plan, kind: 'update', promotion: isPromotion };
 }
 
-// Pure: does demoting this listing change what is served? Every identity gate reads
-// approved + live_read_enabled; public reads read catalog_row_trust.serving_decision.
-function servingImpact(servingRows = []) {
-  const liveRead = servingRows.some((r) => r.live_read_enabled === true);
-  const isPublic = servingRows.some((r) => r.serving_decision === 'public');
-  const observedSeller = servingRows.some((r) => isObservedSellerMerchantId(r.merchant_id));
-  const cross = servingRows.some((r) => String(r.seed_kind || '').trim().toLowerCase() === 'cross');
-  return {
-    live_read: liveRead,
-    trust_public: isPublic,
-    observed_seller_exempt: observedSeller && !cross,
-    serving_changes: liveRead || isPublic,
-    catalog_rows: new Set(servingRows.map((r) => r.product_key).filter(Boolean)).size,
-  };
+const QUARANTINE_SQL = `
+  SELECT quarantine_id, match_type, match_value, state, expires_at
+  FROM catalog_source_quarantine
+  WHERE state = 'active' AND (expires_at IS NULL OR expires_at > now())
+`;
+
+// What serving does for each planned listing, before and after, decided by the trust cron's own
+// code rather than a restatement of it: the 2026-09-26 predictor read "trust-public or live_read"
+// and missed the override arm, so 15 of its 18 predicted changes never happened. Returns
+// Map<ref, [{ product_key, live_read, stored, before, after, override }]>. A catalog row whose
+// identity join lands on a DIFFERENT listing is not this plan's to decide and is left out.
+async function predictServing({ client, plans, now = new Date(), upserter, deriveTrust }) {
+  const { PRODUCT_JOIN_SQL, rowToPolicyInputs } = upserter || require('../src/services/catalogRowTrustUpserter');
+  const derive = deriveTrust || require('../src/services/catalogTrustPolicy').deriveTrust;
+  const planByRef = new Map(plans.filter((p) => p.kind === 'update').map((p) => [p.ref, p]));
+  const out = new Map();
+  if (!planByRef.size) return out;
+  const keyed = await client.query(SERVING_SQL, [[...planByRef.keys()]]);
+  const stored = new Map(keyed.rows.filter((r) => r.product_key).map((r) => [r.product_key, r.serving_decision || null]));
+  if (!stored.size) return out;
+  const rows = (await client.query(`${PRODUCT_JOIN_SQL}  WHERE cp.product_key = ANY($1::text[])\n`, [[...stored.keys()]])).rows;
+  const quarantines = (await client.query(QUARANTINE_SQL)).rows;
+  for (const row of rows) {
+    const plan = planByRef.get(row.pil_source_listing_ref);
+    if (!plan) continue;
+    const before = derive(rowToPolicyInputs(row, quarantines, now));
+    const inputs = rowToPolicyInputs(row, quarantines, now);
+    if (inputs.identity) {
+      inputs.identity = { ...inputs.identity, identity_status: plan.fields.identity_status,
+        identity_confidence: plan.fields.identity_confidence, review_required: plan.fields.review_required };
+    }
+    const after = derive(inputs);
+    const list = out.get(plan.ref) || [];
+    list.push({ product_key: row.product_key, live_read: row.live_read_enabled === true,
+      stored: stored.get(row.product_key) ?? null, before: before.serving_decision, after: after.serving_decision,
+      override: row.override_id ? row.override_action_type : null });
+    out.set(plan.ref, list);
+  }
+  return out;
 }
 
 // Pure: the dry-run report.
-function summarize(plans, servingByRef = new Map()) {
+function summarize(plans, predictions = new Map()) {
   const transitions = {};
   for (const p of plans) {
     const key = p.kind === 'skip' ? `skip: ${p.reason}` : `${p.kind} ${p.transition.from} -> ${p.transition.to}`;
@@ -217,15 +242,29 @@ function summarize(plans, servingByRef = new Map()) {
   const table = new Map();
   let changing = 0;
   for (const p of demotions) {
-    const impact = servingImpact(servingByRef.get(p.ref) || []);
-    if (impact.serving_changes) changing += 1;
-    const key = `${p.brand || '(no brand)'}|${impact.live_read}|${impact.observed_seller_exempt}`;
-    const cell = table.get(key) || { brand: p.brand || '(no brand)', live_read: impact.live_read,
-      observed_seller_exempt: impact.observed_seller_exempt, demoted: 0, serving_changes: 0, trust_public: 0 };
+    const pred = predictions.get(p.ref) || [];
+    const liveRead = pred.some((x) => x.live_read);
+    const changes = pred.some((x) => x.before !== x.after);
+    const publicNow = pred.some((x) => x.before === 'public');
+    const heldByOverride = pred.some((x) => x.before === 'public' && x.after === 'public' && x.override);
+    if (changes) changing += 1;
+    const key = `${p.brand || '(no brand)'}|${liveRead}`;
+    const cell = table.get(key) || { brand: p.brand || '(no brand)', live_read: liveRead,
+      demoted: 0, serving_changes: 0, public_now: 0, stays_public_by_override: 0 };
     cell.demoted += 1;
-    if (impact.serving_changes) cell.serving_changes += 1;
-    if (impact.trust_public) cell.trust_public += 1;
+    if (changes) cell.serving_changes += 1;
+    if (publicNow) cell.public_now += 1;
+    if (heldByOverride) cell.stays_public_by_override += 1;
     table.set(key, cell);
+  }
+  // Any planned listing (not only demotions) whose stored trust already differs from a recompute,
+  // and any that ends up public when it is not public today.
+  const stale = []; const newlyPublic = [];
+  for (const [ref, pred] of predictions) {
+    for (const x of pred) {
+      if (x.stored !== x.before) stale.push({ ref, product_key: x.product_key, stored: x.stored, recomputed: x.before });
+      if (x.after === 'public' && x.stored !== 'public') newlyPublic.push({ ref, product_key: x.product_key, override: x.override });
+    }
   }
   const promotions = plans.filter((p) => p.kind === 'hold' || (p.kind === 'update' && p.promotion)).map((p) => ({
     ref: p.ref, brand: p.brand, kind: p.kind,
@@ -235,6 +274,8 @@ function summarize(plans, servingByRef = new Map()) {
     transitions,
     demotions: demotions.length,
     demotions_changing_serving: changing,
+    stale_trust: stale,
+    newly_public: newlyPublic,
     demotion_table: [...table.values()].sort((a, b) => b.serving_changes - a.serving_changes || b.demoted - a.demoted || a.brand.localeCompare(b.brand)),
     promotions,
   };
@@ -244,18 +285,22 @@ function printReport(report, log) {
   log('\n=== transitions ===');
   for (const [k, n] of Object.entries(report.transitions).sort()) log(`  ${String(n).padStart(5)}  ${k}`);
   log(`\n=== demotions (approved -> review_required): ${report.demotions}; serving actually changes for ${report.demotions_changing_serving} ===`);
-  log('  (serving changes = currently trust-public OR live_read_enabled; the rest were already shadow / not live)');
-  log('  brand | live_read_enabled | observed_seller_exempt | demoted | serving_changes | trust_public_now');
+  log('  (predicted with catalogTrustPolicy.deriveTrust on the trust cron\'s own join: overrides and exemptions included)');
+  log('  brand | live_read_enabled | demoted | serving_changes | public_now | stays_public_by_override');
   for (const c of report.demotion_table) {
-    log(`  ${c.brand} | ${c.live_read} | ${c.observed_seller_exempt} | ${c.demoted} | ${c.serving_changes} | ${c.trust_public}`);
+    log(`  ${c.brand} | ${c.live_read} | ${c.demoted} | ${c.serving_changes} | ${c.public_now} | ${c.stays_public_by_override}`);
   }
+  log(`\n=== stored trust differs from a recompute (the refresh changes these regardless of the repair): ${report.stale_trust.length} ===`);
+  for (const x of report.stale_trust) log(`  ${x.ref} | ${x.product_key} | stored ${x.stored} -> recomputed ${x.recomputed}`);
+  log(`\n=== ends up public but is not public today: ${report.newly_public.length} ===`);
+  for (const x of report.newly_public) log(`  ${x.ref} | ${x.product_key}${x.override ? ` | override ${x.override}` : ''}`);
   log(`\n=== promotions (review_required -> approved): ${report.promotions.length} ===`);
   for (const p of report.promotions) {
     log(`  ${p.kind.toUpperCase()} ${p.ref} | ${p.brand} | previous review_reason_codes=${JSON.stringify(p.previous_review_reason_codes)} | active overrides=${JSON.stringify(p.active_overrides)}`);
   }
 }
 
-async function run({ client, apply = false, allowPromotions = false, trustRefresh = false, log = console.log, refreshTrust }) {
+async function run({ client, apply = false, allowPromotions = false, trustRefresh = false, log = console.log, refreshTrust, upserter, deriveTrust }) {
   const retailers = knownRetailerDomains();
   const affected = await client.query(
     `
@@ -324,14 +369,12 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
     allowPromotions,
   }));
 
-  let servingByRef = new Map();
+  let predictions = new Map();
   try {
-    const refs = affected.rows.map((r) => r.source_listing_ref);
-    const serving = await client.query(SERVING_SQL, [refs]);
-    for (const r of serving.rows) servingByRef.set(r.ref, [...(servingByRef.get(r.ref) || []), r]);
+    predictions = await predictServing({ client, plans, upserter, deriveTrust });
   } catch (err) {
     log(`serving impact unavailable: ${String(err.message || err).slice(0, 200)}`);
-    servingByRef = new Map();
+    predictions = new Map();
   }
 
   for (const p of plans) {
@@ -346,7 +389,7 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
         `${p.overrides.length ? ` | overrides ${JSON.stringify(p.overrides)}` : ''}`,
     );
   }
-  const report = summarize(plans, servingByRef);
+  const report = summarize(plans, predictions);
   printReport(report, log);
 
   let updated = 0;
@@ -386,7 +429,7 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
   let trustRows = null;
   if (apply && trustRefresh && touched.length) {
     trustRows = await refreshTrust(client, touched);
-    log(`catalog_row_trust recomputed for ${touched.length} touched listings: ${trustRows} trust rows written`);
+    log(`catalog_row_trust recomputed for ${touched.length} touched listings: ${trustRows} catalog rows evaluated (a row whose verdict is unchanged is not rewritten)`);
   } else if (apply && touched.length) {
     log('catalog_row_trust NOT recomputed (--no-trust-refresh): serving follows on the next trust cron (up to 6h)');
   }
@@ -404,7 +447,7 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
     );
     log(`residual rows with retailer official_domain: ${residual.rows[0].n} (held promotions and skips stay until handled)`);
   }
-  return { report, updated, held, skipped, touched, trustRows };
+  return { report, predictions, updated, held, skipped, touched, trustRows };
 }
 
 async function main() {
@@ -422,6 +465,9 @@ async function main() {
   } finally {
     await client.end();
   }
+  // Run as a Cloud Run one-off, the last lines (the promotions list, `done.`) were lost to log ingestion
+  // lag on 2026-09-27; a pause before exit lets the log pipeline take them.
+  await new Promise((r) => setTimeout(r, Number(process.env.REPAIR_TAIL_PAUSE_MS ?? 30000)));
 }
 
 if (require.main === module) {
@@ -431,4 +477,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, planRow, servingImpact, summarize, run, SERVING_SQL };
+module.exports = { parseArgs, planRow, predictServing, summarize, run, SERVING_SQL };
