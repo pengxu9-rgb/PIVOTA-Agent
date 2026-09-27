@@ -816,31 +816,49 @@ describe('product-intel doors: the UI’s metadata.market reaches the offers gat
 });
 
 // ---------------------------------------------------------------------------
-// offers.resolve (site 6) — NOT REACHABLE END TO END.
+// offers.resolve (site 6) — gated on the envelope, inside the early branch.
 //
 // handleInvokeRequest answers `operation === 'offers.resolve'` from `handleOffersResolveOperation`
-// and RETURNS on every branch (response, 500 envelope, or the catch's no-offer failure) long before
-// the `prioritizeOffersResolveResponseGated` call further down the same function. That call is
-// dead code, and `handleOffersResolveOperation` itself never consults the gate: the cache-search
-// upstream's offers are served verbatim. The first test pins today's behaviour so the gap is
-// visible (and so a fix has a test to flip); the second pins what site 6 WOULD do at its narrowest
-// real seam — the exact expression the site evaluates, with the real client on the wire.
+// and RETURNS on every branch, so the gate runs there, on `handled.response`, before it is sent
+// (`gateOffersResolveResponse`). Until that change the only gated call sat further down the same
+// function and was never reached: no ops read, and the cart URL was served under enforcement.
+//
+// The door serves the backend's offers VERBATIM (it never prioritizes or stamps them), so the gate
+// touches only a DECLINED offer, and nothing declined is the same object back: byte-identical.
+// Its market comes from the door's own carriers — `payload.offers.market`, then `payload.market`,
+// then `metadata.market` (`offersResolveGateBuyerMarket`) — never `search.market`, never a default.
 // ---------------------------------------------------------------------------
 
 const RESOLVE_HOST = 'gloss-shop.example';
 const RESOLVE_CART = 'https://gloss-shop.example/cart/4511:1';
+const PEER_HOST = 'peer-shop.example';
+const PEER_CART = 'https://peer-shop.example/cart/99:1';
 
-function resolveUpstreamBody() {
+function glossOffer() {
+  return {
+    offer_id: 'of:internal_checkout:merch_gloss:7700001:1',
+    merchant_id: 'merch_gloss',
+    purchase_route: 'internal_checkout',
+    checkout_url: RESOLVE_CART,
+    price: { amount: 18, currency: 'USD' },
+  };
+}
+
+function peerOffer() {
+  return {
+    offer_id: 'of:internal_checkout:merch_peer:7700001:1',
+    merchant_id: 'merch_peer',
+    purchase_route: 'internal_checkout',
+    checkout_url: PEER_CART,
+    price: { amount: 19, currency: 'USD' },
+  };
+}
+
+function resolveUpstreamBody(offers = [glossOffer()]) {
   return {
     status: 'success',
-    offers: [{
-      offer_id: 'of:internal_checkout:merch_gloss:7700001:1',
-      merchant_id: 'merch_gloss',
-      purchase_route: 'internal_checkout',
-      checkout_url: RESOLVE_CART,
-      price: { amount: 18, currency: 'USD' },
-    }],
-    offers_count: 1,
+    offers,
+    offers_count: offers.length,
     mapping: {
       canonical_ref: 'pc:merch_gloss:shopify:7700001',
       canonical_product: { merchant_id: 'merch_gloss', platform: 'shopify', product_id: '7700001' },
@@ -848,91 +866,199 @@ function resolveUpstreamBody() {
   };
 }
 
-describe('offers.resolve (site 6)', () => {
-  // KNOWN GAP, written as the behaviour we WANT and marked `test.failing`: offers.resolve returns
-  // from handleOffersResolveOperation (src/server.js, the early `operation === 'offers.resolve'`
-  // branch) on every path, so the gated call further down the handler never runs — no ops read is
-  // made and the cart URL is served under enforcement. When the door is gated this starts passing,
-  // `test.failing` turns red, and the marker must be removed.
-  test.failing('KNOWN GAP: offers.resolve keys the gate on the UI market and declines the offer', async () => {
+// The same envelope with the offers ONLY under `data` — `buildOffersResolveResponse` lifts them to a
+// top-level `offers` AND keeps `data` verbatim, so the response carries the cart URL twice.
+function nestedResolveUpstreamBody() {
+  const { offers, ...rest } = resolveUpstreamBody();
+  return { ...rest, data: { offers } };
+}
+
+function loadResolveServer(envOverrides = {}) {
+  return loadServer({
+    OFFERS_RESOLVE_SUBJECT_RETRY_MAX: '0',
+    OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX: '0',
+    OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD: '99',
+    ...envOverrides,
+  });
+}
+
+// A bare numeric product id skips subject-resolve and goes straight to the cache search.
+const RESOLVE_PRODUCT = Object.freeze({ product_id: '7700001' });
+
+async function resolveOffers(app, { payload, metadata, upstream = resolveUpstreamBody() }) {
+  const cacheScope = nock(API_BASE)
+    .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+    .reply(200, upstream);
+  const res = await request(app)
+    .post('/agent/shop/v1/invoke')
+    .send({ operation: 'offers.resolve', payload, ...(metadata ? { metadata } : {}) });
+  expect(res.status).toBe(200);
+  expect(cacheScope.isDone()).toBe(true);
+  return res;
+}
+
+// The response's wall-clock fields are the only bytes that differ between two identical requests.
+const stableJson = (body) => JSON.stringify(body, (key, value) => (
+  key === 'time_to_pdp_ms' || key === 'latency_ms' ? 0 : value
+));
+
+describe('offers.resolve (site 6): the envelope is gated before it is sent', () => {
+  test('UI metadata market US + enforcing + browse_only: keyed on US, the offer is declined and survives', async () => {
+    // Was the KNOWN GAP (`test.failing`) before the door was gated.
     const reads = installOpsBackend({ tierFor: () => 'browse_only' });
-    const { app } = loadServer({
-      OFFERS_RESOLVE_SUBJECT_RETRY_MAX: '0',
-      OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX: '0',
-      OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD: '99',
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT }, market: 'US' }, market: 'US' },
+      metadata: uiMetadata(),
     });
-    // A bare numeric product id skips subject-resolve and goes straight to the cache search.
-    const cacheScope = nock(API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
-      .reply(200, resolveUpstreamBody());
 
-    const res = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'offers.resolve',
-        // The market in EVERY carrier the gate reads (payload.market, metadata.market) and in the
-        // route's own documented slot (payload.offers.market): none of them can matter, because
-        // the gate is never called.
-        payload: { offers: { product: { product_id: '7700001' }, market: 'US' }, market: 'US' },
-        metadata: uiMetadata(),
-      });
-
-    expect(res.status).toBe(200);
-    expect(cacheScope.isDone()).toBe(true);
     expect(res.body.offers).toHaveLength(1);
     expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
     expect(checkoutUrlsOnHost(res.body, RESOLVE_HOST)).toEqual([]);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expect(res.body.offers[0].price).toEqual({ amount: 18, currency: 'USD' });
+    expect(res.body.offers_count).toBe(1);
   });
 
-  test('TODAY (the gap above, pinned so it cannot widen silently): no ops read, and the cart URL is served', async () => {
+  test('the route’s own payload.offers.market ALONE keys the gate', async () => {
     const reads = installOpsBackend({ tierFor: () => 'browse_only' });
-    const { app } = loadServer({
-      OFFERS_RESOLVE_SUBJECT_RETRY_MAX: '0',
-      OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX: '0',
-      OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD: '99',
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT }, market: 'SG' } },
+      metadata: uiMetadataWithoutMarket(),
     });
-    nock(API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
-      .reply(200, resolveUpstreamBody());
-    const res = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'offers.resolve',
-        payload: { offers: { product: { product_id: '7700001' }, market: 'US' }, market: 'US' },
-        metadata: uiMetadata(),
-      });
-    expect(res.status).toBe(200);
-    expect(reads).toEqual([]);
+
+    expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'SG')]);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+  });
+
+  test('precedence: payload.offers.market, then payload.market, then metadata.market', async () => {
+    for (const [payload, metadata, market] of [
+      [{ offers: { product: { ...RESOLVE_PRODUCT }, market: 'SG' }, market: 'US' }, uiMetadata({ market: 'GB' }), 'SG'],
+      [{ offers: { product: { ...RESOLVE_PRODUCT } }, market: 'US' }, uiMetadata({ market: 'GB' }), 'US'],
+      [{ offers: { product: { ...RESOLVE_PRODUCT } } }, uiMetadata({ market: 'GB' }), 'GB'],
+      // A carrier that is not ONE ISO-2 market is skipped, not decisive (§5).
+      [{ offers: { product: { ...RESOLVE_PRODUCT }, market: 'USA' } }, uiMetadata({ market: 'us' }), 'US'],
+      [{ offers: { product: { ...RESOLVE_PRODUCT }, market: 'US,SG' }, market: 'JP' }, uiMetadata(), 'JP'],
+    ]) {
+      const reads = installOpsBackend({ tierFor: () => 'browse_only' });
+      const { app } = loadResolveServer();
+      await resolveOffers(app, { payload, metadata });
+      expect(reads).toEqual([keyedRead(RESOLVE_HOST, market)]);
+      nock.cleanAll();
+    }
+  });
+
+  test('search.market is NOT a carrier on this door: alone, the request is unkeyable (probe only) and declined', async () => {
+    const reads = installOpsBackend({ tierFor: () => 'purchase' });
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } }, search: { market: 'US' } },
+      metadata: uiMetadataWithoutMarket(),
+    });
+
+    expect(reads).toEqual([probeRead(RESOLVE_HOST)]);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+  });
+
+  test('NO market anywhere + enforcing: the probe only, and the offer is declined as unkeyable (never defaulted to US)', async () => {
+    // A `purchase` answer for any KEYED read: a gate that defaulted the market would read it and keep
+    // the cart URL. Only the market-less probe may be asked.
+    const reads = installOpsBackend({ tierFor: () => 'purchase' });
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadataWithoutMarket(),
+    });
+
+    expect(reads).toEqual([probeRead(RESOLVE_HOST)]);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+  });
+
+  test('upstream offers under data.offers only: BOTH copies in the envelope lose the cart URL', async () => {
+    const reads = installOpsBackend({ tierFor: () => 'browse_only' });
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+      upstream: nestedResolveUpstreamBody(),
+    });
+
+    expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
+    expect(res.body.offers).toHaveLength(1);
+    expect(res.body.data.offers).toHaveLength(1);
+    expect(checkoutUrlsOnHost(res.body, RESOLVE_HOST)).toEqual([]);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expectDeclined(res, res.body.data.offers[0], RESOLVE_HOST);
+  });
+
+  test('two merchants, one browse_only: only that offer is rewritten; the other is served verbatim, in order', async () => {
+    const reads = installOpsBackend({ tierFor: (domain) => (domain === RESOLVE_HOST ? 'browse_only' : 'purchase') });
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+      upstream: resolveUpstreamBody([glossOffer(), peerOffer()]),
+    });
+
+    expect([...reads].sort()).toEqual([keyedRead(PEER_HOST, 'US'), keyedRead(RESOLVE_HOST, 'US')].sort());
+    expect(res.body.offers.map((o) => o.merchant_id)).toEqual(['merch_gloss', 'merch_peer']);
+    expectDeclined(res, res.body.offers[0], RESOLVE_HOST);
+    expect(res.body.offers[1]).toStrictEqual(peerOffer());
+  });
+
+  test.each([
+    ['a purchase fact', { tierFor: () => 'purchase' }],
+    ['a backend that is NOT enforcing', { tierFor: () => 'browse_only', enforced: false }],
+  ])('CONTROL: %s — the keyed read is made and the offer is served verbatim', async (_label, backend) => {
+    const reads = installOpsBackend(backend);
+    const { app } = loadResolveServer();
+
+    const res = await resolveOffers(app, {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+    });
+
+    expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
+    expect(res.body.offers[0]).toStrictEqual(glossOffer());
     expect(res.body.offers[0].checkout_url).toBe(RESOLVE_CART);
   });
 
-  test('SEAM: the expression site 6 evaluates keys the UI request on US and declines the offer', async () => {
+  test('SWITCH OFF: nothing is asked and the response is BYTE-IDENTICAL to the ungated envelope', async () => {
+    const request_ = {
+      payload: { offers: { product: { ...RESOLVE_PRODUCT } } },
+      metadata: uiMetadata(),
+      upstream: resolveUpstreamBody([glossOffer(), peerOffer()]),
+    };
+
+    // The pre-gate door: the same server with the envelope gate replaced by the identity, i.e.
+    // `res.json(handled.response)` — what this branch sent before it was gated.
+    jest.doMock('../../src/offers/offersPriority', () => ({
+      ...jest.requireActual('../../src/offers/offersPriority'),
+      gateOffersResolveResponse: async (response) => response,
+    }));
+    let ungated;
+    try {
+      installOpsBackend({ tierFor: () => 'browse_only' });
+      ({ app: ungated } = loadResolveServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' }));
+    } finally {
+      jest.dontMock('../../src/offers/offersPriority');
+    }
+    const before = await resolveOffers(ungated, request_);
+
     const reads = installOpsBackend({ tierFor: () => 'browse_only' });
-    loadServer();
-    // Required AFTER loadServer's resetModules, so this is the same fresh module graph (and the
-    // same gate singleton) the server just built.
-    const { offersGateBuyerMarket, prioritizeOffersResolveResponseGated } = require('../../src/offers/offersPriority');
+    const { app } = loadResolveServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+    const after = await resolveOffers(app, request_);
 
-    const uiPayload = { offers: { product: { product_id: '7700001' } } };
-    const market = offersGateBuyerMarket(uiPayload, uiMetadata());
-    expect(market).toBe('US');
-    const out = await prioritizeOffersResolveResponseGated(resolveUpstreamBody(), { market });
-
-    expect(reads).toEqual([keyedRead(RESOLVE_HOST, 'US')]);
-    const [offer] = out.offers;
-    expect(offer.offer_id).toBe('of:internal_checkout:merch_gloss:7700001:1');
-    expect(Object.prototype.hasOwnProperty.call(offer, 'merchant_checkout_url')).toBe(false);
-    expect(checkoutUrlsOnHost(out, RESOLVE_HOST)).toEqual([]);
-    expect(offer.commerce_mode).toBe('links_out');
-  });
-
-  test('SEAM: offers.resolve’s own payload.offers.market is NOT a gate carrier', () => {
-    // The route documents `{ offers: { product, market } }`; `offersGateBuyerMarket` reads
-    // search.market, payload.market and metadata.market only. So even once site 6 is reachable, a
-    // caller that puts its market ONLY in the route's own slot is unkeyable.
-    loadServer();
-    const { offersGateBuyerMarket } = require('../../src/offers/offersPriority');
-    expect(offersGateBuyerMarket({ offers: { product: { product_id: '7700001' }, market: 'US' } }, {})).toBeUndefined();
+    expect(reads).toEqual([]);
+    expect(stableJson(after.body)).toBe(stableJson(before.body));
+    expect(after.body.offers).toStrictEqual([glossOffer(), peerOffer()]);
   });
 });
 

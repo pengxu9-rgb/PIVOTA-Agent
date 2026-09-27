@@ -152,7 +152,8 @@ read the market ONLY through `selectBuyerMarket` (§5), which has no default.
 
 **What a caller must do to get purchase affordances: name its buyer's market.** One ISO-3166 alpha-2
 code the gateway can price (`currencyForBuyerRegion`), in ONE carrier — `metadata.market` is the
-simplest — e.g. `"US"`. For that input, and only for it, every reader agrees — trimmed,
+simplest — e.g. `"US"`. (On `offers.resolve` the carriers are `payload.offers.market` / `payload.market`;
+`search.market` is not read there, §5.) For that input, and only for it, every reader agrees — trimmed,
 case-insensitive: `resolveServingCurrency("us")` = `USD` and `selectBuyerMarket(…, " US ")` = `US`.
 
 Anything else is NOT a market and a caller must never send it, because the readers do not agree on it:
@@ -164,7 +165,7 @@ Anything else is NOT a market and a caller must never send it, because the reade
   `US`; `parseMarketList` splits on `[,\s]` only and serving gets `null`;
 * **carrier order differs by reader**: serving reads `search.market || metadata.market` (raw
   truthiness), the offers gate `search` → `payload` → `metadata` (first VALID wins), the resolver lane
-  `metadata` → `payload`, the `/r` mint `search || payload || metadata` (raw). So
+  `metadata` → `payload`, `offers.resolve` `payload.offers.market` → `payload.market` (§5), the `/r` mint `search || payload || metadata` (raw). So
   `{search:{market:"en-US"}}` + `metadata.market:"US"` serves nothing but keys the gate on US, and
   `payload.market:"SG"` + `metadata.market:"US"` serves USD but keys claims on SG.
 
@@ -425,10 +426,28 @@ usable domain reads the cache only and is never given a made-up domain to ask wi
 ### Which market a request carries — the carrier rule
 
 The doors that hand this gate a market read it from several carriers, in a fixed precedence:
-the offers door `payload.search.market`, then `payload.market`, then `metadata.market`
-(`offersGateBuyerMarket`); the resolver lane `metadata.market`, then `payload.market`
-(`checkoutHandoffResolver.requestBuyerMarket`). Both go through ONE function,
-`merchantPurchasabilityClient.selectBuyerMarket`, and two rules apply:
+
+| door | carriers, in order | reader |
+|---|---|---|
+| offers (PDP, product-intel, coverage) | `payload.search.market`, `payload.market`, `metadata.market` | `offersGateBuyerMarket` |
+| **`offers.resolve`** | **`payload.offers.market`**, `payload.market`, `metadata.market` | `offersResolveGateBuyerMarket` |
+| resolver lane | `metadata.market`, `payload.market` | `checkoutHandoffResolver.requestBuyerMarket` |
+
+**Why `offers.resolve` has its own order.** The gate must key on the market the door resolved its
+offers FOR. The route documents its market at `payload.offers.market` (src/schema.js) and
+`normalizeOffersResolveInput` resolves for `offers.market || payload.market`, forwarding `metadata`
+to the backend beside it — so that is the order, most specific first. `search.market` is NOT a
+carrier there: the door never reads or forwards it, and keying on it would gate offers resolved for
+one market against a fact about another (a request whose only market is `search.market` is unkeyable
+on this door). It is a separate reader, not a new carrier in `offersGateBuyerMarket`, because
+`get_pdp_v2` also carries a `payload.offers` object (its `limit`) and widening the shared reader would
+change that door. One accepted divergence: the route itself takes the first NON-EMPTY value
+(`offers.market: "USA"` goes upstream as `USA`) while the gate takes the first VALID one (rule 1
+below), so that request is served the backend's `USA` answer and gated on the next valid carrier, or
+unkeyable if there is none.
+
+All of them go through ONE function, `merchantPurchasabilityClient.selectBuyerMarket`, and two rules
+apply:
 
 1. **The FIRST carrier that yields a valid ISO-2 market wins.** A carrier that does not — absent,
    blank, `"USA"`, `"U1"`, a two-market list — is SKIPPED, not decisive. So
@@ -614,20 +633,29 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 | 1 | `src/services/ucpWarmHandoff.js::resolveWarmHandoff` | a pre-built cart on the merchant's own checkout, priced in chat | `metadata.market \|\| payload.market` (resolver lane); `body.market` (click lane — forwarded by the backend only when the `/r` minter OBSERVED the buyer's market, #2243/#2352; a market-less click is the normal case there, §2). Both lanes pick the market by the §5 carrier rule (`selectBuyerMarket`; on the click lane it has one carrier, `body.market`, so `"US,US"` is US and `"US,SG"` / `"USA"` are no market) | the pre-existing `null` = cold redirect; `outcome=fallback, reason=merchant_not_purchasable` |
 | 2 | `mcp-server/src/ucpCheckoutEscalation.js::tryEscalateUcpCheckout` | a UCP `requires_escalation` checkout whose `continue_url` is the merchant's storefront | `ucpArgs.checkout.context.address_country` — the RAW UCP wire body, ISO-2 | the pre-existing `null` = "not an escalation cart", i.e. the kernel path this door already takes for any row not eligible for a `continue_url` |
 | 3 | `src/offers/offersPriority.js::enrichOfferCommerceMetadata` | `merchant_checkout_url` on every served offer | `payload.search.market`, then `payload.market`, then `metadata.market` — the first that yields ONE ISO-2 market (§5 carrier rule; `offersGateBuyerMarket`, which lives in `offersPriority.js` so a test can reach it) at **all four** `src/server.js` annotate call sites | the key is **DELETED on a declined decision, whichever pass stamped it** — and every other field carrying that merchant's checkout URL goes with it. The OFFER SURVIVES with its price and its PDP/browse links; its "buyable here" signals are rewritten to the links-out vocabulary: `commerce_mode: links_out`, `checkout_handoff: redirect`, `purchase_route: affiliate_outbound` (see "A URL is not the only thing…" below) |
+| 3′ | `src/offers/offersPriority.js::gateOffersResolveResponse` — the `offers.resolve` door (site 6), called in `src/server.js`'s early `operation === 'offers.resolve'` branch on `handled.response`, before it is sent | the backend's offers, served verbatim (cart URLs included) | `payload.offers.market`, then `payload.market`, then `metadata.market` (§5 carrier rule; `offersResolveGateBuyerMarket` — this door's own carriers, see §5) | the SAME delete-on-decline rewrite (`enrichOfferCommerceMetadata`'s decline branch), applied **only to declined offers**, in both envelope copies (`offers` and `data.offers`). Every other offer is passed through by reference, and with nothing declined the envelope itself is returned by reference — this door never prioritized or stamped its offers, so it still does not |
 
 Nothing else about any response moves. No new ucpTool name, no new canonical op, no new failure
 reason: the only difference a declined merchant produces is a URL that is not there.
 
-> 🚨 **CORRECTION (2026-09-27): `offers.resolve` is NOT gated.** Its `prioritizeOffersResolveResponseGated`
-> call in `src/server.js` sits AFTER the early `operation === 'offers.resolve'` branch, which returns
-> from `handleOffersResolveOperation` on every path, so it never runs: that door makes no ops read
-> and serves a declined merchant's cart URL under enforcement. Pinned both ways in
-> `tests/integration/get_pdp_v2_purchasability_gate_market.test.js` ("KNOWN GAP", a `test.failing`
-> that states the wanted behaviour, plus the "TODAY" pin). The route's own documented market slot,
-> `payload.offers.market`, is not a gate carrier either (`offersGateBuyerMarket` reads
-> `search.market`, `payload.market`, `metadata.market`). Fixing both is a follow-up.
+> 🚨 **CORRECTION (2026-09-27), then FIXED (row 3′ above).** `offers.resolve` was NOT gated: its
+> `prioritizeOffersResolveResponseGated` call in `src/server.js` sat AFTER the early
+> `operation === 'offers.resolve'` branch, which returns from `handleOffersResolveOperation` on every
+> path, so it never ran — that door made no ops read and served a declined merchant's cart URL under
+> enforcement — and the route's own documented market slot, `payload.offers.market`, was not a gate
+> carrier. The dead call site is deleted; the gate now runs inside the early branch, on the envelope,
+> keyed by `offersResolveGateBuyerMarket` (§5).
 >
-> What the same file DOES pin end to end, through the real invoke route with the gate on:
+> **Why not the old wrapper.** `prioritizeOffersResolveResponseGated` REORDERS every offer and STAMPS
+> commerce metadata on all of them even with the switch off; this door has never done either, so
+> reaching it would have changed every `offers.resolve` response for a gate that declined nothing.
+> `gateOffersResolveResponse` touches declined offers only. Pinned end to end in
+> `tests/integration/get_pdp_v2_purchasability_gate_market.test.js` ("offers.resolve (site 6)": the
+> former KNOWN GAP now passing, the door's carriers and their precedence, the unkeyable decline, both
+> envelope copies, a verbatim peer, and switch-off byte-identity against the ungated envelope) and at
+> the helper and source level in `tests/merchant_purchasability_paths.node.test.cjs` ("site6: …").
+>
+> What the same file ALSO pins end to end, through the real invoke route with the gate on:
 > * **`get_pdp_v2`** (group build, sibling build, pre-stamp pass): the read is keyed on the request's
 >   market, and a declined merchant's cart URL leaves every field of the offers module while a kept
 >   one keeps it; carrier precedence (`search` → `payload` → `metadata`) is pinned too.

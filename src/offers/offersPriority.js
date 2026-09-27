@@ -558,6 +558,74 @@ function offersGateBuyerMarket(payload, metadata) {
   return selectBuyerMarket(search && search.market, p && p.market, m && m.market);
 }
 
+/**
+ * THE BUYER MARKET FOR THE `offers.resolve` DOOR (site 6). Its own carriers, not the offers door's.
+ *
+ * The route documents its market at `payload.offers.market` (src/schema.js) and resolves its offers
+ * for `offers.market || payload.market` (`normalizeOffersResolveInput`), forwarding `metadata` to the
+ * backend alongside. So the gate reads the carriers the door itself resolves for, most specific first:
+ * `payload.offers.market`, then `payload.market`, then `metadata.market`. `search.market` is NOT one —
+ * this door never reads or forwards it, so keying on it would gate offers resolved for one market
+ * against a fact about another. Same `selectBuyerMarket`, same rules (docs/merchant-purchasability-gate.md
+ * §5): the first carrier that yields ONE ISO-2 market wins, an unreadable one is skipped, and there is
+ * NO default — no market => `undefined` => unkeyable.
+ *
+ * A separate function rather than a new carrier in `offersGateBuyerMarket`: `get_pdp_v2` also carries
+ * a `payload.offers` object (its `limit`), and widening the shared reader would change that door too.
+ */
+function offersResolveGateBuyerMarket(payload, metadata) {
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const p = obj(payload);
+  const offers = p ? obj(p.offers) : null;
+  const m = obj(metadata);
+  return selectBuyerMarket(offers && offers.market, p && p.market, m && m.market);
+}
+
+/**
+ * THE `offers.resolve` ENVELOPE, GATED (path 3, site 6). The door serves the backend's offers
+ * verbatim — it never prioritizes or stamps them — so this is NOT `prioritizeOffersResolveResponseGated`:
+ * that one reorders every offer and stamps commerce metadata on all of them even with the switch off,
+ * which would change every offers.resolve response for a gate that declined nothing.
+ *
+ * Instead the only offers touched are the DECLINED ones, and they get exactly the delete-on-decline
+ * rewrite every other site applies (`enrichOfferCommerceMetadata`'s decline branch: every checkout URL
+ * for that merchant removed anywhere in the offer, the buyable-here payloads deleted, links-out
+ * vocabulary). The offer survives. Both copies the envelope can carry — `offers` and `data.offers`
+ * (`buildOffersResolveResponse` keeps an upstream `data` verbatim beside the lifted top-level array) —
+ * are rewritten, from one decision set.
+ *
+ * ⚠️ NOTHING DECLINED => THE SAME OBJECT, BY REFERENCE. Switch off, backend not enforcing, a purchase
+ * fact, a failed read, a page with no offers: all return `response` itself, so the wire bytes are the
+ * pre-gate bytes by construction, not by a deep-equal that could drift.
+ */
+async function gateOffersResolveResponse(response, options = {}) {
+  const r = response && typeof response === 'object' && !Array.isArray(response) ? response : null;
+  if (!r) return response;
+  const nestedData = r.data && typeof r.data === 'object' && !Array.isArray(r.data) ? r.data : null;
+  const top = Array.isArray(r.offers) ? r.offers : null;
+  const nested = nestedData && Array.isArray(nestedData.offers) ? nestedData.offers : null;
+
+  const declinedDomains = await resolveOfferPurchasabilityDecisions(
+    [...(top || []), ...(nested || [])],
+    options,
+  );
+  if (declinedDomains.size === 0) return response;
+
+  // `readOfferMerchantDomain` is non-null only when the offer has a stamped URL, which is exactly the
+  // condition `enrichOfferCommerceMetadata` takes its decline branch on — so every offer sent there
+  // is declined, and every other offer is passed through untouched.
+  const decline = (offers) => offers.map((offer) => (
+    declinedDomains.has(readOfferMerchantDomain(offer))
+      ? enrichOfferCommerceMetadata(offer, { declinedDomains })
+      : offer
+  ));
+  return {
+    ...r,
+    ...(top ? { offers: decline(top) } : {}),
+    ...(nested ? { data: { ...nestedData, offers: decline(nested) } } : {}),
+  };
+}
+
 /** `annotateOffersWithCommerceMetadata`, with the gate consulted first. */
 async function annotateOffersWithCommerceMetadataGated(offers, options = {}) {
   const declinedDomains = await resolveOfferPurchasabilityDecisions(offers, options);
@@ -740,6 +808,8 @@ async function prioritizeOffersResolveResponseGated(upstreamData, options = {}) 
 module.exports = {
   GATE_BATCH_BUDGET_MS,
   offersGateBuyerMarket,
+  offersResolveGateBuyerMarket,
+  gateOffersResolveResponse,
   GATE_CONCURRENCY,
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,

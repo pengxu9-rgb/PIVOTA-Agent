@@ -41,6 +41,8 @@ const {
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,
   offersGateBuyerMarket,
+  offersResolveGateBuyerMarket,
+  gateOffersResolveResponse,
   isInternalOffer,
   pickDefaultOfferId,
 } = require('../src/offers/offersPriority');
@@ -1253,4 +1255,138 @@ test('QUIET LOOP: the offers batch still settles when its deadline is the ONLY t
   const out = `${result.stdout || ''}${result.stderr || ''}`;
   assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the batch still pending — an unref'd deadline:\n${out}`);
   assert.ok(out.includes('SETTLED:0'), `expected the batch to fail open on its deadline, got:\n${out}`);
+});
+
+// =========================================================================================================
+// SITE 6 — offers.resolve. The door returns from its early branch on every path, so it is gated there, on
+// the envelope (`gateOffersResolveResponse`), keyed on its own carriers (`offersResolveGateBuyerMarket`).
+// =========================================================================================================
+
+const CART = `https://www.${MERCHANT}/cart/4511:1`;
+const resolveOffer = (id, host, extra = {}) => offer(id, host, {
+  purchase_route: 'internal_checkout', checkout_url: `https://${host}/cart/${id}:1`, ...extra,
+});
+
+test('site6: offersResolveGateBuyerMarket reads offers.market, then payload.market, then metadata.market — and NEVER defaults', () => {
+  const m = offersResolveGateBuyerMarket;
+  assert.equal(m({ offers: { market: 'sg' } }, {}), 'SG', 'the route\'s own documented slot is a carrier');
+  assert.equal(m({ offers: { market: 'SG' }, market: 'US' }, { market: 'GB' }), 'SG', 'offers.market wins');
+  assert.equal(m({ offers: {}, market: 'US' }, { market: 'GB' }), 'US', 'then payload.market');
+  assert.equal(m({ offers: {} }, { market: 'GB' }), 'GB', 'then metadata.market');
+  assert.equal(m({ market: 'JP' }, {}), 'JP', 'no offers object: payload.market (the route reads payload itself)');
+  // Skipped, not decisive (§5).
+  assert.equal(m({ offers: { market: 'USA' } }, { market: 'us' }), 'US');
+  assert.equal(m({ offers: { market: 'US,SG' }, market: 'JP' }, {}), 'JP');
+  assert.equal(m({ offers: { market: 'US,US' } }, {}), 'US');
+  // search.market is not this door's carrier — it never reads or forwards it.
+  assert.equal(m({ search: { market: 'US' } }, {}), undefined);
+  assert.equal(m({ search: { market: 'US' }, offers: { market: 'SG' } }, {}), 'SG');
+  // No default: every silent shape is a question the gate cannot key.
+  assert.equal(m({}, {}), undefined);
+  assert.equal(m(null, null), undefined);
+  assert.equal(m(undefined, undefined), undefined);
+  assert.equal(m({ offers: 'US' }, {}), undefined, 'a non-object offers slot carries nothing');
+  assert.equal(m({ offers: { market: '   ' } }, { scope: { region: 'US' } }), undefined, 'region is not a market');
+});
+
+test('site6: nothing declined => the SAME envelope object back (byte-identical by construction)', async () => {
+  const envelope = () => ({
+    status: 'success', offers: [resolveOffer('o1', MERCHANT)], offers_count: 1,
+    data: { offers: [resolveOffer('o1', MERCHANT)] }, metadata: { source: 'offers.resolve' },
+  });
+
+  // Switch OFF: nothing asked.
+  {
+    const backend = fakeBackend(BROWSE_ONLY);
+    const env = offEnv();
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    assert.equal(out, r, 'switch off must return the very same object');
+    assert.equal(backend.calls.length, 0, 'switch off asks nothing');
+  }
+  // Switch ON, but no decline: purchase fact, not enforcing, failed read, a throwing gate.
+  for (const [label, backendFor] of [
+    ['purchase', () => fakeBackend(PURCHASE)],
+    ['not enforced', () => fakeBackend(NOT_ENFORCED)],
+    ['non-200', () => fakeBackend(BROWSE_ONLY, { status: 503, ok: false })],
+  ]) {
+    const env = gateEnv();
+    const backend = backendFor();
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    assert.equal(out, r, `${label}: same object`);
+    assert.ok(backend.calls.length > 0, `${label}: the gate was asked`);
+  }
+  {
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, {
+      env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => { throw new Error('gate exploded'); },
+    });
+    assert.equal(out, r, 'a gate that throws fails open — same object');
+  }
+  // No offers / not an object: untouched.
+  for (const r of [{ error: 'MISSING_PARAMETERS' }, { status: 'failure', offers: [] }, null, undefined, 'x']) {
+    assert.equal(await gateOffersResolveResponse(r, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL }), r);
+  }
+});
+
+test('site6: a declined merchant loses every cart copy in BOTH envelope arrays; a peer is passed through by reference', async () => {
+  const env = gateEnv();
+  const backend = fakeBackend((domain) => (domain === MERCHANT ? BROWSE_ONLY : PURCHASE));
+  const declinedRow = resolveOffer('o1', MERCHANT, { checkout_url: CART, internal_checkout: { token: 't' } });
+  const peerRow = resolveOffer('o2', 'example-shop.test');
+  const r = {
+    status: 'success',
+    offers: [declinedRow, peerRow],
+    offers_count: 2,
+    data: { offers: [declinedRow, peerRow], extra: 'kept' },
+    default_offer_id: 'o1',
+  };
+  const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+
+  assert.notEqual(out, r);
+  assert.deepEqual(Object.keys(out), Object.keys(r), 'no key added, removed or reordered on the envelope');
+  assert.equal(out.offers_count, 2);
+  assert.equal(out.default_offer_id, 'o1', 'the envelope\'s own fields are not edited');
+  assert.equal(out.data.extra, 'kept');
+  for (const arr of [out.offers, out.data.offers]) {
+    assert.equal(arr.length, 2, 'the declined offer SURVIVES');
+    const [declined, peer] = arr;
+    assert.equal(declined.offer_id, 'o1');
+    assert.ok(!JSON.stringify(declined).includes('/cart/'), 'no cart URL anywhere in the declined offer');
+    assert.ok(!Object.prototype.hasOwnProperty.call(declined, 'internal_checkout'));
+    assert.ok(!Object.prototype.hasOwnProperty.call(declined, 'merchant_checkout_url'));
+    assert.equal(declined.purchase_route, 'affiliate_outbound');
+    assert.equal(declined.commerce_mode, 'links_out');
+    assert.equal(declined.checkout_handoff, 'redirect');
+    assert.equal(declined.url, `https://${MERCHANT}/products/o1`, 'the PDP link is the fallback and stays');
+    assert.equal(peer, peerRow, 'an offer that is not declined is the same object, unstamped');
+  }
+  // One question per merchant, however many copies of it the envelope carries.
+  assert.equal(backend.calls.length, 2);
+  // The input was not mutated.
+  assert.equal(r.offers[0].checkout_url, CART);
+});
+
+test('site6: a data.offers-only envelope is gated too (no top-level offers key is invented)', async () => {
+  const r = { status: 'success', data: { offers: [resolveOffer('o1', MERCHANT)] } };
+  const out = await gateOffersResolveResponse(r, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL });
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'offers'));
+  assert.equal(out.data.offers[0].purchase_route, 'affiliate_outbound');
+  assert.ok(!JSON.stringify(out).includes('/cart/'));
+});
+
+test('site6 STRUCTURAL: the early offers.resolve branch sends the GATED envelope, and the dead call site is gone', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const start = src.indexOf("  if (operation === 'offers.resolve') {\n    try {\n      const handled = await handleOffersResolveOperation(");
+  assert.ok(start > 0, 'the early offers.resolve branch moved — re-check that it is still gated');
+  const branch = src.slice(start, src.indexOf('  // Use real API routing', start));
+  assert.match(
+    branch,
+    /const gatedResponse = await gateOffersResolveResponse\(handled\.response, \{\s*market: offersResolveGateBuyerMarket\(payload, metadata\),\s*\}\);\s*return res\.status\([^)]*\)\s*\|\|\s*200\)\.json\(gatedResponse\);/,
+    'the handled envelope must go through the gate, keyed on the door\'s own carriers, before it is sent',
+  );
+  assert.doesNotMatch(branch, /\.json\(handled\.response\)/, 'an ungated send of the envelope');
+  // The unreachable call site (and the reorder-and-stamp wrapper it used) must not come back to server.js.
+  assert.doesNotMatch(src, /prioritizeOffersResolveResponseGated/);
 });
