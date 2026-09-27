@@ -1890,6 +1890,204 @@ describe('PDP grouped offers', () => {
     });
   });
 
+  describe('the canonical card names the seller whose price it shows (prod 2026-09-27, sig_13336cf3c9eba86550f9f093)', () => {
+    const JP = { merchant_id: 'merch_obs_62ef3242cdba113c', product_id: 'arencia_jp_8098508767385' };
+    const US = { merchant_id: 'merch_obs_76494d8b4732254b', product_id: 'arencia_us_8098508767385' };
+    // The card as get_pdp_v2 built it from the group's content member, the JP listing.
+    const jpCard = () => ({
+      product: {
+        ...JP,
+        title: 'Holy Hyssop Serum 12:1',
+        description: 'Soothing hyssop serum.',
+        merchant_name: 'Arencia Japan',
+        url: 'https://arencia.jp/products/holy-hyssop-serum',
+        canonical_url: 'https://arencia.jp/products/holy-hyssop-serum',
+        purchase_route: 'affiliate_outbound',
+        price: { current: { amount: 2400, currency: 'JPY' }, compare_at: { amount: 3000, currency: 'JPY' } },
+        price_amount: 2400,
+        currency: 'JPY',
+        default_variant_id: JP.product_id,
+        purchase_grain: 'product',
+        variants: [
+          {
+            variant_id: JP.product_id,
+            sku_id: JP.product_id,
+            title: 'Default',
+            options: [],
+            price: { current: { amount: 2400, currency: 'JPY' } },
+          },
+        ],
+      },
+      modules: [{ module_id: 'm_price', type: 'price_promo', data: { price: { amount: 2400, currency: 'JPY' } } }],
+    });
+    const usOffer = {
+      offer_id: 'of_us',
+      ...US,
+      merchant_name: 'Arencia',
+      price: { amount: 15, currency: 'USD' },
+      inventory: { in_stock: true },
+      purchase_route: 'affiliate_outbound',
+      external_redirect_url: 'https://arencia.com/products/holy-hyssop-serum',
+      url: 'https://arencia.com/products/holy-hyssop-serum',
+    };
+    const jpOffer = {
+      offer_id: 'of_jp',
+      ...JP,
+      merchant_name: 'Arencia Japan',
+      price: { amount: 2400, currency: 'JPY' },
+      inventory: { in_stock: true },
+      url: 'https://arencia.jp/products/holy-hyssop-serum',
+    };
+    const offersData = (defaultOfferId) => ({
+      offer_source: 'group_fused',
+      default_offer_id: defaultOfferId,
+      best_price_offer_id: 'of_us',
+      offers: [usOffer, jpOffer],
+    });
+
+    test('a market-less buyer: the card is the US seller at 15 USD, with nothing of the JP listing left', () => {
+      const app = require('../src/server');
+      // The default id names the JPY offer here (what a raw-amount sort or a by-id preference can
+      // produce); a USD buyer's card must still be priced in USD.
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(jpCard(), offersData('of_jp'), {
+        servingCurrency: 'USD',
+      });
+      const card = payload.product;
+
+      expect(card.price).toEqual({ amount: 15, currency: 'USD', current: { amount: 15, currency: 'USD' } });
+      expect(card).toEqual(
+        expect.objectContaining({
+          ...US,
+          merchant_name: 'Arencia',
+          currency: 'USD',
+          price_amount: 15,
+          url: 'https://arencia.com/products/holy-hyssop-serum',
+          external_redirect_url: 'https://arencia.com/products/holy-hyssop-serum',
+          default_variant_id: US.product_id,
+          purchase_grain: 'product',
+          seller_source: 'default_offer',
+          content_product_ref: JP,
+          title: 'Holy Hyssop Serum 12:1',
+          description: 'Soothing hyssop serum.',
+        }),
+      );
+      expect(card.canonical_url).toBeUndefined();
+      expect(card.variants).toEqual([
+        expect.objectContaining({
+          variant_id: US.product_id,
+          sku_id: US.product_id,
+          price: { current: { amount: 15, currency: 'USD' } },
+        }),
+      ]);
+      expect(JSON.stringify(card)).not.toMatch(/JPY|arencia\.jp|Arencia Japan/);
+      expect(payload.modules.find((module) => module.type === 'price_promo').data.price).toEqual({
+        amount: 15,
+        currency: 'USD',
+      });
+    });
+
+    test('an offer with variants brings its own variants to the card', () => {
+      const app = require('../src/server');
+      const variantOffer = {
+        ...usOffer,
+        variant_id: 'us_v_30ml',
+        selected_variant_id: 'us_v_30ml',
+        variants: [
+          { variant_id: 'us_v_15ml', title: '15 mL', price: { current: { amount: 9, currency: 'USD' } } },
+          { variant_id: 'us_v_30ml', title: '30 mL', price: { current: { amount: 15, currency: 'USD' } } },
+        ],
+      };
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+        jpCard(),
+        { offer_source: 'group_fused', default_offer_id: 'of_us', best_price_offer_id: 'of_us', offers: [variantOffer, jpOffer] },
+        { servingCurrency: 'USD' },
+      );
+
+      expect(payload.product.variants).toEqual(variantOffer.variants);
+      expect(payload.product.default_variant_id).toBe('us_v_30ml');
+      expect(payload.product.purchase_grain).toBe('variant');
+    });
+
+    test('a signature-route card keeps its public page id and route fields; the listing ids follow the offer', () => {
+      const app = require('../src/server');
+      const sigCard = jpCard();
+      sigCard.product = {
+        ...sigCard.product,
+        product_id: 'sig_arenciajpholyhyssop',
+        source_product_id: JP.product_id,
+        product_key: `prod::external_seed::external_seed::${JP.product_id}`,
+        pivota_signature_id: 'sig_arenciajpholyhyssop',
+        pivota_canonical_url: 'https://agent.pivota.cc/products/sig_arenciajpholyhyssop',
+        canonical_url: 'https://agent.pivota.cc/products/sig_arenciakeeper',
+      };
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(sigCard, offersData('of_us'), {
+        servingCurrency: 'USD',
+      });
+      const card = payload.product;
+
+      expect(card).toEqual(
+        expect.objectContaining({
+          product_id: 'sig_arenciajpholyhyssop',
+          pivota_signature_id: 'sig_arenciajpholyhyssop',
+          pivota_canonical_url: 'https://agent.pivota.cc/products/sig_arenciajpholyhyssop',
+          canonical_url: 'https://agent.pivota.cc/products/sig_arenciakeeper',
+          source_product_id: US.product_id,
+          merchant_id: US.merchant_id,
+          merchant_name: 'Arencia',
+          default_variant_id: US.product_id,
+          content_product_ref: JP,
+        }),
+      );
+      expect(card.product_key).toBeUndefined();
+      expect(card.price.current).toEqual({ amount: 15, currency: 'USD' });
+    });
+
+    test('a JP buyer: the card stays the JP listing at 2400 JPY and names no other seller', () => {
+      const app = require('../src/server');
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(jpCard(), offersData('of_jp'), {
+        servingCurrency: 'JPY',
+      });
+      const card = payload.product;
+
+      expect(card).toEqual(expect.objectContaining({ ...JP, merchant_name: 'Arencia Japan', currency: 'JPY' }));
+      expect(card.price.current).toEqual({ amount: 2400, currency: 'JPY' });
+      expect(card.seller_source).toBeUndefined();
+      expect(card.content_product_ref).toBeUndefined();
+    });
+
+    test('a card opened through the seed-lane alias is the same listing as its observed-seller offer', () => {
+      const app = require('../src/server');
+      const aliasCard = jpCard();
+      aliasCard.product = {
+        ...aliasCard.product,
+        merchant_id: 'external_seed',
+        product_id: US.product_id,
+        merchant_name: 'Arencia',
+        url: 'https://arencia.com/products/holy-hyssop-serum',
+      };
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(aliasCard, offersData('of_us'), {
+        servingCurrency: 'USD',
+      });
+
+      expect(payload.product).toEqual(
+        expect.objectContaining({ merchant_id: 'external_seed', product_id: US.product_id, currency: 'USD' }),
+      );
+      expect(payload.product.seller_source).toBeUndefined();
+    });
+
+    test('the opened product\'s own offer, alone in another currency, still prices its own card', () => {
+      const app = require('../src/server');
+      const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+        jpCard(),
+        { offer_source: 'group_fused', default_offer_id: 'of_jp', best_price_offer_id: 'of_jp', offers: [jpOffer] },
+        { servingCurrency: 'USD' },
+      );
+
+      expect(payload.product).toEqual(expect.objectContaining({ ...JP, currency: 'JPY' }));
+      expect(payload.product.seller_source).toBeUndefined();
+    });
+  });
+
   test('removes zero canonical PDP product price when no positive offer price exists', () => {
     const app = require('../src/server');
 
