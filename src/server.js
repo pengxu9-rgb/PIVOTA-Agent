@@ -40762,7 +40762,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           operation,
           payload,
           effectivePayload: sourceContractPayload,
-          metadata,
         });
         if (earlyGuardrails?.blocked) {
           if (typeof earlyGuardrails.blocked.retryAfterSec === 'number') {
@@ -41212,7 +41211,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    operation,
 	    payload,
 	    effectivePayload,
-	    metadata,
 	  });
 	  if (guardrails?.blocked) {
 	    if (typeof guardrails.blocked.retryAfterSec === 'number') {
