@@ -86,6 +86,42 @@ describe('serving-currency guard on the invoke route', () => {
     expect(logged[0].served_currencies).toEqual(['SGD']);
   });
 
+  test('get_discovery_feed: an SGD card is dropped (currency read from offers[] too), and the drop is logged', async () => {
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({
+        products: [
+          { product_id: 'usd', title: 'Serum', price: 20, currency: 'USD' },
+          { product_id: 'sgd_offer', title: 'Serum', offers: [{ amount: 24, currency: 'SGD' }] },
+          // The feed's full-detail cards carry no currency field: kept on this operation.
+          { product_id: 'no_currency', title: 'Serum', price: 18 },
+        ],
+        total: 3,
+        metadata: {},
+      })) };
+    });
+    const app = require('../../src/server');
+    const logger = require('../../src/logger');
+    const realInfo = logger.info.bind(logger);
+    jest.spyOn(logger, 'info').mockImplementation((obj, msg, ...rest) => {
+      if (msg === 'invoke request complete') { logged.push(obj); return undefined; }
+      return realInfo(obj, msg, ...rest);
+    });
+    const res = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'get_discovery_feed', payload: { surface: 'browse_products', page: 1, limit: 10 }, metadata: { source: 'public_api' },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(res.status).toBe(200);
+    expect(res.body.products.map((p) => p.product_id)).toEqual(['usd', 'no_currency']);
+    expect(logged).toHaveLength(1);
+    expect(logged[0].operation).toBe('get_discovery_feed');
+    expect(logged[0].serving_currency_dropped).toBe(1);
+    expect(logged[0].serving_currency_dropped_currencies).toEqual(['SGD']);
+    // Only the guard's pair: no fpm market fields on a feed line.
+    expect(logged[0]).not.toHaveProperty('market_observed');
+  });
+
   test('a market with no known currency is served nothing', async () => {
     const res = await invoke({ market: 'ZZ' });
     expect(res.status).toBe(200);

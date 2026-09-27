@@ -50,6 +50,24 @@ test('a card with no price at all quotes no currency and is left alone; a price 
   assert.deepStrictEqual(ids(unpriced), ['unpriced', 'blank_price']);
 });
 
+test('the card\'s currency is read as the price contract reads it: offers, variants, codes, the seed snapshot', () => {
+  const body = () => ({ products: [
+    { product_id: 'usd_in_variants', price: 20, variants: [{ price: 20, currency: 'USD' }] },
+    { product_id: 'usd_in_offers', offers: [{ price_amount: 18, priceCurrency: 'USD' }] },
+    { product_id: 'sgd_in_offers', offers: [{ amount: 24, currency: 'SGD' }] },
+    { product_id: 'sgd_code', price: 24, currency_code: 'SGD' },
+    { product_id: 'sgd_snapshot', seed_data: { snapshot: { price_amount: 24, price_currency: 'SGD' } } },
+    { product_id: 'usd_written_unreadable_amount', price: 'n/a', currency: 'USD' },
+  ] });
+  const kept = ['usd_in_variants', 'usd_in_offers', 'usd_written_unreadable_amount'];
+  // Strict (fpm): a USD card whose currency sits only in variants[]/offers[] is NOT 'unknown'.
+  assert.deepStrictEqual(ids(enforceServingCurrency({ operation: 'find_products_multi', payload: {}, body: body() })), kept);
+  // Lenient (discovery): an SGD card shaped that way no longer slips through.
+  const discovery = enforceServingCurrency({ operation: 'get_discovery_feed', payload: {}, body: body() });
+  assert.deepStrictEqual(ids(discovery), kept);
+  assert.deepStrictEqual(discovery.metadata.serving_currency_guard.dropped_currencies, ['SGD']);
+});
+
 test('an SG buyer keeps SGD and loses USD -- from the request, or from what the door bound', () => {
   const fromRequest = enforceServingCurrency({ operation: 'find_products_multi', payload: { search: { market: 'sg' } }, body: page() });
   assert.deepStrictEqual(ids(fromRequest), ['sgd']);

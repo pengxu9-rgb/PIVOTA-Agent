@@ -207,3 +207,22 @@ test('malformed input never throws: telemetry must not be able to fail a respons
     assert.doesNotThrow(() => mt.buildMarketTelemetry(args), JSON.stringify(args));
   }
 });
+
+test('the serving-currency guard\'s drops are logged for every operation it guards, and nothing else is', () => {
+  const guarded = { products: [], metadata: { serving_currency_guard: { serving_currency: 'USD', dropped_count: 3, dropped_currencies: ['SGD', 'unknown'] } } };
+  // get_discovery_feed (~82k requests a week) is guarded; its drops used to be invisible.
+  for (const operation of ['get_discovery_feed', 'find_products']) {
+    assert.deepEqual(mt.buildMarketTelemetry({ operation, body: guarded }),
+      { serving_currency_dropped: 3, serving_currency_dropped_currencies: ['SGD', 'unknown'] }, operation);
+    assert.deepEqual(mt.buildMarketTelemetry({ operation, body: { products: [] } }), {}, `${operation}: nothing dropped`);
+  }
+  const fpm = mt.buildMarketTelemetry({ operation: 'find_products_multi', body: guarded, stages: [] });
+  assert.equal(fpm.serving_currency_dropped, 3);
+  assert.deepEqual(fpm.serving_currency_dropped_currencies, ['SGD', 'unknown']);
+  // An unguarded operation logs none of it, whatever its body says.
+  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_pdp_v2', body: guarded }), {});
+  // Malformed guard metadata is absence, not a throw.
+  for (const bad of [null, 'x', { dropped_count: 'x' }, { dropped_count: 0 }, { dropped_count: 2, dropped_currencies: 'SGD' }]) {
+    assert.doesNotThrow(() => mt.buildMarketTelemetry({ operation: 'get_discovery_feed', body: { metadata: { serving_currency_guard: bad } } }));
+  }
+});
