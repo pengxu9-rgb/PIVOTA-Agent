@@ -198,7 +198,8 @@ suite('single payload read returns exactly the per-reference rows (PostgreSQL)',
     const rank = Object.fromEntries(toner.map((r) => [r.product_key, Number(r.rank_score)]));
     expect(rank.tone_seed_ok).toBeGreaterThan(rank.tone_family_seed);
     expect(rank.tone_family_seed).toBe(rank.tone_family_kind);
-    // the brand filter reads the payload: vendor and seed_data.snapshot.brand both admit
+    // the brand filter reads the payload: vendor and seed_data.snapshot.brand both admit (a brand-scoped
+    // query never gets the prefilter, so it keeps the per-reference form even with the flag on)
     const cosrx = (await run(args(QUERIES[2], 200))).map((r) => r.product_key);
     for (const k of ['cosrx_vendor', 'cosrx_seed', 'cosrx_column']) expect(cosrx).toContain(k);
     expect(cosrx).not.toContain('tone_plain');

@@ -89,9 +89,33 @@ describe('single payload read', () => {
     expect(unset.sql).not.toContain('jsonb_path_query_first');
   });
 
-  for (const prefilter of ['off', 'on']) {
-    test.each(CASES)(`flag on (prefilter ${prefilter}): %s reads the payload once`, async (...c) => {
-      process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = prefilter;
+  // Without the prefilter's key list the lateral would decompress the payload of every catalog row the
+  // p-only predicates let through (prod 2026-09-27: brand-scoped queries 30-140ms -> 3.5-5.5s, same rows).
+  test.each(CASES)('flag on, prefilter off: %s is byte-identical to flag off', async (...c) => {
+    const off = await capture(c);
+    process.env.CANONICAL_CATALOG_SINGLE_PAYLOAD_READ = 'on';
+    const on = await capture(c);
+    expect(on.sql).toBe(off.sql);
+    expect(on.params).toEqual(off.params);
+  });
+
+  // Brand-scoped and text-lane queries never get the prefilter, so they keep the per-reference form.
+  test.each(CASES.filter(([, prefix, brand]) => !prefix || brand))(
+    'flag on, prefilter on: %s (no prefilter for this query) is byte-identical to flag off',
+    async (...c) => {
+      process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = 'on';
+      const off = await capture(c);
+      expect(off.sql).not.toContain(PREFILTER_HEAD); // fixture check
+      process.env.CANONICAL_CATALOG_SINGLE_PAYLOAD_READ = 'on';
+      const on = await capture(c);
+      expect(on.sql).toBe(off.sql);
+    },
+  );
+
+  test.each(CASES.filter(([, prefix, brand]) => prefix && !brand))(
+    'flag on, prefilter on: %s reads the payload once',
+    async (...c) => {
+      process.env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER = 'on';
       const off = await capture(c);
       process.env.CANONICAL_CATALOG_SINGLE_PAYLOAD_READ = 'on';
       const on = await capture(c);
@@ -100,17 +124,21 @@ describe('single payload read', () => {
       const cte = candidateCte(on.sql);
       expect(cte.split(LATERAL)).toHaveLength(2); // exactly one lateral
       const start = cte.indexOf(PREFILTER_HEAD);
-      const prefilterSql = start >= 0 ? cte.slice(start, cte.indexOf('\n      ))', start)) : '';
-      const outside = start >= 0 ? cte.replace(prefilterSql, '') : cte;
+      expect(start).toBeGreaterThanOrEqual(0);
+      const prefilterSql = cte.slice(start, cte.indexOf('\n      ))', start));
+      const outside = cte.replace(prefilterSql, '');
       // Outer reads of the stored value: the plain projection and the lateral itself, nothing else.
       expect(outside.match(/\bp\.product_payload\b/g)).toHaveLength(2);
       expect(outside).toContain('        p.product_payload,\n');
-      // The prefilter subquery is its own row: never correlated to the outer copy.
+      // The prefilter subquery is its own row: never correlated to the outer copy, and never rewritten.
       expect(prefilterSql).not.toMatch(/\bpp\./);
-      // Every read the flag-off CTE made is now a read of the copy.
-      const offReads = (candidateCte(off.sql).match(/\bp\.product_payload\b/g) || []).length
+      const offCte = candidateCte(off.sql);
+      const offStart = offCte.indexOf(PREFILTER_HEAD);
+      expect(prefilterSql).toBe(offCte.slice(offStart, offCte.indexOf('\n      ))', offStart)));
+      // Every read the flag-off CTE made outside the prefilter is now a read of the copy.
+      const offReads = (offCte.match(/\bp\.product_payload\b/g) || []).length
         - (prefilterSql.match(/\bp\.product_payload\b/g) || []).length;
       expect((outside.match(/\bpp\.product_payload\b/g) || []).length).toBe(offReads - 1);
-    });
-  }
+    },
+  );
 });
