@@ -20,6 +20,9 @@ const RESOURCE = 'https://agent.test.example/mcp';
 const BACKEND = 'http://backend.get-offers-gate.test';
 const MERCHANT = 'flowerbeauty.com';
 
+// The backend calls go through axios, which honours HTTP(S)_PROXY and would send them to a proxy
+// instead of nock. CI sets none; a developer shell often does. Cleared here, restored in `after`.
+for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) delete process.env[k];
 process.env.NODE_ENV = 'test';
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_CHAT_RESPONSE_FORMAT = 'legacy';
