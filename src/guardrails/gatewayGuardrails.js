@@ -90,16 +90,19 @@ function normalizeIp(value) {
 }
 
 // The client address our own edge observed: the Nth entry from the RIGHT of X-Forwarded-For, N = trusted
-// proxy hops. A chain shorter than N (a caller inside the VPC, which reaches the service without the
-// load balancer) clamps to its left-most entry. An entry that is not an IP address is not an identity
-// either, and falls back to the socket peer rather than becoming a bucket of its own.
+// proxy hops (verified in prod: the load balancer appends exactly 2). A chain SHORTER than N did not come
+// through that edge — only a caller inside the VPC reaches the service without it — so none of its entries
+// is edge-attested, and any of them may be the caller's own text: it keys on the socket peer, never on an
+// entry. An entry that is not an IP address is not an identity either, and falls back the same way rather
+// than becoming a bucket of its own.
 function clientIpFromRequest(req) {
   const parts = String(req?.headers?.['x-forwarded-for'] || '')
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length) {
-    const fromEdge = normalizeIp(parts[Math.max(0, parts.length - trustedProxyHops())]);
+  const hops = trustedProxyHops();
+  if (parts.length >= hops) {
+    const fromEdge = normalizeIp(parts[parts.length - hops]);
     if (fromEdge) return fromEdge;
   }
   return normalizeIp(req?.socket?.remoteAddress) || normalizeIp(req?.ip) || null;

@@ -193,12 +193,40 @@ test('GATEWAY_RATE_LIMIT_TRUSTED_PROXY_HOPS moves the trusted entry', () => {
 
 test('a non-IP entry is not an identity: it falls back to the socket peer', () => {
   const g = loadGuardrails();
+  // Full-length chains, so the non-IP entry sits exactly where the edge's client address would.
   const n = admitted(g, 15, (i) => ({
-    headers: { 'x-forwarded-for': `not-an-ip-${i}` },
+    headers: { 'x-forwarded-for': `not-an-ip-${i}, ${LB_IP}` },
     socket: { remoteAddress: '169.254.1.1' },
   }));
   assert.equal(n, 10);
-  assert.equal(g.__test__.clientIpFromRequest({ headers: { 'x-forwarded-for': 'nope' }, socket: { remoteAddress: '::ffff:10.1.2.3' } }), '10.1.2.3');
+  assert.equal(
+    g.__test__.clientIpFromRequest({ headers: { 'x-forwarded-for': `nope, ${LB_IP}` }, socket: { remoteAddress: '::ffff:10.1.2.3' } }),
+    '10.1.2.3',
+  );
+});
+
+// A chain shorter than the trusted hop count did not come through our load balancer (only a caller inside
+// the VPC can send one), so every entry in it may be the caller's own text.
+test('a chain shorter than the trusted hops keys on the socket peer, not on its caller-written entry', () => {
+  const g = loadGuardrails();
+  assert.equal(
+    g.__test__.clientIpFromRequest({ headers: { 'x-forwarded-for': '198.51.100.9' }, socket: { remoteAddress: '10.8.0.5' } }),
+    '10.8.0.5',
+  );
+  // One VPC caller rotating the single entry stays in one bucket.
+  const n = admitted(g, 15, (i) => ({
+    headers: { 'x-forwarded-for': `198.51.100.${i + 1}` },
+    socket: { remoteAddress: '10.8.0.5' },
+  }));
+  assert.equal(n, 10);
+});
+
+test('a chain exactly as long as the trusted hops is edge-attested and keys on its client entry', () => {
+  const g = loadGuardrails();
+  assert.equal(
+    g.__test__.clientIpFromRequest({ headers: { 'x-forwarded-for': `203.0.113.9, ${LB_IP}` }, socket: { remoteAddress: '169.254.1.1' } }),
+    '203.0.113.9',
+  );
 });
 
 test('an IPv4-mapped spelling is the same host', () => {
