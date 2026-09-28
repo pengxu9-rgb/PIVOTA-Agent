@@ -120,7 +120,7 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   // Documents measured 2026-09-28: specification/discount/ -> 200, schemas/shopping/discount.json -> 200.
   discount: {
     ucp: 'dev.ucp.shopping.discount',
-    title: 'Offer (discount) codes on checkout',
+    title: 'Offer (discount) codes on checkout, applied at creation only (create_checkout; update_checkout never applies one)',
     specName: 'discount',
     schemaName: 'shopping/discount.json',
     extends: ['dev.ucp.shopping.checkout'],

@@ -793,9 +793,11 @@ const DISCOUNTS_SCHEMA = {
       items: { type: "string", minLength: 1, maxLength: OFFER_CODE_MAX_LENGTH },
       description:
         "Optional. ONE offer (coupon) code the buyer entered, forwarded verbatim when the checkout is fulfilled"
-        + " through the Reap payment partner. If the merchant refuses it, the purchase continues WITHOUT it and"
-        + " get_checkout says so (`reap.offer_code_dropped_invalid` / `_expired`); the total shown is always the"
-        + " partner's own. Not applied on Pivota's own checkout path.",
+        + " through the Reap payment partner -- and ONLY at creation: a code is set on create_checkout and cannot"
+        + " be added or changed by update_checkout. If the merchant refuses it, the purchase continues WITHOUT it"
+        + " and get_checkout says so with the UCP rejection warning `discount_code_invalid` or"
+        + " `discount_code_expired` at `$.discounts.codes[0]`; the total shown is always the partner's own. A code"
+        + " sent on a checkout that is not a Reap one is not applied (warning `discount_code_invalid`).",
     },
   },
 };
@@ -843,10 +845,14 @@ const CREATE_CHECKOUT_FIELDS = Object.freeze([...CHECKOUT_FIELDS, "discounts"]);
 // objecting — on the one lane whose live blocker is a missing address. `.*` denotes the members of a
 // free-form (additionalProperties:true) object, and `[]` an array element.
 /**
- * The leaves the ARMED create_checkout schema adds (see `ucpInputSchemasFor`), all accepted-but-unmapped: read
- * only by the Reap lane from the raw body and forwarded as the backend's `offer_code`.
+ * The leaves the ARMED create/update_checkout schemas add (see `ucpInputSchemasFor`), all accepted-but-unmapped:
+ * read only by the Reap lane / the UCP view from the raw body. The anti-drift leaf walk runs over the armed
+ * schemas too, against `UCP_ACCEPTED_BUT_UNMAPPED` plus these.
  */
-export const UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED = Object.freeze(["checkout.discounts.codes[]"]);
+export const UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED = Object.freeze({
+  create_checkout_session: Object.freeze(["checkout.discounts.codes[]"]),
+  update_checkout_session: Object.freeze(["checkout.discounts.codes[]"]),
+});
 
 export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   // The fulfillment entries are the shape of a lane that ships ONE cart to ONE destination: the routing
@@ -997,7 +1003,10 @@ function requireCheckoutObject(args, tool, env = process.env) {
       "against the locked total this call returns.",
     ].join(" "), { rejected_field: "checkout.payment", authorization_tool: "complete_checkout" });
   }
-  const offerCodes = tool === "create_checkout" && reapOfferCodesEnabled(env);
+  // ACCEPTED on create AND update while armed (review of #2323, S2): the discount capability is advertised,
+  // so a platform may send `discounts` on either. It is only ever APPLIED at creation -- an update answers a
+  // `discount_code_invalid` warning (not a Reap checkout) or the Reap update refusal naming the create-only rule.
+  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && reapOfferCodesEnabled(env);
   rejectUnknown(checkout, offerCodes ? CREATE_CHECKOUT_FIELDS : CHECKOUT_FIELDS, "checkout", code);
   if (offerCodes) requireDiscountsShape(checkout, code);
   return checkout;
@@ -1733,7 +1742,7 @@ const SPECS = Object.freeze({
         checkout: checkoutSchema({ update: true }),
       },
     },
-    map(args) {
+    map(args, env = process.env) {
       const code = CHECKOUT_REFUSAL_CODE;
       requireArgsObject(args, code);
       rejectUnknown(args, ["meta", "id", "checkout"], "arguments", code);
@@ -1742,7 +1751,7 @@ const SPECS = Object.freeze({
       // Read from the TOP LEVEL only. `checkout.id` is not part of the live update_checkout shape and is not
       // consulted — reading it would let a caller re-price a session it never named at the top level.
       const session_id = requireTopLevelId(args, code, "update_checkout");
-      const checkout = requireCheckoutObject(args, "update_checkout");
+      const checkout = requireCheckoutObject(args, "update_checkout", env);
       return { idempotency_key, session_id, quote: mapQuote(checkout, { update: true }) };
     },
   }),
@@ -1948,7 +1957,9 @@ export const UCP_INPUT_SCHEMAS = Object.freeze(
 const ARMED_INPUT_SCHEMAS = Object.freeze(armedInputSchemas());
 function armedInputSchemas() {
   return Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => {
-    if (id !== "create_checkout_session") return [id, Object.freeze(spec.inputSchema)];
+    if (id !== "create_checkout_session" && id !== "update_checkout_session") {
+      return [id, Object.freeze(spec.inputSchema)];
+    }
     const base = spec.inputSchema;
     return [id, Object.freeze({
       ...base,

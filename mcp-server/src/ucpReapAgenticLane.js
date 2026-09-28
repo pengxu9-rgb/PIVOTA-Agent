@@ -482,6 +482,9 @@ const STATE_MESSAGES = Object.freeze({
 // passed REASON_RE; no backend text reaches it.
 const REASON_HINTS = Object.freeze({
   approval_window_lapsed: " The buyer did not approve before the quote expired (about five minutes); nothing was charged. Create a new checkout to try again.",
+  // DEFENSIVE FALLBACK: backend #2425's review round (B4) no longer ends a purchase as `offer_code_rejected` --
+  // a refused code with no budget left is released and re-quoted without it. Kept so a backend that ever
+  // writes the reason again still gets an actionable answer here.
   offer_code_rejected: " The merchant refused the buyer's offer code and there was no time left to price the order without it; nothing was charged. Create a NEW checkout WITHOUT the code, with a NEW idempotency key (the old key replays this canceled purchase).",
 });
 // Terminal states each reason's hint may appear on.
@@ -497,11 +500,13 @@ const DEADLINE_PASSED_MESSAGE =
 // "Rejected codes communicated via messages[]", type warning).
 export const DISCOUNT_CODE_PATH = "$.discounts.codes[0]";
 const OFFER_CODE_MESSAGES = Object.freeze({
-  applied: ["info", "reap.offer_code_applied", "$.discounts", "The merchant accepted the buyer's offer code; the discount is in discounts.applied and totals, and is already in the total."],
+  applied: ["info", "reap.offer_code_applied", "$.discounts", "The merchant accepted the buyer's offer code; the discount is in discounts.applied and in totals as a discount row, and is already in the total."],
   no_discount: ["info", "reap.offer_code_no_discount", "$.discounts", "The merchant accepted the buyer's offer code but it took nothing off this order."],
   dropped_invalid: ["warning", "discount_code_invalid", DISCOUNT_CODE_PATH, "The merchant did not accept the buyer's offer code. The purchase continued WITHOUT it: the total has no discount. Tell the buyer before they approve."],
   dropped_expired: ["warning", "discount_code_expired", DISCOUNT_CODE_PATH, "The buyer's offer code has expired. The purchase continued WITHOUT it: the total has no discount. Tell the buyer before they approve."],
 });
+const APPLIED_WITHOUT_ROW_MESSAGE =
+  "The merchant accepted the buyer's offer code; the discount is in discounts.applied and is already in the total.";
 // The backend refused the code by ITS rule (400 invalid_offer_code): the backend owns the rule, this door only
 // relays that it failed. Rides on the storefront answer like the consent hint.
 export const REAP_OFFER_CODE_REFUSED_MESSAGE = Object.freeze({
@@ -532,13 +537,29 @@ const LANE_MESSAGE = [
  * `total.json`: a discount amount is `exclusiveMaximum: 0`). Tax is a row only when it is NOT already inside the
  * prices (`tax_included`, pivota-backend migration 247); when it is, the total's text says so instead.
  */
+// The backend's own reconciliation tolerance (`QUOTE_RECONCILE_TOLERANCE_MINOR`, services/reap_agentic_purchase.py):
+// a quote whose total is within one minor unit of its components is accepted there, so a view can carry that
+// residual. It is shown as its own ROUNDING row rather than hiding the breakdown (review of #2323, S1).
+export const REAP_BREAKDOWN_ROUNDING_TOLERANCE_MINOR = 1;
+
+/**
+ * `{ rows, unreconciled }`. `rows` are the priced breakdown rows between `subtotal` and `total`, in UCP's
+ * vocabulary, and they ALWAYS add up to the total when present. A residual of at most
+ * `REAP_BREAKDOWN_ROUNDING_TOLERANCE_MINOR` becomes a "Rounding" row -- `fee` when positive, `discount` when
+ * negative, so each keeps UCP's sign rule (total.json: fee >= 0, discount < 0). A larger residual shows NO
+ * breakdown (`unreconciled: true`, which the caller logs): this door never prints rows that do not add up.
+ */
 function breakdownRows({ lineTotal, total, shipping, tax, taxIncluded, discount }) {
   const rows = [];
   if (shipping !== null && shipping !== undefined) rows.push({ type: "fulfillment", amount: shipping, display_text: "Shipping, as quoted by the merchant" });
   if (tax !== null && tax !== undefined && taxIncluded !== true && tax > 0) rows.push({ type: "tax", amount: tax, display_text: "Tax, as quoted by the merchant" });
   if (discount) rows.push({ type: "discount", amount: -discount, display_text: "Offer code discount applied by the merchant" });
-  const sum = rows.reduce((acc, r) => acc + r.amount, lineTotal);
-  return sum === total ? rows : [];
+  const residual = total - rows.reduce((acc, r) => acc + r.amount, lineTotal);
+  if (residual === 0) return { rows, unreconciled: false };
+  if (Math.abs(residual) <= REAP_BREAKDOWN_ROUNDING_TOLERANCE_MINOR) {
+    return { rows: [...rows, { type: residual > 0 ? "fee" : "discount", amount: residual, display_text: "Rounding" }], unreconciled: false };
+  }
+  return { rows: [], unreconciled: true };
 }
 
 function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, finalTotal, discount, shipping, tax, taxIncluded, degraded }) {
@@ -552,8 +573,13 @@ function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, f
       ? "Quoted total, including the merchant's shipping and tax"
       : "Expected total before the merchant's shipping and tax";
   const totalText = priced && taxIncluded === true ? `${baseText} (tax is included in the prices)` : baseText;
-  const rows = priced && !degraded ? breakdownRows({ lineTotal, total, shipping, tax, taxIncluded, discount }) : [];
+  const breakdown = priced && !degraded
+    ? breakdownRows({ lineTotal, total, shipping, tax, taxIncluded, discount })
+    : { rows: [], unreconciled: false };
+  const rows = breakdown.rows;
   return {
+    unreconciled: breakdown.unreconciled,
+    discountRowShown: rows.some((r) => r.type === "discount" && r.display_text !== "Rounding"),
     lineItems: [{
       id: "li_1",
       item: { id: itemId, title: title || itemId, price: unitMinor },
@@ -612,7 +638,7 @@ const STATE_SHAPE_RE = /^[a-z][a-z0-9_]{0,39}$/;
  * An UNKNOWN but well-formed state (a state the backend added after this door) is `incomplete` with a named
  * message — not a failed read — and `onUnrecognisedState` is told so the caller can log it once.
  */
-export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now(), env = process.env, onUnrecognisedState }) {
+export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now(), env = process.env, onUnrecognisedState, onUnreconciled }) {
   if (!isPlainObject(view)) return null;
   if (own(view, "id") !== snapshot.purchaseId) return null;
   const state = str(own(view, "state"));
@@ -649,6 +675,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     degraded: false,
   });
   if (!lt) return null;
+  if (lt.unreconciled && typeof onUnreconciled === "function") onUnreconciled();
 
   let status = known ? STATE_TO_STATUS[state] : "incomplete";
   let continueUrl;
@@ -702,7 +729,10 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
   const knownOutcome = outcome && Object.prototype.hasOwnProperty.call(OFFER_CODE_MESSAGES, outcome) ? outcome : null;
   if (knownOutcome) {
     const [level, code, path, text] = OFFER_CODE_MESSAGES[knownOutcome];
-    messages.push((level === "warning" ? warning : info)(code, text, path));
+    // `applied` claims a discount ROW only when one was emitted (S1): a breakdown that did not reconcile is
+    // not shown, and the message must not point at a row that is not there.
+    const content = knownOutcome === "applied" && !lt.discountRowShown ? APPLIED_WITHOUT_ROW_MESSAGE : text;
+    messages.push((level === "warning" ? warning : info)(code, content, path));
   }
   if (!TERMINAL_STATES.has(state)) messages.push(pollMessage(pollSeconds(view)));
   messages.push(info("reap.lane", LANE_MESSAGE, "$"));
@@ -853,6 +883,7 @@ export async function tryReapAgenticCheckout({
         now,
         env,
         onUnrecognisedState: () => emitOnce(log, "warn", { op: opId, outcome: "state_unrecognised", code: "unknown_state" }, "unknown_state"),
+        onUnreconciled: () => emit(log, "warn", { op: opId, outcome: "breakdown_unreconciled", code: "breakdown_unreconciled" }),
       });
       if (out) return out;
       emit(log, "warn", { op: opId, outcome: "degraded", code: "malformed_view" });
@@ -879,7 +910,7 @@ export async function tryReapAgenticCheckout({
       reason: update ? "ucp_reap_update_refused" : "ucp_reap_complete_refused",
       dialect: "ucp",
       acp_message: update
-        ? "This checkout is fulfilled through Reap and cannot be changed here. To buy something different, create a new checkout; to continue this one, poll get_checkout and send the buyer to its continue_url when one is present."
+        ? `This checkout is fulfilled through Reap and cannot be changed here. To buy something different, create a new checkout; to continue this one, poll get_checkout and send the buyer to its continue_url when one is present.${reapOfferCode(ucpArgs) !== undefined ? " An offer code can only be set when a Reap checkout is CREATED (checkout.discounts.codes on create_checkout); to use one, create a new checkout with it." : ""}`
         : "This checkout completes on Reap's own hosted page, not through complete_checkout — Pivota takes no payment for it. Poll get_checkout and send the buyer to its continue_url to enter a card or approve the total.",
       acp_detail: { reason: "reap_agentic_checkout", completes_at: "continue_url" },
     });

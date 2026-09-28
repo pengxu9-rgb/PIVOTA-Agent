@@ -1467,3 +1467,79 @@ test('the lane itself never forwards a code unless armed, even if handed one dir
     assert.equal(Object.hasOwn(backend.calls[0].body, 'offer_code'), expected, JSON.stringify(env));
   }
 });
+
+// ---- final review round: S1 (rounding), S2 (discounts on update) ----------------------------------------
+
+async function getWithLog(body) {
+  const logger = fakeLogger();
+  const backend = fakeBackend();
+  backend.state.get.set(PID, { status: 200, body });
+  const ctx = await build({ backend, logger });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+  return { out, lines: logger.lines };
+}
+
+test('S1: a ONE-unit residual (the backend tolerates it) becomes a Rounding row, of the sign UCP allows, so the rows still reconcile', async () => {
+  for (const [quoted, row] of [[4501, ['fee', 1]], [4499, ['discount', -1]]]) {
+    const { out, lines } = await getWithLog(priced({ totals: { ...QUOTED, quoted_total_minor: quoted } }));
+    assertSpecCheckout(out);
+    assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 100], ['tax', 150], row, ['total', quoted]]);
+    assert.equal(out.totals.find((x) => x.type === row[0]).display_text, 'Rounding');
+    assert.equal(out.totals.slice(0, -1).reduce((a, t) => a + t.amount, 0), quoted, 'the rows add up to the total');
+    assert.equal(lines.some((l) => l.outcome === 'breakdown_unreconciled'), false);
+  }
+});
+
+test('S1: a residual over one unit shows NO breakdown, is logged breakdown_unreconciled, and `applied` does not claim a discount row', async () => {
+  const { out, lines } = await getWithLog(priced({
+    offer_code: 'PEACHIE20', offer_code_outcome: 'applied',
+    totals: { ...QUOTED, quoted_total_minor: 4000, discount_minor: 425 },
+  }));
+  assertSpecCheckout(out);
+  assert.deepEqual(out.totals.map((x) => x.type), ['subtotal', 'total']);
+  assert.ok(lines.some((l) => l.outcome === 'breakdown_unreconciled' && l.code === 'breakdown_unreconciled'));
+  const msg = message(out, 'reap.offer_code_applied');
+  assert.doesNotMatch(msg.content, /discount row/);
+  assert.match(msg.content, /discounts\.applied/);
+  // With the row present, the message does name it.
+  const { out: ok } = await getWithLog(priced({ offer_code: 'PEACHIE20', offer_code_outcome: 'applied', totals: { ...QUOTED, quoted_total_minor: 4075, discount_minor: 425 } }));
+  assert.match(message(ok, 'reap.offer_code_applied').content, /discount row/);
+});
+
+test('S2: armed, update_checkout ACCEPTS `discounts` -- a reap_ checkout refusal names the create-only rule; unarmed it is ucp_unknown_field', async () => {
+  const ctx = await build();
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const args = { meta: META, id, checkout: { line_items: [{ item: { id: 'sig_reap_a' }, quantity: 1 }], buyer: { email: EMAIL }, discounts: { codes: ['SAVE10'] } } };
+  const armed = keep(await withEnv(CODES_ON, () => outcome(ctx.m, ctx.ucp.callTool('update_checkout', args, SESSION))));
+  const e = JSON.parse(armed.err.content[0].text).error;
+  assert.equal(e.code, 'OPERATION_NOT_ALLOWED');
+  assert.match(e.message, /only be set when a Reap checkout is CREATED/);
+  const unarmed = keep(await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('update_checkout', args, SESSION))));
+  assert.equal(JSON.parse(unarmed.err.content[0].text).error.detail.reason, 'ucp_unknown_field');
+  // Without a code, the Reap refusal says nothing about codes.
+  const plain = keep(await withEnv(CODES_ON, () => outcome(ctx.m, ctx.ucp.callTool('update_checkout', { ...args, checkout: { ...args.checkout, discounts: undefined } }, SESSION))));
+  assert.doesNotMatch(JSON.parse(plain.err.content[0].text).error.message, /offer code/i);
+});
+
+test('S2: armed, a code on update_checkout of a NON-Reap checkout is not applied and the answer says so at $.discounts.codes[0]', async () => {
+  const m = await mods();
+  // A contracted (native) row: the kernel path answers the update, not the Reap lane.
+  const executor = {
+    async execute(op) {
+      if (op === 'get_product') return { product: { ...NATIVE_ROW } };
+      if (op === 'update_checkout_session') return { session_id: 'q_kernel_1' };
+      return { session_id: 'q_kernel' };
+    },
+  };
+  const ucp = m.surface.ucpDialectSurface(m.surface.createCommerceToolSurface(executor, { cache: false, log: fakeLogger() }));
+  const args = (discounts) => ({ meta: META, id: 'q_kernel_1', checkout: { line_items: [{ item: { id: NATIVE_ROW.product_id }, quantity: 1 }], buyer: { email: EMAIL }, ...(discounts ? { discounts } : {}) } });
+  const out = keep(await withEnv(CODES_ON, () => ucp.callTool('update_checkout', args({ codes: ['SAVE10'] }), SESSION)));
+  const notice = (out.messages || []).filter((x) => x.path === '$.discounts.codes[0]');
+  assert.equal(notice.length, 1);
+  assert.equal(notice[0].type, 'warning');
+  assert.equal(notice[0].code, 'discount_code_invalid');
+  assert.match(notice[0].content, /CREATED/);
+  const plain = keep(await withEnv(CODES_ON, () => ucp.callTool('update_checkout', args(null), SESSION)));
+  assert.equal((plain.messages || []).some((x) => x.path === '$.discounts.codes[0]'), false);
+});
