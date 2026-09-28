@@ -281,6 +281,7 @@ module.exports = {
   applyGatewayGuardrails,
   classifyClient,
   clampInt,
+  clientIpFromRequest,
   __test__: {
     clientIpFromRequest,
     consumeToken,
