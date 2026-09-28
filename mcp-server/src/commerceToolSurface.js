@@ -36,10 +36,18 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
-import { tryReapAgenticCheckout } from "./ucpReapAgenticLane.js";
+import {
+  DISCOUNT_CODE_PATH,
+  REAP_CHECKOUT_ID_PREFIX,
+  reapOfferCode,
+  reapOfferCodesEnabled,
+  tryReapAgenticCheckout,
+} from "./ucpReapAgenticLane.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
+  ucpInputSchemasFor,
+  ucpToolDescriptionsFor,
   ucpToNativeToolArgs,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
@@ -996,6 +1004,44 @@ export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS
   describeOf: (op) => UCP_TOOL_DESCRIPTIONS[op.id],
 });
 
+/**
+ * The UCP declarations for THIS env: `ucpCommerceToolDefinitions` unless offer codes are armed
+ * (`reapOfferCodesEnabled`), when create_checkout also advertises `checkout.discounts`. Two memoized variants.
+ */
+const ucpCommerceToolDefinitionsArmed = definitionsFor(UCP_COMMERCE_OPERATIONS, {
+  nameOf: (op) => op.ucpTool,
+  schemaOf: (op) => ucpInputSchemasFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
+  describeOf: (op) => ucpToolDescriptionsFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
+});
+export function ucpCommerceToolDefinitionsFor(env = process.env) {
+  return reapOfferCodesEnabled(env) ? ucpCommerceToolDefinitionsArmed : ucpCommerceToolDefinitions;
+}
+
+// UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
+// codes communicated via messages[]"). CONSTANT text; the code itself is never echoed.
+export const DISCOUNT_CODE_NOT_APPLIED_MESSAGE = Object.freeze({
+  type: "warning",
+  code: "discount_code_invalid",
+  path: DISCOUNT_CODE_PATH,
+  content: "The offer code was NOT applied: this checkout is not fulfilled through the Reap payment partner, the only route on which Pivota forwards offer codes. The total shown has no discount from it.",
+  content_type: "plain",
+});
+
+/**
+ * A create_checkout that CARRIED a code and whose answer is not a Reap checkout (the lane declined, a native or
+ * storefront row, a refusal the lane fell through on) says so, once: before offer codes this door REFUSED the
+ * field, so silently opening a checkout without the discount would be a regression the buyer pays for. An
+ * answer that already speaks about the code (the lane's own hint) is left as it is.
+ */
+function withDiscountNotice(name, args, out) {
+  if (name !== "create_checkout" || reapOfferCode(args) === undefined) return out;
+  if (!isPlainObject(out)) return out;
+  if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return out;
+  const messages = Array.isArray(out.messages) ? out.messages : [];
+  if (messages.some((m) => isPlainObject(m) && m.path === DISCOUNT_CODE_PATH)) return out;
+  return { ...out, messages: [...messages, DISCOUNT_CODE_NOT_APPLIED_MESSAGE] };
+}
+
 /** Declarations for a dialect; defaults to MCP. */
 export function commerceToolDefinitionsFor(dialect) {
   return dialect === TOOL_DIALECTS.ucp ? ucpCommerceToolDefinitions : commerceToolDefinitions;
@@ -1016,9 +1062,13 @@ export function ucpDialectSurface(surface) {
   }
   return Object.freeze({
     ...surface,
-    tools: ucpCommerceToolDefinitions,
-    callTool: (name, args, sessionContext) =>
-      surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp }),
+    // Read per `tools/list`, so the advertised create_checkout follows the offer-code dial (see
+    // `ucpCommerceToolDefinitionsFor`).
+    get tools() {
+      return ucpCommerceToolDefinitionsFor(process.env);
+    },
+    callTool: async (name, args, sessionContext) =>
+      withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
     isCommerceTool: (name) =>
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)

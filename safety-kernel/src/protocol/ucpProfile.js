@@ -125,7 +125,9 @@ export function resolveBusinessSigningKeys(config = {}) {
  *                                          // yet served — see the step-3 note in #1962.
  *   paymentHandlers?: Array<object>,       // declared handlers (id, name, version, psp, pci, ap2?, ...)
  *   signingKeys?: Array<object>,           // public JWKs Pivota signs responses/receipts with
- *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all)
+ *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all
+ *                                          // but the `optIn` ones)
+ *   optInCapabilities?: string[],          // `optIn` keys to include in that default (e.g. ['discount'])
  *   omitCapabilityIds?: string[],          // UCP capability ids (dev.ucp.*) to withhold from the profile —
  *                                          // for capabilities whose doors are currently dark (a profile
  *                                          // must not advertise what would hard-404)
@@ -230,9 +232,12 @@ function invocableOperations(cap, config = {}) {
 export function buildUcpProfile(config = {}) {
   const baseUrl = requireHttps(config.baseUrl, 'baseUrl');
   const restBasePath = config.restBasePath;
+  // An `optIn` capability (today only `discount`) is advertised by default ONLY when named in
+  // `config.optInCapabilities` -- its door is lit by a runtime dial, not by the contract.
+  const optedIn = new Set(Array.isArray(config.optInCapabilities) ? config.optInCapabilities : []);
   const advertised = Array.isArray(config.capabilities) && config.capabilities.length
     ? config.capabilities
-    : Object.keys(CANONICAL_CAPABILITIES);
+    : Object.keys(CANONICAL_CAPABILITIES).filter((k) => !CANONICAL_CAPABILITIES[k].optIn || optedIn.has(k));
 
   for (const cap of advertised) {
     if (!CANONICAL_CAPABILITIES[cap]) throw new Error(`unknown capability advertised: ${cap}`);

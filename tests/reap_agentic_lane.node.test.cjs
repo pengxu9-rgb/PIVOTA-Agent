@@ -296,6 +296,14 @@ function assertSpecCheckout(out) {
   assert.deepEqual(out.ucp.payment_handlers, {});
   assert.equal(out.totals.filter((t) => t.type === 'subtotal').length, 1);
   assert.equal(out.totals.filter((t) => t.type === 'total').length, 1);
+  // UCP total.json: a discount is strictly NEGATIVE; subtotal / fulfillment / tax / fee are non-negative.
+  for (const t of out.totals) {
+    if (t.type === 'discount' || t.type === 'items_discount') assert.ok(t.amount < 0, `${t.type} must be < 0, got ${t.amount}`);
+    if (['subtotal', 'fulfillment', 'tax', 'fee'].includes(t.type)) assert.ok(t.amount >= 0, `${t.type} must be >= 0`);
+  }
+  if (out.discounts && Array.isArray(out.discounts.applied)) {
+    for (const a of out.discounts.applied) assert.ok(Number.isSafeInteger(a.amount) && a.amount >= 0, 'applied amount is a non-negative amount');
+  }
   if (out.status === 'requires_escalation') assert.match(out.continue_url, /^https:\/\//);
   else assert.equal(Object.hasOwn(out, 'continue_url'), false, `continue_url on a ${out.status} checkout`);
 }
@@ -644,7 +652,8 @@ test('get_checkout: the completed checkout carries the order reference and the c
   const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
   assert.equal(message(out, 'reap.order_reference').content, 'ord_991');
-  assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['total', 4500]]);
+  // Shipping and tax as their own rows now (they reconcile with the charged total).
+  assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 100], ['tax', 150], ['total', 4500]]);
   assert.equal(out.line_items[0].item.title, 'Standard Eau de Parfum — Standard');
 });
 
@@ -1238,102 +1247,223 @@ test('deep walk (runs last): no card/PII/purchase_route field in ANY response or
 // =========================================================================================================
 
 const CART_LINK_FLAG = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
+// Offer codes are ARMED only with the lane AND its cart-link dial (review of #2323, G1/G8).
+const CODES_ON = { ...ON, [CART_LINK_FLAG]: '1' };
 
-test('offer code: checkout.discounts.codes[0] is forwarded VERBATIM as offer_code; absent means no key', async () => {
+test('offer code: checkout.discounts.codes[0] is forwarded VERBATIM as offer_code when codes are armed; absent means no key', async () => {
   for (const code of ['PEACHIE20', 'peachie20', ' Save 10 ']) {
     const backend = fakeBackend();
-    await createReap(ON, { backend, args: { discounts: { codes: [code] } } });
+    await createReap(CODES_ON, { backend, args: { discounts: { codes: [code] } } });
     assert.equal(backend.calls[0].body.offer_code, code, JSON.stringify(code));
   }
   for (const discounts of [ABSENT, {}, { codes: [] }]) {
     const backend = fakeBackend();
-    await createReap(ON, { backend, args: { discounts } });
+    await createReap(CODES_ON, { backend, args: { discounts } });
     assert.equal(Object.hasOwn(backend.calls[0].body, 'offer_code'), false);
   }
 });
 
-test('offer code: the adapter enforces the advertised shape (one string of 1..128) before any lane runs', async () => {
-  for (const discounts of [{ codes: ['A', 'B'] }, { codes: [''] }, { codes: ['x'.repeat(129)] }, { codes: [7] }, { codes: 'SAVE10' }, { code: 'SAVE10' }, 'SAVE10']) {
+test('offer code NOT armed (lane on, cart-link dial off; or lane off): `discounts` is refused as on base, and not advertised', async () => {
+  for (const env of [ON, { ...ON, [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1' }]) {
     const backend = fakeBackend();
     const ctx = await build({ backend });
-    const r = keep(await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ discounts }), SESSION))));
+    const r = keep(await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ discounts: { codes: ['SAVE10'] } }), SESSION))));
+    const err = JSON.parse(r.err.content[0].text).error;
+    assert.equal(err.detail.reason, 'ucp_unknown_field', JSON.stringify(env));
+    assert.equal(backend.calls.length, 0);
+    const tools = await withEnv(env, () => ctx.ucp.tools);
+    const create = tools.find((t) => t.name === 'create_checkout');
+    assert.equal(Object.hasOwn(create.inputSchema.properties.checkout.properties, 'discounts'), false);
+  }
+  const ctx = await build();
+  const armed = await withEnv(CODES_ON, () => ctx.ucp.tools);
+  const create = armed.find((t) => t.name === 'create_checkout');
+  assert.equal(create.inputSchema.properties.checkout.properties.discounts.properties.codes.maxItems, 1);
+  assert.match(create.description, /checkout\.discounts\.codes/);
+});
+
+test('offer code: the adapter enforces the advertised shape (one string of 1..128 code points) before any lane runs', async () => {
+  for (const discounts of [{ codes: ['A', 'B'] }, { codes: [''] }, { codes: ['x'.repeat(129)] }, { codes: ['\u{1F600}'.repeat(129)] }, { codes: [7] }, { codes: 'SAVE10' }, { code: 'SAVE10' }, 'SAVE10']) {
+    const backend = fakeBackend();
+    const ctx = await build({ backend });
+    const r = keep(await withEnv(CODES_ON, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ discounts }), SESSION))));
     assert.ok(r.err, JSON.stringify(discounts));
     assert.equal(backend.calls.length, 0, JSON.stringify(discounts));
   }
-  const backend = fakeBackend();
-  await createReap(ON, { backend, args: { discounts: { codes: ['x'.repeat(128)] } } });
-  assert.equal(backend.calls[0].body.offer_code.length, 128);
+  for (const code of ['x'.repeat(128), '\u{1F600}'.repeat(128)]) {
+    // 128 CODE POINTS is fine even when it is 256 UTF-16 units (astral characters).
+    const backend = fakeBackend();
+    await createReap(CODES_ON, { backend, args: { discounts: { codes: [code] } } });
+    assert.equal(backend.calls[0].body.offer_code, code);
+  }
 });
 
-test('get_checkout: an applied code shows a discount total row and says so; a dropped code WARNS', async () => {
-  const cases = [
-    ['applied', 425, 'info'],
-    ['no_discount', 0, 'info'],
-    ['dropped_invalid', null, 'warning'],
-    ['dropped_expired', null, 'warning'],
-  ];
-  for (const [outcomeName, discount, level] of cases) {
-    const backend = fakeBackend();
-    backend.state.get.set(PID, { status: 200, body: view('awaiting_approval', {
-      hosted_url: APPROVE_URL, hosted_url_expires_at: LATER, approval_deadline: LATER,
-      offer_code: 'PEACHIE20', offer_code_outcome: outcomeName,
-      totals: { ...QUOTED, quoted_total_minor: discount ? 4075 : 4500, discount_minor: discount },
-    }) });
-    const ctx = await build({ backend });
-    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
-    const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
-    assertSpecCheckout(out);
-    const msg = message(out, `reap.offer_code_${outcomeName}`);
-    assert.ok(msg, outcomeName);
-    assert.equal(msg.type, level);
-    assert.equal(msg.content.includes('PEACHIE20'), false, 'the code itself is never echoed in a message');
-    const rows = out.totals.map((x) => [x.type, x.amount]);
-    if (discount) assert.deepEqual(rows, [['subtotal', 4250], ['discount', 425], ['total', 4075]]);
-    else assert.deepEqual(rows, [['subtotal', 4250], ['total', 4500]]);
-  }
-  // An outcome this door does not know is not published.
+test('a code sent on a create whose answer is NOT a Reap checkout gets a discount_code_invalid warning at $.discounts.codes[0]', async () => {
+  // The lane falls through (the backend refuses the row), so the kernel/storefront path answers.
   const backend = fakeBackend();
-  backend.state.get.set(PID, { status: 200, body: view('quoting', { offer_code_outcome: 'half_applied<script>' }) });
+  backend.state.post = { status: 409, body: houseError('row_not_found', 409) };
+  const { out } = await createReap(CODES_ON, { backend, args: { discounts: { codes: ['SAVE10'] } } });
+  assert.equal(String(out.id || '').startsWith('reap_'), false);
+  const notice = (out.messages || []).filter((m) => m.path === '$.discounts.codes[0]');
+  assert.equal(notice.length, 1);
+  assert.equal(notice[0].type, 'warning');
+  assert.equal(notice[0].code, 'discount_code_invalid');
+  assert.equal(notice[0].content.includes('SAVE10'), false);
+  // No code sent: no notice.
+  const b2 = fakeBackend();
+  b2.state.post = { status: 409, body: houseError('row_not_found', 409) };
+  const { out: out2 } = await createReap(CODES_ON, { backend: b2 });
+  assert.equal((out2.messages || []).some((m) => m.path === '$.discounts.codes[0]'), false);
+  // A Reap answer is not annotated.
+  const { out: reapOut } = await createReap(CODES_ON, { args: { discounts: { codes: ['SAVE10'] } } });
+  assert.match(reapOut.id, REAP_ID_RE);
+  assert.equal((reapOut.messages || []).some((m) => m.path === '$.discounts.codes[0]'), false);
+});
+
+test('backend 400 invalid_offer_code: no Reap purchase, and ONE warning about the code (the backend owns the rule)', async () => {
+  const backend = fakeBackend();
+  backend.state.post = { status: 400, body: houseError('invalid_offer_code', 400) };
+  const { out } = await createReap({ ...CODES_ON, [ESCALATION_FLAG]: '1' }, { backend, args: { discounts: { codes: ['SAVE10'] } } });
+  const notes = (out.messages || []).filter((m) => m.path === '$.discounts.codes[0]');
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].content, /Reap payment-partner route/);
+});
+
+function priced(extra) {
+  return view('awaiting_approval', { hosted_url: APPROVE_URL, hosted_url_expires_at: LATER, approval_deadline: LATER, ...extra });
+}
+async function getWith(body) {
+  const backend = fakeBackend();
+  backend.state.get.set(PID, { status: 200, body });
   const ctx = await build({ backend });
   const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
-  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
-  assert.equal((out.messages || []).some((m) => m.code.startsWith('reap.offer_code_')), false);
+  return keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+}
+
+test('get_checkout: an applied code -> discounts.applied, a NEGATIVE discount row, and totals that reconcile', async () => {
+  const out = await getWith(priced({ offer_code: 'PEACHIE20', offer_code_outcome: 'applied', totals: { ...QUOTED, quoted_total_minor: 4075, discount_minor: 425 } }));
+  assertSpecCheckout(out);
+  assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 100], ['tax', 150], ['discount', -425], ['total', 4075]]);
+  assert.deepEqual(out.discounts, { codes: ['PEACHIE20'], applied: [{ code: 'PEACHIE20', title: 'Offer code', amount: 425 }] });
+  const msg = message(out, 'reap.offer_code_applied');
+  assert.equal(msg.type, 'info');
+  assert.equal(msg.content.includes('PEACHIE20'), false, 'the code itself is never echoed in a message');
 });
 
-test('Tier B: merchant_not_eligible on the variant lane is retried ONCE as item_source cart_link — only with the gateway dial on', async () => {
+test('get_checkout: a dropped code is a UCP discount warning at $.discounts.codes[0]; no_discount is info', async () => {
+  for (const [outcomeName, code] of [['dropped_invalid', 'discount_code_invalid'], ['dropped_expired', 'discount_code_expired']]) {
+    const out = await getWith(priced({ offer_code: 'PEACHIE20', offer_code_outcome: outcomeName, totals: { ...QUOTED } }));
+    assertSpecCheckout(out);
+    const msg = message(out, code);
+    assert.equal(msg.type, 'warning');
+    assert.equal(msg.path, '$.discounts.codes[0]');
+    assert.deepEqual(out.discounts, { codes: ['PEACHIE20'], applied: [] });
+    assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 100], ['tax', 150], ['total', 4500]]);
+  }
+  const nd = await getWith(priced({ offer_code: 'PEACHIE20', offer_code_outcome: 'no_discount', totals: { ...QUOTED, discount_minor: 0 } }));
+  assert.equal(message(nd, 'reap.offer_code_no_discount').type, 'info');
+  // An outcome this door does not know is not published, and a view without a code carries no `discounts`.
+  const unknown = await getWith(view('quoting', { offer_code_outcome: 'half_applied<script>' }));
+  assert.equal((unknown.messages || []).some((m) => /offer_code|discount_code/.test(m.code)), false);
+  assert.equal(Object.hasOwn(unknown, 'discounts'), false);
+});
+
+test('get_checkout: tax INCLUDED in the prices is not a tax row, and the total says so; a breakdown that does not reconcile is not shown', async () => {
+  const incl = await getWith(priced({ totals: { currency: 'USD', our_price_minor: 4250, quoted_total_minor: 4650, final_total_minor: null, shipping_minor: 400, tax_minor: 248, tax_included: true } }));
+  assertSpecCheckout(incl);
+  assert.deepEqual(incl.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 400], ['total', 4650]]);
+  assert.match(incl.totals.at(-1).display_text, /tax is included/);
+  const off = await getWith(priced({ totals: { ...QUOTED, quoted_total_minor: 9999 } }));
+  assert.deepEqual(off.totals.map((x) => x.type), ['subtotal', 'total']);
+});
+
+test('get_checkout: refused offer_code_rejected tells the agent to create a NEW checkout without the code, with a NEW key', async () => {
+  const out = await getWith(view('refused', { refusal_reason: 'offer_code_rejected' }));
+  assert.equal(out.status, 'canceled');
+  const msg = message(out, 'reap.purchase_refused');
+  assert.match(msg.content, /WITHOUT the code/);
+  assert.match(msg.content, /NEW idempotency key/);
+});
+
+test('Tier B: merchant_not_eligible is retried ONCE as item_source cart_link under a separate namespace — only with the dial on', async () => {
   const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
   const accepted = { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } };
 
   // dial OFF: one POST, the storefront path answers as before.
   const off = fakeBackend();
   off.state.post = [notEligible, accepted];
-  const r0 = await createReap(ON, { backend: off, args: { discounts: { codes: ['SAVE10'] } } });
+  const r0 = await createReap(ON, { backend: off });
   assert.equal(off.calls.length, 1);
   assert.equal(String(r0.out.id || '').startsWith('reap_'), false);
 
-  // dial ON: a second POST, same buyer and code, item_source cart_link, its own derived idempotency key.
+  // dial ON: a second POST, same buyer and code, item_source cart_link, its own derived key.
   const on = fakeBackend();
   on.state.post = [notEligible, accepted];
-  const r1 = await createReap({ ...ON, [CART_LINK_FLAG]: '1' }, { backend: on, args: { discounts: { codes: ['SAVE10'] } } });
+  const r1 = await createReap(CODES_ON, { backend: on, args: { discounts: { codes: ['SAVE10'] } } });
   assert.equal(on.calls.length, 2);
   const [first, second] = on.calls.map((c) => c.body);
   assert.equal(Object.hasOwn(first, 'item_source'), false);
   assert.equal(second.item_source, 'cart_link');
   assert.equal(second.offer_code, 'SAVE10');
   assert.deepEqual(second.buyer, first.buyer);
+  assert.equal(second.idempotency_key, r1.m.lane.reapCartLinkIdempotencyKey('idem-reap-0001'));
   assert.notEqual(second.idempotency_key, first.idempotency_key);
-  assert.match(second.idempotency_key, /^ucp-reap-v1-[0-9a-f]{48}$/);
   assert.match(r1.out.id, REAP_ID_RE);
+});
 
-  // Any OTHER refusal is never retried as cart_link.
-  for (const code of ['row_not_found', 'merchant_not_purchasable', 'idempotency_conflict']) {
+test('Tier B: a cart_link POST that ITSELF answers merchant_not_eligible is not retried again; nor are merchant_disabled, row_not_shopify or any other refusal', async () => {
+  const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
+  const loop = fakeBackend();
+  loop.state.post = [notEligible, notEligible, notEligible, notEligible];
+  await createReap(CODES_ON, { backend: loop });
+  assert.equal(loop.calls.length, 2, 'variant once, cart_link once, never a third POST');
+  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable', 'idempotency_conflict']) {
     const b = fakeBackend();
-    b.state.post = [{ status: 409, body: houseError(code, 409) }, accepted];
-    await createReap({ ...ON, [CART_LINK_FLAG]: '1' }, { backend: b });
+    b.state.post = [{ status: 409, body: houseError(code, 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
+    await createReap(CODES_ON, { backend: b });
     assert.equal(b.calls.length, 1, code);
   }
-  // And the gateway dial alone does nothing when the lane is off.
   const laneOff = fakeBackend();
   await createReap({ [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1', [ESCALATION_FLAG]: undefined, [GATE_FLAG_ENV]: undefined }, { backend: laneOff });
   assert.equal(laneOff.calls.length, 0);
+});
+
+test('Tier B keys: deterministic per UCP key, never the variant key — even for a caller key spelled "K:cart_link" (G3); a retried create reuses the SAME cart-link key (G5)', async () => {
+  const { lane } = await mods();
+  assert.equal(lane.reapCartLinkIdempotencyKey('K'), lane.reapCartLinkIdempotencyKey('K'));
+  assert.equal(lane.reapCartLinkIdempotencyKey(' K '), lane.reapCartLinkIdempotencyKey('K'), 'trimmed like the variant key');
+  assert.notEqual(lane.reapCartLinkIdempotencyKey('K'), lane.reapIdempotencyKey('K:cart_link'));
+  assert.notEqual(lane.reapIdempotencyKey('K:cart_link'), lane.reapCartLinkIdempotencyKey('K'));
+  assert.equal(lane.reapCartLinkIdempotencyKey(''), null);
+  // Two creates with one key: the backend refuses the variant key the second time too (it remembers the
+  // refusal), so the lane's second cart-link POST carries the SAME key and the backend replays P1.
+  const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
+  const accepted = { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } };
+  const b = fakeBackend();
+  b.state.post = [notEligible, accepted, notEligible, accepted];
+  await createReap(CODES_ON, { backend: b });
+  await createReap(CODES_ON, { backend: b });
+  const keys = b.calls.map((c) => [c.body.item_source || 'reap_variant', c.body.idempotency_key]);
+  assert.equal(keys.length, 4);
+  assert.deepEqual(keys[2], keys[0]);
+  assert.deepEqual(keys[3], keys[1]);
+});
+
+test('the lane itself never forwards a code unless armed, even if handed one directly (belt and braces behind the adapter, G8)', async () => {
+  for (const [env, expected] of [[ON, false], [CODES_ON, true]]) {
+    const ctx = await build();
+    const backend = fakeBackend();
+    const client = createReapAgenticPurchaseClient({ baseUrl: 'https://backend.example', fetchImpl: backend.fetchImpl, authHeaders: FULL_AUTH, logger: fakeLogger() });
+    await withEnv(env, () => ctx.m.lane.tryReapAgenticCheckout({
+      op: { id: 'create_checkout_session' },
+      params: { idempotency_key: 'idem-direct', quote: { items: [{ product_id: REAP_ROW.product_id, quantity: 1 }], customer_email: EMAIL } },
+      ctx: { user_ref: 'buyer_1', acp_session_id: 'sess_1' },
+      executor: ctx.executor,
+      ucpArgs: createArgs({ discounts: { codes: ['SAVE10'] } }),
+      client,
+      now: NOW,
+    }));
+    assert.equal(backend.calls.length, 1, JSON.stringify(env));
+    assert.equal(Object.hasOwn(backend.calls[0].body, 'offer_code'), expected, JSON.stringify(env));
+  }
 });

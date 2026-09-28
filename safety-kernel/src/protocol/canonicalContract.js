@@ -112,6 +112,20 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   // buyer never chose for those lines. Declaring the bound is how a platform learns it from DISCOVERY instead
   // of from a refusal mid-checkout; the door and this config are asserted equal by
   // mcp-server/test/ucpFulfillmentAddressContract.test.js, so the advertisement cannot drift from the rule.
+  // UCP's DISCOUNT extension, a modifier of checkout like fulfillment below: it adds `checkout.discounts` (codes
+  // in, applied discounts + rejection warnings out). OPT-IN (`optIn: true`): never advertised by default, only
+  // when the profile builder is told to (`optInCapabilities`), which the gateway does ONLY while buyer offer
+  // codes are armed (mcp-server/src/ucpReapAgenticLane.js `reapOfferCodesEnabled`) -- codes are honoured on the
+  // Reap payment-partner lane alone, and a platform must not be invited to send one this door would drop.
+  // Documents measured 2026-09-28: specification/discount/ -> 200, schemas/shopping/discount.json -> 200.
+  discount: {
+    ucp: 'dev.ucp.shopping.discount',
+    title: 'Offer (discount) codes on checkout',
+    specName: 'discount',
+    schemaName: 'shopping/discount.json',
+    extends: ['dev.ucp.shopping.checkout'],
+    optIn: true,
+  },
   fulfillment: {
     ucp: 'dev.ucp.shopping.fulfillment',
     title: 'Shipping destination on checkout',

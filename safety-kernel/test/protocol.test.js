@@ -604,8 +604,27 @@ test('every capability ID is bound to its operations IN THE CONTRACT, published 
     'dev.ucp.shopping.order': ['get_order', 'request_after_sales'],
     'dev.ucp.common.identity_linking': ['start_identity_linking'],
     'dev.ucp.shopping.ap2_mandate': [],
+    // A modifier of checkout, OPT-IN (only advertised while buyer offer codes are armed on the Reap lane).
+    'dev.ucp.shopping.discount': [],
     'dev.ucp.shopping.fulfillment': [],
   });
+});
+
+test('the discount capability is OPT-IN: never in the default profile, present only when opted in', () => {
+  const base = { baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' };
+  assert.equal(Object.hasOwn(buildUcpProfile(base).ucp.capabilities, 'dev.ucp.shopping.discount'), false);
+  const armed = buildUcpProfile({ ...base, optInCapabilities: ['discount'] }).ucp.capabilities;
+  assert.deepEqual(armed['dev.ucp.shopping.discount'], [{
+    version: armed['dev.ucp.shopping.checkout'][0].version,
+    spec: 'https://ucp.dev/2026-04-08/specification/discount',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/discount.json',
+    extends: ['dev.ucp.shopping.checkout'],
+  }]);
+  // Opting in adds exactly that one id.
+  assert.deepEqual(
+    Object.keys(armed).sort(),
+    [...Object.keys(buildUcpProfile(base).ucp.capabilities), 'dev.ucp.shopping.discount'].sort(),
+  );
 });
 
 test('the PUBLISHED id is bound to its operations — not just the internal key', () => {

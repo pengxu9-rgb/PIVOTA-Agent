@@ -327,3 +327,33 @@ describe("ratchets this lane must not move", () => {
     assert.doesNotMatch(src, /\bfetch\s*\(|axios|https?\.request|node:https|node:http\b/);
   });
 });
+
+describe("offer codes are advertised and accepted ONLY while armed (review of #2323, G1/G8)", async () => {
+  const adapter = await import("../src/ucpArgumentAdapter.js");
+  const lane = await import("../src/ucpReapAgenticLane.js");
+  const ARMED = { REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" };
+  const op = { id: "create_checkout_session" };
+  const body = (discounts) => ({
+    meta: { "ucp-agent": { profile: "https://p.example/.well-known/ucp-agent" }, "idempotency-key": "k1" },
+    checkout: { line_items: [{ item: { id: "sig_a" }, quantity: 1 }], buyer: { email: "a@b.example" }, ...(discounts ? { discounts } : {}) },
+  });
+  test("the arming rule is lane AND cart-link dial", () => {
+    assert.equal(lane.reapOfferCodesEnabled({}), false);
+    assert.equal(lane.reapOfferCodesEnabled({ REAP_AGENTIC_LANE_ENABLED: "1" }), false);
+    assert.equal(lane.reapOfferCodesEnabled({ REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" }), false);
+    assert.equal(lane.reapOfferCodesEnabled(ARMED), true);
+  });
+  test("schema: `discounts` on create_checkout only when armed; update_checkout never", () => {
+    const has = (env, id) => Object.hasOwn(adapter.ucpInputSchemasFor(env)[id].properties.checkout.properties, "discounts");
+    assert.equal(has({}, "create_checkout_session"), false);
+    assert.equal(has(ARMED, "create_checkout_session"), true);
+    assert.equal(has(ARMED, "update_checkout_session"), false);
+    assert.equal(adapter.ucpInputSchemasFor({}), adapter.UCP_INPUT_SCHEMAS, "unarmed is byte-identical to the base schemas");
+  });
+  test("mapper: refused as an unknown field when not armed; accepted and NOT mapped into the quote when armed", () => {
+    assert.throws(() => adapter.ucpToNativeToolArgs(op, body({ codes: ["SAVE10"] }), {}), (e) => e.detail?.reason === "ucp_unknown_field" || /discounts/.test(JSON.stringify(e)));
+    const mapped = adapter.ucpToNativeToolArgs(op, body({ codes: ["SAVE10"] }), ARMED);
+    assert.equal(JSON.stringify(mapped).includes("SAVE10"), false, "a code never reaches the kernel quote");
+    assert.deepEqual([...adapter.UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED], ["checkout.discounts.codes[]"]);
+  });
+});
