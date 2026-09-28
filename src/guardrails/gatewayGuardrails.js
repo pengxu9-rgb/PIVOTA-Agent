@@ -1,4 +1,5 @@
 const { createHash } = require('crypto');
+const { isIP } = require('net');
 
 const RATE_LIMIT_ENABLED = process.env.GATEWAY_RATE_LIMIT_ENABLED !== 'false';
 const RATE_LIMIT_TTL_MS = Math.max(
@@ -31,48 +32,106 @@ function clampInt(value, min, max, fallback) {
   return Math.min(Math.max(n, min), max);
 }
 
-function pickHeader(headers, ...names) {
-  for (const raw of names) {
-    const key = String(raw || '').toLowerCase();
-    const value = headers && typeof headers === 'object' ? headers[key] : null;
-    if (!value) continue;
-    const v = Array.isArray(value) ? value[0] : value;
-    const trimmed = String(v || '').trim();
-    if (trimmed) return trimmed;
+function nonEmptyString(value) {
+  const s = typeof value === 'string' ? value.trim() : '';
+  return s || null;
+}
+
+// The rate-limit bucket is chosen ONLY from identity this gateway verified itself: `req.invokeAuth`,
+// which requireExternalInvokeAuth writes after it has checked the credential (an API key through
+// introspection, a checkout token through the backend's verdict). Nothing the request asserts about
+// itself — X-Agent-API-Key, Authorization, X-Checkout-Token, metadata.source — selects a bucket: a
+// value the gateway has not checked is just a string the caller picked. A request with no verified
+// identity is keyed on its client IP.
+//
+// Verified means:
+//  - an API key verdict: keyed on the agent it belongs to, so every key of one agent
+//    shares that agent's budget; the key fingerprint only when the verdict named no agent;
+//  - a checkout token the backend vouched for (auth_mode 'checkout_token' WITH an agent_id and the
+//    token's fingerprint — the shape authenticateCheckoutTokenOnly writes): keyed per token, the
+//    'session' tier. A checkout_token verdict without an agent_id was never checked, so it is not
+//    identity.
+// Anything else is not: no invokeAuth at all (the public search route runs no auth), the test bypass,
+// or an auth mode that names no agent.
+function verifiedClientIdentity(invokeAuth) {
+  const auth = invokeAuth && typeof invokeAuth === 'object' ? invokeAuth : null;
+  if (!auth) return null;
+  const mode = nonEmptyString(auth.auth_mode);
+  const agentId = nonEmptyString(auth.agent_id);
+  if (mode === 'api_key') {
+    if (agentId) return { tier: 'api_key', identity: `agent:${agentId}` };
+    const keyFingerprint = nonEmptyString(auth.key_fingerprint);
+    if (keyFingerprint) return { tier: 'api_key', identity: `key:${keyFingerprint}` };
+    return null;
+  }
+  if (mode === 'checkout_token') {
+    const tokenFingerprint = nonEmptyString(auth.checkout_token_fingerprint);
+    if (agentId && tokenFingerprint) return { tier: 'session', identity: `checkout:${tokenFingerprint}` };
+    return null;
   }
   return null;
 }
 
-function classifyClient({ headers, metadata, ip }) {
-  const source = metadata && typeof metadata === 'object' ? String(metadata.source || '').trim() : '';
+// How many proxies in front of this service append to X-Forwarded-For. Every external request reaches
+// the gateway through Google's external Application Load Balancer (Cloud Run ingress is
+// internal-and-cloud-load-balancing), which appends TWO entries — the client address it saw and its own
+// forwarding-rule address — after whatever the client sent. Everything left of those is the client's
+// own text.
+function trustedProxyHops() {
+  const n = Number(process.env.GATEWAY_RATE_LIMIT_TRUSTED_PROXY_HOPS);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
+}
 
-  const agentApiKey = pickHeader(headers, 'x-agent-api-key');
-  const checkoutToken = pickHeader(headers, 'x-checkout-token');
-  const authorization = pickHeader(headers, 'authorization');
+function normalizeIp(value) {
+  let s = nonEmptyString(value);
+  if (!s) return null;
+  if (s.toLowerCase().startsWith('::ffff:') && isIP(s.slice(7)) === 4) s = s.slice(7);
+  return isIP(s) ? s.toLowerCase() : null;
+}
 
-  const identity = agentApiKey || checkoutToken || authorization || ip || 'anonymous';
-  const hashed = sha256Hex(`${source || 'unknown'}:${identity}`).slice(0, 16);
+// The client address our own edge observed: the Nth entry from the RIGHT of X-Forwarded-For, N = trusted
+// proxy hops. A chain shorter than N (a caller inside the VPC, which reaches the service without the
+// load balancer) clamps to its left-most entry. An entry that is not an IP address is not an identity
+// either, and falls back to the socket peer rather than becoming a bucket of its own.
+function clientIpFromRequest(req) {
+  const parts = String(req?.headers?.['x-forwarded-for'] || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length) {
+    const fromEdge = normalizeIp(parts[Math.max(0, parts.length - trustedProxyHops())]);
+    if (fromEdge) return fromEdge;
+  }
+  return normalizeIp(req?.socket?.remoteAddress) || normalizeIp(req?.ip) || null;
+}
 
-  const tier = (() => {
-    if (checkoutToken) return 'session';
-    if (agentApiKey) return 'api_key';
-    return 'anonymous';
-  })();
-
+function classifyClient({ req } = {}) {
+  const verified = verifiedClientIdentity(req?.invokeAuth);
+  if (verified) {
+    return {
+      tier: verified.tier,
+      key: `${verified.tier}:${sha256Hex(verified.identity).slice(0, 16)}`,
+      agent_id: nonEmptyString(req.invokeAuth.agent_id),
+    };
+  }
+  const ip = clientIpFromRequest(req);
   return {
-    source: source || null,
-    tier,
-    key: `${tier}:${hashed}`,
+    tier: 'anonymous',
+    key: `anonymous:${sha256Hex(`ip:${ip || 'unknown'}`).slice(0, 16)}`,
+    agent_id: null,
   };
 }
 
+// Operators can exempt named agents (a first-party proxy whose one key carries many end users). Only a
+// VERIFIED agent_id can match — an exemption keyed on anything the caller sends is an exemption for
+// every caller who sends it.
 function shouldBypassRateLimit({ client }) {
-  const bypassSources = String(process.env.GATEWAY_RATE_LIMIT_BYPASS_SOURCES || '')
+  const bypassAgentIds = String(process.env.GATEWAY_RATE_LIMIT_BYPASS_AGENT_IDS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (!bypassSources.length) return false;
-  return client?.source ? bypassSources.includes(client.source) : false;
+  if (!bypassAgentIds.length || !client?.agent_id) return false;
+  return bypassAgentIds.includes(client.agent_id);
 }
 
 function operationRateLimit(operation, client) {
@@ -177,11 +236,8 @@ function clampGetPdpV2Payload(payload) {
   }
 }
 
-function applyGatewayGuardrails({ req, operation, payload, effectivePayload, metadata }) {
-  const headers = req && typeof req === 'object' ? req.headers : null;
-  const ip = req && typeof req === 'object' ? req.ip : null;
-
-  const client = classifyClient({ headers, metadata, ip });
+function applyGatewayGuardrails({ req, operation, payload, effectivePayload }) {
+  const client = classifyClient({ req });
   const nowMs = Date.now();
 
   if (RATE_LIMIT_ENABLED && !shouldBypassRateLimit({ client })) {
@@ -226,6 +282,7 @@ module.exports = {
   classifyClient,
   clampInt,
   __test__: {
+    clientIpFromRequest,
     consumeToken,
     operationRateLimit,
     sha256Hex,

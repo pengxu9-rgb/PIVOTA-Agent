@@ -10,16 +10,17 @@ describe('gateway guardrails', () => {
     process.env = originalEnv;
   });
 
-  test('classifyClient derives stable tier/key', () => {
+  test('classifyClient derives stable tier/key from the verified identity', () => {
     const { classifyClient } = require('../src/guardrails/gatewayGuardrails');
-    const client = classifyClient({
+    const req = {
       headers: { 'x-agent-api-key': 'test-key' },
-      metadata: { source: 'look-replicator' },
-      ip: '127.0.0.1',
-    });
-    expect(client.source).toBe('look-replicator');
+      invokeAuth: { auth_mode: 'api_key', agent_id: 'agent_1', key_fingerprint: 'fp1' },
+    };
+    const client = classifyClient({ req });
     expect(client.tier).toBe('api_key');
+    expect(client.agent_id).toBe('agent_1');
     expect(client.key.startsWith('api_key:')).toBe(true);
+    expect(classifyClient({ req }).key).toBe(client.key);
   });
 
   test('applyGatewayGuardrails clamps find_products_multi search params', () => {
@@ -75,7 +76,11 @@ describe('gateway guardrails', () => {
     jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
 
     const { applyGatewayGuardrails } = require('../src/guardrails/gatewayGuardrails');
-    const req = { headers: { 'x-agent-api-key': 'k' }, ip: '1.1.1.1' };
+    const req = {
+      headers: { 'x-agent-api-key': 'k' },
+      ip: '1.1.1.1',
+      invokeAuth: { auth_mode: 'api_key', agent_id: 'agent_1', key_fingerprint: 'fp1' },
+    };
     const base = {
       req,
       operation: 'unknown_op',
