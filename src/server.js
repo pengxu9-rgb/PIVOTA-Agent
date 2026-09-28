@@ -29,6 +29,7 @@ const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
+const { callerLogFields } = require('./attribution/callerLogFields');
 const { isExternalSeedRow } = require('./externalSeedIdentity');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
@@ -31400,6 +31401,40 @@ function mcpToolNameFromRpcBody(rpcBody) {
   return rpcBody && rpcBody.method === 'tools/call' && rpcBody.params ? rpcBody.params.name : null;
 }
 
+// One completion line per MCP tools/call, naming the tool and the resolved caller (see
+// src/attribution/callerLogFields.js). Without it an MCP tool call is invisible in the logs: its
+// search_catalog reaches the invoke route only as this gateway's own loopback call, under this gateway's
+// own key, so the invoke line cannot say which agent asked. Only tools/call is logged -- the one method
+// that does real work -- and never its arguments. Registered on 'finish', so it records the caller the
+// door actually resolved (req.invokeAuth is written after this runs). Never throws.
+function logMcpToolCallOnFinish(req, res, door) {
+  try {
+    const rpcBody = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
+    const rawTool = mcpToolNameFromRpcBody(rpcBody);
+    if (rawTool == null) return;
+    const tool = typeof rawTool === 'string' ? rawTool.trim().slice(0, 128) : null;
+    const startedAtMs = Date.now();
+    res.on('finish', () => {
+      try {
+        logger.info(
+          {
+            door,
+            tool,
+            status: res.statusCode,
+            latency_ms: Math.max(0, Date.now() - startedAtMs),
+            ...callerLogFields(req),
+          },
+          'mcp tools/call complete',
+        );
+      } catch (_) {
+        // Measurement must never break the surface it measures.
+      }
+    });
+  } catch (_) {
+    // Same.
+  }
+}
+
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
 //
 // This used to compare the wire tool name directly against 'complete_checkout_session'. That is the MCP
@@ -31492,6 +31527,7 @@ function commerceMcpHeartbeatOptions(ctx) {
 }
 
 async function handlePublicReadMcp(req, res) {
+  logMcpToolCallOnFinish(req, res, 'public_mcp');
   if (!isPublicReadMcpEnabled()) {
     return res.status(404).json({ error: 'not_found' });
   }
@@ -31563,6 +31599,7 @@ function registerCommerceRemoteMcpRoute() {
       getAdapter: getCommerceRemoteMcpAdapter,
       resolveBlockedOperation: async (rpcBody) => resolveBlockedCommerceMcpOperation(rpcBody),
       failureLabel: 'Strict checkout remote MCP route failed',
+      door: 'mcp',
     });
   });
 }
@@ -31579,7 +31616,8 @@ function registerCommerceRemoteMcpRoute() {
  * The caller owns whatever must happen BEFORE this (public-read host dispatch, per-door enable flags), so
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
-async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel }) {
+async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
+    logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
     // API key: the verified token is BOTH the channel credential and the user identity. Inert
@@ -31725,6 +31763,7 @@ function registerCommerceUcpMcpRoute() {
       getAdapter: getCommerceUcpMcpAdapter,
       resolveBlockedOperation: resolveBlockedUcpMcpOperation,
       failureLabel: 'UCP dialect commerce MCP route failed',
+      door: 'ucp_mcp',
     });
   });
 }
@@ -40008,6 +40047,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gateway_request_id: gatewayRequestId,
         client_channel: clientChannel,
         key_fingerprint: routeKeyFingerprint,
+        // The agent this request resolved to, not just which key it presented: Pivota's own UI and this
+        // gateway's loopback self-calls share one key. See src/attribution/callerLogFields.js.
+        ...callerLogFields(req),
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
