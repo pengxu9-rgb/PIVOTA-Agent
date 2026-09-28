@@ -12277,12 +12277,10 @@ function projectSearchTransportProduct(product, stats = null) {
     'price',
     'price_amount',
     'currency',
-    // When the price was last read, and the writer's stated confidence in it. This is an explicit
-    // allowlist applied at every find_products_multi exit, so a field left out of it is simply absent
-    // from the response, indistinguishable from a product that never had one. The live merchant
-    // lane's `price_as_of` was stripped here the same way.
+    // When the price was last read. This is an explicit allowlist applied at every find_products_multi
+    // exit, so a field left out of it is simply absent from the response, indistinguishable from a
+    // product that never had one. The live merchant lane's `price_as_of` was stripped here the same way.
     'price_as_of',
-    'price_confidence',
     'in_stock',
     'availability',
     'inventory_quantity',
@@ -17478,19 +17476,11 @@ function resolveCanonicalOfferDerivedPrice(row) {
   if (!currency || !Number.isFinite(amount) || amount <= 0) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
   }
-  // WHEN IT WAS TRUE, off the SAME offer row, for the reason the currency is: an as-of or a
-  // confidence taken from anywhere else would describe a number this row does not carry.
-  // Absent rather than guessed: a row with no usable stamp yields no as_of, never "now", which
-  // would claim a read nobody made.
+  // WHEN IT WAS TRUE, off the SAME offer row, for the reason the currency is: an as-of taken
+  // from anywhere else would date a number this row does not carry. Absent rather than guessed:
+  // a row with no usable stamp yields no as_of, never "now", which would claim a read nobody made.
   const asOf = normalizeCanonicalPriceAsOf(row.price_checked_at);
-  const confidence = normalizeCanonicalPriceConfidence(row.price_confidence);
-  return {
-    priced: true,
-    amount,
-    currency,
-    ...(asOf ? { as_of: asOf } : {}),
-    ...(confidence != null ? { confidence } : {}),
-  };
+  return { priced: true, amount, currency, ...(asOf ? { as_of: asOf } : {}) };
 }
 
 // `catalog_offers.price_checked_at` as a UTC ISO-8601 instant, or null.
@@ -17512,16 +17502,6 @@ function normalizeCanonicalPriceAsOf(value) {
   else if (!/(Z|[+-]\d{2}:?\d{2})$/.test(text)) return null;
   const parsed = new Date(text);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-// NOT `Number(value)`: Number(null) is 0, a real confidence meaning "we do not believe this
-// price", and Number(true) / Number([0.5]) are 1 and 0.5. Only a number or a numeric string is
-// a confidence; anything else is absent.
-function normalizeCanonicalPriceConfidence(value) {
-  const scalar = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '');
-  if (!scalar) return null;
-  const confidence = Number(value);
-  return Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : null;
 }
 
 function buildCanonicalChainMainlineProduct(row) {
@@ -17737,15 +17717,17 @@ function buildCanonicalChainMainlineProduct(row) {
       ? {
           price: offerPrice.amount,
           currency: offerPrice.currency,
-          // Only while CANONICAL_CATALOG_SERVED_PRICE_AS_OF is armed. The same flag puts
-          // price_checked_at in the SQL. price_confidence is on every offer row already, but
-          // today it is a per-writer constant (0.70 on every enrichment-agent offer), not a
-          // reading of this row, so it ships with the as-of rather than on its own.
-          ...(isCanonicalServedPriceAsOfEnabled()
-            ? {
-                ...(offerPrice.as_of ? { price_as_of: offerPrice.as_of } : {}),
-                ...(offerPrice.confidence != null ? { price_confidence: offerPrice.confidence } : {}),
-              }
+          // Only while CANONICAL_CATALOG_SERVED_PRICE_AS_OF is armed; the same flag puts
+          // price_checked_at in the SQL.
+          //
+          // The row's price_confidence is deliberately NOT published. It is a constant per
+          // writer, not a reading of this row: prod 2026-09-28, 0.70 on all 47,005
+          // enrichment-agent offers, 0.60/1.00 on mirror rows, 0.90 on retailer attaches. On a
+          // card it would read as "how likely this price is right" and rank sellers by ingest
+          // lane. A confidence worth publishing would be derived from what we observe (age since
+          // the read, live verification, drift history), as its own field.
+          ...(isCanonicalServedPriceAsOfEnabled() && offerPrice.as_of
+            ? { price_as_of: offerPrice.as_of }
             : {}),
         }
       : { price_absent_reason: offerPrice.reason }),
