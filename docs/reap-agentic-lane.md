@@ -183,6 +183,13 @@ claim (`sid` / `session_id`). The Reap lane needs three things a storefront chec
    it the gate cannot ask and keeps its previous behaviour (the backend still enforces its own fact
    against the destination country).
 
+4. **`checkout.discounts.codes`** — NEW, optional: the buyer's ONE offer (coupon) code, as UCP's discount
+   extension spells it (`{ "codes": ["PEACHIE20"] }`), create_checkout only. The adapter enforces the shape
+   (at most one string of 1–128 characters, `ucp_offer_code_invalid` otherwise) and the lane forwards it
+   **verbatim** as the backend's `offer_code` — never trimmed or case-folded; the backend's one offer-code
+   rule judges its content. If the merchant refuses the code, the purchase is re-quoted **without it** and
+   `get_checkout` says so (below). Not applied on Pivota's own (kernel) checkout path.
+
 `meta["idempotency-key"]` is required as on every state-changing call. **Retry with the same key**:
 the backend key is derived from it (hashed, namespaced — never random, never the raw key), so a
 retried `create_checkout` replays the same purchase instead of opening a second one.
@@ -215,6 +222,11 @@ Then poll `get_checkout { meta, id }`:
   the buyer the link at once; read an `incomplete` carrying `reap.approval_deadline_passed` as
   "too late, poll once more for the final state", and a `canceled` with
   `Reason: approval_window_lapsed` as "the buyer did not approve in time — create a new checkout".
+- **Offer code**: once priced, one message says what the code came to — `reap.offer_code_applied`
+  (info; `totals` gains a `discount` row, already inside the `total`), `reap.offer_code_no_discount`
+  (info), or `reap.offer_code_dropped_invalid` / `reap.offer_code_dropped_expired` (**warning**: the
+  purchase continued without the code, so the total has no discount — tell the buyer before they
+  approve). The total is always the payment partner's own; this door computes no discount.
 - **Done**: `completed` carries `code: "reap.order_reference"` whose `content` is the merchant's
   order reference, verbatim.
 - **Not done**: `canceled` carries `reap.purchase_refused` / `reap.purchase_failed` /
@@ -226,6 +238,7 @@ Then poll `get_checkout { meta, id }`:
 | where | code / reason | meaning | what to do |
 |---|---|---|---|
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_consent_version_invalid` | `consent_version` is not a string, or longer than 32 characters | fix the value |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_offer_code_invalid` | `checkout.discounts` is not `{ codes: [one string of 1..128] }` | fix the value, or send no code |
 | `update_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_update_refused` | a Reap checkout cannot be changed | create a new checkout |
 | `complete_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_complete_refused` | completion is on Reap's page | poll `get_checkout`, open `continue_url` |
 | `get_checkout` | `QUOTE_NOT_FOUND` | unknown id (or another buyer's) | — |
@@ -237,6 +250,13 @@ an error. When the buyer block was short, the storefront answer carries one `inf
 `code: "reap.available_with_consent"` — read it as "resend with `consent_version`, a last name and a
 phone if the user wants the Reap route". Otherwise the door falls through to the storefront escalation
 (or the kernel path) and logs the code.
+
+**Tier B (cart-link) retry.** With `REAP_AGENTIC_CART_LINK_LANE_ENABLED` on (default OFF; read per call,
+only while the lane itself is on), a `409 merchant_not_eligible` from the backend's variant lane — the
+merchant is not on the operator allowlist — is POSTed ONCE more with `item_source: "cart_link"` and its own
+derived idempotency key, same buyer and code. The backend checks its daily Tier B verdict and its own
+`REAP_AGENTIC_CART_LINK_ENABLED`; any refusal of that second POST falls through exactly as above. No other
+refusal is retried. The multi-variant skip still applies (this door sends no `variant_key`).
 
 ## 6. Budgets and failure modes
 

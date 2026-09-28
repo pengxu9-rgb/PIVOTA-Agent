@@ -767,6 +767,32 @@ const CART_ID_SCHEMA = {
     + " which is also what the live create_checkout schema requires even when converting a cart.",
 };
 
+/** Reap's `offerCode` bound (2026-09-28 spec): a string of 1..128 characters. */
+const OFFER_CODE_MAX_LENGTH = 128;
+
+// UCP's discount extension member (`checkout.discounts.codes`), create_checkout ONLY, and read by NOTHING but
+// the Reap agentic lane (ucpReapAgenticLane.js `reapOfferCode`), from the raw wire body, which forwards it to
+// the backend as `offer_code`. It is not a pricing input for the kernel path — the canonical quote has no
+// discount member — so it is listed in UCP_ACCEPTED_BUT_UNMAPPED. At most ONE code: Reap's quote takes one.
+// The shape is enforced here like every published field; the CONTENT (whitespace-only, control characters)
+// is the backend's one offer-code rule to judge (services.reap_agentic_client.validate_offer_code).
+const DISCOUNTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    codes: {
+      type: "array",
+      maxItems: 1,
+      items: { type: "string", minLength: 1, maxLength: OFFER_CODE_MAX_LENGTH },
+      description:
+        "Optional. ONE offer (coupon) code the buyer entered, forwarded verbatim when the checkout is fulfilled"
+        + " through the Reap payment partner. If the merchant refuses it, the purchase continues WITHOUT it and"
+        + " get_checkout says so (`reap.offer_code_dropped_invalid` / `_expired`); the total shown is always the"
+        + " partner's own. Not applied on Pivota's own checkout path.",
+    },
+  },
+};
+
 const ATTRIBUTION_SCHEMA = {
   type: "object",
   additionalProperties: true,
@@ -789,12 +815,15 @@ function checkoutSchema({ update } = {}) {
       context: CONTEXT_SCHEMA,
       fulfillment: fulfillmentSchema({ update }),
       attribution: ATTRIBUTION_SCHEMA,
+      // create only: an update never reaches the Reap lane (a `reap_` checkout refuses update_checkout).
+      ...(update ? {} : { discounts: DISCOUNTS_SCHEMA }),
     },
   };
 }
 
 /** The `checkout` members the mapper accepts, kept in lockstep with `checkoutSchema` above. */
 const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "context", "fulfillment", "attribution"]);
+const CREATE_CHECKOUT_FIELDS = Object.freeze([...CHECKOUT_FIELDS, "discounts"]);
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
@@ -816,6 +845,8 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "checkout.buyer.phone_number", "checkout.line_items[].id",
     // Read by the Reap agentic lane from the RAW body, never mapped into the canonical quote (see BUYER_SCHEMA).
     "checkout.buyer.consent_version",
+    // Same: read only by the Reap lane, forwarded as the backend's `offer_code` (see DISCOUNTS_SCHEMA).
+    "checkout.discounts.codes[]",
     "checkout.fulfillment.methods[].type",
     "checkout.fulfillment.methods[].line_item_ids[]",
     "checkout.fulfillment.methods[].selected_destination_id",
@@ -954,8 +985,33 @@ function requireCheckoutObject(args, tool) {
       "against the locked total this call returns.",
     ].join(" "), { rejected_field: "checkout.payment", authorization_tool: "complete_checkout" });
   }
-  rejectUnknown(checkout, CHECKOUT_FIELDS, "checkout", code);
+  rejectUnknown(checkout, tool === "create_checkout" ? CREATE_CHECKOUT_FIELDS : CHECKOUT_FIELDS, "checkout", code);
+  if (tool === "create_checkout") requireDiscountsShape(checkout, code);
   return checkout;
+}
+
+/**
+ * `checkout.discounts`, when present, is exactly `{ codes: [<one string of 1..128 characters>] }` (or an empty
+ * `codes`) — the advertised DISCOUNTS_SCHEMA, enforced like every other published field. Only the SHAPE: the
+ * code itself is forwarded verbatim and the backend's one rule judges its content.
+ */
+function requireDiscountsShape(checkout, code) {
+  const discounts = own(checkout, "discounts");
+  if (discounts === undefined) return;
+  const refuse = () => {
+    throw ucpRefusal(code, "ucp_offer_code_invalid", [
+      "`checkout.discounts` must be `{ codes: [code] }` with at most ONE code, a string of 1 to",
+      `${OFFER_CODE_MAX_LENGTH} characters.`,
+    ].join(" "), { rejected_field: "checkout.discounts.codes", max_items: 1, max_length: OFFER_CODE_MAX_LENGTH });
+  };
+  if (!isPlainObject(discounts)) refuse();
+  rejectUnknown(discounts, ["codes"], "checkout.discounts", code);
+  const codes = own(discounts, "codes");
+  if (codes === undefined) return;
+  if (!Array.isArray(codes) || codes.length > 1) refuse();
+  for (const c of codes) {
+    if (typeof c !== "string" || c.length === 0 || [...c].length > OFFER_CODE_MAX_LENGTH) refuse();
+  }
 }
 
 /**
@@ -1123,7 +1179,9 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "Some items Pivota does not sell directly can be bought through its payment partner Reap: the answer is then an",
   "`incomplete` checkout whose id starts `reap_`; poll `get_checkout` and send the buyer to its `continue_url` to",
   "add a card and approve the total. That route needs `checkout.buyer.consent_version`, a destination with a",
-  "phone number and a last name, and completes on Reap's page, never through `complete_checkout`.",
+  "phone number and a last name, and completes on Reap's page, never through `complete_checkout`. On that route",
+  "the buyer's ONE offer code may be sent as `checkout.discounts.codes`; a code the merchant refuses is dropped",
+  "and `get_checkout` says so.",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [

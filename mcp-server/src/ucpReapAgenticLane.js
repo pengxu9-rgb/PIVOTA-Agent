@@ -114,6 +114,15 @@ import {
 } from "./ucpCheckoutEscalation.js";
 
 export const REAP_AGENTIC_LANE_FLAG = "REAP_AGENTIC_LANE_ENABLED";
+/**
+ * The Tier B (cart-link) half of this lane. Default OFF, read per call, and only consulted when the lane itself
+ * is on. When on, a row the backend refuses on its VARIANT lane with `409 merchant_not_eligible` — the merchant
+ * is not on the operator allowlist — is offered ONCE more as `item_source: "cart_link"`, which the backend
+ * checks against its own daily Tier B verdict. The backend's `REAP_AGENTIC_CART_LINK_ENABLED` still has to be
+ * on too; until it is, the second POST is a `404 not_available_on_this_rail` and the storefront answers as
+ * before.
+ */
+export const REAP_AGENTIC_CART_LINK_LANE_FLAG = "REAP_AGENTIC_CART_LINK_LANE_ENABLED";
 export const REAP_CHECKOUT_ID_PREFIX = "reap_";
 /** The backend's MAX_QUANTITY (services/reap_agentic_purchase.py). A larger cart is not this lane's. */
 export const REAP_MAX_QUANTITY = 10;
@@ -167,6 +176,10 @@ const safeMinor = (v) => (Number.isSafeInteger(v) && v >= 0 && v <= MAX_UNIT_MIN
 
 export function reapAgenticLaneEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_LANE_FLAG]) || "").trim());
+}
+
+export function reapCartLinkLaneEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_CART_LINK_LANE_FLAG]) || "").trim());
 }
 
 // ---- id ----------------------------------------------------------------------------------------------------
@@ -244,6 +257,19 @@ export function reapIdempotencyKey(toolIdempotencyKey) {
 export function reapConsentVersion(ucpArgs) {
   const raw = own(own(own(ucpArgs, "checkout"), "buyer"), "consent_version");
   return typeof raw === "string" ? raw : undefined;
+}
+
+/**
+ * `checkout.discounts.codes[0]` — the buyer's ONE offer code, read from the RAW UCP body like the consent tag,
+ * and FORWARDED VERBATIM as the backend's `offer_code`: never trimmed or case-folded here (the merchant matched
+ * `peachie20` and `PEACHIE20` alike; a code we altered is not the one the buyer typed). The argument adapter
+ * enforces the published shape (at most one string of 1..128 characters); the backend owns the one content rule
+ * (`services.reap_agentic_client.validate_offer_code`). `undefined` when absent.
+ */
+export function reapOfferCode(ucpArgs) {
+  const codes = own(own(own(ucpArgs, "checkout"), "discounts"), "codes");
+  if (!Array.isArray(codes) || codes.length !== 1) return undefined;
+  return typeof codes[0] === "string" ? codes[0] : undefined;
 }
 
 function singleDestination(ucpArgs) {
@@ -436,6 +462,14 @@ const REASON_HINTS = Object.freeze({
 // will only ever find the purchase failed. Content is a CONSTANT sentence plus the normalised instant.
 const DEADLINE_PASSED_MESSAGE =
   "The approval window closed before the buyer approved; the link is no longer valid and nothing was charged. Poll get_checkout once more for the final state, then create a new checkout to try again.";
+// What the buyer's offer code came to (backend `offer_code_outcome`, migration 246). CONSTANT text keyed by a
+// value that must be one of these four; no backend text and no code value reaches a message.
+const OFFER_CODE_MESSAGES = Object.freeze({
+  applied: ["info", "The merchant accepted the buyer's offer code; the discount is shown in totals and is already in the total."],
+  no_discount: ["info", "The merchant accepted the buyer's offer code but it took nothing off this order."],
+  dropped_invalid: ["warning", "The merchant did not accept the buyer's offer code (invalid). The purchase continued WITHOUT it: the total has no discount. Tell the buyer before they approve."],
+  dropped_expired: ["warning", "The buyer's offer code has expired. The purchase continued WITHOUT it: the total has no discount. Tell the buyer before they approve."],
+});
 const PENDING_WITHOUT_URL_MESSAGE =
   "The buyer's next step is on the payment partner's page, but that page is not available yet. Poll get_checkout again.";
 const UNRECOGNISED_STATE_MESSAGE =
@@ -451,7 +485,7 @@ const LANE_MESSAGE = [
   "hold or move money. This checkout cannot be updated or completed through update_checkout / complete_checkout.",
 ].join(" ");
 
-function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, finalTotal, degraded }) {
+function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, finalTotal, discount, degraded }) {
   const lineTotal = unitMinor * quantity;
   if (!Number.isSafeInteger(lineTotal)) return null;
   const total = finalTotal ?? quotedTotal ?? lineTotal;
@@ -476,6 +510,9 @@ function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, f
         amount: lineTotal,
         display_text: degraded ? "Subtotal as recorded at checkout creation (current state unavailable)" : "Subtotal at Pivota's catalog price",
       },
+      // The partner's offer-code discount, as EVIDENCE beside the total it explains: the total above is
+      // already net of it (it is Reap's own final amount), so nothing here is subtracted by this door.
+      ...(discount ? [{ type: "discount", amount: discount, display_text: "Offer code discount applied by the merchant (already in the total)" }] : []),
       { type: "total", amount: total, display_text: degraded ? "Expected total as recorded at checkout creation (current state unavailable)" : totalText },
     ],
   };
@@ -546,6 +583,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     quantity,
     quotedTotal: safeMinor(totals.quoted_total_minor),
     finalTotal: state === "completed" ? safeMinor(totals.final_total_minor) : null,
+    discount: safeMinor(totals.discount_minor) || null,
     degraded: false,
   });
   if (!lt) return null;
@@ -597,6 +635,11 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     messages.push(warning(`reap.purchase_${state}`, `${STATE_MESSAGES[state]}${named}${hint}`));
   } else {
     messages.push(info(`reap.${state}`, STATE_MESSAGES[state]));
+  }
+  const outcome = str(own(view, "offer_code_outcome"));
+  if (outcome && Object.prototype.hasOwnProperty.call(OFFER_CODE_MESSAGES, outcome)) {
+    const [level, text] = OFFER_CODE_MESSAGES[outcome];
+    messages.push((level === "warning" ? warning : info)(`reap.offer_code_${outcome}`, text, "$.totals"));
   }
   if (!TERMINAL_STATES.has(state)) messages.push(pollMessage(pollSeconds(view)));
   messages.push(info("reap.lane", LANE_MESSAGE, "$"));
@@ -848,7 +891,22 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     buyer,
     idempotency_key: idempotencyKey,
   };
-  const res = await client.startPurchase(body);
+  const offerCode = reapOfferCode(ucpArgs);
+  if (offerCode !== undefined) body.offer_code = offerCode;
+  let res = await client.startPurchase(body);
+
+  // TIER B, ONCE. Only on the one refusal that means "not on the operator allowlist" — never on a consent,
+  // address or catalog refusal, which would refuse the cart-link lane for the same reason. A separate
+  // idempotency key, because the two bodies differ (the backend hashes `item_source` into the request) and a
+  // retry of this create must replay the cart-link purchase rather than conflict with the variant attempt.
+  if (res && res.kind === "refused" && res.code === "merchant_not_eligible" && reapCartLinkLaneEnabled(env)) {
+    emit(log, "info", { op: "create_checkout_session", outcome: "retry_cart_link", code: res.code });
+    res = await client.startPurchase({
+      ...body,
+      item_source: "cart_link",
+      idempotency_key: reapIdempotencyKey(`${params.idempotency_key}:cart_link`),
+    });
+  }
 
   if (res && res.kind === "refused" && res.http_status === 400) {
     const short = CONSENT_HINT_CODES.has(res.code)
