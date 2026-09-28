@@ -441,7 +441,7 @@ try {
     'auroraBff routes failed to load; disabling aurora routes for this process',
   );
 }
-const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
+const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
   recommend: recommendPdpProducts,
   getCacheStats: getPdpRecsCacheStats,
@@ -31552,27 +31552,18 @@ function getPublicReadMcpLimiter() {
   return publicReadMcpLimiter;
 }
 
-// Rate-limit key = the real client IP. The LEFT-most X-Forwarded-For entry is client-supplied and spoofable
-// (an attacker rotating it would land every request in a fresh bucket and defeat the limit), so we take the
-// entry appended by our own trusted edge: the Nth-from-the-right, where N = trusted proxy hops in front of
-// this service (Railway = 1). Configurable via PUBLIC_READ_TRUSTED_PROXIES. Falls back to the socket peer.
-function publicReadTrustedProxyHops() {
-  const n = Number(process.env.PUBLIC_READ_TRUSTED_PROXIES);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
+// Rate-limit key for the public (auth:none) doors = the client address our own edge observed, by the SAME
+// rule the invoke limiter uses (gatewayGuardrails clientIpFromRequest: Nth X-Forwarded-For entry from the
+// right, N = GATEWAY_RATE_LIMIT_TRUSTED_PROXY_HOPS, default 2 for the external Application Load Balancer).
+// The left-most entries are client-supplied and spoofable, so they never choose the bucket. `door` labels
+// the count-only XFF shape log that confirms N in prod.
+const recordPublicReadForwardedForShape = require('./services/publicReadRateLimit').createForwardedForShapeRecorder({
+  log: logger,
+});
 
-function publicReadMcpClientKey(req) {
-  const parts = String(req?.headers?.['x-forwarded-for'] || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length) {
-    // Nth-from-the-right (the hop our trusted edge saw as the client); clamp so a short chain still yields
-    // the left-most real value rather than undefined.
-    const idx = Math.max(0, parts.length - publicReadTrustedProxyHops());
-    return parts[idx];
-  }
-  return req?.socket?.remoteAddress || req?.ip || 'unknown';
+function publicReadMcpClientKey(req, door) {
+  recordPublicReadForwardedForShape(req, door);
+  return clientIpFromRequest(req);
 }
 
 const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
@@ -31698,7 +31689,7 @@ async function handlePublicReadMcp(req, res) {
   if (Number.isFinite(contentLength) && contentLength > PUBLIC_READ_MCP_MAX_BODY_BYTES) {
     return res.status(413).json({ error: 'payload_too_large' });
   }
-  if (!getPublicReadMcpLimiter().allow(publicReadMcpClientKey(req))) {
+  if (!getPublicReadMcpLimiter().allow(publicReadMcpClientKey(req, 'public_mcp'))) {
     res.setHeader('Retry-After', '10');
     return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
   }
@@ -32605,7 +32596,7 @@ function registerCommerceAcpRestRoutes() {
         if (Number.isFinite(contentLength) && contentLength > ACP_PUBLIC_FEED_MAX_BODY_BYTES) {
           return res.status(413).json({ error: 'payload_too_large' });
         }
-        if (!getAcpPublicFeedLimiter().allow(publicReadMcpClientKey(req))) {
+        if (!getAcpPublicFeedLimiter().allow(publicReadMcpClientKey(req, 'acp_public_feed'))) {
           res.setHeader('Retry-After', '10');
           return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
         }
@@ -32716,7 +32707,7 @@ function registerUcpOrderWebhookRoutes() {
   app.post('/ucp/order-webhook', async (req, res) => {
     // Public write door: per-client token-bucket limit (ACP public-feed pattern), applied only when
     // the door is LIT — a dark door must stay indistinguishable from a missing route (404, never 429).
-    if (isUcpOrderWebhookReceiverEnabled() && !getUcpOrderWebhookLimiter().allow(publicReadMcpClientKey(req))) {
+    if (isUcpOrderWebhookReceiverEnabled() && !getUcpOrderWebhookLimiter().allow(publicReadMcpClientKey(req, 'ucp_order_webhook'))) {
       res.setHeader('Retry-After', '10');
       return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
     }
