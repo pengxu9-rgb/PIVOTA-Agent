@@ -81,3 +81,54 @@ test('both branches carry the served offer\'s own price_confidence', async () =>
     expect(lateral).toContain('o.price_confidence');
   }
 });
+
+describe('armed without the column', () => {
+  const { __internal: { servedPriceAsOfState, isMissingPriceCheckedAtColumn } } = require('../src/services/canonicalCatalogSearch');
+  afterEach(() => { servedPriceAsOfState.unavailableUntil = 0; });
+
+  const run = (fail) => {
+    const calls = [];
+    const done = fetchCanonicalChainRows({
+      query: 'toner', categoryPathPrefix: 'beauty/skincare/tone/', categoryMode: 'category_browse',
+      tokenMatch: true, limit: 200, marketId: 'US', markets: ['US'], includeSkuOffers: true,
+      deps: { query: async (sql) => { calls.push(sql); const err = fail(sql, calls.length); if (err) throw err; return { rows: [] }; } },
+    });
+    return { calls, done };
+  };
+  const pgError = (code, message) => Object.assign(new Error(message), { code });
+
+  test('only undefined_column about price_checked_at is the missing column', () => {
+    expect(isMissingPriceCheckedAtColumn(pgError('42703', 'column o.price_checked_at does not exist'))).toBe(true);
+    expect(isMissingPriceCheckedAtColumn(pgError('42703', 'column o.market does not exist'))).toBe(false);
+    expect(isMissingPriceCheckedAtColumn(pgError('57014', 'price_checked_at canceling statement'))).toBe(false);
+    expect(isMissingPriceCheckedAtColumn(null)).toBe(false);
+  });
+
+  test('the missing column retries once without it, then stays off', async () => {
+    process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF = 'on';
+    const first = run((sql) => (sql.includes('price_checked_at') ? pgError('42703', 'column o.price_checked_at does not exist') : null));
+    await first.done;
+    expect(first.calls).toHaveLength(2);
+    expect(first.calls[1]).not.toContain('price_checked_at');
+    const second = run(() => null);
+    await second.done;
+    expect(second.calls).toHaveLength(1);
+    expect(second.calls[0]).not.toContain('price_checked_at');
+    // and comes back once the latch expires
+    servedPriceAsOfState.unavailableUntil = Date.now() - 1;
+    const third = run(() => null);
+    await third.done;
+    expect(third.calls[0]).toContain('price_checked_at');
+  });
+
+  test('any other failure is NOT retried: it propagates exactly as before', async () => {
+    process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF = 'on';
+    const other = run(() => pgError('42703', 'column o.market does not exist'));
+    await expect(other.done).rejects.toThrow('o.market');
+    expect(other.calls).toHaveLength(1);
+    const timeout = run(() => pgError('57014', 'canceling statement due to statement timeout'));
+    await expect(timeout.done).rejects.toThrow('statement timeout');
+    expect(timeout.calls).toHaveLength(1);
+    expect(servedPriceAsOfState.unavailableUntil).toBe(0);
+  });
+});

@@ -77,6 +77,7 @@ suite('the served price states when it was read, off the served offer row', () =
 
   afterEach(() => {
     process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF = 'off';
+    require('../../src/services/canonicalCatalogSearch').__internal.servedPriceAsOfState.unavailableUntil = 0;
   });
 
   // A listing = one catalog_products row + its merchant + one sku + its offers. Every offer's
@@ -141,10 +142,32 @@ suite('the served price states when it was read, off the served offer row', () =
     expect(Number(rows[0].price_confidence)).toBe(0.6);
   });
 
-  test('flag ON before the backend migration fails loudly, never serves a guessed as-of', async () => {
+  test('flag ON before the backend migration degrades: the price serves, the as-of waits', async () => {
+    const { __internal: { servedPriceAsOfState } } = require('../../src/services/canonicalCatalogSearch');
     await seed([OHLOLLY, SOKOGLAM], { withCheckedAt: false });
     process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF = 'on';
-    await expect(search(true)).rejects.toThrow(/price_checked_at/);
+    servedPriceAsOfState.unavailableUntil = 0;
+    const statements = [];
+    const rows = await fetchCanonicalChainRows({
+      query: 'Oat Gel Cream', marketId: 'US', includeSkuOffers: true,
+      deps: { query: (sql, params) => { statements.push(sql); return db.query(sql, params); } },
+    });
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].merchant_effective_price)).toBe(19.5);
+    expect(rows[0]).not.toHaveProperty('price_checked_at');
+    // the armed statement, rejected; then the same query without the column
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toContain('price_checked_at');
+    expect(statements[1]).not.toContain('price_checked_at');
+    // latched: the next request does not pay for the rejected statement again
+    statements.length = 0;
+    await fetchCanonicalChainRows({
+      query: 'Oat Gel Cream', marketId: 'US', includeSkuOffers: true,
+      deps: { query: (sql, params) => { statements.push(sql); return db.query(sql, params); } },
+    });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).not.toContain('price_checked_at');
+    servedPriceAsOfState.unavailableUntil = 0;
   });
 
   describe('with the backend column', () => {

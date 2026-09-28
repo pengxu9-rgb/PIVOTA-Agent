@@ -62,6 +62,7 @@ const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql'
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
+const logger = require('../logger');
 
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
@@ -898,6 +899,38 @@ function buildBrandFilterTerms(brandFilter) {
  * @returns {Promise<Array<object>>}
  */
 async function fetchCanonicalChainRows(args = {}) {
+  // ARMED BUT THE COLUMN IS MISSING DEGRADES, IT NEVER 503s. Armed early, a deferred schema_guard
+  // heal, or a rolled-back migration 246 all make Postgres reject the statement (42703), and the
+  // beauty mainline rethrows that as a 503 on every find_products_multi. So the same query runs once
+  // more without the column, and the as-of stays off for SERVED_PRICE_AS_OF_RETRY_MS before it is
+  // tried again: cards lose price_as_of, never the price.
+  if (!servedPriceAsOfActive()) return queryCanonicalChainRows(args, { priceAsOf: false });
+  try {
+    return await queryCanonicalChainRows(args, { priceAsOf: true });
+  } catch (err) {
+    if (!isMissingPriceCheckedAtColumn(err)) throw err;
+    servedPriceAsOfState.unavailableUntil = Date.now() + SERVED_PRICE_AS_OF_RETRY_MS;
+    logger.warn(
+      { event: 'canonical_served_price_as_of_unavailable', retry_ms: SERVED_PRICE_AS_OF_RETRY_MS, error: err.message },
+      'CANONICAL_CATALOG_SERVED_PRICE_AS_OF is on but catalog_offers.price_checked_at is missing; serving without price_as_of',
+    );
+    return queryCanonicalChainRows(args, { priceAsOf: false });
+  }
+}
+
+const SERVED_PRICE_AS_OF_RETRY_MS = 10 * 60 * 1000;
+const servedPriceAsOfState = { unavailableUntil: 0 };
+
+function servedPriceAsOfActive() {
+  return isServedPriceAsOfEnabled() && Date.now() >= servedPriceAsOfState.unavailableUntil;
+}
+
+// Postgres undefined_column, about THIS column: any other failure keeps its own path.
+function isMissingPriceCheckedAtColumn(err) {
+  return String(err?.code || '') === '42703' && /price_checked_at/.test(String(err?.message || ''));
+}
+
+async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
   const {
     query: queryText,
     merchantId = null,
@@ -1667,7 +1700,6 @@ async function fetchCanonicalChainRows(args = {}) {
         )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
   // Carried off the SAME offer row as the amount, on both branches (see isServedPriceAsOfEnabled).
-  const priceAsOf = isServedPriceAsOfEnabled();
   const listingPriceCheckedAtSql = priceAsOf ? '\n        o.price_checked_at,' : '';
   const servedPriceCheckedAtSql = priceAsOf ? '\n      served.price_checked_at,' : '';
   // Price presence is part of the serving contract on BOTH branches: shopping
@@ -2303,6 +2335,8 @@ module.exports = {
     whereReadsOnlyCandidateRow,
     isSinglePayloadReadEnabled,
     isServedPriceAsOfEnabled,
+    servedPriceAsOfState,
+    isMissingPriceCheckedAtColumn,
     readPayloadOnce,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
