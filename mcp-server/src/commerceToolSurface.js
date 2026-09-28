@@ -1023,7 +1023,7 @@ export const DISCOUNT_CODE_NOT_APPLIED_MESSAGE = Object.freeze({
   type: "warning",
   code: "discount_code_invalid",
   path: DISCOUNT_CODE_PATH,
-  content: "The offer code was NOT applied: this checkout is not fulfilled through the Reap payment partner, the only route on which Pivota forwards offer codes. The total shown has no discount from it.",
+  content: "The offer code was NOT applied: offer codes are honoured only when a checkout fulfilled through the Reap payment partner is CREATED, and this answer is not one. The total shown has no discount from it.",
   content_type: "plain",
 });
 
@@ -1034,7 +1034,9 @@ export const DISCOUNT_CODE_NOT_APPLIED_MESSAGE = Object.freeze({
  * answer that already speaks about the code (the lane's own hint) is left as it is.
  */
 function withDiscountNotice(name, args, out) {
-  if (name !== "create_checkout" || reapOfferCode(args) === undefined) return out;
+  // update_checkout too (S2): the discount capability is advertised, so a platform may send a code on an update
+  // -- where it is never applied (codes are set at creation only), and the answer says so.
+  if ((name !== "create_checkout" && name !== "update_checkout") || reapOfferCode(args) === undefined) return out;
   if (!isPlainObject(out)) return out;
   if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return out;
   const messages = Array.isArray(out.messages) ? out.messages : [];
