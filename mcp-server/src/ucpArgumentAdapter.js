@@ -150,6 +150,9 @@ import {
 import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
 import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
+// The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
+// from this module, so this cannot cycle.
+import { reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -767,6 +770,36 @@ const CART_ID_SCHEMA = {
     + " which is also what the live create_checkout schema requires even when converting a cart.",
 };
 
+/** Reap's `offerCode` bound (2026-09-28 spec): a string of 1..128 characters. */
+const OFFER_CODE_MAX_LENGTH = 128;
+
+// UCP's discount extension member (`checkout.discounts.codes`, `dev.ucp.shopping.discount`), create_checkout
+// ONLY, ADVERTISED AND ACCEPTED ONLY WHILE `reapOfferCodesEnabled` (the Reap lane AND its cart-link dial are
+// on): a code this door would silently discard -- lane off, a native/storefront/declined row -- must not be
+// invited. When one is sent and the answer is not a Reap checkout, the UCP view says so with a
+// `discount_code_invalid` warning (commerceToolSurface `ucpDialectSurface`). Read by NOTHING but
+// the Reap agentic lane (ucpReapAgenticLane.js `reapOfferCode`), from the raw wire body, which forwards it to
+// the backend as `offer_code`. It is not a pricing input for the kernel path — the canonical quote has no
+// discount member — so it is listed in UCP_ACCEPTED_BUT_UNMAPPED. At most ONE code: Reap's quote takes one.
+// The shape is enforced here like every published field; the CONTENT (whitespace-only, control characters)
+// is the backend's one offer-code rule to judge (services.reap_agentic_client.validate_offer_code).
+const DISCOUNTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    codes: {
+      type: "array",
+      maxItems: 1,
+      items: { type: "string", minLength: 1, maxLength: OFFER_CODE_MAX_LENGTH },
+      description:
+        "Optional. ONE offer (coupon) code the buyer entered, forwarded verbatim when the checkout is fulfilled"
+        + " through the Reap payment partner. If the merchant refuses it, the purchase continues WITHOUT it and"
+        + " get_checkout says so (`reap.offer_code_dropped_invalid` / `_expired`); the total shown is always the"
+        + " partner's own. Not applied on Pivota's own checkout path.",
+    },
+  },
+};
+
 const ATTRIBUTION_SCHEMA = {
   type: "object",
   additionalProperties: true,
@@ -789,12 +822,16 @@ function checkoutSchema({ update } = {}) {
       context: CONTEXT_SCHEMA,
       fulfillment: fulfillmentSchema({ update }),
       attribution: ATTRIBUTION_SCHEMA,
+      // `discounts` is NOT here: it is advertised (and accepted) ONLY while offer codes are armed -- see
+      // `ucpInputSchemasFor` / `requireCheckoutObject`. With the dial off the door is byte-identical to the
+      // one before offer codes, where `checkout.discounts` was refused as an unknown field.
     },
   };
 }
 
 /** The `checkout` members the mapper accepts, kept in lockstep with `checkoutSchema` above. */
 const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "context", "fulfillment", "attribution"]);
+const CREATE_CHECKOUT_FIELDS = Object.freeze([...CHECKOUT_FIELDS, "discounts"]);
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
@@ -805,6 +842,12 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
 // a newly advertised `checkout.context.shipping_address` would have been accepted-and-unread with nothing
 // objecting — on the one lane whose live blocker is a missing address. `.*` denotes the members of a
 // free-form (additionalProperties:true) object, and `[]` an array element.
+/**
+ * The leaves the ARMED create_checkout schema adds (see `ucpInputSchemasFor`), all accepted-but-unmapped: read
+ * only by the Reap lane from the raw body and forwarded as the backend's `offer_code`.
+ */
+export const UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED = Object.freeze(["checkout.discounts.codes[]"]);
+
 export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   // The fulfillment entries are the shape of a lane that ships ONE cart to ONE destination: the routing
   // members (`type`, `line_item_ids`, `selected_destination_id`, `groups`) all describe choices Pivota does
@@ -939,7 +982,7 @@ function rejectUnknown(obj, allowed, where, code) {
  * that attached a payment instrument to create/update believes it has authorized a charge, and deserves to be
  * told where authorization actually goes rather than a shrug about an unknown field.
  */
-function requireCheckoutObject(args, tool) {
+function requireCheckoutObject(args, tool, env = process.env) {
   const code = CHECKOUT_REFUSAL_CODE;
   const checkout = own(args, "checkout");
   if (!isPlainObject(checkout)) {
@@ -954,8 +997,34 @@ function requireCheckoutObject(args, tool) {
       "against the locked total this call returns.",
     ].join(" "), { rejected_field: "checkout.payment", authorization_tool: "complete_checkout" });
   }
-  rejectUnknown(checkout, CHECKOUT_FIELDS, "checkout", code);
+  const offerCodes = tool === "create_checkout" && reapOfferCodesEnabled(env);
+  rejectUnknown(checkout, offerCodes ? CREATE_CHECKOUT_FIELDS : CHECKOUT_FIELDS, "checkout", code);
+  if (offerCodes) requireDiscountsShape(checkout, code);
   return checkout;
+}
+
+/**
+ * `checkout.discounts`, when present, is exactly `{ codes: [<one string of 1..128 characters>] }` (or an empty
+ * `codes`) — the advertised DISCOUNTS_SCHEMA, enforced like every other published field. Only the SHAPE: the
+ * code itself is forwarded verbatim and the backend's one rule judges its content.
+ */
+function requireDiscountsShape(checkout, code) {
+  const discounts = own(checkout, "discounts");
+  if (discounts === undefined) return;
+  const refuse = () => {
+    throw ucpRefusal(code, "ucp_offer_code_invalid", [
+      "`checkout.discounts` must be `{ codes: [code] }` with at most ONE code, a string of 1 to",
+      `${OFFER_CODE_MAX_LENGTH} characters.`,
+    ].join(" "), { rejected_field: "checkout.discounts.codes", max_items: 1, max_length: OFFER_CODE_MAX_LENGTH });
+  };
+  if (!isPlainObject(discounts)) refuse();
+  rejectUnknown(discounts, ["codes"], "checkout.discounts", code);
+  const codes = own(discounts, "codes");
+  if (codes === undefined) return;
+  if (!Array.isArray(codes) || codes.length > 1) refuse();
+  for (const c of codes) {
+    if (typeof c !== "string" || c.length === 0 || [...c].length > OFFER_CODE_MAX_LENGTH) refuse();
+  }
 }
 
 /**
@@ -1124,6 +1193,12 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "`incomplete` checkout whose id starts `reap_`; poll `get_checkout` and send the buyer to its `continue_url` to",
   "add a card and approve the total. That route needs `checkout.buyer.consent_version`, a destination with a",
   "phone number and a last name, and completes on Reap's page, never through `complete_checkout`.",
+].join(" ");
+/** Appended to the create_checkout description only while offer codes are armed (`ucpInputSchemasFor`). */
+const CREATE_CHECKOUT_OFFER_CODE_SENTENCE = [
+  "On the Reap route the buyer's ONE offer code may be sent as `checkout.discounts.codes`; a code the merchant",
+  "refuses is dropped (warning `discount_code_invalid` / `discount_code_expired`), and a code sent on a checkout",
+  "that is not a Reap one is not applied (warning `discount_code_invalid`).",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [
@@ -1631,13 +1706,13 @@ const SPECS = Object.freeze({
       additionalProperties: false,
       properties: { meta: metaSchema({ idempotency: true }), checkout: checkoutSchema({ update: false }) },
     },
-    map(args) {
+    map(args, env = process.env) {
       const code = CHECKOUT_REFUSAL_CODE;
       requireArgsObject(args, code);
       rejectUnknown(args, ["meta", "checkout"], "arguments", code);
       const meta = requireMeta(args, code);
       const idempotency_key = requireIdempotencyKey(meta, code);
-      const checkout = requireCheckoutObject(args, "create_checkout");
+      const checkout = requireCheckoutObject(args, "create_checkout", env);
       return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
     },
   }),
@@ -1865,6 +1940,39 @@ export const UCP_INPUT_SCHEMAS = Object.freeze(
   Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => [id, Object.freeze(spec.inputSchema)])),
 );
 
+/**
+ * The UCP `tools/list` inputSchemas for THIS request's env. Identical to `UCP_INPUT_SCHEMAS` unless offer codes
+ * are armed (`reapOfferCodesEnabled`), in which case create_checkout's `checkout` also advertises `discounts`.
+ * Memoized per variant; the env is read on every call, like the lane's own dials.
+ */
+const ARMED_INPUT_SCHEMAS = Object.freeze(armedInputSchemas());
+function armedInputSchemas() {
+  return Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => {
+    if (id !== "create_checkout_session") return [id, Object.freeze(spec.inputSchema)];
+    const base = spec.inputSchema;
+    return [id, Object.freeze({
+      ...base,
+      properties: {
+        ...base.properties,
+        checkout: {
+          ...base.properties.checkout,
+          properties: { ...base.properties.checkout.properties, discounts: DISCOUNTS_SCHEMA },
+        },
+      },
+    })];
+  }));
+}
+const ARMED_DESCRIPTIONS = Object.freeze(Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => [
+  id, id === "create_checkout_session" ? `${spec.description} ${CREATE_CHECKOUT_OFFER_CODE_SENTENCE}` : spec.description,
+])));
+
+export function ucpInputSchemasFor(env = process.env) {
+  return reapOfferCodesEnabled(env) ? ARMED_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
+}
+export function ucpToolDescriptionsFor(env = process.env) {
+  return reapOfferCodesEnabled(env) ? ARMED_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
+}
+
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */
 export const UCP_TOOL_DESCRIPTIONS = Object.freeze(
   Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => [id, spec.description])),
@@ -1881,12 +1989,12 @@ export const UCP_MAPPED_OPERATION_IDS = Object.freeze(Object.keys(SPECS));
  * @returns {object}                         native tool args for commerceToolSurface's `toParams`
  * @throws {PivotaCommerceError}             a curated, field-naming refusal on any wire-shape violation
  */
-export function ucpToNativeToolArgs(op, ucpArgs) {
+export function ucpToNativeToolArgs(op, ucpArgs, env = process.env) {
   const spec = op && SPECS[op.id];
   if (!spec) {
     // A UCP-dialect operation with no argument mapping would otherwise be published with a native schema and
     // fail at the executor — the exact defect this module closes. Fail loudly at the door instead.
     throw new Error(`ucpArgumentAdapter: no UCP argument mapping for canonical operation "${op?.id}"`);
   }
-  return spec.map(ucpArgs);
+  return spec.map(ucpArgs, env);
 }

@@ -32473,6 +32473,15 @@ function getCommerceCanonicalContractModule() {
   return commerceCanonicalContractModulePromise;
 }
 
+let reapAgenticLaneModulePromise = null;
+function getReapAgenticLaneModule() {
+  if (!reapAgenticLaneModulePromise) {
+    reapAgenticLaneModulePromise = import('../mcp-server/src/ucpReapAgenticLane.js');
+    reapAgenticLaneModulePromise.catch(() => { reapAgenticLaneModulePromise = null; });
+  }
+  return reapAgenticLaneModulePromise;
+}
+
 function getCommerceUcpProfileModule() {
   if (!commerceUcpProfileModulePromise) {
     commerceUcpProfileModulePromise = import('../safety-kernel/src/protocol/ucpProfile.js');
@@ -32540,6 +32549,9 @@ async function getCommerceUcpRouteHandlers() {
       : undefined,
     omitCapabilityIds: ucpOmitCapabilityIdsForFlags(),
     vendorCapabilityDocs: ucpVendorCapabilityDocs(),
+    // `dev.ucp.shopping.discount` ONLY while buyer offer codes are armed -- the SAME rule the door's
+    // tools/list and argument adapter read (ucpReapAgenticLane.js `reapOfferCodesEnabled`).
+    optInCapabilities: (await getReapAgenticLaneModule()).reapOfferCodesEnabled(process.env) ? ['discount'] : [],
   });
   return createUcpRouteHandlers(profile);
 }
