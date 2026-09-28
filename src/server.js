@@ -83,9 +83,10 @@ const {
   parseOfferId,
 } = require('./offers/offerIds');
 const {
-  // `prioritizeOffersResolveResponse` itself is NOT imported: the only caller is the gated wrapper
-  // below, and an ungated alias sitting in scope is how an ungated call site gets written next.
-  prioritizeOffersResolveResponseGated,
+  // `prioritizeOffersResolveResponse` is NOT imported: an ungated alias sitting in scope is how an
+  // ungated call site gets written next. offers.resolve is gated by `gateOffersResolveResponse`.
+  gateOffersResolveResponse,
+  offersResolveGateBuyerMarket,
   annotateOffersWithCommerceMetadata,
   resolveOfferPurchasabilityDecisions,
   offersGateBuyerMarket,
@@ -46659,7 +46660,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         handled.response &&
         typeof handled.response === 'object'
       ) {
-        return res.status(Number(handled.statusCode || 200) || 200).json(handled.response);
+        // MERCHANT-PURCHASABILITY GATE (path 3, site 6). This branch returns on every path, so the gate
+        // runs HERE, on the envelope, before it is sent — a call further down this handler is never
+        // reached. Keyed on this door's own carriers (`payload.offers.market` first). Nothing declined
+        // => the same object back, so switch off the response is byte-identical. A bug in the gate
+        // FAILS OPEN (the ungated envelope, logged) rather than falling into the no-offer catch below.
+        let gatedResponse = handled.response;
+        try {
+          gatedResponse = await gateOffersResolveResponse(handled.response, {
+            market: offersResolveGateBuyerMarket(payload, metadata),
+          });
+        } catch (gateErr) {
+          logger.error(
+            { err: gateErr?.message || String(gateErr) },
+            'offers.resolve purchasability gate threw; serving the ungated envelope',
+          );
+        }
+        return res.status(Number(handled.statusCode || 200) || 200).json(gatedResponse);
       }
       return res.status(500).json({
         error: 'OFFERS_RESOLVE_HANDLER_FAILED',
@@ -49965,14 +49982,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
-    }
-
-    if (operation === 'offers.resolve') {
-      // MERCHANT-PURCHASABILITY GATE (path 3 of 3). `…Gated` is `prioritizeOffersResolveResponse` with the
-      // gate consulted first; with the switch off it asks nothing and the response is byte-identical.
-      upstreamData = await prioritizeOffersResolveResponseGated(upstreamData, {
-        market: offersGateBuyerMarket(payload, metadata),
-      });
     }
 
     if (operation === 'get_product_detail') {

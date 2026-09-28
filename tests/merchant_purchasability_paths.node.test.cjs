@@ -41,6 +41,8 @@ const {
   readOfferMerchantDomain,
   resolveOfferPurchasabilityDecisions,
   offersGateBuyerMarket,
+  offersResolveGateBuyerMarket,
+  gateOffersResolveResponse,
   isInternalOffer,
   pickDefaultOfferId,
 } = require('../src/offers/offersPriority');
@@ -1253,4 +1255,309 @@ test('QUIET LOOP: the offers batch still settles when its deadline is the ONLY t
   const out = `${result.stdout || ''}${result.stderr || ''}`;
   assert.ok(!out.includes('PENDING_AT_EXIT'), `the loop drained with the batch still pending — an unref'd deadline:\n${out}`);
   assert.ok(out.includes('SETTLED:0'), `expected the batch to fail open on its deadline, got:\n${out}`);
+});
+
+// =========================================================================================================
+// SITE 6 — offers.resolve. The door returns from its early branch on every path, so it is gated there, on
+// the envelope (`gateOffersResolveResponse`), keyed on its own carriers (`offersResolveGateBuyerMarket`).
+// =========================================================================================================
+
+// The backend's external-seed offer, as offers.resolve serves it: Pivota's `/r` hop as the link, the
+// merchant named in `execution_spec`, and — when a cart was built — the cart in `execution_spec.cart_url`
+// with `cart_prefilled: true` (the hop's dest IS that cart).
+const REDIRECT = 'https://api.pivota.cc/r?token=';
+const CART = `https://${MERCHANT}/cart/4511:1?attributes[pivota_click_id]=clk_o1`;
+const resolveOffer = (id, host, { cart = true, claim = cart ? true : null, ...extra } = {}) => ({
+  offer_id: id,
+  merchant_id: host,
+  price: 14.95,
+  currency: 'USD',
+  purchase_route: 'affiliate_outbound',
+  affiliate_url: `${REDIRECT}tok_${id}`,
+  cart_prefilled: claim,
+  execution_spec: {
+    merchant_domain: host,
+    pdp_url: `https://${host}/products/${id}?pvt_click_id=clk_${id}`,
+    cart_url: cart ? `https://${host}/cart/4511:1?attributes[pivota_click_id]=clk_${id}` : null,
+    variant_id: cart ? '4511' : null,
+    rail: claim === null ? null : cart ? 'shopify_cart' : 'referral',
+    tracking: cart
+      ? { click_id: `clk_${id}`, param: 'attributes[pivota_click_id]', join_mode: 'cart_permalink' }
+      : { click_id: `clk_${id}`, param: 'pvt_click_id', join_mode: 'referral_only' },
+  },
+  internal_checkout_items: null,
+  source: { type: 'external_seed', canonical_url: `https://${host}/products/${id}` },
+  ...extra,
+});
+const sells = (o) => /\/cart\/|\/checkout|api\.pivota\.cc\/r\?/.test(JSON.stringify(o));
+
+test('site6: offersResolveGateBuyerMarket reads offers.market, then payload.market, then metadata.market — and NEVER defaults', () => {
+  const m = offersResolveGateBuyerMarket;
+  assert.equal(m({ offers: { market: 'sg' } }, {}), 'SG', 'the route\'s own documented slot is a carrier');
+  assert.equal(m({ offers: { market: 'SG' }, market: 'US' }, { market: 'GB' }), 'SG', 'offers.market wins');
+  assert.equal(m({ offers: {}, market: 'US' }, { market: 'GB' }), 'US', 'then payload.market');
+  assert.equal(m({ offers: {} }, { market: 'GB' }), 'GB', 'then metadata.market');
+  assert.equal(m({ market: 'JP' }, {}), 'JP', 'no offers object: payload.market (the route reads payload itself)');
+  // Skipped, not decisive (§5).
+  assert.equal(m({ offers: { market: 'USA' } }, { market: 'us' }), 'US');
+  assert.equal(m({ offers: { market: 'US,SG' }, market: 'JP' }, {}), 'JP');
+  assert.equal(m({ offers: { market: 'US,US' } }, {}), 'US');
+  // search.market is not this door's carrier — it never reads or forwards it.
+  assert.equal(m({ search: { market: 'US' } }, {}), undefined);
+  assert.equal(m({ search: { market: 'US' }, offers: { market: 'SG' } }, {}), 'SG');
+  // No default: every silent shape is a question the gate cannot key.
+  assert.equal(m({}, {}), undefined);
+  assert.equal(m(null, null), undefined);
+  assert.equal(m(undefined, undefined), undefined);
+  assert.equal(m({ offers: 'US' }, {}), undefined, 'a non-object offers slot carries nothing');
+  assert.equal(m({ offers: { market: '   ' } }, { scope: { region: 'US' } }), undefined, 'region is not a market');
+});
+
+test('site6: nothing declined => the SAME envelope object back (byte-identical by construction)', async () => {
+  const envelope = () => ({
+    status: 'success', offers: [resolveOffer('o1', MERCHANT)], offers_count: 1,
+    data: { offers: [resolveOffer('o1', MERCHANT)] }, metadata: { source: 'offers.resolve' },
+  });
+
+  // Switch OFF: nothing asked.
+  {
+    const backend = fakeBackend(BROWSE_ONLY);
+    const env = offEnv();
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    assert.equal(out, r, 'switch off must return the very same object');
+    assert.equal(backend.calls.length, 0, 'switch off asks nothing');
+  }
+  // Switch ON, but no decline: purchase fact, not enforcing, failed read, a throwing gate.
+  for (const [label, backendFor] of [
+    ['purchase', () => fakeBackend(PURCHASE)],
+    ['not enforced', () => fakeBackend(NOT_ENFORCED)],
+    ['non-200', () => fakeBackend(BROWSE_ONLY, { status: 503, ok: false })],
+  ]) {
+    const env = gateEnv();
+    const backend = backendFor();
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+    assert.equal(out, r, `${label}: same object`);
+    assert.ok(backend.calls.length > 0, `${label}: the gate was asked`);
+  }
+  {
+    const r = envelope();
+    const out = await gateOffersResolveResponse(r, {
+      env: gateEnv(), market: MARKET, shouldOfferPurchase: async () => { throw new Error('gate exploded'); },
+    });
+    assert.equal(out, r, 'a gate that throws fails open — same object');
+  }
+  // No offers / not an object: untouched.
+  for (const r of [{ error: 'MISSING_PARAMETERS' }, { status: 'failure', offers: [] }, null, undefined, 'x']) {
+    assert.equal(await gateOffersResolveResponse(r, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL }), r);
+  }
+});
+
+test('site6: a declined merchant loses every cart copy in BOTH envelope arrays; a peer is passed through by reference', async () => {
+  const env = gateEnv();
+  const backend = fakeBackend((domain) => (domain === MERCHANT ? BROWSE_ONLY : PURCHASE));
+  const declinedRow = resolveOffer('o1', MERCHANT);
+  const peerRow = resolveOffer('o2', 'example-shop.test');
+  const r = {
+    status: 'success',
+    offers: [declinedRow, peerRow],
+    offers_count: 2,
+    data: { offers: [declinedRow, peerRow], extra: 'kept' },
+    default_offer_id: 'o1',
+  };
+  const out = await gateOffersResolveResponse(r, { env, market: MARKET, shouldOfferPurchase: realGate({ env, backend, logger: fakeLogger() }) });
+
+  assert.notEqual(out, r);
+  assert.deepEqual(Object.keys(out), Object.keys(r), 'no key added, removed or reordered on the envelope');
+  assert.equal(out.offers_count, 2);
+  assert.equal(out.default_offer_id, 'o1', 'the envelope\'s own fields are not edited');
+  assert.equal(out.data.extra, 'kept');
+  for (const arr of [out.offers, out.data.offers]) {
+    assert.equal(arr.length, 2, 'the declined offer SURVIVES');
+    const [declined, peer] = arr;
+    assert.equal(declined.offer_id, 'o1');
+    assert.ok(!sells(declined), `nothing on the declined offer sells: ${JSON.stringify(declined)}`);
+    assert.ok(!Object.prototype.hasOwnProperty.call(declined, 'affiliate_url'), 'the /r hop lands in the cart, so it goes');
+    assert.ok(!Object.prototype.hasOwnProperty.call(declined.execution_spec, 'cart_url'));
+    assert.equal(declined.cart_prefilled, false);
+    assert.equal(declined.execution_spec.rail, 'referral');
+    assert.ok(!Object.prototype.hasOwnProperty.call(declined, 'merchant_checkout_url'));
+    assert.equal(declined.purchase_route, 'affiliate_outbound');
+    assert.equal(declined.commerce_mode, 'links_out');
+    assert.equal(declined.checkout_handoff, 'redirect');
+    assert.equal(declined.execution_spec.pdp_url, `https://${MERCHANT}/products/o1?pvt_click_id=clk_o1`, 'the PDP link is the fallback and stays');
+    assert.equal(declined.source.canonical_url, `https://${MERCHANT}/products/o1`);
+    assert.equal(peer, peerRow, 'an offer that is not declined is the same object, unstamped');
+  }
+  // One question per merchant, however many copies of it the envelope carries.
+  assert.equal(backend.calls.length, 2);
+  // The input was not mutated.
+  assert.equal(r.offers[0].execution_spec.cart_url, CART);
+  assert.equal(r.offers[0].affiliate_url, `${REDIRECT}tok_o1`);
+});
+
+test('site6: a data.offers-only envelope is gated too (no top-level offers key is invented)', async () => {
+  const r = { status: 'success', data: { offers: [resolveOffer('o1', MERCHANT)] } };
+  const out = await gateOffersResolveResponse(r, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL });
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'offers'));
+  assert.equal(out.data.offers[0].purchase_route, 'affiliate_outbound');
+  assert.ok(!sells(out));
+});
+
+test('site6 STRUCTURAL: the early offers.resolve branch sends the GATED envelope, and the dead call site is gone', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const start = src.indexOf("  if (operation === 'offers.resolve') {\n    try {\n      const handled = await handleOffersResolveOperation(");
+  assert.ok(start > 0, 'the early offers.resolve branch moved — re-check that it is still gated');
+  const branch = src.slice(start, src.indexOf('  // Use real API routing', start));
+  assert.match(
+    branch,
+    /gatedResponse = await gateOffersResolveResponse\(handled\.response, \{\s*market: offersResolveGateBuyerMarket\(payload, metadata\),\s*\}\);/,
+    'the handled envelope must go through the gate, keyed on the door\'s own carriers',
+  );
+  assert.match(branch, /return res\.status\([^;]*\)\.json\(gatedResponse\);/, 'and the GATED envelope is what is sent');
+  // Fail open on a gate bug: the default is the ungated envelope, not the no-offer catch.
+  assert.match(branch, /let gatedResponse = handled\.response;\s*try \{/);
+  assert.doesNotMatch(branch, /\.json\(handled\.response\)/, 'an ungated send of the envelope');
+  // The unreachable call site (and the reorder-and-stamp wrapper it used) must not come back to server.js.
+  assert.doesNotMatch(src, /prioritizeOffersResolveResponseGated/);
+});
+
+test('site6: the gate asks about the MERCHANT, never Pivota\'s own /r redirect host', async () => {
+  assert.equal(readOfferMerchantDomain(resolveOffer('o1', MERCHANT)), MERCHANT);
+  assert.equal(readOfferMerchantDomain(resolveOffer('o1', 'www.Shop.test')), 'shop.test', 'normalised like the client');
+  assert.equal(
+    readOfferMerchantDomain({ affiliate_url: `${REDIRECT}x`, execution_spec: { merchant_domain: 'https://shop.test/' } }),
+    'shop.test', 'a URL-shaped merchant_domain is read as its host',
+  );
+  // An unusable merchant_domain falls back to the stamped URL, exactly as a gateway-built offer reads.
+  assert.equal(readOfferMerchantDomain({ url: 'https://shop.test/products/x', execution_spec: { merchant_domain: ' ' } }), 'shop.test');
+  assert.equal(readOfferMerchantDomain({ url: 'https://shop.test/products/x' }), 'shop.test', 'no spec: unchanged');
+
+  const asked = [];
+  await gateOffersResolveResponse({ offers: [resolveOffer('o1', MERCHANT), resolveOffer('o2', 'example-shop.test')] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: async ({ domain }) => { asked.push(domain); return { offer: true }; },
+  });
+  assert.deepEqual(asked.sort(), ['example-shop.test', MERCHANT].sort());
+});
+
+test('site6: a seed offer whose cart sits ONLY in execution_spec (no link at all) is still declined', async () => {
+  const row = resolveOffer('o1', MERCHANT);
+  delete row.affiliate_url;
+  const out = await gateOffersResolveResponse({ offers: [row] }, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL });
+  assert.ok(!sells(out.offers[0]));
+  assert.equal(out.offers[0].cart_prefilled, false);
+  assert.equal(out.offers[0].execution_spec.rail, 'referral');
+});
+
+test('site6: a declined COLD seed offer keeps its /r hop (it lands on the PDP) and its own claims', async () => {
+  for (const claim of [null, false]) {
+    const row = resolveOffer('o1', MERCHANT, { cart: false, claim });
+    const out = await gateOffersResolveResponse({ offers: [row] }, { env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL });
+    const [served] = out.offers;
+    assert.equal(served.affiliate_url, row.affiliate_url, `claim ${claim}: the browse hop stays`);
+    assert.equal(served.cart_prefilled, claim);
+    assert.equal(served.execution_spec.rail, row.execution_spec.rail);
+    assert.equal(served.commerce_mode, 'links_out');
+  }
+});
+
+test('site6: a gateway-built offer (no execution_spec) is declined exactly as before this change', () => {
+  const row = offer('o1', MERCHANT, { purchase_route: 'internal_checkout', checkout_url: `https://${MERCHANT}/cart/1:1` });
+  const declinedDomains = new Set([MERCHANT]);
+  const out = annotateOffersWithCommerceMetadata([row], { declinedDomains })[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'checkout_url'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'cart_prefilled'), 'no seed-only field is invented');
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'execution_spec'));
+  assert.equal(out.url, `https://${MERCHANT}/products/o1`);
+});
+
+test('site6: the cart claim is read from EITHER statement, and only an OFF-host hop is treated as the cart hop', async () => {
+  const decline = async (row) => (await gateOffersResolveResponse({ offers: [row] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  })).offers[0];
+
+  // `cart_prefilled: true` with the spec's cart already gone (e.g. a partial upstream) still means the hop is a cart.
+  const claimOnly = resolveOffer('o1', MERCHANT);
+  claimOnly.execution_spec.cart_url = null;
+  const a = await decline(claimOnly);
+  assert.ok(!Object.prototype.hasOwnProperty.call(a, 'affiliate_url'));
+  assert.equal(a.cart_prefilled, false);
+  assert.equal(a.execution_spec.rail, 'referral');
+
+  // A cart_url with no claim is still a cart.
+  const cartOnly = resolveOffer('o1', MERCHANT, { claim: null });
+  const b = await decline(cartOnly);
+  assert.ok(!Object.prototype.hasOwnProperty.call(b, 'affiliate_url'));
+  assert.equal(b.execution_spec.rail, 'referral');
+
+  // A link ON the merchant's host that is a product page is the browse link, even on a cart offer.
+  const onHost = resolveOffer('o1', MERCHANT, { affiliate_url: `https://${MERCHANT}/products/o1` });
+  const c = await decline(onHost);
+  assert.equal(c.affiliate_url, `https://${MERCHANT}/products/o1`);
+  assert.ok(!sells(c));
+
+  // `cart_url` goes by NAME, whatever its path looks like.
+  const oddCart = resolveOffer('o1', MERCHANT);
+  oddCart.execution_spec.cart_url = `https://${MERCHANT}/a/permalink/4511?qty=1`;
+  const d = await decline(oddCart);
+  assert.ok(!Object.prototype.hasOwnProperty.call(d.execution_spec, 'cart_url'));
+});
+
+test('site6: a declined cart offer keeps nothing a cart can be REBUILT from, and its tracking stops describing a cart', async () => {
+  const out = (await gateOffersResolveResponse({ offers: [resolveOffer('o1', MERCHANT)] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  })).offers[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(out.execution_spec, 'variant_id'), 'merchant_domain + variant_id IS the cart permalink');
+  assert.deepEqual(out.execution_spec.tracking, { click_id: 'clk_o1', param: 'pvt_click_id', join_mode: 'referral_only' });
+  assert.equal(out.execution_spec.merchant_domain, MERCHANT);
+
+  // A cold offer's tracking and variant are its own and are left alone.
+  const cold = resolveOffer('o2', MERCHANT, { cart: false, claim: false });
+  const coldOut = (await gateOffersResolveResponse({ offers: [cold] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  })).offers[0];
+  assert.deepEqual(coldOut.execution_spec.tracking, cold.execution_spec.tracking);
+  assert.equal(coldOut.execution_spec.variant_id, null);
+});
+
+test('site6: the camelCase hop spelling goes too (readAffiliateUrl reads it, so the strip must)', async () => {
+  const row = resolveOffer('o1', MERCHANT);
+  row.affiliateUrl = row.affiliate_url;
+  delete row.affiliate_url;
+  const out = (await gateOffersResolveResponse({ offers: [row] }, {
+    env: gateEnv(), market: MARKET, shouldOfferPurchase: DECLINE_ALL,
+  })).offers[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(out, 'affiliateUrl'));
+  assert.ok(!sells(out));
+});
+
+test('site6: Pivota\'s /r host is NEVER the merchant — a catalog offer and a seed offer without merchant_domain key on where they land', async () => {
+  // pivota-backend `catalog_offer`: the /r hop plus the retailer's PDP in `url`, no execution_spec.
+  const catalog = {
+    offer_id: 'cat1', purchase_route: 'affiliate_outbound', affiliate_url: `${REDIRECT}tok_cat1`,
+    url: 'https://www.retailer.test/p/gloss', cart_prefilled: null,
+  };
+  assert.equal(readOfferMerchantDomain(catalog), 'retailer.test');
+  const noDomain = resolveOffer('o1', MERCHANT);
+  delete noDomain.execution_spec.merchant_domain;
+  assert.equal(readOfferMerchantDomain(noDomain), MERCHANT, 'falls back to source.canonical_url, not the /r host');
+  assert.equal(readOfferMerchantDomain({ affiliate_url: `${REDIRECT}x` }), null, 'nothing else to go on: not asked at all');
+  // A merchant's OWN /r page (no token) is a merchant URL like any other.
+  assert.equal(readOfferMerchantDomain({ url: 'https://shop.test/r' }), 'shop.test');
+  assert.equal(
+    readOfferMerchantDomain({ affiliate_url: 'https://shop.test/r', url: 'https://other.test/p/gloss' }),
+    'shop.test', 'a tokenless /r is the merchant\'s link, so its host wins over the fallbacks',
+  );
+
+  const asked = [];
+  const out = await gateOffersResolveResponse({ offers: [catalog, noDomain] }, {
+    env: gateEnv(), market: MARKET,
+    shouldOfferPurchase: async ({ domain }) => { asked.push(domain); return { offer: false }; },
+  });
+  assert.deepEqual(asked.sort(), [MERCHANT, 'retailer.test'].sort(), 'no read is spent on api.pivota.cc');
+  const [catOut, seedOut] = out.offers;
+  assert.equal(catOut.affiliate_url, catalog.affiliate_url, 'a referral-only hop (no cart) is the browse link and stays');
+  assert.equal(catOut.url, catalog.url);
+  assert.ok(!sells(seedOut), 'the seed offer without merchant_domain is still fully declined');
 });
