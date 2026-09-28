@@ -21,6 +21,18 @@ const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
   },
 ]);
 
+// Lash route (2026-09-27). OFF unless SEARCH_LASH_CATEGORY_ROUTE is on: read per call, like
+// SEARCH_NAME_EVIDENCE_ADMISSION, so a flip needs no restart and a test can set it. A rule carrying
+// `flag` is skipped by resolveBeautyCategoryPathPrefixFromText while its flag is off, which is the
+// ONE door every prefix goes through (the text path, the declared-step-family path, and
+// externalSeedProducts.resolveBeautyCategoryPathPrefixForQuery), so with it off every query routes exactly
+// as before. (The "Brush On" tool-filter fix shipped alongside is NOT behind this flag.)
+const LASH_CATEGORY_ROUTE_FLAG = 'SEARCH_LASH_CATEGORY_ROUTE';
+
+function categoryRouteFlagEnabled(flag, env = process.env) {
+  return /^(1|true|on|yes)$/i.test(String(env[flag] || '').trim());
+}
+
 const CATEGORY_ALIAS_RULES = Object.freeze([
   // Self-tan. MEASURED GAP, 2026-09-24: `self tanner` (even with
   // category=beauty/body/tanning) classified other/ambiguous and answered
@@ -44,6 +56,27 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/body/tanning/',
     pattern:
       /\bself[-\s]?tan(?:ners?|ning)?\b|\bsunless\s+tan(?:ners?|ning)?\b|\bfake\s+tan\b|\bgradual\s+tan(?:ners?|ning)?\b|\btanning\s+(?:mousses?|foams?|drops?|waters?|lotions?|mists?|sprays?|mitts?|serums?|creams?|gels?)\b|\btan\s+(?:drops?|mousses?|mitts?)\b|美黑|セルフタンニング/i,
+  },
+  // False lashes and lash glue. MEASURED GAP, 2026-09-27: `false lashes`, `lash glue` and `lash
+  // adhesive` classified other/ambiguous -- the first ranked by bare text relevance, the other two
+  // safe-emptied -- while beauty/makeup/eye/false-lashes held 594 live rows (kissusa 283, falscara 66,
+  // mybeautyexchange 60, ...), the largest leaf in the eye tree. Behind SEARCH_LASH_CATEGORY_ROUTE.
+  //
+  // Only an explicit false-lash phrase counts, the same phrases the backend classifier files under
+  // this leaf (pivota-backend services/pdp_category_classifier.py "False Lashes"): never a bare
+  // `lash(es)`/`eyelash(es)` (a mascara, lash serum and lash lift all say it), never a bare
+  // `falsies` (Maybelline's Falsies is a MASCARA line; only KISS/imPRESS falsies are lashes), and
+  // `lash extensions` only as the DIY kind (the salon service is not merchandise). A query that also
+  // names mascara, a serum, a lift, a curler, a tint, a primer, a conditioner, growth or a remover is
+  // declined, so it keeps its own home: `lash serum` -> treat, `lash curler` -> unclassified,
+  // `false lash effect mascara` -> mascara, `lash glue remover` -> unclassified.
+  // Sits early so no later rule's noun claims a lash query first ("strip", "glue", "kit").
+  {
+    category: 'false_lashes',
+    categoryPathPrefix: 'beauty/makeup/eye/false-lashes/',
+    flag: LASH_CATEGORY_ROUTE_FLAG,
+    pattern:
+      /^(?!.*\b(?:mascaras?|serums?|lifts?|lifting|curlers?|tints?|primers?|conditioners?|growth|removers?)\b)(?:.*\b(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?\b|.*\b(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)\b|.*\bstriplash(?:es)?\b|.*\b(?:impress|kiss)\s+falsies\b|.*\bfalsies\s+(?:press[-\s]?on|lash(?:es)?|clusters?)\b|.*\bpress[-\s]?on\s+(?:eye\s?)?lash(?:es)?\b|.*\bdiy\s+lash\s+extensions?\b|.*\bfalscara\b|.*(?:假睫毛|睫毛胶|睫毛膠))/is,
   },
   {
     category: 'fragrance',
@@ -427,6 +460,7 @@ function resolveBeautyCategoryPathPrefixFromText(text) {
   if (!raw) return '';
   const fragranceFreeSkincare = hasFragranceFreeSkincareSignal(raw);
   for (const rule of CATEGORY_ALIAS_RULES) {
+    if (rule.flag && !categoryRouteFlagEnabled(rule.flag)) continue;
     if (fragranceFreeSkincare && rule.category === 'fragrance') continue;
     if (rule.pattern.test(raw)) return rule.categoryPathPrefix;
   }
@@ -1162,6 +1196,7 @@ module.exports = {
   normalizeQueryTextForUnderstanding,
   resolveBeautyCategoryPathPrefixFromText,
   resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
+  LASH_CATEGORY_ROUTE_FLAG,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,

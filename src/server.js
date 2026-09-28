@@ -16325,6 +16325,12 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
       const explicitForms = explicitBeautyLipFormTerms(rawQuery);
       (explicitForms.length ? explicitForms : ['lipstick']).forEach(push);
+    } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/false-lashes/')) {
+      // Only reached with SEARCH_LASH_CATEGORY_ROUTE on: the generic eye terms below would spend the
+      // budget on mascara/eyeshadow/brow rows the false-lashes hard constraint then rejects.
+      push('false lashes');
+      push('lash glue');
+      push('lash adhesive');
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -16449,6 +16455,8 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
     const explicitForms = explicitBeautyLipFormTerms(queryText);
     (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
+  } else if (prefix.startsWith('beauty/makeup/eye/false-lashes/')) {
+    ['false lashes', 'lashes', 'lash glue', 'lash adhesive', 'falsies'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
@@ -18418,6 +18426,9 @@ function productLooksLikeNonBeautyMerchandise(product = {}) {
 // named object before that included-accessory qualifier. "Brush with Bronzer" remains a brush.
 function searchProductIdentityIsAccessory(product = {}) {
   const normalizeIdentityText = (value) => String(value || '')
+    // "Brush-On" / "Brush On" is how a glue or powder is applied, not a brush ("Duo Brush On Striplash
+    // Adhesive"; pivota-backend #2387 fixed the same word in the category classifier).
+    .replace(/\bbrush[-\s]+on\b/gi, ' ')
     .replace(/\b(?:with|includes?|including)\s+(?:(?:a|an|built.in)\s+)?(?:brush(?:es)?|applicators?|mirrors?|sponges?|puffs?)\b.*$/i, '')
     .replace(/\bbrushes\b/gi, 'brush')
     .replace(/\baccessories\b/gi, 'accessory')
@@ -21283,6 +21294,12 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
       || /\bmetal\s+serum\s+gloss\b/i.test([
         product.title, product.name, product.product_type,
       ].filter(Boolean).join(' '));
+  }
+  if (prefix.startsWith('beauty/makeup/eye/false-lashes')) {
+    // A path-less row must name a false lash or its glue: the generic eye test below would admit any
+    // mascara ("lash" and "mascara" both pass it) into a false-lashes browse.
+    return /\b(?:(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?|(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)|striplash(?:es)?|falscara|(?:impress|kiss)\s+falsies)\b|假睫毛|睫毛胶|睫毛膠/i.test(text)
+      && !/\bmascaras?\b|睫毛膏/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
@@ -51573,6 +51590,7 @@ module.exports._debug = {
   inferBeautyMainlineIntent,
   buildBeautyMainlineRetrievalQueries,
   buildBeautyExternalSeedCategoryTerms,
+  buildBeautyExternalSeedBrandCategoryTextTerms,
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,
