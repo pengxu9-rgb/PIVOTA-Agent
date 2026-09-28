@@ -33,6 +33,7 @@ function anchor(id, overrides = {}) {
     category: 'cream',
     category_taxonomy: ['skincare', 'cream'],
     price: 60,
+    price_currency: 'USD',
     ...overrides,
   };
 }
@@ -45,6 +46,7 @@ function candidate(id, overrides = {}) {
     category: 'cream',
     category_taxonomy: ['skincare', 'cream'],
     price: 90,
+    price_currency: 'USD',
     category_use_case_match: 0.9,
     ingredient_functional_similarity: 0.8,
     similarity_score: 0.86,
@@ -344,17 +346,17 @@ describe('social-proof copy is stripped, phrase by phrase, from the snapshot tex
 // ---------------------------------------------------------------------------------------------
 describe('score spread: pair evidence, not provenance, moves the score', () => {
   const creamAnchor = snap({
-    brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream'], price: 120,
+    brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream'], price: 120, price_currency: 'USD',
     description: 'Rich anti-ageing face cream with peptides and ceramides for dry skin.',
     inci_list: 'water glycerin ceramide np peptide squalane',
   });
   const scoreOf = (candidate, options) => scoreCandidateForAnchor(creamAnchor, candidate, options).score_total;
 
   test('a product-intel row or a stronger source does not lift a shelf-only pair off the floor', () => {
-    const plain = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40 }));
-    const seed = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, source_refs: [{ type: 'external_product_seed', authoritative: true }] }));
+    const plain = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, price_currency: 'USD' }));
+    const seed = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, price_currency: 'USD', source_refs: [{ type: 'external_product_seed', authoritative: true }] }));
     const intel = scoreOf(
-      snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, source_refs: [{ type: 'catalog_products' }, { type: 'product_intel_kb' }] }),
+      snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, price_currency: 'USD', source_refs: [{ type: 'catalog_products' }, { type: 'product_intel_kb' }] }),
       { intelMatch: true },
     );
 
@@ -364,11 +366,11 @@ describe('score spread: pair evidence, not provenance, moves the score', () => {
   });
 
   test('same-shelf candidates rank by how alike they are named and formulated', () => {
-    const shelfOnly = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40 }));
-    const sameForm = scoreOf(snap({ brand: 'Ayura', name: 'Ayura Moist Barrier Cream', category: 'cream', tags: ['cream'], price: 50 }));
-    const sameFormAndInci = scoreOf(snap({ brand: 'POLA', name: 'Pola Wrinkle Shot Night Cream', category: 'cream', tags: ['cream'], price: 90, inci_list: 'water glycerin ceramide np squalane niacinamide' }));
+    const shelfOnly = scoreOf(snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream'], price: 40, price_currency: 'USD' }));
+    const sameForm = scoreOf(snap({ brand: 'Ayura', name: 'Ayura Moist Barrier Cream', category: 'cream', tags: ['cream'], price: 50, price_currency: 'USD' }));
+    const sameFormAndInci = scoreOf(snap({ brand: 'POLA', name: 'Pola Wrinkle Shot Night Cream', category: 'cream', tags: ['cream'], price: 90, price_currency: 'USD', inci_list: 'water glycerin ceramide np squalane niacinamide' }));
     const alike = scoreOf(snap({
-      brand: 'Est', name: 'Est The Cream TR Peptide Ceramide', category: 'cream', tags: ['cream', 'ceramide'], price: 100,
+      brand: 'Est', name: 'Est The Cream TR Peptide Ceramide', category: 'cream', tags: ['cream', 'ceramide'], price: 100, price_currency: 'USD',
       description: 'Rich anti-ageing face cream with peptides and ceramides for dry skin.',
       inci_list: 'water glycerin ceramide np peptide squalane',
     }));
@@ -381,19 +383,19 @@ describe('score spread: pair evidence, not provenance, moves the score', () => {
   });
 
   test('accepts: curated dupe evidence still lifts the pair above the dupe threshold', () => {
-    const curated = scoreOf(snap({ brand: 'Value', name: 'Value Cream', category: 'cream', tags: ['cream'], price: 20 }), { legacyMatch: true });
+    const curated = scoreOf(snap({ brand: 'Value', name: 'Value Cream', category: 'cream', tags: ['cream'], price: 20, price_currency: 'USD' }), { legacyMatch: true });
     expect(curated).toBeGreaterThan(DUPE_MIN_SCORE_TOTAL);
   });
 
   test('an identical retailer tag list is not a 1.0 edge, and the builder takes the sources score as-is', () => {
-    const anchorRow = { product_id: 'a', brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 120 };
-    const cand = snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 40 });
+    const anchorRow = { product_id: 'a', brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 120, price_currency: 'USD' };
+    const cand = snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 40, price_currency: 'USD' });
     const score = scoreCandidateForAnchor(snap(anchorRow), cand);
     expect(score.score_total).toBeLessThan(0.8);
 
     const inferred = inferRelationship(
-      { brand: 'Twany', name: anchorRow.name, category: 'cream', price: 120 },
-      { brand: 'X', name: 'Gamma Delta', category: 'cream', price: 40 },
+      { brand: 'Twany', name: anchorRow.name, category: 'cream', price: 120, price_currency: 'USD' },
+      { brand: 'X', name: 'Gamma Delta', category: 'cream', price: 40, price_currency: 'USD' },
       { ...cand, ...score, similarity_score: score.score_total, score_breakdown: score },
     );
     expect(inferred.scoreTotal).toBe(score.score_total);
@@ -401,17 +403,17 @@ describe('score spread: pair evidence, not provenance, moves the score', () => {
 
   test('accepts: a candidate without a sources score still falls back to its components', () => {
     const inferred = inferRelationship(
-      { brand: 'A', name: 'Barrier Serum', category: 'serum', price: 50 },
-      { brand: 'B', name: 'Barrier Serum Alternative', category: 'serum', price: 40 },
+      { brand: 'A', name: 'Barrier Serum', category: 'serum', price: 50, price_currency: 'USD' },
+      { brand: 'B', name: 'Barrier Serum Alternative', category: 'serum', price: 40, price_currency: 'USD' },
       { category_use_case_match: 0.9, ingredient_functional_similarity: 0.84 },
     );
     expect(inferred.scoreTotal).toBe(0.84);
   });
 
   test('a two-hop candidate never outranks the direct score for the same pair', () => {
-    const anchorRow = snap({ brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 120 });
-    const bridge = { ...snap({ brand: 'B', name: 'Bridge Cream', category: 'cream', price: 50 }), similarity_score: 0.95, category_use_case_match: 0.95, ingredient_functional_similarity: 0.95 };
-    const twoHopRow = snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 40 });
+    const anchorRow = snap({ brand: 'Twany', name: 'Twany Century The Cream SP', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 120, price_currency: 'USD' });
+    const bridge = { ...snap({ brand: 'B', name: 'Bridge Cream', category: 'cream', price: 50, price_currency: 'USD' }), similarity_score: 0.95, category_use_case_match: 0.95, ingredient_functional_similarity: 0.95 };
+    const twoHopRow = snap({ brand: 'X', name: 'Gamma Delta', category: 'cream', tags: ['cream', 'skincare', 'japan', 'new'], price: 40, price_currency: 'USD' });
     // similarity_score here is the second hop's score against the BRIDGE, not the anchor.
     const twoHop = { ...twoHopRow, similarity_score: 0.95, category_use_case_match: 0.95, ingredient_functional_similarity: 0.95 };
     const direct = scoreCandidateForAnchor(anchorRow, twoHopRow).score_total;
@@ -427,7 +429,7 @@ describe('score spread: pair evidence, not provenance, moves the score', () => {
 // ---------------------------------------------------------------------------------------------
 describe('dupe: an explicit rule on the graded scale', () => {
   const sunAnchor = snap({
-    brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14,
+    brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14, price_currency: 'USD',
     inci_list: 'Water, Alcohol, Ethylhexyl Methoxycinnamate, Glycerin, Butylene Glycol, Hyaluronic Acid, Dimethicone, Tocopherol',
   });
   function relationFor(cand) {
@@ -440,14 +442,14 @@ describe('dupe: an explicit rule on the graded scale', () => {
 
   test('the validator threshold is the exported constant on the new scale', () => {
     expect(DUPE_MIN_SCORE_TOTAL).toBe(0.78);
-    const base = { anchor_ref: 'product:a', candidate_product_ref: 'product:b', relation_type: 'dupe', category_taxonomy: ['sunscreen'], use_case: 'sunscreen', source_refs: [{ type: 'catalog_products', authoritative: true }], price_evidence: { anchor_price_amount: 14, candidate_price_amount: 9, price_ratio: 0.64, observed_at: NOW }, candidate_snapshot: { price: 9 }, score_breakdown: { category_use_case_match: 0.72 } };
+    const base = { anchor_ref: 'product:a', candidate_product_ref: 'product:b', relation_type: 'dupe', category_taxonomy: ['sunscreen'], use_case: 'sunscreen', source_refs: [{ type: 'catalog_products', authoritative: true }], price_evidence: { anchor_price_amount: 14, candidate_price_amount: 9, price_ratio: 0.64, observed_at: NOW }, candidate_snapshot: { price: 9, price_currency: 'USD' }, score_breakdown: { category_use_case_match: 0.72 } };
     expect(validateRelationshipEdge({ ...base, score_total: 0.79 }, { nowMs: Date.parse(NOW) }).errors).not.toContain('dupe_similarity_below_threshold');
     expect(validateRelationshipEdge({ ...base, score_total: 0.77 }, { nowMs: Date.parse(NOW) }).errors).toContain('dupe_similarity_below_threshold');
   });
 
   test('accepts: a genuine cross-brand dupe (same leaf, similar INCI, shared name words) emits with margin', () => {
     const got = relationFor(snap({
-      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
+      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9, price_currency: 'USD',
       inci_list: 'Water, Alcohol, Ethylhexyl Methoxycinnamate, Glycerin, Butylene Glycol, Hyaluronic Acid, Tocopherol, Niacinamide',
     }));
     expect(got.relation).toBe('dupe');
@@ -456,7 +458,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
 
   test('accepts: a modest-evidence dupe between the new threshold and the old 0.82 is still a dupe', () => {
     const got = relationFor(snap({
-      brand: 'Anessa', name: 'Anessa Perfect UV Sunscreen Skincare Milk SPF50+', category: 'sunscreen', price: 12,
+      brand: 'Anessa', name: 'Anessa Perfect UV Sunscreen Skincare Milk SPF50+', category: 'sunscreen', price: 12, price_currency: 'USD',
       inci_list: 'Water, Alcohol, Zinc Oxide, Glycerin, Butylene Glycol, Silica, Tocopherol',
     }));
     expect(got.relation).toBe('dupe');
@@ -466,7 +468,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
 
   test('a contradicting INCI refutes a dupe even when the names match', () => {
     const got = relationFor(snap({
-      brand: 'Other', name: 'Other UV Aqua Essence Sunscreen SPF50+', category: 'sunscreen', price: 9,
+      brand: 'Other', name: 'Other UV Aqua Essence Sunscreen SPF50+', category: 'sunscreen', price: 9, price_currency: 'USD',
       inci_list: 'Zinc Oxide, Titanium Dioxide, Caprylic Triglyceride, Coconut Alkanes, Polyhydroxystearic Acid, Isododecane',
     }));
     expect(got.relation).toBe('competitive_alternative');
@@ -474,7 +476,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
 
   test('accepts: a truncated "key ingredients" list on one side does not refute a genuine dupe', () => {
     const got = relationFor(snap({
-      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
+      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9, price_currency: 'USD',
       inci_list: 'niacinamide, hyaluronic acid',
     }));
     expect(got.relation).toBe('dupe');
@@ -487,10 +489,10 @@ describe('dupe: an explicit rule on the graded scale', () => {
       'Zinc PCA', 'Xanthan Gum', 'Carbomer', 'Potassium Hydroxide', 'Disodium EDTA', 'Phenoxyethanol', 'Methylparaben', 'Fragrance', 'BHT',
     ].join(', ');
     const anchorFull = snap({
-      brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14, inci_list: fullInci,
+      brand: 'Skin Aqua', name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 14, price_currency: 'USD', inci_list: fullInci,
     });
     const blurb = snap({
-      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9,
+      brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9, price_currency: 'USD',
       inci_list: 'Niacinamide, Sodium Hyaluronate, Zinc PCA, Glycerin',
     });
     const score = scoreCandidateForAnchor(anchorFull, blurb);
@@ -500,7 +502,7 @@ describe('dupe: an explicit rule on the graded scale', () => {
   });
 
   test('accepts: a retailer row without an ingredient list can still be a dupe on its name words', () => {
-    const got = relationFor(snap({ brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+', category: 'sunscreen', price: 9 }));
+    const got = relationFor(snap({ brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+', category: 'sunscreen', price: 9, price_currency: 'USD' }));
     expect(got.relation).toBe('dupe');
   });
 });
