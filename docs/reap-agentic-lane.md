@@ -268,7 +268,23 @@ merchant is not on the operator allowlist — is POSTed ONCE more with `item_sou
 derived idempotency key (`pivota-ucp-reap-lane:cart_link:v1:` namespace), same buyer and code. It is never
 retried on `merchant_disabled` (an operator turned the merchant off — the backend refuses both lanes), nor
 on the cart-link POST's own answer. A client retry of the same create replays: the backend remembers the
-variant refusal against the variant key, and the cart-link key is deterministic. The backend checks its daily Tier B verdict and its own
+variant refusal against the variant key, and the cart-link key is deterministic.
+
+**After a merchant is ENABLED on the variant lane, use a NEW idempotency key for 24 hours.** The backend
+remembers a variant-lane `merchant_not_eligible` against the key for the key's whole 24 h window (so a retry
+replays the cart-link purchase instead of opening a second one). A create re-sent with the SAME key after the
+operator enabled the merchant is therefore still refused on the variant lane — and answered on the cart-link
+lane, or by the storefront. To be bought on the newly enabled variant lane within those 24 hours, send a new
+`meta["idempotency-key"]`. After 24 hours the key is forgotten and replaced by the next request's purchase.
+
+**Offer codes are set at creation only.** `checkout.discounts` is accepted on `update_checkout` while armed
+(the discount capability is advertised), but an update never applies a code: on a Reap checkout the update
+refusal says so, and on any other checkout the answer carries `discount_code_invalid` at
+`$.discounts.codes[0]`.
+
+**Totals rounding.** The backend accepts a quote whose total is within one minor unit of its components. Such
+a residual is shown as its own `Rounding` row (`fee` when positive, `discount` when negative), so the rows
+always add up; a larger residual shows no breakdown at all and is logged `breakdown_unreconciled`. The backend checks its daily Tier B verdict and its own
 `REAP_AGENTIC_CART_LINK_ENABLED`; any refusal of that second POST falls through exactly as above. No other
 refusal is retried. The multi-variant skip still applies (this door sends no `variant_key`).
 

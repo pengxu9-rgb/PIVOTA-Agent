@@ -476,3 +476,31 @@ test('strict DARK withholds the money capabilities; strict ON withholds nothing'
     assert.deepEqual(ucpOmitCapabilityIdsForFlags(), [], 'nothing is withheld once the money doors serve');
   });
 });
+
+// ---- the discount capability follows the offer-code dials on the SERVED profile (#2323, S5) ------------
+
+test('/.well-known/ucp advertises dev.ucp.shopping.discount only with BOTH Reap dials on', async () => {
+  const LANE = 'REAP_AGENTIC_LANE_ENABLED';
+  const CART = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
+  const cases = [
+    [{ [LANE]: '1', [CART]: '1' }, true],
+    [{ [LANE]: '1', [CART]: undefined }, false],
+    [{ [LANE]: undefined, [CART]: '1' }, false],
+    [{ [LANE]: undefined, [CART]: undefined }, false],
+  ];
+  for (const [dials, expected] of cases) {
+    await withEnv({ ...DOOR_LIT, ...CHARGE_ON, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1', ...dials }, async () => {
+      const resp = await supertest(app).get('/.well-known/ucp').expect(200);
+      const ids = Object.keys(resp.body.ucp.capabilities || {});
+      assert.equal(ids.includes('dev.ucp.shopping.discount'), expected, JSON.stringify(dials));
+      if (expected) {
+        assert.deepEqual(resp.body.ucp.capabilities['dev.ucp.shopping.discount'][0].extends, ['dev.ucp.shopping.checkout']);
+        assert.ok(ids.includes('dev.ucp.shopping.checkout'), 'the capability it extends is advertised too');
+      }
+      // The same door's tools/list agrees with the profile.
+      const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 7)).expect(200);
+      const create = listed.body.result.tools.find((t) => t.name === 'create_checkout');
+      assert.equal(Object.hasOwn(create.inputSchema.properties.checkout.properties, 'discounts'), expected, JSON.stringify(dials));
+    });
+  }
+});

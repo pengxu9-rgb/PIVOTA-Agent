@@ -29,6 +29,8 @@ import {
 import {
   UCP_INPUT_SCHEMAS,
   UCP_ACCEPTED_BUT_UNMAPPED,
+  UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED,
+  ucpInputSchemasFor,
   SEARCH_PAGE_SIZE_MAX,
   SEARCH_CURSOR_EXAMPLE,
   ucpToNativeToolArgs,
@@ -1286,6 +1288,27 @@ describe('schema and mapper cannot drift', () => {
         [...unread].sort(), [...declaredUnmapped].sort(),
         `${def.name}: UCP_ACCEPTED_BUT_UNMAPPED must name EXACTLY the advertised leaves this door does not read`,
       );
+    }
+
+    // THE SAME WALK OVER THE ARMED SCHEMAS (review of #2323, S6). With buyer offer codes armed, create/update
+    // advertise `checkout.discounts`; every leaf that adds must be classified too -- as accepted-but-unmapped
+    // (`UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED`), and NOT reaching the canonical args. Derived from the armed
+    // schema itself, so a new armed leaf fails here until someone classifies it.
+    const ARMED = { REAP_AGENTIC_LANE_ENABLED: '1', REAP_AGENTIC_CART_LINK_LANE_ENABLED: '1' };
+    const armedSchemas = ucpInputSchemasFor(ARMED);
+    for (const def of ucpCommerceToolDefinitions) {
+      const opId = opFor(def.name).id;
+      const schema = armedSchemas[opId];
+      const body = maximalFor(schema);
+      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), body, ARMED));
+      const leaves = sentinelLeaves(schema);
+      const surviving = leaves.filter((leaf) => mapped.includes(markerFor(leaf))).map((leaf) => leaf.path);
+      assert.deepEqual(surviving.sort(), [...EXPECTED_SURVIVING[def.name]].sort(), `${def.name} (armed): surviving set`);
+      const unread = leaves
+        .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(markerFor(leaf)))
+        .map((leaf) => leaf.path);
+      const expected = [...UCP_ACCEPTED_BUT_UNMAPPED[opId], ...(UCP_OFFER_CODE_ACCEPTED_BUT_UNMAPPED[opId] || [])];
+      assert.deepEqual([...unread].sort(), expected.sort(), `${def.name} (armed): the unread leaves must be classified EXACTLY`);
     }
   });
 
