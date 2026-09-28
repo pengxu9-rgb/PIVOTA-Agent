@@ -34,7 +34,6 @@ const SCALAR_BIND_BASELINE = {
   'src/auroraBff/productRecV1.js': 2,
   'src/auroraBff/travelLocalProductAuthority.js': 1,
   'src/findProductsExternalSeedBrandFastpath.js': 2,
-  'src/findProductsExternalSeedDirectRetrieval.js': 1,
   'src/modules/decisioning/shopping_agent/strictFindProductsMulti.js': 1,
   'src/services/RecommendationEngine.js': 5,
   // NOT in this baseline: canonicalCatalogSearch.js. Its two `AND market = $1` hits were PROSE
@@ -56,7 +55,6 @@ const SCALAR_BIND_BASELINE = {
 const CANONICAL_SCALAR_GATES = 3;
 
 const RAW_ENV_BASELINE = {
-  'src/findProductsExternalSeedDirectPlanning.js': 1,
   'src/services/RecommendationEngine.js': 1,
   'src/services/categories.js': 2,
   'src/services/discoveryFeed.js': 2,  // see the NUL-byte note above
@@ -285,12 +283,17 @@ test('every lane takes its markets from laneMarkets, not by re-deriving from the
   // Stage 0a routes the mainline's resolution through buyerMarket.js, whose unchanged path IS
   // marketsForRequest and whose buyer path is the served LIST (plus the named partition) --
   // both pinned below, and at runtime by tests/buyer_market.node.test.cjs.
-  assert.ok(/const \{ markets, buyerCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\)/.test(src),
+  assert.ok(/const \{ markets, buyerCurrency, servingCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\)/.test(src),
     'the beauty mainline no longer resolves a LIST before handing it down.');
   const buyer = fs.readFileSync(path.join(ROOT, 'src/services/buyerMarket.js'), 'utf8');
   assert.ok(/markets: marketsForRequest\(requested, env\)/.test(buyer),
     'buyerMarket.js no longer falls back to marketsForRequest for an unpriced or silent request.');
-  assert.ok(/const served = servedMarkets\(env\);/.test(buyer) && !/servedMarkets\(env\)\[0\]/.test(buyer),
+  // Scoped to the BINDING function. resolveServingCurrency reads servedMarkets(env)[0] on purpose --
+  // the default market's CURRENCY for a request that names none -- and never touches `markets`
+  // (its own runtime test is in tests/buyer_market.node.test.cjs).
+  const bind = (buyer.match(/function resolveBuyerMarketScope\([\s\S]*?\n\}\n/) || [''])[0];
+  assert.ok(bind, 'resolveBuyerMarketScope not found in buyerMarket.js');
+  assert.ok(/const served = servedMarkets\(env\);/.test(bind) && !/servedMarkets\(env\)\[0\]/.test(bind),
     'buyerMarket.js no longer binds the served LIST for a buyer market.');
 });
 

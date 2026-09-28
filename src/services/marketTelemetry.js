@@ -29,18 +29,36 @@
 //   market_buyer_currency     the currency the named market was read as (Stage 0a,
 //                             FIND_PRODUCTS_BUYER_MARKET); null when the market was bound as a
 //                             partition, the flag is off, or the door never bound
+//   market_serving_currency   the currency every served row had to carry (flag or no flag; a
+//                             silent request is USD); null when the market has none, so the
+//                             door served nothing, or the door never bound
 //   served_currencies         the distinct currencies on the served page
 //   served_currency_mismatch  true when the page mixes more than one KNOWN currency
 //   served_price_sources      row counts by recall source (a stand-in for price copy -- see below)
+//   serving_currency_dropped  rows the invoke door's serving-currency guard removed from this page
+//                             (servingCurrencyGuard); ABSENT when it removed none. Any value is a
+//                             lane that recalled a wrong-currency row and is worth fixing at source.
+//                             Logged for EVERY guarded operation, not only find_products_multi:
+//                             get_discovery_feed (~82k requests a week) is guarded too, and its drops
+//                             were invisible. Other operations get this pair and nothing else.
+//   serving_currency_dropped_currencies  what it dropped ('unknown' = a price with no currency)
 //   lane                      the beauty direct lane that answered; ABSENT for every other
 //                             path, including all upstream-routed traffic -- so it cannot, on its
 //                             own, split the Python door's lanes
+//   query_source              the response's own metadata.query_source: which lane actually
+//                             served the page, for EVERY lane -- including those that record no
+//                             stage and set no `lane` (discovery bridge, ingredient direct, early
+//                             exits). `lane` says which stage ran; this says what the page claims
+//   primary_path_used         the response's metadata.route_health.primary_path_used
 
 const MAX_CURRENCIES = 8;
 const MAX_PRICE_SOURCES = 6;
 // A caller's `market` is free text. Capped so junk cannot bloat every log line or become an
 // unbounded metrics label; a real market code is two letters.
 const MAX_REQUESTED_CHARS = 16;
+// Lane names are code constants, but a lane that relays the backend's value relays whatever the
+// backend sent, so they are capped too.
+const MAX_SERVED_BY_CHARS = 64;
 
 function capRequested(raw) {
   if (raw == null) return null;
@@ -65,7 +83,7 @@ function describeRequested(search, metadata) {
  * Called BY THE DOOR, beside its bind, with the values it bound. `store` is the per-request
  * observation object (null outside a request). Never throws.
  */
-function observeBoundMarket(store, { search, metadata, markets, buyerCurrency } = {}) {
+function observeBoundMarket(store, { search, metadata, markets, buyerCurrency, servingCurrency } = {}) {
   if (!store || typeof store !== 'object') return;
   try {
     const described = describeRequested(search, metadata);
@@ -74,6 +92,7 @@ function observeBoundMarket(store, { search, metadata, markets, buyerCurrency } 
     store.market_source = described.source;
     store.market_bound = Array.isArray(markets) ? [...markets] : null;
     store.market_buyer_currency = buyerCurrency || null;
+    store.market_serving_currency = servingCurrency || null;
   } catch (_) {
     // Telemetry must never be able to fail the surface it measures.
   }
@@ -96,6 +115,7 @@ function describeUnboundRequest(payload, metadata) {
     market_source: described.source,
     market_bound: null,
     market_buyer_currency: null,
+    market_serving_currency: null,
   };
 }
 
@@ -135,6 +155,27 @@ function summariseServedProducts(products = []) {
   };
 }
 
+function capServedBy(raw) {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (!text) return null;
+  return text.length > MAX_SERVED_BY_CHARS ? `${text.slice(0, MAX_SERVED_BY_CHARS)}…` : text;
+}
+
+// Which lane served the page, as the page itself says: every lane stamps metadata.query_source.
+function servedByFromBody(body) {
+  const metadata = body && typeof body === 'object' && !Array.isArray(body) ? body.metadata : null;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' ? metadata.route_health : null;
+  const querySource = capServedBy(metadata.query_source);
+  const primaryPathUsed = capServedBy(routeHealth && routeHealth.primary_path_used);
+  return {
+    ...(querySource ? { query_source: querySource } : {}),
+    ...(primaryPathUsed ? { primary_path_used: primaryPathUsed } : {}),
+  };
+}
+
 /** The lane that produced the rows: the LAST lane recorded, since every lane's failure path
  *  answers the request itself rather than falling through. */
 function laneFromStageBreakdown(stages = []) {
@@ -151,8 +192,24 @@ function laneFromStageBreakdown(stages = []) {
  * read from it HERE, so that reading is testable rather than a seam in the handler.
  * Returns `{}` for any operation other than find_products_multi.
  */
+// The guard's own list, so an operation it guards cannot go unlogged.
+const { GUARDED_OPERATIONS } = require('./servingCurrencyGuard');
+const MAX_DROPPED_CURRENCIES = 8;
+
+function servingCurrencyDrops(body) {
+  const metadata = body && typeof body === 'object' && !Array.isArray(body) ? body.metadata : null;
+  const guard = metadata && typeof metadata === 'object' ? metadata.serving_currency_guard : null;
+  const dropped = guard && typeof guard === 'object' ? Number(guard.dropped_count) : NaN;
+  if (!Number.isFinite(dropped) || dropped <= 0) return {};
+  const currencies = Array.isArray(guard.dropped_currencies)
+    ? guard.dropped_currencies.map((code) => String(code).slice(0, 16)).slice(0, MAX_DROPPED_CURRENCIES)
+    : [];
+  return { serving_currency_dropped: dropped, serving_currency_dropped_currencies: currencies };
+}
+
 function buildMarketTelemetry({ operation, observation, payload, metadata, body, stages } = {}) {
-  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return {};
+  const op = String(operation || '').trim().toLowerCase();
+  if (op !== 'find_products_multi') return GUARDED_OPERATIONS.has(op) ? servingCurrencyDrops(body) : {};
   const market = observation && observation.market_observed === true
     ? {
       market_observed: true,
@@ -160,6 +217,7 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
       market_source: observation.market_source,
       market_bound: observation.market_bound,
       market_buyer_currency: observation.market_buyer_currency || null,
+      market_serving_currency: observation.market_serving_currency || null,
     }
     : describeUnboundRequest(payload, metadata);
   const products = body && typeof body === 'object' && !Array.isArray(body) ? body.products : null;
@@ -167,7 +225,9 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
   return {
     ...market,
     ...summariseServedProducts(products),
+    ...servingCurrencyDrops(body),
     ...(lane ? { lane } : {}),
+    ...servedByFromBody(body),
   };
 }
 
@@ -178,5 +238,6 @@ module.exports = {
   describeUnboundRequest,
   laneFromStageBreakdown,
   observeBoundMarket,
+  servedByFromBody,
   summariseServedProducts,
 };

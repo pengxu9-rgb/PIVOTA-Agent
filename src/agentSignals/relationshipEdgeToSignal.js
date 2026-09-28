@@ -20,20 +20,82 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+function finiteAmount(value) {
+  // COERCED, not passed through: snapshots are raw DB row spreads and node-pg returns NUMERIC as a string,
+  // which would break the published `number|null` contract (offerToSignal coerces for the same reason).
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+// The snapshot's currency key varies by producer (`currency` in products_cache payloads, `price_currency`
+// in seed/PDP payloads), so a one-key read is how a stored amount sheds its currency. Only an ISO-4217
+// alpha code counts: '$' or '' names no currency.
+function snapshotCurrency(snapshot) {
+  const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const raw = snap.currency || snap.price_currency || snap.priceCurrency;
+  const code = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+// A price reaches an agent only with its currency, and only in the currency the buyer's market is priced in
+// (Pivota's rule: a price must carry its market currency). `servingCurrency` undefined = the caller named
+// none (no market check); null = the market has no single currency, so no price is servable at all.
+function servablePrice(amount, currency, servingCurrency) {
+  if (amount == null || !currency) return null;
+  if (servingCurrency !== undefined && currency !== servingCurrency) return null;
+  return { amount, currency };
+}
+
+// The anchor's amount was taken from the anchor snapshot, so its currency is read from there — never
+// borrowed from the candidate.
+function priceComparisonCurrencies(edge) {
+  return {
+    anchor: snapshotCurrency(edge && edge.anchor_snapshot),
+    candidate: snapshotCurrency(edge && edge.candidate_snapshot),
+  };
+}
+
 function priceRatioOf(edge) {
   const pe = edge && edge.price_evidence;
   if (!pe || typeof pe !== 'object') return null;
+  // A ratio of two amounts in DIFFERENT currencies compares nothing.
+  const cur = priceComparisonCurrencies(edge);
+  if (cur.anchor && cur.candidate && cur.anchor !== cur.candidate) return null;
   const r = pe.price_ratio != null ? Number(pe.price_ratio) : null;
   return Number.isFinite(r) ? r : null;
 }
 
+// The stored price_evidence carries bare amounts (the builder never wrote a currency). The amounts travel
+// only as a pair under ONE currency both sides are known to share and the market serves; otherwise they are
+// withheld and the unitless ratio stands alone. Built field by field, never spread: passing the stored
+// object through is how bare amounts reached agents.
+function buildPriceComparison(edge, servingCurrency) {
+  const pe = edge.price_evidence;
+  if (!pe || typeof pe !== 'object') return null;
+  const cur = priceComparisonCurrencies(edge);
+  const anchor = servablePrice(finiteAmount(pe.anchor_price_amount), cur.anchor, servingCurrency);
+  const candidate = servablePrice(finiteAmount(pe.candidate_price_amount), cur.candidate, servingCurrency);
+  const out = {};
+  const ratio = priceRatioOf(edge);
+  if (ratio != null) out.price_ratio = ratio;
+  if (anchor && candidate && anchor.currency === candidate.currency) {
+    out.anchor_price_amount = anchor.amount;
+    out.candidate_price_amount = candidate.amount;
+    out.currency = candidate.currency;
+  }
+  if (pe.observed_at) out.observed_at = pe.observed_at;
+  return out;
+}
+
 // Map ONE edge → ONE Signal. Returns null for an unusable edge (caller filters nulls out).
-function relationshipEdgeToSignal(edge, { anchorId = null } = {}) {
+function relationshipEdgeToSignal(edge, { anchorId = null, servingCurrency } = {}) {
   if (!edge || typeof edge !== 'object') return null;
   const relation = edge.relation_type;
   const signalType = RELATION_TO_SIGNAL_TYPE[relation] || 'alternative';
   const snapshot = edge.candidate_snapshot && typeof edge.candidate_snapshot === 'object' ? edge.candidate_snapshot : {};
   const score = typeof edge.score_total === 'number' ? edge.score_total : null;
+  const price = servablePrice(finiteAmount(snapshot.price), snapshotCurrency(snapshot), servingCurrency);
   return {
     signal_type: signalType,
     subject: { kind: 'product', id: anchorId || edge.anchor_ref || null },
@@ -42,23 +104,17 @@ function relationshipEdgeToSignal(edge, { anchorId = null } = {}) {
         ref: edge.candidate_product_ref || null,
         title: snapshot.title || null,
         brand: snapshot.brand || null,
-        // COERCED, not passed through: the snapshot is a raw DB row spread and node-pg returns NUMERIC
-        // as a string, which would break the published `number|null` contract (offerToSignal already
-        // coerces for the same reason).
-        price: Number.isFinite(Number(snapshot.price)) && snapshot.price !== null && snapshot.price !== ''
-          ? Number(snapshot.price)
-          : null,
-        // Same raw-spread reason as price: the snapshot's currency key varies by producer (`currency` in
-        // products_cache payloads, `price_currency` in seed/PDP payloads), so a one-key read here is how a
-        // stored amount sheds its currency on the agent surface.
-        currency: snapshot.currency || snapshot.price_currency || snapshot.priceCurrency || null,
+        // Amount and currency travel together or not at all: a bare amount invites the reader to assume
+        // the anchor's (or the market's) currency, which fabricates a price when they differ.
+        price: price ? price.amount : null,
+        currency: price ? price.currency : null,
         image_url: snapshot.image_url || null,
       },
       relation,
       score,
       // The cross-product price comparison (price_ratio etc.). Named distinctly from value.related.price
       // (the candidate's own numeric price) to avoid two same-named fields of different shape on one Signal.
-      price_comparison: edge.price_evidence || null,
+      price_comparison: buildPriceComparison(edge, servingCurrency),
       tradeoffs: Array.isArray(edge.tradeoffs) ? edge.tradeoffs : [],
       watchouts: Array.isArray(edge.watchouts) ? edge.watchouts : [],
       why: edge.why_candidate || null,
@@ -91,6 +147,7 @@ function relationshipEdgesToSignals(edges, opts = {}) {
     includeDupes = false,
     dropGrades = ['D'],
     limit = 20,
+    servingCurrency,
   } = opts;
   if (!Array.isArray(edges)) return [];
   const out = [];
@@ -105,7 +162,7 @@ function relationshipEdgesToSignals(edges, opts = {}) {
       const ratio = priceRatioOf(edge);
       if (ratio != null && ratio > maxPriceRatio) continue;
     }
-    const signal = relationshipEdgeToSignal(edge, { anchorId });
+    const signal = relationshipEdgeToSignal(edge, { anchorId, servingCurrency });
     if (signal) out.push(signal);
   }
   out.sort((a, b) => (b.value.score || 0) - (a.value.score || 0));

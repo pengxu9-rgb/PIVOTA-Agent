@@ -155,9 +155,26 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
         return `(CASE WHEN ${prefilter} THEN ${identitySql(columns)} ~ ${regexBind} ELSE FALSE END)`;
       };
       const categoryWhere = where;
-      // Counted ONCE per statement (a materialised CTE), over every catalog row -- serving or
-      // not, so the count can only be conservative.
-      const cteSql = `name_evidence_carriers AS MATERIALIZED (\n      SELECT count(*) AS n FROM catalog_products np WHERE ${carriesAll('np')}\n    )`;
+      // THE CARRIERS ARE KEYS, NOT A COUNT. Found ONCE per statement (a materialised CTE), over every
+      // catalog row -- serving or not, so the decision can only be conservative -- and handed to the
+      // row predicate as the product keys to admit: all of them when at most MAX_CARRIERS rows carry
+      // the query, none otherwise. The LIMIT reads one row past the threshold, which settles
+      // `count <= MAX_CARRIERS` exactly and lets a browse (hundreds of carriers) stop scanning early.
+      //
+      // Why keys: the admitted arm is OR'd with the category WHERE, and PostgreSQL serves an OR from
+      // indexes (a BitmapOr) only when EVERY arm has an indexable clause. The count version's arm was
+      // a CASE over the count and per-row regexes, so the OR had none and every armed category browse
+      // became a Seq Scan of catalog_products evaluating the own-name regexes on each row. Measured on
+      // prod pivota-pg 2026-09-27 under prod flags (candidate-key prefilter on): nail polish / curl
+      // cream / lash glue 3.2-4.1s, against ~0.2s with the arm off. `p.product_key = ANY(<keys>)` is a
+      // primary-key index condition, so the category index serves the browse again.
+      const cteSql = `name_evidence_carriers AS MATERIALIZED (
+      SELECT CASE WHEN count(*) <= ${bind(MAX_CARRIERS)} THEN coalesce(array_agg(c.product_key), '{}') ELSE '{}' END AS keys
+      FROM (SELECT np.product_key FROM catalog_products np WHERE ${carriesAll('np')} LIMIT ${bind(MAX_CARRIERS + 1)}) c
+    )`;
+      // The cast is load-bearing: `= ANY((SELECT ...))` without it parses as ANY over a sub-SELECT
+      // (text = text[]), not as ANY over the one array the CTE returns.
+      const isCarrier = 'p.product_key = ANY((SELECT keys FROM name_evidence_carriers)::text[])';
       // A MULTI-PRODUCT row is never admitted on name evidence unless the query asks for one.
       // Review of #2230: "matte lipstick" admitted a lipstick-and-liner gift set at #1. A set
       // carries its components' names, and a twin pack carries one product's name twice, so name
@@ -172,16 +189,17 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
         : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind(MULTI_PRODUCT_NAME_PATTERN)})
           AND lower(coalesce(p.category_path, '')) NOT LIKE 'beauty/sets%'
           AND lower(COALESCE(p.product_payload->>'external_seed_product_family', p.product_payload->>'product_family', p.product_payload->'external_seed_product_kind'->>'family', '')) <> 'set_or_collection'`;
-      // EVALUATION ORDER IS THE COST CONTROL, so it is forced with CASE rather than left to AND:
-      //  1. the carrier count -- one value per statement (the CTE). For a generic query (count > 10,
-      //     most traffic) every row stops here, and the per-row name match below never runs.
-      //     Review of #2230: `(category) OR (carriesAll(p) AND ...)` forced the name match on every
-      //     row outside the category for EVERY armed query.
-      //  2. the name match (prefilter, then the regex);
-      //  3. the set exclusion (may read product_payload) and the category clause.
+      // TWO HALVES, ONE JOB EACH:
+      //  1. the carrier-key test -- the INDEX condition. The name match already ran, once, in the CTE.
+      //     For a generic query (more than MAX_CARRIERS carriers, most traffic) the key list is empty
+      //     and no row gets past it. Review of #2230: `(category) OR (carriesAll(p) AND ...)` forced
+      //     the per-row name match on every row outside the category for EVERY armed query.
+      //  2. the set exclusion (may read product_payload) and the category clause, behind a CASE on the
+      //     same test, so they run for the at most MAX_CARRIERS carrier rows only. The CASE fixes the
+      //     evaluation order, which AND alone does not promise; a CASE alone would not be indexable.
       // NULL-safe: a row whose category clause evaluates NULL (e.g. a NULL category_path) is not
       // admitted -- `NOT NULL` is NULL, which WHERE and the rank CASE both treat as false.
-      const admitted = `(CASE WHEN (SELECT n FROM name_evidence_carriers) <= ${bind(MAX_CARRIERS)} THEN (CASE WHEN ${carriesAll('p')} THEN ((${setExclusion}) AND NOT (${categoryWhere})) ELSE FALSE END) ELSE FALSE END)`;
+      const admitted = `(${isCarrier} AND (CASE WHEN ${isCarrier} THEN ((${setExclusion}) AND NOT (${categoryWhere})) ELSE FALSE END))`;
       where = `((${categoryWhere}) OR ${admitted})`;
       nameEvidence = {
         cteSql,
@@ -206,9 +224,12 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   // budget before the JS gate gets a chance to see the actual cosmetic. Preserve
   // explicitly requested tools and included mirrors/brushes on cosmetic products.
   const toolPattern = '(^| )(brush(es)?|applicators?|tools?|accessor(y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)($| )';
-  const queryRequestsTool = /\b(?:brush(?:es)?|applicators?|tools?|accessor(?:y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)\b/i.test(contract.effective_query || '');
+  // "Brush-On" / "Brush On" is how a glue or powder is applied, not a brush: it neither asks for a
+  // tool nor makes a row one ("Duo Brush On Striplash Adhesive"; pivota-backend #2387).
+  const queryRequestsTool = /\b(?:brush(?:es)?|applicators?|tools?|accessor(?:y|ies)|sponges?|puffs?|mirrors?|curlers?|sharpeners?)\b/i
+    .test(String(contract.effective_query || '').replace(/\bbrush[-\s]+on\b/gi, ' '));
   if ((hard.category_path_prefix || hard.exact_product_anchor) && !queryRequestsTool) {
-    const namedObject = `regexp_replace(${ownName}, '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
+    const namedObject = `regexp_replace(regexp_replace(${ownName}, '(^| )brush on( |$)', ' ', 'g'), '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
     where = `(${where}) AND NOT (${namedObject} ~ ${bind(toolPattern)})`;
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidence };

@@ -700,16 +700,82 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         FROM canonical_rows
         GROUP BY content_key
       ),
+      -- THE ENTRY'S SELLER IS THE PRODUCT'S BEST OFFER, NOT ITS REPRESENTATIVE'S.
+      -- The representative (row_rank = 1) is an IDENTITY choice — election,
+      -- primary, lifecycle — and it keeps product_entity_id, the Pivota PDP
+      -- url and the product content. But the best-offer LATERAL used to look
+      -- only inside that one listing, so a content_key whose representative
+      -- is sold out advertised it while a sibling seller had stock (prod
+      -- 2026-09-22: 14 serving content_keys). Every seller field below —
+      -- merchant, source/external product id, destination url, domain, price,
+      -- currency, availability, seed payload — now comes from ONE listing: the
+      -- member holding the best offer across the group's members, on the same
+      -- key as the per-listing pick (market, availability tier, price,
+      -- offer_id). A listing without a priced offer sorts last, and on a full
+      -- tie the representative wins, so a single-member group and an
+      -- offer-less group are exactly what they were. Members are the rows of
+      -- canonical_rows, i.e. they already passed this feed's own filters.
+      listing_offers AS (
+        SELECT
+          ranked.content_key,
+          ranked.row_rank,
+          ranked.product_key,
+          ranked.merchant_id,
+          ranked.merchant_name,
+          ranked.source_product_id,
+          ranked.canonical_url,
+          ranked.catalog_track,
+          ranked.product_payload,
+          listing_offer.price_amount,
+          listing_offer.price_currency,
+          listing_offer.availability,
+          listing_offer.market_rank,
+          listing_offer.availability_tier,
+          listing_offer.offer_id
+        FROM ranked
+        LEFT JOIN LATERAL (
+          SELECT
+            COALESCE(o.merchant_effective_price, o.list_price) AS price_amount,
+            o.currency AS price_currency,
+            o.availability AS availability,
+            CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END AS market_rank,
+            ${OFFER_AVAILABILITY_TIER_SQL} AS availability_tier,
+            o.offer_id
+          FROM catalog_offers o
+          WHERE o.product_key = ranked.product_key
+            AND o.suppressed_at IS NULL
+            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+            AND o.currency IS NOT NULL
+          ORDER BY
+            CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
+            ${OFFER_AVAILABILITY_TIER_SQL},
+            COALESCE(o.merchant_effective_price, o.list_price) ASC,
+            o.offer_id ASC
+          LIMIT 1
+        ) listing_offer ON TRUE
+      ),
+      best_listing AS (
+        SELECT DISTINCT ON (content_key) *
+        FROM listing_offers
+        ORDER BY
+          content_key,
+          (price_amount IS NULL),
+          market_rank,
+          availability_tier,
+          price_amount,
+          offer_id,
+          row_rank
+      ),
       mapped AS (
         SELECT
           'catalog_content_key:' || ranked.content_key AS source_listing_ref,
           ranked.pivota_signature_id AS product_entity_id,
-          ranked.source_product_id AS source_product_id,
+          best_offer.source_product_id AS source_product_id,
           null::text AS external_seed_row_id,
-          ranked.source_product_id AS external_product_id,
-          ranked.canonical_url AS destination_url,
-          COALESCE(ranked.pivota_canonical_url, ranked.canonical_url) AS canonical_url,
-          regexp_replace(lower(coalesce(ranked.canonical_url, ranked.pivota_canonical_url, '')), '^https?://(?:www\\.)?([^/]+).*$','\\1') AS domain,
+          best_offer.source_product_id AS external_product_id,
+          best_offer.canonical_url AS destination_url,
+          COALESCE(ranked.pivota_canonical_url, best_offer.canonical_url) AS canonical_url,
+          regexp_replace(lower(coalesce(best_offer.canonical_url, ranked.pivota_canonical_url, '')), '^https?://(?:www\\.)?([^/]+).*$','\\1') AS domain,
           ranked.product_name,
           ranked.image_url,
           best_offer.price_amount AS price_amount,
@@ -717,15 +783,15 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           best_offer.availability AS availability,
           COALESCE(ranked.brand, '') AS brand,
           COALESCE(ranked.category, ranked.product_type, '') AS category,
-          COALESCE(ranked.product_payload, '{}'::jsonb) AS seed_data,
+          COALESCE(best_offer.product_payload, '{}'::jsonb) AS seed_data,
           ranked.updated_at AS source_updated_at,
           COALESCE(stats.sort_updated_at, ranked.updated_at, '1970-01-01T00:00:00Z'::timestamptz) AS sort_updated_at,
           ranked.updated_at AS identity_updated_at,
           0.96::numeric AS identity_confidence,
-          ranked.merchant_id,
-          ranked.merchant_name,
+          best_offer.merchant_id,
+          best_offer.merchant_name,
           ranked.content_key,
-          ranked.catalog_track,
+          best_offer.catalog_track,
           ranked.product_description,
           ranked.elected_canonical_sig_id,
           ranked.internal_product_group_id,
@@ -742,23 +808,8 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         -- in-market first, then known-unavailable last, then cheapest. Unknown
         -- availability shares the sellable tier. Currency is never defaulted:
         -- an offer without a currency is not price-quotable and is skipped.
-        LEFT JOIN LATERAL (
-          SELECT
-            COALESCE(o.merchant_effective_price, o.list_price) AS price_amount,
-            o.currency AS price_currency,
-            o.availability AS availability
-          FROM catalog_offers o
-          WHERE o.product_key = ranked.product_key
-            AND o.suppressed_at IS NULL
-            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
-            AND o.currency IS NOT NULL
-          ORDER BY
-            CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
-            ${OFFER_AVAILABILITY_TIER_SQL},
-            COALESCE(o.merchant_effective_price, o.list_price) ASC,
-            o.offer_id ASC
-          LIMIT 1
-        ) best_offer ON TRUE
+        -- The offer and every seller field come from best_listing (above).
+        JOIN best_listing best_offer ON best_offer.content_key = ranked.content_key
         WHERE ranked.row_rank = 1
           ${pricedOnlyWhere}
           ${identityPaginationWhere}

@@ -663,6 +663,18 @@ test('N2: a variant set the PDP would hide is DECLINED, never partially publishe
   const publishedIds = JSON.stringify(payload).match(/gid:\/\/shopify\/ProductVariant\/\d+/g) || [];
   assert.ok(publishedIds.length >= 2, `the PDP must actually expose both variants (saw ${publishedIds.length})`);
 
+  // A MIXED set is published, not declined: the builder's exposure test is `some()` over the whole array
+  // and is all-or-nothing, so it would show BOTH with their real gids. Declining here would lose a row the
+  // PDP handles fine.
+  const mixed = [{ id: GID_A, title: 'One-Pack' }, { id: GID_B, title: 'Default Title' }];
+  const mix = createMerchantVariantSource({
+    ucpClient: clientReturning([{ ...catalogProduct(PDP, []), variants: mixed }]),
+    isBrandAllowed: () => true,
+  });
+  const mixedOut = await mix.details(seedRead(), 'sig_seed_1');
+  assert.deepEqual((mixedOut || []).map((v) => v.variant_id), [GID_A, GID_B],
+    'one displayable variant is enough — that is the builder\'s own rule');
+
   // and titles the builder treats as generic are declined for the same reason
   const generic = [{ id: GID_A, title: 'Default Title' }, { id: GID_B, title: 'Default Title' }];
   const gen = createMerchantVariantSource({
@@ -702,4 +714,52 @@ test('N5: a variant carrying variant_attributes: null no longer 500s the PDP', (
   assert.doesNotThrow(() => buildPdpPayload({
     product: { product_id: 'p1', title: 'X', currency: 'USD', price: 10, variants: [{ variant_attributes: null, sku: 'S1' }] },
   }));
+});
+
+test('the mapper emits ONLY the keys pdpWouldExpose reasons about', () => {
+  // `pdpWouldExpose` omits the builder's `sourceQualityStatus` conjunct, and that is safe ONLY because the
+  // mapper cannot carry such a field — it builds its output from scratch. That safety is by coupling, not by
+  // argument, so the coupling is pinned: if the mapper ever gains a passthrough, the predicate silently
+  // becomes wrong and nothing else would catch it.
+  const { merchantVariantToRaw } = require('../src/services/merchantVariantSource');
+  const hostile = {
+    id: GID_A, sku: '1', title: 'One-Pack',
+    price: { amount: 4800, currency: 'USD' }, availability: { available: true },
+    options: [{ name: 'Size', label: 'S' }],
+    // fields the PDP builder gives meaning to, which must NOT ride through
+    source_quality_status: 'blocked', variant_attributes: { variant_id: 'FORGED' },
+    compare_at: 1, list_price: { amount: 9900, currency: 'USD' }, debug: 'x',
+  };
+  assert.deepEqual(Object.keys(merchantVariantToRaw(hostile)).sort(),
+    ['in_stock', 'options', 'price_amount', 'price_currency', 'sku_id', 'title', 'variant_id']);
+});
+
+test('a DISABLED cache writes nothing as well as reading nothing', async () => {
+  let searches = 0;
+  const client = clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }], { onSearch: () => { searches += 1; } });
+  const src = createMerchantVariantSource({ ucpClient: client, isBrandAllowed: () => true, resultTtlMs: 0 });
+  for (let i = 0; i < 3; i += 1) assert.equal((await src.details(seedRead(), 'sig_seed_1')).length, 2);
+  assert.equal(searches, 3, 'disabled means every call really goes out');
+  // ...and the WRITE side must be off too. Call counts alone cannot see this — reads are short-circuited, so
+  // a stray write is invisible from outside and the assertion above passes either way (verified: that
+  // mutant survived). Observing the cache's own size is what makes the property falsifiable.
+  assert.deepEqual(src.stats(), { cachedEntries: 0, inflight: 0 },
+    'a disabled cache must hold nothing — not even negative entries nobody can read');
+
+  // THE LEAK IS ON THE ERROR PATH SPECIFICALLY, and a success-path probe cannot see it: `cacheSet` with no
+  // explicit ttl falls back to `resultTtlMs` (0) and the `ttl <= 0` guard already stops it. Only the error
+  // path passes an EXPLICIT `negativeTtlMs`, which bypasses that guard and writes into a cache the operator
+  // switched off. (Verified: a success-only probe left this mutant alive.)
+  const erroring = createMerchantVariantSource({
+    ucpClient: clientReturning([], { throwOnSearch: true }),
+    isBrandAllowed: () => true, resultTtlMs: 0,
+  });
+  assert.equal(await erroring.details(seedRead(), 'sig_seed_1'), null);
+  assert.equal(erroring.stats().cachedEntries, 0,
+    'a disabled cache must not be written even by the negative-TTL path');
+
+  // and when ENABLED, the same probe shows it actually retaining
+  const on = createMerchantVariantSource({ ucpClient: clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }]), isBrandAllowed: () => true });
+  await on.details(seedRead(), 'sig_seed_1');
+  assert.equal(on.stats().cachedEntries, 1);
 });

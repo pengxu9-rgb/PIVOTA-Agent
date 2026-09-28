@@ -17,6 +17,14 @@
 // it red. The engine's ~100-dependency DI surface makes a hand-built fake a likelier source of a
 // false green than of a catch, which is why it is not used here.
 
+// PIN THE CONFIGURATION THIS FILE DESCRIBES. The wide template id is read ONCE at module load, so
+// a test asserting the DEFAULT-OFF contract against a module loaded under an ambient
+// RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID is asserting something else entirely -- and prod exports exactly
+// that variable. Six tests across two files failed under prod's own configuration for this reason,
+// on main, while CI stayed green: CI ran the disarmed lane and prod runs the armed one. The tests
+// that want the ARMED lane arm it explicitly (withWideTemplate below); this makes their disarmed
+// counterparts mean what they say wherever they run.
+delete process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.PIVOTA_BACKEND_BASE_URL = 'https://pivota-backend.test';

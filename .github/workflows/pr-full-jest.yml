@@ -105,6 +105,27 @@ jobs:
       # whether the suites run.
       - name: Run node:test suites
         run: node scripts/run_node_test_suites.cjs
+
+      # THE SAME SUITES, IN THE CONFIGURATION PROD ACTUALLY RUNS.
+      #
+      # The gateway exports RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3. The step above does
+      # not, because the code default has the wide id INHERIT the narrow one (routes.js) so that
+      # "off" is true by construction. The consequence went unnoticed until 2026-09-10: six tests
+      # asserting the default-off contract FAILED under prod's own env, on main, while this gate
+      # stayed green -- and the armed behaviour of the reco lane, which is the only one real users
+      # and partner integrations touch, was guarded by nothing at all.
+      #
+      # That gap is how a defect survived four review rounds on #2173: the lane read the beauty ASK
+      # (`promptDomainScope`) where the contract lives in the GRANT (`wide_template_active`), and
+      # every fixture, plus the suite they were written against, modelled the disarmed lane.
+      #
+      # Runs the identical glob rather than a curated subset: the point is that no test may assume a
+      # configuration prod does not run. A test that legitimately describes the default must pin it
+      # itself, and the tests that want the wide template arm it explicitly.
+      - name: Run node:test suites (wide reco template ARMED, as in prod)
+        env:
+          RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: reco_main_v1_3
+        run: node scripts/run_node_test_suites.cjs
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -186,4 +207,4 @@ jobs:
       - name: Execute canonical primary SQL through HTTP without rescue
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
-        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/canonical_offer_availability_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js tests/integration/find_products_multi_prod_flags_bind_types_postgres.test.js tests/integration/catalog_entity_group_offer_count_postgres.test.js tests/integration/catalog_entity_group_membership_postgres.test.js tests/integration/discovery_brand_seed_scan_postgres.test.js tests/integration/external_seed_brand_fastpath_postgres.test.js tests/integration/aurora_activity_keyset_postgres.test.js tests/integration/relationship_graph_ref_resolution_postgres.test.js tests/integration/canonical_brand_match_postgres.test.js tests/integration/search_name_evidence_admission_postgres.test.js tests/integration/search_name_evidence_acceptance_postgres.test.js tests/integration/find_products_multi_buyer_market_postgres.test.js
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/canonical_offer_availability_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js tests/integration/find_products_multi_prod_flags_bind_types_postgres.test.js tests/integration/catalog_entity_group_offer_count_postgres.test.js tests/integration/catalog_entity_group_membership_postgres.test.js tests/integration/discovery_brand_seed_scan_postgres.test.js tests/integration/external_seed_brand_fastpath_postgres.test.js tests/integration/aurora_activity_keyset_postgres.test.js tests/integration/relationship_graph_ref_resolution_postgres.test.js tests/integration/pdp_route_id_existence_postgres.test.js tests/integration/relationship_graph_offer_prices_postgres.test.js tests/integration/canonical_brand_match_postgres.test.js tests/integration/search_name_evidence_admission_postgres.test.js tests/integration/search_name_evidence_acceptance_postgres.test.js tests/integration/search_name_evidence_index_path_postgres.test.js tests/integration/find_products_multi_buyer_market_postgres.test.js tests/integration/canonical_candidate_key_prefilter_postgres.test.js tests/integration/canonical_single_payload_read_postgres.test.js tests/integration/repair_retailer_official_domain_postgres.test.js tests/integration/seed_reader_serving_currency_postgres.test.js tests/integration/search_lash_category_route_postgres.test.js

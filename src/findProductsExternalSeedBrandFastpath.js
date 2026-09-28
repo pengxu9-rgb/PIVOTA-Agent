@@ -1,3 +1,7 @@
+// A seed with no currency is never served (Peng 2026-09-26); the invoke door's
+// servingCurrencyGuard enforces which currency. See seedSearchOfferScope.
+const { seedHasPriceCurrencySql } = require('./services/seedSearchOfferScope');
+
 function buildExternalSeedServingEligibleJoinSql() {
   // Gate external_seed retrieval on catalog_row_trust.serving_decision='public',
   // the single source of truth for serving eligibility (identity + source
@@ -247,6 +251,7 @@ async function runExternalSeedBrandMainlineFastpath({
         AND ${servingEligibleSeedExistsClause}
         ${attachedFilter}
         AND market = $1
+        AND ${seedHasPriceCurrencySql()}
         ${exactToolScopeClause}
         ${availabilityFilter}
         AND ${brandMatchExpr} = ANY(${exactBrandBind}::text[])
@@ -354,6 +359,7 @@ async function runExternalSeedBrandMainlineFastpath({
             AND ${servingEligibleSeedExistsClause}
             ${attachedFilter}
             AND market = $1
+            AND ${seedHasPriceCurrencySql()}
             ${broadToolScopeClause}
             ${availabilityFilter}
             AND (

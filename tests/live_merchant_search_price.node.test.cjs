@@ -130,3 +130,93 @@ test('twenty slow same-host reads respect one page deadline', async () => {
   assert.equal(result.metadata.live_merchant_price.failure_reasons.deadline_exceeded, 20);
   assert.ok(result.products.every((p) => p.price === 28.2 && p.price_source === 'catalog_offer'));
 });
+
+test('a variant id that only restates the product (the ::canonical sku) or a placeholder is not a variant', () => {
+  const retailer = {
+    product_key: 'ext:retailer:05c4febd54ff507122aae7a55440d7c6', price: 46, currency: 'USD',
+    destination_url: 'https://bluemercury.com/products/moroccanoil-intense-hydrating-mask',
+  };
+  // bluemercury.com 2026-09-25: the card carried the product key as its variant -> variant_missing.
+  assert.equal(targetOf({ ...retailer, source_variant_id: retailer.product_key }).variant, '');
+  assert.equal(targetOf({ ...retailer, source_variant_id: 'default' }).variant, '');
+  assert.equal(targetOf({ ...retailer, source_variant_id: '9001-default' }).variant, '');
+  // the URL's own ?variant= still applies once the restated id is set aside
+  assert.equal(targetOf({ ...retailer, source_variant_id: retailer.product_key,
+    destination_url: `${retailer.destination_url}?variant=31691919065163` }).variant, '31691919065163');
+  // a real variant id is untouched
+  assert.equal(targetOf({ ...retailer, source_variant_id: '31691919065163' }).variant, '31691919065163');
+  // single-variant store product: verified with no variant named
+  const one = { product: { variants: [{ id: 31691919065163, price: '46.00', price_currency: 'USD' }] } };
+  assert.deepEqual(verifiedPrice(one, targetOf({ ...retailer, source_variant_id: retailer.product_key }).variant),
+    { amount: 46, currency: 'USD' });
+});
+
+test('a long-key canonical sku restates the source_product_id, not the product key (pivota-backend #2391)', async () => {
+  // Live kissusa.com row, derived by the backend's own derive_product_key / bounded_source_product_id: its
+  // 139-char product_key cannot fit catalog_skus.source_variant_id (VARCHAR(128)), so the canonical sku
+  // restates the 125-char source_product_id instead. The card's product_id is the signature id, not it.
+  const sourceProductId =
+    'kiss-kiss-haunt-halloween-press-on-fake-glue-nails-midnight-makeover-french-design-black-white-medium-almond-glow-in-the-dark';
+  const kiss = {
+    product_key: `ext:${sourceProductId}::44f3c737`, product_id: 'sig_kiss_haunt', source_product_id: sourceProductId,
+    price: 9.99, currency: 'USD', destination_url: 'https://www.kissusa.com/products/kiss-haunt-halloween-midnight-makeover',
+  };
+  assert.equal(kiss.product_key.length, 139);
+  assert.equal(targetOf({ ...kiss, source_variant_id: sourceProductId }).variant, '');
+  // the cases that already held are unchanged on the same card
+  assert.equal(targetOf({ ...kiss, source_variant_id: kiss.product_key }).variant, '');
+  assert.equal(targetOf({ ...kiss, source_variant_id: 'default' }).variant, '');
+  assert.equal(targetOf({ ...kiss, source_variant_id: `${sourceProductId}-default` }).variant, '');
+  assert.equal(targetOf({ ...kiss, source_variant_id: sourceProductId,
+    destination_url: `${kiss.destination_url}?variant=45199259336800` }).variant, '45199259336800');
+
+  // end to end: before, the slug went to Shopify as a variant id and came back variant_missing
+  const store = { product: { variants: [
+    { id: 45199259336800, price: '9.99', price_currency: 'USD' },
+    { id: 45199259336801, price: '9.99', price_currency: 'USD' },
+  ] } };
+  const live = await overlayLiveMerchantSearchPrices(
+    { products: [{ ...kiss, source_variant_id: sourceProductId }] },
+    { fetchImpl: async () => ({ ok: true, json: async () => store }) },
+  );
+  assert.equal(live.products[0].price_source, 'merchant_live');
+  assert.equal(live.metadata.live_merchant_price.verified_count, 1);
+  assert.deepEqual(live.metadata.live_merchant_price.failure_reasons, {});
+});
+
+test('a real Shopify variant id is still used, even on a card whose source_product_id is numeric', () => {
+  const pdp = 'https://www.kissusa.com/products/kiss-haunt-halloween-midnight-makeover';
+  // brand-store card: a numeric variant id is not a restatement of the slug
+  const brand = { product_key: 'ext:kiss-kiss-haunt::44f3c737', source_product_id: 'kiss-kiss-haunt', destination_url: pdp };
+  assert.equal(targetOf({ ...brand, source_variant_id: '45199259336801' }).variant, '45199259336801');
+  // Shopify-native card: the variant id begins with the product id's digits but continues
+  // alphanumerically, so it carries identity of its own and must reach the store as a variant
+  const native = { product_key: 'merch_x:8123456789', source_product_id: '8123456789', destination_url: pdp };
+  assert.equal(targetOf({ ...native, source_variant_id: '81234567890123' }).variant, '81234567890123');
+  // and with prices that differ by variant, that id picks the one exact offer
+  const shades = { product: { variants: [
+    { id: 45199259336800, price: '9.99', price_currency: 'USD' },
+    { id: 45199259336801, price: '12.99', price_currency: 'USD' },
+  ] } };
+  assert.deepEqual(verifiedPrice(shades, targetOf({ ...brand, source_variant_id: '45199259336801' }).variant),
+    { amount: 12.99, currency: 'USD' });
+  assert.equal(verifiedPrice(shades, targetOf({ ...brand, source_variant_id: 'kiss-kiss-haunt' }).variant), null);
+});
+
+test('restating the source_product_id follows isRestatedProductId, in its argument order', () => {
+  const pdp = 'https://www.kissusa.com/products/kiss-professional-tippy-toes';
+  // A slug over 128 chars is bounded (first 119 + '-' + 8 hex, #2391's bounded_source_product_id); the
+  // canonical sku restates that bounded value, and so does the card.
+  const bounded =
+    'kiss-kiss-professional-full-cover-press-on-fake-toenails-tippy-toes-130-toenails-includes-nail-glue-solid-white-short-s-1d9aaaa1';
+  const long = { product_key: 'ext:kiss-kiss-professional-full-cover-press-on-fake-toenails-tippy-toes-130-toenails-includes-nail-glue-solid-white-short-squoval-pedicure::1d9aaaa1',
+    source_product_id: bounded, destination_url: pdp };
+  assert.equal(bounded.length, 128);
+  assert.equal(long.product_key.length, 148);
+  assert.equal(targetOf({ ...long, source_variant_id: bounded }).variant, '');
+  // the product id plus a separator restates it too, as the safety kernel judges it
+  const slug = { product_key: 'ext:kiss-haunt-nails::0badc0de', source_product_id: 'kiss-haunt-nails', destination_url: pdp };
+  assert.equal(targetOf({ ...slug, source_variant_id: 'kiss-haunt-nails:1' }).variant, '');
+  // but a variant id is never judged a restatement because the PRODUCT id extends IT
+  assert.equal(targetOf({ ...slug, source_variant_id: 'kiss' }).variant, 'kiss');
+});

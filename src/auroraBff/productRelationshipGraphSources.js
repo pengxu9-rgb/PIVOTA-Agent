@@ -1,3 +1,5 @@
+const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
 
@@ -504,18 +506,26 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     intelCore?.best_for,
   );
   const category = pickFirstString(row.category, product.category, product.product_type, categoryTaxonomy[0]);
-  const price = toNumberOrNull(
-    row.price ??
-      row.price_amount ??
-      row.priceAmount ??
-      product.price ??
-      product.price_amount ??
-      product.priceAmount ??
-      product.sale_price ??
-      product.salePrice ??
-      firstVariant.price ??
-      firstVariant.price_amount,
+  // The amount and its currency come from ONE record. `product` is a spread of seed_data /
+  // product_data / snapshot, so its price fields are read from the layer the spread would take them
+  // from, and that layer's currency goes with them.
+  const productLayers = [seedData, productData, snapshot];
+  const pricedAt = readPriceWithCurrency(
+    [
+      [row, 'price'],
+      [row, 'price_amount'],
+      [row, 'priceAmount'],
+      [productLayers, 'price'],
+      [productLayers, 'price_amount'],
+      [productLayers, 'priceAmount'],
+      [productLayers, 'sale_price'],
+      [productLayers, 'salePrice'],
+      [firstVariant, 'price'],
+      [firstVariant, 'price_amount'],
+    ],
+    toNumberOrNull,
   );
+  const price = pricedAt.amount;
   const availability = pickFirstString(
     row.availability,
     row.availability_status,
@@ -655,6 +665,9 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     category,
     category_taxonomy: categoryTaxonomy,
     price,
+    // Always present beside `price` (null when unknown), so a merge that spreads one record over
+    // another moves the amount and its currency together.
+    price_currency: pricedAt.currency,
     ...(availability ? { availability } : {}),
     ...(url ? { url } : {}),
     ...(description ? { description } : {}),
@@ -1991,39 +2004,65 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
   // Tags that only repeat a category (retailer rows carry tags = [category leaf]) are the category
   // term again; they must not re-enter as product evidence below.
   const shelfTokens = new Set([...PLACEHOLDER_CATEGORY_TOKENS, ...categoryTokens(anchor), ...categoryTokens(candidate)]);
+  // Curated dupe evidence (aurora_dupe_kb) is evidence about THIS pair and lifts category agreement.
+  // A product-intel row is evidence that the candidate is documented, not that it resembles the
+  // anchor; it counts in evidence_quality below, never in similarity.
   const categoryUseCase = clamp01(
     Math.max(categoryScoreBase, exactCategory ? 0.72 : 0) +
-      (legacyMatch ? 0.12 : 0) +
-      (intelMatch ? 0.05 : 0),
+      (legacyMatch ? 0.12 : 0),
     0,
   );
+  const ingredientOverlap = overlapScore(anchor.ingredient_text, candidate.ingredient_text);
+  const descriptionOverlap = overlapScore(
+    informativeTokenText(anchor.description, shelfTokens),
+    informativeTokenText(candidate.description, shelfTokens),
+  );
+  const tagOverlap = overlapScore(informativeTokenText(anchor.tags, shelfTokens), informativeTokenText(candidate.tags, shelfTokens));
+  const textOverlap = overlapScore(anchorText, candidateText);
   const ingredientScore = Math.max(
-    overlapScore(anchor.ingredient_text, candidate.ingredient_text),
-    overlapScore(anchor.description, candidate.description),
-    overlapScore(informativeTokenText(anchor.tags, shelfTokens), informativeTokenText(candidate.tags, shelfTokens)),
-    overlapScore(anchorText, candidateText) * 0.75,
+    ingredientOverlap,
+    descriptionOverlap,
+    tagOverlap,
+    textOverlap * 0.75,
     categoryUseCase * 0.72,
   );
   const sourceBonus = sourceStrength(candidate.source_refs);
   const explicitScore = clamp01(candidate.similarity_score ?? candidate.score_total ?? candidate.vector_score, 0);
-  const similarityScore = clamp01(
-    Math.max(explicitScore, categoryUseCase, ingredientScore, nameScore) +
-      sourceBonus +
-      (legacyMatch ? 0.12 : 0) +
-      (intelMatch ? 0.05 : 0),
+  // score_total = base + (1 - base) * pair evidence.
+  //
+  // 2026-09-26 JP/AU dry run (gateway cecd89171, shard 0): 764 of 1,184 competitive_alternative
+  // edges scored exactly 0.93 and 371 exactly 0.80. The old score was max(channels) + constants:
+  // every exact-category pair sat on the 0.72 shelf floor, then +0.08 for an external-seed source
+  // or +0.05 +0.05 +0.11 for a product-intel row, and name / ingredient / description agreement
+  // changed nothing. 94.8% of edges scored >= 0.8 and the score did not rank.
+  //
+  // `base` is the strongest coarse channel (a vector/explicit score, or category agreement with its
+  // 0.72 shelf cap). Pair evidence is graded and only ever adds: shared name words, shared INCI,
+  // shared informative description or tag words, whole-text overlap. Two products on the same
+  // shelf with nothing else in common stay at the shelf floor; a same-shelf pair named and
+  // formulated alike approaches 1. Provenance (source strength, product intel) is not similarity
+  // and lives in evidence_quality / availability_confidence.
+  const pairEvidence = clamp01(
+    0.4 * nameScore +
+      0.3 * ingredientOverlap +
+      0.15 * Math.max(descriptionOverlap, tagOverlap) +
+      0.15 * textOverlap,
     0,
   );
-  const anchorPrice = toNumberOrNull(anchor.price);
+  const base = Math.max(explicitScore, categoryUseCase);
+  const similarityScore = clamp01(base + (1 - base) * pairEvidence, 0);
   const candidatePrice = toNumberOrNull(candidate.price);
-  const priceAdvantage = anchorPrice != null && candidatePrice != null && anchorPrice > 0
-    ? clamp01(1 - Math.min(candidatePrice / anchorPrice, 1), 0)
-    : 0;
+  const priceRatio = comparablePriceRatio(
+    readPriceWithCurrency([[anchor, 'price']], toNumberOrNull),
+    readPriceWithCurrency([[candidate, 'price']], toNumberOrNull),
+  );
+  const priceAdvantage = priceRatio == null ? 0 : clamp01(1 - Math.min(priceRatio, 1), 0);
 
   return {
     category_use_case_match: Number(categoryUseCase.toFixed(4)),
     ingredient_functional_similarity: Number(clamp01(ingredientScore + (sourceTypesFromRefs(candidate.source_refs).includes('ingredient_kb') ? 0.05 : 0), 0).toFixed(4)),
     price_advantage: Number(priceAdvantage.toFixed(4)),
-    evidence_quality: Number(clamp01(0.62 + sourceBonus + (legacyMatch ? 0.08 : 0), 0).toFixed(4)),
+    evidence_quality: Number(clamp01(0.62 + sourceBonus + (legacyMatch ? 0.08 : 0) + (intelMatch ? 0.05 : 0), 0).toFixed(4)),
     availability_confidence: Number(clamp01(0.66 + (candidatePrice != null ? 0.08 : 0) + sourceBonus / 2, 0).toFixed(4)),
     social_reference_strength: sourceTypesFromRefs(candidate.source_refs).includes('product_intel_kb') ? 0.2 : 0,
     score_total: Number(similarityScore.toFixed(4)),
@@ -2044,9 +2083,16 @@ function compareScoredCandidates(a, b) {
   if (Math.abs(catDelta) > 0.0001) return catDelta;
   const gradeDelta = (EVIDENCE_GRADE_RANK[normalizeEvidenceGrade(b.evidence_grade)] || 0) - (EVIDENCE_GRADE_RANK[normalizeEvidenceGrade(a.evidence_grade)] || 0);
   if (gradeDelta) return gradeDelta;
-  const priceA = toNumberOrNull(a.price);
-  const priceB = toNumberOrNull(b.price);
-  if (priceA != null && priceB != null && priceA !== priceB) return priceA - priceB;
+  // Cheaper first, but only between two amounts in one known currency.
+  const priceA = readPriceWithCurrency([[a, 'price']], toNumberOrNull);
+  const priceB = readPriceWithCurrency([[b, 'price']], toNumberOrNull);
+  if (
+    priceA.amount != null &&
+    priceB.amount != null &&
+    priceA.currency &&
+    priceA.currency === priceB.currency &&
+    priceA.amount !== priceB.amount
+  ) return priceA.amount - priceB.amount;
   return normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref));
 }
 
@@ -2278,13 +2324,21 @@ function sourceHasProductIntel(candidate) {
   return sourceTypesFromRefs(candidate.source_refs).includes('product_intel_kb');
 }
 
+// Two-hop score = direct score * (floor + (1 - floor) * hop confidence): a perfect path keeps the
+// direct score, a 0.55 path (the recall cutoff) keeps 89% of it.
+const TRANSITIVE_HOP_DECAY_FLOOR = 0.75;
+
 function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   const anchorToBridge = clamp01(bridge?.similarity_score ?? bridge?.score_total, 0);
   const bridgeToCandidate = clamp01(candidate?.similarity_score ?? candidate?.score_total, 0);
   const hopConfidence = Math.sqrt(anchorToBridge * bridgeToCandidate);
   if (hopConfidence < 0.55) return null;
 
-  const baseScore = scoreCandidateForAnchor(anchor, candidate, {
+  // The second-hop row's similarity_score / score_total describe it against the BRIDGE. They must
+  // not reach scoreCandidateForAnchor, which would read them as an explicit score against the
+  // anchor and make every two-hop candidate as strong as its bridge's own best match.
+  const { similarity_score: _bridgeSim, score_total: _bridgeTotal, vector_score: _bridgeVector, score_breakdown: _bridgeBreakdown, ...directCandidate } = candidate;
+  const baseScore = scoreCandidateForAnchor(anchor, directCandidate, {
     intelMatch: sourceHasProductIntel(candidate),
   });
   if (baseScore.category_use_case_match < 0.25 && baseScore.score_total < 0.35) return null;
@@ -2303,12 +2357,13 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
       clamp01(candidate.ingredient_functional_similarity, 0),
     ) * 0.85,
   ));
-  const scoreTotal = clamp01(Math.max(
-    baseScore.score_total,
-    categoryUseCase,
-    ingredientSimilarity,
-    hopConfidence * 0.92,
-  ));
+  // A two-hop candidate's score is the DIRECT pair score for (anchor, candidate) — the same
+  // evidence formula as a first-hop candidate — decayed by the path confidence. It can never exceed
+  // the direct score: before #2290 this was max(direct, bridged category, bridged ingredient,
+  // hop * 0.92), so a candidate whose direct score was 0.788 (identical tag list) came back at 1.0
+  // through a bridge and outranked every first-hop candidate in the top-24 and the fan-in ranking.
+  // The bridged category / ingredient components above are kept for the builder's category gate.
+  const scoreTotal = clamp01(baseScore.score_total * (TRANSITIVE_HOP_DECAY_FLOOR + (1 - TRANSITIVE_HOP_DECAY_FLOOR) * hopConfidence));
   const transitiveScore = {
     ...baseScore,
     category_use_case_match: Number(categoryUseCase.toFixed(4)),
@@ -2514,6 +2569,7 @@ module.exports = {
   __internal: {
     BEAUTY_TEXT_PATTERNS,
     SOURCE_PRIORITY,
+    TRANSITIVE_HOP_DECAY_FLOOR,
     clamp01,
     compareScoredCandidates,
     createFamilyDedupeIndex,

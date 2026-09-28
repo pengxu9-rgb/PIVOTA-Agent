@@ -183,14 +183,15 @@ test('every Express spelling of the public MCP paths caps oversized CHUNKED bodi
   assert.deepEqual(leaked, [], `these spellings accepted a ${big.length}B chunked body past the 32KB cap: ${JSON.stringify(leaked)}`);
 });
 
-test('rate limiter keys on the trusted (right-most) XFF hop, not the spoofable left-most', async () => {
-  // Same real client (right-most), rotating a forged left-most XFF must NOT mint fresh buckets.
+test('rate limiter keys on the client entry our LB appended, not the spoofable left-most', async () => {
+  // External ALB shape `<forged>, <client>, <lb>`: same real client, rotating a forged left-most XFF must NOT
+  // mint fresh buckets.
   // Drain the bucket (burst default 20) then confirm the 429 still fires despite rotating forged IPs.
   let sawLimit = false;
   for (let i = 0; i < 40; i += 1) {
     const res = await supertest(app)
       .post('/public/mcp')
-      .set('X-Forwarded-For', `10.0.0.${i}, 203.0.113.7`) // forged left, constant real right
+      .set('X-Forwarded-For', `10.0.0.${i}, 203.0.113.7, 34.8.67.235`) // forged left, constant client, LB
       .send(rpc('tools/list', undefined, 100 + i));
     if (res.status === 429) { sawLimit = true; break; }
   }
@@ -201,13 +202,13 @@ test('slow tools/call heartbeats through the REAL route: 200 committed, leading 
   // The guard exists because the Railway edge resets any response whose first BODY byte is later than ~13s
   // (services/publicReadMcpHeartbeat). Force the commit with a 1ms delay so every real tools/call is "slow",
   // and observe the actual wire: heartbeat whitespace first, then a JSON-RPC body that still parses.
-  // Fresh right-most XFF hop: the previous test intentionally drained the shared client's rate bucket.
+  // Fresh client entry: the previous test intentionally drained the shared client's rate bucket.
   process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS = '1';
   process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS = '5';
   try {
     const resp = await supertest(app)
       .post('/public/mcp')
-      .set('X-Forwarded-For', '10.9.9.9, 198.51.100.42')
+      .set('X-Forwarded-For', '10.9.9.9, 198.51.100.42, 34.8.67.235')
       .send(rpc('tools/call', { name: 'search_catalog', arguments: { query: 'heartbeat wire probe' } }, 9))
       .buffer(true)
       .parse((res, cb) => {

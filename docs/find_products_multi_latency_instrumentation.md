@@ -24,9 +24,8 @@ Every `find_products_multi` / `find_products` request logs, in the existing
 - `upstream_ms` — real summed HTTP-leg time (was always 0).
 - `fpm_stage_breakdown` — array of `{stage, latency_ms, ...extras}` entries, one per
   executed pipeline leg (mirrors the discovery feed's `provider_breakdown`).
-- `fpm_stage_total_ms` — sum of stage latencies. NOTE: legs that run in parallel
-  (resolver_first + primary_upstream) both count, so this can exceed `latency_ms`;
-  that is expected — it measures work, not wall clock.
+- `fpm_stage_total_ms` — sum of stage latencies. It measures work, not wall clock, so
+  legs that overlap would both count.
 - `fpm_upstream_http_ms` — sum of stages flagged `upstream_http: true`.
 
 ### Stage taxonomy
@@ -35,15 +34,11 @@ Every `find_products_multi` / `find_products` request logs, in the existing
 |---|---|---|
 | `context_build` | `buildFindProductsMultiContext` (NLU / query understanding, may include LLM semantic rewrite) | no |
 | `citable_supplement` | ADR-007 citable item prefetch | no (DB) |
-| `resolver_first` | resolver probe for lookup/brand queries (extras: `adopted`, `parallel_primary_started`, `discarded_speculative_primary`) | yes |
 | `primary_upstream` | the main recall call (agent_v2 POST / agent_v1 GET / strict invoke) | yes |
-| `legacy_contract_fallback` | agent_v1 retry after canonical-contract error | yes |
-| `resolver_after_exception` / `secondary_invoke_fallback` | exception-path fallbacks | yes |
 | `normalize_hydrate` | response normalization + catalog-identity SQL hydration (extras: `returned`) | no (DB) |
 | `second_stage_context` | second `buildFindProductsMultiContext` with expansion mode | no |
 | `second_stage_upstream` | widened re-query when primary underfills | yes |
-| `resolver_after_primary` / `secondary_fallback_after_primary` | post-primary quality fallbacks | yes |
-| `external_seed_supplement` | external-seed fill on the cross-merchant cache path | yes |
+| `external_seed_supplement` | external-seed fill on the cross-merchant cache path — removed 2026-09-26 with the cache query-search stage (p50 9 s; the request then called the primary anyway) | — |
 | `brand_rescue_pre_policy` / `brand_rescue_post_policy` | local external-seed brand rescue | no (DB) |
 | `policy_apply` | `applyFindProductsMultiPolicy` ranking (extras: `skipped`) | no (CPU) |
 | `llm_rerank` | LLM rerank pass (extras: `applied`, `provider`, `error`) | LLM |
@@ -52,8 +47,8 @@ Every `find_products_multi` / `find_products` request logs, in the existing
 
 Stages that don't run for a given request are simply absent — the breakdown is also a
 map of which legs fired. Anything unaccounted (wall `latency_ms` minus overlapping
-stage time) is gateway CPU / cross-merchant cache recall (not yet wrapped — it has
-many early-return fastpaths; wrap next if the residual is large).
+stage time) is gateway CPU (the cross-merchant cache query-search stage that used to
+sit here was removed on 2026-09-26).
 
 ## Behavior changes (each with a kill switch)
 
@@ -66,13 +61,10 @@ many early-return fastpaths; wrap next if the residual is large).
    provider, `maxRetries: 0` for OpenAI, Gemini capped at `min(12000, env)`. Worst
    case with a 2-provider chain ≈ 2× the deadline; rerank already fails open
    (ordering kept).
-2. **Resolver-first ∥ primary race** — `FPM_PARALLEL_RESOLVER_PRIMARY` (default
-   **on**). For lookup/brand-class queries the resolver probe used to run *before*
-   the primary (up to ~1.2s serialized). Now the primary starts concurrently; if the
-   resolver adopts, the in-flight primary is discarded (extra backend read, bounded
-   by its axios timeout — this is the deliberate trade). The
-   post-resolver-miss primary-timeout reduction is skipped when the primary is
-   already in flight.
+2. **Resolver-first ∥ primary race** — removed 2026-09-26 together with resolver-first
+   and every post-primary fallback (resolver, invoke, secondary, legacy v1 contract):
+   none of their stages appeared in 30 days of prod `fpm_stage_breakdown` (3,791
+   requests).
 3. **Honor explicit page_size/limit** — `FPM_ENFORCE_REQUESTED_PAGE_SIZE` (default
    **on**). Upstream returns a pool (~52 rows) regardless of requested limit and the
    gateway never trimmed it. Now `enforceFindProductsMultiRequestedPageSize` trims at
@@ -93,10 +85,10 @@ many early-return fastpaths; wrap next if the residual is large).
 
 - The primary upstream leg itself (2.2–3.8s in the Python backend) — p95 < 3s is not
   reachable from the gateway alone; use the new breakdown to build the backend case.
-- Cross-merchant cache recall / beauty mainline legs are not individually wrapped.
+- Beauty mainline legs are not individually wrapped.
 - `max_results` is still ignored everywhere (only `page_size`/`limit` are honored).
-- `FPM_GATEWAY_TOTAL_BUDGET_MS` (default 2500) still only gates resolver-first and
-  second-stage expansion; `context_build` and `llm_rerank` bypass it. Once prod
+- `FPM_GATEWAY_TOTAL_BUDGET_MS` (default 2500) still only gates second-stage
+  expansion; `context_build` and `llm_rerank` bypass it. Once prod
   breakdowns confirm where time goes, consider a rerank budget guard (note: with the
   2.5s default budget it would de-facto disable rerank — decide deliberately).
 
@@ -111,13 +103,10 @@ After deploy (`api.pivota.cc/version` for the SHA), grep Railway logs for
    remainder.
 3. Head-term probe (`"lipstick"`): `llm_rerank.latency_ms` must now cap ≈2.5s per
    provider; no more >90s requests.
-4. Lookup probe (brand/product-title query): `resolver_first` entry shows
-   `parallel_primary_started: true`; wall `latency_ms` ≈ max(resolver, primary), not
-   the sum.
-5. Explicit page_size probe: request `page_size: 5` → 5 products,
+4. Explicit page_size probe: request `page_size: 5` → 5 products,
    `metadata.page_size_enforcement.pre_trim_count` shows the pool size.
 
-Rollback: `FPM_PARALLEL_RESOLVER_PRIMARY=false`, `FPM_ENFORCE_REQUESTED_PAGE_SIZE=false`,
+Rollback: `FPM_ENFORCE_REQUESTED_PAGE_SIZE=false`,
 `PIVOTA_RERANK_LLM_TIMEOUT_MS=600000` (≈old behavior; clamped to 15000 — set the flag
 consumers' env only if truly needed). Instrumentation has no flag; it is log-only.
 

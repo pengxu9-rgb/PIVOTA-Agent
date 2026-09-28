@@ -48,4 +48,28 @@ function createTokenBucketLimiter({
   return { allow, size };
 }
 
-module.exports = { createTokenBucketLimiter };
+// How many entries X-Forwarded-For carried, logged once per (door, count) per process — the COUNT only,
+// never an address. The rate-limit key trusts the Nth entry from the right (gatewayGuardrails
+// clientIpFromRequest), so N is only right if our edge appends exactly N entries; this is the evidence.
+// Counts at or above XFF_ENTRIES_CAP report as the cap, so a caller padding the header cannot mint new
+// log lines: the set of distinct lines is bounded by doors x (cap + 1).
+const XFF_ENTRIES_CAP = 10;
+
+function createForwardedForShapeRecorder({ log } = {}) {
+  const seen = new Set();
+
+  function record(req, door) {
+    const entries = String(req?.headers?.['x-forwarded-for'] || '')
+      .split(',')
+      .filter((part) => part.trim()).length;
+    const xffEntries = Math.min(entries, XFF_ENTRIES_CAP);
+    const seenKey = `${door}:${xffEntries}`;
+    if (seen.has(seenKey)) return;
+    seen.add(seenKey);
+    log?.info?.({ event: 'public_read_xff_shape', door, xff_entries: xffEntries }, 'public read forwarded-for shape');
+  }
+
+  return record;
+}
+
+module.exports = { createTokenBucketLimiter, createForwardedForShapeRecorder, XFF_ENTRIES_CAP };

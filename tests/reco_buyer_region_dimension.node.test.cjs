@@ -130,8 +130,8 @@ test('the region -> currency map covers ADR-024 Phase 1 and nothing is inferred 
   assert.deepEqual(
     Object.entries(BUYER_REGION_CURRENCY).sort(),
     [
-      ['AU', 'AUD'], ['CA', 'CAD'], ['FR', 'EUR'], ['GB', 'GBP'], ['HK', 'HKD'],
-      ['JP', 'JPY'], ['KR', 'KRW'], ['SE', 'SEK'], ['SG', 'SGD'], ['US', 'USD'],
+      ['AU', 'AUD'], ['CA', 'CAD'], ['FI', 'EUR'], ['FR', 'EUR'], ['GB', 'GBP'], ['HK', 'HKD'],
+      ['HR', 'EUR'], ['JP', 'JPY'], ['KR', 'KRW'], ['SE', 'SEK'], ['SG', 'SGD'], ['US', 'USD'],
     ].sort(),
   );
   assert.equal(currencyForBuyerRegion('US'), 'USD');

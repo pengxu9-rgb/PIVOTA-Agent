@@ -576,6 +576,29 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     const effectiveTelemetryReason = postMainline.effectiveTelemetryReason;
     let itineraryAvailable = postMainline.itineraryAvailable;
     let norm = postMainline.norm;
+    // SAY THAT THE MODEL REFUSED, in a field a partner can branch on. Once the shortlist is empty a
+    // decline and a dead lane are indistinguishable downstream: structuredSource reads 'llm_primary'
+    // for both, source_mode collapses to 'legacy_notice' (legacyRecoGenerationResult.js:81-106,
+    // whose zero-length leaf is that literal), and the bridge falls through to the generic
+    // 'no_recommendations' -- the same token an agent gets when the lane simply produced nothing.
+    // The off-vertical gate already has a dedicated token for exactly this reason
+    // (recommendProducts.js:805); a refusal deserves one too.
+    //
+    // Only when nothing else claimed the field: runLegacyRecoPostMainline sets it for the planner,
+    // step-aware, framework and prompt-contract cases, and each of those is a more specific account
+    // of the same empty shortlist.
+    if (
+      mainlineExecution.llmDeclinedInItsOwnWords
+      && isPlainObject(norm?.payload)
+      && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)
+      // Pinned by tests/reco_model_declined_reason.node.test.cjs: since #2184 a named makeup step
+      // (a bronzer) resolves a step-aware target, and with an empty pool postMainline records
+      // `no_viable_candidates_for_target` first -- a pre-LLM catalog-gap measurement this stamp
+      // must not overwrite.
+      && !pickFirstTrimmed(norm.payload.products_empty_reason)
+    ) {
+      norm.payload.products_empty_reason = 'model_declined';
+    }
 
     const recoRowsForPdp = Array.isArray(norm.payload.recommendations)
       ? norm.payload.recommendations

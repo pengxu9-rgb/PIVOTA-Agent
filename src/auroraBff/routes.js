@@ -1,7 +1,9 @@
 const { recommendationIdentityConflict, sameRecommendationProduct } = require('../shared/recoProductIdentity');
 const vertexGemini = require('../llm/vertexGemini');
 const { servedMarkets } = require('../services/servedMarkets');
+const { seedNativeCurrencySql } = require('../services/seedSearchOfferScope');
 const axios = require('axios');
+const { resolveSearchQueryMaxChars } = require('../findProductsMulti/queryLengthLimit');
 // SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
 // BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
 // attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
@@ -793,8 +795,9 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 // other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
 // v1_3.
 //
-// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup, fragrance and
-// haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
+// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup and fragrance,
+// STAGES HAIRCARE OUT (#2164 — the catalog carries it but only 15/20 sampled rows price in USD),
+// and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
 // answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
 // `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
 // serving lane would trade a wrong answer for an empty one, not for a right one.
@@ -8899,6 +8902,30 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
   )`;
 }
 
+// The currency a local external-seed row must be priced in for this buyer (Peng 2026-09-26: a result
+// in another currency must never reach the agent frontend). The region is the request's buyer_region
+// (ctx or the reco target context); none, or an unreadable one, is US -- buyerRegionFromContext's
+// default -- so USD. A region this deployment prices nothing in has no currency: null, serve nothing.
+// The SGD seeds sit in the US partition, so `market = ANY(...)` alone never kept them out.
+function resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext } = {}) {
+  const region = buyerRegionFromContext({
+    buyer_region: buyerRegion !== undefined && buyerRegion !== null ? buyerRegion : targetContext?.buyer_region,
+  });
+  return currencyForBuyerRegion(region) || null;
+}
+
+function buildLocalExternalSeedUnpriceableResult(transportPolicyMode) {
+  return {
+    ok: false,
+    products: [],
+    reason: 'buyer_region_unpriceable',
+    actual_http_attempt_count: 0,
+    attempted_base_urls: [],
+    attempted_paths: [],
+    transport_policy_mode: transportPolicyMode,
+  };
+}
+
 const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
   id,
   external_product_id,
@@ -9011,6 +9038,35 @@ function isLocalExternalSeedSameRoleComparisonTargetContext(targetContext = null
   return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
 }
 
+// IS THIS ROLE THE FRAMEWORK'S PRIMARY? Identity first, rank only as a fallback.
+//
+// #2157 fixed exactly one site that asked this question with `roleRank > 1`, and the
+// probe went green, which made it look finished. It was not: the concern planner emits
+// SPACED ranks — acne_clogged_pore_treatment is 11, lightweight_moisturizer 20,
+// daily_sunscreen 30 (recommendationSharedStack.js) — so `> 1` calls the primary a
+// support role at every site that still asks that way. Measured on this branch before
+// the change: the rank-11 acne primary reached the surfacing ranker with a pool of 12
+// where a rank-1 primary got 24, half of it dropped by the support cap.
+//
+// One helper, used everywhere, so the next planner change cannot half-apply again.
+// The contract this encodes is written down in docs/reco_framework_role_rank_contract.md. The
+// rank fallback keeps the old meaning for lanes that carry no primary_role_id, and an
+// ABSENT rank reads as primary — a role nobody ranked is not evidence of support.
+// Lowercased on both sides: the prior-reco continuation lane carries a differently-cased
+// primary id, and a trim-only compare would make every role non-primary there.
+function isPrimaryFrameworkRole(role, targetContext, { primaryRoleId: explicitPrimaryRoleId = null } = {}) {
+  const primaryRoleId = String(
+    explicitPrimaryRoleId != null ? explicitPrimaryRoleId : (targetContext?.primary_role_id || ''),
+  ).trim().toLowerCase();
+  const roleId = String(
+    role?.role_id ?? role?.roleId ?? '',
+  ).trim().toLowerCase();
+  if (primaryRoleId && roleId) return roleId === primaryRoleId;
+  const rawRank = role?.rank ?? role?.role_rank ?? role?.roleRank;
+  const rank = Number(rawRank);
+  return !(Number.isFinite(rank) && rank > 1);
+}
+
 function buildLocalExternalSeedPrimaryFinishFitQueryStage({
   patterns = [],
   categoryTerms = [],
@@ -9026,6 +9082,22 @@ function buildLocalExternalSeedPrimaryFinishFitQueryStage({
     roleId === 'daily_sunscreen' ||
     roleId === 'daily_sunscreen_finish_fit' ||
     /\b(?:daily[_\s-]?sunscreen|sunscreen|spf)\b/.test(roleId);
+  // NOT SWEPT IN THE SAME CHANGE, and the reason is a JUDGEMENT, not an impossibility.
+  //
+  // An earlier version of this comment said the site could not be driven from a test. That was
+  // false, and review demonstrated the defect here in about fifteen lines: pass a sunscreen-step
+  // role and a queryFn returning [] so every stage runs, then read `match_stage` out of the SQL.
+  // `finish_fit_layering` at rank 11 with a matching primary_role_id — a spaced-rank PRIMARY —
+  // loses `support_query_precise` entirely, where the identical role at rank 1 keeps it.
+  //
+  // What is true is that the swap is not a pure widening: a role at rank 1 that is NOT the
+  // framework's primary by id currently gets the precise stage and would lose it. The defect is
+  // also narrower than the general rank problem, because `roleRank > 1 && isCanonicalSunscreenRole`
+  // already lets any sunscreen-ish role id through at a spaced rank; only a sunscreen-STEP role
+  // whose id does not match /sunscreen|spf/ is affected.
+  //
+  // So: swept separately, with the before/after measured, rather than folded into a change whose
+  // evidence is about a different site.
   const allowPreciseSunscreenRecall =
     Number.isFinite(roleRank) &&
     (
@@ -9460,6 +9532,13 @@ function buildLocalExternalSeedSupportStageDefinitions({
         ),
       ),
     });
+    // NOT SWEPT IN THE SAME CHANGE — see the note on the precise stage above, including the
+    // correction that both sites ARE reachable from a test.
+    //
+    // The sharper reason here: this branch ADDS `support_category_fit_broad(_attached)` for a
+    // rank > 1 role, so sweeping it would REMOVE two stages from a spaced-rank primary. A wrong
+    // sweep therefore shrinks recall on the role the buyer asked about, which is the opposite of
+    // what the pool-cap fix below is for. Measure that before changing it.
     const roleRank = Number(role?.rank);
     if (Number.isFinite(roleRank) && roleRank > 1) {
       addStage({
@@ -9594,9 +9673,9 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   safeLimit = 6,
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const baseCap = Math.max(1, Math.min(12, Number.isFinite(Number(safeLimit)) ? Math.trunc(Number(safeLimit)) : 6));
-  const roleRank = Number(role?.rank);
   const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
   const roleId = String(role?.role_id || role?.roleId || '').trim().toLowerCase();
   if (
@@ -9605,7 +9684,12 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   ) {
     return Math.max(baseCap, Math.min(30, Math.max(18, baseCap * 5)));
   }
-  if (Number.isFinite(roleRank) && roleRank > 1) {
+  // MEASURED before this change (rank-11 acne primary, primary_role_id set, 40 rows
+  // per stage): surfacing_candidate_count 12 with 12 dropped, against 24 and 0 dropped
+  // for the same role at rank 1. It does not change how MANY products come back — the
+  // caller's limit still governs that — it halves the pool the surfacing ranker gets to
+  // choose those from, on the one role the buyer actually asked about.
+  if (!isPrimaryFrameworkRole(role, targetContext)) {
     return Math.max(baseCap, Math.min(12, Math.max(8, baseCap * 2)));
   }
   return Math.max(baseCap, Math.min(24, baseCap * 4));
@@ -9885,6 +9969,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   queryTimeoutMs = 1600,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  servingCurrency = resolveLocalExternalSeedServingCurrency({ targetContext }),
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
   const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
@@ -9915,7 +10000,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
     }
   };
 
-  if (stageDefinitions.length === 0) {
+  if (stageDefinitions.length === 0 || !servingCurrency) {
     return {
       rows: [],
       stageDebug: [],
@@ -9961,6 +10046,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
+        AND ${seedNativeCurrencySql()} = ${bind(servingCurrency)}::text
     `;
     if (seenSqlIds.size > 0) {
       sql += `
@@ -10297,6 +10383,7 @@ async function searchLocalExternalSeedProducts({
   queryTimeoutMs = null,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  buyerRegion,
 } = {}) {
   const q = String(query || '').trim();
   if (!q) {
@@ -10347,6 +10434,8 @@ async function searchLocalExternalSeedProducts({
   // take NO request override, so the deployment's served list is the whole answer here.
   const market = servedMarkets();
   const tool = 'creator_agents';
+  const servingCurrency = resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext });
+  if (!servingCurrency) return buildLocalExternalSeedUnpriceableResult(transportPolicyMode);
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
     queryTimeoutMs != null &&
@@ -10395,12 +10484,14 @@ async function searchLocalExternalSeedProducts({
         queryTimeoutMs: effectiveQueryTimeoutMs,
         minRowsBeforeStageStop,
         continueAfterPreciseStage,
+        servingCurrency,
       });
       const rows = Array.isArray(staged?.rows) ? staged.rows : [];
       const rankPoolCap = resolveLocalExternalSeedSupportRankPoolCap({
         safeLimit,
         role,
         preferredStep,
+        targetContext,
       });
       const rankPoolRows = rows.slice(0, rankPoolCap);
       const surfacingCandidates = rankPoolRows
@@ -10452,11 +10543,12 @@ async function searchLocalExternalSeedProducts({
         WHERE status = 'active'
           AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
+          AND ${seedNativeCurrencySql()} = $5::text
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $4
       `,
-      [market, tool, patterns, rowCap],
+      [market, tool, patterns, rowCap, servingCurrency],
     );
     const rows = Array.isArray(res?.rows) ? res.rows : [];
     const surfacingCandidates = rankPurchasableRecoveryCandidates(
@@ -10527,6 +10619,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   targetContext = null,
   minRowsBeforeStageStop = 1,
   continueAfterPreciseStage = false,
+  buyerRegion,
 } = {}) {
   const normalizedQueries = uniqCaseInsensitiveStrings(
     (Array.isArray(queries) ? queries : [])
@@ -10546,6 +10639,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       targetContext,
       minRowsBeforeStageStop,
       continueAfterPreciseStage,
+      buyerRegion,
     });
   }
 
@@ -10567,6 +10661,8 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   // take NO request override, so the deployment's served list is the whole answer here.
   const market = servedMarkets();
   const tool = 'creator_agents';
+  const servingCurrency = resolveLocalExternalSeedServingCurrency({ buyerRegion, targetContext });
+  if (!servingCurrency) return buildLocalExternalSeedUnpriceableResult(transportPolicyMode);
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
     normalizedQueries.flatMap((query) => buildLocalExternalSeedSearchPatterns(query, {
@@ -10601,12 +10697,14 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       targetContext,
       minRowsBeforeStageStop,
       continueAfterPreciseStage,
+      servingCurrency,
     });
     const rows = Array.isArray(staged?.rows) ? staged.rows : [];
     const rankPoolCap = resolveLocalExternalSeedSupportRankPoolCap({
       safeLimit,
       role,
       preferredStep,
+      targetContext,
     });
     const rankPoolRows = rows.slice(0, rankPoolCap);
     const surfacingCandidates = rankPoolRows
@@ -19745,7 +19843,8 @@ async function fetchAuroraBeautySharedTruthForChat({
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: userGoal,
+            // The raw chat message: cut to the invoke route's query limit rather than refused there.
+            query: String(userGoal || '').trim().slice(0, resolveSearchQueryMaxChars()),
             limit: 8,
             in_stock_only: true,
             catalog_surface: 'beauty',
@@ -25101,14 +25200,22 @@ function isBeautyMainlineSameRoleComparison(targetContext = null) {
 
 function isBeautyMainlinePrimaryRoleQuery(queryEntry = null, primaryRoleId = '') {
   if (!isPlainObject(queryEntry)) return false;
-  const roleId = pickFirstTrimmed(queryEntry.role_id, queryEntry.roleId);
-  if (roleId && primaryRoleId) return roleId === primaryRoleId;
-  const roleRank = Number.isFinite(Number(queryEntry?.role_rank))
-    ? Number(queryEntry.role_rank)
-    : Number.isFinite(Number(queryEntry?.roleRank))
-      ? Number(queryEntry.roleRank)
-      : null;
-  return roleRank == null || roleRank <= 1;
+  // Routed through the shared helper so the rule has ONE definition. NOT a pure refactor: the
+  // inline body this replaced compared ids CASE-SENSITIVELY and the helper lowercases both sides,
+  // so a lane whose primary_role_id differs in case from role_id now answers `true` where it
+  // answered `false`.
+  //
+  // That lane CAN differ — stated as capability, not as an observed event, because no producer was
+  // traced actually emitting a mixed-case id. beautyChatMainlineEntry.js sets primary_role_id from
+  // session `context.primary_target_id` (raw, via pickFirstTrimmed) while role_id comes from
+  // `target.target_id`, which reaches it slugified and lowercased. So the compare really is
+  // lowercase-against-raw, and that file already lowercases both sides where it compares them
+  // itself. The spaced ranks ARE unconditional: normalizeRecoContextRankedTargets emits no rank, so
+  // the (i+1)*10 default always applies — meaning whenever the ids do differ in case, every role in
+  // the lane fell through to rank and answered "not primary".
+  // Answering `true` there switches on the stable-alias primary authority seed and the query strip
+  // below it — a product change, deliberately taken, because case-sensitivity was the bug.
+  return isPrimaryFrameworkRole(queryEntry, null, { primaryRoleId });
 }
 
 function buildBeautyMainlineStableAliasAuthorityProduct({ stableAliasResolution, queryEntry } = {}) {
@@ -25543,6 +25650,7 @@ async function runBeautyMainlineLocalHandoffSearch({
             role: args?.role || null,
             preferredStep: args?.preferredStep || args?.targetStepFamily || '',
             targetContext,
+            buyerRegion: ctx?.buyer_region,
             ...(localQueryTimeoutMs ? { queryTimeoutMs: localQueryTimeoutMs } : {}),
           });
           const reason = pickFirstTrimmed(out?.reason, out?.ok === true ? 'ok' : 'empty') || 'empty';
@@ -25588,9 +25696,23 @@ async function runBeautyMainlineLocalHandoffSearch({
             : Number.isFinite(Number(args?.roleRank))
               ? Number(args.roleRank)
               : null;
-          const isPrimaryRole = roleId && primaryRoleId
-            ? roleId === primaryRoleId
-            : roleRank == null || roleRank <= 1;
+          // Same rule as everywhere else; see isPrimaryFrameworkRole. NOT a pure refactor, and the
+          // blast radius here is wider than at the other site: this value feeds FOUR branches below
+          // — the stable-alias preflight, `isRoutineSupportExternalRole` (which returns via
+          // support_local_authority_first), the sunscreen finish-fit test, and
+          // primary_local_authority_first (which returns and skips the backend hop). So in a
+          // case-mismatched lane a spaced-rank primary moves from the support-first path to the
+          // primary-first path, not merely from no-seed to seed.
+          //
+          // It also drops a fallback to a top-level `args.roleRank` when `args.role.rank` was not
+          // finite. Nothing populates `args.roleRank` on this path (recoRecallPlanner writes a
+          // `roleRank` buildStage option, but that is converted to `role_rank` before it becomes
+          // `args`), so the fallback is unreachable — a capability removed rather than preserved.
+          const isPrimaryRole = isPrimaryFrameworkRole(
+            args?.role || { role_id: roleId, rank: roleRank },
+            null,
+            { primaryRoleId },
+          );
           if (isPrimaryRole && !isSameRoleComparison) {
             const stableAliasPreflightOut = buildStableAliasAuthorityOut({ preflight: true });
             if (stableAliasPreflightOut) return stableAliasPreflightOut;
@@ -30109,6 +30231,7 @@ async function buildPurchasableFallbackCandidates({
         transportPolicyMode: effectiveTransportPolicy.mode,
         role,
         preferredStep,
+        buyerRegion: targetContext?.buyer_region,
       })
     : null;
 
@@ -30143,6 +30266,7 @@ async function buildPurchasableFallbackCandidates({
         transportPolicyMode: effectiveTransportPolicy.mode,
         role,
         preferredStep,
+        buyerRegion: targetContext?.buyer_region,
       });
     }
   }
@@ -71263,8 +71387,22 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   );
 }
 
-function buildRecoGenerateUserAsk({ focus, constraints, lang } = {}) {
+// THE FIFTH COPY OF THE DOMAIN RULE. The system prompt, the task line, the payload hard_rules and
+// two in-code fallbacks all follow `wide_template_active`; this one did not, and it is the one the
+// MODEL reads as the user's own words. Armed, the door sent v1_3's "skincare, makeup, and fragrance"
+// system prompt wrapped around "Recommend a few skincare products for me" -- and the model resolved
+// the contradiction the way CATEGORY FIDELITY tells it to: measured against the live door
+// 2026-09-10, bronzer / lipstick / blush / eau de toilette each returned ZERO, every one citing the
+// skincare framing in the request text. A moisturizer control served normally.
+//
+// Reads the GRANT, not the ask: promptDomainScope 'beauty' is inert until
+// RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template different from the narrow one, and framing a
+// request as beauty while v1_2 ("Recommend skincare only") is loaded would invert the same defect.
+function buildRecoGenerateUserAsk({ focus, constraints, lang, promptDomainScope = '' } = {}) {
   const isCn = String(lang || '').trim().toUpperCase() === 'CN';
+  const wideDomainGranted = Boolean(
+    resolveRecoMainPromptSpec({ promptDomainScope }).wide_template_active,
+  );
   const focusText = String(focus || '').trim();
   const constraintObj = constraints && typeof constraints === 'object' && !Array.isArray(constraints)
     ? constraints
@@ -71285,12 +71423,12 @@ function buildRecoGenerateUserAsk({ focus, constraints, lang } = {}) {
     .filter(Boolean)
     .slice(0, 8);
   if (isCn) {
-    const parts = ['给我推荐几款护肤产品'];
+    const parts = [wideDomainGranted ? '给我推荐几款美妆产品' : '给我推荐几款护肤产品'];
     if (focusText) parts.push(`重点：${focusText}`);
     if (constraintLines.length) parts.push(`约束：${constraintLines.join('；')}`);
     return `${parts.join('，')}。`;
   }
-  const parts = ['Recommend a few skincare products for me'];
+  const parts = [wideDomainGranted ? 'Recommend a few beauty products for me' : 'Recommend a few skincare products for me'];
   if (focusText) parts.push(`with focus on ${focusText}`);
   if (constraintLines.length) parts.push(`under these constraints: ${constraintLines.join('; ')}`);
   return `${parts.join(' ')}.`;
@@ -73635,6 +73773,35 @@ function normalizeIngredientGoalToken(raw) {
   if (/(barrier|repair|sensitive|redness|敏感|泛红|修护|屏障)/.test(token)) return 'barrier';
   if (/(anti|aging|wrinkle|firm|line|抗老|抗衰|细纹|紧致|提拉)/.test(token)) return 'antiaging';
   if (/(hydrate|dry|dehydr|保湿|补水|干燥)/.test(token)) return 'hydration';
+  return '';
+}
+
+// Free text names a CONCERN far more often than it names an INCI: "what ingredient is best for acne?".
+// Each alternative below is one the goal taxonomy in normalizeIngredientGoalToken already resolves, so the
+// mapping concern -> goal stays defined in exactly one place. Word boundaries matter on the EN cues: a bare
+// substring test reads "antioxidant" as an anti-aging goal. CN has no word boundaries, hence the separate cues.
+const INGREDIENT_GOAL_TEXT_CUES = [
+  /\b(acne|breakouts?|clogged pores?|pores?|oiliness|oily)\b/i,
+  /\b(dark spots?|hyperpigmentation|pigmentation|uneven tone|brightening)\b/i,
+  /\b(barrier|redness|sensitive)\b/i,
+  /\b(anti[-\s]?aging|aging|wrinkles?|fine lines?|firming|firmness)\b/i,
+  /\b(dryness|dry|dehydrated|dehydration)\b/i,
+  /(痘痘|闭口|粉刺|毛孔|出油|控痘)/,
+  /(淡斑|色沉|暗沉|提亮|美白)/,
+  /(屏障|修护|敏感|泛红)/,
+  /(抗老|抗衰|细纹|紧致|提拉)/,
+  /(干燥|补水|保湿)/,
+];
+
+function ingredientGoalTargetFromText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  for (const cue of INGREDIENT_GOAL_TEXT_CUES) {
+    const hit = raw.match(cue);
+    if (!hit) continue;
+    const goal = normalizeIngredientGoalToken(hit[0]);
+    if (goal) return goal;
+  }
   return '';
 }
 
@@ -80888,6 +81055,7 @@ async function collectExternalSeedPoolAlternatives({
           preferredStep: localSeedSearchRole.preferred_step,
           minRowsBeforeStageStop: Math.min(3, normalizedLimit),
           continueAfterPreciseStage: true,
+          buyerRegion: ctx?.buyer_region,
         }),
       }]
     : await Promise.allSettled(
@@ -80898,6 +81066,7 @@ async function collectExternalSeedPoolAlternatives({
         transportPolicyMode: 'reco_alternatives_pool',
         role: localSeedSearchRole,
         preferredStep: localSeedSearchRole.preferred_step,
+        buyerRegion: ctx?.buyer_region,
       })),
     );
   poolStageTimingsMs.local_authority_search = Math.max(0, Math.round(Date.now() - localSearchStartedAt));
@@ -100944,6 +101113,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientLookupTargetFromText = ingredientTextTrigger
         ? await extractIngredientLookupTargetFromText(message, ctx.lang)
         : '';
+      const ingredientGoalTargetFromTextValue = ingredientTextTrigger
+        ? ingredientGoalTargetFromText(message)
+        : '';
       const ingredientEntityMatch = ingredientTextTrigger
         ? ingredientEntityMatchFromText(message, ctx.lang)
         : { normalized_query: '', entity_key: '', entity_match_type: 'none', entity_confidence: 0 };
@@ -101445,6 +101617,87 @@ function mountAuroraBffRoutes(app, { logger }) {
           events,
         });
       };
+      // The by-goal answer is reachable two ways: tapping the hub's "Find by goal" chip, and typing a question
+      // that names the concern. Both must produce the same card, so neither call site owns the body.
+      const buildIngredientGoalMatchEnvelope = async ({
+        goal = '',
+        sensitivity = 'unknown',
+        routeSource = 'chip',
+        queryFirstApplied = false,
+        explicitRouteReasons = [],
+      } = {}) => {
+        const requestedGoal = goal || 'barrier';
+        const contextSource = routeSource === 'text' ? 'text_goal' : 'chip_goal';
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          goal: requestedGoal,
+          sensitivity,
+          source: contextSource,
+          updated_at_ms: Date.now(),
+        });
+        const goalPayloadBase = buildIngredientGoalMatchPayload({
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity,
+        });
+        const goalPayload = await enrichIngredientGoalMatchPayload({
+          basePayload: goalPayloadBase,
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity,
+          logger,
+        });
+        const candidateNames = Array.isArray(goalPayload && goalPayload.candidate_ingredients)
+          ? goalPayload.candidate_ingredients
+            .map((item) => pickFirstTrimmed(item && item.ingredient, item && item.name))
+            .filter(Boolean)
+          : [];
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          candidates: candidateNames,
+          source: contextSource,
+          updated_at_ms: Date.now(),
+        });
+        // Name the actives in the assistant text too: a client that renders only the message must still see the
+        // answer, not just a pointer at the card.
+        const namedActives = candidateNames.slice(0, 4).join(ctx.lang === 'CN' ? '、' : ', ');
+        const assistantText =
+          ctx.lang === 'CN'
+            ? namedActives
+              ? `按“${goalPayload.goal_label}”，优先考虑：${namedActives}。下面是证据强度与避坑组合。`
+              : `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
+            : namedActives
+              ? `For “${goalPayload.goal_label}”, the actives worth starting from are: ${namedActives}. Below are their evidence grades and the pairings to avoid.`
+              : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
+        requestMessage = 'ingredient_goal_match';
+        return buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(assistantText),
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
+          cards: [
+            {
+              card_id: `ingredient_goal_match_${ctx.request_id}`,
+              type: 'ingredient_goal_match',
+              payload: goalPayload,
+            },
+          ],
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachAnalysisContextUsageToSessionPatch(
+              attachIngredientRouteMetaToSessionPatch(
+                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+                {
+                  queryFirstApplied,
+                  routeSource,
+                  routeDecisionReasons: Array.isArray(explicitRouteReasons)
+                    ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean)
+                    : [],
+                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+                },
+              ),
+              ingredientAnalysisTaskContext,
+            ),
+            ingredientRecoContext,
+          ),
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+        });
+      };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
       }
@@ -101728,64 +101981,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (ingredientByGoalRequested) {
-        const requestedGoal = ingredientGoalRequest.goal || 'barrier';
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          goal: requestedGoal,
+        const envelope = await buildIngredientGoalMatchEnvelope({
+          goal: ingredientGoalRequest.goal,
           sensitivity: ingredientGoalRequest.sensitivity,
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const goalPayloadBase = buildIngredientGoalMatchPayload({
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-        });
-        const goalPayload = await enrichIngredientGoalMatchPayload({
-          basePayload: goalPayloadBase,
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-          logger,
-        });
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          candidates: Array.isArray(goalPayload && goalPayload.candidate_ingredients)
-            ? goalPayload.candidate_ingredients.map((item) =>
-              pickFirstTrimmed(item && item.ingredient, item && item.name),
-            ).filter(Boolean)
-            : [],
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const assistantText =
-          ctx.lang === 'CN'
-            ? `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
-            : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
-        requestMessage = 'ingredient_goal_match';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(assistantText),
-          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
-          cards: [
-            {
-              card_id: `ingredient_goal_match_${ctx.request_id}`,
-              type: 'ingredient_goal_match',
-              payload: goalPayload,
-            },
-          ],
-          session_patch: attachIngredientContextMetaToSessionPatch(
-            attachAnalysisContextUsageToSessionPatch(
-              attachIngredientRouteMetaToSessionPatch(
-                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-                {
-                  routeSource: 'chip',
-                  routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
-                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-                },
-              ),
-              ingredientAnalysisTaskContext,
-            ),
-            ingredientRecoContext,
-          ),
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+          routeSource: 'chip',
+          explicitRouteReasons: ['goal_match', ...ingredientRouteDecisionReasons],
         });
         return sendChatEnvelope(envelope);
       }
@@ -103494,6 +103694,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientEntityMatch.entity_match_type === 'none' ? 'entity_fallback_from_text' : '',
               ...ingredientRouteDecisionReasons,
             ].filter(Boolean),
+          });
+          if (envelope) return sendChatEnvelope(envelope);
+        }
+
+        // No INCI resolved, but the question named a concern ("what ingredient is best for acne?"). That is the
+        // by-goal question typed out, so answer it through the by-goal path rather than handing back the menu the
+        // asker would have to tap through to reach the same answer.
+        if (ingredientGoalTargetFromTextValue) {
+          const envelope = await buildIngredientGoalMatchEnvelope({
+            goal: ingredientGoalTargetFromTextValue,
+            sensitivity: ingredientGoalRequest.sensitivity,
+            routeSource: 'text',
+            queryFirstApplied: true,
+            explicitRouteReasons: ['text_query_routed', 'goal_match_from_text', ...ingredientRouteDecisionReasons],
           });
           if (envelope) return sendChatEnvelope(envelope);
         }
@@ -105807,6 +106021,14 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraProductRecommendationsPromptBundle,
+  // Exported for tests: the pool cap is provable through searchLocalExternalSeedProducts,
+  // but the rule itself deserves a direct unit test — it is the thing five sites share.
+  isPrimaryFrameworkRole,
+  // Exported so the CASE-SENSITIVITY CHANGE at this call site is pinned. The helper's own
+  // lowercasing is tested directly, but that says nothing about whether this site uses it — and
+  // mutating this function back to its pre-sweep inline body was green across every test in the
+  // repo until this export existed.
+  isBeautyMainlinePrimaryRoleQuery,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,

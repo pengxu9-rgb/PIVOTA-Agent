@@ -17,11 +17,22 @@ const {
 } = require('../auroraBff/recoTargetStep');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
+const { seedNativeCurrencySql } = require('./seedSearchOfferScope');
+const { buyerRegionFromContext, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 
 const DEFAULT_MARKET = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
   .trim()
   .toUpperCase() || 'US';
 const DEFAULT_TOOL = 'creator_agents';
+
+// The currency a recalled seed must be priced in (Peng 2026-09-26: a result in another currency must
+// never reach the agent frontend). `market` is the serving PARTITION, and the SGD seeds are filed
+// under 'US', so it cannot keep them out. The buyer's region decides: none (every caller today) is
+// US -> USD; a region nothing is priced in -> null, recall no seed. A blank currency never matches.
+function resolveIngredientSeedServingCurrency(buyerRegion) {
+  return currencyForBuyerRegion(buyerRegionFromContext({ buyer_region: buyerRegion })) || null;
+}
+const DEFAULT_SEED_SERVING_CURRENCY = resolveIngredientSeedServingCurrency();
 const BUNDLE_LIKE_RE =
   /\b(sample|sampler|mini|travel|kit|set|bundle|duo|trio|quartet|collection|collector|starter|discovery|routine|regimen)\b/i;
 const INGREDIENT_RECALL_OBVIOUS_NOISE_RE =
@@ -1115,10 +1126,11 @@ async function fetchBrandAnchoredUnattachedSeedRowsByPatterns({
   tool = DEFAULT_TOOL,
   limit = 24,
   inStockOnly = false,
+  servingCurrency = DEFAULT_SEED_SERVING_CURRENCY,
 } = {}) {
   const normalizedPatterns = uniqStrings(patterns, 24);
   const queryCompact = normalizeCompactBrandText(queryText);
-  if (!normalizedPatterns.length || queryCompact.length < 4) return [];
+  if (!normalizedPatterns.length || queryCompact.length < 4 || !servingCurrency) return [];
   const safeLimit = Math.max(6, Number(limit) || 24);
   const marketValue = String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET;
   const toolValue = String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL;
@@ -1148,6 +1160,7 @@ async function fetchBrandAnchoredUnattachedSeedRowsByPatterns({
         AND market = $1
         AND (tool = '*' OR tool = $2)
         AND coalesce(attached_product_key, '') = ''
+        AND ${seedNativeCurrencySql()} = $6::text
         ${availabilityFilter}
         AND length(${brandCompactExpr}) >= 4
         AND position(${brandCompactExpr} in $3::text) > 0
@@ -1164,7 +1177,7 @@ async function fetchBrandAnchoredUnattachedSeedRowsByPatterns({
       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
       LIMIT $5
     `,
-    [marketValue, toolValue, queryCompact, normalizedPatterns, safeLimit],
+    [marketValue, toolValue, queryCompact, normalizedPatterns, safeLimit, servingCurrency],
   );
   return (Array.isArray(res?.rows) ? res.rows : []).filter((row) => seedRowBrandMatchesQuery(row, queryText));
 }
@@ -2094,16 +2107,18 @@ async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = 
   return Array.isArray(res?.rows) ? res.rows : [];
 }
 
-async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24 } = {}) {
+async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24, servingCurrency = DEFAULT_SEED_SERVING_CURRENCY } = {}) {
   const ids = uniqStrings(seedIds, 80);
   const normalizedUrls = uniqStrings((Array.isArray(urls) ? urls : []).map(normalizeUrl).filter(Boolean), 80);
-  if (!ids.length && !normalizedUrls.length) return [];
+  if ((!ids.length && !normalizedUrls.length) || !servingCurrency) return [];
   const sqlParams = [
     String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET,
     String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL,
   ];
   const filters = buildSeedIdentityWhere(ids, normalizedUrls, sqlParams);
   if (!filters.length) return [];
+  sqlParams.push(servingCurrency);
+  const currencyBind = `$${sqlParams.length}`;
   if (attachedState === 'attached') filters.push(`coalesce(attached_product_key, '') <> ''`);
   if (attachedState === 'unattached') filters.push(`coalesce(attached_product_key, '') = ''`);
   sqlParams.push(Math.max(6, Number(limit) || 24));
@@ -2129,6 +2144,7 @@ async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAU
       WHERE status = 'active'
         AND market = $1
         AND (tool = '*' OR tool = $2)
+        AND ${seedNativeCurrencySql()} = ${currencyBind}::text
         AND (${filters.join('\n        OR ')})
       ORDER BY
         CASE WHEN coalesce(attached_product_key, '') <> '' THEN 0 ELSE 1 END,
@@ -2141,9 +2157,9 @@ async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAU
   return Array.isArray(res?.rows) ? res.rows : [];
 }
 
-async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24, inStockOnly = false } = {}) {
+async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24, inStockOnly = false, servingCurrency = DEFAULT_SEED_SERVING_CURRENCY } = {}) {
   const normalizedPatterns = uniqStrings(patterns, 16);
-  if (!normalizedPatterns.length) return [];
+  if (!normalizedPatterns.length || !servingCurrency) return [];
   const safeLimit = Math.max(6, Number(limit) || 24);
   const marketValue = String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET;
   const toolValue = String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL;
@@ -2203,6 +2219,7 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
       FROM external_product_seeds
       WHERE ${baseWhereSql}
         AND ${predicateSql}
+        AND ${seedNativeCurrencySql()} = ${bind(servingCurrency)}::text
     `;
     if (seenSqlIds.size > 0) {
       const excludedIdsBind = bind(Array.from(seenSqlIds));
@@ -2365,7 +2382,9 @@ async function recallIngredientProductsFromProfile({
   allowFamilyFallback = false,
   minimumDirectProductCount = null,
   fastExitOnInitialMiss = false,
+  buyerRegion,
 } = {}) {
+  const servingCurrency = resolveIngredientSeedServingCurrency(buyerRegion);
   const diagnostics = {
     ingredient_intent_detected: Boolean(profile),
     ingredient_id: profile?.ingredient_id || null,
@@ -2539,6 +2558,7 @@ async function recallIngredientProductsFromProfile({
       patterns: fastExitAnchoredPatterns,
       market,
       tool,
+      servingCurrency,
       attachedState: 'attached',
       limit: shouldProbeInitialProductsCache
         ? resolveRecallFetchLimit(profile, limit, 2, 18, 18)
@@ -2549,6 +2569,7 @@ async function recallIngredientProductsFromProfile({
       patterns: fastExitExplicitPatterns,
       market,
       tool,
+      servingCurrency,
       attachedState: 'attached',
       limit: shouldProbeInitialProductsCache
         ? resolveRecallFetchLimit(profile, limit, 3, 24, 24)
@@ -2604,6 +2625,7 @@ async function recallIngredientProductsFromProfile({
       patterns: uniqStrings([...targetAnchoredExplicitPatterns, ...explicitPatterns], 24),
       market,
       tool,
+      servingCurrency,
       limit: resolveRecallFetchLimit(profile, limit, 3, 24, 48),
       inStockOnly,
     });
@@ -2647,6 +2669,7 @@ async function recallIngredientProductsFromProfile({
         urls: kbUrls,
         market,
         tool,
+        servingCurrency,
         attachedState: 'attached',
         limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
       }),
@@ -2654,6 +2677,7 @@ async function recallIngredientProductsFromProfile({
         patterns: kbProductNamePatterns,
         market,
         tool,
+        servingCurrency,
         attachedState: 'attached',
         limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
         inStockOnly,
@@ -2698,6 +2722,7 @@ async function recallIngredientProductsFromProfile({
           urls: kbUrls,
           market,
           tool,
+          servingCurrency,
           attachedState: 'unattached',
           limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
         }),
@@ -2705,6 +2730,7 @@ async function recallIngredientProductsFromProfile({
           patterns: targetAnchoredExplicitPatterns,
           market,
           tool,
+          servingCurrency,
           attachedState: 'unattached',
           limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
           inStockOnly,
@@ -2713,6 +2739,7 @@ async function recallIngredientProductsFromProfile({
           patterns: explicitPatterns,
           market,
           tool,
+          servingCurrency,
           attachedState: 'unattached',
           limit: resolveRecallFetchLimit(profile, limit, 3, 16, 16),
           inStockOnly,
@@ -2721,6 +2748,7 @@ async function recallIngredientProductsFromProfile({
           patterns: kbProductNamePatterns,
           market,
           tool,
+          servingCurrency,
           attachedState: 'unattached',
           limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
           inStockOnly,
@@ -2781,6 +2809,7 @@ async function recallIngredientProductsFromProfile({
           patterns: familyPatterns,
           market,
           tool,
+          servingCurrency,
           attachedState: 'attached',
           limit: Math.max(6, Number(limit) * 4 || 24),
           inStockOnly,
@@ -2789,6 +2818,7 @@ async function recallIngredientProductsFromProfile({
           patterns: familyPatterns,
           market,
           tool,
+          servingCurrency,
           attachedState: 'unattached',
           limit: Math.max(6, Number(limit) * 4 || 24),
           inStockOnly,
@@ -2906,6 +2936,7 @@ module.exports = {
     buildKbEvidenceLookup,
     resolveKbEvidenceForSeedRow,
     countCompetingIngredientSurfaceHits,
+    fetchBrandAnchoredUnattachedSeedRowsByPatterns,
     fetchKbRowsForProfile,
     fetchProductsCacheRowsByPatterns,
     fetchSeedRowsByIdentity,

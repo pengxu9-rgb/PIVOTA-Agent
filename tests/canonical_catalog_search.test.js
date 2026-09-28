@@ -286,9 +286,11 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   // step5_test_rig_retirement / demo_retired_2026_07 / source_currency_or_channel_defect. The row mapper
   // reads price straight off the joined row, so such a row winning the ordering priced a result off
   // retired test-rig, retired demo, or currency-defective data.
-  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch.
+  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch. It
+  // picks the best offer of ONE listing (listing_offer); the served-listing
+  // LATERAL around it compares listings of the product on the same key.
   const skuOfferLateralOf = (sql) => {
-    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) best_sku_offer ON TRUE/);
+    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) listing_offer ON TRUE/);
     expect(m).not.toBeNull();
     return m[1];
   };
@@ -322,10 +324,16 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
     expect(sql).toMatch(/LEFT JOIN LATERAL \(/);
-    expect(sql).toMatch(/\) best_sku_offer ON TRUE/);
+    expect(sql).toMatch(/\) listing_offer ON TRUE/);
+    // The served-listing LATERAL is an inner join, which is only safe because
+    // its pool ALWAYS contains the recalled row itself (the product_key arm is
+    // an OR, not a conjunct): it chooses among listings, it never removes one.
+    const served = sql.slice(sql.indexOf(') listing_offer ON TRUE'), sql.indexOf(') served ON TRUE'));
+    expect(served).toMatch(/WHERE p\.product_key = c\.product_key\s+OR \(/);
     // Nothing after the LATERAL may re-filter on the offer/sku aliases: an outer
     // `WHERE o.currency IS NOT NULL` would INNER-join just as effectively.
-    const afterLateral = sql.slice(sql.indexOf(') best_sku_offer ON TRUE'));
+    const afterLateral = sql.slice(sql.indexOf(') served ON TRUE'));
+    expect(sql.indexOf(') served ON TRUE')).toBeGreaterThan(0);
     expect(afterLateral).not.toMatch(/\bWHERE\b/);
   });
 
@@ -368,6 +376,23 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(lateral).toMatch(/ORDER BY[\s\S]*COALESCE\(o\.merchant_effective_price, o\.list_price\) ASC/);
     // Deterministic final tie-break so equal prices cannot reshuffle per call.
     expect(lateral).toMatch(/o\.offer_id ASC/);
+  });
+
+  test('at equal price a real variant sku beats the synthetic ::canonical sku, before offer_id', async () => {
+    // Every retailer-lane product carries a `<pk>::canonical` sku (source_variant_id = product key) next
+    // to its real variant skus, each with an offer at the same price. offer_id is a hash, so without this
+    // term the synthetic id won about half the ties and live price verification reported variant_missing.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    const price = lateral.indexOf('COALESCE(o.merchant_effective_price, o.list_price) ASC');
+    const realFirst = lateral.search(
+      /CASE WHEN s\.sku_key LIKE '%::canonical' OR s\.source_variant_id IS NULL OR s\.source_variant_id = s\.product_key\s+OR s\.source_variant_id = 'default' OR s\.source_variant_id LIKE '%-default'\s+THEN 1 ELSE 0 END ASC/,
+    );
+    const offerId = lateral.indexOf('o.offer_id ASC');
+    expect(price).toBeGreaterThan(-1);
+    expect(realFirst).toBeGreaterThan(price);     // a tie-break only: price still decides first
+    expect(offerId).toBeGreaterThan(realFirst);   // and it runs before the hashed offer_id
   });
 
   test('sku/offer LATERAL prefers the caller market when one is supplied', async () => {
@@ -617,11 +642,11 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const lateral = skuOfferLateralOf(sql);
     expect(lateral).toMatch(/FROM catalog_skus s/);
     expect(lateral).toMatch(/JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
-    expect(lateral).toMatch(/WHERE s\.product_key = c\.product_key/);
-    // The columns callers actually read off the row.
-    expect(sql).toMatch(/best_sku_offer\.sku_image_url/);
-    expect(sql).toMatch(/best_sku_offer\.currency/);
-    expect(sql).toMatch(/best_sku_offer\.merchant_effective_price/);
+    expect(lateral).toMatch(/WHERE s\.product_key = p\.product_key/);
+    // The columns callers actually read off the row — all from the ONE served listing.
+    expect(sql).toMatch(/served\.sku_image_url/);
+    expect(sql).toMatch(/served\.currency/);
+    expect(sql).toMatch(/served\.merchant_effective_price/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {
@@ -2263,42 +2288,38 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
     }
   });
 
-  // THE DESIGN CLAIM, PINNED. Every other assertion in this block runs in ONE flag state
-  // (sargableTextWhere on, recall_doc on) — and that is exactly the state in which
-  // `citableSargableLane` is true and `textWhereClause` HAPPENS to already be the narrow form. So a
-  // refactor swapping `unionTextWhereClause` for `textWhereClause` looks harmless there while
-  // reintroducing the OR-EXISTS plan — the measured 18.6s shape — in the other flag states. Review
-  // caught exactly that: two mutants survived the rest of this block for this reason.
+  // WHAT THE UNION'S ARM IS GATED ON — the recall_doc COVERAGE arm, not the caller's election.
   //
-  // The union's text arm must depend on NEITHER PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED nor
-  // the recall_doc flag. Byte-identity across the sargable axis states that directly.
-  test('the union arm is independent of sargableTextWhere — byte-identical either way', async () => {
-    for (const doc of ['enabled', undefined]) {
-      process.env[UNION_FLAG] = 'on';
-      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
-      const on = whereOf((await capture({ ...BROWSE, sargableTextWhere: true })).sql);
-      const off = whereOf((await capture({ ...BROWSE, sargableTextWhere: false })).sql);
-      expect(on).toBe(off);
+  // #2039 pinned the opposite: that the arm must NOT vary with sargableTextWhere, asserted as byte-identity
+  // across that axis. Prod EXPLAIN then showed the cost is the CROSS-TABLE merchant_name disjunct, and that
+  // gating on the caller's election leaves every non-electing browse caller (the shopping browse lane
+  // passes neither tokenMatch nor sargableTextWhere) on the 4.4s plan for no recall benefit. So the old
+  // invariant was deliberately retired; these two tests replace it.
+  test('with the coverage arm present the union is SINGLE-TABLE, whichever shape the caller elected', async () => {
+    process.env[DOC_FLAG] = 'enabled';
+    for (const sargableTextWhere of [true, false]) {
+      const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
+      const label = `sargable=${sargableTextWhere}`;
+      // The cross-table arm is the one the prod EXPLAIN blamed: it forces the whole OR to be evaluated
+      // after the merchants join, so the payload-JSON conjuncts detoast every serving-eligible row.
+      expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
+      expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
+      expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
     }
   });
 
-  test('no flag state can put an OR-EXISTS back into the union, or narrow its token arm', async () => {
-    for (const doc of ['enabled', undefined]) {
-      for (const sargableTextWhere of [true, false]) {
-        process.env[UNION_FLAG] = 'on';
-        if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
-        const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
-        const label = `doc=${doc || 'off'} sargable=${sargableTextWhere}`;
-        expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
-        expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
-        expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
-        // The token arm must be the PLAIN form. plainTokenWhere opens `OR (((CASE WHEN`; the sargable
-        // variant opens `OR ((LOWER(...) LIKE $n OR ...) AND ((` — a strictly narrower, recall-reducing
-        // conjunct that the union must never take. Both forms contain `) >= 2)`, so the pre-existing
-        // token assertion cannot tell them apart.
-        expect({ label, m: /OR \(\(\(CASE WHEN/.test(where) }).toEqual({ label, m: true });
-      }
-    }
+  test('WITHOUT the coverage arm the union keeps the complete-recall clause — the #1935 glycerin lesson', async () => {
+    // 22/25 rows were lost when these arms were dropped without recall_doc present. Slower and correct
+    // beats faster and wrong, so the flag-off path must NOT be narrowed.
+    process.env[UNION_FLAG] = 'on';
+    delete process.env[DOC_FLAG];
+    const where = whereOf((await capture(BROWSE)).sql);
+    expect(where).toMatch(/m\.merchant_name/);
+    expect(where).toMatch(/OR EXISTS/);
+    expect(where).toMatch(/p\.source_product_id/);
+    // …and it is still a UNION, not a reversion to category-only.
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
   });
 
   test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
@@ -2323,8 +2344,17 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
 // restoring it loses the rows.
 describe('canonicalCatalogSearch union ingredient carve-out', () => {
   const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
-  beforeEach(() => { process.env[UNION_FLAG] = 'on'; });
-  afterEach(() => { delete process.env[UNION_FLAG]; });
+  // The carve-out only exists on the NARROW arm, which requires the coverage arm. With recall_doc off the
+  // union keeps the complete-recall clause and verticalWhere is present anyway, for a different reason —
+  // so without this the whole block would measure the plain clause and prove nothing.
+  beforeEach(() => {
+    process.env[UNION_FLAG] = 'on';
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+  });
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+    delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+  });
 
   async function unionWhere(overrides) {
     const query = makeMockQuery([]);

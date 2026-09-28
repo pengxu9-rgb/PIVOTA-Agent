@@ -20,7 +20,6 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
       DATABASE_URL: process.env.DATABASE_URL,
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       SEARCH_AMBIGUITY_GATE_ENABLED: process.env.SEARCH_AMBIGUITY_GATE_ENABLED,
       SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY: process.env.SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY,
       SEARCH_AMBIGUITY_THRESHOLD_CLARIFY: process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY,
@@ -33,7 +32,6 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     process.env.DATABASE_URL = 'postgres://test';
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.SEARCH_AMBIGUITY_GATE_ENABLED = 'true';
     process.env.SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY = 'true';
     process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY = '0.3';

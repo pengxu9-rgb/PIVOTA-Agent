@@ -299,7 +299,10 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql) => {
       const text = String(sql);
-      if (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text)) {
+      // The catalog statement itself reads external_product_seeds (its seed join and its currency
+      // conjunct); any OTHER statement reading seeds or products_cache is a legacy fallback.
+      const isCatalogRecall = text.includes('FROM catalog_products cp');
+      if (!isCatalogRecall && (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text))) {
         throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
       }
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
@@ -558,7 +561,10 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const text = String(sql);
-      if (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text)) {
+      // The catalog statement itself reads external_product_seeds (its seed join and its currency
+      // conjunct); any OTHER statement reading seeds or products_cache is a legacy fallback.
+      const isCatalogRecall = text.includes('FROM catalog_products cp');
+      if (!isCatalogRecall && (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text))) {
         throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
       }
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };

@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 
 const { query } = require('../db');
 const { buildExternalSeedProduct } = require('../services/externalSeedProducts');
+const { seedNativeCurrencySql } = require('../services/seedSearchOfferScope');
+const { buyerRegionFromContext, currencyForBuyerRegion } = require('./buyerRegion');
 const {
   resolveIngredientRecallProfile,
   LOCAL_INGREDIENT_RECALL_REGISTRY,
@@ -786,12 +788,23 @@ function buildStructuredDeterministicSeedPatterns(ingredientInputs = []) {
   return out;
 }
 
+// The currency a deterministic seed candidate must be priced in (Peng 2026-09-26: a result in another
+// currency must never reach the agent frontend). `market` here is the claims market
+// (claimGuard.normalizeMarket reads SG as US), not where the buyer pays, so it cannot decide this.
+// The buyer's region can: none on these routes today, so US -> USD. A region nothing is priced in
+// gets null: no seeds.
+function resolveDeterministicSeedServingCurrency(buyerRegion) {
+  return currencyForBuyerRegion(buyerRegionFromContext({ buyer_region: buyerRegion })) || null;
+}
+
 async function fetchStructuredDeterministicExternalSeedRows({
   normalizedMarket,
   ingredientPatterns,
   safeLimit,
+  servingCurrency = resolveDeterministicSeedServingCurrency(),
 } = {}) {
   if (!Array.isArray(ingredientPatterns) || ingredientPatterns.length === 0) return [];
+  if (!servingCurrency) return [];
   const res = await query(
     `
       SELECT
@@ -816,6 +829,7 @@ async function fetchStructuredDeterministicExternalSeedRows({
       WHERE status = 'active'
         AND attached_product_key IS NULL
         AND market = $1
+        AND ${seedNativeCurrencySql()} = $4::text
         AND (
           lower(coalesce((seed_data->'reviewed_ingredient_ids')::text, '')) LIKE ANY($3::text[])
           OR lower(coalesce((seed_data->'canonical_ingredient_ids')::text, '')) LIKE ANY($3::text[])
@@ -827,7 +841,7 @@ async function fetchStructuredDeterministicExternalSeedRows({
       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
       LIMIT $2
     `,
-    [normalizedMarket, safeLimit, ingredientPatterns],
+    [normalizedMarket, safeLimit, ingredientPatterns, servingCurrency],
   );
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
@@ -837,7 +851,9 @@ async function fetchDeterministicExternalSeedRows({
   queryTokens,
   safeLimit,
   allowWideFallback = true,
+  servingCurrency = resolveDeterministicSeedServingCurrency(),
 } = {}) {
+  if (!servingCurrency) return [];
   async function fetchRows(whereSql, params) {
     const res = await query(
       `
@@ -863,11 +879,12 @@ async function fetchDeterministicExternalSeedRows({
         WHERE status = 'active'
           AND attached_product_key IS NULL
           AND market = $1
+          AND ${seedNativeCurrencySql()} = $3::text
           ${whereSql}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $2
       `,
-      [normalizedMarket, safeLimit, ...params],
+      [normalizedMarket, safeLimit, servingCurrency, ...params],
     );
     return Array.isArray(res && res.rows) ? res.rows : [];
   }
@@ -877,7 +894,7 @@ async function fetchDeterministicExternalSeedRows({
     `LOWER(CAST(COALESCE(seed_data, '{}'::jsonb) AS TEXT))`,
     queryTokens,
     [],
-    3,
+    4,
   );
   if (likeClauses.clauses.length > 0) {
     focusedRows = await fetchRows(`AND (${likeClauses.clauses.join(' OR ')})`, likeClauses.params);
@@ -919,6 +936,7 @@ async function loadDeterministicExternalSeedCandidatesBatch({
   market,
   maxProducts = 3,
   allowWideFallback = true,
+  buyerRegion,
 } = {}) {
   const normalizedEntries = [];
   const seen = new Set();
@@ -937,6 +955,7 @@ async function loadDeterministicExternalSeedCandidatesBatch({
   if (!process.env.DATABASE_URL) return buckets;
 
   const normalizedMarket = normalizeMarket(market);
+  const servingCurrency = resolveDeterministicSeedServingCurrency(buyerRegion);
   const queryTokens = normalizedEntries.flatMap((entry) => buildDeterministicSeedQueryTokens(entry));
   const ingredientPatterns = buildStructuredDeterministicSeedPatterns(normalizedEntries);
   const safeLimit = buildDeterministicSeedQueryLimit({
@@ -949,6 +968,7 @@ async function loadDeterministicExternalSeedCandidatesBatch({
       normalizedMarket,
       ingredientPatterns,
       safeLimit,
+      servingCurrency,
     });
     const rows = structuredRows.length > 0
       ? structuredRows
@@ -957,6 +977,7 @@ async function loadDeterministicExternalSeedCandidatesBatch({
           queryTokens,
           safeLimit,
           allowWideFallback,
+          servingCurrency,
         });
     const seenByIngredient = new Map(normalizedEntries.map((entry) => [entry.ingredientId, new Set()]));
     const productCache = new Map();
@@ -1036,6 +1057,7 @@ async function loadDeterministicExternalSeedCandidates({
   queryText = '',
   market,
   maxProducts = 3,
+  buyerRegion,
 } = {}) {
   const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
   if (!normalizedIngredientId) return [];
@@ -1043,6 +1065,7 @@ async function loadDeterministicExternalSeedCandidates({
     ingredientInputs: [{ ingredientId: normalizedIngredientId, ingredientName, targetStepFamily, queryText }],
     market,
     maxProducts,
+    buyerRegion,
   });
   const out = Array.isArray(batch && batch.get(normalizedIngredientId))
     ? batch.get(normalizedIngredientId)

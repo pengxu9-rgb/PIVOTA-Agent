@@ -59,7 +59,7 @@ suite('find_products_multi under production canonical flags binds only reference
         product_payload jsonb, freshness_json jsonb, pivota_signature_id text, pivota_canonical_url text, material text,
         material_source text, material_confidence numeric, care text, care_source text, care_confidence numeric, size_guide text,
         size_guide_source text, size_guide_confidence numeric, updated_at timestamptz, recall_doc text, recall_market text, source_domain text,
-        status text, suppressed_at timestamptz);
+        status text, suppressed_at timestamptz, sync_status text);
       CREATE TABLE index_pipeline_state(content_key text, serving_eligible boolean, index_eligible boolean);
       CREATE TABLE catalog_merchants(merchant_id text, merchant_name text, primary_platform text, status text);
       CREATE TABLE catalog_skus(sku_key text, product_key text, source_variant_id text, sku text, barcode text, title text,

@@ -234,9 +234,10 @@ function hostOf(url) {
 // ⚠️ AND IT IS THE ONLY MARKET TAKEN. `quote.shipping_address.country` is also in scope and is deliberately
 // NOT read: it is a field of a BUYER'S POSTAL ADDRESS, and no buyer data may reach the ops query or the logs.
 // `checkout.context` is a destination HINT that is forwarded into nothing (ucpArgumentAdapter §"context IS NOT
-// FORWARDED"), which is why it is safe to key on. A cart with no `address_country` is a question the gate
-// cannot ask: it keeps the previous behaviour and the client logs `merchant_purchasability_unkeyable`, the
-// same rule the warm-handoff seam follows. `servedMarkets.primaryMarket()` — the deployment's market — is NOT
+// FORWARDED"), which is why it is safe to key on. A cart with no `address_country` has no fact to read: the
+// client logs `merchant_purchasability_unkeyable` and, when the backend is ENFORCING, answers `offer: false`
+// (`source: 'unkeyable_enforced'`, backend #2352) — taken below exactly as a `gate` decline; unenforced, the
+// previous behaviour. The same rule the warm-handoff seam follows. `servedMarkets.primaryMarket()` — the deployment's market — is NOT
 // an acceptable substitute and is in the mutant sweep.
 
 /** The buyer market this UCP checkout request carries, or null. Never a default, never buyer address data. */
@@ -251,8 +252,9 @@ export const ESCALATION_GATE_MAX_MS = 800;
 
 /**
  * `true` when this door may still answer with `continueUrl`. FAILS OPEN by construction: the client never
- * throws and never refuses on a failure, `offer: false` is reachable only from a 200 + enforcing + browse_only,
- * and the `=== false` compare is strict so a malformed future answer cannot refuse by accident.
+ * throws and never refuses on a failure, `offer: false` is reachable only from a 200 + enforcing answer (a
+ * browse_only fact, or no market to key one on), and the `=== false` compare is strict so a malformed future
+ * answer cannot refuse by accident.
  */
 async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled, budgetMs) {
   // THE SWITCH, READ HERE TOO. The client checks it as well, but a door on the checkout critical path
@@ -437,7 +439,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     ? timeoutMs
     : DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS;
   const gateBudgetMs = () => doorBudgetMs - (gateClock() - doorStartedAt);
-  // The REQUEST's market, from the raw UCP body. Null is a question the gate cannot ask.
+  // The REQUEST's market, from the raw UCP body. Null means no fact can be read: under enforcement, a decline.
   const buyerMarket = escalationBuyerMarket(ucpArgs);
 
   if (opId === "create_checkout_session") {
@@ -505,9 +507,11 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       // lost its destination). There is no session to recover: say so rather than fabricate one.
       throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
     }
-    // The same seam on the re-read. Inert in practice and deliberately kept symmetrical: the UCP `get_checkout`
-    // wire body carries no `checkout.context`, so this lane is always `unkeyable` and always keeps the previous
-    // behaviour — an asymmetry here would be the hole somebody re-opens when that body gains a market.
+    // The same seam on the re-read, deliberately symmetrical: the UCP `get_checkout` wire body carries no
+    // `checkout.context`, so this lane is always `unkeyable`. Unenforced that keeps the previous behaviour;
+    // under ENFORCEMENT it is a decline (`unkeyable_enforced`) and the re-read falls through like the create
+    // does — so arming the gate with escalation on needs a market carrier on this lane first (see
+    // docs/merchant-purchasability-gate.md §8). An asymmetry here would be a purchase offered on no fact.
     if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
   }

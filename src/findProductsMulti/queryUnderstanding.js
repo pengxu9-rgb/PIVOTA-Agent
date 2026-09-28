@@ -21,6 +21,18 @@ const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
   },
 ]);
 
+// Lash route (2026-09-27). OFF unless SEARCH_LASH_CATEGORY_ROUTE is on: read per call, like
+// SEARCH_NAME_EVIDENCE_ADMISSION, so a flip needs no restart and a test can set it. A rule carrying
+// `flag` is skipped by resolveBeautyCategoryPathPrefixFromText while its flag is off, which is the
+// ONE door every prefix goes through (the text path, the declared-step-family path, and
+// externalSeedProducts.resolveBeautyCategoryPathPrefixForQuery), so with it off every query routes exactly
+// as before. (The "Brush On" tool-filter fix shipped alongside is NOT behind this flag.)
+const LASH_CATEGORY_ROUTE_FLAG = 'SEARCH_LASH_CATEGORY_ROUTE';
+
+function categoryRouteFlagEnabled(flag, env = process.env) {
+  return /^(1|true|on|yes)$/i.test(String(env[flag] || '').trim());
+}
+
 const CATEGORY_ALIAS_RULES = Object.freeze([
   // Self-tan. MEASURED GAP, 2026-09-24: `self tanner` (even with
   // category=beauty/body/tanning) classified other/ambiguous and answered
@@ -44,6 +56,27 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/body/tanning/',
     pattern:
       /\bself[-\s]?tan(?:ners?|ning)?\b|\bsunless\s+tan(?:ners?|ning)?\b|\bfake\s+tan\b|\bgradual\s+tan(?:ners?|ning)?\b|\btanning\s+(?:mousses?|foams?|drops?|waters?|lotions?|mists?|sprays?|mitts?|serums?|creams?|gels?)\b|\btan\s+(?:drops?|mousses?|mitts?)\b|美黑|セルフタンニング/i,
+  },
+  // False lashes and lash glue. MEASURED GAP, 2026-09-27: `false lashes`, `lash glue` and `lash
+  // adhesive` classified other/ambiguous -- the first ranked by bare text relevance, the other two
+  // safe-emptied -- while beauty/makeup/eye/false-lashes held 594 live rows (kissusa 283, falscara 66,
+  // mybeautyexchange 60, ...), the largest leaf in the eye tree. Behind SEARCH_LASH_CATEGORY_ROUTE.
+  //
+  // Only an explicit false-lash phrase counts, the same phrases the backend classifier files under
+  // this leaf (pivota-backend services/pdp_category_classifier.py "False Lashes"): never a bare
+  // `lash(es)`/`eyelash(es)` (a mascara, lash serum and lash lift all say it), never a bare
+  // `falsies` (Maybelline's Falsies is a MASCARA line; only KISS/imPRESS falsies are lashes), and
+  // `lash extensions` only as the DIY kind (the salon service is not merchandise). A query that also
+  // names mascara, a serum, a lift, a curler, a tint, a primer, a conditioner, growth or a remover is
+  // declined, so it keeps its own home: `lash serum` -> treat, `lash curler` -> unclassified,
+  // `false lash effect mascara` -> mascara, `lash glue remover` -> unclassified.
+  // Sits early so no later rule's noun claims a lash query first ("strip", "glue", "kit").
+  {
+    category: 'false_lashes',
+    categoryPathPrefix: 'beauty/makeup/eye/false-lashes/',
+    flag: LASH_CATEGORY_ROUTE_FLAG,
+    pattern:
+      /^(?!.*\b(?:mascaras?|serums?|lifts?|lifting|curlers?|tints?|primers?|conditioners?|growth|removers?)\b)(?:.*\b(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?\b|.*\b(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)\b|.*\bstriplash(?:es)?\b|.*\b(?:impress|kiss)\s+falsies\b|.*\bfalsies\s+(?:press[-\s]?on|lash(?:es)?|clusters?)\b|.*\bpress[-\s]?on\s+(?:eye\s?)?lash(?:es)?\b|.*\bdiy\s+lash\s+extensions?\b|.*\bfalscara\b|.*(?:假睫毛|睫毛胶|睫毛膠))/is,
   },
   {
     category: 'fragrance',
@@ -101,8 +134,16 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     // hairspray/hair spray arm added 2026-08-20 (second residue pass): both
     // spellings safe-emptied; 13 eligible hairspray-titled rows live in
     // beauty/haircare/general, inside this rule's existing broad prefix.
+    // Curl arms added 2026-09-26: `curl cream` fell through to the
+    // moisturizer rule's bare `cream` and browsed skincare/moisturize (prod
+    // recall: 4 curl rows of 200, 4.0s; the served page was 18 face creams of
+    // 20). Under beauty/haircare/ the same recall held 11 curl rows with the
+    // three Moroccanoil curl creams at the head, in 1.9s. Only a curl word
+    // followed by a styling-product noun, or curly/wavy/coily hair, is
+    // claimed: `curling mascara` (33 mascara rows carry "curl") and `curling
+    // iron` keep their homes.
     pattern:
-      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care|curl(?:s|y|ing)?(?:[-\s]+(?:defining|enhancing|refreshing|boosting))?\s+(?:creams?|custards?|gels?|mousses?|foams?|butters?|milks?|sprays?|activators?|definers?)|(?:curly|wavy|coily)\s+hair)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
   },
   {
     category: 'mascara',
@@ -419,6 +460,7 @@ function resolveBeautyCategoryPathPrefixFromText(text) {
   if (!raw) return '';
   const fragranceFreeSkincare = hasFragranceFreeSkincareSignal(raw);
   for (const rule of CATEGORY_ALIAS_RULES) {
+    if (rule.flag && !categoryRouteFlagEnabled(rule.flag)) continue;
     if (fragranceFreeSkincare && rule.category === 'fragrance') continue;
     if (rule.pattern.test(raw)) return rule.categoryPathPrefix;
   }
@@ -430,6 +472,25 @@ function isStrictLipstickQuery(text) {
   if (!raw) return false;
   if (!/\b(lipsticks?|lip\s*sticks?)\b/i.test(raw) && !/口红|口紅/.test(raw)) return false;
   return !/\b(lip\s*gloss(?:es)?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?)\b/i.test(raw);
+}
+
+// Shaving has no category: the backend taxonomy lists "no men's-grooming leaf"
+// (services/category_path_aliases.py), and measured on prod 2026-09-26 only 3
+// shave products are servable, filed under beauty/makeup and
+// skincare/moisturize. "shaving cream" routes to skincare/moisturize with the
+// other creams, and served 1 shave cream and 19 face creams. A shave query
+// therefore keeps only rows that name shaving themselves (the same shape as
+// strict_lipstick); fewer rows beat face creams served as shaving cream.
+// One word list for both sides: the query and the product title must name
+// shaving the same way.
+const SHAVE_WORD_PATTERN = /\b(?:shav(?:e|es|ing)|after[-\s]?shaves?|pre[-\s]?shave)\b/i;
+
+function isStrictShaveQuery(text) {
+  return SHAVE_WORD_PATTERN.test(String(text || ''));
+}
+
+function productTextNamesShaving(text) {
+  return SHAVE_WORD_PATTERN.test(String(text || ''));
 }
 
 function extractConstraintSignals(text) {
@@ -677,6 +738,7 @@ function buildSearchQualityContract({
   if (explicitApparelRequest) exclusions.push('beauty_product_for_apparel_query');
   if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
   if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
+  if (understanding.hard_negatives?.strict_shave) exclusions.push('product_not_named_for_shaving');
   if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');
 
   return {
@@ -692,6 +754,7 @@ function buildSearchQualityContract({
       exclusions,
       exact_product_anchor: effectiveExactProductAnchor,
       strict_lipstick: Boolean(understanding.hard_negatives?.strict_lipstick),
+      strict_shave: Boolean(understanding.hard_negatives?.strict_shave),
       fragrance_free_skincare: Boolean(understanding.hard_negatives?.fragrance_free_skincare),
     },
     soft_preferences: {
@@ -1117,6 +1180,7 @@ function understandShoppingQuery({
     hard_negatives: {
       fragrance_free_skincare: hasFragranceFreeSkincareSignal(correctedQuery),
       strict_lipstick: isStrictLipstickQuery(correctedQuery),
+      strict_shave: isStrictShaveQuery(correctedQuery),
       non_merchandise_query: nonMerchandiseQuery,
     },
     ...(market ? { market: String(market).trim().toUpperCase() } : {}),
@@ -1132,7 +1196,10 @@ module.exports = {
   normalizeQueryTextForUnderstanding,
   resolveBeautyCategoryPathPrefixFromText,
   resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
+  LASH_CATEGORY_ROUTE_FLAG,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,
+  isStrictShaveQuery,
+  productTextNamesShaving,
 };

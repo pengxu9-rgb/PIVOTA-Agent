@@ -10,11 +10,13 @@ import {
   projectGetIntel,
   projectGetAlternatives,
   projectPublicReadResult,
+  publicIdFromRef,
   findLeakedFields,
   DENYLIST_FIELDS,
   MAX_RESPONSE_BYTES,
   MAX_SEARCH_RESULTS,
 } from "../src/publicReadProjection.js";
+import { relationshipEdgesToSignals } from "../../src/agentSignals/relationshipEdgeToSignal.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const bytes = (v) => Buffer.byteLength(JSON.stringify(v), "utf8");
@@ -363,6 +365,76 @@ test("get_alternatives never serves an amount without its currency (verified liv
       assert.ok(a.price.currency.length > 0);
     }
   }
+});
+
+// ---- product ids + pivota_url from graph refs (live 2026-09-27) ------------------------------------------
+// The fixtures above hand-build related.ref as "sig_alt"; the real producer emits the graph ref
+// "product:sig_…", and served verbatim that became product_id "product:sig_…" and pivota_url
+// https://agent.pivota.cc/products/product:sig_… — which answers HTTP 500, while /products/sig_… renders.
+// So these run the REAL edge → Signal mapper and project its output.
+
+test("get_alternatives: a real graph edge projects to the bare public id and a working pivota_url", () => {
+  const signals = relationshipEdgesToSignals(
+    [{
+      anchor_ref: "product:sig_2a614e7c2e000119d7d75e46d9ae9882",
+      candidate_product_ref: "product:sig_1d21e41fb004ec089f4092166ef52d1c",
+      candidate_snapshot: { title: "colorFX Levels", brand: "Impress", price: 11.99, currency: "USD" },
+      relation_type: "related_product",
+      score_total: 0.9,
+      price_evidence: { price_ratio: 1 },
+      evidence_grade: "B",
+    }],
+    { anchorId: "product:sig_2a614e7c2e000119d7d75e46d9ae9882" },
+  );
+  const out = projectGetAlternatives({ subject: { kind: "product", id: "product:sig_2a614e7c2e000119d7d75e46d9ae9882" }, signals });
+  assert.equal(out.anchor.product_id, "sig_2a614e7c2e000119d7d75e46d9ae9882");
+  const a = out.alternatives[0];
+  assert.equal(a.product_id, "sig_1d21e41fb004ec089f4092166ef52d1c");
+  assert.equal(a.pivota_url, "https://agent.pivota.cc/products/sig_1d21e41fb004ec089f4092166ef52d1c");
+});
+
+test("get_alternatives: a url:/text: candidate ref keeps the alternative but names no Pivota product", () => {
+  const signals = relationshipEdgesToSignals([
+    { candidate_product_ref: "url:https://www.ulta.com/p/x", candidate_snapshot: { title: "Via URL" }, relation_type: "competitive_alternative", score_total: 0.8, evidence_grade: "B" },
+    { candidate_product_ref: "text:brand:name", candidate_snapshot: { title: "Via text" }, relation_type: "competitive_alternative", score_total: 0.7, evidence_grade: "B" },
+  ]);
+  const out = projectGetAlternatives({ subject: { kind: "product", id: "sig_a" }, signals });
+  assert.equal(out.alternatives.length, 2);
+  for (const a of out.alternatives) {
+    assert.equal(a.product_id, undefined);
+    assert.equal(a.pivota_url, undefined);
+  }
+});
+
+test("get_intel: the caller's product_ref is never pasted into pivota_url", () => {
+  const cases = [
+    ["product:sig_4c9ed7dd5d414c47c7ca8c37832a09c8", "sig_4c9ed7dd5d414c47c7ca8c37832a09c8"],
+    ["https://agent.pivota.cc/products/sig_4c9ed7dd5d414c47c7ca8c37832a09c8?x=1", "sig_4c9ed7dd5d414c47c7ca8c37832a09c8"],
+    ["sig_4c9ed7dd5d414c47c7ca8c37832a09c8", "sig_4c9ed7dd5d414c47c7ca8c37832a09c8"],
+    ["https://www.ulta.com/p/x", null], // live: served pivota_url …/products/https://www.ulta.com/p/x
+  ];
+  for (const [ref, id] of cases) {
+    const out = projectGetIntel({ subject: { kind: "product", id: ref }, signals: [], metadata: { reason: "not_found" } });
+    assert.equal(out.product_id, id, ref);
+    assert.equal(out.pivota_url, id ? `https://agent.pivota.cc/products/${id}` : undefined, ref);
+  }
+});
+
+test("publicIdFromRef: only product: wraps an id; a colon inside an id stays; junk never reaches a URL", () => {
+  assert.equal(publicIdFromRef("product:sig_abc"), "sig_abc");
+  assert.equal(publicIdFromRef("PRODUCT:sig_abc"), "sig_abc");
+  assert.equal(publicIdFromRef("sig_abc"), "sig_abc");
+  assert.equal(publicIdFromRef("product:ulta:211265214baf1dcd"), "ulta:211265214baf1dcd");
+  assert.equal(publicIdFromRef("ulta:211265214baf1dcd"), "ulta:211265214baf1dcd");
+  assert.equal(publicIdFromRef("https://agent.pivota.cc/products/pg_123"), "pg_123");
+  assert.equal(publicIdFromRef("https://evil.example/agent.pivota.cc/products/sig_x"), null);
+  assert.equal(publicIdFromRef("url:https://agent.pivota.cc/products/sig_x"), null);
+  assert.equal(publicIdFromRef("text:brand:name"), null);
+  assert.equal(publicIdFromRef("sig_x/../../admin"), null);
+  assert.equal(publicIdFromRef("sig x"), null);
+  assert.equal(publicIdFromRef("product:"), null);
+  assert.equal(publicIdFromRef(""), null);
+  assert.equal(publicIdFromRef(null), null);
 });
 
 // ---- dispatcher + denylist integrity ---------------------------------------------------------------------

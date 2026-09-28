@@ -221,6 +221,81 @@ function isCategoryBrowseTextUnionEnabled(env = process.env) {
   return CATEGORY_BROWSE_TEXT_UNION_ON_VALUES.has(raw);
 }
 
+// CANDIDATE-KEY PREFILTER (default OFF). Read per call, like the flags above.
+//
+// Measured in prod 2026-09-26 (read-only EXPLAIN ANALYZE, gateway 3c9f16fd8): every category-browse
+// query on the beauty mainline took 1.6-2.5s and ~330-375k shared buffers -- 1-token `toner` as much
+// as 2-token `hair mask` -- and turning the text union OFF did not help (category-only: 1.6-3.9s).
+// The cause is the plan shape, not the predicate: the only category_path index is partial
+// (catalog_track = 'internal_merchant') while 94% of rows are external_seed, so nothing in the WHERE
+// is indexable and the planner drives the candidate CTE from the OFFERS side -- every offer, a
+// catalog_skus probe per offer, a catalog_products probe per product (the whole catalog), and only
+// then the category/text predicate.
+//
+// With the flag on, that predicate is evaluated FIRST, in one pass over catalog_products alone, and
+// the candidate CTE keeps only the matching product keys. Same prod run: toner 1.8s/332k -> 0.65s/50k,
+// shampoo 1.6-1.8s -> 0.73-0.86s, hair mask 2.0-2.4s -> 1.35s, niacinamide toner 2.2-2.5s -> 1.6s.
+const CANDIDATE_KEY_PREFILTER_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isCandidateKeyPrefilterEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_CANDIDATE_KEY_PREFILTER ?? '').trim().toLowerCase();
+  return CANDIDATE_KEY_PREFILTER_ON_VALUES.has(raw);
+}
+
+// SINGLE PAYLOAD READ (default OFF). Read per call.
+//
+// product_payload is stored out of line (TOAST: 207MB against a 51MB heap in prod, 2026-09-26), and
+// PostgreSQL re-fetches and re-decompresses an out-of-line value EVERY time an expression reads it --
+// there is no per-row cache. The candidate CTE reads it up to ~8 times per row (4 source-unavailable
+// checks, the 3-path product-family rank arm, more under a brand filter, which reads up to 11 paths),
+// and prod EXPLAIN ANALYZE put that per-candidate evaluation at 25-30 shared buffers and 60-70% of the
+// query once the candidate-key prefilter removed the catalog walk.
+//
+// With the flag on, the CTE joins `LATERAL (SELECT jsonb_path_query_first(p.product_payload, '$') AS
+// product_payload OFFSET 0) pp` and its filter/rank fragments read `pp.product_payload` instead:
+//   * jsonb_path_query_first(v, '$') returns v unchanged for every JSON value (and NULL for NULL), but
+//     as a function RESULT it is an in-memory copy, so every later read is free. A plain pass-through
+//     (`SELECT p.product_payload AS x`) would carry the TOAST pointer and change nothing -- measured.
+//   * OFFSET 0 keeps the planner from flattening the subquery back into the per-reference form.
+//   * The plain `p.product_payload` projection stays a pointer: carrying the decompressed value (up to
+//     940KB for one prod row) through the pre-LIMIT sort would make the sort spill.
+//   * The candidate-key prefilter's subquery is left alone: its inner `p` is a different row.
+//   * It applies only when the candidate-key prefilter is on for the query (brand/merchant-scoped and
+//     non-category queries keep the per-reference form); see the gate at the call site.
+// Measured on a prod-scale local catalog: same outputs, 419k -> 60k buffers for the filter+rank reads.
+const SINGLE_PAYLOAD_READ_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isSinglePayloadReadEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_SINGLE_PAYLOAD_READ ?? '').trim().toLowerCase();
+  return SINGLE_PAYLOAD_READ_ON_VALUES.has(raw);
+}
+
+// `\b` before `p` keeps `np.product_payload` (the name-evidence carrier CTE) and similar aliases out.
+function readPayloadOnce(fragment) {
+  return String(fragment ?? '').replace(/\bp\.product_payload\b/g, 'pp.product_payload');
+}
+
+// Whether a WHERE fragment reads ONLY the candidate row `p` (plus aliases it declares itself, e.g. an
+// EXISTS over catalog_skus correlated on p). Only such a predicate can be moved into
+// `SELECT p.product_key FROM catalog_products p WHERE ...` unchanged: the inner `p` then shadows the
+// outer one, and because product_key is the primary key, `p.product_key = ANY(<keys>)` holds for
+// exactly the rows the predicate held for. A reference to the merchants join (`m.merchant_name`, the
+// plain text clause) or any other outer alias would silently re-bind or break, so it is refused and
+// the WHERE is left as it was. String literals are dropped before scanning so that a dotted value
+// ('external_seed.source_unavailable.v1') is not read as a qualifier -- refusing is always safe,
+// accepting wrongly is not.
+function whereReadsOnlyCandidateRow(whereSql) {
+  const sql = String(whereSql || '').replace(/'(?:[^']|'')*'/g, "''");
+  const declared = new Set(['p']);
+  for (const m of sql.matchAll(/\b(?:FROM|JOIN)\s+[a-z_][a-z0-9_.]*\s+(?:AS\s+)?([a-z_][a-z0-9_]*)/gi)) {
+    declared.add(m[1].toLowerCase());
+  }
+  for (const m of sql.matchAll(/\b([a-z_][a-z0-9_]*)\.(?=[a-z_"])/gi)) {
+    if (!declared.has(m[1].toLowerCase())) return false;
+  }
+  return true;
+}
+
 // ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
 // dominance over provenance) + the market-exemption fix for
 // pdp_scope='multi_merchant_canonical'. Same per-call read discipline as
@@ -646,17 +721,16 @@ function buildSignificantTokens(lowered) {
 }
 
 // Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
-// lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
-// variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+// lane's cap discipline (the since-deleted findProductsExternalSeedDirectRetrieval
+// capped its variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
 const RECALL_DOC_PATTERN_CAP = 16;
 
 /**
  * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
  * query. Pure function; mirrors the external-seed lane's approach
  * (search_text LIKE ANY over token patterns — see
- * buildExternalSeedRecallLikePredicate in externalSeedRecall.js and its
- * caller in findProductsExternalSeedDirectRetrieval.js; that caller derives
- * patterns from injected tokenizers so it is not reusable here).
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js; its old
+ * caller derived patterns from injected tokenizers so it was not reusable here).
  *
  * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
  *   1. the lowered full phrase,
@@ -1402,32 +1476,55 @@ async function fetchCanonicalChainRows(args = {}) {
   // union's recall silently depend on two unrelated flags — with recall_doc off, `recallDocArm` is empty
   // and the arm degrades to title/brand/token, which is still the core of the win rather than a surprise.
   //
-  // ONE CARVE-OUT: the ingredient arm comes back when the token arm is EMPTY.
+  // WHICH ARM THE UNION TAKES — gated on the recall_doc COVERAGE ARM, not on the caller's
+  // sargableTextWhere election. Superseded reasoning is kept because the correction is the point.
   //
-  // `plainTokenWhere` is only built at 2+ significant tokens (see buildSignificantTokens), so a BARE
-  // ingredient query collapses this arm to title/brand alone — and bare ingredient queries are exactly the
-  // ones that reach here with `verticalSearch` on. Measured: `niacinamide` resolves the prefix
-  // beauty/skincare/treat/ AND sets verticalSearch, is 1 token, and with recall_doc off the whole union arm
-  // becomes two LIKEs. The sibling lane already refuses the identical narrowing for this reason —
-  // citableSargableLane will not drop these arms unless the recall_doc arm is present, because bare
-  // "glycerin" measured 22/25 rows lost without it. recall_doc does not close the gap either: migration 058
-  // projects EXTERNAL-SEED text only, so internal_merchant rows have recall_doc IS NULL and get no cover.
+  // First cut (#2035): the union took the PLAIN clause unconditionally, arguing that the #1935 sargable
+  // trade dropped recall arms and a recall fix must not drop recall. Prod measured that the hard way — the
+  // flag flip on 2026-08-20 took cold prefix latency from ~7.5s to 9-18.6s and broke the Aurora reco
+  // recall timeout, which drops recommend_products into LLM-invented archetypes.
   //
-  // The cost is bounded, and the shape is what makes it safe: the sku arms match the WHOLE `$2` phrase,
-  // which for a multi-word query never appears in an ingredient-id array — they are near-dead there. So
-  // they can only do useful work in precisely the case this carve-out restores them for. Keeping them at
-  // 1 token and dropping them at 2+ is therefore both the recall-correct and the latency-correct rule,
-  // not a compromise between the two.
+  // Second cut (#2039): narrowed the arm, but attributed the cost to the two `OR EXISTS` on catalog_skus
+  // and gated on nothing. THAT ATTRIBUTION WAS WRONG, corrected by prod EXPLAIN ANALYZE in #2043:
   //
-  // skuTextWhere (sku code / variant title / source_variant_id) is deliberately NOT restored: those fields
-  // carry identifiers and variant labels, not ingredient names, so it is the arm with the cost and none of
-  // the measured recall.
-  const unionIngredientArm = plainTokenWhere ? '' : verticalWhere;
-  const unionTextWhereClause = `
+  //   The dominant cost is `LOWER(COALESCE(m.merchant_name,'')) LIKE $2` — a CROSS-TABLE disjunct. One
+  //   cross-table arm means the whole OR can only be evaluated AFTER the merchants join, so the
+  //   payload-JSON conjuncts (externalSeedUnavailableWhere) run over every serving-eligible row (~8,490).
+  //   catalog_products is 279MB of which 235MB is TOAST, so that is ~8.5k payload detoasts per query:
+  //   measured `toner` at 4,366ms / 285k shared buffers. Dropping it makes the OR single-table, so it
+  //   pushes into the catalog_products scan and the payload quals run only on OR-passing rows (~453 vs
+  //   ~9,572). Measured: toner 4,366 -> 483ms, shampoo 3,167 -> 507ms, hair mask 3,169 -> 912ms,
+  //   niacinamide toner 3,803 -> 1,022ms, cleanser 3,709 -> 777ms, identical row digests on every query.
+  //
+  // GATE ON THE COVERAGE ARM. `recallDocArm` present is what makes the trade safe — #1935's own measured
+  // lesson is that bare "glycerin" lost 22/25 rows when these arms were dropped WITHOUT it. Gating on the
+  // caller's tokenMatch/sargableTextWhere election instead would leave every non-electing browse caller
+  // (the shopping browse lane passes neither) on the 4.4s plan for no recall benefit. With the flag off we
+  // keep the plain complete-recall arm verbatim: slower, and correct.
+  //
+  // `tokenWhere` rides in whatever shape the caller elected — both shapes are single-table so either
+  // pushes down, and the sargable shape is additionally bitmap-eligible. #2039 forced `plainTokenWhere`
+  // here and pinned that with a test; that test was removed with this change, deliberately. Its premise
+  // (the union must not vary with sargableTextWhere) is not worth the 4.4s plan it protects, and the
+  // recall difference between the two token shapes is bounded by the coverage arm this branch requires.
+  //
+  // ONE CARVE-OUT KEPT FROM #2039: the ingredient arm returns when the token arm is EMPTY.
+  // `tokenWhere` needs 2+ significant tokens, so a BARE ingredient query — `niacinamide` resolves a
+  // prefix AND sets verticalSearch — collapses this arm to title/brand/recall_doc. recall_doc does not
+  // cover it: migration 058 projects EXTERNAL-SEED text only, so internal_merchant rows are NULL there.
+  // #2043's parity run (0 of 255 rows admitted only by a dropped arm) does not settle this case: its
+  // vocabulary is 15 browse words and its ingredient probe, `niacinamide toner`, is two tokens. The cost
+  // is bounded and self-limiting — the sku arms match the WHOLE `$2` phrase, which never appears in an
+  // ingredient-id array for a multi-word query, so they can only do useful work in exactly the 1-token
+  // case this restores them for. Drop it when someone measures bare single-token ingredient recall.
+  const unionIngredientArm = tokenWhere ? '' : verticalWhere;
+  const unionTextWhereClause = recallDocArm
+    ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2${unionIngredientArm}
-        ${plainTokenWhere}${recallDocArm}
-  `;
+        ${tokenWhere}${recallDocArm}
+  `
+    : plainTextWhereClause;
   const textWhereClause = citableSargableLane
     ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
@@ -1452,21 +1549,7 @@ async function fetchCanonicalChainRows(args = {}) {
   if (!categoryBind) {
     whereClause = `(${textWhereClause})`;
   } else if (categoryBrowseTextUnion) {
-    // THE PLAIN FORM, NEVER THE SARGABLE ONE, on the union's text arm.
-    //
-    // `sargableTextWhere` picks a NARROWER text clause: it drops the
-    // merchant_name, source_product_id and sku/vertical OR-EXISTS arms in
-    // exchange for a trigram-bitmap-able plan (#1935). That trade was measured
-    // on the text-only lane, where the recall it gives up is covered by the
-    // recall_doc arm. It was a provable no-op in browse mode only because
-    // browse discarded the text clause outright — which is precisely the
-    // invariant tests/find_products_multi_mainline_sargable.test.js pins.
-    //
-    // Routing the union through `textWhereClause` would silently extend an
-    // unmeasured plan-and-recall change to every prefix-resolving query, and
-    // would do it by DROPPING recall arms inside a fix whose whole purpose is
-    // to recover recall. So the union takes the plain form and #1935's
-    // byte-identity invariant survives intact.
+    // See the unionTextWhereClause comment above for which arm this takes and why.
     whereClause = `((${categoryPredicate})
         OR (${unionTextWhereClause}))`;
   } else {
@@ -1482,6 +1565,40 @@ async function fetchCanonicalChainRows(args = {}) {
     .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
     .join('');
   brandWhere = qualityScope.brandWhere;
+  // Category browse only: that is the lane the prod measurement covers. See
+  // isCandidateKeyPrefilterEnabled for the plan this replaces and why the rewrite is exact.
+  // NOT under a brand or merchant scope. Those conjuncts are selective and indexable (the brand-identity
+  // expressions, merchant_id), so the planner drives the candidate scan from them and touches one brand's
+  // rows. The prefilter would instead evaluate the category/text predicate over the WHOLE catalog and hand
+  // the outer scan thousands of keys to re-check against the brand arm -- strictly more work. Measured in
+  // prod, 2026-09-26 (prod flags, contract enforced): the ordinary serum 238ms -> 3.5s, la roche-posay
+  // sunscreen 50ms -> ~4.0s, rare beauty lipstick 66ms -> ~3.5-4.0s with the prefilter on.
+  const brandOrMerchantScoped = Boolean(String(brandWhere || '').trim()) || Boolean(String(merchantClause || '').trim());
+  const candidateKeyPrefilter = Boolean(categoryBind)
+    && !brandOrMerchantScoped
+    && isCandidateKeyPrefilterEnabled()
+    && whereReadsOnlyCandidateRow(whereClause);
+  if (candidateKeyPrefilter) {
+    whereClause = `p.product_key = ANY(ARRAY(
+        SELECT p.product_key FROM catalog_products p
+        WHERE ${whereClause}
+      ))`;
+  }
+  // See isSinglePayloadReadEnabled. `pl` is applied to every interpolated fragment of the candidate
+  // CTE; the literal text (including the plain p.product_payload projection) is never rewritten.
+  //
+  // Only behind the candidate-key prefilter. The lateral runs once for every row that reaches the join,
+  // and only predicates that read `p` alone are pushed below it; the category/brand filters read
+  // pp.product_payload, so without the prefilter's key list in front the lateral decompresses the
+  // payload of every catalog row the p-only predicates let through. Measured in prod, 2026-09-27 (prod
+  // flags, prefilter on): the ordinary serum 138ms -> 3.7s, la roche-posay sunscreen 30ms -> 3.6s, rare
+  // beauty lipstick 69ms -> 5.5s, ~5k -> ~700k buffers, with the same rows. With the prefilter the
+  // lateral runs at most once per prefiltered key, which is where the gain was measured.
+  const singlePayloadRead = candidateKeyPrefilter && isSinglePayloadReadEnabled();
+  const pl = (fragment) => (singlePayloadRead ? readPayloadOnce(fragment) : fragment);
+  const payloadLateralSql = singlePayloadRead
+    ? "\n      CROSS JOIN LATERAL (SELECT jsonb_path_query_first(p.product_payload, '$') AS product_payload OFFSET 0) pp"
+    : '';
   // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
   // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
   //  * the carrier count is a CTE, counted once;
@@ -1538,9 +1655,13 @@ async function fetchCanonicalChainRows(args = {}) {
   // an offer without a currency is not price-quotable. The branches differ
   // only in whether the sku columns ride along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
+  // The same market term as a VALUE, so the served-listing pick below can
+  // compare one listing's best offer against another's on the identical key.
+  let bestOfferMarketRankSql = '0';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
-    bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
+    bestOfferMarketRankSql = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END`;
+    bestOfferMarketOrder = `${bestOfferMarketRankSql},`;
   }
   // Match #2240: unknown availability shares the sellable ranking tier. An
   // explicit inStockOnly filter below is stricter: it requires positive stock
@@ -1604,29 +1725,29 @@ async function fetchCanonicalChainRows(args = {}) {
         )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
-      best_sku_offer.sku_key,
-      best_sku_offer.source_variant_id,
-      best_sku_offer.sku,
-      best_sku_offer.barcode,
-      best_sku_offer.sku_title,
-      best_sku_offer.visible_attributes,
-      best_sku_offer.visible_option_labels,
-      best_sku_offer.ingredient_ids,
-      best_sku_offer.sku_image_url,
-      best_sku_offer.offer_id,
-      best_sku_offer.offer_catalog_track,
-      best_sku_offer.offer_truth_tier,
-      best_sku_offer.offer_readiness_tier,
-      best_sku_offer.offer_mode,
-      best_sku_offer.availability,
-      best_sku_offer.inventory_quantity,
-      best_sku_offer.currency,
-      best_sku_offer.list_price,
-      best_sku_offer.merchant_effective_price,
-      best_sku_offer.estimated_best_price,
-      best_sku_offer.price_confidence,
-      best_sku_offer.offer_source_system,
-      best_sku_offer.offer_payload,
+      served.sku_key,
+      served.source_variant_id,
+      served.sku,
+      served.barcode,
+      served.sku_title,
+      served.visible_attributes,
+      served.visible_option_labels,
+      served.ingredient_ids,
+      served.sku_image_url,
+      served.offer_id,
+      served.offer_catalog_track,
+      served.offer_truth_tier,
+      served.offer_readiness_tier,
+      served.offer_mode,
+      served.availability,
+      served.inventory_quantity,
+      served.currency,
+      served.list_price,
+      served.merchant_effective_price,
+      served.estimated_best_price,
+      served.price_confidence,
+      served.offer_source_system,
+      served.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
       -- internal_merchant offer must NOT outrank an equally-relevant
       -- third-party offer for the same product — ownership is not a ranking
@@ -1648,11 +1769,11 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_truth_tier,
       NULL::text                 AS offer_readiness_tier,
       NULL::text                 AS offer_mode,
-      best_offer.availability    AS availability,
+      served.availability    AS availability,
       NULL::integer              AS inventory_quantity,
-      best_offer.currency        AS currency,
-      best_offer.list_price      AS list_price,
-      best_offer.merchant_effective_price AS merchant_effective_price,
+      served.currency        AS currency,
+      served.list_price      AS list_price,
+      served.merchant_effective_price AS merchant_effective_price,
       NULL::numeric              AS estimated_best_price,
       NULL::text                 AS price_confidence,
       NULL::text                 AS offer_source_system,
@@ -1720,9 +1841,15 @@ async function fetchCanonicalChainRows(args = {}) {
   // A product with no priced offer still returns its row with NULL offer
   // columns (LEFT JOIN LATERAL ... ON TRUE), emits no price, and is dropped by
   // the serving gate on its merits — the same 13 products either way.
-  const skuOfferJoinSql = joinSkuOffers
+  // The offer ranking key, projected as VALUES so one listing's best offer can
+  // be compared with another listing's on exactly the key that chose each.
+  const servedOfferRankColumns = `
+        ${bestOfferMarketRankSql} AS served_market_rank,
+        ${OFFER_AVAILABILITY_TIER_SQL} AS served_availability_tier,
+        COALESCE(o.merchant_effective_price, o.list_price) AS served_price,
+        o.offer_id        AS served_offer_id`;
+  const listingOfferSql = joinSkuOffers
     ? `
-    LEFT JOIN LATERAL (
       SELECT
         s.sku_key,
         s.source_variant_id,
@@ -1746,12 +1873,12 @@ async function fetchCanonicalChainRows(args = {}) {
         o.estimated_best_price,
         o.price_confidence,
         o.source_system   AS offer_source_system,
-        o.offer_payload
+        o.offer_payload,${servedOfferRankColumns}
       FROM catalog_skus s
       JOIN catalog_offers o
         ON o.sku_key = s.sku_key
        AND o.suppressed_at IS NULL
-      WHERE s.product_key = c.product_key
+      WHERE s.product_key = p.product_key
         AND s.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
@@ -1759,14 +1886,21 @@ async function fetchCanonicalChainRows(args = {}) {
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        -- At the SAME price a real variant beats the synthetic product-level sku (\`<pk>::canonical\`,
+        -- whose source_variant_id is the product key). The hashed offer_id alone picked between them at
+        -- random, and a card carrying the synthetic id cannot be matched to the store's variant:
+        -- liveMerchantSearchPrice reported variant_missing on 4 of 17 bluemercury.com cards (2026-09-25).
+        -- Also the placeholder ids the backend derives when a store gives no variant id ('default',
+        -- '<id>-default'; services/variant_identity.py): none of them names a variant the store sells.
+        CASE WHEN s.sku_key LIKE '%::canonical' OR s.source_variant_id IS NULL OR s.source_variant_id = s.product_key
+               OR s.source_variant_id = 'default' OR s.source_variant_id LIKE '%-default'
+          THEN 1 ELSE 0 END ASC,
         o.offer_id ASC
-      LIMIT 1
-    ) best_sku_offer ON TRUE`
+      LIMIT 1`
     : `
-    LEFT JOIN LATERAL (
-      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
+      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability,${servedOfferRankColumns}
       FROM catalog_offers o
-      WHERE o.product_key = c.product_key
+      WHERE o.product_key = p.product_key
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
@@ -1775,8 +1909,120 @@ async function fetchCanonicalChainRows(args = {}) {
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
+      LIMIT 1`;
+  // THE CARD SHOWS THE PRODUCT'S BEST OFFER, NOT ITS RECALLED LISTING'S.
+  //
+  // A product (content_key) can have several listings — one per retailer — and
+  // recall ranks LISTINGS: whichever listing's title matches the query best is
+  // the row that earns the position. The LATERAL above used to pick the best
+  // offer INSIDE that one listing only (s.product_key = c.product_key), so the
+  // #2242 stock tier never compared two sellers. Measured live 2026-09-22:
+  // "Purito Oat-in Calming Gel Cream" served ohlolly.com $21 out_of_stock as
+  // result #1 because ohlolly's title is the exact query (+100), while
+  // sokoglam.com's in-stock $19.50 listing of the SAME content_key ranked 144th
+  // of 160 on its shorter title. Nothing downstream collapsed them — two
+  // separately ranked rows, the first one unsellable.
+  //
+  // So the row's SELLER — every listing-derived column: merchant, listing key,
+  // source id, URL, signature, payload, and the whole sku/offer block — is taken
+  // from ONE listing, the one holding the best offer across all of the
+  // product's servable listings, on the SAME key #2242 orders offers by (market,
+  // then OFFER_AVAILABILITY_TIER_SQL, then price, then offer_id; a listing with
+  // no priced offer sorts last). Lexicographic min of per-listing mins is the
+  // global min, so this is the product's best offer. What the row EARNED stays
+  // with the recalled row: rank_score and the ordering keys, plus the product
+  // content the downstream ranker re-scores (title, description, brand, type,
+  // category, image, fashion fields) — swapping those would let the JS ranker
+  // move the card back to the recalled listing's position (the flagship case:
+  // sokoglam's own title is what ranked it 144th).
+  //
+  // NEVER SPLICED: the listing columns and the offer columns come from the same
+  // `served` row, and product_payload rides with them because the card builder
+  // falls back to it for URL, source id and availability.
+  //
+  // SIBLINGS PASS THE RECALLED ROW'S OWN PRODUCT-LEVEL FILTERS: the serving
+  // eligibility column, activeCatalogProductSourceWhere (test/demo merchants,
+  // inactive stores), the external-seed source-unavailable gate, the request's
+  // offer scope (market/currency/budget/inStockOnly EXISTS), merchant, market
+  // and brand clauses — the SAME SQL fragments, over the same aliases. Plus
+  // suppressed_at IS NULL and sync_status = 'live', which recall itself does not
+  // check today; a sibling is only ever held to more, never less. The query's
+  // relevance WHERE is deliberately NOT re-applied: the product already earned
+  // its place, and a sibling's own title wording is not a filter on the product.
+  //
+  // ONE LISTING PER CARD, NO DUPLICATES, NO LOST PRODUCTS. When several recalled
+  // rows share a content_key (the flagship: both ohlolly and sokoglam were
+  // recalled), they are numbered in served order (listing_slot) and slot k takes
+  // the k-th listing of the product in best-offer order. The pool always
+  // contains every recalled row of the key, so it is never shorter than the
+  // slots: row count, row order and the set of served listings for a fully
+  // recalled product are unchanged — only WHICH position shows WHICH seller
+  // moves. A key with one listing, or a NULL content_key, is its own pool of
+  // one: identical to before.
+  //
+  // COST is bounded by the already-cut candidate rows (LIMIT $3), never the
+  // recall set: one catalog_products lookup per row by product_key OR
+  // content_key (idx_catalog_products_content_key, pivota-backend mig 083), and
+  // the per-listing best-offer LATERAL for each pool member — ~1.02 per row on
+  // prod (8,514 of 8,681 servable content_keys have one listing).
+  const skuOfferJoinSql = `
+    JOIN LATERAL (
+      SELECT
+        COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
+        m.merchant_name         AS merchant_name,
+        m.primary_platform      AS merchant_primary_platform,
+        p.product_key,
+        p.platform,
+        p.source_product_id,
+        p.canonical_url,
+        p.catalog_track,
+        p.truth_tier,
+        p.readiness_tier,
+        p.pdp_scope,
+        p.source_system,
+        p.product_payload,
+        p.freshness_json,
+        p.pivota_signature_id,
+        p.pivota_canonical_url,
+        p.updated_at            AS product_updated_at,
+        listing_offer.*
+      FROM catalog_products p
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+      LEFT JOIN LATERAL (${listingOfferSql}
+      ) listing_offer ON TRUE
+      WHERE p.product_key = c.product_key
+         OR (
+           c.content_key IS NOT NULL
+           AND p.content_key = c.content_key
+           AND (
+             p.product_key IN (SELECT r.product_key FROM candidate_products r WHERE r.content_key = c.content_key)
+             OR (
+               p.suppressed_at IS NULL
+               AND coalesce(p.sync_status, 'live') = 'live'
+               AND EXISTS (
+                 SELECT 1 FROM index_pipeline_state served_ips
+                 WHERE served_ips.content_key = p.content_key
+                   AND served_ips.${eligibilityColumn} = TRUE
+               )
+               AND ${activeCatalogProductSourceWhere('p', 'm')}
+               ${externalSeedUnavailableWhere}
+               ${candidateOfferWhere}
+               ${merchantClause}
+               ${marketWhere}
+               ${brandWhere}
+             )
+           )
+         )
+      ORDER BY
+        (listing_offer.served_price IS NULL),
+        listing_offer.served_market_rank,
+        listing_offer.served_availability_tier,
+        listing_offer.served_price,
+        listing_offer.served_offer_id,
+        p.product_key
+      OFFSET c.listing_slot - 1
       LIMIT 1
-    ) best_offer ON TRUE`;
+    ) served ON TRUE`;
   // No sku/offer tie-break: there is exactly one row per product now, and the
   // `s.updated_at DESC, o.updated_at DESC` that used to be here is precisely
   // what sorted price-less rows first (DESC => NULLS FIRST).
@@ -1873,56 +2119,67 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}${nameEvidenceProjectionSql}
+        p.updated_at            AS product_updated_at,${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
         (
-          ${skuIdentityScore}
+          ${pl(skuIdentityScore)}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${nameEvidenceRankArm}
-          ${canonicalScopeRankArms}
-          ${categoryScore}${categoryBrowseTextArm}
-          ${verticalScore}
-          ${tokenScore}
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${pl(nameEvidenceRankArm)}
+          ${pl(canonicalScopeRankArms)}
+          ${pl(categoryScore)}${pl(categoryBrowseTextArm)}
+          ${pl(verticalScore)}
+          ${pl(tokenScore)}
         ) AS rank_score
       FROM catalog_products p
       INNER JOIN index_pipeline_state ips
         ON ips.content_key = p.content_key
        AND ips.${eligibilityColumn} = TRUE
-      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id${payloadLateralSql}
       WHERE ${whereClause}
-        AND ${activeCatalogProductSourceWhere('p', 'm')}
-        ${externalSeedUnavailableWhere}
-        ${candidateOfferWhere}
-      ${merchantClause}
-      ${marketWhere}
-      ${brandWhere}${innerOrderLimitSql}
-    )${setDiversityCteSql}
+        AND ${pl(activeCatalogProductSourceWhere('p', 'm'))}
+        ${pl(externalSeedUnavailableWhere)}
+        ${pl(candidateOfferWhere)}
+      ${pl(merchantClause)}
+      ${pl(marketWhere)}
+      ${pl(brandWhere)}${innerOrderLimitSql}
+    )${setDiversityCteSql},
+    candidate_slots AS (
+      -- listing_slot: which of the product's listings (in best-offer order)
+      -- this row shows. Numbered in served order; a NULL content_key is a
+      -- product of one. See skuOfferJoinSql.
+      SELECT
+        c.*,
+        CASE WHEN c.content_key IS NULL THEN 1
+             ELSE row_number() OVER (PARTITION BY c.content_key ORDER BY c.rank_score DESC, ${outerTiebreakSql})
+        END AS listing_slot
+      FROM candidate_products c
+    )
     SELECT
-      c.merchant_id,
-      c.merchant_name,
-      c.merchant_primary_platform,
-      c.product_key,
-      c.platform,
-      c.source_product_id,
+      served.merchant_id,
+      served.merchant_name,
+      served.merchant_primary_platform,
+      served.product_key,
+      served.platform,
+      served.source_product_id,
       c.product_title,
       c.product_description,
       c.brand,
       c.product_type,
       c.category,
       c.category_path,
-      c.canonical_url,
+      served.canonical_url,
       c.product_image_url,
-      c.catalog_track,
-      c.truth_tier,
-      c.readiness_tier,
-      c.pdp_scope,
-      c.source_system,
-      c.product_payload,
-      c.freshness_json,
+      served.catalog_track,
+      served.truth_tier,
+      served.readiness_tier,
+      served.pdp_scope,
+      served.source_system,
+      served.product_payload,
+      served.freshness_json,
       c.content_key,
-      c.pivota_signature_id,
-      c.pivota_canonical_url,
+      served.pivota_signature_id,
+      served.pivota_canonical_url,
       c.material,
       c.material_source,
       c.material_confidence,
@@ -1932,9 +2189,14 @@ async function fetchCanonicalChainRows(args = {}) {
       c.size_guide,
       c.size_guide_source,
       c.size_guide_confidence,
-      c.product_updated_at,${nameEvidenceOuterColumnSql}
+      served.product_updated_at,${nameEvidenceOuterColumnSql}
+      -- The listing recall ranked, when the served listing is a sibling. Lets
+      -- lane merges dedupe the recalled listing's other appearances (the seed
+      -- lane keys on it) so a swap never adds a second card for the product.
+      c.product_key             AS recalled_product_key,
+      c.source_product_id       AS recalled_source_product_id,
       ${skuOfferColumns}
-    FROM candidate_products c
+    FROM candidate_slots c
     ${skuOfferJoinSql}
     ORDER BY rank_score DESC, ${outerTiebreakSql}${skuOfferOrderSql}
     LIMIT $4
@@ -1964,6 +2226,9 @@ module.exports = {
   // union actually ran, rather than asserting the intent — the same reason
   // isRecallDocMatchEnabled is exported above.
   isCategoryBrowseTextUnionEnabled,
+  // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
+  isCandidateKeyPrefilterEnabled,
+  isSinglePayloadReadEnabled,
   // Exported so callers whose lane preserves recall order (the
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
@@ -2006,6 +2271,10 @@ module.exports = {
     RECALL_DOC_PATTERN_CAP,
     isRecallDocMatchEnabled,
     isCategoryBrowseTextUnionEnabled,
+    isCandidateKeyPrefilterEnabled,
+    whereReadsOnlyCandidateRow,
+    isSinglePayloadReadEnabled,
+    readPayloadOnce,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
     isDeterministicTiebreakEnabled,

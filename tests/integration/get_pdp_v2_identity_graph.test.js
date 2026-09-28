@@ -440,6 +440,9 @@ describe('get_pdp_v2 identity graph live read', () => {
             merchant_id: 'external_seed',
             product_id: 'ext_krave_gbr_45',
           },
+          // merch_krave's sibling offer is priced in EUR: only a buyer in a EUR market is shown it
+          // (Peng 2026-09-26; a market-less buyer is US). The opened product's offer stays either way.
+          market: 'FR',
         },
       })
       .expect(200);

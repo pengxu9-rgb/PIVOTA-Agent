@@ -12,7 +12,7 @@ const request = require('supertest');
 // a DATABASE_URL), because without it the door returns before it binds anything and records
 // no lane -- which is how two wiring mutants (products key, stage breakdown) survived review.
 
-const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound', 'market_buyer_currency',
+const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound', 'market_buyer_currency', 'market_serving_currency',
   'served_currencies', 'served_currency_mismatch', 'served_price_sources'];
 
 describe('market telemetry on the invoke completion log line', () => {
@@ -67,7 +67,7 @@ describe('market telemetry on the invoke completion log line', () => {
     .filter((p) => typeof p === 'string');
 
   test('a named market: observed at the bind, and the logged market is the one the SQL received', async () => {
-    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
+    const res = await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
     expect(logged).toHaveLength(1);
     const line = logged[0];
     expect(line.market_observed).toBe(true);
@@ -78,6 +78,9 @@ describe('market telemetry on the invoke completion log line', () => {
     for (const field of FIELDS) expect(Object.keys(line)).toContain(field);
     // Review of #2239 R13: the lane wiring was unpinned because no test reached a lane.
     expect(line.lane).toBe('early_indexed');
+    // The serving lane, as the page sent says it: the log and the body must agree.
+    expect(line.query_source).toBeTruthy();
+    expect(line.query_source).toBe(res.body.metadata.query_source);
   });
 
   test('Stage 0a on: the logged binding is the served partitions plus SG, with the SGD scope', async () => {
@@ -89,9 +92,30 @@ describe('market telemetry on the invoke completion log line', () => {
     expect(boundInSql()).toContain('SGD');
   });
 
-  test('Stage 0a off: no buyer currency is logged or bound', async () => {
+  test('Stage 0a off: no buyer currency is logged, but the SGD serving currency is still bound and logged', async () => {
+    // Peng 2026-09-26: the currency rule is not behind the flag -- an SG buyer is served only SGD.
     await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
     expect(logged[0].market_buyer_currency).toBeNull();
+    expect(logged[0].market_bound).toEqual(['SG']);
+    expect(logged[0].market_serving_currency).toBe('SGD');
+    expect(boundInSql()).toContain('SGD');
+  });
+
+  test('a market with no known currency bound nothing, and says so beside its empty page', async () => {
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'en-US' } });
+    expect(logged[0].market_observed).toBe(true);
+    expect(logged[0].market_bound).toBeNull();
+    expect(logged[0].market_serving_currency).toBeNull();
+    expect(logged[0].served_currencies).toEqual([]);
+    expect(sqlParams).toEqual([]);
+  });
+
+  test('a silent request is served, bound and logged as USD', async () => {
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5 } });
+    expect(logged[0].market_source).toBe('defaulted');
+    expect(logged[0].market_buyer_currency).toBeNull();
+    expect(logged[0].market_serving_currency).toBe('USD');
+    expect(boundInSql()).toContain('USD');
     expect(boundInSql()).not.toContain('SGD');
   });
 
@@ -123,9 +147,14 @@ describe('market telemetry on the invoke completion log line', () => {
 
   test('a request the door never binds says so -- it does not guess a binding', async () => {
     // "return policy" is not beauty: handleInvokeRequest answers it before the door binds.
-    await invoke({ search: { query: 'return policy', market: 'SG' } });
+    const res = await invoke({ search: { query: 'return policy', market: 'SG' } });
     expect(logged).toHaveLength(1);
     expect(logged[0].market_observed).toBe(false);
+    // An early exit records no stage and no lane; before 2026-09-26 its line could not say which
+    // path answered. The page's own query_source now does.
+    expect(logged[0].lane).toBeUndefined();
+    expect(logged[0].query_source).toBeTruthy();
+    expect(logged[0].query_source).toBe(res.body.metadata.query_source);
     expect(logged[0].market_bound).toBeNull();
     // The request side is still recorded -- that is the Stage 2 question.
     expect(logged[0].market_requested).toBe('SG');

@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../logger');
 const { query } = require('../db');
+const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
@@ -9277,6 +9278,10 @@ async function fetchBrandScopedExternalSeedCandidates({
           JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
           ${buildDiscoveryCatalogServingGateJoinSql('cp')}
           WHERE eps.id = ANY($1::text[])
+            -- A seed with no currency is not servable; here, not in the index-driven id probes,
+            -- so their plans are untouched (see buildDiscoveryAttachedSeedServingExistsSql). The
+            -- column alone: this CTE must not detoast seed_data (see the note above).
+            AND ${seedHasColumnPriceCurrencySql('eps')}
           ${orderClause}
           LIMIT $2
         )
@@ -9467,8 +9472,12 @@ function buildDiscoveryCatalogServingGateJoinSql(catalogAlias = 'cp') {
 
 function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_product_seeds') {
   const alias = String(seedAlias || 'external_product_seeds').trim() || 'external_product_seeds';
+  // A seed with no currency is not servable (Peng 2026-09-26): the card formatter stamps 'USD' on
+  // it, so after recall it would read as a US price. The invoke door's servingCurrencyGuard then
+  // enforces WHICH currency -- this feed receives no buyer market.
   return `
     ${alias}.attached_product_key IS NOT NULL
+    AND ${seedHasPriceCurrencySql(alias)}
     AND EXISTS (
       SELECT 1
       FROM catalog_products cp_serving

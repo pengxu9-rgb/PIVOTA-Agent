@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 import {
   hostOf,
@@ -8,6 +9,7 @@ import {
   filterFirstPartyRows,
   resellerHostSet,
   isFirstPartyOnlyEnabled,
+  DEFAULT_RESELLER_HOSTS,
 } from "../src/publicReadSourcing.js";
 import { createPublicReadToolSurface } from "../src/publicReadToolSurface.js";
 
@@ -41,6 +43,9 @@ test("isResellerRow drops the retailer hosts synced from offerSellerIdentity", (
   for (const host of [
     "amazon.ca", "amazon.de", "amzn.to", "amzn.com", "bestbuy.com", "oliveyoung.co.kr",
     "selfridges.com", "harrods.com", "spacenk.com", "coupang.com", "gmarket.co.kr",
+    "beautybay.com", "adorebeauty.com.au", "chemistwarehouse.com.au",
+    "amazon.com.br", "amazon.com.mx", "amazon.com.au", "amazon.fr", "amazon.it", "amazon.es",
+    "stylekorean.com",
   ]) {
     assert.equal(
       isResellerRow({ destination_url: `https://www.${host}/p/x` }, DENY),
@@ -48,6 +53,15 @@ test("isResellerRow drops the retailer hosts synced from offerSellerIdentity", (
       `${host} should be excluded from the first-party public tier`,
     );
   }
+});
+
+test("DEFAULT_RESELLER_HOSTS and offerSellerIdentity's DEFAULT_KNOWN_RETAILER_DOMAINS are one set", () => {
+  // The two lists drifted before (7 hosts missing here and there); a host added to one
+  // must be added to the other. offerSellerIdentity.js is dependency-free CJS.
+  const { DEFAULT_KNOWN_RETAILER_DOMAINS } = createRequire(import.meta.url)(
+    "../../src/services/offerSellerIdentity.js",
+  );
+  assert.deepEqual([...DEFAULT_RESELLER_HOSTS].sort(), [...DEFAULT_KNOWN_RETAILER_DOMAINS].sort());
 });
 
 test("isResellerRow honors explicit backend signals over host", () => {

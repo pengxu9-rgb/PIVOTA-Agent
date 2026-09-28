@@ -4,7 +4,9 @@ const logger = require('../logger');
 const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
+const { refKeyMatchSql, productGroupRefKeyMatchSql } = require('../services/relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
+const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
 const familyIdentityKey =
@@ -17,6 +19,13 @@ const familyIdentityKeysCompatible =
   ((left, right) => Boolean(left && right && left === right));
 
 const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
+// Minimum score_total for a dupe, on the graded scale the sources scorer emits since #2290:
+// score = base + (1 - base) * pair_evidence, with base at the 0.72 exact-category floor for a
+// same-shelf pair. 0.78 is that floor plus a fifth of the maximum pair evidence (0.72 + 0.28 * 0.2),
+// i.e. a pair whose names, INCI or copy actually overlap; the shelf alone (0.72) can never make a
+// dupe. The old 0.82 was set against max(channels) + provenance constants, where a product-intel row
+// alone reached 0.93; on the new scale it let a similar-INCI pair through by 0.004.
+const DUPE_MIN_SCORE_TOTAL = 0.78;
 const REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired']);
 const ANCHOR_TYPES = new Set(['product', 'need']);
 const PRICE_FRESHNESS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -285,10 +294,37 @@ function normalizeUpperEvidenceGrade(value) {
   return '';
 }
 
+const PRICE_EVIDENCE_CURRENCY_KEYS = [
+  'anchor_price_currency',
+  'anchorPriceCurrency',
+  'candidate_price_currency',
+  'candidatePriceCurrency',
+];
+
+function snapshotPriceCurrency(snapshot) {
+  const obj = isPlainObject(snapshot) ? snapshot : {};
+  return readPriceWithCurrency(
+    [[obj, 'price'], [obj, 'price_amount'], [obj, 'priceAmount'], [obj, 'sale_price'], [obj, 'salePrice']],
+    toNumberOrNull,
+  ).currency;
+}
+
+// A ratio across two currencies compares nothing, whatever wrote it. Evidence written with currency
+// keys (the builder since 2026-09-27) is authoritative: a null price_ratio there is a REFUSED ratio,
+// not a missing one, and is never rebuilt from the amounts. Older evidence has no currency keys; its
+// ratio is still rebuilt from the amounts unless the two snapshots name different currencies.
 function getPriceRatio(edge) {
   const price = isPlainObject(edge.price_evidence) ? edge.price_evidence : {};
+  const anchorCurrency =
+    normalizeCurrencyCode(price.anchor_price_currency ?? price.anchorPriceCurrency) ||
+    snapshotPriceCurrency(edge.anchor_snapshot);
+  const candidateCurrency =
+    normalizeCurrencyCode(price.candidate_price_currency ?? price.candidatePriceCurrency) ||
+    snapshotPriceCurrency(edge.candidate_snapshot);
+  if (anchorCurrency && candidateCurrency && anchorCurrency !== candidateCurrency) return null;
   const explicit = toNumberOrNull(price.price_ratio ?? price.priceRatio);
   if (explicit != null) return explicit;
+  if (PRICE_EVIDENCE_CURRENCY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(price, key))) return null;
   const anchorPrice = toNumberOrNull(
     price.anchor_price_amount ?? price.anchorPriceAmount ?? extractPrice(edge.anchor_snapshot),
   );
@@ -440,7 +476,7 @@ function validateRelationshipEdge(input = {}, options = {}) {
   }
 
   if (edge.relation_type === 'dupe') {
-    if (scoreTotal == null || scoreTotal < 0.82) errors.push('dupe_similarity_below_threshold');
+    if (scoreTotal == null || scoreTotal < DUPE_MIN_SCORE_TOTAL) errors.push('dupe_similarity_below_threshold');
     if (getCandidatePrice(edge) == null) errors.push('dupe_candidate_price_missing');
     if (priceRatio == null) {
       errors.push('dupe_price_ratio_missing');
@@ -1426,6 +1462,70 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
   return refs;
 }
 
+// The live offers behind each edge ref, for pairing a stored bare amount with its currency
+// (intelligenceReads.fillStoredAmountCurrencies). A ref's key is matched the way the canonical resolver
+// matches it — the indexed source_product_id / product_key / pivota_signature_id branches, plus a
+// `product:pg_…` group through its members — but only `product:` is stripped: `retailer:…` / `ulta:…` keys
+// carry their colon. Returns Map<lowercased input ref, Array<{currency, amounts}>>; offers without a
+// currency are left out (they cannot name one).
+const OFFER_PRICE_REF_KEY_COLUMNS = Object.freeze(['source_product_id', 'product_key', 'pivota_signature_id']);
+const OFFER_PRICE_MAX_REFS = 200;
+
+async function listCatalogOfferPricesForRefs(refs = [], { queryFn = query } = {}) {
+  const inputs = Array.from(new Set(
+    (Array.isArray(refs) ? refs : [refs]).map((ref) => normalizeLower(ref, 512)).filter(Boolean),
+  )).slice(0, OFFER_PRICE_MAX_REFS);
+  const out = new Map();
+  if (!inputs.length) return out;
+  try {
+    const res = await queryFn(
+      `
+        WITH input_refs AS (
+          SELECT DISTINCT raw AS input_ref, regexp_replace(raw, '^product:', '') AS ref_key
+          FROM unnest($1::text[]) AS raw
+        ),
+        matched AS (
+          ${OFFER_PRICE_REF_KEY_COLUMNS.map((column) => `
+          SELECT i.input_ref, cp.product_key
+          FROM input_refs i
+          JOIN catalog_products cp ON ${refKeyMatchSql(column, 'cp', 'i.ref_key')}`).join(`
+          UNION`)}
+          UNION
+          SELECT i.input_ref, cp.product_key
+          FROM input_refs i
+          JOIN product_group_members pgm ON ${productGroupRefKeyMatchSql('pgm', 'i.ref_key')}
+          JOIN catalog_products cp
+            ON cp.merchant_id = pgm.merchant_id
+           AND cp.platform = pgm.platform
+           AND cp.source_product_id = pgm.platform_product_id
+        )
+        SELECT m.input_ref, o.currency, o.list_price, o.merchant_effective_price, o.estimated_best_price
+        FROM matched m
+        JOIN catalog_offers o ON o.product_key = m.product_key
+        WHERE o.suppressed_at IS NULL
+          AND o.currency IS NOT NULL
+        LIMIT 5000
+      `,
+      [inputs],
+    );
+    for (const row of Array.isArray(res?.rows) ? res.rows : []) {
+      const ref = normalizeLower(row.input_ref, 512);
+      const currency = normalizeString(row.currency, 8);
+      if (!ref || !currency) continue;
+      const amounts = [row.list_price, row.merchant_effective_price, row.estimated_best_price]
+        .map(toNumberOrNull)
+        .filter((n) => n != null);
+      if (!out.has(ref)) out.set(ref, []);
+      out.get(ref).push({ currency: currency.toUpperCase(), amounts });
+    }
+  } catch (err) {
+    const code = normalizeString(err && err.code, 20);
+    if (code === 'NO_DATABASE' || code === '42P01') return out;
+    throw err;
+  }
+  return out;
+}
+
 async function getRelationshipGraphCandidatesForAnchor({
   anchor,
   market = DEFAULT_MARKET,
@@ -1701,10 +1801,16 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         expires_at = EXCLUDED.expires_at,
         updated_at = now()
       WHERE NOT (
-        relationship_candidate_labels.label_state = ANY (
-          ARRAY['human_approved', 'ai_approved', 'human_rejected', 'needs_evidence']::text[]
+        (
+          relationship_candidate_labels.label_state = ANY (
+            ARRAY['human_approved', 'ai_approved', 'human_rejected', 'needs_evidence']::text[]
+          )
+          AND EXCLUDED.label_state = ANY (ARRAY['generated', 'review_ready', 'prefilter_rejected']::text[])
         )
-        AND EXCLUDED.label_state = ANY (ARRAY['generated', 'review_ready']::text[])
+        OR (
+          relationship_candidate_labels.label_state = 'human_approved'
+          AND NOT (EXCLUDED.label_state = ANY (ARRAY['human_approved', 'human_rejected', 'needs_evidence']::text[]))
+        )
       )
     `,
     [
@@ -1744,6 +1850,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
 }
 
 module.exports = {
+  DUPE_MIN_SCORE_TOTAL,
   RELATION_TYPES,
   REVIEW_STATUSES,
   LABEL_STATES,
@@ -1759,6 +1866,7 @@ module.exports = {
   stripRelationshipRefPrefix,
   buildAnchorRefsFromProduct,
   expandAnchorRefsWithGroupSiblings,
+  listCatalogOfferPricesForRefs,
   listApprovedRelationshipEdgesForAnchor,
   listApprovedRelationshipEdgesForAnchorUncollapsed,
   collapseApprovedRelationshipEdgesToFamilies,

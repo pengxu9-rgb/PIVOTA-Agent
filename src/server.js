@@ -1,4 +1,4 @@
-const { buildSeedSearchOfferScope } = require('./services/seedSearchOfferScope');
+const { buildSeedSearchOfferScope, seedHasPriceCurrencySql } = require('./services/seedSearchOfferScope');
 const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
@@ -11,6 +11,7 @@ const {
 } = require('./services/servedMarkets');
 const {
   resolveBuyerMarketScope, resolveBuyerBudgetConstraint, isEnabled: isBuyerMarketEnabled,
+  resolveServingCurrency,
 } = require('./services/buyerMarket');
 
 const express = require('express');
@@ -28,6 +29,7 @@ const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
+const { callerLogFields } = require('./attribution/callerLogFields');
 const { isExternalSeedRow } = require('./externalSeedIdentity');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
@@ -40,6 +42,7 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
@@ -80,9 +83,10 @@ const {
   parseOfferId,
 } = require('./offers/offerIds');
 const {
-  // `prioritizeOffersResolveResponse` itself is NOT imported: the only caller is the gated wrapper
-  // below, and an ungated alias sitting in scope is how an ungated call site gets written next.
-  prioritizeOffersResolveResponseGated,
+  // `prioritizeOffersResolveResponse` is NOT imported: an ungated alias sitting in scope is how an
+  // ungated call site gets written next. offers.resolve is gated by `gateOffersResolveResponse`.
+  gateOffersResolveResponse,
+  offersResolveGateBuyerMarket,
   annotateOffersWithCommerceMetadata,
   resolveOfferPurchasabilityDecisions,
   offersGateBuyerMarket,
@@ -93,6 +97,7 @@ const {
 const {
   buildPdpPayload,
   buildBundleCompositionModuleData,
+  buildVariantSelectorModuleData,
   isExternalSeedLikeProduct,
   normalizeBundleComponentRefsForPdp,
   pickElectronicsMeta,
@@ -226,6 +231,8 @@ const {
   resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
+const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
+const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
@@ -274,6 +281,8 @@ const {
 const {
   buildSearchQualityContract,
   SEARCH_QUALITY_CONTRACT_VERSION,
+  isStrictShaveQuery,
+  productTextNamesShaving,
 } = require('./findProductsMulti/queryUnderstanding');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
@@ -302,6 +311,12 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
 const marketTelemetry = require('./services/marketTelemetry');
+const {
+  enforceServingCurrency,
+  filterProductsToServingCurrency,
+  servingCurrencyFor,
+} = require('./services/servingCurrencyGuard');
+const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   titleLooksLikeMultiProductSet,
@@ -309,6 +324,7 @@ const {
 } = beautyRelevanceGate;
 const {
   resolveCanonicalCatalogEntityGroup,
+  resolveProductGroupSubjectSignatureId,
   resolveMerchantScopedSourceProductId,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
@@ -338,10 +354,7 @@ const {
   recordPdpV2ModuleLatency,
   recordSimilarDeferred,
 } = require('./observability/pdpMetrics');
-const {
-  normalizeRecommendationDecisionMode,
-  normalizeQueryStepStrength,
-} = require('./shared/recommendationDecisionCapability');
+const { normalizeQueryStepStrength } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
@@ -430,7 +443,7 @@ try {
     'auroraBff routes failed to load; disabling aurora routes for this process',
   );
 }
-const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
+const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
   recommend: recommendPdpProducts,
   getCacheStats: getPdpRecsCacheStats,
@@ -551,6 +564,13 @@ const PIVOT_BEAUTY_CONTRACT_V1_ENABLED = parseBooleanEnv(
 const CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED = parseBooleanEnv(
   process.env.CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED,
   false,
+);
+// get_pdp_v2 serves a `subject: product_group` pg_ id through the signature lane of the member the
+// group lane already picks (see resolveProductGroupSubjectSignatureId). Kill switch only: off restores
+// the group lane, which 404s every group whose pick is a P3 minted canonical.
+const PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED = parseBooleanEnv(
+  process.env.PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED,
+  true,
 );
 const PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
@@ -3065,6 +3085,7 @@ ${selectColumns}
     WHERE status = 'active'
       AND attached_product_key IS NULL
       AND ${stageMkt.sql}
+      AND ${seedHasPriceCurrencySql()}
       AND (
         ${structuredIngredientEvidenceClauses.join(' OR ')}
       )
@@ -3255,13 +3276,6 @@ function isCanonicalSearchProduct(product) {
   );
 }
 
-function getCanonicalSearchFallbackReason(err) {
-  const status = Number(err?.response?.status || 0) || 0;
-  if ([404, 405, 415, 422].includes(status)) return `status_${status}`;
-  const message = String(err?.message || '').toLowerCase();
-  if (message.includes('nock: no match for request')) return 'contract_not_mocked';
-  return null;
-}
 
 function normalizeCanonicalSearchVariant(variant) {
   if (!isPlainObject(variant)) return null;
@@ -3702,10 +3716,6 @@ function getUpstreamTimeoutMs(operation) {
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
 }
 
-const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
-  process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
-  Math.max(6500, Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 10000)),
-);
 const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   450,
   Math.min(
@@ -3716,72 +3726,12 @@ const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
     Math.max(450, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
   ),
 );
-const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
-  250,
-  Math.min(
-    parseTimeoutMs(
-      process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
-      Math.min(1200, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
-    ),
-    Math.max(250, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
-  ),
-);
-const PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS = Math.max(
-  200,
-  Math.min(
-    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS, 450),
-    3000,
-  ),
-);
 const PROXY_SEARCH_RESOLVER_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
   1600,
 );
-const PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS = parseTimeoutMs(
-  process.env.PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
-  1200,
-);
-const PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = (() => {
-  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
-  return String(process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED || defaultValue).toLowerCase() === 'true';
-})();
-const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
-  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
-  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
-})();
-const PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = (() => {
-  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
-  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY || defaultValue).toLowerCase() === 'true';
-})();
-const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = (() => {
-  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
-  return (
-    String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || defaultValue)
-      .toLowerCase() === 'true'
-  );
-})();
-const PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA = (() => {
-  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
-  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA || defaultValue).toLowerCase() === 'true';
-})();
-const PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
-  String(process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
-  String(process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS || 'true').toLowerCase() ===
-  'true';
 const PROXY_SEARCH_AURORA_FORCE_FAST_MODE =
   String(process.env.PROXY_SEARCH_AURORA_FORCE_FAST_MODE || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK =
-  String(process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK =
-  String(process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
-  String(process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS || 'true').toLowerCase() !==
-  'false';
 const PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
   String(process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED || 'true').toLowerCase() === 'true';
 function normalizeExternalSeedStrategy(value, fallback = 'unified_relevance') {
@@ -3844,55 +3794,12 @@ const PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = Math.max(
   1,
   Math.min(20, Number(process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE || 3) || 3),
 );
-const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
-  String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
-  'false';
-const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
-  String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
-const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
-  String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
-  'false';
-const PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED =
-  String(process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED || 'true').toLowerCase() !==
-  'false';
-const PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES = Math.max(
-  0,
-  Math.min(
-    3,
-    Number(process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES || 1) || 1,
-  ),
-);
-const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
-  1200,
-  Math.min(
-    parseTimeoutMs(
-      process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
-      Math.min(
-        UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
-        Math.max(5000, FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS - 500),
-      ),
-    ),
-    UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
-  ),
-);
 const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
   1200,
   Math.min(
     parseTimeoutMs(process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
-);
-const PROXY_SEARCH_RESOLVER_CACHE_TTL_MS = Math.max(
-  1000,
-  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_CACHE_TTL_MS, 5 * 60 * 1000),
-);
-const PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS = Math.max(
-  500,
-  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS, 45 * 1000),
-);
-const PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES = Math.max(
-  100,
-  Number(process.env.PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES || 2000) || 2000,
 );
 const FIND_PRODUCTS_MULTI_EXPANSION_MODE = (() => {
   const raw = String(process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE || 'conservative')
@@ -3912,8 +3819,6 @@ const FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = (() => {
 })();
 const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
-const SEARCH_EXTERNAL_FILL_GATED =
-  String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
 const SEARCH_LIMIT_MAX = parsePositiveInt(process.env.SEARCH_LIMIT_MAX, 200, {
   min: 1,
   max: 200,
@@ -3935,8 +3840,6 @@ const FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT = parsePositiveInt(
 );
 const SEARCH_EXTERNAL_HARD_RULE_PRUNE =
   String(process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE || 'true').toLowerCase() !== 'false';
-const SEARCH_FRAGRANCE_SEMANTIC_RETRY =
-  String(process.env.SEARCH_FRAGRANCE_SEMANTIC_RETRY || 'true').toLowerCase() !== 'false';
 const SEARCH_CACHE_VALIDATE =
   String(process.env.SEARCH_CACHE_VALIDATE || 'false').toLowerCase() === 'true';
 const SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
@@ -3969,17 +3872,6 @@ const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
     .map((item) => String(item || '').trim().toLowerCase())
     .filter(Boolean),
 );
-const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
-  'true';
-const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
-  100,
-  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
-);
-const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
-  300,
-  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS, 1200),
-);
 const FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = Math.max(
   1500,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS, 3500),
@@ -4006,27 +3898,16 @@ const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
 );
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
-const FPM_LOOKUP_ONLY_RESOLVER =
-  String(process.env.FPM_LOOKUP_ONLY_RESOLVER || 'true').toLowerCase() !== 'false';
 const FPM_CLARIFY_NEVER_EMPTY =
   String(process.env.FPM_CLARIFY_NEVER_EMPTY || 'true').toLowerCase() !== 'false';
 const FPM_GATEWAY_TOTAL_BUDGET_MS = Math.max(
   1200,
   parseTimeoutMs(process.env.FPM_GATEWAY_TOTAL_BUDGET_MS, 2500),
 );
-const FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS = Math.max(
-  300,
-  parseTimeoutMs(process.env.FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS, 550),
-);
 const FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS = Math.max(
   350,
   parseTimeoutMs(process.env.FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS, 700),
 );
-// Run the resolver-first probe and the primary upstream search concurrently
-// (they are independent recall legs); set to 'false' to restore the
-// sequential resolver → primary ordering.
-const FPM_PARALLEL_RESOLVER_PRIMARY =
-  String(process.env.FPM_PARALLEL_RESOLVER_PRIMARY || 'true').toLowerCase() !== 'false';
 // Trim the final find_products_multi response to the page_size/limit the
 // client explicitly requested (post-rank, so the wide candidate pool still
 // feeds ranking). Set to 'false' to restore pool-sized responses.
@@ -4180,58 +4061,6 @@ function parsePdpCorePrewarmTargets(raw, defaultMerchantId) {
   }
 
   return out;
-}
-
-const PROXY_SEARCH_RESOLVER_CACHE = new Map(); // key -> { value, expiresAtMs }
-
-function buildProxySearchResolverCacheKey({
-  queryText,
-  lang,
-  preferMerchants,
-  searchAllMerchants,
-  fetchDetail,
-  resolverTimeoutMs,
-}) {
-  const timeoutBucket = Number.isFinite(Number(resolverTimeoutMs))
-    ? Math.max(100, Math.round(Number(resolverTimeoutMs) / 50) * 50)
-    : null;
-  return JSON.stringify({
-    q: String(queryText || '').trim().toLowerCase(),
-    lang: String(lang || '').trim().toLowerCase() || 'en',
-    prefer_merchants: Array.isArray(preferMerchants)
-      ? preferMerchants.map((item) => String(item || '').trim()).filter(Boolean)
-      : [],
-    search_all_merchants: searchAllMerchants === true ? true : false,
-    fetch_detail: fetchDetail === true,
-    resolver_timeout_ms_bucket: timeoutBucket,
-  });
-}
-
-function getProxySearchResolverCacheEntry(cacheKey) {
-  const key = String(cacheKey || '');
-  if (!key) return null;
-  const hit = PROXY_SEARCH_RESOLVER_CACHE.get(key);
-  if (!hit) return null;
-  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
-    PROXY_SEARCH_RESOLVER_CACHE.delete(key);
-    return null;
-  }
-  return safeCloneJson(hit.value);
-}
-
-function setProxySearchResolverCacheEntry(cacheKey, value, ttlMs = PROXY_SEARCH_RESOLVER_CACHE_TTL_MS) {
-  const key = String(cacheKey || '');
-  if (!key) return;
-  const ttl = Math.max(500, Number(ttlMs) || PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
-  while (PROXY_SEARCH_RESOLVER_CACHE.size >= PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES) {
-    const firstKey = PROXY_SEARCH_RESOLVER_CACHE.keys().next().value;
-    if (!firstKey) break;
-    PROXY_SEARCH_RESOLVER_CACHE.delete(firstKey);
-  }
-  PROXY_SEARCH_RESOLVER_CACHE.set(key, {
-    value: safeCloneJson(value),
-    expiresAtMs: Date.now() + ttl,
-  });
 }
 
 // Product-detail cache (avoid repeated slow upstream product fetches).
@@ -4632,7 +4461,10 @@ function buildPdpSimilarInflightKey(args = {}) {
     args?.options?.no_cache || args?.options?.cache_bypass || args?.options?.bypass_cache,
   );
   const excludeKey = collectPdpSimilarExcludeKeyTokens(args?.options).join(',');
-  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}::${excludeKey}`;
+  // Two buyers in different currencies must not share one in-flight recall (recommend() scopes it).
+  const servingCurrency =
+    args?.serving_currency === undefined ? 'default' : String(args.serving_currency || 'none');
+  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${servingCurrency}::${bypass ? '1' : '0'}::${excludeKey}`;
 }
 
 function collectPdpSimilarExcludeKeyTokens(options = {}) {
@@ -4894,6 +4726,11 @@ function buildPdpSimilarFetchArgs({
   excludeItems = [],
   excludeIds = [],
   requestMode = 'first_paint',
+  // The buyer's serving currency; undefined reads it the way the invoke door's guard does, from the
+  // payload AND the request metadata -- reading the payload alone would filter an SG buyer whose
+  // market rides in metadata to USD while the door keeps SGD, and empty their page.
+  servingCurrency,
+  metadata = {},
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
   const resolvedCandidateLimit =
@@ -4932,6 +4769,8 @@ function buildPdpSimilarFetchArgs({
         canonicalProductForPdp?.currency ||
         canonicalProduct?.currency ||
         'USD',
+      serving_currency:
+        servingCurrency === undefined ? servingCurrencyFor({ payload, metadata }) : servingCurrency,
       options: {
         debug,
         candidate_limit: resolvedCandidateLimit,
@@ -9718,9 +9557,20 @@ function findPositiveOfferById(offers, offerId) {
   return offers.find((offer) => String(offer?.offer_id || offer?.id || '').trim() === id && readPositiveOfferMoney(offer));
 }
 
-function pickOfferForCanonicalPdpPrice(offersData) {
-  const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
-  if (!offers.length) return null;
+// The offer whose price the canonical card shows. When a serving currency is given and any offer is
+// priced in it, only those offers are candidates: the default/best-price ids come from a sort that
+// compares raw amounts across currencies (15 USD "beats" 2400 JPY), so they can name an offer the
+// buyer must not be quoted. What can remain outside the serving currency is only the opened product's
+// own offer, which the offers module keeps as a by-id read (#2301); with nothing else priced it is
+// still the card's offer, exactly as before.
+function pickOfferForCanonicalPdpPrice(offersData, { servingCurrency = null } = {}) {
+  const allOffers = Array.isArray(offersData?.offers) ? offersData.offers : [];
+  if (!allOffers.length) return null;
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  const inServingCurrency = currency
+    ? allOffers.filter((offer) => readOfferCurrency(offer) === currency && readPositiveOfferMoney(offer))
+    : [];
+  const offers = inServingCurrency.length ? inServingCurrency : allOffers;
 
   const defaultOffer = findPositiveOfferById(offers, offersData?.default_offer_id);
   if (defaultOffer && offerHasAvailableInventory(defaultOffer)) return defaultOffer;
@@ -9922,22 +9772,157 @@ function hydrateCanonicalPdpMediaFromOfferImages(pdpPayload, product, offerImage
   return nextPayload;
 }
 
-function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
+// The seller listing a card is built from. A signature-route card's product_id is the public page id
+// (`sig_...`, applyCatalogIdentityToPdpProduct); its listing is source_product_id, or the listing the
+// caller resolved the card from. '' when a signature card names no listing at all.
+function readCanonicalCardListingId(product, fallbackListingId = '') {
+  const productId = String(product?.product_id || product?.id || '').trim();
+  if (!isPivotaSignatureProductId(productId)) return productId;
+  return firstNonEmptyString(product?.source_product_id, product?.platform_product_id, fallbackListingId) || '';
+}
+
+function isPivotaPublicProductUrl(url) {
+  return String(url || '').trim().startsWith(buildPublicProductUrl(''));
+}
+
+// Does this offer sell the very listing the card is built from? The same rule as the opened-product
+// match in buildOffersFromGroupMembers (#2301): the product id plus the exact merchant, or, in the
+// seed lane, any external-seed supply on both sides — a card opened through the lane's alias names
+// the observed seller's listing by the alias (ADR-009). A connected merchant must match exactly: its
+// product ids are only store-unique.
+//
+// A signature card that names no listing cannot be shown to sell a DIFFERENT one by id, so only a
+// different seller counts as different there: projecting it onto its own single offer swapped its
+// Pivota URL for the merchant's and stamped the sig id as its own content ref.
+function offerSellsCardListing(product, offer, fallbackListingId = '') {
+  const cardMerchantId = String(product?.merchant_id || '').trim();
+  const sameMerchant = Boolean(cardMerchantId) && cardMerchantId === String(offer?.merchant_id || '').trim();
+  const productId = readCanonicalCardListingId(product, fallbackListingId);
+  if (!productId) return sameMerchant;
+  if (productId !== String(offer?.product_id || '').trim()) return false;
+  if (sameMerchant) return true;
+  return isExternalSeedListingMerchantId(cardMerchantId) && memberIsExternalSeedSupply(offer);
+}
+
+// Card fields that describe ONE seller's listing rather than the product: who sells it, where to buy
+// it, what the buyer selects and what it costs. Content (title, description, media, brand, category,
+// ingredients) is the product's and stays with the content member.
+const CANONICAL_CARD_SELLER_SCOPED_FIELDS = [
+  'merchant_name',
+  'seller_name',
+  'store_name',
+  'platform',
+  'platform_product_id',
+  'source_product_id',
+  'product_key',
+  'purchase_route',
+  'commerce_mode',
+  'checkout_handoff',
+  'checkout_mode',
+  'external_redirect_url',
+  'url',
+  'product_url',
+  'canonical_url',
+  'destination_url',
+  'source_url',
+  'default_variant_id',
+  'variants',
+  'purchase_grain',
+  'availability',
+  'in_stock',
+  'shipping',
+  'returns',
+  'sku_id',
+  'variant_id',
+  ...SAVINGS_PRESENTATION_FIELDS,
+];
+
+// The card shows `offer`'s price, and `offer` sells a different listing than the one the card's
+// content came from (the group's content member is picked by content quality/key order, the price by
+// the buyer's default offer). Then the seller named on the card must be the offer's seller: prod
+// 2026-09-27, sig_13336cf3c9eba86550f9f093 carded arencia_jp (JP seller) at the US seller's $15.
+// Every seller-scoped field is taken from the offer or dropped — never left naming the content member.
+// A signature-route card keeps its public page id and route fields (pivota_signature_id,
+// pivota_canonical_url, a Pivota canonical_url): those address the product page, not a seller.
+function projectCanonicalCardSellerFromOffer(product, offer, money, fallbackListingId = '') {
+  const listingId = String(offer.product_id).trim();
+  const contentRef = {
+    merchant_id: String(product.merchant_id || '').trim() || null,
+    product_id: readCanonicalCardListingId(product, fallbackListingId) || null,
+  };
+  const next = { ...product };
+  CANONICAL_CARD_SELLER_SCOPED_FIELDS.forEach((field) => delete next[field]);
+  if (isPivotaPublicProductUrl(product.canonical_url)) next.canonical_url = product.canonical_url;
+  if (isPivotaSignatureProductId(product.product_id)) {
+    next.source_product_id = listingId;
+  } else {
+    next.product_id = listingId;
+    if (product.id !== undefined) next.id = listingId;
+  }
+  next.merchant_id = String(offer.merchant_id || '').trim() || undefined;
+  if (offer.merchant_name) next.merchant_name = offer.merchant_name;
+  if (offer.purchase_route) next.purchase_route = offer.purchase_route;
+  if (offer.checkout_mode) next.checkout_mode = offer.checkout_mode;
+  if (offer.external_redirect_url) next.external_redirect_url = offer.external_redirect_url;
+  if (offer.url) next.url = offer.url;
+  if (offer.source_url) next.source_url = offer.source_url;
+  if (offer.shipping) next.shipping = offer.shipping;
+  if (offer.returns) next.returns = offer.returns;
+  Object.assign(next, pickSavingsPresentationFields(offer));
+  const inStock = offer.inventory?.in_stock;
+  next.availability = typeof inStock === 'boolean' ? { in_stock: inStock } : {};
+
+  // Variant ids and prices are the seller's too (a JPY-priced JP variant under a USD card is both a
+  // wrong seller and a wrong currency). An offer without variants is its own purchasable unit, which
+  // pdpBuilder states as one variant whose id is the product id (purchase_grain 'product').
+  const offerVariants = (Array.isArray(offer.variants) ? offer.variants : []).filter((variant) =>
+    String(variant?.variant_id || '').trim(),
+  );
+  if (offerVariants.length) {
+    const selectedVariantId = String(offer.selected_variant_id || offer.variant_id || '').trim();
+    next.variants = offerVariants;
+    next.default_variant_id = offerVariants.some((variant) => variant.variant_id === selectedVariantId)
+      ? selectedVariantId
+      : offerVariants[0].variant_id;
+    next.purchase_grain = 'variant';
+  } else {
+    next.variants = [
+      {
+        variant_id: listingId,
+        sku_id: listingId,
+        title: 'Default',
+        options: [],
+        price: { current: { amount: money.amount, currency: money.currency } },
+        availability: next.availability,
+      },
+    ];
+    next.default_variant_id = listingId;
+    next.purchase_grain = 'product';
+  }
+  next.seller_source = 'default_offer';
+  next.content_product_ref = contentRef;
+  return next;
+}
+
+function hydrateCanonicalPdpPayloadFromOffers(
+  pdpPayload,
+  offersData,
+  { servingCurrency = null, cardListingId = '' } = {},
+) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
-  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
+  let product = pdpPayload.product && typeof pdpPayload.product === 'object'
     ? { ...pdpPayload.product }
     : null;
   if (!product) return pdpPayload;
 
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
-  let selectedOffer = pickOfferForCanonicalPdpPrice(offersData);
+  // Price and media are picked separately: media is product content and may be borrowed from any
+  // offer, but the price must come from the offer whose seller the card then names.
+  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData, { servingCurrency });
   let selectedOfferImageUrls = collectOfferImageUrls(selectedOffer);
   if (!selectedOfferImageUrls.length) {
     const imageBearingOffer = offers.find((offer) => collectOfferImageUrls(offer).length > 0);
-    if (imageBearingOffer) {
-      selectedOffer = imageBearingOffer;
-      selectedOfferImageUrls = collectOfferImageUrls(imageBearingOffer);
-    }
+    if (imageBearingOffer) selectedOfferImageUrls = collectOfferImageUrls(imageBearingOffer);
   }
   const selectedOfferMoney = readPositiveOfferMoney(selectedOffer);
 
@@ -9952,9 +9937,13 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
   if (offersData?.best_price_offer_id) product.best_price_offer_id = offersData.best_price_offer_id;
 
   let projectedOfferPrice = null;
+  let sellerProjected = false;
   if (selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
+    const offerIsCardListing = offerSellsCardListing(product, selectedOffer, cardListingId);
+    // Another listing's price replaces the content member's whole price object: its other keys
+    // (compare-at, original) are that seller's, possibly in that seller's currency.
     const existingPrice =
-      product.price && typeof product.price === 'object' && !Array.isArray(product.price)
+      offerIsCardListing && product.price && typeof product.price === 'object' && !Array.isArray(product.price)
         ? product.price
         : {};
     projectedOfferPrice = {
@@ -9974,8 +9963,13 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
       },
     };
     product.price_amount = projectedOfferPrice.amount;
+    if (product.priceAmount !== undefined) product.priceAmount = projectedOfferPrice.amount;
     product.currency = projectedOfferPrice.currency;
     product.price_source = 'default_offer';
+    if (!offerIsCardListing) {
+      product = projectCanonicalCardSellerFromOffer(product, selectedOffer, projectedOfferPrice, cardListingId);
+      sellerProjected = true;
+    }
   } else if (shouldHydratePrice) {
     delete product.price;
     delete product.price_amount;
@@ -9993,8 +9987,15 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
       if (String(module?.type || '').trim() !== 'price_promo') return module;
       replacedPriceModule = true;
       const data = module?.data && typeof module.data === 'object' && !Array.isArray(module.data)
-        ? module.data
+        ? { ...module.data }
         : {};
+      // A compare-at or promotion belongs to the seller it was read from, in that seller's currency:
+      // never shown beside another seller's price (a JP ¥3000 "was" next to the US $15).
+      const compareAtCurrency = String(data.compare_at?.currency || '').trim().toUpperCase();
+      if (sellerProjected || (compareAtCurrency && compareAtCurrency !== projectedOfferPrice.currency)) {
+        delete data.compare_at;
+      }
+      if (sellerProjected) data.promotions = [];
       return {
         ...module,
         data: {
@@ -10017,6 +10018,16 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
         },
       ];
     }
+  }
+  if (sellerProjected && Array.isArray(modules)) {
+    // The selector offered the content listing's variant ids; the card now sells the offer's.
+    modules = modules
+      .map((module) => {
+        if (String(module?.type || '').trim() !== 'variant_selector') return module;
+        const data = buildVariantSelectorModuleData(product.variants, product.default_variant_id, module.data);
+        return data ? { ...module, data } : null;
+      })
+      .filter(Boolean);
   }
 
   return hydrateCanonicalPdpMediaFromOfferImages({
@@ -10677,9 +10688,15 @@ async function buildOffersFromGroupMembers(args) {
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
   const preferredProductId = args?.preferredProductId ? String(args.preferredProductId).trim() : null;
   const debug = args?.debug === true;
-  // The request's buyer market, for the merchant-purchasability gate below. Undefined = the gate
-  // cannot ask and this lane keeps today's exact shape (logged `merchant_purchasability_unkeyable`).
+  // The request's buyer market, for the merchant-purchasability gate below. Undefined = unkeyable:
+  // declined under backend enforcement, else today's exact shape (logged `merchant_purchasability_unkeyable`).
   const buyerMarket = args?.buyerMarket;
+  // The currency a SIBLING offer must be priced in (Peng 2026-09-26: no result in another currency
+  // than the buyer's). The offer for the product the buyer opened is kept whatever its currency --
+  // that is a by-id read of what they already hold. A caller that passes none gets the rule applied
+  // to its buyerMarket (none = the default market, USD); null = a market nothing is priced for.
+  const offerServingCurrency =
+    args?.servingCurrency === undefined ? resolveServingCurrency(buyerMarket) : args.servingCurrency || null;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
@@ -10914,7 +10931,20 @@ async function buildOffersFromGroupMembers(args) {
     `pg:pid:${String(canonicalProductRef?.product_id || products[0]?.product_id || products[0]?.id || '').trim()}`;
 
   const buildOfferRowsStartedAt = Date.now();
-  const offers = offerEligibleFetched.map(({ member, product: p }) => {
+  const isOpenedProductMember = (member, p) => {
+    const ids = [member?.product_id, p?.product_id].map((value) => String(value || '').trim()).filter(Boolean);
+    if (preferredProductId) {
+      if (!ids.includes(preferredProductId)) return false;
+      if (!preferredMerchantId || String(member?.merchant_id || '').trim() === preferredMerchantId) return true;
+      // A PDP opened through the seed lane names the lane's alias (`external_seed`) while its group
+      // member carries the per-brand observed seller (`merch_obs_...`, ADR-009): the same listing.
+      // A connected merchant still has to match exactly -- its product ids are only store-unique.
+      return isExternalSeedListingMerchantId(preferredMerchantId) && memberIsExternalSeedSupply(member);
+    }
+    return Boolean(canonicalMember) && member === canonicalMember;
+  };
+  const offerKeptForCurrency = [];
+  const builtOffers = offerEligibleFetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
     const offerSourceKind = firstNonEmptyString(
       member?.source_kind,
@@ -10982,6 +11012,11 @@ async function buildOffersFromGroupMembers(args) {
       currency,
       p,
       selectedVariant,
+    );
+    const offerCurrency = String(offerPrice?.currency || currency || '').trim().toUpperCase();
+    offerKeptForCurrency.push(
+      isOpenedProductMember(member, p) ||
+        (Boolean(offerServingCurrency) && offerCurrency === offerServingCurrency),
     );
 
     return {
@@ -11054,7 +11089,10 @@ async function buildOffersFromGroupMembers(args) {
       risk_tier: 'standard',
     };
   });
+  const offers = builtOffers.filter((_, index) => offerKeptForCurrency[index]);
+  const servingCurrencyFilteredOfferCount = builtOffers.length - offers.length;
   timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
+  if (!offers.length) return null;
 
   const { offers: dedupedOffers, removed: dedupedOfferCount } = dedupeEquivalentOffers(offers);
   const {
@@ -11076,7 +11114,17 @@ async function buildOffersFromGroupMembers(args) {
     declinedDomains: groupOffersDeclinedDomains,
   });
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
-  const sortedByTotal = [...annotatedOffers].sort((a, b) => {
+  // Default and best price are chosen among the offers priced in the serving currency whenever there
+  // is one. Both sorts compare raw amounts, so across currencies 15 USD "beat" 2400 JPY — and with the
+  // USD offer out of stock the in-stock JPY one became a US buyer's default, while the canonical card
+  // (which only prices in the buyer's currency) showed the USD seller. The only offer that can sit
+  // outside the serving currency is the opened product's own (kept above as a by-id read); it is the
+  // default only when nothing is priced in the buyer's currency.
+  const servingCurrencyOffers = offerServingCurrency
+    ? prioritizedOffers.filter((offer) => readOfferCurrency(offer) === String(offerServingCurrency).toUpperCase())
+    : [];
+  const defaultCandidateOffers = servingCurrencyOffers.length ? servingCurrencyOffers : prioritizedOffers;
+  const sortedByTotal = [...defaultCandidateOffers].sort((a, b) => {
     const aTotal = computeOfferTotal(a);
     const bTotal = computeOfferTotal(b);
     if (aTotal === bTotal) return 0;
@@ -11085,16 +11133,16 @@ async function buildOffersFromGroupMembers(args) {
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const preferredOffer =
     (preferredProductId
-      ? prioritizedOffers.find(
+      ? defaultCandidateOffers.find(
           (offer) =>
             String(offer?.product_id || '').trim() === preferredProductId &&
             (!preferredMerchantId || String(offer?.merchant_id || '').trim() === preferredMerchantId),
         )
       : null) ||
     (preferredMerchantId
-      ? prioritizedOffers.find((offer) => String(offer?.merchant_id || '').trim() === preferredMerchantId)
+      ? defaultCandidateOffers.find((offer) => String(offer?.merchant_id || '').trim() === preferredMerchantId)
       : null);
-  const defaultOfferId = preferredOffer?.offer_id || pickDefaultOfferId(prioritizedOffers) || bestPriceOfferId;
+  const defaultOfferId = preferredOffer?.offer_id || pickDefaultOfferId(defaultCandidateOffers) || bestPriceOfferId;
   timings.sort = Date.now() - sortStartedAt;
   timings.total = Date.now() - totalStartedAt;
 
@@ -11118,6 +11166,8 @@ async function buildOffersFromGroupMembers(args) {
             same_merchant_collapsed_offer_count: sameMerchantCollapsedOfferCount,
             transaction_held_offer_count: transactionHeldOfferCount,
             source_quarantine_filtered_count: sourceQuarantineFilteredCount,
+            serving_currency: offerServingCurrency,
+            serving_currency_filtered_offer_count: servingCurrencyFilteredOfferCount,
           },
         }
       : {}),
@@ -12328,68 +12378,6 @@ function projectSearchTransportProduct(product, stats = null) {
   return projected;
 }
 
-// A shopping card must carry an amount and currency from the same source.
-function readCanonicalSearchPricePair(value, fallbackCurrency = '') {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'number' || typeof value === 'string') {
-    const amount = Number(value);
-    const currency = String(fallbackCurrency || '').trim().toUpperCase();
-    return Number.isFinite(amount) && amount > 0 && currency ? { amount, currency } : null;
-  }
-  if (!isPlainObject(value)) return null;
-
-  const localCurrency = firstNonEmptyString(
-    value.currency,
-    value.currency_code,
-    value.price_currency,
-    value.priceCurrency,
-    fallbackCurrency,
-  );
-  for (const field of ['amount', 'value', 'price_amount', 'priceAmount', 'current_price', 'currentPrice', 'sale_price', 'salePrice', 'min_price', 'minPrice']) {
-    const amount = Number(value[field]);
-    if (Number.isFinite(amount) && amount > 0 && localCurrency) {
-      return { amount, currency: String(localCurrency).trim().toUpperCase() };
-    }
-  }
-  for (const field of ['price', 'pricing', 'current', 'sale', 'min', 'offer_price', 'offerPrice']) {
-    const pair = readCanonicalSearchPricePair(value[field], localCurrency);
-    if (pair) return pair;
-  }
-  return null;
-}
-
-function resolveCanonicalSearchProductPrice(product) {
-  if (!isPlainObject(product)) return null;
-  const productCurrency = firstNonEmptyString(
-    product.currency,
-    product.currency_code,
-    product.price_currency,
-    product.priceCurrency,
-  );
-  const direct = readCanonicalSearchPricePair(product, productCurrency);
-  if (direct) return direct;
-
-  for (const collection of [product.offers, product.variants]) {
-    if (!Array.isArray(collection)) continue;
-    for (const entry of collection) {
-      const pair = readCanonicalSearchPricePair(entry, productCurrency);
-      if (pair) return pair;
-    }
-  }
-
-  // Citation rows retain their exact source snapshot until finalization. Each
-  // object is evaluated independently, so an amount can never borrow a
-  // currency from a different source.
-  for (const source of [product.seed_data, product.external_seed]) {
-    if (!isPlainObject(source)) continue;
-    const directSourcePair = readCanonicalSearchPricePair(source);
-    if (directSourcePair) return directSourcePair;
-    const snapshotPair = readCanonicalSearchPricePair(source.snapshot);
-    if (snapshotPair) return snapshotPair;
-  }
-  return null;
-}
-
 function materializeCanonicalSearchProductPrice(product) {
   const price = resolveCanonicalSearchProductPrice(product);
   if (!price) return null;
@@ -13281,89 +13269,6 @@ function buildCacheStageSnapshot({
   return stage;
 }
 
-function decideGenericSkincareCachePreference({
-  rawQuery = '',
-  queryClass = null,
-  beautyBucket = null,
-  strictConstraintQuery = false,
-  upstreamResponse = null,
-  cacheResponse = null,
-} = {}) {
-  const queryText = String(rawQuery || '').trim();
-  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
-  const beautyQueryProfile = buildBeautyQueryProfile({
-    rawQuery: queryText,
-    queryClass: normalizedQueryClass || undefined,
-  });
-  const effectiveBeautyBucket = String(
-    beautyBucket || beautyQueryProfile?.bucket || '',
-  ).trim().toLowerCase();
-  const upstreamProducts = Array.isArray(upstreamResponse?.products) ? upstreamResponse.products : [];
-  const cacheProducts = Array.isArray(cacheResponse?.products) ? cacheResponse.products : [];
-  const upstreamQuerySource = String(upstreamResponse?.metadata?.query_source || '').trim();
-  const cacheInternalProducts = cacheProducts.filter((product) => !isExternalSeedProduct(product));
-  const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
-  const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
-  const genericSerumCategoryQuery =
-    hasSerumSignal &&
-    genericQueryClass &&
-    effectiveBeautyBucket === 'skincare' &&
-    !Boolean(strictConstraintQuery);
-  const upstreamExternalOnly =
-    upstreamProducts.length > 0 && upstreamProducts.every((product) => isExternalSeedProduct(product));
-  const evaluated =
-    genericSerumCategoryQuery &&
-    cacheInternalProducts.length > 0 &&
-    upstreamProducts.length > 0 &&
-    !upstreamQuerySource.startsWith('cache_');
-
-  if (!genericSerumCategoryQuery) {
-    return {
-      evaluated: false,
-      decision: 'keep_upstream',
-      reason: 'not_generic_skincare_serum_query',
-      beauty_bucket: effectiveBeautyBucket || null,
-      cache_internal_count: cacheInternalProducts.length,
-      upstream_external_only: upstreamExternalOnly,
-      upstream_query_source: upstreamQuerySource || null,
-    };
-  }
-
-  if (!upstreamExternalOnly) {
-    return {
-      evaluated,
-      decision: 'keep_upstream',
-      reason: 'upstream_not_external_only',
-      beauty_bucket: effectiveBeautyBucket || null,
-      cache_internal_count: cacheInternalProducts.length,
-      upstream_external_only: upstreamExternalOnly,
-      upstream_query_source: upstreamQuerySource || null,
-    };
-  }
-
-  if (cacheInternalProducts.length <= 0) {
-    return {
-      evaluated,
-      decision: 'keep_upstream',
-      reason: 'cache_internal_unavailable',
-      beauty_bucket: effectiveBeautyBucket || null,
-      cache_internal_count: 0,
-      upstream_external_only: upstreamExternalOnly,
-      upstream_query_source: upstreamQuerySource || null,
-    };
-  }
-
-  return {
-    evaluated: true,
-    decision: 'keep_upstream',
-    reason: 'source_neutral_upstream_preserved',
-    beauty_bucket: effectiveBeautyBucket || null,
-    cache_internal_count: cacheInternalProducts.length,
-    upstream_external_only: upstreamExternalOnly,
-    upstream_query_source: upstreamQuerySource || null,
-  };
-}
-
 function resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit = 20) {
   const safeRequestedLimit = Math.min(
     Math.max(1, Number(requestedLimit || 20) || 20),
@@ -13770,114 +13675,6 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
     };
   }
   return overlayLiveMerchantSearchPrices(response);
-}
-
-function buildPublicBeautyUnifiedSearchDedupeKey(product) {
-  if (!product || typeof product !== 'object') return '';
-  const urlKey =
-    normalizeSearchProductUrlForDedupe(product.canonical_url) ||
-    normalizeSearchProductUrlForDedupe(product.destination_url) ||
-    normalizeSearchProductUrlForDedupe(product.external_url) ||
-    normalizeSearchProductUrlForDedupe(product.url);
-  if (urlKey) return urlKey;
-  const brandKey = extractSearchProductBrandToken(product);
-  const titleKey = normalizeSearchProductTitleForDedupe(product);
-  if (brandKey && titleKey) return `${brandKey}::${titleKey}`;
-  if (titleKey) return titleKey;
-  return buildSearchProductKey(product);
-}
-
-function mergePublicBeautyUnifiedOfferLists(leftOffers = [], rightOffers = []) {
-  const offers = [];
-  const seen = new Set();
-  const pushOffer = (offer) => {
-    if (!offer || typeof offer !== 'object') return;
-    const offerKey = String(
-      offer.offer_id ||
-        offer.offerId ||
-        `${offer.merchant_id || offer.merchantId || ''}::${offer.variant_id || offer.variantId || ''}::${offer.sku_id || offer.skuId || ''}::${offer.product_id || offer.productId || ''}::${offer.url || offer.destination_url || offer.external_url || ''}`,
-    ).trim();
-    if (offerKey && seen.has(offerKey)) return;
-    if (offerKey) seen.add(offerKey);
-    offers.push(offer);
-  };
-  for (const offer of Array.isArray(leftOffers) ? leftOffers : []) pushOffer(offer);
-  for (const offer of Array.isArray(rightOffers) ? rightOffers : []) pushOffer(offer);
-  return offers;
-}
-
-function mergePublicBeautyUnifiedDuplicateProduct(primary, duplicate) {
-  if (!primary || typeof primary !== 'object') return duplicate;
-  if (!duplicate || typeof duplicate !== 'object') return primary;
-  const merged = { ...primary };
-  const mergedOffers = mergePublicBeautyUnifiedOfferLists(primary.offers, duplicate.offers);
-  if (mergedOffers.length > 0) {
-    merged.offers = mergedOffers;
-  }
-  const mergedSources = Array.from(
-    new Set(
-      [
-        ...(Array.isArray(primary.merged_sources) ? primary.merged_sources : []),
-        primary.source,
-        duplicate.source,
-        primary.merchant_id || primary.merchantId,
-        duplicate.merchant_id || duplicate.merchantId,
-      ]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean),
-    ),
-  );
-  if (mergedSources.length > 0) {
-    merged.merged_sources = mergedSources;
-  }
-  const mergedProvenance = [
-    ...(Array.isArray(primary.merged_provenance) ? primary.merged_provenance : []),
-    ...(primary.provenance && typeof primary.provenance === 'object' ? [primary.provenance] : []),
-    ...(duplicate.provenance && typeof duplicate.provenance === 'object' ? [duplicate.provenance] : []),
-  ];
-  if (mergedProvenance.length > 0) {
-    merged.merged_provenance = mergedProvenance;
-  }
-  if (!merged.provenance && duplicate.provenance && typeof duplicate.provenance === 'object') {
-    merged.provenance = duplicate.provenance;
-  }
-  return merged;
-}
-
-function mergePublicBeautyUnifiedSearchProducts(products = [], { limit = null } = {}) {
-  const list = Array.isArray(products) ? products : [];
-  if (list.length <= 1) return list.slice();
-  const safeLimit =
-    limit == null
-      ? null
-      : Math.min(Math.max(1, Number(limit || 0) || 0), SEARCH_LIMIT_MAX);
-  const seenProductKeys = new Set();
-  const mergedByDedupeKey = new Map();
-  const ordered = [];
-  for (const product of list) {
-    if (!product || typeof product !== 'object') continue;
-    const productKey = buildSearchProductKey(product);
-    if (productKey && seenProductKeys.has(productKey)) continue;
-    if (productKey) seenProductKeys.add(productKey);
-    const dedupeKey = buildPublicBeautyUnifiedSearchDedupeKey(product);
-    if (!dedupeKey) {
-      ordered.push(product);
-      if (safeLimit && ordered.length >= safeLimit) break;
-      continue;
-    }
-    if (!mergedByDedupeKey.has(dedupeKey)) {
-      mergedByDedupeKey.set(dedupeKey, ordered.length);
-      ordered.push(product);
-    } else {
-      const existingIndex = mergedByDedupeKey.get(dedupeKey);
-      ordered[existingIndex] = mergePublicBeautyUnifiedDuplicateProduct(
-        ordered[existingIndex],
-        product,
-      );
-    }
-    if (safeLimit && ordered.length >= safeLimit) break;
-  }
-  return ordered;
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -15405,17 +15202,6 @@ function getProxySearchApiBase(source) {
   return PIVOTA_API_BASE;
 }
 
-function getAuroraFallbackOverrides(source, operation) {
-  const isAurora = isAuroraSource(source) && String(operation || '').trim() === 'find_products_multi';
-  return {
-    active: isAurora,
-    strategySource: isAurora ? 'aurora_force_path' : 'default',
-    disableSkipAfterResolverMiss: isAurora && PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
-    forceSecondaryFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
-    forceInvokeFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
-  };
-}
-
 function shouldDefaultPublicSearchExternalSeedContract(search = {}, metadata = {}) {
   const queryText = String(search?.query || search?.q || '').trim().toLowerCase();
   if (!queryText) return false;
@@ -16110,47 +15896,11 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   return false;
 }
 
-const FRAGRANCE_SEMANTIC_TERMS = [
-  'fragrance',
-  'perfume',
-  'parfum',
-  'cologne',
-  'eau de parfum',
-  'eau de toilette',
-  'body mist',
-  '香水',
-  '香氛',
-];
 const FRAGRANCE_QUERY_REGEX =
   /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i;
 
 function hasFragranceQuerySignal(queryText = '') {
   return FRAGRANCE_QUERY_REGEX.test(String(queryText || ''));
-}
-
-function buildFragranceSemanticRetryQuery(queryText = '') {
-  const raw = String(queryText || '').trim();
-  if (!raw) return '';
-  const lower = raw.toLowerCase();
-  const terms = [raw];
-  let appendedAnySemanticTerm = false;
-  for (const item of FRAGRANCE_SEMANTIC_TERMS) {
-    if (!lower.includes(item)) {
-      terms.push(item);
-      appendedAnySemanticTerm = true;
-    }
-  }
-  if (!appendedAnySemanticTerm) {
-    if (!lower.includes('fragrance products')) {
-      terms.push('fragrance products');
-    } else if (!lower.includes('fragrance catalog')) {
-      terms.push('fragrance catalog');
-    } else {
-      terms.push('fragrance shopping');
-    }
-  }
-  const joined = terms.join(' ').replace(/\s+/g, ' ').trim();
-  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
 }
 
 function buildFallbackCandidateText(product) {
@@ -16456,6 +16206,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
           WHERE status = 'active'
             AND attached_product_key IS NULL
             AND ${apparelMkt.sql}
+            AND ${seedHasPriceCurrencySql()}
             ${toolClause}
             AND ${filters.join('\n            AND ')}
           ORDER BY ${orderClause}
@@ -16575,6 +16326,12 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
       const explicitForms = explicitBeautyLipFormTerms(rawQuery);
       (explicitForms.length ? explicitForms : ['lipstick']).forEach(push);
+    } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/false-lashes/')) {
+      // Only reached with SEARCH_LASH_CATEGORY_ROUTE on: the generic eye terms below would spend the
+      // budget on mascara/eyeshadow/brow rows the false-lashes hard constraint then rejects.
+      push('false lashes');
+      push('lash glue');
+      push('lash adhesive');
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -16699,6 +16456,8 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
     const explicitForms = explicitBeautyLipFormTerms(queryText);
     (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
+  } else if (prefix.startsWith('beauty/makeup/eye/false-lashes/')) {
+    ['false lashes', 'lashes', 'lash glue', 'lash adhesive', 'falsies'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
@@ -17902,6 +17661,12 @@ function buildCanonicalChainMainlineProduct(row) {
     ingredientIntel.active_ingredients,
   );
 
+  const categoryPathLeaf = String(categoryPathText || '')
+    .split('/')
+    .filter(Boolean)
+    .pop() || '';
+  const resolvedProductType = firstNonEmptyString(category, categoryPathLeaf);
+
   return {
     id: productId,
     product_id: productId,
@@ -17924,7 +17689,26 @@ function buildCanonicalChainMainlineProduct(row) {
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
     ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
-    product_type: category || 'canonical_catalog',
+    // `canonical_catalog` IS A PROVENANCE VALUE WEARING A TAXONOMY FIELD. It names where the row
+    // came from, not what the product is, and it is invented here at serve time -- nothing stores
+    // it. Consumers read `product_type` to learn what a thing IS, and this handed them the name of
+    // a pipeline.
+    //
+    // It is not inert. `resolveBeautyCoarseStepFamily` reads `product_type` FIRST when resolving a
+    // candidate's step. Measured on a real row -- Guerlain "ABSOLUS ALLEGORIA Tabac Sahara", stored
+    // correctly under beauty/fragrance/perfume:
+    //
+    //     product_type: 'canonical_catalog'  ->  candidate_step: null
+    //     product_type: 'perfume'            ->  candidate_step: fragrance  (structured_category)
+    //
+    // So a correctly-categorised perfume arrived at ranking with no step at all, and only rows whose
+    // TITLE happens to name their category were rescued by text salvage. On the live index 30 of 50
+    // rows returned for "eau de parfum" carry this placeholder and exactly ONE says `fragrance`.
+    //
+    // The leaf of the category path is a real product type and is already right there. Where there
+    // is neither, the field is OMITTED rather than filled with a fiction -- the same rule this
+    // builder already applies to price and currency a few lines up.
+    ...(resolvedProductType ? { product_type: resolvedProductType } : {}),
     ...(category ? { category } : {}),
     ...(categoryPathText ? { category_path: normalizeCatalogCategoryPathArray(categoryPathText) } : {}),
     ...(categoryPathText ? { catalog_category_path: categoryPathText } : {}),
@@ -17938,6 +17722,21 @@ function buildCanonicalChainMainlineProduct(row) {
     // collapse below cannot tell a second SELLER from a second PRODUCT — and an agent holding
     // the card has no key that reaches the competing offer.
     ...(firstNonEmptyString(row.content_key) ? { content_key: firstNonEmptyString(row.content_key) } : {}),
+    // The canonical SQL serves the product's BEST-OFFER listing, which may be a sibling of the listing
+    // recall ranked (canonicalCatalogSearch.js, skuOfferJoinSql). Only then does the card say which listing
+    // earned the position — so lane merges can dedupe that listing's other appearances, and a card served
+    // from its own listing stays byte-identical.
+    ...(firstNonEmptyString(row.recalled_product_key) &&
+    firstNonEmptyString(row.recalled_product_key) !== firstNonEmptyString(row.product_key)
+      ? {
+          recalled_listing: {
+            product_key: firstNonEmptyString(row.recalled_product_key),
+            ...(firstNonEmptyString(row.recalled_source_product_id)
+              ? { source_product_id: firstNonEmptyString(row.recalled_source_product_id) }
+              : {}),
+          },
+        }
+      : {}),
     source_product_id: sourceProductId || undefined,
     ...(firstNonEmptyString(row.source_variant_id) ? { source_variant_id: firstNonEmptyString(row.source_variant_id) } : {}),
     canonical_product_ref: canonicalProductRef,
@@ -18018,14 +17817,23 @@ function buildFashionMetaFromCanonicalRow(row) {
 
 function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonicalProducts = []) {
   const canonicalList = Array.isArray(canonicalProducts) ? canonicalProducts.filter(Boolean) : [];
+  // A canonical card served from a SIBLING listing (recalled_listing) still covers the listing recall
+  // ranked: a seed row for that listing is the same product, and letting it through would add a
+  // second card for one content_key.
   const canonicalProductKeys = new Set(
     canonicalList
-      .map((product) => firstNonEmptyString(product.catalog_product_key, product.product_key))
+      .flatMap((product) => [
+        firstNonEmptyString(product.catalog_product_key, product.product_key),
+        firstNonEmptyString(product.recalled_listing?.product_key),
+      ])
       .filter(Boolean),
   );
   const canonicalSourceProductIds = new Set(
     canonicalList
-      .map((product) => firstNonEmptyString(product.source_product_id, product.platform_product_id))
+      .flatMap((product) => [
+        firstNonEmptyString(product.source_product_id, product.platform_product_id),
+        firstNonEmptyString(product.recalled_listing?.source_product_id),
+      ])
       .filter(Boolean),
   );
   let canonicalDedupeCount = 0;
@@ -18619,6 +18427,9 @@ function productLooksLikeNonBeautyMerchandise(product = {}) {
 // named object before that included-accessory qualifier. "Brush with Bronzer" remains a brush.
 function searchProductIdentityIsAccessory(product = {}) {
   const normalizeIdentityText = (value) => String(value || '')
+    // "Brush-On" / "Brush On" is how a glue or powder is applied, not a brush ("Duo Brush On Striplash
+    // Adhesive"; pivota-backend #2387 fixed the same word in the category classifier).
+    .replace(/\bbrush[-\s]+on\b/gi, ' ')
     .replace(/\b(?:with|includes?|including)\s+(?:(?:a|an|built.in)\s+)?(?:brush(?:es)?|applicators?|mirrors?|sponges?|puffs?)\b.*$/i, '')
     .replace(/\bbrushes\b/gi, 'brush')
     .replace(/\baccessories\b/gi, 'accessory')
@@ -18698,6 +18509,10 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
 
   if (hard.strict_lipstick === true && !beautyProductMatchesStrictLipstickIntent(product)) {
     reasons.push('strict_lipstick_mismatch');
+  }
+
+  if (hard.strict_shave === true && !beautyProductMatchesStrictShaveIntent(product)) {
+    reasons.push('strict_shave_mismatch');
   }
 
   if (hard.fragrance_free_skincare === true && productLooksLikeFragranceMerchandise(product)) {
@@ -19748,6 +19563,25 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   };
 }
 
+const BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX = 'beauty/skincare/cleanse/';
+const BEAUTY_MOISTURIZE_CATEGORY_PATH_PREFIX = 'beauty/skincare/moisturize/';
+
+// True when a texture word ("foam", "cream", "lotion") must not decide the product
+// class because the query names a different one. The resolved category decides
+// when it is specific: outside the family's own path means another family
+// ("beauty/body/tanning/" for "self tan lotion", "beauty/skincare/sun/" for "foam
+// sunscreen"), inside it means none. Only when nothing specific resolves (no path,
+// or an ancestor such as "beauty/" for "hair foam") do the tanning words decide:
+// the self_tanner rule does not claim "bronzing foam". Checking the words first
+// would turn "bronzing lotion", which resolves the moisturize path, from a
+// moisturizer gate into a moisturize path gate that drops its tanning rows.
+function beautyQueryNamesOtherFamilyThan(raw = '', familyPathPrefix = '') {
+  const prefix = String(resolveBeautyCategoryPathPrefixForQuery(raw) || '').toLowerCase();
+  if (prefix.startsWith(familyPathPrefix)) return false;
+  if (prefix && !familyPathPrefix.startsWith(prefix)) return true;
+  return /\b(self[-\s]?tan\w*|sunless|tanning|tanners?|bronz\w*)\b/i.test(raw) || /美黑|セルフタンニング/.test(raw);
+}
+
 function inferBeautyMainlineIntent(queryText = '') {
   const raw = String(queryText || '');
   const normalized = normalizeSearchTextForMatch(raw);
@@ -19761,15 +19595,30 @@ function inferBeautyMainlineIntent(queryText = '') {
   ) {
     families.add('sunscreen');
   }
+  const cleanserNamed =
+    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|洗面|gel\s*cleanser)\b/i.test(raw) ||
+    /洁面|潔面|洗面奶|洗面乳|洗脸|洗臉/.test(raw);
+  // Bare "foam" is a texture, not a product class. Measured 2026-09-26 on
+  // gateway-00387-yer: "MineTan self tan foam" resolved beauty/body/tanning/
+  // (16 serving-eligible rows) and then this rule gated it to cleanser, so the
+  // ranker rejected all 16. The texture only implies cleanser when nothing else
+  // in the query names a different family.
   if (
-    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|洗面|foam|gel\s*cleanser)\b/i.test(raw) ||
-    /洁面|潔面|洗面奶|洗面乳|洗脸|洗臉/.test(raw)
+    cleanserNamed ||
+    (/\bfoam\b/i.test(raw) && !beautyQueryNamesOtherFamilyThan(raw, BEAUTY_CLEANSE_CATEGORY_PATH_PREFIX))
   ) {
     families.add('cleanser');
   }
+  const moisturizerNamed =
+    /\b(moisturi[sz]er|barrier|repair|cica|ceramide|panthenol|b5)\b/i.test(raw) ||
+    /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇/.test(raw);
+  // "cream" / "lotion" are textures in the same way: "MineTan self tan lotion"
+  // resolved beauty/body/tanning/ and this gate kept 4 of the 16 MineTan rows;
+  // "cream blush", "sunscreen lotion", "hair cream" and "cream cleanser" all
+  // picked up a moisturizer gate and moisturizer retrieval variants.
   if (
-    /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair|cica|ceramide|panthenol|b5|lotion)\b/i.test(raw) ||
-    /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇/.test(raw)
+    moisturizerNamed ||
+    (/\b(cream|lotion)\b/i.test(raw) && !beautyQueryNamesOtherFamilyThan(raw, BEAUTY_MOISTURIZE_CATEGORY_PATH_PREFIX))
   ) {
     families.add('moisturizer');
   }
@@ -21447,6 +21296,12 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
         product.title, product.name, product.product_type,
       ].filter(Boolean).join(' '));
   }
+  if (prefix.startsWith('beauty/makeup/eye/false-lashes')) {
+    // A path-less row must name a false lash or its glue: the generic eye test below would admit any
+    // mascara ("lash" and "mascara" both pass it) into a false-lashes browse.
+    return /\b(?:(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?|(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)|striplash(?:es)?|falscara|(?:impress|kiss)\s+falsies)\b|假睫毛|睫毛胶|睫毛膠/i.test(text)
+      && !/\bmascaras?\b|睫毛膏/i.test(text);
+  }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
   }
@@ -21497,6 +21352,21 @@ function beautyProductMatchesStrictLipstickIntent(product = {}) {
   if (!text) return false;
   if (/\b(lip\s*oil|lip\s*balm|lip\s*treatment|lip\s*mask)\b/i.test(text)) return false;
   return /\b(lipstick|lip\s*stick|liquid\s*lip|lip\s*color|lip\s*colour|rouge)\b/i.test(text);
+}
+
+// Title, name and URLs only, as for strict lipstick: a face cream whose
+// description says "soothes after shaving" is still a face cream.
+function beautyProductMatchesStrictShaveIntent(product = {}) {
+  return productTextNamesShaving(normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+    product?.merchant_canonical_url,
+  ].filter(Boolean).join(' ')));
 }
 
 function beautyQueryHasAcneOilControlIntent(queryText = '') {
@@ -22119,7 +21989,14 @@ function scoreBeautyExternalSeedProduct({
   if (hasStrictLipstickQueryIntent(queryText) && !beautyProductMatchesStrictLipstickIntent(product)) {
     return { product, relevant: false, score: -55 };
   }
-  if (targetFamilies.length === 0 && !hasBeautyCatalogProductSignal(candidateText)) {
+  if (isStrictShaveQuery(queryText) && !beautyProductMatchesStrictShaveIntent(product)) {
+    return { product, relevant: false, score: -55 };
+  }
+  if (
+    targetFamilies.length === 0 &&
+    !hasBeautyCatalogProductSignal(candidateText) &&
+    !beautyProductHasCatalogLeafSignal(product)
+  ) {
     return { product, relevant: false, score: -30 };
   }
 
@@ -22482,10 +22359,16 @@ async function searchBeautyExternalSeedProductsMainline({
   // the offers below. `market` therefore stays a LANE market: canonical's `marketId` filters
   // on it, and the buyer's code there would bind the empty partition. Flag off, or a market it
   // cannot price: exactly `marketsForRequest(...)`, as before.
-  const { markets, buyerCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  //
+  // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
+  // request is a US request (USD), a named priced market is its own currency, and anything else
+  // is null and served nothing. See resolveServingCurrency.
+  const { markets, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
+  // A market with no known currency runs no SQL (the early return below), so it bound nothing:
+  // logging `markets` there would read ['US'] beside an empty page.
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
-    search, metadata, markets, buyerCurrency,
+    search, metadata, markets: servingCurrency ? markets : null, buyerCurrency, servingCurrency,
   });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
@@ -22521,6 +22404,40 @@ async function searchBeautyExternalSeedProductsMainline({
     throw Object.assign(new Error('The primary search result window is limited to 200 items.'), {
       code: 'PRIMARY_SEARCH_WINDOW_EXCEEDED', status: 400,
     });
+  }
+  if (!servingCurrency) {
+    // A market no currency is known for ('ZZ', 'en-US', 'US,SG'): no row can be shown to be
+    // priced for this buyer, so none is served -- the backend seed lanes answer the same (#2389).
+    // No SQL runs.
+    return {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: safePage,
+      page_size: 0,
+      reply: null,
+      metadata: {
+        ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+        query_source: 'beauty_mainline_buyer_market_unpriced',
+        fetched_at: new Date().toISOString(),
+        search_decision: {
+          final_decision: 'strict_empty',
+          decision_authority: 'buyer_market_currency',
+          decision_locked: true,
+          decision_lock_reason: 'buyer_market_has_no_pricing_currency',
+        },
+        route_health: {
+          primary_path_used: 'beauty_mainline_buyer_market_unpriced',
+          fallback_triggered: false,
+          fallback_reason: null,
+          canonical_path_executed: false,
+          final_returned_count: 0,
+        },
+        proxy_search_fallback: { applied: false, reason: null },
+        contract_bridge: { legacy_fallback: false },
+      },
+    };
   }
   const contractSafeEmpty = isSearchQualityContractSafeEmptyContract(searchQualityContract);
   if (contractSafeEmpty) {
@@ -22658,15 +22575,13 @@ async function searchBeautyExternalSeedProductsMainline({
     callerCurrency: callerOfferCurrency,
     queryCurrency: queryBudgetCurrency,
   });
-  // A structured currency controls the served offer currency; otherwise the
-  // named buyer's currency scopes both recall lanes and the final page.
-  const explicitOfferCurrency = budgetConstraint
-    ? null
-    : (buyerCurrency && !callerOfferCurrency ? buyerCurrency : callerOfferCurrency);
-  const servedOfferCurrency = buyerCurrency
-    ? (callerOfferCurrency || buyerCurrency)
-    : explicitOfferCurrency;
-  const primaryOfferScope = { currency: servedOfferCurrency || explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
+  // The buyer's market decides the offer currency, on both recall lanes (so a product with a
+  // USD and an SGD offer recalls its USD one) and again on the final page -- for a silent request
+  // too (#2295 scoped only its recall). A caller's own `currency` only denotes a budget's unit
+  // above: letting it pick the offers is how a US request could still be answered in SGD (Peng
+  // 2026-09-26).
+  const servedOfferCurrency = servingCurrency;
+  const primaryOfferScope = { currency: servedOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22687,20 +22602,19 @@ async function searchBeautyExternalSeedProductsMainline({
     // ACTIVE_AWARE_RECALL — see PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED for
     // why that grouping kept the rank ladder dark, and for the measured effect
     // in category-bucket mode. NOTE: with the category-browse text union on
-    // (the default) the token WHERE is no longer dropped under a prefix — the
-    // union carries the PLAIN text clause, token arm included.
+    // the token WHERE is no longer dropped under a prefix — the union carries
+    // the text clause, token arm included, in whatever shape this flag elects.
     tokenMatch: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
-    // #1935: sargable text WHERE. Still a no-op in category-bucket mode, but
-    // for a DIFFERENT reason than when this was written: the text WHERE used to
-    // be discarded there, whereas now the union deliberately routes past the
-    // sargable form and takes the plain clause (see the whereClause comment in
-    // canonicalCatalogSearch.js for why extending an unmeasured plan change to
-    // every prefix-resolving query would be wrong). So this still only affects
-    // the ~30% of beauty queries that resolve to no prefix — where it cut prod
-    // EXPLAIN execution 2798ms -> 850ms with byte-identical rows and order
-    // across 12 measured queries. The COROLLARY, unmeasured and called out in
-    // review: prefix-resolving queries now run the plain disjunction, which
-    // this file's own prod EXPLAINs put at 3.2-3.9s.
+    // #1935: sargable text WHERE. In text mode (~30% of beauty queries) it cut
+    // prod EXPLAIN execution 2798ms -> 850ms with byte-identical rows and order
+    // across 12 measured queries. In category-bucket mode the union's text arm
+    // now applies the same trade on ITS OWN gate — the recall_doc coverage arm,
+    // not this option — because gating on this election would leave every
+    // non-electing browse caller (the shopping browse lane passes neither this
+    // nor tokenMatch) on the 4.4s plan for no recall benefit. See the
+    // unionTextWhereClause comment in canonicalCatalogSearch.js for the
+    // 2026-08-20 prod measurements: 3.2-4.4s -> 0.4-1.0s, identical row digests
+    // on toner / shampoo / hair mask / niacinamide toner / cleanser.
     // See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
     sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
     limit: canonicalLimit,
@@ -22864,9 +22778,9 @@ async function searchBeautyExternalSeedProductsMainline({
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
   const budgetEligibleProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
-  const rankedProducts = servedOfferCurrency
-    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === servedOfferCurrency.trim().toUpperCase())
-    : budgetEligibleProducts;
+  const rankedProducts = budgetEligibleProducts.filter(
+    product => String(product.currency || '').trim().toUpperCase() === servedOfferCurrency,
+  );
   const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,
@@ -23210,33 +23124,6 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   if (/\btranexamic/.test(normalized)) pushToken('tranexamic');
 
   return Array.from(out);
-}
-
-function buildFallbackOverlapPreview(products, queryText, maxItems = 3) {
-  const rows = [];
-  const normalizedQuery = normalizeSearchTextForMatch(queryText);
-  const baseTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const meaningfulTokens = ingredientIntent
-    ? baseTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
-    : baseTokens;
-  const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens])).slice(0, 12);
-
-  for (const product of Array.isArray(products) ? products : []) {
-    if (rows.length >= maxItems) break;
-    if (!hasUsableSearchProduct(product)) continue;
-    const candidateText = buildFallbackCandidateText(product);
-    if (!candidateText) continue;
-    const matched = effectiveTokens.filter((token) => candidateText.includes(token)).slice(0, 4);
-    rows.push({
-      product_id: String(product?.product_id || product?.id || ''),
-      title: String(product?.title || product?.name || ''),
-      overlap_count: matched.length,
-      matched_tokens: matched,
-    });
-  }
-  return rows;
 }
 
 function isKnownLookupAliasQuery(queryText) {
@@ -23702,20 +23589,6 @@ function shouldFallbackProxySearch(normalized, statusCode) {
   return false;
 }
 
-function getFallbackAdoptUsableThreshold({
-  operation,
-  source,
-  primaryUsableCount,
-  primaryIrrelevant,
-}) {
-  const baseThreshold = Math.max(1, Number(primaryUsableCount || 0));
-  const op = String(operation || '').trim();
-  if (op !== 'find_products_multi') return baseThreshold;
-  if (!primaryIrrelevant) return baseThreshold;
-  if (isAuroraSource(source) && PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT) return 1;
-  return baseThreshold;
-}
-
 // Canonical step families, taken from the one place that defines them so this cannot drift.
 const { RECO_PRICE_CEILING_KNOWN_CURRENCIES } = require('./auroraBff/recoPriceCeiling');
 const FIND_PRODUCTS_MULTI_STEP_FAMILY_ALLOWLIST = Object.freeze(
@@ -23937,12 +23810,7 @@ const agentProductsSearchRouteEntryRuntime = createFindProductsSearchRouteEntryR
   buildFindProductsSearchRequestContract,
   resolveLegacyBeautyCacheOwnerBypass: resolveLegacyBeautyCacheOwnerBypassForPublicSearchRoute,
   normalizeAgentSource,
-  runGuidanceServerOwnedLadderSearch: async () => null,
-  persistGuidanceSearchSeenProducts: async () => false,
   normalizeSearchUiSurface,
-  normalizeRecommendationDecisionMode,
-  searchExternalSeedOnlyProductsDirect: async () => null,
-  searchIngredientIntentProductsDirect: async () => null,
 });
 
 async function searchExternalSeedBrandCandidatesLocally({
@@ -25361,852 +25229,6 @@ async function maybeRescueSearchFromPdpIdentityGraph({
   );
 }
 
-function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
-  const base = String(baseQueryText || '').trim();
-  if (!base) return [];
-  const normalized = normalizeSearchTextForMatch(base);
-  const peptideNormalizedBase = base
-    .replace(/\b(tri|tetra|hexa)peptides?\b/gi, 'peptide')
-    .replace(/\bpeptides\b/gi, 'peptide')
-    .replace(/\bcopper peptide peptide\b/gi, 'copper peptide')
-    .replace(/\bpeptide peptide\b/gi, 'peptide')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const candidates = [];
-  const seen = new Set([normalizeSearchTextForMatch(base)]);
-  const push = (queryValue) => {
-    const value = String(queryValue || '').trim();
-    const key = normalizeSearchTextForMatch(value);
-    if (!value || !key || seen.has(key)) return;
-    seen.add(key);
-    candidates.push(value);
-  };
-
-  if (/\bcopper\b/.test(normalized) && /\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized)) {
-    push(peptideNormalizedBase);
-    push(`${peptideNormalizedBase} multi peptide`);
-    push(`${base} multi peptide`);
-    push(`${base} copper tripeptide`);
-  }
-  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
-    push(`${peptideNormalizedBase} multi-peptide collection`);
-    push(`${base} multi-peptide collection`);
-  }
-  if (/\bniacinamide\b/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
-    push(`${base} vitamin b3`);
-  }
-
-  return candidates.slice(0, PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES);
-}
-
-async function invokeFindProductsMultiFallbackOnce({
-  url,
-  searchUrl,
-  payload,
-  checkoutToken,
-  requestSource,
-  triggerReason,
-  preserveAuroraSource,
-  fallbackSource,
-  relevanceQuery,
-  attemptNo,
-  useSearchEndpoint = false,
-  timeoutMs = PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
-}) {
-  const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
-  const requestSourceValue = preserveAuroraSource
-    ? normalizedRequestSource
-    : fallbackSource || 'agent_search_proxy_fallback';
-  const requestHeaders = {
-    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-  };
-  const searchPayload = payload?.search && typeof payload.search === 'object' ? payload.search : {};
-  const requestTimeoutMs = Math.max(
-    250,
-    Number(timeoutMs || PROXY_SEARCH_FALLBACK_TIMEOUT_MS) || PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
-  );
-
-  const resp = useSearchEndpoint
-    ? await axios({
-        method: 'GET',
-        url: searchUrl,
-        params: {
-          ...searchPayload,
-          source: requestSourceValue,
-        },
-        headers: requestHeaders,
-        timeout: requestTimeoutMs,
-        validateStatus: () => true,
-      })
-    : await axios({
-        method: 'POST',
-        url,
-        data: {
-          operation: 'find_products_multi',
-          payload,
-          metadata: {
-            source: requestSourceValue,
-            ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
-            trigger_reason: triggerReason || 'unknown',
-            proxy_fallback_source: 'agent_search_proxy_fallback',
-            proxy_fallback_attempt: Number(attemptNo || 1),
-          },
-        },
-        headers: {
-          'Content-Type': 'application/json',
-          ...requestHeaders,
-        },
-        timeout: requestTimeoutMs,
-        validateStatus: () => true,
-      });
-
-  const normalized = normalizeAgentProductsListResponse(resp.data, {
-    limit: parseQueryNumber(payload?.search?.limit ?? payload?.search?.page_size),
-    offset: parseQueryNumber(payload?.search?.offset),
-  });
-  const usableCount = countUsableSearchProducts(normalized?.products);
-  const relevanceMatched = relevanceQuery
-    ? isProxySearchFallbackRelevant(normalized, relevanceQuery)
-    : usableCount > 0;
-
-  return {
-    status: Number(resp.status || 0) || 0,
-    usableCount,
-    relevanceMatched,
-    queryUsed: String(payload?.search?.query || ''),
-    productsPreview: buildFallbackOverlapPreview(normalized?.products, relevanceQuery, 3),
-    data: withProxySearchFallbackMetadata(normalized, {
-      applied: true,
-      reason: triggerReason || 'unknown',
-      query_variant:
-        normalizeSearchTextForMatch(String(payload?.search?.query || '')) ===
-        normalizeSearchTextForMatch(String(relevanceQuery || ''))
-          ? 'primary'
-          : 'semantic_retry',
-    }),
-  };
-}
-
-async function queryFindProductsMultiFallback({
-  queryParams,
-  checkoutToken,
-  reason,
-  requestSource,
-  timeoutMs = null,
-}) {
-  const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
-  if (!payload) return null;
-  const fallbackSource = String(payload?.metadata?.source || '').trim();
-  const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
-  const searchApiBase = getProxySearchApiBase(normalizedRequestSource);
-  const url = `${searchApiBase}/agent/shop/v1/invoke`;
-  const searchUrl = `${searchApiBase}/agent/v1/products/search`;
-  const preserveAuroraSource =
-    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
-  const baseQueryText = String(payload?.search?.query || '').trim();
-  const isAuroraMonocultureRetry =
-    isAuroraSource(normalizedRequestSource) &&
-    String(reason || '').trim() === 'primary_monoculture';
-  const isAuroraSemanticRetry =
-    PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED &&
-    isAuroraSource(normalizedRequestSource) &&
-    (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
-  const isFragranceSemanticRetry =
-    SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
-    hasFragranceQuerySignal(baseQueryText);
-  const semanticRetryEnabled = isAuroraSemanticRetry || isFragranceSemanticRetry;
-  const normalizedBaseQuery = normalizeSearchTextForMatch(baseQueryText);
-  const fragranceSemanticRetryQuery = isFragranceSemanticRetry
-    ? buildFragranceSemanticRetryQuery(baseQueryText)
-    : '';
-  const fragranceSemanticRetryFallbackQuery = isFragranceSemanticRetry
-    ? 'fragrance perfume parfum cologne eau de parfum eau de toilette body mist'
-    : '';
-  const auroraSemanticRetryQuery = isAuroraSemanticRetry
-    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)[0] || ''
-    : '';
-  const semanticRetryQueries = [];
-  if (
-    fragranceSemanticRetryQuery &&
-    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(fragranceSemanticRetryQuery);
-  } else if (
-    fragranceSemanticRetryFallbackQuery &&
-    normalizeSearchTextForMatch(fragranceSemanticRetryFallbackQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(fragranceSemanticRetryFallbackQuery);
-  } else if (
-    auroraSemanticRetryQuery &&
-    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(auroraSemanticRetryQuery);
-  }
-  const candidateQueries = Array.from(new Set([baseQueryText, ...semanticRetryQueries].filter(Boolean))).slice(0, 2);
-  const configuredFallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
-    ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
-    : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
-  const requestedBudgetMs =
-    Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : null;
-  const totalFallbackBudgetMs =
-    requestedBudgetMs == null ? configuredFallbackTimeoutMs : Math.max(100, requestedBudgetMs);
-  const fallbackDeadlineMs = Date.now() + totalFallbackBudgetMs;
-
-  let selectedAttempt = null;
-  let selectedAttemptNo = 0;
-  const attempts = [];
-  const rankFallbackAttempt = (attempt) => {
-    const statusOk = attempt && attempt.status >= 200 && attempt.status < 300;
-    const usableCount = Math.max(0, Number(attempt?.usableCount || 0) || 0);
-    const relevanceMatched = attempt?.relevanceMatched === true;
-    return {
-      statusOk,
-      usableCount,
-      relevanceMatched,
-      total:
-        (statusOk ? 100 : 0) +
-        (usableCount * 12) +
-        (relevanceMatched ? 8 : 0),
-    };
-  };
-  for (let i = 0; i < candidateQueries.length; i += 1) {
-    const remainingBudgetMs = Math.max(0, fallbackDeadlineMs - Date.now());
-    if (remainingBudgetMs < 100) {
-      break;
-    }
-    const attemptTimeoutMs = Math.max(100, Math.min(configuredFallbackTimeoutMs, remainingBudgetMs));
-    const queryText = candidateQueries[i];
-    const attemptPayload =
-      i === 0
-        ? payload
-        : {
-            ...payload,
-            search: {
-              ...(payload?.search && typeof payload.search === 'object' ? payload.search : {}),
-              query: queryText,
-            },
-          };
-    const useSearchEndpoint = semanticRetryEnabled && i > 0;
-    const attempt = await invokeFindProductsMultiFallbackOnce({
-      url,
-      searchUrl,
-      payload: attemptPayload,
-      checkoutToken,
-      requestSource: normalizedRequestSource,
-      triggerReason: reason,
-      preserveAuroraSource,
-      fallbackSource,
-      relevanceQuery: queryText,
-      attemptNo: i + 1,
-      useSearchEndpoint,
-      timeoutMs: attemptTimeoutMs,
-    });
-
-    attempts.push({
-      attempt: i + 1,
-      query: attempt.queryUsed,
-      status: attempt.status,
-      usable_count: attempt.usableCount,
-      relevance_matched: attempt.relevanceMatched,
-      products_preview: attempt.productsPreview,
-    });
-
-    if (!selectedAttempt) {
-      selectedAttempt = attempt;
-      selectedAttemptNo = i + 1;
-    } else {
-      const selectedRank = rankFallbackAttempt(selectedAttempt);
-      const candidateRank = rankFallbackAttempt(attempt);
-      const shouldReplaceByRecall =
-        candidateRank.statusOk &&
-        candidateRank.usableCount >= Math.max(1, selectedRank.usableCount + 2);
-      if (shouldReplaceByRecall || candidateRank.total > selectedRank.total) {
-        selectedAttempt = attempt;
-        selectedAttemptNo = i + 1;
-      }
-    }
-
-    if (attempt.relevanceMatched && attempt.usableCount > 0) {
-      const shouldForceNextSemanticAttempt =
-        i === 0 &&
-        candidateQueries.length > 1 &&
-        (isAuroraMonocultureRetry || isFragranceSemanticRetry);
-      if (!shouldForceNextSemanticAttempt) break;
-    }
-  }
-
-  if (!selectedAttempt) return null;
-  const attemptedSemanticRetry = attempts.some((attempt, index) => {
-    if (!attempt || index === 0) return false;
-    return (
-      normalizeSearchTextForMatch(String(attempt.query || '')) !==
-      normalizeSearchTextForMatch(String(baseQueryText || ''))
-    );
-  });
-  const selectedAttemptIsSemanticRetry =
-    normalizeSearchTextForMatch(String(selectedAttempt.queryUsed || '')) !==
-    normalizeSearchTextForMatch(String(baseQueryText || ''));
-  const semanticRetryApplied = attemptedSemanticRetry || selectedAttemptIsSemanticRetry;
-  const semanticRetrySelectedQuery =
-    semanticRetryApplied && selectedAttemptIsSemanticRetry
-      ? String(selectedAttempt.queryUsed || '').trim()
-      : semanticRetryApplied
-      ? String(
-          attempts.find(
-            (attempt) =>
-              normalizeSearchTextForMatch(String(attempt?.query || '')) !==
-              normalizeSearchTextForMatch(String(baseQueryText || '')),
-          )?.query || '',
-        ).trim()
-      : '';
-  const semanticRetryHits = semanticRetryApplied
-    ? Math.max(
-        0,
-        ...attempts
-          .filter(
-            (attempt) =>
-              normalizeSearchTextForMatch(String(attempt?.query || '')) !==
-              normalizeSearchTextForMatch(String(baseQueryText || '')),
-          )
-          .map((attempt) => Math.max(0, Number(attempt?.usable_count || 0) || 0)),
-      )
-    : 0;
-  return {
-    status: selectedAttempt.status,
-    usableCount: selectedAttempt.usableCount,
-    relevanceMatched: selectedAttempt.relevanceMatched,
-    selectedQuery: selectedAttempt.queryUsed,
-    selectedAttemptNo,
-    semanticRetryApplied,
-    semanticRetryQuery: semanticRetryApplied ? semanticRetrySelectedQuery || null : null,
-    semanticRetryHits,
-    actualRetryAttempted: attemptedSemanticRetry,
-    attempts,
-    data: selectedAttempt.data,
-  };
-}
-
-function buildResolverReferenceOnlyResult({
-  queryText,
-  resolved,
-  resolvedQueryUsed,
-  resolvedMerchantId,
-  resolvedProductId,
-  resolveSources,
-  reason,
-}) {
-  const candidateTitle = Array.isArray(resolved?.candidates)
-    ? String(resolved.candidates?.[0]?.title || '').trim()
-    : '';
-  const resolvedTitle = String(
-    candidateTitle ||
-      resolved?.title ||
-      resolved?.alias ||
-      resolvedQueryUsed ||
-      queryText,
-  ).trim();
-  const productRow = {
-    id: resolvedProductId,
-    product_id: resolvedProductId,
-    merchant_id: resolvedMerchantId,
-    platform_product_id: resolvedProductId,
-    ...(resolvedTitle ? { title: resolvedTitle, name: resolvedTitle } : {}),
-    canonical_product_ref: {
-      merchant_id: resolvedMerchantId,
-      product_id: resolvedProductId,
-    },
-  };
-
-  const normalized = normalizeAgentProductsListResponse({
-    status: 'success',
-    success: true,
-    products: [productRow],
-    total: 1,
-    page: 1,
-    page_size: 1,
-    metadata: {
-      query_source: 'agent_products_resolver_ref_fallback',
-      resolve_reason: resolved?.reason || null,
-      resolve_reason_code:
-        resolved?.reason_code ||
-        resolved?.metadata?.resolve_reason_code ||
-        'detail_unavailable_ref_only',
-      resolve_confidence:
-        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-      resolve_latency_ms:
-        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-      resolve_query_used: resolvedQueryUsed || queryText,
-      resolve_detail_source: 'reference_only',
-    },
-  });
-
-  return {
-    status: 200,
-    usableCount: countUsableSearchProducts(normalized?.products),
-    resolved: true,
-    resolve_reason: resolved?.reason || null,
-    resolve_reason_code:
-      resolved?.reason_code ||
-      resolved?.metadata?.resolve_reason_code ||
-      'detail_unavailable_ref_only',
-    resolve_confidence:
-      Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-    resolve_latency_ms:
-      Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-    resolve_sources: resolveSources,
-    resolve_query_used: resolvedQueryUsed || queryText,
-    data: withProxySearchFallbackMetadata(normalized, {
-      applied: true,
-      reason: reason || 'resolver_ref_only',
-    }),
-  };
-}
-
-async function queryResolveSearchFallback({
-  queryParams,
-  checkoutToken,
-  reason,
-  requestSource,
-  fetchDetail = true,
-  timeoutMs,
-}) {
-  const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
-  const queryText = extractSearchQueryText(query);
-  if (!queryText) return null;
-
-  const lang = String(firstQueryParamValue(query.lang) || 'en').trim().toLowerCase() || 'en';
-  const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
-  const merchantIds = parseQueryStringArray(query.merchant_ids || query.merchantIds);
-  const preferMerchants = uniqueStrings([
-    merchantId,
-    ...merchantIds,
-  ]);
-  const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
-  const effectiveResolverTimeoutMs = Math.max(
-    200,
-    Number(timeoutMs || PROXY_SEARCH_RESOLVER_TIMEOUT_MS) || PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
-  );
-  const resolveOptions = {
-    ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
-    ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
-    timeout_ms: effectiveResolverTimeoutMs,
-    upstream_retries: 0,
-    stable_alias_short_circuit: true,
-  };
-  const resolverCacheKey = buildProxySearchResolverCacheKey({
-    queryText,
-    lang,
-    preferMerchants,
-    searchAllMerchants,
-    fetchDetail,
-    resolverTimeoutMs: effectiveResolverTimeoutMs,
-  });
-  const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
-  if (cached) return cached;
-
-  const toResolveSources = (input) =>
-    Array.isArray(input?.metadata?.sources)
-      ? input.metadata.sources
-          .filter((item) => item && typeof item === 'object')
-          .map((item) => ({
-            source: String(item.source || '').trim() || null,
-            ok: item.ok === true,
-            count: Number.isFinite(Number(item.count)) ? Number(item.count) : null,
-            reason: String(item.reason || '').trim() || null,
-            error_code: String(item.error_code || '').trim() || null,
-          }))
-      : [];
-
-  const resolverQueryCandidates = buildResolverQueryCandidates(queryText);
-  let resolved = null;
-  let resolvedQueryUsed = queryText;
-  for (const candidateQuery of resolverQueryCandidates) {
-    const candidateText = String(candidateQuery || '').trim();
-    if (!candidateText) continue;
-
-    let stableAliasMatch = null;
-    if (resolveStableAliasByQuery) {
-      try {
-        const normalizedCandidate = normalizeResolverText(candidateText);
-        const candidateTokens = tokenizeResolverQuery(normalizedCandidate);
-        if (normalizedCandidate && candidateTokens.length > 0) {
-          stableAliasMatch = resolveStableAliasByQuery({
-            query: candidateText,
-            normalizedQuery: normalizedCandidate,
-            queryTokens: candidateTokens,
-          });
-        }
-      } catch {
-        stableAliasMatch = null;
-      }
-    }
-
-    if (
-      stableAliasMatch &&
-      stableAliasMatch.product_ref &&
-      String(stableAliasMatch.product_ref.product_id || '').trim() &&
-      String(stableAliasMatch.product_ref.merchant_id || '').trim()
-    ) {
-      resolved = {
-        resolved: true,
-        reason: 'stable_alias_match',
-        reason_code: 'stable_alias_match',
-        confidence: Number.isFinite(Number(stableAliasMatch.score))
-          ? Number(stableAliasMatch.score)
-          : 1,
-        product_ref: {
-          product_id: String(stableAliasMatch.product_ref.product_id || '').trim(),
-          merchant_id: String(stableAliasMatch.product_ref.merchant_id || '').trim(),
-        },
-        candidates: [
-          {
-            title: String(stableAliasMatch.title || stableAliasMatch.alias || candidateText || '').trim() || null,
-            product_ref: {
-              product_id: String(stableAliasMatch.product_ref.product_id || '').trim(),
-              merchant_id: String(stableAliasMatch.product_ref.merchant_id || '').trim(),
-            },
-            score: Number.isFinite(Number(stableAliasMatch.score))
-              ? Number(stableAliasMatch.score)
-              : 1,
-          },
-        ],
-        metadata: {
-          latency_ms: 0,
-          sources: [
-            {
-              source: 'stable_alias_ref',
-              ok: true,
-              reason: stableAliasMatch.reason || 'stable_alias_match',
-              count: 1,
-            },
-          ],
-          stable_alias_short_circuit: true,
-        },
-      };
-      resolvedQueryUsed = candidateText;
-      break;
-    }
-
-    try {
-      const candidateResolved = await resolveProductRef({
-        query: candidateText,
-        lang,
-        hints: null,
-        options: resolveOptions,
-        pivotaApiBase: getProxySearchApiBase(requestSource),
-        pivotaApiKey: PIVOTA_API_KEY,
-        checkoutToken,
-      });
-      if (!resolved) {
-        resolved = candidateResolved;
-        resolvedQueryUsed = candidateText;
-      }
-      if (
-        candidateResolved &&
-        candidateResolved.resolved &&
-        candidateResolved.product_ref &&
-        String(candidateResolved.product_ref.product_id || '').trim() &&
-        String(candidateResolved.product_ref.merchant_id || '').trim()
-      ) {
-        resolved = candidateResolved;
-        resolvedQueryUsed = candidateText;
-        break;
-      }
-    } catch (err) {
-      logger.warn(
-        { err: err?.message || String(err), query: candidateText },
-        'proxy agent search resolver fallback failed',
-      );
-      continue;
-    }
-  }
-
-  const resolvedRef = resolved && resolved.resolved ? resolved.product_ref : null;
-  const resolvedProductId = String(resolvedRef?.product_id || '').trim();
-  const resolvedMerchantId = String(resolvedRef?.merchant_id || '').trim();
-  const resolveSources = toResolveSources(resolved);
-  if (!resolvedProductId || !resolvedMerchantId) {
-    const missResult = {
-      status: 200,
-      usableCount: 0,
-      data: null,
-      resolved: false,
-      resolve_reason: resolved?.reason || null,
-      resolve_reason_code:
-        resolved?.reason_code ||
-        resolved?.metadata?.resolve_reason_code ||
-        null,
-      resolve_confidence:
-        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-      resolve_latency_ms:
-        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-      resolve_sources: resolveSources,
-      resolve_query_used: resolvedQueryUsed || queryText,
-    };
-    setProxySearchResolverCacheEntry(
-      resolverCacheKey,
-      missResult,
-      PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
-    );
-    return missResult;
-  }
-
-  let detail = null;
-  let detailSource = null;
-  if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED) {
-    try {
-      const detailFromCache = await fetchProductDetailFromProductsCache({
-        merchantId: resolvedMerchantId,
-        productId: resolvedProductId,
-        includeExpired: true,
-        staleMaxAgeHours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
-      });
-      if (detailFromCache?.product) {
-        detail = detailFromCache.product;
-        detailSource = detailFromCache?.stale_fallback_used
-          ? 'products_cache_stale'
-          : 'products_cache';
-      }
-      if (!detail) {
-        detail = await fetchProductDetailFromUpstream({
-          merchantId: resolvedMerchantId,
-          productId: resolvedProductId,
-          checkoutToken,
-          timeoutMs: PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
-          noRetry: true,
-        });
-        if (detail) detailSource = 'upstream';
-      }
-    } catch (err) {
-      logger.warn(
-        {
-          err: err?.message || String(err),
-          merchant_id: resolvedMerchantId,
-          product_id: resolvedProductId,
-        },
-        'proxy agent search resolver fallback detail fetch failed',
-      );
-    }
-  }
-
-  if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED && !detail) {
-    if (isLookupStyleSearchQuery(queryText, extractSearchAnchorTokens(queryText))) {
-      const refOnlyResult = buildResolverReferenceOnlyResult({
-        queryText,
-        resolved,
-        resolvedQueryUsed,
-        resolvedMerchantId,
-        resolvedProductId,
-        resolveSources,
-        reason,
-      });
-      setProxySearchResolverCacheEntry(
-        resolverCacheKey,
-        refOnlyResult,
-        PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
-      );
-      logger.info(
-        {
-          query: queryText,
-          query_used: resolvedQueryUsed || queryText,
-          merchant_id: resolvedMerchantId,
-          product_id: resolvedProductId,
-        },
-        'proxy agent search resolver fallback returned reference-only candidate (detail unavailable)',
-      );
-      return refOnlyResult;
-    }
-
-    const missResult = {
-      status: 200,
-      usableCount: 0,
-      data: null,
-      resolved: false,
-      resolve_reason: resolved?.reason || null,
-      resolve_reason_code: 'detail_unavailable',
-      resolve_confidence:
-        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-      resolve_latency_ms:
-        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-      resolve_sources: resolveSources,
-      resolve_query_used: resolvedQueryUsed || queryText,
-    };
-    setProxySearchResolverCacheEntry(
-      resolverCacheKey,
-      missResult,
-      PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
-    );
-    logger.info(
-      {
-        query: queryText,
-        query_used: resolvedQueryUsed || queryText,
-        merchant_id: resolvedMerchantId,
-        product_id: resolvedProductId,
-      },
-      'proxy agent search resolver fallback skipped unresolved detail candidate',
-    );
-    return missResult;
-  }
-
-  const candidateTitle = Array.isArray(resolved?.candidates)
-    ? String(resolved.candidates?.[0]?.title || '').trim()
-    : '';
-  const title = String(
-    detail?.title ||
-      detail?.name ||
-      detail?.display_name ||
-      candidateTitle ||
-      queryText,
-  ).trim();
-
-  const productRow = {
-    ...(detail && typeof detail === 'object' ? detail : {}),
-    id: String(detail?.id || detail?.product_id || resolvedProductId),
-    product_id: String(detail?.product_id || detail?.id || resolvedProductId),
-    merchant_id: String(detail?.merchant_id || resolvedMerchantId),
-    platform_product_id: String(
-      detail?.platform_product_id ||
-        detail?.platformProductId ||
-        detail?.product_id ||
-        resolvedProductId,
-    ),
-    ...(title ? { title } : {}),
-    ...(title && !detail?.name ? { name: title } : {}),
-    canonical_product_ref: {
-      merchant_id: resolvedMerchantId,
-      product_id: resolvedProductId,
-    },
-  };
-
-  const normalized = normalizeAgentProductsListResponse({
-    status: 'success',
-    success: true,
-    products: [productRow],
-    total: 1,
-    page: 1,
-    page_size: 1,
-    metadata: {
-      query_source: 'agent_products_resolver_fallback',
-      resolve_reason: resolved?.reason || null,
-      resolve_reason_code:
-        resolved?.reason_code ||
-        resolved?.metadata?.resolve_reason_code ||
-        null,
-      resolve_confidence:
-        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-      resolve_latency_ms:
-        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-      resolve_query_used: resolvedQueryUsed || queryText,
-      ...(detailSource ? { resolve_detail_source: detailSource } : {}),
-    },
-  });
-
-  const successResult = {
-    status: 200,
-    usableCount: countUsableSearchProducts(normalized?.products),
-    resolved: true,
-    resolve_reason: resolved?.reason || null,
-    resolve_reason_code:
-      resolved?.reason_code ||
-      resolved?.metadata?.resolve_reason_code ||
-      null,
-    resolve_confidence:
-      Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
-    resolve_latency_ms:
-      Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
-    resolve_sources: resolveSources,
-    resolve_query_used: resolvedQueryUsed || queryText,
-    data: withProxySearchFallbackMetadata(normalized, {
-      applied: true,
-      reason: reason || 'resolver_fallback',
-    }),
-  };
-  setProxySearchResolverCacheEntry(resolverCacheKey, successResult, PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
-  return successResult;
-}
-
-function isResolverMiss(result) {
-  if (!result || typeof result !== 'object') return false;
-  return Number(result.usableCount || 0) <= 0;
-}
-
-function shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText = '') {
-  if (!isResolverMiss(result)) return false;
-  if (hasPetSearchSignal(queryText)) return false;
-  const reasonCode = normalizeOffersResolveReasonCode(
-    result?.resolve_reason_code || result?.resolve_reason || '',
-    '',
-  );
-  return reasonCode === 'no_candidates' || reasonCode === 'upstream_timeout' || reasonCode === 'db_timeout';
-}
-
-function shouldSkipSecondaryFallbackAfterResolverMiss(
-  result,
-  queryText = '',
-  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
-) {
-  return Boolean(
-    getSecondaryFallbackSkipReason(result, queryText, {
-      disableSkipAfterResolverMiss,
-      queryClass,
-      brandLike,
-    }),
-  );
-}
-
-function getSecondaryFallbackSkipReason(
-  result,
-  queryText = '',
-  { disableSkipAfterResolverMiss = false, queryClass = null, brandLike = false } = {},
-) {
-  if (disableSkipAfterResolverMiss) return null;
-  if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return null;
-  if (hasPetSearchSignal(queryText)) return null;
-  if (hasFragranceQuerySignal(queryText)) return null;
-  if (!shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText)) return null;
-  if (brandLike) return null;
-
-  const normalizedQueryClass = String(queryClass || '')
-    .trim()
-    .toLowerCase();
-  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
-  const forceSearchFirstClasses = new Set([
-    'category',
-    'exploratory',
-    'scenario',
-    'mission',
-    'gift',
-    'non_shopping',
-  ]);
-  if (normalizedQueryClass && forceSearchFirstClasses.has(normalizedQueryClass)) {
-    return null;
-  }
-
-  const anchorTokens = extractSearchAnchorTokens(queryText);
-  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
-  if (
-    FPM_GATE_SIMPLIFY_V1 &&
-    FPM_LOOKUP_ONLY_RESOLVER &&
-    ((!normalizedQueryClass && !lookupStyle) ||
-      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
-  ) {
-    return null;
-  }
-  if (isKnownLookupAliasQuery(queryText)) return 'resolver_miss_lookup_alias';
-  if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
-  if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
-  if (lookupStyle) return 'resolver_miss_lookup_style';
-  return null;
-}
-
-function shouldAllowSecondaryFallback(operation, { forceSecondaryFallback = false } = {}) {
-  if (forceSecondaryFallback) return true;
-  if (operation === 'find_products_multi') {
-    return PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
-  }
-  return true;
-}
-
 function hasStrictInvokeCatalogSurface(search = null, metadata = null) {
   const normalizedSearch =
     search && typeof search === 'object' && !Array.isArray(search) ? search : {};
@@ -26423,53 +25445,6 @@ function isLegacyBeautyMainlineInvokeMetadata(metadata = null) {
   return resolveSearchPrimaryLaneFromMetadata(metadata).toLowerCase() === 'beauty_discovery_mainline';
 }
 
-function shouldSuppressLegacyOwnerSwitchFallback({ searchRail = null, metadata = null } = {}) {
-  return (
-    isFallbackSuppressedSearchRail(searchRail) ||
-    isLegacyBeautyMainlineInvokeMetadata(metadata)
-  );
-}
-
-function shouldAllowInvokeFallback(operation, { forceInvokeFallback = false, metadata = null } = {}) {
-  if (forceInvokeFallback) return true;
-  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
-  const searchRail = String(
-    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
-  )
-    .trim()
-    .toLowerCase();
-  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
-    return false;
-  }
-  return PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
-}
-
-function shouldAllowResolverFallback(operation, { metadata = null } = {}) {
-  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
-  const searchRail = String(
-    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
-  )
-    .trim()
-    .toLowerCase();
-  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
-    return false;
-  }
-  return PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
-}
-
-function shouldBypassSecondaryFallbackSkipOnPrimaryException({ err }) {
-  const status = Number(err?.response?.status || err?.status || 0);
-  if (Number.isFinite(status) && status >= 500) return true;
-
-  const code = String(err?.code || '').trim().toUpperCase();
-  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'EAI_AGAIN') {
-    return true;
-  }
-
-  const message = String(err?.message || '').trim();
-  return /timeout|timed out|socket hang up|aborted|network error/i.test(message);
-}
-
 function isUuidLikeSearchQuery(value) {
   const s = String(value || '').trim();
   if (!s) return false;
@@ -26510,81 +25485,6 @@ function isStrongResolverFirstQuery(queryText) {
     }
   }
   return false;
-}
-
-function shouldUseResolverFirstSearch({
-  operation,
-  metadata,
-  queryText,
-  remainingBudgetMs = null,
-  queryClass = null,
-  brandLike = false,
-}) {
-  if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
-  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
-  if (!String(queryText || '').trim()) return false;
-  if (brandLike) return false;
-  if (
-    Number.isFinite(Number(remainingBudgetMs)) &&
-    Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
-  ) {
-    return false;
-  }
-  const searchRail = String(
-    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
-  )
-    .trim()
-    .toLowerCase();
-  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
-    return false;
-  }
-
-  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
-  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
-  const forceSearchFirstClasses = new Set([
-    'category',
-    'exploratory',
-    'scenario',
-    'mission',
-    'gift',
-    'non_shopping',
-  ]);
-  if (
-    FPM_GATE_SIMPLIFY_V1 &&
-    normalizedQueryClass &&
-    forceSearchFirstClasses.has(normalizedQueryClass) &&
-    !strongResolverQuery
-  ) {
-    return false;
-  }
-
-  const anchorTokens = extractSearchAnchorTokens(queryText);
-  const lookupStyle = isLookupStyleSearchQuery(queryText, anchorTokens);
-  const lookupOnlyClasses = new Set(['lookup', 'attribute']);
-  if (
-    FPM_GATE_SIMPLIFY_V1 &&
-    FPM_LOOKUP_ONLY_RESOLVER &&
-    !strongResolverQuery &&
-    ((!normalizedQueryClass && !lookupStyle) ||
-      (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
-  ) {
-    return false;
-  }
-
-  const source = normalizeAgentSource(metadata?.source);
-  if (isCreatorUiSource(source)) return false;
-  const auroraSource = isAuroraSource(source);
-  if (auroraSource && PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA) return false;
-  if (!source) return true;
-  const isCatalogSource = isResolverFirstCatalogSource(source);
-  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && (isCatalogSource || auroraSource)) {
-    return (
-      strongResolverQuery ||
-      lookupStyle
-    );
-  }
-
-  return isCatalogSource || auroraSource;
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -29532,8 +28432,11 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
   }
 }
 
-function filterPublicVisibleSimilarProducts(products) {
-  return (Array.isArray(products) ? products : []).filter((product) => {
+// `servingCurrency`: the buyer's (servingCurrencyFor). A caller with no request to read it from
+// gets the rule's silence -- the default market's currency -- so no similar surface can serve a
+// product priced in another one (Peng 2026-09-26).
+function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
+  const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
     const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
@@ -29541,6 +28444,10 @@ function filterPublicVisibleSimilarProducts(products) {
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
+  return filterProductsToServingCurrency(
+    publicProducts,
+    servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency,
+  );
 }
 
 function dedupeSimilarCandidatesByMerchantProductId(products) {
@@ -29786,6 +28693,7 @@ async function prewarmPdpSimilarForProduct({
   canonicalProduct = {},
   checkoutToken = null,
   bypassCache = false,
+  servingCurrency,
 } = {}) {
   if (bypassCache) return;
   const componentCandidates = collectPdpComponentSimilarCandidates(canonicalProductForPdp);
@@ -29798,6 +28706,7 @@ async function prewarmPdpSimilarForProduct({
     debug: false,
     excludeItems: componentCandidates,
     requestMode: 'background',
+    servingCurrency,
   });
   const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
   const relatedProducts = Array.isArray(relatedProductsEnvelope?.items)
@@ -30424,7 +29333,207 @@ async function introspectInvokeApiKeyOverNetwork(apiKey, signal) {
   return result;
 }
 
-async function requireExternalInvokeAuth(req, res, next) {
+// ---------------- X-Checkout-Token verification ----------------
+//
+// Checkout tokens are minted AND signed by pivota-backend (routes/agent_checkout_intents.py
+// mint_checkout_token: `v1.<payload_b64url>.<hmac_sha256_b64url>`, payload carries agent_id, exp,
+// merchant_ids and scopes). The gateway does not hold CHECKOUT_TOKEN_SECRET and must not: whoever
+// holds it can mint tokens. So it asks the backend — the same internal introspect endpoint it
+// already uses for API keys, which judges the token with the very function the agent API
+// authenticates it with (verify_checkout_token_claims) and also refuses a deleted agent.
+//
+// Before this, requireExternalInvokeAuth accepted ANY non-empty X-Checkout-Token as authentication,
+// with no check at all, and every operation behind it was open to an anonymous caller.
+//
+// Fail closed everywhere: no introspect config, a backend that refuses our internal key, a timeout,
+// a 5xx, an unrecognisable answer — all refuse the request. Unlike API keys there is no stale-if-error
+// replay and no emergency fallback: a checkout token is a short-lived buyer credential, and a checkout
+// that waits out a backend blip loses nothing a forged token would gain.
+
+// Shape only — it never ACCEPTS anything, it just saves a backend round trip on obvious garbage. The
+// signature is a base64url SHA-256 HMAC with padding stripped: exactly 43 characters.
+const CHECKOUT_TOKEN_SHAPE = /^(?:v1\.)?[A-Za-z0-9_-]{2,16384}\.[A-Za-z0-9_-]{43}$/;
+const CHECKOUT_TOKEN_VERDICT_POSITIVE_TTL_MS = 60 * 1000;
+const CHECKOUT_TOKEN_VERDICT_NEGATIVE_TTL_MS = 30 * 1000;
+const CHECKOUT_TOKEN_VERDICT_CACHE_MAX = 5000;
+const checkoutTokenVerdictCache = new Map();
+
+// WHERE a token alone may authenticate: the checkout operations of the legacy invoke doors, and nowhere
+// else. On that path every one of these operations forwards the token itself upstream
+// (buildInvokeUpstreamAuthHeaders({ checkoutToken })), so pivota-backend enforces the token's own scope
+// and merchant binding a second time on the call it actually serves. Everywhere else behind
+// requireExternalInvokeAuth the token would authenticate the CHANNEL while the upstream call went out
+// under the gateway's own PIVOTA_API_KEY (gateway-local reads, the commerce kernel behind the strict
+// route, /mcp and /ucp/mcp) or reached surfaces the backend itself refuses a checkout token on
+// (photos) — so there a token-only request is simply a request with no credential. Only
+// registerExternalInvokeRoute opts in; a door that says nothing accepts no checkout token.
+//
+// The list is the checkout lane agent.pivota.cc routes (CHECKOUT_SAFE_OPERATIONS in pivota-agent-ui's
+// gateway proxy, less record_payment_offer_evidence, which is not an invoke operation here).
+const CHECKOUT_TOKEN_INVOKE_OPERATIONS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'confirm_payment',
+  'get_order_status',
+]);
+
+function isCheckoutTokenInvokeOperation(req) {
+  return CHECKOUT_TOKEN_INVOKE_OPERATIONS.has(String(req?.body?.operation || '').trim());
+}
+
+function getCachedCheckoutTokenVerdict(cacheKey, nowMs = Date.now()) {
+  const entry = checkoutTokenVerdictCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expires_at_ms <= nowMs) {
+    checkoutTokenVerdictCache.delete(cacheKey);
+    return null;
+  }
+  return entry.verdict;
+}
+
+function putCachedCheckoutTokenVerdict(cacheKey, verdict, nowMs = Date.now()) {
+  let ttlMs = verdict.valid ? CHECKOUT_TOKEN_VERDICT_POSITIVE_TTL_MS : CHECKOUT_TOKEN_VERDICT_NEGATIVE_TTL_MS;
+  // A positive verdict never outlives the token it describes.
+  if (verdict.valid && verdict.expires_at_ms) ttlMs = Math.min(ttlMs, verdict.expires_at_ms - nowMs);
+  if (!(ttlMs > 0)) return;
+  if (checkoutTokenVerdictCache.size >= CHECKOUT_TOKEN_VERDICT_CACHE_MAX) {
+    const oldest = checkoutTokenVerdictCache.keys().next().value;
+    if (oldest !== undefined) checkoutTokenVerdictCache.delete(oldest);
+  }
+  checkoutTokenVerdictCache.set(cacheKey, { verdict, expires_at_ms: nowMs + ttlMs });
+}
+
+function checkoutTokenIntrospectError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+// Returns { valid, agent_id, is_active, scopes, expires_at_ms, cache_hit } or throws (=> 503).
+async function introspectCheckoutToken(token) {
+  const cacheKey = hashSecretForCache(token);
+  const cached = getCachedCheckoutTokenVerdict(cacheKey);
+  if (cached) return { ...cached, cache_hit: true };
+
+  if (!AGENT_AUTH_INTROSPECT_URL || !AGENT_AUTH_INTROSPECT_INTERNAL_KEY) {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_NOT_CONFIGURED', 'agent auth introspect is not configured');
+  }
+
+  let response;
+  try {
+    response = await axios.post(
+      AGENT_AUTH_INTROSPECT_URL,
+      { checkout_token: token },
+      {
+        timeout: AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+        },
+        validateStatus: () => true,
+      },
+    );
+  } catch (err) {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_UNAVAILABLE', err?.message || 'introspect request failed');
+  }
+  if (response.status < 200 || response.status >= 300) {
+    // Includes a backend too old to know `checkout_token` (it 422s a body without api_key): that
+    // refuses every token-only request until the backend ships, which is the safe order.
+    throw checkoutTokenIntrospectError(
+      response.status >= 500 ? 'AUTH_INTROSPECT_UNAVAILABLE' : 'AUTH_INTROSPECT_REJECTED',
+      `checkout token introspect status=${response.status}`,
+    );
+  }
+
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const expiresAtSec = Number(data.expires_at);
+  const verdict = {
+    // `auth_source` must say the backend judged a CHECKOUT TOKEN. An answer about anything else — an
+    // API-key verdict, a soft error — is not a verdict on this token.
+    valid: data.valid === true && data.auth_source === 'checkout_token' && Boolean(String(data.agent_id || '').trim()),
+    agent_id: String(data.agent_id || '').trim() || null,
+    is_active: data.is_active !== false,
+    scopes: Array.isArray(data.scopes) ? data.scopes.map((s) => String(s || '').trim()).filter(Boolean) : [],
+    expires_at_ms: Number.isFinite(expiresAtSec) && expiresAtSec > 0 ? expiresAtSec * 1000 : null,
+  };
+  if (data.auth_source === 'error') {
+    throw checkoutTokenIntrospectError('AUTH_INTROSPECT_UNAVAILABLE', 'checkout token introspect returned an error result');
+  }
+  putCachedCheckoutTokenVerdict(cacheKey, verdict);
+  return { ...verdict, cache_hit: false };
+}
+
+async function authenticateCheckoutTokenOnly(req, res, next, checkoutToken) {
+  const tokenFingerprint = fingerprintSecret(checkoutToken);
+  const refuse = (status, error, message, reason) => {
+    logger.warn(
+      { path: req?.path || null, checkout_token_fingerprint: tokenFingerprint, reason },
+      'invoke auth rejected: checkout token',
+    );
+    return res.status(status).json({ error, message });
+  };
+
+  if (!CHECKOUT_TOKEN_SHAPE.test(checkoutToken)) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'shape');
+  }
+
+  let verdict;
+  try {
+    verdict = await introspectCheckoutToken(checkoutToken);
+  } catch (err) {
+    logger.error(
+      {
+        path: req?.path || null,
+        checkout_token_fingerprint: tokenFingerprint,
+        code: err?.code || null,
+        err: err?.message || String(err),
+      },
+      'invoke auth: checkout token introspection unavailable',
+    );
+    return res.status(503).json({
+      error: 'AUTH_INTROSPECT_UNAVAILABLE',
+      message: 'Authentication service unavailable',
+    });
+  }
+
+  if (verdict.valid !== true) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'invalid');
+  }
+  if (verdict.expires_at_ms && verdict.expires_at_ms <= Date.now()) {
+    return refuse(401, 'UNAUTHORIZED', 'Missing or invalid checkout token', 'expired');
+  }
+  if (verdict.is_active === false) {
+    return refuse(403, 'FORBIDDEN', 'Agent is deactivated', 'agent_inactive');
+  }
+  // Every token minted today carries scopes ["checkout"]; one that does not was not minted for this.
+  if (!verdict.scopes.includes('checkout')) {
+    return refuse(403, 'FORBIDDEN', 'Checkout token not authorized for this operation', 'scope');
+  }
+
+  req.invokeAuth = {
+    key_fingerprint: null,
+    auth_source: 'x-checkout-token',
+    auth_mode: 'checkout_token',
+    agent_id: verdict.agent_id,
+    // Never the token: raw_token is read as a caller API KEY upstream (getInvokeAuthApiKey). The token
+    // itself still travels upstream as X-Checkout-Token wherever the request handler forwards it.
+    raw_token: null,
+    cache_hit: verdict.cache_hit === true,
+    introspect_auth_source: 'checkout_token',
+    checkout_token_fingerprint: tokenFingerprint,
+    checkout_token_scopes: verdict.scopes,
+    auth_degraded: false,
+    auth_degraded_reason: null,
+  };
+  return next();
+}
+
+// `acceptsCheckoutToken(req)` is the door's opt-in for token-only authentication (see
+// CHECKOUT_TOKEN_INVOKE_OPERATIONS). It is a DEFAULT parameter on purpose: Express reads a middleware's
+// arity (fn.length) and treats a 4-parameter function as an error handler, and a defaulted parameter does
+// not count toward fn.length — so `app.post(path, requireExternalInvokeAuth, ...)` keeps working.
+async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken = null } = {}) {
   if (shouldBypassInvokeAuthForTest()) {
     req.invokeAuth = {
       key_fingerprint: null,
@@ -30438,22 +29547,21 @@ async function requireExternalInvokeAuth(req, res, next) {
     return next();
   }
 
-  const checkoutToken = String(
-    req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
-  ).trim();
-  if (checkoutToken) {
-    req.invokeAuth = {
-      key_fingerprint: null,
-      auth_source: 'x-checkout-token',
-      auth_mode: 'checkout_token',
-      agent_id: null,
-      raw_token: null,
-      cache_hit: false,
-    };
-    return next();
-  }
-
   const provided = extractInvokeAuthToken(req);
+  // An API key, when present, is THE credential; an X-Checkout-Token beside it is buyer context that
+  // rides upstream, where pivota-backend verifies it on every call it is forwarded to. Only a request
+  // carrying the token ALONE is authenticated by it — and then only after the backend has vouched for
+  // it (authenticateCheckoutTokenOnly). This used to accept ANY non-empty header as authentication.
+  if (!provided) {
+    const checkoutToken = String(
+      req?.header('X-Checkout-Token') || req?.header('x-checkout-token') || '',
+    ).trim();
+    if (checkoutToken && typeof acceptsCheckoutToken === 'function' && acceptsCheckoutToken(req)) {
+      return authenticateCheckoutTokenOnly(req, res, next, checkoutToken);
+    }
+    // Otherwise the token is not a credential here and the request falls through to the API-key
+    // refusal below, exactly as if it had carried nothing.
+  }
   const keyFingerprint = fingerprintSecret(provided);
   if (!provided) {
     return res.status(401).json({
@@ -32021,11 +31129,14 @@ async function getCommerceRemoteMcpAdapter() {
         mapOffersResolveResponse,
         candidateSnapshotNeedsHydration,
         hydrateCandidateSnapshotFromEntity,
+        buildIntelKbKeys,
+        intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts, classifyVerifyPriceResponse } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
+        listCatalogOfferPricesForRefs,
       } = require('./auroraBff/productRelationshipGraph');
       const { getProductIntelKbEntry, getProductIntelKbEntries } = require('./auroraBff/productIntelKbStore');
       // Strict, independent gate for the agent surface (no consumer-flag fallback): off unless explicitly set.
@@ -32096,6 +31207,10 @@ async function getCommerceRemoteMcpAdapter() {
               if (hydrated) e.candidate_snapshot = hydrated;
             }
           },
+          // The stored amounts carry no currency (the builder never wrote one); pair each with the currency
+          // of its own listing's offers, and serve a price only in the buyer market's currency.
+          resolveOfferPrices: (refs) => listCatalogOfferPricesForRefs(refs),
+          servingCurrencyForMarket: (market) => resolveServingCurrency(market),
         }),
         // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
@@ -32126,45 +31241,22 @@ async function getCommerceRemoteMcpAdapter() {
           // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
           // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
           isReviewed: isServableProductIntelBundle,
+          // The KB is keyed by `product:<identity>` for several identities (sig / canonical pg_/sig_ /
+          // per-listing source id) and by `url:<url>`. Hydrate the queried product — named by product_id,
+          // product_ref or pivota_signature_id — to its full identity set (same resolver get_alternatives
+          // uses) so one id matches however the KB was keyed. Flag-gated + fail-open inside the resolver →
+          // the request's own keys when off/unresolved. The key shapes live in buildIntelKbKeys.
           resolveKbKeys: async (p) => {
-            const keys = [];
-            const pushUrl = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `url:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            const push = (v) => {
-              const s = (v == null ? '' : String(v)).trim();
-              if (!s) return;
-              const k = `product:${s}`;
-              if (!keys.includes(k)) keys.push(k);
-            };
-            // The KB is keyed by `product:<identity>` for several identities (sig / canonical
-            // pg_/sig_ / per-listing source id). Hydrate the queried product to its full identity
-            // set (same resolver get_alternatives uses) so a single product_id matches however the
-            // KB was keyed. Flag-gated + fail-open inside the resolver → bare keys when off/unresolved.
             let identity = null;
             try {
               identity = await resolveAnchorIdentityForRelationshipGraph({
-                product_id: p.product_id,
+                product_id: intelIdentityProductId(p),
                 merchant_id: p.merchant_id,
               });
             } catch {
               identity = null;
             }
-            if (identity) {
-              push(identity.canonical_entity_id);
-              push(identity.pivota_signature_id);
-              for (const sig of Array.isArray(identity.member_sig_ids) ? identity.member_sig_ids : []) push(sig);
-              for (const src of Array.isArray(identity.member_source_ids) ? identity.member_source_ids : []) push(src);
-              pushUrl(identity.canonical_url);
-            }
-            // Always include the request-provided identities (covers the flag-off / unresolved path).
-            push(p.pivota_signature_id);
-            push(p.product_id);
-            push(p.product_ref);
-            return keys;
+            return buildIntelKbKeys(p, identity);
           },
         }),
         // The need-anchored shortlist: Pivota's prompt-level recommendation lane (the engine behind
@@ -32479,27 +31571,18 @@ function getPublicReadMcpLimiter() {
   return publicReadMcpLimiter;
 }
 
-// Rate-limit key = the real client IP. The LEFT-most X-Forwarded-For entry is client-supplied and spoofable
-// (an attacker rotating it would land every request in a fresh bucket and defeat the limit), so we take the
-// entry appended by our own trusted edge: the Nth-from-the-right, where N = trusted proxy hops in front of
-// this service (Railway = 1). Configurable via PUBLIC_READ_TRUSTED_PROXIES. Falls back to the socket peer.
-function publicReadTrustedProxyHops() {
-  const n = Number(process.env.PUBLIC_READ_TRUSTED_PROXIES);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
+// Rate-limit key for the public (auth:none) doors = the client address our own edge observed, by the SAME
+// rule the invoke limiter uses (gatewayGuardrails clientIpFromRequest: Nth X-Forwarded-For entry from the
+// right, N = GATEWAY_RATE_LIMIT_TRUSTED_PROXY_HOPS, default 2 for the external Application Load Balancer).
+// The left-most entries are client-supplied and spoofable, so they never choose the bucket. `door` labels
+// the count-only XFF shape log that confirms N in prod.
+const recordPublicReadForwardedForShape = require('./services/publicReadRateLimit').createForwardedForShapeRecorder({
+  log: logger,
+});
 
-function publicReadMcpClientKey(req) {
-  const parts = String(req?.headers?.['x-forwarded-for'] || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length) {
-    // Nth-from-the-right (the hop our trusted edge saw as the client); clamp so a short chain still yields
-    // the left-most real value rather than undefined.
-    const idx = Math.max(0, parts.length - publicReadTrustedProxyHops());
-    return parts[idx];
-  }
-  return req?.socket?.remoteAddress || req?.ip || 'unknown';
+function publicReadMcpClientKey(req, door) {
+  recordPublicReadForwardedForShape(req, door);
+  return clientIpFromRequest(req);
 }
 
 const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
@@ -32524,6 +31607,40 @@ function isMcpHeartbeatEligibleRequest(req) {
 
 function mcpToolNameFromRpcBody(rpcBody) {
   return rpcBody && rpcBody.method === 'tools/call' && rpcBody.params ? rpcBody.params.name : null;
+}
+
+// One completion line per MCP tools/call, naming the tool and the resolved caller (see
+// src/attribution/callerLogFields.js). Without it an MCP tool call is invisible in the logs: its
+// search_catalog reaches the invoke route only as this gateway's own loopback call, under this gateway's
+// own key, so the invoke line cannot say which agent asked. Only tools/call is logged -- the one method
+// that does real work -- and never its arguments. Registered on 'finish', so it records the caller the
+// door actually resolved (req.invokeAuth is written after this runs). Never throws.
+function logMcpToolCallOnFinish(req, res, door) {
+  try {
+    const rpcBody = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
+    const rawTool = mcpToolNameFromRpcBody(rpcBody);
+    if (rawTool == null) return;
+    const tool = typeof rawTool === 'string' ? rawTool.trim().slice(0, 128) : null;
+    const startedAtMs = Date.now();
+    res.on('finish', () => {
+      try {
+        logger.info(
+          {
+            door,
+            tool,
+            status: res.statusCode,
+            latency_ms: Math.max(0, Date.now() - startedAtMs),
+            ...callerLogFields(req),
+          },
+          'mcp tools/call complete',
+        );
+      } catch (_) {
+        // Measurement must never break the surface it measures.
+      }
+    });
+  } catch (_) {
+    // Same.
+  }
 }
 
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
@@ -32618,6 +31735,7 @@ function commerceMcpHeartbeatOptions(ctx) {
 }
 
 async function handlePublicReadMcp(req, res) {
+  logMcpToolCallOnFinish(req, res, 'public_mcp');
   if (!isPublicReadMcpEnabled()) {
     return res.status(404).json({ error: 'not_found' });
   }
@@ -32625,7 +31743,7 @@ async function handlePublicReadMcp(req, res) {
   if (Number.isFinite(contentLength) && contentLength > PUBLIC_READ_MCP_MAX_BODY_BYTES) {
     return res.status(413).json({ error: 'payload_too_large' });
   }
-  if (!getPublicReadMcpLimiter().allow(publicReadMcpClientKey(req))) {
+  if (!getPublicReadMcpLimiter().allow(publicReadMcpClientKey(req, 'public_mcp'))) {
     res.setHeader('Retry-After', '10');
     return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
   }
@@ -32689,6 +31807,7 @@ function registerCommerceRemoteMcpRoute() {
       getAdapter: getCommerceRemoteMcpAdapter,
       resolveBlockedOperation: async (rpcBody) => resolveBlockedCommerceMcpOperation(rpcBody),
       failureLabel: 'Strict checkout remote MCP route failed',
+      door: 'mcp',
     });
   });
 }
@@ -32705,7 +31824,8 @@ function registerCommerceRemoteMcpRoute() {
  * The caller owns whatever must happen BEFORE this (public-read host dispatch, per-door enable flags), so
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
-async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel }) {
+async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
+    logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
     // API key: the verified token is BOTH the channel credential and the user identity. Inert
@@ -32851,6 +31971,7 @@ function registerCommerceUcpMcpRoute() {
       getAdapter: getCommerceUcpMcpAdapter,
       resolveBlockedOperation: resolveBlockedUcpMcpOperation,
       failureLabel: 'UCP dialect commerce MCP route failed',
+      door: 'ucp_mcp',
     });
   });
 }
@@ -33532,7 +32653,7 @@ function registerCommerceAcpRestRoutes() {
         if (Number.isFinite(contentLength) && contentLength > ACP_PUBLIC_FEED_MAX_BODY_BYTES) {
           return res.status(413).json({ error: 'payload_too_large' });
         }
-        if (!getAcpPublicFeedLimiter().allow(publicReadMcpClientKey(req))) {
+        if (!getAcpPublicFeedLimiter().allow(publicReadMcpClientKey(req, 'acp_public_feed'))) {
           res.setHeader('Retry-After', '10');
           return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
         }
@@ -33643,7 +32764,7 @@ function registerUcpOrderWebhookRoutes() {
   app.post('/ucp/order-webhook', async (req, res) => {
     // Public write door: per-client token-bucket limit (ACP public-feed pattern), applied only when
     // the door is LIT — a dark door must stay indistinguishable from a missing route (404, never 429).
-    if (isUcpOrderWebhookReceiverEnabled() && !getUcpOrderWebhookLimiter().allow(publicReadMcpClientKey(req))) {
+    if (isUcpOrderWebhookReceiverEnabled() && !getUcpOrderWebhookLimiter().allow(publicReadMcpClientKey(req, 'ucp_order_webhook'))) {
       res.setHeader('Retry-After', '10');
       return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
     }
@@ -34291,15 +33412,6 @@ function hasPetHarnessSearchSignal(queryText) {
   );
 }
 
-function hasPetLeashSearchSignal(queryText) {
-  const q = String(queryText || '');
-  if (!q) return false;
-  return (
-    /\b(leash|dog\s+leash|pet\s+leash|lead|training\s+leash|collar)\b/i.test(q) ||
-    /牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|狗绳|狗繩|项圈|項圈|リード|首輪/.test(q)
-  );
-}
-
 function hasStrictPetHarnessCatalogSignal(candidateText) {
   const text = String(candidateText || '');
   if (!text) return false;
@@ -34321,6 +33433,24 @@ function classifyBeautyBucketFromText(text) {
 
 function hasBeautyCatalogProductSignal(candidateText) {
   return classifyBeautyBucketFromText(candidateText) !== 'other';
+}
+
+// The row's OWN catalog category, when it is a beauty leaf (beauty/<area>/<leaf>, three
+// segments or deeper), is itself the "this is a beauty product" signal that
+// hasBeautyCatalogProductSignal guesses at from text. That text classifier has no
+// vocabulary for whole product classes: measured 2026-09-25 on prod, 337 of 12,182
+// serving beauty-leaf rows bucket 'other' (gift-set 130, haircare/general 98,
+// body/care 25, body/tanning 14 ...) and were silently dropped (score -30) from every
+// query without a product family -- "self tanner" and "Bondi Sands" served 3 of 17
+// rows, and those 3 only because "no added fragrance" bucketed them as fragrance.
+//
+// A bare `beauty` or a two-segment ancestor (`beauty/makeup`) is NOT a leaf and keeps
+// needing text evidence: that is where misfiled non-beauty rows sit. Flag-gated,
+// default OFF (BEAUTY_RANKER_CATALOG_LEAF_SIGNAL_ENABLED), read per call.
+function beautyProductHasCatalogLeafSignal(product) {
+  if (!parseBooleanEnv(process.env.BEAUTY_RANKER_CATALOG_LEAF_SIGNAL_ENABLED, false)) return false;
+  const path = beautyRelevanceGate.getProductCategoryPathText(product);
+  return /^beauty\/[^/]+\/[^/]+/.test(path);
 }
 
 function classifyBeautyBucketFromProduct(product) {
@@ -34473,76 +33603,6 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
   };
 }
 
-function getResolverFallbackResolveQueryUsed(result, queryText = '') {
-  return String(
-    result?.resolve_query_used || result?.data?.metadata?.resolve_query_used || queryText || '',
-  ).trim() || null;
-}
-
-function isStrongResolverLookupQuery(queryText, queryClass = null) {
-  const raw = String(queryText || '').trim();
-  if (!raw) return false;
-  const normalizedClass = String(queryClass || '').trim().toLowerCase();
-  if (normalizedClass === 'lookup') return true;
-  if (isKnownLookupAliasQuery(raw)) return true;
-  const hasModelLikeToken = /\b[a-z]{1,6}\d{2,}\b/i.test(raw);
-  const hasBeautySpfToken = /\bspf\d{2,3}\b/i.test(raw);
-  if ((hasModelLikeToken && !hasBeautySpfToken) || /\b(sku|model|型号|型號)\b/i.test(raw)) {
-    return true;
-  }
-  return false;
-}
-
-function getResolverFallbackAdoptionDecision({ result, queryText, queryClass = null }) {
-  const resolveQueryUsed = getResolverFallbackResolveQueryUsed(result, queryText);
-  if (!result || result.status < 200 || result.status >= 300 || Number(result.usableCount || 0) <= 0 || !result.data) {
-    return {
-      adopt: false,
-      reason: 'resolver_empty',
-      resolveQueryUsed,
-    };
-  }
-  if (!queryText) {
-    return {
-      adopt: true,
-      reason: null,
-      resolveQueryUsed,
-    };
-  }
-  if (isStrongResolverLookupQuery(queryText, queryClass)) {
-    return {
-      adopt: true,
-      reason: null,
-      resolveQueryUsed,
-    };
-  }
-  if (detectBeautyQueryBucket(queryText)) {
-    return {
-      adopt: false,
-      reason: 'resolver_irrelevant_to_original_query',
-      resolveQueryUsed,
-    };
-  }
-  const resolverQuerySource = String(result?.data?.metadata?.query_source || '').trim().toLowerCase();
-  const resolverDetailSource = String(result?.data?.metadata?.resolve_detail_source || '').trim().toLowerCase();
-  if (
-    resolverQuerySource === 'agent_products_resolver_ref_fallback' ||
-    resolverDetailSource === 'reference_only'
-  ) {
-    return {
-      adopt: false,
-      reason: 'resolver_irrelevant_to_original_query',
-      resolveQueryUsed,
-    };
-  }
-  const relevant = isProxySearchFallbackRelevant(result.data, queryText);
-  return {
-    adopt: relevant,
-    reason: relevant ? null : 'resolver_irrelevant_to_original_query',
-    resolveQueryUsed,
-  };
-}
-
 function computeBeautyBucketMix(products, topN = 10) {
   const buckets = {
     base_makeup: 0,
@@ -34562,73 +33622,6 @@ function computeBeautyBucketMix(products, topN = 10) {
     buckets[bucket] = Number(buckets[bucket] || 0) + 1;
   }
   return buckets;
-}
-
-function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit, options = {}) {
-  const beautyQueryProfile = buildBeautyQueryProfile({
-    rawQuery: options?.rawQuery || '',
-    queryClass: options?.queryClass || intent?.query_class,
-    intent,
-  });
-  if (!beautyQueryProfile?.allowBeautyDiversity) return false;
-  const topN = Math.max(1, Number(limit || 10));
-  const mix = computeBeautyBucketMix(products, topN);
-  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'lip_care', 'skincare', 'haircare', 'bodycare'];
-  const distinctCore = coreBuckets.filter((bucket) => Number(mix[bucket] || 0) > 0).length;
-  const toolsCount = Number(mix.tools || 0);
-  return distinctCore < 2 && toolsCount >= Math.ceil(topN * 0.6);
-}
-
-function blendBeautyDiversitySupplement(internalProducts, supplementProducts, limit) {
-  const targetLimit = Math.max(1, Number(limit || 10));
-  const priorityBuckets = [
-    'base_makeup',
-    'eye_makeup',
-    'lip_makeup',
-    'lip_care',
-    'skincare',
-    'haircare',
-    'bodycare',
-    'tools',
-    'fragrance',
-    'other',
-  ];
-  const seen = new Set();
-  const merged = [];
-  const internal = Array.isArray(internalProducts) ? internalProducts : [];
-  const supplement = Array.isArray(supplementProducts) ? supplementProducts : [];
-
-  const addUnique = (product) => {
-    const key = buildSearchProductKey(product) || JSON.stringify(product || {}).slice(0, 96);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    merged.push(product);
-  };
-
-  for (const product of internal) addUnique(product);
-  for (const product of supplement) addUnique(product);
-
-  const queues = new Map(priorityBuckets.map((bucket) => [bucket, []]));
-  for (const product of merged) {
-    const bucket = classifyBeautyBucketFromProduct(product);
-    if (!queues.has(bucket)) queues.set(bucket, []);
-    queues.get(bucket).push(product);
-  }
-
-  const output = [];
-  while (output.length < targetLimit) {
-    let progressed = false;
-    for (const bucket of priorityBuckets) {
-      const queue = queues.get(bucket);
-      if (!queue || queue.length === 0) continue;
-      output.push(queue.shift());
-      progressed = true;
-      if (output.length >= targetLimit) break;
-    }
-    if (!progressed) break;
-  }
-
-  return output;
 }
 
 function buildPetHarnessSignalSql(startIndex) {
@@ -37683,15 +36676,6 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
           },
   };
 
-  const fastpathResult = await agentProductsSearchRouteEntryRuntime.maybeHandleAgentProductsSearchRouteFastpaths({
-    req,
-    payload,
-    forceDirectInvokeMainPath: routePreparation.forceDirectInvokeMainPath === true,
-  });
-  if (fastpathResult?.handled && fastpathResult.response) {
-    return res.status(200).json(fastpathResult.response);
-  }
-
   req.query = routePreparation.query || req.query;
   req.body = {
     operation: 'find_products_multi',
@@ -38804,7 +37788,7 @@ async function buildProductIntelOffersDataForContext({
   checkoutToken,
   limit = 10,
   // The request's buyer market, threaded for the merchant-purchasability gate below. Undefined =
-  // the gate cannot ask and this lane keeps today's exact shape.
+  // unkeyable: declined under backend enforcement, else today's exact shape.
   buyerMarket,
 }) {
   if (!context?.canonicalProductRef || !context?.product) return null;
@@ -38973,7 +37957,7 @@ function buildProductOverviewDataFromProductIntel(productIntel = {}) {
   };
 }
 
-function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
+function mergeRecommendationModuleWithEnvelope(moduleData, envelope, { servingCurrency } = {}) {
   if (!moduleData || typeof moduleData !== 'object') return null;
   const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
   const moduleMetadata = moduleData.metadata && typeof moduleData.metadata === 'object' ? moduleData.metadata : {};
@@ -38982,7 +37966,7 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
     : Array.isArray(moduleData.items)
       ? moduleData.items
       : null;
-  const publicItems = rawItems ? filterPublicVisibleSimilarProducts(rawItems) : null;
+  const publicItems = rawItems ? filterPublicVisibleSimilarProducts(rawItems, { servingCurrency }) : null;
   const finalFilteredCount = rawItems && publicItems
     ? Math.max(0, rawItems.length - publicItems.length)
     : 0;
@@ -38999,13 +37983,13 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   };
 }
 
-function sanitizePdpSimilarResponseModules(modules) {
+function sanitizePdpSimilarResponseModules(modules, { servingCurrency } = {}) {
   if (!Array.isArray(modules)) return modules;
   return modules.map((module) => {
     if (module?.type !== 'similar' || !module.data || typeof module.data !== 'object') return module;
     const rawItems = Array.isArray(module.data.items) ? module.data.items : null;
     if (!rawItems) return module;
-    const publicItems = filterPublicVisibleSimilarProducts(rawItems);
+    const publicItems = filterPublicVisibleSimilarProducts(rawItems, { servingCurrency });
     const filteredCount = Math.max(0, rawItems.length - publicItems.length);
     if (filteredCount <= 0) return module;
     const currentMetadata =
@@ -39877,23 +38861,7 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
   const inStockOnly = inStockOnlyRaw !== false;
   const startedAt = Date.now();
 
-  const resolverMeta = { source };
   const strongResolverQuery = isStrongResolverFirstQuery(queryText);
-  let resolverFirstWouldApply = shouldUseResolverFirstSearch({
-    operation: 'find_products_multi',
-    metadata: resolverMeta,
-    queryText,
-  });
-  if (!resolverFirstWouldApply && strongResolverQuery && PROXY_SEARCH_RESOLVER_FIRST_ENABLED) {
-    const normalizedSource = normalizeAgentSource(source);
-    if (
-      !normalizedSource ||
-      isResolverFirstCatalogSource(normalizedSource) ||
-      isAuroraSource(normalizedSource)
-    ) {
-      resolverFirstWouldApply = true;
-    }
-  }
 
   const buildResolverView = (result) => ({
     resolved: Boolean(result?.resolved),
@@ -39997,10 +38965,9 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     source,
     timing_ms: Math.max(0, Date.now() - startedAt),
     config: {
-      resolver_first_enabled: PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
-      resolver_first_strong_only: PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
-      resolver_first_disable_aurora: PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA,
-      resolver_first_would_apply: resolverFirstWouldApply,
+      // Resolver-first was removed from find_products_multi on 2026-09-26 (0 runs in 30 days).
+      resolver_first_enabled: false,
+      resolver_first_would_apply: false,
       resolver_query_is_strong: strongResolverQuery,
       resolver_timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
       db_configured: Boolean(process.env.DATABASE_URL),
@@ -41288,6 +40255,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gateway_request_id: gatewayRequestId,
         client_channel: clientChannel,
         key_fingerprint: routeKeyFingerprint,
+        // The agent this request resolved to, not just which key it presented: Pivota's own UI and this
+        // gateway's loopback self-calls share one key. See src/attribution/callerLogFields.js.
+        ...callerLogFields(req),
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -41341,6 +40311,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
+  let queryTooLongRejected = false;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -41361,6 +40332,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return emit(body);
   })(res.json.bind(res));
   res.json = (body) => {
+    // A rejected over-long query goes out as-is: the enrichment below re-reads the request's
+    // query text (the pivot beauty contract check runs the brand lexicon over it), which is the
+    // cost the rejection exists to avoid.
+    if (queryTooLongRejected) return originalJson(body);
     let finalBody = body;
     try {
       const operation = String(debugRuntime.operation || req?.body?.operation || '')
@@ -41630,6 +40605,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
+    // Peng 2026-09-26: no row priced in another currency than the buyer's leaves this door,
+    // whichever lane built the page. Before pagination, so a dropped row cannot hold a slot.
+    // Not wrapped: it is pure and cannot throw on any body shape (servingCurrencyGuard tests).
+    finalBody = enforceServingCurrency({
+      operation: finalOperation,
+      observation: marketObservation,
+      payload: req?.body?.payload,
+      metadata: req?.body?.metadata,
+      body: finalBody,
+    });
     if (isShoppingAgentFindProductsMultiRequest(req, finalOperation)) {
       // Every search card must have a canonical, currency-qualified price (or
       // a priced seller offer that has been materialized as that card price).
@@ -41865,6 +40850,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     const { operation, payload } = parsed.data;
+    // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
+    const overlongQuery = findOverlongSearchQuery({ operation, payload });
+    if (overlongQuery) {
+      queryTooLongRejected = true;
+      logger.warn(
+        { gateway_request_id: gatewayRequestId, operation, ...overlongQuery },
+        'search query too long; rejected',
+      );
+      return res.status(400).json({
+        error: 'QUERY_TOO_LONG',
+        message: `The search query is ${overlongQuery.length} characters; the limit is ${overlongQuery.max_chars}.`,
+        field: overlongQuery.field,
+        max_chars: overlongQuery.max_chars,
+        length: overlongQuery.length,
+      });
+    }
+    // Over-long history (recent queries, earlier user turns) is parsed too but is not the query: it is
+    // cut to the limit so the request still searches. Both copies are cut, since downstream reads both.
+    const truncatedHistoryEntries =
+      truncateSearchHistory({ operation, payload }) +
+      (req?.body?.payload !== payload ? truncateSearchHistory({ operation, payload: req?.body?.payload }) : 0);
+    if (truncatedHistoryEntries > 0) {
+      logger.info(
+        { gateway_request_id: gatewayRequestId, operation, truncated_history_entries: truncatedHistoryEntries },
+        'search history truncated to the query length limit',
+      );
+    }
     const requestLevelContext =
       req?.body?.context && typeof req.body.context === 'object' && !Array.isArray(req.body.context)
         ? req.body.context
@@ -42000,7 +41012,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           operation,
           payload,
           effectivePayload: sourceContractPayload,
-          metadata,
         });
         if (earlyGuardrails?.blocked) {
           if (typeof earlyGuardrails.blocked.retryAfterSec === 'number') {
@@ -42450,7 +41461,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    operation,
 	    payload,
 	    effectivePayload,
-	    metadata,
 	  });
 	  if (guardrails?.blocked) {
 	    if (typeof guardrails.blocked.retryAfterSec === 'number') {
@@ -42784,6 +41794,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
   }
 
+  if (operation === 'pdp_route_id_exists') {
+    // Read-only, DB-only. The probe never catches its own query: ANY failure here answers 503, never
+    // `exists: false` — a false "absent" becomes a cached 404 on a live product (see the module header).
+    const routeProductId = effectivePayload?.product_ref?.product_id ?? effectivePayload?.product_id;
+    try {
+      const existence = await probePdpRouteIdExistence(routeProductId, {
+        queryFn: process.env.DATABASE_URL ? query : undefined,
+      });
+      return res.status(200).json({ status: 'success', ...existence });
+    } catch (err) {
+      if (err?.code === 'INVALID_ROUTE_ID') {
+        return res.status(400).json({ error: 'INVALID_REQUEST', message: err.message });
+      }
+      logger.warn(
+        { err: err?.message || String(err), code: err?.code || null, operation },
+        'pdp_route_id_exists could not answer; the caller must not treat the id as absent',
+      );
+      return res.status(503).json({
+        error: 'PDP_ROUTE_ID_EXISTENCE_UNAVAILABLE',
+        message: 'Existence could not be determined',
+      });
+    }
+  }
+
   if (operation === 'get_product_entity_index_feed') {
     try {
       const indexFeedResponse = await getProductEntityIndexFeed(effectivePayload);
@@ -42849,6 +41883,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	  if (operation === 'get_pdp_v2') {
 	    const pdpV2StartedAt = Date.now();
+	    // The currency every similar product and every sibling offer on this page must be priced in:
+	    // the invoke door's own read of the buyer's market (silence = the default market, USD).
+	    const pdpServingCurrency = servingCurrencyFor({ payload, metadata: req?.body?.metadata });
 	    const pdpV2PhaseTimings = {};
 	    const pdpV2ModuleTimings = {};
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
@@ -42902,6 +41939,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           latencyMs,
         });
 	    };
+      // Set when a pg_ subject was re-routed onto its member's signature (see the block before the
+      // signature lane). Read by every identity_resolution this request emits, so a pg_ request that
+      // now reports its sig as requested_product_id still says which group the caller asked for.
+      let pdpV2ProductGroupSubjectId = null;
       const buildPdpV2IdentityResolution = ({
         requestedProductId = null,
         requestedMerchantId = null,
@@ -42920,6 +41961,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalization_reason_code: canonicalizationReasonCode || null,
         entry_precheck_missing: Boolean(entryPrecheckMissing),
         resolution_source: resolutionSource || null,
+        ...(pdpV2ProductGroupSubjectId ? { requested_product_group_id: pdpV2ProductGroupSubjectId } : {}),
       });
       const buildPdpV2RouteHealth = ({
         requestedProductId = null,
@@ -43118,6 +42160,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      // trees).
 		      let canonicalizationGroupElectionApplied = false;
 		      let identityResolutionSource = 'requested_route';
+          // PG_ SUBJECT -> ITS MEMBER'S SIGNATURE. A bare `subject: product_group` pg_ request is
+          // answered as the request for the sig of the member the group lane would render, so it
+          // takes the signature lane below (seed-route translation for P3 minted rows, prefetched
+          // serving eligibility, identity hydration) instead of the group lane, whose
+          // canonical_product_ref carries a minted row's name-slug source_product_id and 404s at
+          // fetch_canonical_product. Prod 2026-09-27: 14,464 of 22,012 signed pg_ groups pick a
+          // minted row. Only when the caller named nothing else: a product id, variant, offer or
+          // pinned seller keeps today's lanes. A failed lookup also keeps the group lane, which is
+          // exactly the pre-fix behaviour, never a new failure.
+          if (
+            PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED &&
+            !productId &&
+            !variantId &&
+            !offerId &&
+            !requestedMerchantId &&
+            payload.subject &&
+            typeof payload.subject === 'object' &&
+            String(payload.subject.type || '').trim().toLowerCase() === 'product_group'
+          ) {
+            const subjectGroupId = String(payload.subject.id || '').trim();
+            if (/^pg_/i.test(subjectGroupId)) {
+              const resolveSubjectSignatureStartedAt = Date.now();
+              const subjectSigId = await resolveProductGroupSubjectSignatureId({
+                productGroupId: subjectGroupId,
+                queryFn: query,
+              }).catch((err) => {
+                logger.warn(
+                  { err: err?.message || String(err), product_group_id: subjectGroupId },
+                  'get_pdp_v2 product_group subject signature lookup failed; keeping the group lane',
+                );
+                return null;
+              });
+              markPdpV2Phase('resolve_product_group_subject_signature', resolveSubjectSignatureStartedAt);
+              if (subjectSigId) {
+                productId = subjectSigId;
+                pdpV2ProductGroupSubjectId = subjectGroupId;
+              }
+            }
+          }
 		      const requestedProductIdForDiagnostics = productId || null;
           // ADR-009 — THE SELLER THE CALLER ADDRESSED, frozen here.
           //
@@ -43402,7 +42483,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const subjectId = subject ? String(subject.id || '').trim() : '';
 
 	      const offerProductGroupId = String(parsedOffer?.product_group_id || '').trim() || null;
-	      const hasExplicitProductGroup = subjectType === 'product_group' && subjectId;
+	      // A pg_ subject already re-routed onto its member's sig is, from here on, that sig request:
+	      // none of the explicit-group lanes may run for it, or the group lane would overwrite the
+	      // signature lane's ref with the one that 404s.
+	      const hasExplicitProductGroup =
+	        subjectType === 'product_group' && subjectId && !pdpV2ProductGroupSubjectId;
 
 	      if (!productId && !variantId && !offerProductGroupId && !hasExplicitProductGroup) {
 	        return res.status(400).json({
@@ -43735,7 +42820,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        });
 		      }
 	      const resolveSubjectGroupStartedAt = Date.now();
-	      if (subjectType === 'product_group' && subjectId) {
+	      if (hasExplicitProductGroup) {
 	        try {
 	          let fetchedGroup = await resolveCanonicalCatalogEntityGroup({
 	            productGroupId: subjectId,
@@ -44271,6 +43356,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   reason: details.reason,
                   blocker_code: details.blocker_code || null,
                   content_key: details.content_key || null,
+                  requested_product_group_id: pdpV2ProductGroupSubjectId,
                 },
                 'get_pdp_v2 blocked by serving eligibility gate',
               );
@@ -44807,6 +43893,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 debug,
                 excludeItems: preSimilarComponentCandidates,
                 requestMode: similarRequestMode,
+                servingCurrency: pdpServingCurrency,
               });
               if (skipSimilarFetchForAccessory) {
                 if (isPdpRelationshipGraphServingEnabled()) {
@@ -44847,6 +43934,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     canonicalProduct,
                     checkoutToken,
                     bypassCache: false,
+                    servingCurrency: pdpServingCurrency,
                   }).catch((err) => {
                     logger.debug?.(
                       {
@@ -45120,7 +44208,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { bypassCache },
         );
         markPdpV2Checkpoint('after_similar_sig_hydration');
-        const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+        const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
+          servingCurrency: pdpServingCurrency,
+        });
         const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
@@ -45423,7 +44513,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ),
         };
       }
-      const canonicalPayloadProductRef = {
+      let canonicalPayloadProductRef = {
         merchant_id:
           String(canonicalPayload?.product?.merchant_id || canonicalProductForPdp?.merchant_id || '').trim() ||
           null,
@@ -45438,7 +44528,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         requestedPivotaSignatureId && canonicalProductRef?.product_id
           ? canonicalProductRef.product_id
           : entryProductId || productId;
-      const selectedCommerceRef =
+      let selectedCommerceRef =
         identityGraphLive?.synthetic_product?.selected_commerce_ref ||
         (requestedMerchantId
           ? { merchant_id: requestedMerchantId, product_id: selectedCommerceProductIdForPdp }
@@ -45699,6 +44789,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypassCache,
               limit: payload?.offers?.limit || 10,
               buyerMarket: offersGateBuyerMarket(payload, metadata),
+              servingCurrency: pdpServingCurrency,
               preferredMerchantId: requestedMerchantId || null,
               preferredProductId: selectedCommerceProductIdForPdp || null,
               debug,
@@ -45859,6 +44950,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     bypassCache,
                     limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
                     buyerMarket: offersGateBuyerMarket(payload, metadata),
+                    servingCurrency: pdpServingCurrency,
                     preferredMerchantId: requestedMerchantId || null,
                     preferredProductId: selectedCommerceProductIdForPdp || null,
                     debug,
@@ -45997,8 +45089,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             if (!offersData.default_offer_id) offersData.default_offer_id = fallbackOfferId;
             if (!offersData.best_price_offer_id) offersData.best_price_offer_id = fallbackOfferId;
           }
-          canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData);
+          canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
+            servingCurrency: pdpServingCurrency,
+            // A sig_ card may carry no listing id of its own; the row it was resolved from names it.
+            cardListingId:
+              [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]
+                .map((value) => String(value || '').trim())
+                .find((value) => value && !isPivotaSignatureProductId(value)) || '',
+          });
           modules[0].data.pdp_payload = canonicalPayload;
+          if (canonicalPayload?.product?.seller_source === 'default_offer') {
+            // The card now names the default offer's listing: every ref that describes the card or its
+            // selected seller must too (canonical module and metadata.pdp_provenance alike), and the
+            // response's variant_selector must offer that listing's variants.
+            const projectedCard = canonicalPayload.product;
+            canonicalPayloadProductRef = {
+              merchant_id: projectedCard.merchant_id || null,
+              product_id: projectedCard.product_id || null,
+              platform: null,
+            };
+            selectedCommerceRef = {
+              merchant_id: projectedCard.merchant_id || null,
+              product_id: firstNonEmptyString(projectedCard.source_product_id, projectedCard.product_id) || null,
+            };
+            modules[0].data.canonical_payload_product_ref = canonicalPayloadProductRef;
+            modules[0].data.selected_commerce_ref = selectedCommerceRef;
+            const variantSelectorModule = modules.find((module) => module?.type === 'variant_selector');
+            if (variantSelectorModule) {
+              const projectedSelectorData =
+                findPdpPayloadModuleData(canonicalPayload, 'variant_selector') ||
+                buildVariantSelectorModuleData(projectedCard.variants, projectedCard.default_variant_id, null);
+              variantSelectorModule.data = projectedSelectorData || null;
+              if (projectedSelectorData) delete variantSelectorModule.reason;
+              else if (!setOrCollectionPdp) variantSelectorModule.reason = 'unavailable';
+            }
+          }
           if (wantsOffers) {
             modules.push({
               type: 'offers',
@@ -46287,7 +45412,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const data =
           hideEmptySimilarModule
             ? null
-            : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
+            : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope, {
+                servingCurrency: pdpServingCurrency,
+              }) ||
           (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
             relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
             relatedProductsEnvelope?.status === 'empty' ||
@@ -46334,7 +45461,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.capabilities?.clientVersion ||
           null,
       };
-      const responseModules = sanitizePdpSimilarResponseModules(modules);
+      const responseModules = sanitizePdpSimilarResponseModules(modules, {
+        servingCurrency: pdpServingCurrency,
+      });
       const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
       markPdpV2Checkpoint('before_response_assembly');
@@ -46449,6 +45578,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalization_applied: canonicalizationApplied,
           canonicalization_reason_code: canonicalizationReasonCode || null,
           identity_resolution_source: identityResolutionSource,
+          // The pg_ id a bare product_group subject asked for before it was answered as its member's
+          // sig (#2313); null otherwise. requested_product_id above is that sig, so without this the
+          // pg_ traffic on this line is indistinguishable from direct sig requests.
+          requested_product_group_id: pdpV2ProductGroupSubjectId,
           include: includeList,
           modules_returned: modules.map((module) => module.type),
           missing_modules: missing.map((module) => module.type),
@@ -47527,7 +46660,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         handled.response &&
         typeof handled.response === 'object'
       ) {
-        return res.status(Number(handled.statusCode || 200) || 200).json(handled.response);
+        // MERCHANT-PURCHASABILITY GATE (path 3, site 6). This branch returns on every path, so the gate
+        // runs HERE, on the envelope, before it is sent — a call further down this handler is never
+        // reached. Keyed on this door's own carriers (`payload.offers.market` first). Nothing declined
+        // => the same object back, so switch off the response is byte-identical. A bug in the gate
+        // FAILS OPEN (the ungated envelope, logged) rather than falling into the no-offer catch below.
+        let gatedResponse = handled.response;
+        try {
+          gatedResponse = await gateOffersResolveResponse(handled.response, {
+            market: offersResolveGateBuyerMarket(payload, metadata),
+          });
+        } catch (gateErr) {
+          logger.error(
+            { err: gateErr?.message || String(gateErr) },
+            'offers.resolve purchasability gate threw; serving the ungated envelope',
+          );
+        }
+        return res.status(Number(handled.statusCode || 200) || 200).json(gatedResponse);
       }
       return res.status(500).json({
         error: 'OFFERS_RESOLVE_HANDLER_FAILED',
@@ -47567,8 +46716,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     });
   }
 
-  let crossMerchantCacheProtectedResponse = null;
-  let crossMerchantCacheRecallResponse = null;
   let canonicalChainRecallPromise = null;
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
@@ -47951,57 +47098,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               });
         return res.json(directResponse);
       }
-      const earlyMerchantIdForBeauty = String(search.merchant_id || search.merchantId || '').trim();
-      const earlyMerchantIdsRawForBeauty = search.merchant_ids || search.merchantIds;
-      const earlyMerchantIdsForBeauty =
-        Array.isArray(earlyMerchantIdsRawForBeauty)
-          ? earlyMerchantIdsRawForBeauty.map((v) => String(v || '').trim()).filter(Boolean)
-          : typeof earlyMerchantIdsRawForBeauty === 'string'
-            ? earlyMerchantIdsRawForBeauty
-                .split(',')
-                .map((v) => String(v || '').trim())
-                .filter(Boolean)
-            : [];
-      const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
-      const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
-      if (
-        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        !canonicalSigEntityMode &&
-        pivotBeautyContractInvoke &&
-        queryText.length > 0 &&
-        (earlyBeautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
-        !earlyHasMerchantScopeForBeauty
-      ) {
-        try {
-          const earlySourceNormalized = normalizeAgentSource(source);
-          const earlyCreatorScoped = isCreatorUiSource(source) || earlySourceNormalized === 'creator-agent';
-          const beautyDirectStartedAt = Date.now();
-          let directResponse;
-          try {
-            directResponse = await searchBeautyExternalSeedProductsMainline({
-              search,
-              metadata,
-              intent: effectiveIntent,
-              creatorScoped: earlyCreatorScoped,
-            });
-          } finally {
-            // See the early_indexed lane: also answers outright, also needs the throw path measured.
-            recordFpmStage('beauty_direct_recall', beautyDirectStartedAt, {
-              returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
-              lane: 'mainline_direct',
-              failed: directResponse === undefined ? true : null,
-            });
-          }
-          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
-          return res.json(directResponse);
-        } catch (err) {
-          logger.warn(
-            { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty contract primary recall failed',
-          );
-          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
-        }
-      }
+      // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
+      // request this spot used to (pivot contract, beauty-like or SQC, no merchant scope) with the
+      // same call and the same response; in the 30 days to 2026-09-25 this spot answered 2 of
+      // 3,791 requests. The response is the same; the work before it is not: those requests now
+      // also compute the creator-lane gates (a brand detection) and, when not a shopping source,
+      // start the canonical-chain recall below and discard it. Creator sources additionally run
+      // the creator cache search (returns only with CREATOR_CACHE_SHORT_CIRCUIT_ENABLED, off) and
+      // the human-apparel lane first.
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) === true;
 
@@ -48393,19 +47497,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      const creatorBeautyMainlineDirectEligible =
-        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        !findProductsMultiProductOnly &&
-        !canonicalSigEntityMode &&
-        (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
-        queryText.length > 0 &&
-        (
-          isPivotBeautyContractInvokeRequest({ operation, req }) ||
-          shoppingCanonicalMainlineDirectEligible ||
-          routeSearchQualityContractApplied
-        ) &&
-        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
-        !hasMerchantScope;
+      const creatorBeautyMainlineDirectEligible = isBeautyDirectAfterContextEligible({
+        directRecallEnabled: PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+        canonicalSigEntityMode,
+        hasQueryText: queryText.length > 0,
+        beautyLike: beautyMainlineIntentForDirect.beautyLike,
+        searchQualityContractApplied: routeSearchQualityContractApplied,
+        hasMerchantScope,
+        pivotBeautyContract: () => isPivotBeautyContractInvokeRequest({ operation, req }),
+        productOnly: findProductsMultiProductOnly,
+        strictCommerce: strictCommerceFindProductsMulti,
+        shoppingCanonicalMainlineEligible: shoppingCanonicalMainlineDirectEligible,
+      });
       if (creatorBeautyMainlineDirectEligible) {
         try {
           const creatorDirectStartedAt = Date.now();
@@ -48537,1263 +47640,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
         }
 	      }
-
-      // Shopping Agent query search (no explicit merchant scope): prefer cache-first
-      // lexical recall so we avoid upstream timeout cascades for common brand queries.
-      const cacheQueryText = String(rawUserQuery || queryText || '').trim();
-      const expandedCacheSearchQueryText = String(
-        findProductsExpansionMeta?.expanded_query || cacheQueryText,
-      ).trim();
-      const cachePolicyQueryClass = String(
-        traceQueryClass || effectiveIntent?.query_class || '',
-      ).toLowerCase();
-      const cacheBeautyQueryProfile = buildBeautyQueryProfile({
-        rawQuery: cacheQueryText,
-        queryClass: cachePolicyQueryClass,
-        intent: effectiveIntent,
-      });
-      const publicBeautyUnifiedSearch = isPublicBeautyUnifiedMainlineSearch({
-        operation,
-        metadata,
-        search,
-        queryText: cacheQueryText,
-        queryClass: cachePolicyQueryClass,
-        intent: effectiveIntent,
-        invokeSearchRail,
-      });
-      const preferRawBeautyCacheQuery =
-        cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
-        ['attribute', 'category', 'lookup'].includes(String(cachePolicyQueryClass || ''));
-      const isCrossMerchantQuerySearch =
-        !isCreatorUi &&
-        (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
-        !hasMerchantScope;
-      if (
-        !shoppingFreshMainlineSearch &&
-        !strictCommerceFindProductsMulti &&
-        isCrossMerchantQuerySearch &&
-        process.env.DATABASE_URL
-      ) {
-        try {
-          const cacheStageStartedAt = Date.now();
-          const page = search.page || 1;
-          const limit = search.limit || search.page_size || 20;
-          const baseCacheSearchQueryText =
-            preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
-              ? cacheQueryText
-              : expandedCacheSearchQueryText;
-          const runCacheSearch = async (queryTextForCache, beautyQueryProfile, stageLabel) => {
-            const elapsedMs = Math.max(0, Date.now() - cacheStageStartedAt);
-            const remainingBudgetMs = Math.max(
-              100,
-              FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS - elapsedMs,
-            );
-            // This lane was the single largest hole in fpm_stage_breakdown. On 2026-08-27 the
-            // aurora-bff exact lookup took 28,576ms of which fpm_unattributed_ms was 16,335 -- and
-            // one sampled request attributed 20ms of 35,555. The cross-merchant cache lane runs
-            // ~1100 lines between its `try` and its fallback log without recording a single stage,
-            // so the breakdown just looked short, which is the exact failure fpm_unattributed_ms
-            // was added to make visible.
-            //
-            // try/finally, not record-on-success: a search that blows remainingBudgetMs throws out
-            // of withStageBudget, and that is precisely the request whose duration is worth having.
-            const cacheSearchStartedAt = Date.now();
-            try {
-              return await withStageBudget(
-                searchCrossMerchantFromCache(queryTextForCache, page, limit, {
-                  inStockOnly,
-                  intent: effectiveIntent,
-                  queryClass: cachePolicyQueryClass,
-                  beautyQueryProfile,
-                  publicBeautyUnifiedSearch,
-                }),
-                remainingBudgetMs,
-                stageLabel,
-              );
-            } finally {
-              recordFpmStage('cache_cross_merchant_search', cacheSearchStartedAt, {
-                stage_label: String(stageLabel || '') || null,
-                budget_ms: remainingBudgetMs,
-              });
-            }
-          };
-          let activeCacheSearchQueryText = baseCacheSearchQueryText;
-          let fromCache = await runCacheSearch(
-            activeCacheSearchQueryText,
-            cacheBeautyQueryProfile,
-            'cache_stage',
-          );
-          let cacheQueryMode = preferRawBeautyCacheQuery ? 'raw_first' : null;
-          if (
-            !publicBeautyUnifiedSearch &&
-            preferRawBeautyCacheQuery &&
-            expandedCacheSearchQueryText &&
-            expandedCacheSearchQueryText !== cacheQueryText
-          ) {
-            const expandedBeautyQueryProfile = buildBeautyQueryProfile({
-              rawQuery: expandedCacheSearchQueryText,
-              queryClass: cachePolicyQueryClass,
-              intent: effectiveIntent,
-            });
-            const compatibleExpandedBucket =
-              expandedBeautyQueryProfile?.bucket === cacheBeautyQueryProfile?.bucket;
-            const rawCacheProducts = Array.isArray(fromCache?.products) ? fromCache.products : [];
-            if (compatibleExpandedBucket && rawCacheProducts.length === 0) {
-              const retried = await runCacheSearch(
-                expandedCacheSearchQueryText,
-                cacheBeautyQueryProfile,
-                'cache_stage_retry',
-              );
-              const retriedProducts = Array.isArray(retried?.products) ? retried.products : [];
-              if (retriedProducts.length > 0) {
-                fromCache = retried;
-                activeCacheSearchQueryText = expandedCacheSearchQueryText;
-                cacheQueryMode = 'expanded_retry';
-              }
-            }
-          }
-          const cacheUsedBeautyCategoryBrowseFastpath =
-            Array.isArray(fromCache?.retrieval_sources) &&
-            fromCache.retrieval_sources.some(
-              (item) => String(item?.source || '') === 'beauty_category_browse_fastpath',
-            );
-          const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
-          const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
-          const isLookupQuery =
-            isLookupStyleSearchQuery(cacheQueryText, lookupAnchorTokens) ||
-            isKnownLookupAliasQuery(cacheQueryText);
-          const normalizedLookupQuery = normalizeSearchTextForMatch(cacheQueryText);
-          const lookupQueryTokens = Array.from(
-            new Set(tokenizeSearchTextForMatch(normalizedLookupQuery)),
-          );
-          const lookupRelevantInternalProducts = isLookupQuery
-            ? internalProducts.filter((product) =>
-                isSupplementCandidateRelevant(product, cacheQueryText, {
-                  normalizedQuery: normalizedLookupQuery,
-                  anchorTokens: lookupAnchorTokens,
-                  queryTokens: lookupQueryTokens,
-                }),
-              )
-            : internalProducts;
-          const internalProductsForRecall =
-            isLookupQuery && lookupRelevantInternalProducts.length > 0
-              ? lookupRelevantInternalProducts
-              : internalProducts;
-          const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
-          const leashAnchoredInternalProducts = leashAnchoredQuery
-            ? internalProductsForRecall.filter((product) =>
-                hasStrictPetHarnessCatalogSignal(buildFallbackCandidateText(product)),
-              )
-            : internalProductsForRecall;
-          const internalProductsAfterAnchor = leashAnchoredInternalProducts;
-	          const preferInternalBeautyCategoryCache =
-	            cacheUsedBeautyCategoryBrowseFastpath && internalProductsAfterAnchor.length > 0;
-	          const preferInternalSpecificBeautyCache =
-	            !publicBeautyUnifiedSearch &&
-	            internalProductsAfterAnchor.length > 0 &&
-	            (cacheBeautyQueryProfile?.isSpecificBeautyQuery === true ||
-	              preferInternalBeautyCategoryCache);
-          const safeResultLimit = Math.max(1, Number(limit || 20));
-          const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
-          const shouldSkipExternalSupplementForPetHarness =
-            !publicBeautyUnifiedSearch &&
-            hasPetHarnessSearchSignal(cacheQueryText) &&
-            internalProductsAfterAnchor.length >= 3;
-          const isFragranceQuery = hasFragranceSearchSignal(cacheQueryText);
-          const needsBeautyDiversitySupplement =
-            !(SEARCH_EXTERNAL_HARD_RULE_PRUNE && isFragranceQuery) &&
-            isCatalogGuardSource(source) &&
-            Number(page) === 1 &&
-            isBeautyGeneralDiversitySupplementCandidate(
-              effectiveIntent,
-              internalProductsAfterAnchor,
-              safeResultLimit,
-              {
-                rawQuery: cacheQueryText,
-                queryClass: cachePolicyQueryClass,
-              },
-            );
-          const cacheHit = internalProductsAfterAnchor.length > 0;
-          let supplementedProducts = internalProductsAfterAnchor;
-          let supplementMeta = {
-            attempted: false,
-            applied: false,
-            added_count: 0,
-            reason: 'not_needed',
-          };
-          if (
-            isCatalogGuardSource(source) &&
-            Number(page) === 1 &&
-            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
-          ) {
-            const neededCount = needsPrimaryFillSupplement
-              ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
-              : Math.max(1, Math.ceil(safeResultLimit / 2));
-            if (neededCount > 0) {
-              const confidenceOverall = Number(effectiveIntent?.confidence?.overall || 0) || 0;
-              const ambiguityScorePre = Number(findProductsExpansionMeta?.ambiguity_score_pre || 0) || 0;
-              const externalFillMinInternal = Math.min(3, safeResultLimit);
-              const externalFillGateWouldBlock =
-                SEARCH_EXTERNAL_FILL_GATED &&
-                !(
-                  internalProductsAfterAnchor.length >= externalFillMinInternal &&
-                  (confidenceOverall >= 0.7 || isLookupQuery) &&
-                  ambiguityScorePre <= 0.45
-                );
-              const canApplyExternalFillGate =
-                publicBeautyUnifiedSearch ||
-                (SEARCH_EXTERNAL_HARD_RULE_PRUNE ? true : !externalFillGateWouldBlock);
-              if (shouldSkipExternalSupplementForPetHarness) {
-                supplementMeta = {
-                  attempted: false,
-                  applied: false,
-                  added_count: 0,
-                  reason: 'pet_harness_internal_sufficient',
-                  gate: {
-                    internal_count: internalProductsAfterAnchor.length,
-                    min_internal_required: 3,
-                  },
-                };
-              } else if (preferInternalSpecificBeautyCache) {
-                supplementMeta = {
-                  attempted: false,
-                  applied: false,
-                  added_count: 0,
-                  reason: preferInternalBeautyCategoryCache
-                    ? 'beauty_category_fastpath_internal_preferred'
-                    : 'specific_beauty_internal_preferred',
-                  gate: {
-                    beauty_bucket: cacheBeautyQueryProfile?.bucket || null,
-                    internal_count: internalProductsAfterAnchor.length,
-                    beauty_category_fastpath: preferInternalBeautyCategoryCache,
-                  },
-                };
-              } else if (!canApplyExternalFillGate) {
-                supplementMeta = {
-                  attempted: false,
-                  applied: false,
-                  added_count: 0,
-                  reason: 'external_fill_gate_blocked',
-                  gate: {
-                    enabled: SEARCH_EXTERNAL_FILL_GATED,
-                    min_internal_required: externalFillMinInternal,
-                    internal_count: internalProductsAfterAnchor.length,
-                    overall_confidence: confidenceOverall,
-                    ambiguity_score_pre: ambiguityScorePre,
-                    lookup_query_bypass: Boolean(isLookupQuery),
-                  },
-                };
-              } else {
-                supplementMeta = {
-                  attempted: true,
-                  applied: false,
-                  added_count: 0,
-                  reason:
-                    externalFillGateWouldBlock && SEARCH_EXTERNAL_HARD_RULE_PRUNE
-                      ? 'external_fill_gate_soft_bypassed'
-                      : 'supplement_pending',
-                  diversity_targeted: needsBeautyDiversitySupplement,
-                  gate: {
-                    enabled: SEARCH_EXTERNAL_FILL_GATED,
-                    soft_bypassed: Boolean(
-                      externalFillGateWouldBlock && SEARCH_EXTERNAL_HARD_RULE_PRUNE,
-                    ),
-                    min_internal_required: externalFillMinInternal,
-                    internal_count: internalProductsAfterAnchor.length,
-                    overall_confidence: confidenceOverall,
-                    ambiguity_score_pre: ambiguityScorePre,
-                    lookup_query_bypass: Boolean(isLookupQuery),
-                  },
-                };
-                try {
-                  const externalSeedSupplementStartedAt = Date.now();
-                  const supplement = await fetchExternalSeedSupplementFromBackend({
-                    queryParams: {
-                      query: activeCacheSearchQueryText,
-                      ...(search.category ? { category: search.category } : {}),
-                      ...(search.price_min != null || search.min_price != null
-                        ? { min_price: search.price_min ?? search.min_price }
-                        : {}),
-                      ...(search.price_max != null || search.max_price != null
-                        ? { max_price: search.price_max ?? search.max_price }
-                        : {}),
-                      in_stock_only: inStockOnly,
-                    },
-                    checkoutToken,
-                    neededCount,
-                    source,
-                  });
-                  recordFpmStage('external_seed_supplement', externalSeedSupplementStartedAt, {
-                    upstream_http: true,
-                    returned: Array.isArray(supplement?.products) ? supplement.products.length : 0,
-                  });
-                  const seen = new Set(
-                    internalProductsAfterAnchor
-                      .map((product) => buildSearchProductKey(product))
-                      .filter(Boolean),
-                  );
-                  const supplementCandidates = Array.isArray(supplement?.products) ? supplement.products : [];
-                  const toAppend = [];
-                  for (const product of supplementCandidates) {
-                    if (!isExternalSeedProduct(product)) continue;
-                    if (
-                      !isSupplementCandidateRelevant(product, cacheQueryText, {
-                        normalizedQuery: normalizedLookupQuery,
-                        anchorTokens: lookupAnchorTokens,
-                        queryTokens: lookupQueryTokens,
-                      })
-                    ) {
-                      continue;
-                    }
-                    const key = buildSearchProductKey(product);
-                    if (!key || seen.has(key)) continue;
-                    seen.add(key);
-                    toAppend.push(product);
-                    if (toAppend.length >= neededCount) break;
-                  }
-                  supplementedProducts =
-                    needsBeautyDiversitySupplement && internalProductsAfterAnchor.length >= safeResultLimit
-                      ? blendBeautyDiversitySupplement(
-                          internalProductsAfterAnchor,
-                          toAppend,
-                          safeResultLimit,
-                        )
-                      : internalProductsAfterAnchor.concat(toAppend);
-                  supplementMeta = {
-                    ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
-                    attempted: true,
-                    applied: toAppend.length > 0,
-                    added_count: toAppend.length,
-                    reason: toAppend.length > 0
-                      ? needsBeautyDiversitySupplement
-                        ? 'supplemented_external_seed_diversity'
-                        : 'supplemented_external_seed'
-                      : needsBeautyDiversitySupplement && !SEARCH_EXTERNAL_HARD_RULE_PRUNE
-                        ? 'no_external_candidates_for_diversity'
-                        : 'no_external_candidates',
-                    diversity_targeted: needsBeautyDiversitySupplement,
-                  };
-                } catch (supplementErr) {
-                  supplementMeta = {
-                    attempted: true,
-                    applied: false,
-                    added_count: 0,
-                    reason: 'supplement_error',
-                    error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
-                    diversity_targeted: needsBeautyDiversitySupplement,
-                  };
-                  logger.warn(
-                    { err: supplementErr?.message || String(supplementErr), query: cacheQueryText },
-                    'Cross-merchant cache search supplement failed; returning internal cache results',
-                  );
-                }
-              }
-            }
-          }
-          const beautyMainlineCacheFilter = filterBeautyMainlineProductsByQuery(
-            supplementedProducts,
-            cacheQueryText,
-            { strictClass: true },
-          );
-          if (beautyMainlineCacheFilter.applied) {
-            supplementedProducts = beautyMainlineCacheFilter.products;
-            supplementMeta = {
-              ...supplementMeta,
-              beauty_mainline_filter: beautyMainlineCacheFilter,
-            };
-          }
-          const dedupePerTitleLimit = resolveSearchDedupePerTitleLimit({
-            queryText: cacheQueryText,
-            intent: effectiveIntent,
-            queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
-            uiSurface:
-              metadata?.ui_surface ||
-              payload?.metadata?.ui_surface ||
-              payload?.context?.ui_surface ||
-              null,
-          });
-          const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
-            perTitleLimit: dedupePerTitleLimit,
-            ...(normalizeSearchUiSurface(
-              metadata?.ui_surface ||
-                payload?.metadata?.ui_surface ||
-                payload?.context?.ui_surface ||
-                null,
-            ) === 'travel_lookup'
-              ? { dedupeKey: buildTravelLookupSearchProductDedupeKey }
-              : {}),
-          });
-          const cacheRelevant = cacheQueryText
-            ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
-            : true;
-          const genericRecommendQuery =
-            /推荐|隨便|随便|any(?:thing|thing else)?\b|whatever|random|surprise me|show me/i.test(
-              cacheQueryText,
-            );
-          const relaxCacheRelevanceForAmbiguousRecommend =
-            (Boolean(effectiveIntent?.ambiguity?.needs_clarification) || genericRecommendQuery) &&
-            ['exploratory', 'non_shopping', ''].includes(
-              cachePolicyQueryClass,
-            );
-          const relaxCacheRelevanceGate =
-            hasPetSearchSignal(cacheQueryText) ||
-            (hasBeautyMakeupSearchSignal(cacheQueryText) &&
-              effectiveProducts.some((product) =>
-                hasBeautyCatalogProductSignal(buildFallbackCandidateText(product)),
-              )) ||
-            relaxCacheRelevanceForAmbiguousRecommend;
-          const effectiveCacheHitBase =
-            effectiveProducts.length > 0 &&
-            (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
-          let effectiveCacheHit = effectiveCacheHitBase;
-          const normalizedSeedStrategyForCache = normalizeExternalSeedStrategy(
-            firstQueryParamValue(
-              search?.external_seed_strategy ||
-                search?.externalSeedStrategy ||
-                payload?.search?.external_seed_strategy ||
-                payload?.search?.externalSeedStrategy,
-            ) || (isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy'),
-            isCatalogGuardSource(source) ? 'unified_relevance' : 'legacy',
-          );
-          const unifiedRelevanceRequested = normalizedSeedStrategyForCache === 'unified_relevance';
-          const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
-          const publicBeautyUnifiedMinAcceptCount = publicBeautyUnifiedSearch
-            ? resolvePublicBeautyUnifiedMinAcceptCount(safeResultLimit)
-            : 0;
-          const cacheUnderfilledForPublicBeautyUnified =
-            publicBeautyUnifiedSearch &&
-            effectiveProducts.length > 0 &&
-            effectiveProducts.length < publicBeautyUnifiedMinAcceptCount;
-          if (publicBeautyUnifiedSearch && effectiveProducts.length > 0) {
-            crossMerchantCacheRecallResponse = {
-              products: effectiveProducts,
-              total: Math.max(Number(fromCache.total || 0), effectiveProducts.length),
-              page: fromCache.page,
-              page_size: effectiveProducts.length,
-              reply: null,
-              metadata: {
-                query_source: supplementMeta.applied
-                  ? 'cache_cross_merchant_search_supplemented'
-                  : 'cache_cross_merchant_search',
-                fetched_at: new Date().toISOString(),
-                source_breakdown: {
-                  internal_count: effectiveProducts.filter((product) => !isExternalSeedProduct(product)).length,
-                  external_seed_count: effectiveProducts.filter((product) => isExternalSeedProduct(product)).length,
-                  stale_cache_used: false,
-                  strategy_applied: normalizedSeedStrategyForCache || 'unified_relevance',
-                },
-                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
-              },
-            };
-          }
-          crossMerchantCacheRouteDebug = {
-            attempted: true,
-            mode: 'search',
-            query: cacheQueryText,
-            cache_query: activeCacheSearchQueryText,
-            cache_query_mode: cacheQueryMode,
-            cache_query_terms: Array.isArray(fromCache?.query_terms) ? fromCache.query_terms : [],
-            upstream_query: queryText,
-            latency_ms: Math.max(0, Date.now() - cacheStageStartedAt),
-            page,
-            limit,
-            in_stock_only: inStockOnly,
-            cache_hit: effectiveCacheHit,
-            cache_hit_base: effectiveCacheHitBase,
-            products_count: effectiveProducts.length,
-            internal_products_count: internalProducts.length,
-            internal_products_relevant_count: internalProductsAfterAnchor.length,
-            leash_anchor_applied: leashAnchoredQuery,
-            external_products_count: externalCount,
-            cache_relevant: cacheRelevant,
-            cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
-            total: Number(fromCache.total || 0),
-            retrieval_sources: fromCache.retrieval_sources || null,
-            beauty_query_bucket: fromCache?.beauty_query_bucket || cacheBeautyQueryProfile?.bucket || null,
-            beauty_category_fastpath: cacheUsedBeautyCategoryBrowseFastpath,
-            internal_filtered_irrelevant_count: Number(
-              fromCache?.internal_filter_debug?.filtered_irrelevant_count || 0,
-            ),
-            internal_bucket_mix_before: fromCache?.internal_filter_debug?.bucket_mix_before || null,
-            internal_bucket_mix_after: fromCache?.internal_filter_debug?.bucket_mix_after || null,
-            supplement: supplementMeta,
-            public_beauty_unified_search: publicBeautyUnifiedSearch,
-            public_beauty_min_accept_count: publicBeautyUnifiedMinAcceptCount || null,
-          };
-          const merchantsReturned = uniqueStrings(
-            effectiveProducts.map((p) => p?.merchant_id || p?.merchantId),
-          );
-
-          const upstreamData = {
-            products: effectiveProducts,
-            total: Math.max(Number(fromCache.total || 0), effectiveProducts.length),
-            page: fromCache.page,
-            page_size: effectiveProducts.length,
-            reply: null,
-            metadata: {
-              query_source: supplementMeta.applied
-                ? 'cache_cross_merchant_search_supplemented'
-                : 'cache_cross_merchant_search',
-              fetched_at: new Date().toISOString(),
-              merchants_searched: merchantsReturned.length,
-              source_breakdown: {
-                internal_count: effectiveProducts.length - externalCount,
-                external_seed_count: externalCount,
-                stale_cache_used: false,
-                strategy_applied: isCatalogGuardSource(source)
-                  ? normalizedSeedStrategyForCache || 'legacy'
-                  : 'cache_only',
-              },
-              ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
-              ...(ROUTE_DEBUG_ENABLED
-                ? {
-                    route_debug: {
-                      cross_merchant_cache: crossMerchantCacheRouteDebug,
-                    },
-                  }
-                : {}),
-            },
-          };
-
-          const cacheBrandDetection = detectBrandEntities(cacheQueryText, {
-            candidateProducts: effectiveProducts,
-          });
-          const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
-          const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
-          const lookupHasHardPriceConstraint = Boolean(
-            effectiveIntent?.hard_constraints?.price &&
-            (
-              effectiveIntent.hard_constraints.price.min != null ||
-              effectiveIntent.hard_constraints.price.max != null
-            ),
-          );
-          const shouldSkipLookupPolicyForCacheHit =
-            isLookupQuery &&
-            (cacheLookupClass || !cachePolicyQueryClass) &&
-            !lookupHasHardPriceConstraint &&
-            String(upstreamData?.metadata?.query_source || '').startsWith(
-              'cache_cross_merchant_search',
-            );
-          const withPolicy =
-            effectiveIntent && !shouldSkipLookupPolicyForCacheHit
-              ? applyFindProductsMultiPolicy({
-                  response: upstreamData,
-                  intent: effectiveIntent,
-                  requestPayload: effectivePayload,
-                  metadata: policyMetadata,
-                  rawUserQuery,
-                })
-              : upstreamData;
-          const withPolicyProducts = Array.isArray(withPolicy?.products)
-            ? withPolicy.products
-            : [];
-          const cacheClarifyOnly =
-            Boolean(withPolicy?.clarification && withPolicy.clarification.question) &&
-            withPolicyProducts.length === 0;
-          const cacheClarifyOnlyShouldUseEarlyDecision =
-            cacheClarifyOnly &&
-            ['mission', 'scenario', 'gift'].includes(
-              cachePolicyQueryClass,
-            ) &&
-            !cacheBrandLikeQuery &&
-            !isLookupQuery;
-          const cacheIrrelevantShouldUseEarlyDecision =
-            !cacheRelevant &&
-            (withPolicyProducts.length > 0 || effectiveProducts.length > 0) &&
-            ['mission', 'scenario', 'gift'].includes(
-              cachePolicyQueryClass,
-            );
-          const cacheValidationQueryClass =
-            traceQueryClass ||
-            effectiveIntent?.query_class ||
-            (isLookupQuery && !cacheBrandLikeQuery ? 'lookup' : null);
-          const cacheValidation = evaluateCacheQualityGate({
-            products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
-            queryText: cacheQueryText,
-            intent: effectiveIntent,
-            queryClass: cacheValidationQueryClass,
-          });
-          const lookupRelevantCacheMiss =
-            cacheValidation.enabled &&
-            isLookupQuery &&
-            effectiveProducts.length > 0 &&
-            !cacheRelevant;
-          if (lookupRelevantCacheMiss) {
-            cacheValidation.accepted = false;
-            cacheValidation.reason = 'anchor_below_threshold';
-            cacheValidation.anchor_ratio = Math.min(
-              Number(cacheValidation.anchor_ratio || 0) || 0,
-              Math.max(0, SEARCH_CACHE_MIN_ANCHOR - 0.01),
-            );
-          }
-          const cacheRejectedLowQuality = Boolean(
-            cacheValidation.enabled && (!cacheValidation.accepted || lookupRelevantCacheMiss),
-          );
-          if (cacheRejectedLowQuality) {
-            effectiveCacheHit = false;
-          }
-          if (cacheClarifyOnlyShouldUseEarlyDecision) {
-            effectiveCacheHit = false;
-          }
-          if (cacheIrrelevantShouldUseEarlyDecision) {
-            effectiveCacheHit = false;
-          }
-          const cacheMissingExternalForUnified =
-            unifiedRelevanceRequested &&
-            !isShoppingSource(source) &&
-            !hasMerchantScope &&
-            Boolean(cacheQueryText) &&
-            externalCount <= 0 &&
-            !isLookupQuery &&
-            (!preferInternalSpecificBeautyCache || publicBeautyUnifiedSearch);
-          if (cacheMissingExternalForUnified) {
-            effectiveCacheHit = false;
-          }
-          if (cacheUnderfilledForPublicBeautyUnified) {
-            effectiveCacheHit = false;
-          }
-          const cacheStrictEmptyBypassReason =
-            cacheMissingExternalForUnified
-              ? 'missing_external_for_unified'
-              : cacheUnderfilledForPublicBeautyUnified
-                ? 'public_search_underfilled_unified_relevance'
-              : cacheRejectedLowQuality
-                ? 'cache_rejected_low_quality'
-                : cacheBrandLikeQuery
-                  ? 'brand_query_search_first'
-                  : null;
-          const forceSearchFirstForExpandedQuery =
-            Boolean(cacheQueryText) &&
-            Boolean(queryText) &&
-            cacheQueryText !== queryText &&
-            !isLookupQuery &&
-            !cacheBrandLikeQuery &&
-            ['category', 'exploratory'].includes(cachePolicyQueryClass) &&
-            !cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
-            !cacheUsedBeautyCategoryBrowseFastpath;
-          if (forceSearchFirstForExpandedQuery) {
-            effectiveCacheHit = false;
-          }
-          const bypassCacheStrictEmptyForUnified =
-            Boolean(cacheStrictEmptyBypassReason) &&
-            (unifiedRelevanceRequested || cacheBrandLikeQuery);
-          if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
-            crossMerchantCacheRouteDebug.cache_hit = effectiveCacheHit;
-            crossMerchantCacheRouteDebug.cache_validation = cacheValidation;
-            crossMerchantCacheRouteDebug.cache_rejected_low_quality = cacheRejectedLowQuality;
-            crossMerchantCacheRouteDebug.cache_missing_external_for_unified =
-              cacheMissingExternalForUnified;
-            crossMerchantCacheRouteDebug.cache_underfilled_public_beauty_unified =
-              cacheUnderfilledForPublicBeautyUnified;
-            crossMerchantCacheRouteDebug.cache_strict_empty_bypassed = bypassCacheStrictEmptyForUnified;
-            crossMerchantCacheRouteDebug.cache_strict_empty_bypass_reason = cacheStrictEmptyBypassReason;
-            crossMerchantCacheRouteDebug.force_search_first_for_expanded_query =
-              forceSearchFirstForExpandedQuery;
-            crossMerchantCacheRouteDebug.cache_clarify_only_recast_as_early_decision =
-              cacheClarifyOnlyShouldUseEarlyDecision;
-            crossMerchantCacheRouteDebug.cache_irrelevant_recast_as_early_decision =
-              cacheIrrelevantShouldUseEarlyDecision;
-          }
-
-          const enriched = withPolicy;
-          if (
-            effectiveCacheHit &&
-            internalProductsAfterAnchor.length > 0 &&
-            (cacheRelevant || relaxCacheRelevanceGate)
-          ) {
-            crossMerchantCacheProtectedResponse =
-              withPolicyProducts.length > 0
-                ? enriched
-                : upstreamData;
-          }
-          if (effectiveCacheHit) {
-            const cacheReturnResponse =
-              crossMerchantCacheProtectedResponse ||
-              (withPolicyProducts.length > 0
-                ? enriched
-                : upstreamData);
-            const cacheClarification =
-              cacheReturnResponse &&
-              typeof cacheReturnResponse === 'object' &&
-              !Array.isArray(cacheReturnResponse) &&
-              cacheReturnResponse.clarification &&
-              typeof cacheReturnResponse.clarification === 'object' &&
-              cacheReturnResponse.clarification.question
-                ? cacheReturnResponse.clarification
-                : null;
-            const diagnosed = withSearchDiagnostics(cacheReturnResponse, {
-              route_health: buildSearchRouteHealth({
-                primaryPathUsed: 'cache_stage',
-                primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-                fallbackTriggered: false,
-                fallbackReason: null,
-                ambiguityScorePre: traceAmbiguityScorePre,
-                clarifyTriggered: Boolean(cacheClarification),
-              }),
-              search_trace: buildSearchTrace({
-                traceId: gatewayRequestId,
-                rawQuery: cacheQueryText,
-                expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-                expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-                queryClass: traceQueryClass,
-                rewriteGate: traceRewriteGate,
-                associationPlan: traceAssociationPlan,
-                flagsSnapshot: traceFlagsSnapshot,
-                intent: effectiveIntent,
-                cacheStage: buildCacheStageSnapshot({
-                  hit: true,
-                  candidateCount: Number(effectiveProducts.length || 0),
-                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
-                  retrievalSources: fromCache.retrieval_sources || [],
-                  cacheRouteDebug: crossMerchantCacheRouteDebug,
-                  selectedSource: supplementMeta.applied
-                    ? 'cache_supplemented_external'
-                    : 'internal_cache',
-                }),
-                upstreamStage: {
-                  called: false,
-                  timeout: false,
-                  status: null,
-                  latency_ms: 0,
-                },
-                resolverStage: {
-                  called: false,
-                  hit: false,
-                  miss: false,
-                  latency_ms: null,
-                },
-                finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
-              }),
-            });
-            const diagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
-              diagnosed,
-              canonicalChainRecallPromise,
-            );
-            return res.json(diagnosedWithCanonical);
-          }
-          const queryClassForEarlyDecision = String(
-            traceQueryClass || effectiveIntent?.query_class || '',
-          ).toLowerCase();
-          const earlyDecisionBrandDetection = detectBrandEntities(cacheQueryText, {
-            candidateProducts: effectiveProducts,
-          });
-          const isBrandLikeForEarlyDecision = Boolean(earlyDecisionBrandDetection?.brand_like);
-          const queryClassMissing = queryClassForEarlyDecision.length === 0;
-          const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
-          const forceControlledRecallForScenario =
-            SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
-            (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
-              (queryClassMissing && hasAmbiguitySignal));
-          const isStrongLookupForEarlyDecision =
-            queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
-          const hasEarlyDecisionClass = [
-            'mission',
-            'scenario',
-            'gift',
-            'exploratory',
-            'non_shopping',
-          ].includes(queryClassForEarlyDecision);
-          const petLeashPriceMinRaw = effectiveIntent?.hard_constraints?.price?.min;
-          const petLeashPriceMaxRaw = effectiveIntent?.hard_constraints?.price?.max;
-          const petLeashHasPriceMin =
-            petLeashPriceMinRaw != null && Number.isFinite(Number(petLeashPriceMinRaw));
-          const petLeashHasPriceMax =
-            petLeashPriceMaxRaw != null && Number.isFinite(Number(petLeashPriceMaxRaw));
-          const petLeashGenericCategoryCacheMiss =
-            effectiveProducts.length === 0 &&
-            hasPetLeashSearchSignal(cacheQueryText) &&
-            queryClassForEarlyDecision === 'category' &&
-            genericRecommendQuery &&
-            !petLeashHasPriceMin &&
-            !petLeashHasPriceMax;
-          const forceSearchFirstForClass = ['category', 'exploratory'].includes(
-            queryClassForEarlyDecision,
-          );
-          const earlyDecisionCause =
-            internalProductsAfterAnchor.length === 0
-              ? 'cache_miss_ambiguity_sensitive'
-              : 'cache_irrelevant_ambiguity_sensitive';
-          const canUseEarlyAmbiguityDecision =
-            effectiveIntent &&
-            !isBrandLikeForEarlyDecision &&
-            !isStrongLookupForEarlyDecision &&
-            (!forceSearchFirstForClass || petLeashGenericCategoryCacheMiss) &&
-            (
-              hasEarlyDecisionClass ||
-              (queryClassMissing && hasAmbiguitySignal) ||
-              petLeashGenericCategoryCacheMiss
-            ) &&
-            !forceControlledRecallForScenario;
-          addFpmGateTrace({
-            gateId: 'early_ambiguity_decision',
-            applied: Boolean(effectiveIntent),
-            decision: canUseEarlyAmbiguityDecision ? 'clarify_only_early' : 'pass',
-            reason: canUseEarlyAmbiguityDecision
-              ? earlyDecisionCause
-              : isBrandLikeForEarlyDecision
-                ? 'brand_like_search_first'
-                : forceSearchFirstForClass
-                  ? 'search_first_query_class'
-                  : null,
-            costMsEstimate: 110,
-            queryClass: queryClassForEarlyDecision || traceQueryClass,
-          });
-          if (
-            forceSearchFirstForClass &&
-            crossMerchantCacheRouteDebug &&
-            typeof crossMerchantCacheRouteDebug === 'object'
-          ) {
-            crossMerchantCacheRouteDebug.early_decision = {
-              applied: false,
-              reason: 'search_first_query_class',
-              query_class: queryClassForEarlyDecision,
-            };
-          }
-          if (
-            forceControlledRecallForScenario &&
-            crossMerchantCacheRouteDebug &&
-            typeof crossMerchantCacheRouteDebug === 'object'
-          ) {
-            crossMerchantCacheRouteDebug.early_decision = {
-              applied: false,
-              reason: 'force_controlled_recall_for_scenario',
-              query_class: queryClassForEarlyDecision,
-            };
-          }
-          if (
-            isBrandLikeForEarlyDecision &&
-            crossMerchantCacheRouteDebug &&
-            typeof crossMerchantCacheRouteDebug === 'object'
-          ) {
-            crossMerchantCacheRouteDebug.early_decision = {
-              applied: false,
-              reason: 'brand_like_search_first',
-              query_class: queryClassForEarlyDecision,
-              brand_entities: Array.isArray(earlyDecisionBrandDetection?.brands)
-                ? earlyDecisionBrandDetection.brands
-                : [],
-            };
-          }
-          if (canUseEarlyAmbiguityDecision) {
-            const earlyDecisionResponse = {
-              products: [],
-              total: 0,
-              page: fromCache.page,
-              page_size: 0,
-              reply: null,
-              metadata: {
-                query_source: 'cache_cross_merchant_search_early_decision',
-                fetched_at: new Date().toISOString(),
-                merchants_searched: merchantsReturned.length,
-                source_breakdown: {
-                  internal_count: 0,
-                  external_seed_count: 0,
-                  stale_cache_used: false,
-                  strategy_applied: 'ambiguity_gate_before_upstream',
-                },
-                ...(ROUTE_DEBUG_ENABLED
-                  ? {
-                      route_debug: {
-                        cross_merchant_cache: {
-                          ...(crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object'
-                            ? crossMerchantCacheRouteDebug
-                            : {}),
-                          early_decision: {
-                            applied: true,
-                            reason: earlyDecisionCause,
-                            query_class: queryClassForEarlyDecision,
-                          },
-                        },
-                      },
-                    }
-                  : {}),
-              },
-            };
-            const earlyWithPolicyRaw = applyFindProductsMultiPolicy({
-              response: earlyDecisionResponse,
-              intent: effectiveIntent,
-              requestPayload: effectivePayload,
-              metadata: policyMetadata,
-              rawUserQuery,
-            });
-            const earlyWithPolicy =
-              earlyWithPolicyRaw &&
-              typeof earlyWithPolicyRaw === 'object' &&
-              !Array.isArray(earlyWithPolicyRaw)
-                ? earlyWithPolicyRaw
-                : earlyDecisionResponse;
-            const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
-              ? earlyWithPolicy.products
-              : [];
-            const earlyDecisionClarification =
-              earlyWithPolicy &&
-              typeof earlyWithPolicy === 'object' &&
-              !Array.isArray(earlyWithPolicy) &&
-              earlyWithPolicy.clarification &&
-              typeof earlyWithPolicy.clarification === 'object' &&
-              earlyWithPolicy.clarification.question
-                ? earlyWithPolicy.clarification
-                : null;
-            const earlyDecisionStrictEmpty =
-              Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
-              (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
-            const earlyDecisionResponsePayload =
-              earlyDecisionStrictEmpty && !earlyWithPolicy?.metadata?.strict_empty
-                ? {
-                    ...earlyWithPolicy,
-                    metadata: {
-                      ...(earlyWithPolicy.metadata && typeof earlyWithPolicy.metadata === 'object'
-                        ? earlyWithPolicy.metadata
-                        : {}),
-                      strict_empty: true,
-                      strict_empty_reason:
-                        String(
-                          (earlyWithPolicy.metadata &&
-                          typeof earlyWithPolicy.metadata === 'object' &&
-                          earlyWithPolicy.metadata.strict_empty_reason) ||
-                            earlyDecisionCause ||
-                            'strict_empty',
-                        ).trim() || 'strict_empty',
-                    },
-                  }
-                : earlyWithPolicy;
-            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
-              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponsePayload, {
-                route_health: buildSearchRouteHealth({
-                  primaryPathUsed: 'cache_stage',
-                  primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-                  fallbackTriggered: false,
-                  fallbackReason: null,
-                  ambiguityScorePre: traceAmbiguityScorePre,
-                  clarifyTriggered: Boolean(earlyDecisionClarification),
-                }),
-                search_trace: buildSearchTrace({
-                  traceId: gatewayRequestId,
-                  rawQuery: cacheQueryText,
-                  expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-                  expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-                  queryClass: traceQueryClass,
-                  rewriteGate: traceRewriteGate,
-                  associationPlan: traceAssociationPlan,
-                  flagsSnapshot: traceFlagsSnapshot,
-                  intent: effectiveIntent,
-                  cacheStage: buildCacheStageSnapshot({
-                    hit: false,
-                    candidateCount: 0,
-                    relevantCount: 0,
-                    retrievalSources: fromCache.retrieval_sources || [],
-                    cacheRouteDebug: crossMerchantCacheRouteDebug,
-                    selectedSource: 'cache_early_decision',
-                  }),
-                  upstreamStage: {
-                    called: false,
-                    timeout: false,
-                    status: null,
-                    latency_ms: 0,
-                  },
-                  resolverStage: {
-                    called: false,
-                    hit: false,
-                    miss: false,
-                    latency_ms: null,
-                  },
-                  finalDecision: earlyDecisionClarification ? 'clarify' : 'strict_empty',
-                }),
-              });
-              const earlyDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
-                earlyDiagnosed,
-                canonicalChainRecallPromise,
-              );
-              return res.json(earlyDiagnosedWithCanonical);
-            }
-          }
-          const allowCacheMissResolverFallback =
-            PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
-            shouldAllowResolverFallback('find_products_multi', {
-              metadata: {
-                ...(metadata || {}),
-                ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-              },
-            });
-          if (
-            allowCacheMissResolverFallback &&
-            isLookupQuery &&
-            cacheQueryText.length > 0
-          ) {
-            try {
-              const resolverFallback = await queryResolveSearchFallback({
-                queryParams: {
-                  query: cacheQueryText,
-                  ...(search.category ? { category: search.category } : {}),
-                  ...(search.price_min != null || search.min_price != null
-                    ? { min_price: search.price_min ?? search.min_price }
-                    : {}),
-                  ...(search.price_max != null || search.max_price != null
-                    ? { max_price: search.price_max ?? search.max_price }
-                    : {}),
-                  in_stock_only: inStockOnly,
-                  limit,
-                  offset: 0,
-                  search_all_merchants: true,
-                  allow_external_seed: true,
-                  allow_stale_cache: false,
-                  external_seed_strategy: normalizedSeedStrategyForCache || 'unified_relevance',
-                  fast_mode: true,
-                },
-                checkoutToken,
-                reason: 'resolver_after_cache_miss',
-                requestSource: source,
-                timeoutMs: isAuroraSource(source)
-                  ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
-                  : PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
-              });
-              if (
-                resolverFallback &&
-                resolverFallback.status >= 200 &&
-                resolverFallback.status < 300 &&
-                resolverFallback.usableCount > 0
-              ) {
-                const resolverEnriched = resolverFallback.data;
-                const resolverClarification =
-                  resolverEnriched &&
-                  typeof resolverEnriched === 'object' &&
-                  !Array.isArray(resolverEnriched) &&
-                  resolverEnriched.clarification &&
-                  typeof resolverEnriched.clarification === 'object' &&
-                  resolverEnriched.clarification.question
-                    ? resolverEnriched.clarification
-                    : null;
-                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
-                  route_health: buildSearchRouteHealth({
-                    primaryPathUsed: 'resolver_stage',
-                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-                    fallbackTriggered: true,
-                    fallbackReason: 'resolver_after_cache_miss',
-                    ambiguityScorePre: traceAmbiguityScorePre,
-                    clarifyTriggered: Boolean(resolverClarification),
-                  }),
-                  search_trace: buildSearchTrace({
-                    traceId: gatewayRequestId,
-                    rawQuery: cacheQueryText,
-                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-                    queryClass: traceQueryClass,
-                    rewriteGate: traceRewriteGate,
-                    associationPlan: traceAssociationPlan,
-                    flagsSnapshot: traceFlagsSnapshot,
-                    intent: effectiveIntent,
-                    cacheStage: buildCacheStageSnapshot({
-                      hit: false,
-                      candidateCount: Number(effectiveProducts.length || 0),
-                      relevantCount: Number(internalProductsAfterAnchor.length || 0),
-                      retrievalSources: fromCache.retrieval_sources || [],
-                      cacheRouteDebug: crossMerchantCacheRouteDebug,
-                      selectedSource: 'resolver_after_cache_miss',
-                    }),
-                    upstreamStage: {
-                      called: false,
-                      timeout: false,
-                      status: null,
-                      latency_ms: 0,
-                    },
-                    resolverStage: {
-                      called: true,
-                      hit: true,
-                      miss: false,
-                      latency_ms: null,
-                    },
-                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
-                  }),
-                });
-                const resolverDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
-                  resolverDiagnosed,
-                  canonicalChainRecallPromise,
-                );
-                return res.json(resolverDiagnosedWithCanonical);
-              }
-            } catch (resolverFallbackErr) {
-              logger.warn(
-                {
-                  err: resolverFallbackErr?.message || String(resolverFallbackErr),
-                  query: cacheQueryText,
-                },
-                'Cross-merchant cache search resolver fallback failed after cache miss',
-              );
-            }
-          }
-          const bypassCacheStrictEmpty =
-            isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
-          const cacheStrictEmptyEarlyReturnEnabled = false;
-          if (
-            cacheStrictEmptyEarlyReturnEnabled &&
-            isCatalogGuardSource(source) &&
-            cacheQueryText.length > 0 &&
-            !effectiveCacheHit &&
-            !isLookupQuery &&
-            !bypassCacheStrictEmpty &&
-            !bypassCacheStrictEmptyForUnified &&
-            !forceControlledRecallForScenario
-          ) {
-            const cacheStrictReason =
-              effectiveProducts.length > 0
-                ? 'cache_irrelevant_strict_empty'
-                : 'cache_miss_strict_empty';
-            const strictEmptyBase = {
-              status: 'success',
-              success: true,
-              products: [],
-              total: 0,
-              page: fromCache.page,
-              page_size: 0,
-              reply: null,
-              metadata: {
-                query_source: 'cache_cross_merchant_search',
-                fetched_at: new Date().toISOString(),
-                merchants_searched: merchantsReturned.length,
-                source_breakdown: {
-                  internal_count: 0,
-                  external_seed_count: 0,
-                  stale_cache_used: false,
-                  strategy_applied: isCatalogGuardSource(source)
-                    ? normalizedSeedStrategyForCache || 'unified_relevance'
-                    : 'cache_only',
-                },
-                proxy_search_fallback: {
-                  applied: false,
-                  reason: cacheStrictReason,
-                },
-                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
-                ...(ROUTE_DEBUG_ENABLED
-                  ? {
-                      route_debug: {
-                        cross_merchant_cache: crossMerchantCacheRouteDebug,
-                      },
-                    }
-                  : {}),
-              },
-            };
-            const strictEmptyWithPolicy = effectiveIntent
-              ? applyFindProductsMultiPolicy({
-                  response: strictEmptyBase,
-                  intent: effectiveIntent,
-                  requestPayload: effectivePayload,
-                  metadata: policyMetadata,
-                  rawUserQuery: cacheQueryText,
-                })
-              : strictEmptyBase;
-            const strictEmptyEnriched = strictEmptyWithPolicy;
-            const strictEmptyClarification =
-              strictEmptyEnriched &&
-              typeof strictEmptyEnriched === 'object' &&
-              !Array.isArray(strictEmptyEnriched) &&
-              strictEmptyEnriched.clarification &&
-              typeof strictEmptyEnriched.clarification === 'object' &&
-              strictEmptyEnriched.clarification.question
-                ? strictEmptyEnriched.clarification
-                : null;
-            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
-              route_health: buildSearchRouteHealth({
-                primaryPathUsed: 'cache_stage',
-                primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-                fallbackTriggered: false,
-                fallbackReason: cacheStrictReason,
-                ambiguityScorePre: traceAmbiguityScorePre,
-                ambiguityScorePost: 1,
-                clarifyTriggered: Boolean(strictEmptyClarification),
-              }),
-              search_trace: buildSearchTrace({
-                traceId: gatewayRequestId,
-                rawQuery: cacheQueryText,
-                expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
-                expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-                queryClass: traceQueryClass,
-                rewriteGate: traceRewriteGate,
-                associationPlan: traceAssociationPlan,
-                flagsSnapshot: traceFlagsSnapshot,
-                intent: effectiveIntent,
-                cacheStage: buildCacheStageSnapshot({
-                  hit: false,
-                  candidateCount: Number(effectiveProducts.length || 0),
-                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
-                  retrievalSources: fromCache.retrieval_sources || [],
-                  cacheRouteDebug: crossMerchantCacheRouteDebug,
-                  selectedSource: 'upstream_after_cache',
-                }),
-                upstreamStage: {
-                  called: false,
-                  timeout: false,
-                  status: null,
-                  latency_ms: 0,
-                },
-                resolverStage: {
-                  called: false,
-                  hit: false,
-                  miss: false,
-                  latency_ms: null,
-                },
-                finalDecision: strictEmptyClarification ? 'clarify' : 'strict_empty',
-              }),
-              ...(strictEmptyClarification
-                ? {}
-                : {
-                    strict_empty: true,
-                    strict_empty_reason: cacheStrictReason,
-                  }),
-            });
-            const strictEmptyDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
-              strictEmptyDiagnosed,
-              canonicalChainRecallPromise,
-            );
-            return res.json(strictEmptyDiagnosedWithCanonical);
-          }
-          if (
-            isCatalogGuardSource(source) &&
-            cacheQueryText.length > 0 &&
-            !effectiveCacheHit &&
-            !isLookupQuery &&
-            (bypassCacheStrictEmpty || bypassCacheStrictEmptyForUnified)
-          ) {
-            logger.info(
-              {
-                source,
-                query: cacheQueryText,
-                reason: bypassCacheStrictEmptyForUnified
-                  ? cacheStrictEmptyBypassReason || 'unified_relevance'
-                  : 'aurora_override',
-              },
-              'Catalog cache miss strict-empty bypassed; continuing to upstream search',
-            );
-          }
-          logger.info(
-            { source, page, limit, inStockOnly, query: cacheQueryText },
-            'Cross-merchant cache search returned empty; falling back to upstream',
-          );
-        } catch (err) {
-          crossMerchantCacheRouteDebug = {
-            attempted: true,
-            mode: 'search',
-            query: cacheQueryText,
-            cache_query:
-              (preferRawBeautyCacheQuery ? cacheQueryText : expandedCacheSearchQueryText) ||
-              cacheQueryText,
-            cache_query_mode: preferRawBeautyCacheQuery ? 'raw_first' : null,
-            cache_query_terms: [],
-            upstream_query: queryText,
-            page: search.page || 1,
-            limit: search.limit || search.page_size || 20,
-            in_stock_only: inStockOnly,
-            cache_hit: false,
-            timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
-            stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
-            beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
-            error: String(err && err.message ? err.message : err),
-          };
-          logger.warn(
-            { err: err.message, source, query: cacheQueryText },
-            'Cross-merchant cache search failed; falling back to upstream',
-          );
-        }
-      }
 	    }
 
 	    if (operation === 'find_products' && process.env.DATABASE_URL) {
@@ -50272,12 +48118,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : { merchant_id: effectiveMerchantId || null, product_id: effectiveProductId });
 
             const similarRecallStartedAt = Date.now();
+            // The buyer's serving currency, read the way the invoke door's guard reads it.
+            const similarServingCurrency = servingCurrencyFor({ payload, metadata: req?.body?.metadata });
             const rec = await resolvePdpSimilarWithBudget(
               fetchSimilarProductsDeduped({
                 pdp_product: baseProduct,
                 k: directCandidateLimit,
                 locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
                 currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+                serving_currency: similarServingCurrency,
                 options: {
                   debug: debugEnabled,
                   candidate_limit: directCandidateLimit,
@@ -50323,7 +48172,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             );
             directRouteTimingMs.visible_sig_hydration = Date.now() - visibleSigHydrationStartedAt;
             const publicFilterStartedAt = Date.now();
-            const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+            const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
+              servingCurrency: similarServingCurrency,
+            });
             const products = publicSimilarCandidates.slice(0, limit);
             directRouteTimingMs.public_filter = Date.now() - publicFilterStartedAt;
             directRouteTimingMs.total = Date.now() - directRouteStartedAt;
@@ -51003,19 +48854,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       return null;
     };
-    const legacySearchAxiosConfig =
-      (operation === 'find_products' || operation === 'find_products_multi') &&
-      searchPrimaryContract !== 'agent_v1' &&
-      !shouldSuppressLegacyOwnerSwitchFallback({ searchRail: invokeSearchRail, metadata }) &&
-      !shoppingFreshMainlineSearch &&
-      !(strictCommerceFindProductsMulti && operation === 'find_products_multi')
-        ? {
-            method: 'GET',
-            url: `${searchInvokeBase}/agent/v1/products/search${queryString}`,
-            headers: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-            timeout: axiosConfig.timeout,
-          }
-        : null;
     const callTrackedUpstream = async (op, config, options = {}) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
@@ -51087,59 +48925,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     let response;
     let searchContractBridgeMeta = null;
-    let resolverRejectedReason = null;
-    let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
-    const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
-    const auroraFallbackOverrides = getAuroraFallbackOverrides(metadata?.source, operation);
-    const resolverTimeoutMs = auroraFallbackOverrides.active
-      ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
-      : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
-    const resolverRemainingBudgetMs = getFpmRemainingBudgetMs();
-    const resolverBrandLike = Boolean(
-      detectBrandEntities(resolverQueryText, { candidateProducts: [] })?.brand_like,
-    );
-    let shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
-      operation,
-      metadata: {
-        ...(metadata || {}),
-        ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-      },
-      queryText: resolverQueryText,
-      remainingBudgetMs: resolverRemainingBudgetMs,
+    addFpmGateTrace({
+      gateId: 'resolver_first',
+      applied: false,
+      decision: 'pass',
+      reason: 'disabled_or_not_lookup',
+      costMsEstimate: 0,
       queryClass: traceQueryClass,
-      brandLike: resolverBrandLike,
-    }) && !shoppingFreshMainlineSearch;
-    if (
-      operation === 'find_products_multi' &&
-      FPM_GATE_SIMPLIFY_V1 &&
-      shouldAttemptResolverFirst &&
-      resolverRemainingBudgetMs < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
-    ) {
-      shouldAttemptResolverFirst = false;
-      fpmLatencyGuardApplied = true;
-      fpmSkippedGatesDueToBudget.push('resolver_first');
-      addFpmGateTrace({
-        gateId: 'resolver_first',
-        applied: false,
-        decision: 'skipped',
-        reason: 'budget_guard',
-        costMsEstimate: 220,
-        queryClass: traceQueryClass,
-      });
-    }
-    if (!shouldAttemptResolverFirst) {
-      addFpmGateTrace({
-        gateId: 'resolver_first',
-        applied: false,
-        decision: 'pass',
-        reason: 'disabled_or_not_lookup',
-        costMsEstimate: 0,
-        queryClass: traceQueryClass,
-      });
-    }
-    let resolverFirstResult = null;
+    });
     const primaryUpstreamOptions = {
       spanKey: 'upstream_primary_ms',
       stageLabel: 'primary_upstream',
@@ -51153,151 +48948,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         : {}),
     };
-    let speculativePrimaryPromise = null;
-    if (shouldAttemptResolverFirst) {
-      addFpmGateTrace({
-        gateId: 'resolver_first',
-        applied: true,
-        decision: 'attempted',
-        reason: 'lookup_first',
-        costMsEstimate: 220,
-        queryClass: traceQueryClass,
-      });
-      // Parallel recall legs: the resolver-first probe and the primary
-      // upstream search are independent, so a resolver miss must not pay
-      // resolver + primary sequentially. Start the primary in flight now and
-      // await it below only if the resolver result isn't adopted. When the
-      // resolver IS adopted the in-flight primary is discarded (bounded by
-      // its own axios timeout).
-      //
-      // Skip the speculation for strong-resolver queries (known stable-alias
-      // or UUID-style lookups): those adopt the resolver hit almost every
-      // time, so racing the primary is a pure wasted upstream call. Keep it
-      // for weaker lookup-style queries, where the resolver genuinely may miss
-      // and the in-flight primary earns the tail-latency win #1753 shipped for.
-      const speculativePrimaryEligible =
-        FPM_PARALLEL_RESOLVER_PRIMARY &&
-        operation === 'find_products_multi' &&
-        !isStrongResolverFirstQuery(resolverQueryText);
-      if (speculativePrimaryEligible) {
-        speculativePrimaryPromise = callTrackedUpstream(
-          operation,
-          axiosConfig,
-          primaryUpstreamOptions,
-        );
-        speculativePrimaryPromise.catch(() => {});
-        addFpmGateTrace({
-          gateId: 'resolver_first_parallel_primary',
-          applied: true,
-          decision: 'started',
-          reason: 'parallel_recall',
-          costMsEstimate: 0,
-          queryClass: traceQueryClass,
-        });
-      } else if (
-        FPM_PARALLEL_RESOLVER_PRIMARY &&
-        operation === 'find_products_multi'
-      ) {
-        addFpmGateTrace({
-          gateId: 'resolver_first_parallel_primary',
-          applied: false,
-          decision: 'skipped',
-          reason: 'strong_resolver_query',
-          costMsEstimate: 0,
-          queryClass: traceQueryClass,
-        });
-      }
-      const resolverFirstStartedAt = Date.now();
-      try {
-        resolverFirstResult = await queryResolveSearchFallback({
-          queryParams: resolverQueryParams,
-          checkoutToken,
-          reason: 'resolver_first',
-          requestSource: metadata?.source,
-          timeoutMs: resolverTimeoutMs,
-        });
-        if (
-          resolverFirstResult &&
-          resolverFirstResult.status >= 200 &&
-          resolverFirstResult.status < 300 &&
-          resolverFirstResult.usableCount > 0
-        ) {
-          const resolverAdoption = getResolverFallbackAdoptionDecision({
-            result: resolverFirstResult,
-            queryText: resolverQueryText,
-            queryClass: traceQueryClass,
-          });
-          if (resolverAdoption.adopt) {
-            response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
-            addFpmGateTrace({
-              gateId: 'resolver_first_result',
-              applied: true,
-              decision: 'adopted',
-              reason: 'resolver_hit',
-              costMsEstimate: 15,
-              queryClass: traceQueryClass,
-            });
-          } else {
-            resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-            resolverRejectedQueryUsed =
-              resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-            addFpmGateTrace({
-              gateId: 'resolver_first_result',
-              applied: true,
-              decision: 'rejected',
-              reason: resolverAdoption.reason || 'resolver_rejected',
-              costMsEstimate: 15,
-              queryClass: traceQueryClass,
-            });
-          }
-        } else {
-          addFpmGateTrace({
-            gateId: 'resolver_first_result',
-            applied: true,
-            decision: 'miss',
-            reason: 'resolver_no_usable',
-            costMsEstimate: 15,
-            queryClass: traceQueryClass,
-          });
-        }
-      } catch (resolverErr) {
-        addFpmGateTrace({
-          gateId: 'resolver_first_result',
-          applied: true,
-          decision: 'error',
-          reason: 'resolver_exception',
-          costMsEstimate: 15,
-          queryClass: traceQueryClass,
-        });
-        logger.warn(
-          { err: resolverErr?.message || String(resolverErr), operation },
-          `${operation} resolver-first failed; falling back to upstream`,
-        );
-      }
-      recordFpmStage('resolver_first', resolverFirstStartedAt, {
-        upstream_http: true,
-        adopted: Boolean(response),
-        ...(speculativePrimaryPromise
-          ? {
-              parallel_primary_started: true,
-              ...(response ? { discarded_speculative_primary: true } : {}),
-            }
-          : {}),
-      });
-    }
-    if (
-      !response &&
-      !speculativePrimaryPromise &&
-      operation === 'find_products_multi' &&
-      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, resolverQueryText)
-    ) {
-      // Skipped when the primary was already dispatched in parallel with the
-      // resolver: the request is in flight, so its timeout can't be lowered.
-      axiosConfig.timeout = Math.min(
-        Number(axiosConfig.timeout || getUpstreamTimeoutMs(operation)),
-        PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
-      );
-    }
     try {
       if (
         operation === 'get_product_detail' &&
@@ -51352,55 +49002,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) {
-        try {
-          response = speculativePrimaryPromise
-            ? await speculativePrimaryPromise
-            : await callTrackedUpstream(operation, axiosConfig, primaryUpstreamOptions);
-          if (operation === 'find_products' || operation === 'find_products_multi') {
-            searchContractBridgeMeta =
-              operation === 'find_products_multi' && strictCommerceFindProductsMulti
+        response = await callTrackedUpstream(operation, axiosConfig, primaryUpstreamOptions);
+        if (operation === 'find_products' || operation === 'find_products_multi') {
+          searchContractBridgeMeta =
+            operation === 'find_products_multi' && strictCommerceFindProductsMulti
+              ? {
+                  attempted_contract: 'shop_invoke_strict',
+                  resolved_contract: 'shop_invoke_strict',
+                  legacy_fallback: false,
+                }
+              : searchPrimaryContract === 'agent_v1'
                 ? {
-                    attempted_contract: 'shop_invoke_strict',
-                    resolved_contract: 'shop_invoke_strict',
+                    attempted_contract: 'agent_v1',
+                    resolved_contract: 'agent_v1',
                     legacy_fallback: false,
                   }
-                : searchPrimaryContract === 'agent_v1'
-                  ? {
-                      attempted_contract: 'agent_v1',
-                      resolved_contract: 'agent_v1',
-                      legacy_fallback: false,
-                    }
-                : searchPrimaryContract === 'internal_products_search_primitive'
-                  ? {
-                      attempted_contract: 'agent_v1_search_beauty_mainline',
-                      resolved_contract: 'agent_v1_search_beauty_mainline',
-                      legacy_fallback: false,
-                      transport_owner: 'internal_products_search_primitive',
-                    }
-                : {
-                    attempted_contract: 'agent_v2',
-                    resolved_contract: 'agent_v2',
+              : searchPrimaryContract === 'internal_products_search_primitive'
+                ? {
+                    attempted_contract: 'agent_v1_search_beauty_mainline',
+                    resolved_contract: 'agent_v1_search_beauty_mainline',
                     legacy_fallback: false,
-                  };
-          }
-        } catch (primaryErr) {
-          const legacyFallbackReason =
-            operation === 'find_products' || operation === 'find_products_multi'
-              ? getCanonicalSearchFallbackReason(primaryErr)
-              : null;
-          if (legacySearchAxiosConfig && legacyFallbackReason) {
-            response = await callTrackedUpstream(operation, legacySearchAxiosConfig, {
-              stageLabel: 'legacy_contract_fallback',
-            });
-            searchContractBridgeMeta = {
-              attempted_contract: 'agent_v2',
-              resolved_contract: 'agent_v1',
-              legacy_fallback: true,
-              fallback_reason: legacyFallbackReason,
-            };
-          } else {
-            throw primaryErr;
-          }
+                    transport_owner: 'internal_products_search_primitive',
+                  }
+              : {
+                  attempted_contract: 'agent_v2',
+                  resolved_contract: 'agent_v2',
+                  legacy_fallback: false,
+                };
         }
         if (operation === 'get_product_detail') {
           productDetailCacheMeta = { hit: false, source: 'upstream' };
@@ -51666,172 +49294,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ),
           };
         }
-        if (response) {
-          // Explicit strict commerce surfaces must not fall back to legacy search paths.
-        } else {
-        const secondarySkipBrandLike = Boolean(
-          detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
-        );
-        const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
-          resolverFirstResult,
-          queryText,
-          {
-            disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-            queryClass: traceQueryClass,
-            brandLike: secondarySkipBrandLike,
-          },
-        );
-        const allowResolverFallback = shouldAllowResolverFallback(operation, {
-          metadata: {
-            ...(metadata || {}),
-            ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-          },
-        });
-        const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
-          forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
-        });
-        const hardDisableInvokeFallback = shouldSuppressLegacyOwnerSwitchFallback({
-          searchRail: invokeSearchRail,
-          metadata,
-        });
-        const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
-          forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
-          metadata: {
-            ...(metadata || {}),
-            ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-          },
-        });
-        const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
-        const allowResolverFallbackOnException =
-          allowResolverFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
-        const allowSecondaryFallbackOnException =
-          !hardDisableInvokeFallback &&
-          allowSecondaryFallback &&
-          allowInvokeFallback &&
-          (!skipSecondaryFallback || bypassSkipSecondaryFallback);
-        if (queryText) {
-          const fallbackReason =
-            upstreamStatus
-              ? `upstream_status_${upstreamStatus}`
-              : err?.code === 'ECONNABORTED'
-                ? 'upstream_timeout'
-                : 'upstream_exception';
-
-          if (allowResolverFallbackOnException) {
-            const resolverAfterExceptionStartedAt = Date.now();
-            try {
-              const resolverFallback = await queryResolveSearchFallback({
-                queryParams: resolverQueryParams,
-                checkoutToken,
-                reason: 'resolver_after_exception',
-                requestSource: metadata?.source,
-                timeoutMs: resolverTimeoutMs,
-              });
-              recordFpmStage('resolver_after_exception', resolverAfterExceptionStartedAt, {
-                upstream_http: true,
-              });
-              if (
-                resolverFallback &&
-                resolverFallback.status >= 200 &&
-                resolverFallback.status < 300 &&
-                resolverFallback.usableCount > 0
-              ) {
-                const resolverAdoption = getResolverFallbackAdoptionDecision({
-                  result: resolverFallback,
-                  queryText,
-                  queryClass: traceQueryClass,
-                });
-                if (resolverAdoption.adopt) {
-                  response = {
-                    status: resolverFallback.status,
-                    data: withProxySearchFallbackMetadata(resolverFallback.data, {
-                      applied: true,
-                      reason: 'resolver_after_exception',
-                      route: 'invoke_exception_resolver',
-                      upstream_status: upstreamStatus,
-                      upstream_error_code: upstreamCode || err?.code || null,
-                      upstream_error_message: upstreamMessage || err?.message || null,
-                    }),
-                  };
-                } else {
-                  resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-                  resolverRejectedQueryUsed =
-                    resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-                }
-              }
-            } catch (resolverErr) {
-              logger.warn(
-                { err: resolverErr?.message || String(resolverErr) },
-                `${operation} resolver fallback failed after upstream exception`,
-              );
-            }
-          }
-
-          if (!response && allowSecondaryFallbackOnException) {
-            const secondaryInvokeFallbackStartedAt = Date.now();
-            try {
-              const fallback = await queryFindProductsMultiFallback({
-                queryParams: resolverQueryParams,
-                checkoutToken,
-                reason: fallbackReason,
-                requestSource: metadata?.source,
-              });
-              recordFpmStage('secondary_invoke_fallback', secondaryInvokeFallbackStartedAt, {
-                upstream_http: true,
-              });
-              if (
-                fallback &&
-                fallback.status >= 200 &&
-                fallback.status < 300 &&
-                fallback.usableCount > 0 &&
-                isProxySearchFallbackRelevant(fallback.data, queryText)
-              ) {
-                response = {
-                  status: fallback.status,
-                  data: withProxySearchFallbackMetadata(fallback.data, {
-                    applied: true,
-                    reason: fallbackReason,
-                    route: 'invoke_exception_fallback_invoke',
-                    upstream_status: upstreamStatus,
-                    upstream_error_code: upstreamCode || err?.code || null,
-                    upstream_error_message: upstreamMessage || err?.message || null,
-                  }),
-                };
-              }
-            } catch (fallbackErr) {
-              logger.warn(
-                { err: fallbackErr?.message || String(fallbackErr) },
-                `${operation} invoke fallback failed after upstream exception`,
-              );
-            }
-          }
-        }
-        if (!response) {
-          if (
-            operation === 'find_products_multi' &&
-            crossMerchantCacheProtectedResponse &&
-            Array.isArray(crossMerchantCacheProtectedResponse.products) &&
-            crossMerchantCacheProtectedResponse.products.length > 0
-          ) {
-            response = {
-              status: 200,
-              data: withProxySearchFallbackMetadata(
-                normalizeAgentProductsListResponse(crossMerchantCacheProtectedResponse, {
-                  limit: queryParams?.limit,
-                  offset: queryParams?.offset,
-                }),
-                {
-                  applied: false,
-                  reason: 'primary_exception_cache_guard',
-                  route: 'invoke_exception_cache_guard',
-                  upstream_status: upstreamStatus,
-                  upstream_error_code: upstreamCode || err?.code || null,
-                  upstream_error_message: upstreamMessage || err?.message || null,
-                },
-              ),
-            };
-          }
-        }
         if (!response) {
           logger.warn(
             {
@@ -51858,7 +49320,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               querySource: 'agent_products_error_fallback',
             }),
           };
-        }
         }
       }
 
@@ -51953,59 +49414,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         intent: effectiveIntent,
         invokeSearchRail,
       });
-      if (
-        operation === 'find_products_multi' &&
-        publicBeautyUnifiedSearch &&
-        crossMerchantCacheRecallResponse &&
-        Array.isArray(crossMerchantCacheRecallResponse.products) &&
-        crossMerchantCacheRecallResponse.products.length > 0
-      ) {
-        const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-        const mergedUnifiedProducts = mergePublicBeautyUnifiedSearchProducts(
-          [
-            ...crossMerchantCacheRecallResponse.products,
-            ...upstreamProducts,
-          ],
-          { limit: requestedLimit },
-        );
-        const mergedUnifiedExternalCount = mergedUnifiedProducts.filter((product) =>
-          isExternalSeedProduct(product),
-        ).length;
-        upstreamData = normalizeAgentProductsListResponse(
-          {
-            ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-              ? upstreamData
-              : {}),
-            products: mergedUnifiedProducts,
-            total: Math.max(
-              Number(upstreamData?.total || 0) || 0,
-              Number(crossMerchantCacheRecallResponse?.total || 0) || 0,
-              mergedUnifiedProducts.length,
-            ),
-            metadata: {
-              ...(upstreamData?.metadata && typeof upstreamData.metadata === 'object'
-                ? upstreamData.metadata
-                : {}),
-              source_breakdown: {
-                internal_count: Math.max(0, mergedUnifiedProducts.length - mergedUnifiedExternalCount),
-                external_seed_count: mergedUnifiedExternalCount,
-                stale_cache_used: false,
-                strategy_applied: 'unified_relevance',
-              },
-              unified_recall_merge: {
-                applied: true,
-                cache_contributor_count: crossMerchantCacheRecallResponse.products.length,
-                upstream_contributor_count: upstreamProducts.length,
-                merged_count: mergedUnifiedProducts.length,
-              },
-            },
-          },
-          {
-            limit: queryParams?.limit,
-            offset: queryParams?.offset,
-          },
-        );
-      }
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -52069,60 +49477,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          primaryIrrelevant ||
 	          primaryLowQualityNonempty ||
 	          primaryUnderfilledPublicBeautyUnified);
-      const forceInvokeFallbackForFragrance =
-        hasFragranceQuerySignal(queryText) &&
-        (primaryUsableCount === 0 || primaryLowQualityNonempty);
 	      const primaryQualityGatePassed =
 	        !primaryLowQualityNonempty &&
 	        !primaryUnderfilledPublicBeautyUnified &&
 	        !primaryExactIntentUnderfilledPublicBeauty &&
 	        primaryUsableCount > 0;
-      const secondarySkipBrandLike = Boolean(
-        detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
-      );
-      const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
-        resolverFirstResult,
-        queryText,
-        {
-          disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-          queryClass: traceQueryClass,
-          brandLike: secondarySkipBrandLike,
-        },
-      );
-      const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
       addFpmGateTrace({
         gateId: 'secondary_fallback_skip_check',
         applied: true,
-        decision: skipSecondaryFallback ? 'skipped' : 'pass',
-        reason: skipSecondaryFallback ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary' : null,
+        decision: 'pass',
+        reason: null,
         costMsEstimate: 25,
         queryClass: traceQueryClass,
       });
-      const allowResolverFallback = shouldAllowResolverFallback(operation, {
-        metadata: {
-          ...(metadata || {}),
-          ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-        },
-      });
-      const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
-        forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
-      });
-      const hardDisableInvokeFallback = shouldSuppressLegacyOwnerSwitchFallback({
-        searchRail: invokeSearchRail,
-        metadata,
-      });
-      const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
-        forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
-        metadata: {
-          ...(metadata || {}),
-          ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
-        },
-      });
       let secondarySupplementMeta = null;
-      let semanticRetryApplied = false;
-      let semanticRetryQuery = null;
-      let semanticRetryHits = 0;
-      let secondaryFallbackMeta = null;
 
       if (
         operation === 'find_products_multi' &&
@@ -52359,149 +49727,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             },
           );
         } else {
-        let replacedByFallback = false;
-
-        if (allowResolverFallback && !skipSecondaryFallback) {
-          const resolverAfterPrimaryStartedAt = Date.now();
-          try {
-            const resolverFallback = await queryResolveSearchFallback({
-              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              checkoutToken,
-              reason: 'resolver_after_primary',
-              requestSource: metadata?.source,
-              timeoutMs: resolverTimeoutMs,
-            });
-            recordFpmStage('resolver_after_primary', resolverAfterPrimaryStartedAt, {
-              upstream_http: true,
-            });
-            if (
-              resolverFallback &&
-              resolverFallback.status >= 200 &&
-              resolverFallback.status < 300 &&
-              resolverFallback.usableCount > 0
-            ) {
-              const resolverAdoption = getResolverFallbackAdoptionDecision({
-                result: resolverFallback,
-                queryText,
-                queryClass: traceQueryClass,
-              });
-              if (resolverAdoption.adopt) {
-                upstreamData = resolverFallback.data;
-                replacedByFallback = true;
-              } else {
-                resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-                resolverRejectedQueryUsed =
-                  resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-              }
-            }
-          } catch (resolverErr) {
-            logger.warn(
-              { err: resolverErr?.message || String(resolverErr) },
-              `${operation} resolver fallback failed after primary response`,
-            );
-          }
-        }
-
-        if (
-          !replacedByFallback &&
-          !hardDisableInvokeFallback &&
-          allowSecondaryFallback &&
-          (allowInvokeFallback || forceInvokeFallbackForFragrance) &&
-          !skipSecondaryFallback
-        ) {
-          const secondaryAfterPrimaryStartedAt = Date.now();
-          try {
-            const fallback = await queryFindProductsMultiFallback({
-              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              checkoutToken,
-              reason: primaryUnusable
-                ? primaryUsableCount > 0
-                  ? 'insufficient_primary'
-                  : 'empty_or_unusable_primary'
-                : primaryMonoculture
-                ? 'primary_monoculture'
-                : primaryLowQualityNonempty
-                ? 'primary_low_quality'
-                : 'primary_irrelevant',
-              requestSource: metadata?.source,
-            });
-            recordFpmStage('secondary_fallback_after_primary', secondaryAfterPrimaryStartedAt, {
-              upstream_http: true,
-            });
-            const fallbackAttempts = Array.isArray(fallback?.attempts)
-              ? fallback.attempts
-              : fallback
-              ? [{ query: fallback.selectedQuery || queryText }]
-              : [];
-            const fallbackSemanticRetryApplied = Boolean(fallback?.actualRetryAttempted);
-            semanticRetryApplied = fallbackSemanticRetryApplied;
-            semanticRetryQuery = fallbackSemanticRetryApplied
-              ? String(
-                  fallback?.selectedQuery ||
-                    fallbackAttempts[fallbackAttempts.length - 1]?.query ||
-                    '',
-                ).trim() || null
-              : null;
-            semanticRetryHits = Math.max(0, Number(fallback?.usableCount || 0) || 0);
-            secondaryFallbackMeta = {
-              attempt_count: fallbackAttempts.length,
-              selected_attempt: Math.max(0, Number(fallback?.selectedAttemptNo || 0) || 0),
-              attempts: fallbackAttempts.slice(0, 3),
-              selected_query: fallback?.selectedQuery || null,
-              semantic_retry_applied: fallbackSemanticRetryApplied,
-              semantic_retry_actual_attempted: Boolean(fallback?.actualRetryAttempted),
-              semantic_retry_query: semanticRetryQuery,
-              semantic_retry_hits: Math.max(0, Number(fallback?.usableCount || 0) || 0),
-            };
-            const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
-              operation,
-              source: metadata?.source,
-              primaryUsableCount,
-              primaryIrrelevant,
-            });
-            const fallbackRelevant = Boolean(
-              fallback &&
-                (
-                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
-                  isProxySearchFallbackRelevant(fallback.data, queryText)
-                ),
-            );
-            const fallbackUsableCount = Math.max(0, Number(fallback?.usableCount || 0) || 0);
-            const fallbackRecallImproved = fallbackUsableCount >= Math.max(
-              fallbackAdoptUsableThreshold,
-              primaryUsableCount + (primaryLowQualityNonempty ? 1 : 2),
-            );
-            if (
-              fallback &&
-              fallback.status >= 200 &&
-              fallback.status < 300 &&
-              fallbackUsableCount >= fallbackAdoptUsableThreshold &&
-              (
-                (primaryLowQualityNonempty && (fallbackRecallImproved || fallbackRelevant)) ||
-                (hasFragranceQuerySignal(queryText) && fallbackUsableCount > 0) ||
-                fallbackRelevant
-              )
-            ) {
-              upstreamData = fallback.data;
-              replacedByFallback = true;
-            }
-          } catch (fallbackErr) {
-            logger.warn(
-              { err: fallbackErr?.message || String(fallbackErr) },
-              `${operation} invoke fallback failed after primary response`,
-            );
-          }
-        }
-
-	        if (!replacedByFallback) {
 	          if (primaryIrrelevant) {
 	            upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: skipSecondaryFallback
-                ? primaryMonoculture
-                  ? 'primary_monoculture_skip_secondary'
-                  : 'primary_irrelevant_skip_secondary'
-                : primaryMonoculture
+              reason: primaryMonoculture
                 ? 'primary_monoculture_no_fallback'
                 : 'primary_irrelevant_no_fallback',
               upstreamStatus: response.status,
@@ -52509,101 +49738,40 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: semanticRetryApplied
-                ? 'agent_products_semantic_retry_exhausted'
-                : 'agent_products_error_fallback',
-              semanticRetryApplied,
-              semanticRetryQuery,
-              semanticRetryHits,
+              querySource: 'agent_products_error_fallback',
 	              forceClarify: true,
 	            });
           } else if (primaryLowQualityNonempty) {
-            const lowQualityReason = secondaryFallbackMeta?.semantic_retry_applied
-              ? 'low_quality_semantic_retry_exhausted'
-              : skipSecondaryFallback
-              ? 'primary_low_quality_skip_secondary'
-              : 'primary_low_quality_no_fallback';
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: lowQualityReason,
+              reason: 'primary_low_quality_no_fallback',
               upstreamStatus: response.status,
               route: 'invoke_primary_low_quality',
               intent: effectiveIntent,
               queryClass: traceQueryClass,
               queryText,
-              querySource: secondaryFallbackMeta?.semantic_retry_applied
-                ? 'agent_products_semantic_retry_exhausted'
-                : 'agent_products_error_fallback',
-              semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
-              semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
-              semanticRetryHits: Math.max(
-                0,
-                Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-              ),
+              querySource: 'agent_products_error_fallback',
               forceClarify: true,
             });
 	          } else {
-            const fallbackReason = skipSecondaryFallback
-              ? 'resolver_miss_skip_secondary'
-              : secondaryFallbackMeta?.semantic_retry_applied
-              ? 'semantic_retry_exhausted'
-              : 'fallback_not_better';
-            const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-            const shouldForceClarifyAfterRetry =
-              SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-              upstreamProducts.length === 0 &&
-              !skipSecondaryFallback &&
-              Boolean(secondaryFallbackMeta?.semantic_retry_applied);
-            if (shouldForceClarifyAfterRetry) {
-              upstreamData = buildProxySearchSoftFallbackResponse({
-                queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-                reason: fallbackReason,
-                upstreamStatus: response.status,
-                route: 'invoke_fallback_exhausted',
-                intent: effectiveIntent,
-                queryClass: traceQueryClass,
-                queryText,
-                querySource:
-                  fallbackReason === 'semantic_retry_exhausted'
-                    ? 'agent_products_semantic_retry_exhausted'
-                    : 'agent_products_error_fallback',
-                semanticRetryApplied: Boolean(
-                  secondaryFallbackMeta?.semantic_retry_applied,
-                ),
-                semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
-                semanticRetryHits: Math.max(
-                  0,
-                  Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-                ),
-                forceClarify: true,
-              });
-            } else {
-              upstreamData = withProxySearchFallbackMetadata(upstreamData, {
-                applied: false,
-                reason: fallbackReason,
-                ...(secondaryFallbackMeta?.semantic_retry_applied ? { query_variant: 'semantic_retry' } : {}),
-              });
-            }
+            upstreamData = withProxySearchFallbackMetadata(upstreamData, {
+              applied: false,
+              reason: 'fallback_not_better',
+            });
             if (upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)) {
               const upstreamMeta =
                 upstreamData.metadata && typeof upstreamData.metadata === 'object'
                   ? { ...upstreamData.metadata }
                   : {};
-              upstreamMeta.semantic_retry_applied = Boolean(
-                secondaryFallbackMeta?.semantic_retry_applied,
-              );
-              upstreamMeta.semantic_retry_query = secondaryFallbackMeta?.semantic_retry_query || null;
-              upstreamMeta.semantic_retry_hits = Math.max(
-                0,
-                Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
-              );
+              upstreamMeta.semantic_retry_applied = false;
+              upstreamMeta.semantic_retry_query = null;
+              upstreamMeta.semantic_retry_hits = 0;
               upstreamData = {
                 ...upstreamData,
                 metadata: upstreamMeta,
               };
             }
           }
-        }
         }
       }
 
@@ -52625,30 +49793,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? secondarySupplementMeta?.reason || null
             : !shouldFallback
             ? 'not_needed'
-            : skipSecondaryFallback
-            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
             : 'not_attempted';
-          const retryAttemptCount = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-          );
-          const fallbackAttemptCount = retryAttemptCount;
-          const selectedFallbackAttempt = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
-          );
-          const semanticRetryActualAttempted = Boolean(
-            secondaryFallbackMeta?.semantic_retry_actual_attempted,
-          );
+          // The post-primary fallbacks that set these were deleted (#2280); kept as fields.
+          const retryAttemptCount = 0;
+          const fallbackAttemptCount = 0;
+          const selectedFallbackAttempt = 0;
+          const semanticRetryActualAttempted = false;
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
 	            search_stage_b: secondarySupplementMeta,
-	            semantic_retry_applied: Boolean(semanticRetryApplied),
+	            semantic_retry_applied: false,
 	            semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	            semantic_retry_query: null,
+	            semantic_retry_hits: 0,
 		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -52675,10 +49834,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-	                semantic_retry_applied: Boolean(semanticRetryApplied),
+	                semantic_retry_applied: false,
                   semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_query: null,
+	                semantic_retry_hits: 0,
                 primary_quality_gate_passed: primaryQualityGatePassed,
 	                primary_quality_score:
 	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -52714,31 +49873,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? Math.max(routeHealthProducts.length, Number(upstreamData.total))
             : routeHealthProducts.length;
           const supplementAttempted = Boolean(shouldFallback);
-          const supplementSkipReason = !shouldFallback
-            ? 'not_needed'
-            : skipSecondaryFallback
-            ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-            : 'not_attempted';
-          const retryAttemptCount = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.attempt_count || 0) || 0,
-          );
-          const fallbackAttemptCount = retryAttemptCount;
-          const selectedFallbackAttempt = Math.max(
-            0,
-            Number(secondaryFallbackMeta?.selected_attempt || 0) || 0,
-          );
-          const semanticRetryActualAttempted = Boolean(
-            secondaryFallbackMeta?.semantic_retry_actual_attempted,
-          );
+          const supplementSkipReason = !shouldFallback ? 'not_needed' : 'not_attempted';
+          // The post-primary fallbacks that set these were deleted (#2280); kept as fields.
+          const retryAttemptCount = 0;
+          const fallbackAttemptCount = 0;
+          const selectedFallbackAttempt = 0;
+          const semanticRetryActualAttempted = false;
 	        upstreamData = {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-		            semantic_retry_applied: Boolean(semanticRetryApplied),
+		            semantic_retry_applied: false,
                 semantic_retry_actual_attempted: semanticRetryActualAttempted,
-		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+		            semantic_retry_query: null,
+	            semantic_retry_hits: 0,
 		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -52765,10 +49913,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? upstreamData.metadata.route_health
                     : {}
                 ),
-	                semantic_retry_applied: Boolean(semanticRetryApplied),
+	                semantic_retry_applied: false,
                   semantic_retry_actual_attempted: semanticRetryActualAttempted,
-	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	                semantic_retry_query: null,
+	                semantic_retry_hits: 0,
                 primary_quality_gate_passed: primaryQualityGatePassed,
 	                primary_quality_score:
 	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
@@ -52807,10 +49955,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ? upstreamData.metadata
               : {}),
             guard_source_normalized: normalizedGuardSource || null,
-            secondary_fallback_skipped: skipSecondaryFallback,
-            secondary_fallback_skip_reason: skipSecondaryFallback
-              ? secondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
-              : null,
+            secondary_fallback_skipped: false,
+            secondary_fallback_skip_reason: null,
             latency_guard_applied: Boolean(fpmLatencyGuardApplied),
             skipped_gates_due_to_budget: Array.from(
               new Set(
@@ -52836,14 +49982,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
-    }
-
-    if (operation === 'offers.resolve') {
-      // MERCHANT-PURCHASABILITY GATE (path 3 of 3). `…Gated` is `prioritizeOffersResolveResponse` with the
-      // gate consulted first; with the switch off it asks nothing and the response is byte-identical.
-      upstreamData = await prioritizeOffersResolveResponseGated(upstreamData, {
-        market: offersGateBuyerMarket(payload, metadata),
-      });
     }
 
     if (operation === 'get_product_detail') {
@@ -53260,78 +50398,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (
-      operation === 'find_products_multi' &&
-      !shoppingFreshMainlineSearch &&
-      crossMerchantCacheProtectedResponse &&
-      Array.isArray(crossMerchantCacheProtectedResponse.products) &&
-      crossMerchantCacheProtectedResponse.products.length > 0
-    ) {
-      const cachePreferenceDecision = decideGenericSkincareCachePreference({
-        rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
-        queryClass: traceQueryClass || effectiveIntent?.query_class || null,
-        beautyBucket:
-          crossMerchantCacheRouteDebug?.beauty_query_bucket ||
-          buildBeautyQueryProfile({
-            rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
-            queryClass: traceQueryClass || effectiveIntent?.query_class || null,
-            intent: effectiveIntent,
-          })?.bucket ||
-          null,
-        strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
-        upstreamResponse: upstreamData,
-        cacheResponse: crossMerchantCacheProtectedResponse,
-      });
-      if (cachePreferenceDecision.decision === 'replace_with_cache') {
-        const protectedMeta =
-          crossMerchantCacheProtectedResponse.metadata &&
-          typeof crossMerchantCacheProtectedResponse.metadata === 'object' &&
-          !Array.isArray(crossMerchantCacheProtectedResponse.metadata)
-            ? crossMerchantCacheProtectedResponse.metadata
-            : {};
-        const existingRouteDebug =
-          protectedMeta.route_debug &&
-          typeof protectedMeta.route_debug === 'object' &&
-          !Array.isArray(protectedMeta.route_debug)
-            ? protectedMeta.route_debug
-            : {};
-        const existingCacheRouteDebug =
-          existingRouteDebug.cross_merchant_cache &&
-          typeof existingRouteDebug.cross_merchant_cache === 'object' &&
-          !Array.isArray(existingRouteDebug.cross_merchant_cache)
-            ? existingRouteDebug.cross_merchant_cache
-            : {};
-        upstreamData = {
-          ...crossMerchantCacheProtectedResponse,
-          metadata: {
-            ...protectedMeta,
-            serum_cache_override: {
-              applied: true,
-              decision: cachePreferenceDecision.decision,
-              reason: cachePreferenceDecision.reason,
-              beauty_bucket: cachePreferenceDecision.beauty_bucket,
-              cache_internal_count: cachePreferenceDecision.cache_internal_count,
-              upstream_external_only: cachePreferenceDecision.upstream_external_only,
-              upstream_query_source: cachePreferenceDecision.upstream_query_source,
-            },
-            route_debug: {
-              ...existingRouteDebug,
-              cross_merchant_cache: {
-                ...existingCacheRouteDebug,
-                serum_cache_override: {
-                  applied: true,
-                  decision: cachePreferenceDecision.decision,
-                  reason: cachePreferenceDecision.reason,
-                  cache_internal_count: cachePreferenceDecision.cache_internal_count,
-                  upstream_query_source: cachePreferenceDecision.upstream_query_source,
-                },
-              },
-            },
-          },
-        };
-      }
-    }
-
-    if (
       operation === 'find_products' ||
       operation === 'find_products_multi'
     ) {
@@ -53677,10 +50743,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             selectedSource: null,
           });
       const resolverStage = {
-        called: Boolean(shouldAttemptResolverFirst),
-        hit: Boolean(resolverFirstResult && Number(resolverFirstResult.usableCount || 0) > 0),
-        miss: Boolean(shouldAttemptResolverFirst && (!resolverFirstResult || Number(resolverFirstResult.usableCount || 0) <= 0)),
-        latency_ms: Number(resolverFirstResult?.resolve_latency_ms || resolverFirstResult?.data?.metadata?.resolve_latency_ms || 0) || null,
+        called: false,
+        hit: false,
+        miss: false,
+        latency_ms: null,
       };
       const cacheSourceReturned = querySource.startsWith('cache_');
       const cacheSourceUpstreamEvidence =
@@ -53815,11 +50881,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           metadata: {
             ...existingMetaForGates,
             resolver_rejected_reason:
-              existingMetaForGates.resolver_rejected_reason || resolverRejectedReason || null,
+              existingMetaForGates.resolver_rejected_reason || null,
             resolver_query_used:
               existingMetaForGates.resolver_query_used ||
               existingMetaForGates.resolve_query_used ||
-              resolverRejectedQueryUsed ||
               null,
             gate_trace: combinedGateTrace,
             gate_summary: {
@@ -53924,113 +50989,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	  } catch (err) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
-      if (
-        operation === 'find_products_multi' &&
-        !shoppingFreshMainlineSearch &&
-        crossMerchantCacheProtectedResponse &&
-        Array.isArray(crossMerchantCacheProtectedResponse.products) &&
-        crossMerchantCacheProtectedResponse.products.length > 0
-      ) {
-        const cacheGuardBody = normalizeAgentProductsListResponse(crossMerchantCacheProtectedResponse, {
-          limit: queryParams?.limit,
-          offset: queryParams?.offset,
-        });
-        const cacheGuardDiagnosed = withSearchDiagnostics(
-          withProxySearchFallbackMetadata(cacheGuardBody, {
-            applied: false,
-            reason: 'invoke_outer_cache_guard',
-            route: 'invoke_outer_catch_cache_guard',
-          }),
-          {
-            route_health: buildSearchRouteHealth({
-              primaryPathUsed: 'invoke_outer_cache_guard',
-              primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-              fallbackTriggered: true,
-              fallbackReason: 'invoke_outer_cache_guard',
-              ambiguityScorePre: traceAmbiguityScorePre,
-              clarifyTriggered: false,
-            }),
-            search_trace: buildSearchTrace({
-              traceId: gatewayRequestId,
-              rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
-              expandedQuery:
-                findProductsExpansionMeta?.expanded_query ||
-                String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
-              expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-              queryClass: traceQueryClass,
-              rewriteGate: traceRewriteGate,
-              associationPlan: traceAssociationPlan,
-              flagsSnapshot: traceFlagsSnapshot,
-              intent: effectiveIntent,
-              cacheStage: buildCacheStageSnapshot({
-                hit: true,
-                candidateCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                relevantCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                retrievalSources: [],
-                cacheRouteDebug: crossMerchantCacheRouteDebug,
-                selectedSource: 'invoke_outer_cache_guard',
-              }),
-              upstreamStage: {
-                called: true,
-                timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
-                status: Number(err?.response?.status || err?.status || 0) || null,
-                latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
-              },
-              resolverStage: {
-                called: false,
-                hit: false,
-                miss: false,
-                latency_ms: null,
-              },
-              finalDecision: 'cache_returned',
-            }),
-          },
-        );
-        const finalCacheGuardBody =
-          normalizeSearchUiSurface(
-            metadata?.ui_surface ||
-              effectivePayload?.metadata?.ui_surface ||
-              effectivePayload?.context?.ui_surface,
-          ) === 'travel_lookup'
-            ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
-            : cacheGuardDiagnosed;
-        const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
-        const finalCacheGuardWithBeautyExpert = attachBeautyExpertV1ToResponse(finalCacheGuardBody, {
-            source: metadata?.source || 'shopping_agent',
-            entryLayer: 'orchestration',
-            taskType: 'discovery',
-            context: {
-              ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
-                ? effectivePayload.context
-                : {}),
-              source_profile: {
-                source: String(metadata?.source || '').trim() || 'shopping_agent',
-                default_entry_layer: 'orchestration',
-              },
-              raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-              normalized_need:
-                effectivePayload?.context &&
-                typeof effectivePayload.context === 'object' &&
-                !Array.isArray(effectivePayload.context) &&
-                effectivePayload.context.normalized_need &&
-                typeof effectivePayload.context.normalized_need === 'object' &&
-                !Array.isArray(effectivePayload.context.normalized_need)
-                  ? effectivePayload.context.normalized_need
-                  : {},
-            },
-            metadata: {
-              ...(metadata || {}),
-              query: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-            },
-            payload: effectivePayload,
-            messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
-              ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
-              : [],
-          });
-        return res.status(200).json(
-          projectFindProductsMultiTransportResponse(finalCacheGuardWithBeautyExpert, { operation }),
-        );
-      }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
 	        err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 502);
@@ -54228,8 +51186,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
+function authenticateExternalInvokeRoute(req, res, next) {
+  return requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken: isCheckoutTokenInvokeOperation });
+}
+
 function registerExternalInvokeRoute(path, clientChannel) {
-  app.post(path, requireExternalInvokeAuth, async (req, res) => {
+  app.post(path, authenticateExternalInvokeRoute, async (req, res) => {
     return INVOKE_AUTH_CONTEXT.run(
       {
         api_key: req?.invokeAuth?.raw_token || null,
@@ -54400,6 +51362,11 @@ module.exports._debug = {
   // outage-servable. Route tests can show one outcome but not the TTL boundaries or the
   // no-life-extension rule — those need deterministic clocks, so the cache trio is exported and
   // driven with explicit `nowMs`.
+  // X-Checkout-Token verification: the verdict cache (cleared between tests; its TTL clamp to the
+  // token's own expiry is asserted directly) and the scope rule.
+  checkoutTokenVerdictCache,
+  putCachedCheckoutTokenVerdict,
+  getCachedCheckoutTokenVerdict,
   invokeAuthCache,
   getCachedInvokeAuthResult,
   putCachedInvokeAuthResult,
@@ -54528,7 +51495,6 @@ module.exports._debug = {
   resolvePublicProductIdForEmit,
   resolvePublicExternalSeedProductId,
   applyRequestedPivotaSignatureToPdpProduct,
-  mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   buildInvokeUpstreamAuthHeaders,
@@ -54614,7 +51580,6 @@ module.exports._debug = {
   mergeInvokeGatewayAuditMetadata,
   normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,
-  decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
   readCanonicalSearchPricePair,
@@ -54632,7 +51597,9 @@ module.exports._debug = {
   resolveSearchDedupePerTitleLimit,
   resolveBeautyBrandBrowseQuery,
   inferBeautyMainlineIntent,
+  buildBeautyMainlineRetrievalQueries,
   buildBeautyExternalSeedCategoryTerms,
+  buildBeautyExternalSeedBrandCategoryTextTerms,
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,

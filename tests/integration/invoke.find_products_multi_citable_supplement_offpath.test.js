@@ -8,8 +8,6 @@ const ENV_KEYS = [
   'PIVOTA_API_BASE', 'PIVOTA_API_KEY', 'API_MODE', 'DATABASE_URL', 'INDEX_ELIGIBLE_RECALL',
   'CITABLE_SUPPLEMENT_CACHE_TTL_MS', 'STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED',
   'FIND_PRODUCTS_MULTI_EXPANSION_MODE', 'FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE',
-  'PROXY_SEARCH_RESOLVER_FIRST_ENABLED', 'PROXY_SEARCH_INVOKE_FALLBACK_ENABLED',
-  'PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED',
 ];
 // SQL comments mention both surfaces; only the executable predicate identifies the lane.
 const isSupplementSql = sql => /\bindex_eligible\b/.test(String(sql || '').replace(/--[^\n]*/g, ''));
@@ -87,8 +85,6 @@ describe('/agent/shop/v1/invoke uses the primary search route without citation s
       DATABASE_URL: 'postgres://mock:mock@127.0.0.1/mock', INDEX_ELIGIBLE_RECALL: 'true',
       CITABLE_SUPPLEMENT_CACHE_TTL_MS: '60000', STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED: 'false',
       FIND_PRODUCTS_MULTI_EXPANSION_MODE: 'off', FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE: 'off',
-      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: 'false', PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: 'true',
-      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED: 'true',
     });
   });
   afterEach(() => {

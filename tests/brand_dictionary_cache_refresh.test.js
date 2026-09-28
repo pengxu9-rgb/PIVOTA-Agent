@@ -61,6 +61,45 @@ describe('brandDictionaryCache.refresh (the real loader)', () => {
     expect(set.size).toBe(1);
   });
 
+  // A polluted brand field, brand + tagline in one string (#1771). The SQL lowercases it; the
+  // loader must still find the brand in front of the separator.
+  test('a piped brand + tagline is detectable by the brand alone', async () => {
+    rowsFor(['biodance | better formula for better glow']);
+    await cache.refresh();
+    const set = cache.getBrandSet();
+    expect(set.has('biodance')).toBe(true);
+    expect(cache.matchCatalogBrand('biodance')).toBe('biodance');
+    expect(cache.matchCatalogBrand('biodance collagen mask')).toBe('biodance');
+    // Only the FIRST segment is a brand: the tagline alone is never a key, so a query made of
+    // marketing words cannot be scoped to this brand.
+    expect(set.has('better formula for better glow')).toBe(false);
+    expect(cache.matchCatalogBrand('better glow serum')).toBeNull();
+  });
+
+  test('a newline separates a tagline the same way', async () => {
+    rowsFor(['rovectin\nskin essentials']);
+    await cache.refresh();
+    expect(cache.matchCatalogBrand('rovectin cream')).toBe('rovectin');
+    expect(cache.getBrandSet().has('skin essentials')).toBe(false);
+  });
+
+  test('the leading segment gets the separator squash too, and still passes admission', async () => {
+    rowsFor(["a'pieu | pure block", 'spf | sun care']);
+    await cache.refresh();
+    const set = cache.getBrandSet();
+    expect(set.has('a pieu')).toBe(true);
+    expect(set.has('apieu')).toBe(true);
+    // A stopword in front of the pipe is refused like any stopword brand.
+    expect(set.has('spf')).toBe(false);
+  });
+
+  test('a brand with no tagline separator loads exactly as before', async () => {
+    rowsFor(["A'PIEU", 'ETUDE HOUSE', 'Missha']);
+    await cache.refresh();
+    expect([...cache.getBrandSet()].sort()).toEqual(
+      ['a pieu', 'apieu', 'etude house', 'etudehouse', 'missha'].sort());
+  });
+
   test('a db failure keeps the prior cache rather than emptying it', async () => {
     rowsFor(['Missha']);
     await cache.refresh();

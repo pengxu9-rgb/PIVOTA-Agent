@@ -35,7 +35,7 @@ test('market_requested is capped: free text cannot bloat every line or become an
 test('observeBoundMarket records exactly what the door hands it, and never throws', () => {
   const store = {};
   mt.observeBoundMarket(store, { search: { market: 'SG' }, metadata: {}, markets: ['SG'] });
-  assert.deepEqual(store, { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null });
+  assert.deepEqual(store, { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null, market_serving_currency: null });
   // A copy, so a later mutation of the door's array cannot rewrite history.
   const markets = ['US'];
   const store2 = {};
@@ -60,11 +60,26 @@ test('Stage 0a: the buyer currency the door scoped by is recorded beside what it
   assert.equal(off.market_buyer_currency, null);
 });
 
+test('the serving currency (Peng 2026-09-26 currency rule) is recorded beside the bind and reaches the record', () => {
+  // A silent request is served USD: the record must say so, so served_currencies can be checked against it.
+  const silent = {};
+  mt.observeBoundMarket(silent, { search: {}, metadata: {}, markets: ['US'], servingCurrency: 'USD' });
+  assert.equal(silent.market_serving_currency, 'USD');
+  assert.equal(silent.market_buyer_currency, null);
+  const record = mt.buildMarketTelemetry({ operation: 'find_products_multi', observation: silent, body: { products: [] }, stages: [] });
+  assert.equal(record.market_serving_currency, 'USD');
+  // A market with no known currency: null (the door served nothing), never a guessed one.
+  const unpriced = {};
+  mt.observeBoundMarket(unpriced, { search: { market: 'ZZ' }, metadata: {}, markets: ['ZZ'], servingCurrency: null });
+  assert.equal(unpriced.market_serving_currency, null);
+  assert.equal(mt.describeUnboundRequest({ query: 'x' }, {}).market_serving_currency, null);
+});
+
 test('an unbound request reads a FLAT payload the way the early lane does, and claims no binding', () => {
   // Review of #2239 case B/C: `{query, market}` with no `search` object was counted as
   // `defaulted`. The early lane reads the payload itself when `search` is not a plain object.
   assert.deepEqual(mt.describeUnboundRequest({ query: 'x', market: 'SG' }, {}),
-    { market_observed: false, market_requested: 'SG', market_source: 'explicit_search', market_bound: null, market_buyer_currency: null });
+    { market_observed: false, market_requested: 'SG', market_source: 'explicit_search', market_bound: null, market_buyer_currency: null, market_serving_currency: null });
   assert.deepEqual(mt.describeUnboundRequest({ search: { market: 'SG' } }, {}).market_requested, 'SG');
   // A non-object `search` falls back to the payload, as the lane does.
   assert.equal(mt.describeUnboundRequest({ search: 'oops', market: 'JP' }, {}).market_requested, 'JP');
@@ -135,19 +150,47 @@ test('lane is the LAST lane recorded', () => {
   assert.equal(mt.laneFromStageBreakdown([]), null);
 });
 
+test('query_source and primary_path_used are read from the page sent, for lanes that set no stage', () => {
+  // Measured 2026-09-26: the discovery bridge and ingredient-direct lanes record no fpm stage and
+  // no lane, so 31% of 30 days of traffic could not be attributed to the lane that served it.
+  const body = {
+    products: [],
+    metadata: { query_source: 'beauty_discovery_mainline', route_health: { primary_path_used: 'local_discovery_bridge' } },
+  };
+  const record = mt.buildMarketTelemetry({ operation: 'find_products_multi', body, stages: [{ stage: 'route_entry' }] });
+  assert.equal(record.query_source, 'beauty_discovery_mainline');
+  assert.equal(record.primary_path_used, 'local_discovery_bridge');
+  assert.equal('lane' in record, false);
+});
+
+test('served-by fields are absent, never empty, when the page does not say; and capped', () => {
+  for (const body of [null, {}, { metadata: null }, { metadata: [] }, { metadata: { query_source: '  ' } },
+    { metadata: { query_source: 7, route_health: 'x' } }]) {
+    const served = mt.servedByFromBody(body);
+    assert.deepEqual(served, {}, JSON.stringify(body));
+  }
+  const long = mt.servedByFromBody({ metadata: { query_source: 'q'.repeat(500) } });
+  assert.equal(long.query_source.length, 65);
+});
+
 test('the record is emitted for find_products_multi ONLY, and its keys are all new', () => {
   assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_offers', payload: { search: { market: 'SG' } } }), {});
   assert.deepEqual(mt.buildMarketTelemetry({ operation: null }), {});
   const record = mt.buildMarketTelemetry({
     operation: 'find_products_multi',
     observation: { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'] },
-    body: { products: [{ currency: 'SGD', source: 'canonical_chain' }] },
+    body: {
+      products: [{ currency: 'SGD', source: 'canonical_chain' }],
+      metadata: { query_source: 'agent_products_beauty_external_seed_mainline', route_health: { primary_path_used: 'beauty_external_seed_mainline' } },
+    },
     stages: [{ lane: 'early_indexed' }],
   });
   assert.deepEqual(record, {
     market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null,
+    market_serving_currency: null,
     served_currencies: ['SGD'], served_currency_mismatch: false, served_price_sources: { canonical_chain: 1 },
     lane: 'early_indexed',
+    query_source: 'agent_products_beauty_external_seed_mainline', primary_path_used: 'beauty_external_seed_mainline',
   });
   const existing = new Set(['gateway_request_id', 'client_channel', 'key_fingerprint', 'operation', 'status',
     'latency_ms', 'upstream_ms', 'gateway_retries', 'fpm_stage_breakdown', 'fpm_stage_total_ms',
@@ -162,5 +205,24 @@ test('malformed input never throws: telemetry must not be able to fail a respons
     { operation: 'find_products_multi', payload: { market: {} }, body: { products: [{ currency: null }] } },
   ]) {
     assert.doesNotThrow(() => mt.buildMarketTelemetry(args), JSON.stringify(args));
+  }
+});
+
+test('the serving-currency guard\'s drops are logged for every operation it guards, and nothing else is', () => {
+  const guarded = { products: [], metadata: { serving_currency_guard: { serving_currency: 'USD', dropped_count: 3, dropped_currencies: ['SGD', 'unknown'] } } };
+  // get_discovery_feed (~82k requests a week) is guarded; its drops used to be invisible.
+  for (const operation of ['get_discovery_feed', 'find_products']) {
+    assert.deepEqual(mt.buildMarketTelemetry({ operation, body: guarded }),
+      { serving_currency_dropped: 3, serving_currency_dropped_currencies: ['SGD', 'unknown'] }, operation);
+    assert.deepEqual(mt.buildMarketTelemetry({ operation, body: { products: [] } }), {}, `${operation}: nothing dropped`);
+  }
+  const fpm = mt.buildMarketTelemetry({ operation: 'find_products_multi', body: guarded, stages: [] });
+  assert.equal(fpm.serving_currency_dropped, 3);
+  assert.deepEqual(fpm.serving_currency_dropped_currencies, ['SGD', 'unknown']);
+  // An unguarded operation logs none of it, whatever its body says.
+  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_pdp_v2', body: guarded }), {});
+  // Malformed guard metadata is absence, not a throw.
+  for (const bad of [null, 'x', { dropped_count: 'x' }, { dropped_count: 0 }, { dropped_count: 2, dropped_currencies: 'SGD' }]) {
+    assert.doesNotThrow(() => mt.buildMarketTelemetry({ operation: 'get_discovery_feed', body: { metadata: { serving_currency_guard: bad } } }));
   }
 });

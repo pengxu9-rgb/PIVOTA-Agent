@@ -70,6 +70,20 @@ describe('isKnownRetailer (suffix + env-extendable)', () => {
     ['spacenk.com', true],
     ['coupang.com', true],
     ['gmarket.co.kr', true],
+    // UK/AU beauty retailers (pivota-backend #2363).
+    ['beautybay.com', true],
+    ['www.beautybay.com', true],
+    ['adorebeauty.com.au', true],
+    ['chemistwarehouse.com.au', true],
+    // ccTLD Amazons + StyleKorean (parity with pivota-backend).
+    ['amazon.com.br', true],
+    ['amazon.com.mx', true],
+    ['amazon.com.au', true],
+    ['amazon.fr', true],
+    ['amazon.it', true],
+    ['amazon.es', true],
+    ['stylekorean.com', true],
+    ['www.stylekorean.com', true],
     ['fentybeauty.com', false],
     ['notulta.com', false],
   ])('isKnownRetailer(%p)=%p', (host, expected) => {

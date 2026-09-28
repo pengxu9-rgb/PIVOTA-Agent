@@ -85,7 +85,18 @@ const {
 // Worked example 4 — the canonical-election gate, 2026-07-31. Bumps: it moves
 // 121 measured prod rows from 'public' to 'shadow'. Pairs with pivota-backend,
 // backend first.
-const POLICY_VERSION = 'c1.v0.8';
+// Worked example 5 — force_exact_group is GROUPING, not identity approval,
+// 2026-09-27. Bumps c1.v0.8 -> c1.v0.9: deriveIdentity no longer turns an active
+// force_exact_group override into {approved, confidence 1.0, liveRead}. The
+// override still groups (pdpIdentityGraph.applyIdentityOverrides sets
+// sellable_item_group_id, so sibling offers are untouched) and is still recorded
+// as manual_override_id. Measured on prod the day it landed with this module's
+// own deriveTrust over the upserter's join: 98 public rows had force_exact_group
+// as their active override; 29 flip 'public' -> 'shadow' (17 review_required, 12
+// approved with live_read off on a cross seed), 69 stay public on their own
+// identity. All 29 are 2026-05 AI (codex) title merges on retailer-mirror
+// sellers. Pairs with pivota-backend's catalog_trust_policy.py: backend first.
+const POLICY_VERSION = 'c1.v0.9';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -517,10 +528,11 @@ function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines
 // ---- Identity --------------------------------------------------------------
 
 function deriveIdentity({ identity, override, reasons }) {
-  // Manual override of identity wins (rare but authoritative).
-  if (override?.action_type === 'force_exact_group' && override?.active) {
-    return { status: 'approved', confidence: 1.0, liveRead: true, reviewRequired: false };
-  }
+  // force_exact_group is NOT read here (c1.v0.9): it is a grouping decision, which the identity graph
+  // applies (sellable_item_group_id), not evidence of identity. Until c1.v0.9 it returned
+  // {approved, 1.0, liveRead} and kept retailer-mirror rows public whatever their listing said -- the
+  // listings behind it were AI title merges (see worked example 5 above).
+  // A moderation override still wins: force_review_required only ever demotes.
   if (override?.action_type === 'force_review_required' && override?.active) {
     return {
       status: 'review_required',

@@ -184,6 +184,75 @@ const BRAND_SUFFIX_TOKENS = new Set([
   'makeup',
 ]);
 
+// Generic category/product nouns that legitimately appear INSIDE vendor names
+// ("Briogeo Hair Care", "Soap & Glory") but must never stand alone as a
+// dynamic brand alias: a bare "hair" alias brand-matches every "hair …" query.
+// They stay usable inside multi-token phrases; a phrase made only of them is
+// no alias at all.
+const GENERIC_CATEGORY_TOKENS = new Set([
+  'hair',
+  'skin',
+  'skincare',
+  'face',
+  'facial',
+  'body',
+  'care',
+  'lip',
+  'lips',
+  'eye',
+  'eyes',
+  'nail',
+  'nails',
+  'lash',
+  'lashes',
+  'brow',
+  'brows',
+  'scalp',
+  'bath',
+  'hand',
+  'hands',
+  'foot',
+  'feet',
+  'tooth',
+  'teeth',
+  'oral',
+  'serum',
+  'serums',
+  'cream',
+  'creams',
+  'lotion',
+  'lotions',
+  'cleanser',
+  'cleansers',
+  'toner',
+  'toners',
+  'shampoo',
+  'conditioner',
+  'mask',
+  'masks',
+  'balm',
+  'balms',
+  'scrub',
+  'scrubs',
+  'soap',
+  'soaps',
+  'mist',
+  'mists',
+  'oil',
+  'oils',
+  'gel',
+  'gels',
+  'wash',
+  'spray',
+  'sunscreen',
+  'moisturizer',
+  'moisturizers',
+  'treatment',
+  'treatments',
+  'wellness',
+  'health',
+]);
+
 const BRAND_STOP_TOKENS = new Set([
   'the',
   'for',
@@ -319,10 +388,16 @@ function collectDynamicBrandAliases(candidateProducts = []) {
           !BRAND_SUFFIX_TOKENS.has(token),
       );
       if (!tokens.length) continue;
-      const phrase = tokens.slice(0, 4).join(' ');
-      if (phrase.length >= 3) out.add(phrase);
+      const phraseTokens = tokens.slice(0, 4);
+      const phrase = phraseTokens.join(' ');
+      if (
+        phrase.length >= 3 &&
+        phraseTokens.some((token) => !GENERIC_CATEGORY_TOKENS.has(token))
+      ) {
+        out.add(phrase);
+      }
       for (const token of tokens) {
-        if (token.length >= 4) out.add(token);
+        if (token.length >= 4 && !GENERIC_CATEGORY_TOKENS.has(token)) out.add(token);
       }
     }
     if (out.size >= 256) break;
@@ -369,6 +444,9 @@ const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
   'catkin',
   'hersteller',
   'inertia',
+  // KISS (lashes/nails) is an onboarded US brand (2026-09-25) with no rows yet; once it has
+  // 3, "kiss proof lipstick" would otherwise become a KISS brand filter.
+  'kiss',
   'lagom',
   'merit',
   'organist',
@@ -377,11 +455,61 @@ const AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS = new Set([
   'whipped',
 ]);
 
+// Suffix-stripped catalog brand names that are also ordinary words or phrases. The
+// stripped name is only ever matched when the query IS the name, but a buyer typing
+// "first aid", "self" or "flower" alone is not asking for First Aid Beauty, Self Beauty
+// or Flower Beauty. Reviewed 2026-09-25 against all 55 stripped names prod's 335
+// qualifying brands produce; a new collision must be added here.
+const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
+  'aya',
+  'benefit',
+  'first aid',
+  'flower',
+  'lime',
+  'note',
+  'rare',
+  'self',
+  'sigma',
+  'terra',
+]);
+
+// The query's own words, minus framing ("shop", "products") and brand suffixes
+// ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
+function coreBrandQueryTokens(normalizedQuery) {
+  return tokenizeBrandText(normalizedQuery).filter(
+    (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
+  );
+}
+
+// "Danessa Myricks" for the catalog brand "Danessa Myricks Beauty"
+// (GATEWAY_CATALOG_BRAND_LONG_TAIL, default OFF -> always null). Brand-only by
+// construction: the WHOLE core query must equal the stripped name.
+function matchStrippedCatalogBeautyBrand(normalizedQuery) {
+  const coreTokens = coreBrandQueryTokens(normalizedQuery);
+  const core = coreTokens.join(' ');
+  if (!core) return null;
+  // The name alone first; then (GATEWAY_CATALOG_BRAND_STRIPPED_CATEGORY) a multi-token
+  // stripped name leading the query with more words after it ("Danessa Myricks blush").
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedName(core) ||
+    brandDictionaryCache.matchCatalogBeautyBrandByStrippedLeadingSpan(coreTokens);
+  if (!hit) return null;
+  const alias = normalizeBrandText(hit.alias);
+  if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(alias) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(alias)) {
+    return null;
+  }
+  return hit;
+}
+
 // A brand the static lexicon does not list, recognised because the catalog
 // stocks it as predominantly beauty (brandDictionaryCache.matchCatalogBeautyBrand;
 // GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT, default OFF -> always null).
 function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}) {
-  const hit = brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery);
+  const hit =
+    brandDictionaryCache.matchCatalogBeautyBrand(normalizedQuery, {
+      isWeakRegularKey: (key) => AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(key),
+    }) ||
+    matchStrippedCatalogBeautyBrand(normalizedQuery);
   if (!hit) return null;
   const queryTokens = tokenizeBrandText(normalizedQuery);
   const aliasTokens = new Set(tokenizeBrandText(hit.alias));
