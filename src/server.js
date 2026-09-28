@@ -308,6 +308,7 @@ const {
   isRecallDocMatchEnabled: isCanonicalRecallDocMatchEnabled,
   isSetDiversityEnabled: isCanonicalSetDiversityEnabled,
   formAgreementEffectiveFor: canonicalFormAgreementEffectiveFor,
+  isServedPriceAsOfEnabled: isCanonicalServedPriceAsOfEnabled,
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
 const marketTelemetry = require('./services/marketTelemetry');
@@ -12276,6 +12277,12 @@ function projectSearchTransportProduct(product, stats = null) {
     'price',
     'price_amount',
     'currency',
+    // When the price was last read, and the writer's stated confidence in it. This is an explicit
+    // allowlist applied at every find_products_multi exit, so a field left out of it is simply absent
+    // from the response, indistinguishable from a product that never had one. The live merchant
+    // lane's `price_as_of` was stripped here the same way.
+    'price_as_of',
+    'price_confidence',
     'in_stock',
     'availability',
     'inventory_quantity',
@@ -17471,7 +17478,50 @@ function resolveCanonicalOfferDerivedPrice(row) {
   if (!currency || !Number.isFinite(amount) || amount <= 0) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
   }
-  return { priced: true, amount, currency };
+  // WHEN IT WAS TRUE, off the SAME offer row, for the reason the currency is: an as-of or a
+  // confidence taken from anywhere else would describe a number this row does not carry.
+  // Absent rather than guessed: a row with no usable stamp yields no as_of, never "now", which
+  // would claim a read nobody made.
+  const asOf = normalizeCanonicalPriceAsOf(row.price_checked_at);
+  const confidence = normalizeCanonicalPriceConfidence(row.price_confidence);
+  return {
+    priced: true,
+    amount,
+    currency,
+    ...(asOf ? { as_of: asOf } : {}),
+    ...(confidence != null ? { confidence } : {}),
+  };
+}
+
+// `catalog_offers.price_checked_at` as a UTC ISO-8601 instant, or null.
+//
+// pg hands a timestamptz back as a Date; a string is accepted for callers that serialized one.
+// Anything short of a full date AND time is refused rather than parsed: V8 reads '2026' or
+// '9/8/2026' as instants nobody asserted, and `String(0)` would become the year 2000.
+function normalizeCanonicalPriceAsOf(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value !== 'string') return null;
+  let text = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(text)) return null;
+  text = text.replace(' ', 'T');
+  // Postgres renders a zero offset as `+00`, which Date does not parse; a time with no zone at all
+  // would be read as LOCAL time, so it is refused rather than assumed to be UTC.
+  if (/[+-]\d{2}$/.test(text)) text += ':00';
+  else if (!/(Z|[+-]\d{2}:?\d{2})$/.test(text)) return null;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+// NOT `Number(value)`: Number(null) is 0, a real confidence meaning "we do not believe this
+// price", and Number(true) / Number([0.5]) are 1 and 0.5. Only a number or a numeric string is
+// a confidence; anything else is absent.
+function normalizeCanonicalPriceConfidence(value) {
+  const scalar = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '');
+  if (!scalar) return null;
+  const confidence = Number(value);
+  return Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : null;
 }
 
 function buildCanonicalChainMainlineProduct(row) {
@@ -17684,7 +17734,20 @@ function buildCanonicalChainMainlineProduct(row) {
     // even when there was no price, which is where the hardcoded 'USD' default
     // surfaced. A price-less product now carries a reason code instead.
     ...(offerPrice.priced
-      ? { price: offerPrice.amount, currency: offerPrice.currency }
+      ? {
+          price: offerPrice.amount,
+          currency: offerPrice.currency,
+          // Only while CANONICAL_CATALOG_SERVED_PRICE_AS_OF is armed. The same flag puts
+          // price_checked_at in the SQL. price_confidence is on every offer row already, but
+          // today it is a per-writer constant (0.70 on every enrichment-agent offer), not a
+          // reading of this row, so it ships with the as-of rather than on its own.
+          ...(isCanonicalServedPriceAsOfEnabled()
+            ? {
+                ...(offerPrice.as_of ? { price_as_of: offerPrice.as_of } : {}),
+                ...(offerPrice.confidence != null ? { price_confidence: offerPrice.confidence } : {}),
+              }
+            : {}),
+        }
       : { price_absent_reason: offerPrice.reason }),
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
@@ -51622,6 +51685,7 @@ module.exports._debug = {
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   resolveCanonicalOfferDerivedPrice,
+  projectSearchTransportProduct,
   CANONICAL_NO_OFFER_DERIVED_PRICE_REASON,
   finalizeCitableSupplementItem,
   mergeCanonicalChainProductsWithSeedProducts,

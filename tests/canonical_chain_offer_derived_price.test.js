@@ -226,3 +226,154 @@ describe('mutation guard: the fallback chain must not come back', () => {
     expect(mapper).not.toContain('seedData.price_amount');
   });
 });
+
+describe('the served price states when it was read', () => {
+  // `price_checked_at` is the backend's "we read this price" stamp, carried off the SAME offer row as
+  // the amount (the rule this file enforces for the currency). NOT updated_at: prod 2026-09-28, 85% of
+  // served offers share their updated_at minute with 100+ rows from bulk writes, and 22,530 were
+  // re-read after their last stamp. See isServedPriceAsOfEnabled in canonicalCatalogSearch.js.
+  const FLAG = 'CANONICAL_CATALOG_SERVED_PRICE_AS_OF';
+  let savedFlag;
+  beforeEach(() => {
+    savedFlag = process.env[FLAG];
+    process.env[FLAG] = 'on';
+  });
+  afterEach(() => {
+    if (savedFlag === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = savedFlag;
+  });
+
+  const priced = (overrides) => buildCanonicalChainMainlineProduct(
+    rowWithPayloadPrice({ merchant_effective_price: '28.20', currency: 'SGD', ...overrides }),
+  );
+
+  test('price_as_of and price_confidence come from the offer row, as pg returns them', () => {
+    // timestamptz arrives as a Date, NUMERIC(5,2) as a string.
+    const product = priced({ price_checked_at: new Date('2026-09-08T04:25:42.316Z'), price_confidence: '0.70' });
+    expect(product.price).toBe(28.2);
+    expect(product.currency).toBe('SGD');
+    expect(product.price_as_of).toBe('2026-09-08T04:25:42.316Z');
+    expect(product.price_confidence).toBe(0.7);
+  });
+
+  test('updated_at is never read as the as-of', () => {
+    // The row-write stamp is the tempting wrong answer: it is on every row and it is always recent
+    // after a backfill.
+    const product = priced({ updated_at: '2026-09-28 06:07:00', offer_updated_at: new Date(), price_updated_at: new Date() });
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test('NO stamp means NO price_as_of, never "now"', () => {
+    const product = priced({ price_checked_at: null });
+    expect(product.price).toBe(28.2);
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test('a null confidence is absent, not coerced to 0', () => {
+    // 0 is a real value meaning "we do not believe this price". 5,500 served offers carry NULL.
+    expect(priced({ price_confidence: null })).not.toHaveProperty('price_confidence');
+  });
+
+  test('a real zero confidence IS emitted', () => {
+    expect(priced({ price_confidence: '0' }).price_confidence).toBe(0);
+  });
+
+  test('CONTROL: an unpriced row carries neither field', () => {
+    // Without this, the tests above would also pass with the fields attached outside the priced
+    // branch, dating a price that does not exist.
+    const product = buildCanonicalChainMainlineProduct(rowWithPayloadPrice({
+      merchant_effective_price: null, list_price: null, currency: null,
+      price_checked_at: new Date('2026-09-08T04:25:42.000Z'), price_confidence: '0.9',
+    }));
+    expect(product.price).toBeUndefined();
+    expect(product.price_absent_reason).toBe(CANONICAL_NO_OFFER_DERIVED_PRICE_REASON);
+    expect(product).not.toHaveProperty('price_as_of');
+    expect(product).not.toHaveProperty('price_confidence');
+  });
+
+  test('flag OFF publishes neither, even from a row that carries both', () => {
+    // price_confidence is on every offer row today, but it is a per-writer constant (0.70 on all
+    // 47,005 enrichment-agent offers), so it ships with the as-of, not ahead of it.
+    process.env[FLAG] = 'off';
+    const product = priced({ price_checked_at: new Date('2026-09-08T04:25:42.316Z'), price_confidence: '0.70' });
+    expect(product.price).toBe(28.2);
+    expect(product).not.toHaveProperty('price_as_of');
+    expect(product).not.toHaveProperty('price_confidence');
+  });
+
+  test.each([
+    ['a bare number', 0],
+    ['a negative number', -1],
+    ['a year only', '2026'],
+    ['a us locale date', '9/8/2026'],
+    ['a date with no time', '2026-09-08'],
+    // A zone-less time would be parsed as LOCAL time. price_checked_at is timestamptz; a string
+    // without a zone did not come from it.
+    ['a time with no zone', '2026-09-08 04:25:42.316439'],
+    ['junk', 'not-a-date'],
+    ['an invalid Date', new Date('nope')],
+    ['a boolean', true],
+    ['an object', {}],
+    // Stringifies to a valid timestamp, so the guard has to reject by type.
+    ['an array wrapping a valid timestamp', ['2026-09-08T04:25:42.316Z']],
+  ])('%s yields NO price_as_of', (_label, value) => {
+    const product = priced({ price_checked_at: value });
+    expect(product.price).toBe(28.2);
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test.each([
+    ['a Date', new Date('2026-09-08T04:25:42.316Z')],
+    ['the postgres +00 rendering', '2026-09-08 04:25:42.316439+00'],
+    ['a +08 offset', '2026-09-08 12:25:42.316+08'],
+    ['a full ISO instant', '2026-09-08T04:25:42.316Z'],
+  ])('%s is accepted', (_label, value) => {
+    expect(priced({ price_checked_at: value }).price_as_of).toBe('2026-09-08T04:25:42.316Z');
+  });
+
+  test.each([
+    ['a boolean', true],
+    ['an array', [0.5]],
+    ['an object', {}],
+    ['an empty string', ''],
+    ['above 1', '1.50'],
+    ['negative', '-0.1'],
+  ])('%s is not a price_confidence', (_label, value) => {
+    // Number(true) is 1 and Number([0.5]) is 0.5: either would publish a confidence nobody recorded.
+    expect(priced({ price_confidence: value })).not.toHaveProperty('price_confidence');
+  });
+
+  test('the resolver reads the stamp column and never invents a time', () => {
+    const source = resolveCanonicalOfferDerivedPrice.toString();
+    expect(source).toContain('row.price_checked_at');
+    expect(source).toContain('row.price_confidence');
+    expect(source).not.toContain('updated_at');
+    expect(source).not.toContain('Date.now()');
+    expect(source).not.toMatch(/new Date\(\s*\)/);
+  });
+});
+
+describe('the freshness fields survive the transport projection', () => {
+  const { projectSearchTransportProduct } = server._debug;
+
+  test('price_as_of and price_confidence are not stripped', () => {
+    // An explicit allowlist at every find_products_multi exit: a field missing from it is simply
+    // absent, which looks exactly like a product that never had one.
+    const projected = projectSearchTransportProduct({
+      product_id: 'sig_x', title: 'x', price: 28.2, currency: 'SGD',
+      price_as_of: '2026-09-08T04:25:42.316Z', price_confidence: 0.7,
+    });
+    expect(projected.price).toBe(28.2);
+    expect(projected.price_as_of).toBe('2026-09-08T04:25:42.316Z');
+    expect(projected.price_confidence).toBe(0.7);
+  });
+
+  test('CONTROL: the projection is still an allowlist', () => {
+    const projected = projectSearchTransportProduct({
+      product_id: 'sig_x', title: 'x', _internal_debug_blob: { secret: true }, price_checked_at: 'raw',
+    });
+    expect(projected.product_id).toBe('sig_x');
+    expect(projected).not.toHaveProperty('_internal_debug_blob');
+    expect(projected).not.toHaveProperty('price_checked_at');
+  });
+});

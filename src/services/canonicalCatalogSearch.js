@@ -275,6 +275,25 @@ function readPayloadOnce(fragment) {
   return String(fragment ?? '').replace(/\bp\.product_payload\b/g, 'pp.product_payload');
 }
 
+// WHEN THE SERVED PRICE WAS LAST READ, taken off the served offer row as
+// `catalog_offers.price_checked_at`, a column the backend has yet to add.
+//
+// NOT `updated_at`, which is a row-write stamp. Suppression, currency/market backfills,
+// vocabulary repairs, dedupe merges, and a seed merge that re-read no price all set it to NOW().
+// Measured on prod 2026-09-28 over the 59,877 served offers:
+//   * 50,776 (85%) share their stamp minute with at least 100 other rows (bulk ingest and
+//     backfills);
+//   * 22,530 have a seed price read NEWER than their stamp.
+// Read as an as-of, it would call a backfilled price fresh and a re-read one stale.
+//
+// OFF means the SQL never names the column. Until the backend migration is applied in prod, a
+// reference to it would fail every canonical query, so the flag gates the reference itself,
+// not just what the mapper publishes.
+function isServedPriceAsOfEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF ?? '').trim().toLowerCase();
+  return SINGLE_PAYLOAD_READ_ON_VALUES.has(raw);
+}
+
 // Whether a WHERE fragment reads ONLY the candidate row `p` (plus aliases it declares itself, e.g. an
 // EXISTS over catalog_skus correlated on p). Only such a predicate can be moved into
 // `SELECT p.product_key FROM catalog_products p WHERE ...` unchanged: the inner `p` then shadows the
@@ -1647,6 +1666,10 @@ async function fetchCanonicalChainRows(args = {}) {
           )
         )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
+  // Carried off the SAME offer row as the amount, on both branches (see isServedPriceAsOfEnabled).
+  const priceAsOf = isServedPriceAsOfEnabled();
+  const listingPriceCheckedAtSql = priceAsOf ? '\n        o.price_checked_at,' : '';
+  const servedPriceCheckedAtSql = priceAsOf ? '\n      served.price_checked_at,' : '';
   // Price presence is part of the serving contract on BOTH branches: shopping
   // ingesters reject price-null items. Either way this surfaces ONE
   // representative offer via a LATERAL — amount, currency and availability MUST
@@ -1745,7 +1768,7 @@ async function fetchCanonicalChainRows(args = {}) {
       served.list_price,
       served.merchant_effective_price,
       served.estimated_best_price,
-      served.price_confidence,
+      served.price_confidence,${servedPriceCheckedAtSql}
       served.offer_source_system,
       served.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
@@ -1775,7 +1798,7 @@ async function fetchCanonicalChainRows(args = {}) {
       served.list_price      AS list_price,
       served.merchant_effective_price AS merchant_effective_price,
       NULL::numeric              AS estimated_best_price,
-      NULL::text                 AS price_confidence,
+      served.price_confidence AS price_confidence,${servedPriceCheckedAtSql}
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
@@ -1871,7 +1894,7 @@ async function fetchCanonicalChainRows(args = {}) {
         o.list_price,
         o.merchant_effective_price,
         o.estimated_best_price,
-        o.price_confidence,
+        o.price_confidence,${listingPriceCheckedAtSql}
         o.source_system   AS offer_source_system,
         o.offer_payload,${servedOfferRankColumns}
       FROM catalog_skus s
@@ -1898,7 +1921,10 @@ async function fetchCanonicalChainRows(args = {}) {
         o.offer_id ASC
       LIMIT 1`
     : `
-      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability,${servedOfferRankColumns}
+      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability,
+        -- Was NULL::text in the outer SELECT, so a product served through this branch could never carry the
+        -- confidence its own chosen offer row holds.
+        o.price_confidence,${listingPriceCheckedAtSql}${servedOfferRankColumns}
       FROM catalog_offers o
       WHERE o.product_key = p.product_key
         AND o.suppressed_at IS NULL
@@ -2229,6 +2255,8 @@ module.exports = {
   // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
   isCandidateKeyPrefilterEnabled,
   isSinglePayloadReadEnabled,
+  // Exported so the card mapper publishes the freshness fields only when the SQL carries them.
+  isServedPriceAsOfEnabled,
   // Exported so callers whose lane preserves recall order (the
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
@@ -2274,6 +2302,7 @@ module.exports = {
     isCandidateKeyPrefilterEnabled,
     whereReadsOnlyCandidateRow,
     isSinglePayloadReadEnabled,
+    isServedPriceAsOfEnabled,
     readPayloadOnce,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,

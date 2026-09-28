@@ -173,8 +173,10 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         }
         verified += 1;
         if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
+        // The catalog offer row's confidence described the catalog price, not this reading.
+        const { price_confidence: _catalogConfidence, ...uncatalogued } = card;
         cards[index] = {
-          ...card, price: price.amount, price_amount: price.amount,
+          ...uncatalogued, price: price.amount, price_amount: price.amount,
           currency: price.currency, price_currency: price.currency,
           price_source: 'merchant_live', price_as_of: fetched.asOf,
         };
