@@ -176,6 +176,34 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
       expect(body.total).toBeLessThanOrEqual(200);
     }
   });
+  // CANONICAL_CATALOG_SERVED_PRICE_AS_OF armed while catalog_offers has no price_checked_at (armed
+  // early, or pivota-backend #2422's heal deferred): this fixture's tables are built from the flag-off
+  // statement, so the column is missing exactly as in prod before the heal lands.
+  test('armed without price_checked_at: 200 cards without price_as_of, never a 503',async()=>{
+    process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF='on';
+    const res=await invoke('MISSHA serum');
+    expect(res.status).toBe(200);expect(res.body.status).toBe('success');
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0].price).toBe(20);
+    expect(res.body.products[0]).not.toHaveProperty('price_as_of');
+    expect(sqlCalls).toHaveLength(2);
+    expect(sqlCalls[0].sql).toContain('o.price_checked_at');
+    expect(sqlCalls[1].sql).not.toContain('price_checked_at');
+  });
+  test('armed with price_checked_at: the card carries the served offer\'s read time',async()=>{
+    await db.query('ALTER TABLE catalog_offers ADD COLUMN price_checked_at timestamptz');
+    try {
+      await db.query("UPDATE catalog_offers SET price_checked_at='2026-09-29T05:15:00Z' WHERE offer_id='murad_serum'");
+      process.env.CANONICAL_CATALOG_SERVED_PRICE_AS_OF='on';
+      const res=await invoke('MISSHA serum');
+      expect(res.status).toBe(200);expect(res.body.products).toHaveLength(1);
+      expect(res.body.products[0].price_as_of).toBe('2026-09-29T05:15:00.000Z');
+      expect(res.body.products[0]).not.toHaveProperty('price_confidence');
+      expect(sqlCalls).toHaveLength(1);
+    } finally {
+      await db.query('ALTER TABLE catalog_offers DROP COLUMN price_checked_at');
+    }
+  });
   test('a primary SQL failure propagates instead of succeeding on seed data',async()=>{
     failCanonical=true;
     const res=await invoke('MAC lipstick');

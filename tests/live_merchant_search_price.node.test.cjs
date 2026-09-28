@@ -220,3 +220,23 @@ test('restating the source_product_id follows isRestatedProductId, in its argume
   // but a variant id is never judged a restatement because the PRODUCT id extends IT
   assert.equal(targetOf({ ...slug, source_variant_id: 'kiss' }).variant, 'kiss');
 });
+
+test('a live price carries its own as-of; a failed read keeps the catalog as-of', async () => {
+  const catalogCard = {
+    ...card, destination_url: 'https://freshness-shop.sg/products/serum-gloss',
+    price_as_of: '2026-09-01T05:15:00.000Z',
+  };
+  const live = await overlayLiveMerchantSearchPrices({ products: [catalogCard] }, {
+    fetchImpl: async () => ({ ok: true, json: async () => body }),
+  });
+  assert.equal(live.products[0].price, 30);
+  assert.equal(live.products[0].price_source, 'merchant_live');
+  assert.ok(Date.parse(live.products[0].price_as_of) > Date.parse(catalogCard.price_as_of));
+
+  const failed = await overlayLiveMerchantSearchPrices({
+    products: [{ ...catalogCard, destination_url: 'https://freshness-down.sg/products/serum-gloss' }],
+  }, { fetchImpl: async () => { throw new Error('unavailable'); } });
+  assert.equal(failed.products[0].price, 28.2);
+  assert.equal(failed.products[0].price_source, 'catalog_offer');
+  assert.equal(failed.products[0].price_as_of, catalogCard.price_as_of);
+});
