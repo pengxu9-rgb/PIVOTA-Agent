@@ -25,8 +25,8 @@ function score(anchor, candidate, options) {
 describe('relationship graph scoring: category agreement is capped evidence', () => {
   test('two products sharing only a one-word category do not score as near-identical', () => {
     const out = score(
-      { product_ref: 'product:sig_a', brand: 'X', name: 'Alpha Beta', category: 'mask', price: 20 },
-      { product_ref: 'product:sig_b', brand: 'Y', name: 'Gamma Delta', category: 'mask', price: 10 },
+      { product_ref: 'product:sig_a', brand: 'X', name: 'Alpha Beta', category: 'mask', price: 20, price_currency: 'USD' },
+      { product_ref: 'product:sig_b', brand: 'Y', name: 'Gamma Delta', category: 'mask', price: 10, price_currency: 'USD' },
     );
 
     expect(out.category_use_case_match).toBe(0.72);
@@ -80,12 +80,14 @@ describe('relationship graph builder: a dupe needs product evidence beyond the s
     name: 'Skin Aqua UV Super Moisture Essence Sunscreen SPF50+ PA++++ 2.8oz',
     category: 'sunscreen',
     price: 14,
+    price_currency: 'USD',
   };
   function candidate(overrides = {}) {
     return {
       brand: 'Other',
       category: 'sunscreen',
       price: 9,
+      price_currency: 'USD',
       category_use_case_match: 1,
       ingredient_functional_similarity: 1,
       similarity_score: 1,

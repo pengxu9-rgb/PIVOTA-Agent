@@ -19,6 +19,7 @@ const {
   neutralizeClaimValue,
   neutralizeSnapshotClaims,
 } = require('./relationshipClaimPhrases');
+const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 
 // One candidate may serve at most this many anchors as a dupe / competitive_alternative in ONE
 // BUILD. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
@@ -1265,6 +1266,18 @@ function normalizeProductSnapshot(input = {}) {
   };
 }
 
+// { amount, currency } of each side, each read from the record that holds the amount.
+function anchorPriceOf(anchorSnapshot) {
+  return readPriceWithCurrency([[anchorSnapshot, 'price'], [anchorSnapshot, 'price_amount']], toNumberOrNull);
+}
+
+function candidatePriceOf(candidateSnapshot, candidate) {
+  return readPriceWithCurrency(
+    [[candidateSnapshot, 'price'], [candidateSnapshot, 'price_amount'], [candidate, 'price']],
+    toNumberOrNull,
+  );
+}
+
 function extractScore(candidate, names, fallback = 0) {
   const src = isPlainObject(candidate) ? candidate : {};
   const breakdown = isPlainObject(src.score_breakdown || src.scoreBreakdown)
@@ -1479,11 +1492,9 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
   // The sources scorer already folds ingredient / category evidence into similarity_score; taking
   // the max over its components again let an identical tag list (ingredient 1.0) saturate the edge.
   const scoreTotal = explicitSim > 0 ? explicitSim : Math.max(ingredientScore, categoryScore * 0.75);
-  const anchorPrice = toNumberOrNull(anchorSnapshot.price ?? anchorSnapshot.price_amount);
-  const candidatePrice = toNumberOrNull(candidateSnapshot.price ?? candidateSnapshot.price_amount ?? candidate.price);
-  const priceRatio = anchorPrice != null && candidatePrice != null && anchorPrice > 0
-    ? candidatePrice / anchorPrice
-    : null;
+  // No ratio across two currencies, or with either currency unknown: without it no edge is a dupe
+  // ("lower-priced") and price_advantage is 0.
+  const priceRatio = comparablePriceRatio(anchorPriceOf(anchorSnapshot), candidatePriceOf(candidateSnapshot, candidate));
   const setCompatibility = setCompositionCompatibility(anchorSnapshot, candidateSnapshot);
   const formCompatibility = productFormCompatibility(anchorSnapshot, candidateSnapshot);
   const jobCompatibility = productJobCompatibility(anchorSnapshot, candidateSnapshot);
@@ -1654,8 +1665,8 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
       metrics: inferred,
     };
   }
-  const anchorPrice = toNumberOrNull(anchorNorm.snapshot.price ?? anchorNorm.snapshot.price_amount);
-  const candidatePrice = toNumberOrNull(candidateNorm.snapshot.price ?? candidateNorm.snapshot.price_amount ?? candidate.price);
+  const anchorPrice = anchorPriceOf(anchorNorm.snapshot);
+  const candidatePrice = candidatePriceOf(candidateNorm.snapshot, candidate);
   const observedAt = normalizeString(candidate.price_observed_at || candidate.priceObservedAt || candidate.observed_at || nowIso);
   const sourceRefs = buildSourceRefs(candidate);
   // Social proof a social / review source_ref supports is a sourced claim; the audit accepts it and
@@ -1686,9 +1697,13 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
       social_reference_strength: extractScore(candidate, ['social_reference_strength'], 0),
       score_total: inferred.scoreTotal,
     },
+    // Each amount carries its own currency (null = unknown). The currency keys also mark the
+    // evidence as currency-aware: validation never rebuilds a price_ratio the builder refused.
     price_evidence: {
-      anchor_price_amount: anchorPrice,
-      candidate_price_amount: candidatePrice,
+      anchor_price_amount: anchorPrice.amount,
+      anchor_price_currency: anchorPrice.currency,
+      candidate_price_amount: candidatePrice.amount,
+      candidate_price_currency: candidatePrice.currency,
       price_ratio: inferred.priceRatio,
       observed_at: observedAt,
     },
@@ -1732,6 +1747,7 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
   const nicheSourceRefs = buildSourceRefs(candidate);
   const nicheClaims = hasSupportingSocialSource(nicheSourceRefs) ? keepClaims : stripClaims;
   const nicheSummary = `Specialist candidate for ${normalizeString(needObj.label || needObj.need_id)}.`;
+  const nichePrice = readPriceWithCurrency([[candidateNorm.snapshot, 'price'], [candidate, 'price']], toNumberOrNull);
   const edge = coerceRelationshipEdge({
     anchor_type: 'need',
     anchor_ref: normalizeString(needObj.need_id || needObj.id || needObj.label, 260),
@@ -1751,7 +1767,8 @@ function buildNicheSpecialistEdge({ need, candidate, market = 'US', nowIso, revi
       score_total: extractScore(candidate, ['score_total', 'similarity_score'], 0.72),
     },
     price_evidence: {
-      candidate_price_amount: toNumberOrNull(candidateNorm.snapshot.price ?? candidate.price),
+      candidate_price_amount: nichePrice.amount,
+      candidate_price_currency: nichePrice.currency,
       observed_at: normalizeString(candidate.price_observed_at || candidate.priceObservedAt || candidate.observed_at || nowIso),
     },
     source_refs: nicheSourceRefs,

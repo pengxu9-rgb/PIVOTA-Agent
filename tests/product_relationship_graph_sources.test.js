@@ -342,6 +342,7 @@ describe('product relationship graph source loaders', () => {
       category: 'serum',
       availability: 'out_of_stock',
       price_amount: '18.50',
+      price_currency: 'USD',
       canonical_url: 'https://example.test/products/barrier-serum',
       seed_data: {
         brand: 'Value Lab',
@@ -387,6 +388,7 @@ describe('product relationship graph source loaders', () => {
         category: 'serum',
         availability: 'out_of_stock',
         price: 18.5,
+        price_currency: 'USD',
         evidence_grade: 'B',
         observed_at: NOW,
       }),
@@ -421,6 +423,7 @@ describe('product relationship graph source loaders', () => {
         pdp_description_raw: 'Seed description.',
       },
       price_amount: '22.00',
+      price_currency: 'USD',
       catalog_product_key: 'cp_public_serum',
       catalog_title: 'Catalog Barrier Serum',
       catalog_brand: 'Catalog Brand',
@@ -442,6 +445,7 @@ describe('product relationship graph source loaders', () => {
         name: 'Catalog Barrier Serum',
         category: 'serum',
         price: 22,
+        price_currency: 'USD',
         product_family_id: 'line_barrier_serum',
         observed_at: NOW,
       }),
@@ -666,6 +670,7 @@ describe('product relationship graph candidate map enrichment', () => {
         description: 'Ceramide peptide serum for barrier support and fragrance-free routines.',
         tags: ['ceramide', 'peptide', 'barrier'],
         price: 80,
+        price_currency: 'USD',
       },
     ];
     const products = [
@@ -679,6 +684,7 @@ describe('product relationship graph candidate map enrichment', () => {
         description: 'Ceramide peptide barrier serum.',
         ingredient_text: 'ceramide peptide glycerin',
         price: 32,
+        price_currency: 'USD',
         source_refs: [{ type: 'products_cache', authoritative: true }],
         observed_at: NOW,
       },
@@ -692,6 +698,7 @@ describe('product relationship graph candidate map enrichment', () => {
         description: 'Ceramide peptide barrier serum with hydration support.',
         ingredient_text: 'ceramide peptide glycerin panthenol',
         price: 28,
+        price_currency: 'USD',
         source_refs: [{ type: 'external_product_seed', authoritative: true }],
         observed_at: NOW,
       },
@@ -703,6 +710,7 @@ describe('product relationship graph candidate map enrichment', () => {
         category_taxonomy: ['body care', 'lotion'],
         description: 'A scented body lotion.',
         price: 12,
+        price_currency: 'USD',
         source_refs: [{ type: 'products_cache', authoritative: true }],
       },
     ];
@@ -746,6 +754,7 @@ describe('product relationship graph candidate map enrichment', () => {
             description: 'Ceramide peptide serum for barrier support.',
             ingredient_text: 'ceramide peptide glycerin',
             price: 25,
+            price_currency: 'USD',
           },
         ],
         comparables: [],
@@ -785,6 +794,7 @@ describe('product relationship graph candidate map enrichment', () => {
         category: null,
         description: 'Instant retouch complexion concealer.',
         price: 30,
+        price_currency: 'USD',
       },
     ];
     const products = [
@@ -795,6 +805,7 @@ describe('product relationship graph candidate map enrichment', () => {
         category: null,
         description: 'Same concealer family in another shade.',
         price: 30,
+        price_currency: 'USD',
         source_refs: [{ type: 'products_cache', authoritative: true }],
       },
       {
@@ -804,6 +815,7 @@ describe('product relationship graph candidate map enrichment', () => {
         category: null,
         description: 'Retouch concealer for complexion coverage.',
         price: 12,
+        price_currency: 'USD',
         source_refs: [{ type: 'products_cache', authoritative: true }],
       },
       {
@@ -813,6 +825,7 @@ describe('product relationship graph candidate map enrichment', () => {
         category: null,
         description: 'Retouch concealer for complexion coverage.',
         price: 11,
+        price_currency: 'USD',
         source_refs: [{ type: 'external_product_seed', authoritative: true }],
       },
     ];
