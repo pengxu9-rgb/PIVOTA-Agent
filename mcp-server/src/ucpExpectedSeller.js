@@ -11,7 +11,7 @@
 //     carries (`online_store_url`, `external_redirect_url` — both derived by the backend from the merchant's
 //     verified connected store). A native row with none of these and no explicit field cannot be confirmed:
 //     its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for.
-// A Pivota attribution hop (`https://api.pivota.cc/r?token=<JWT>`, as the live demo rows carry) is judged by the
+// A Pivota attribution hop (`https://api.pivota.cc/r?token=<payload>.<sig>`, as the live demo rows carry) is judged by the
 // `dest` in its token payload (see `pivotaHopDestination`). Any other Pivota host, a redirector (a URL carrying
 // another URL outside `ref` / `utm_*`), a URL that is not https, carries userinfo, or does not parse is
 // UNCONFIRMED — fail closed, whatever its host.
@@ -97,14 +97,21 @@ function carriesAnotherUrl(parsed) {
   return /https?:\/|\/\/[^/]/i.test(path.slice(1));
 }
 
-// PIVOTA'S OWN ATTRIBUTION HOP: `https://api.pivota.cc/r?token=<JWT>` (or agent.pivota.cc), minted by the backend
-// and stored on the row as `external_redirect_url` — the live judydoll demo row carries exactly this. The JWT's
-// payload `dest` is where the hop sends the buyer, so THAT is the destination judged.
+// PIVOTA'S OWN ATTRIBUTION HOP: `https://api.pivota.cc/r?token=<payload>.<sig>` (or agent.pivota.cc), minted by the
+// backend and stored on the row as `external_redirect_url` — the live judydoll demo row carries exactly this. The
+// token payload's `dest` is where the hop sends the buyer, so THAT is the destination judged.
 export const PIVOTA_HOP_HOSTS = Object.freeze(["api.pivota.cc", "agent.pivota.cc"]);
 
 /**
  * `{ dest }` for a Pivota `/r?token=` hop, `{ bad: true }` for one that cannot be read, `null` for any other URL.
- * The token payload (the middle JWT segment, base64url JSON) is DECODED, NOT VERIFIED: every URL this module judges
+ *
+ * THE TOKEN IS THE BACKEND'S OWN TWO-SEGMENT FORMAT, not a JWT: `<b64url(payload JSON)>.<b64url(HMAC-SHA256)>`,
+ * payload FIRST, padding stripped, no header (pivota-backend `services/outbound_links_service.py`
+ * `make_redirect_token`; every `/r?token=` minter on main calls it — routes/agent_shop_gateway.py, agent_api.py,
+ * agent_sdk_fixed.py, employee_products.py, outbound_links_service.py — and `parse_redirect_token_verified` reads
+ * the same shape). So EXACTLY two non-empty base64url segments; any other count is not a token we mint.
+ *
+ * The payload is DECODED, NOT VERIFIED (the HMAC key is the backend's): every URL this module judges
  * comes from Pivota's own backend row read (`external_redirect_url`, `online_store_url`) — never from the caller,
  * whose only input is the expected host — so the signature adds nothing here. A caller cannot put a URL in front
  * of this function. If that ever changes, verify the token before trusting `dest`.
@@ -115,9 +122,9 @@ export function pivotaHopDestination(parsed) {
   const tokens = parsed.searchParams.getAll("token");
   if (tokens.length !== 1) return { bad: true };
   const parts = tokens[0].split(".");
-  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1])) return { bad: true };
+  if (parts.length !== 2 || !parts.every((p) => /^[A-Za-z0-9_-]+$/.test(p))) return { bad: true };
   let payload;
-  try { payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")); } catch { return { bad: true }; }
+  try { payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")); } catch { return { bad: true }; }
   const dest = isPlainObject(payload) ? str(payload.dest) : null;
   return dest ? { dest } : { bad: true };
 }

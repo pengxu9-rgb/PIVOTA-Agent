@@ -346,16 +346,19 @@ refused `ucp_unknown_field`, as on main.
     - A native row with none of these and no explicit field is `seller_unconfirmed`.
     - Its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for,
       so it is never used.
-  - A **Pivota attribution hop** (`https://api.pivota.cc/r?token=<JWT>` or the same on
+  - A **Pivota attribution hop** (`https://api.pivota.cc/r?token=…` or the same on
     `agent.pivota.cc`, path exactly `/r`) is judged by the `dest` in its token payload, under the same
-    rules. The live demo rows carry exactly this: judydoll's `external_redirect_url` is such a hop to
+    rules. The token is the backend's own two-segment format, not a JWT: `<b64url(payload
+    JSON)>.<b64url(HMAC-SHA256)>`, payload first, no header, padding stripped (pivota-backend
+    `make_redirect_token`; every `/r` minter on main uses it). The payload carries `v`, `t`, `market`,
+    `dest`, `ctx`, `iat` and `exp`. The live demo rows carry exactly this: judydoll's `external_redirect_url` is such a hop to
     `https://judydoll.com/products/…`. So a hop to the expected seller passes, the attributed link is
     handed out unchanged, and a hop to another seller is refused.
     - The token is **decoded, not verified**. Every URL judged here comes from Pivota's own backend row;
       the caller supplies only the expected host. If a caller-supplied URL ever reaches this check, the
       token must be verified first.
-    - The hop is unconfirmed if: the token is malformed (not three segments, the payload is not
-      base64url JSON, or not an object); `dest` is missing, not https, carries userinfo, or is itself a
+    - The hop is unconfirmed if: the token is malformed (not exactly two non-empty base64url
+      segments, or the first is not base64url JSON of an object); `dest` is missing, not https, carries userinfo, or is itself a
       hop; or there is more than one `token`.
   - Any other destination is **unconfirmed** (fail closed, whatever its host) when it:
     - is any other Pivota host or path;

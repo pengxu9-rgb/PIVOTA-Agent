@@ -577,35 +577,53 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
     }
   });
 
-  // The LIVE judydoll demo row's shape (sig_6433c8107859a484fb72d14861e84690): its external_redirect_url is a
-  // Pivota attribution hop whose JWT payload `dest` is the merchant's own PDP.
-  const hopToken = (payload) => ["eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9", Buffer.from(JSON.stringify(payload)).toString("base64url"), "c2lnbmF0dXJl"].join(".");
-  const JUDY_DEST = "https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&utm_medium=agent&utm_campaign=reap_demo";
-  const JUDY_PAYLOAD = { dest: JUDY_DEST, merchant_canonical_url: "https://judydoll.com", destination_url: "https://judydoll.com/products/silky-matte-lip-ink", click_id: "clk_1", exp: 1790000000 };
-  const judyHop = (payload = JUDY_PAYLOAD, host = "api.pivota.cc") => `https://${host}/r?token=${hopToken(payload)}`;
+  // The LIVE judydoll demo row (sig_6433c8107859a484fb72d14861e84690), read 2026-09-29 via search_catalog: its
+  // external_redirect_url is a Pivota /r hop carrying the backend's own TWO-segment token
+  // (`<b64url(payload JSON)>.<b64url(HMAC-SHA256)>`, pivota-backend make_redirect_token), payload first.
+  const LIVE_JUDY_TOKEN = "eyJ2IjowLCJ0IjoicmVkaXJlY3QiLCJtYXJrZXQiOiJVUyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsIm1hcmtldF9vYnNlcnZlZCI6dHJ1ZSwiZGVzdCI6Imh0dHBzOi8vanVkeWRvbGwuY29tL3Byb2R1Y3RzL3NpbGt5LW1hdHRlLWxpcC1pbms_dmFyaWFudD00OTgxOTI2NzMwMTY1MyZ1dG1fc291cmNlPXBpdm90YSZ1dG1fbWVkaXVtPWFmZmlsaWF0ZSZ1dG1fY2FtcGFpZ249VVMmcHZ0X2NsaWNrX2lkPWNsa18zNjQ1YmYyZjdkMDk0OWZmYTMxYTRlZjEmdXRtX2NvbnRlbnQ9Y2xrXzM2NDViZjJmN2QwOTQ5ZmZhMzFhNGVmMSIsImN0eCI6eyJzZWVkSWQiOiJlcHN2XzM4YWQ4OGQ0MzZjMzJlMjRiYTdjNjQ0NiIsInNvdXJjZSI6ImV4dGVybmFsX3NlZWRfbGlua3MiLCJwdnRfY2xpY2tfaWQiOiJjbGtfMzY0NWJmMmY3ZDA5NDlmZmEzMWE0ZWYxIiwicHZ0X3N1cmZhY2UiOiJjcmVhdG9yX2FnZW50cyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsImpvaW5fbW9kZSI6InJlZmVycmFsX29ubHkifSwiaWF0IjoxNzkwNjUzMTYyLCJleHAiOjE3OTEyNTc5NjJ9.z2eUZz-tCUGToldwJc-Y_i4XNkDV39QTgKj27vCzVyE";
+  const [LIVE_PAYLOAD_B64, LIVE_SIG] = LIVE_JUDY_TOKEN.split(".");
+  const JUDY_PAYLOAD = JSON.parse(Buffer.from(LIVE_PAYLOAD_B64, "base64url").toString("utf8"));
+  // The backend's format for any payload (the signature is not checked here, so the live one is reused).
+  const hopToken = (payload) => `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.${LIVE_SIG}`;
+  const judyHop = (payload = null, host = "api.pivota.cc") => `https://${host}/r?token=${payload === null ? LIVE_JUDY_TOKEN : hopToken(payload)}`;
+
+  test("the live token IS the backend's two-segment shape and its payload is what the backend documents", () => {
+    assert.equal(LIVE_JUDY_TOKEN.split(".").length, 2);
+    assert.deepEqual(Object.keys(JUDY_PAYLOAD).sort(), ["ctx", "dest", "exp", "iat", "market", "market_observed", "t", "tool", "v"]);
+    assert.equal(JUDY_PAYLOAD.t, "redirect");
+    assert.match(JUDY_PAYLOAD.dest, /^https:\/\/judydoll\.com\/products\/silky-matte-lip-ink\?variant=49819267301653&/);
+  });
 
   test("a Pivota /r?token= hop is judged by its token's `dest` (the live demo row passes for its own seller only)", () => {
     const j = lane.judgeSellerUrl;
     for (const expected of ["judydoll.com", "www.judydoll.com", "JUDYDOLL.COM"]) assert.deepEqual(j(expected, judyHop()), { ok: true }, expected);
-    assert.deepEqual(j("judydoll.com", judyHop(JUDY_PAYLOAD, "agent.pivota.cc")), { ok: true }, "agent.pivota.cc hop too");
+    assert.deepEqual(j("judydoll.com", judyHop(null, "agent.pivota.cc")), { ok: true }, "agent.pivota.cc hop too");
     assert.deepEqual(j("other-seller.example", judyHop()), { ok: false, cause: "different_seller", host: "judydoll.com" });
     assert.deepEqual(j("judydoll.co", judyHop()), { ok: false, cause: "different_seller", host: "judydoll.com" });
+    // A re-encoding of the live payload with `dest` on ANOTHER host is that host's link.
+    assert.deepEqual(j("judydoll.com", judyHop({ ...JUDY_PAYLOAD, dest: "https://other-seller.example/products/x?variant=1" })), { ok: false, cause: "different_seller", host: "other-seller.example" });
     // Unreadable hops: fail closed.
+    const b64 = (v) => Buffer.from(typeof v === "string" ? v : JSON.stringify(v)).toString("base64url");
     const unconfirmed = [
-      ["two segments", `https://api.pivota.cc/r?token=aaa.${Buffer.from(JSON.stringify(JUDY_PAYLOAD)).toString("base64url")}`],
-      ["payload not base64url JSON", "https://api.pivota.cc/r?token=aaa.!!!.ccc"],
-      ["payload not JSON", `https://api.pivota.cc/r?token=aaa.${Buffer.from("not json").toString("base64url")}.ccc`],
+      ["three segments (a JWT is not what the backend mints)", `https://api.pivota.cc/r?token=eyJhbGciOiJIUzI1NiJ9.${LIVE_PAYLOAD_B64}.${LIVE_SIG}`],
+      ["three segments whose first IS a readable payload", `https://api.pivota.cc/r?token=${LIVE_PAYLOAD_B64}.${LIVE_SIG}.${LIVE_SIG}`],
+      ["one segment", `https://api.pivota.cc/r?token=${LIVE_PAYLOAD_B64}`],
+      ["empty signature", `https://api.pivota.cc/r?token=${LIVE_PAYLOAD_B64}.`],
+      ["empty payload", `https://api.pivota.cc/r?token=.${LIVE_SIG}`],
+      ["payload not base64url", `https://api.pivota.cc/r?token=!!!.${LIVE_SIG}`],
+      ["payload not JSON", `https://api.pivota.cc/r?token=${b64("not json")}.${LIVE_SIG}`],
+      ["signature segment first", `https://api.pivota.cc/r?token=${LIVE_SIG}.${LIVE_PAYLOAD_B64}`],
       ["payload not an object", judyHop(["https://judydoll.com/p"])],
-      ["no dest", judyHop({ merchant_canonical_url: "https://judydoll.com" })],
-      ["dest http", judyHop({ dest: "http://judydoll.com/p" })],
-      ["dest with userinfo", judyHop({ dest: "https://u:p@judydoll.com/p" })],
-      ["dest itself a hop", judyHop({ dest: judyHop() })],
-      ["dest carries another URL", judyHop({ dest: "https://judydoll.com/go?url=https://other-seller.example/p" })],
-      ["dest unparseable", judyHop({ dest: "not a url" })],
-      ["two token params", `${judyHop()}&token=${hopToken(JUDY_PAYLOAD)}`],
-      ["not exactly /r", `https://api.pivota.cc/r/?token=${hopToken(JUDY_PAYLOAD)}`],
-      ["another Pivota host", `https://pivota.cc/r?token=${hopToken(JUDY_PAYLOAD)}`],
-      ["the hop over http", `http://api.pivota.cc/r?token=${hopToken(JUDY_PAYLOAD)}`],
+      ["no dest", judyHop({ ...JUDY_PAYLOAD, dest: undefined })],
+      ["dest http", judyHop({ ...JUDY_PAYLOAD, dest: "http://judydoll.com/p" })],
+      ["dest with userinfo", judyHop({ ...JUDY_PAYLOAD, dest: "https://u:p@judydoll.com/p" })],
+      ["dest itself a hop", judyHop({ ...JUDY_PAYLOAD, dest: judyHop() })],
+      ["dest carries another URL", judyHop({ ...JUDY_PAYLOAD, dest: "https://judydoll.com/go?url=https://other-seller.example/p" })],
+      ["dest unparseable", judyHop({ ...JUDY_PAYLOAD, dest: "not a url" })],
+      ["two token params", `${judyHop()}&token=${LIVE_JUDY_TOKEN}`],
+      ["not exactly /r", `https://api.pivota.cc/r/?token=${LIVE_JUDY_TOKEN}`],
+      ["another Pivota host", `https://pivota.cc/r?token=${LIVE_JUDY_TOKEN}`],
+      ["the hop over http", `http://api.pivota.cc/r?token=${LIVE_JUDY_TOKEN}`],
     ];
     for (const [label, url] of unconfirmed) assert.deepEqual(j("judydoll.com", url), { ok: false, cause: "seller_unconfirmed" }, label);
   });

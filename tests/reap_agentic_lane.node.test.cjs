@@ -1404,13 +1404,13 @@ test('seller IN, MATCH reads each product ONCE: the door and every route share t
 
 // THE LIVE DEMO ROW (round 3): judydoll's "Silky Matte Lip Ink", an external-seed row whose external_redirect_url is a
 // Pivota attribution hop. The hop's token payload `dest` is the merchant's own PDP; that is the seller judged.
-const hopToken = (payload) => ['eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9', Buffer.from(JSON.stringify(payload)).toString('base64url'), 'c2lnbmF0dXJl'].join('.');
-const JUDY_HOP = `https://api.pivota.cc/r?token=${hopToken({
-  dest: 'https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&utm_medium=agent&utm_campaign=reap_demo',
-  merchant_canonical_url: 'https://judydoll.com',
-  destination_url: 'https://judydoll.com/products/silky-matte-lip-ink',
-  click_id: 'clk_fixture',
-})}`;
+// The live row's external_redirect_url token, read 2026-09-29 via search_catalog: the backend's TWO-segment format
+// (`<b64url(payload JSON)>.<b64url(HMAC-SHA256)>`, pivota-backend make_redirect_token). Its payload `dest` is
+// https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&…
+const LIVE_JUDY_TOKEN = 'eyJ2IjowLCJ0IjoicmVkaXJlY3QiLCJtYXJrZXQiOiJVUyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsIm1hcmtldF9vYnNlcnZlZCI6dHJ1ZSwiZGVzdCI6Imh0dHBzOi8vanVkeWRvbGwuY29tL3Byb2R1Y3RzL3NpbGt5LW1hdHRlLWxpcC1pbms_dmFyaWFudD00OTgxOTI2NzMwMTY1MyZ1dG1fc291cmNlPXBpdm90YSZ1dG1fbWVkaXVtPWFmZmlsaWF0ZSZ1dG1fY2FtcGFpZ249VVMmcHZ0X2NsaWNrX2lkPWNsa18zNjQ1YmYyZjdkMDk0OWZmYTMxYTRlZjEmdXRtX2NvbnRlbnQ9Y2xrXzM2NDViZjJmN2QwOTQ5ZmZhMzFhNGVmMSIsImN0eCI6eyJzZWVkSWQiOiJlcHN2XzM4YWQ4OGQ0MzZjMzJlMjRiYTdjNjQ0NiIsInNvdXJjZSI6ImV4dGVybmFsX3NlZWRfbGlua3MiLCJwdnRfY2xpY2tfaWQiOiJjbGtfMzY0NWJmMmY3ZDA5NDlmZmEzMWE0ZWYxIiwicHZ0X3N1cmZhY2UiOiJjcmVhdG9yX2FnZW50cyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsImpvaW5fbW9kZSI6InJlZmVycmFsX29ubHkifSwiaWF0IjoxNzkwNjUzMTYyLCJleHAiOjE3OTEyNTc5NjJ9.z2eUZz-tCUGToldwJc-Y_i4XNkDV39QTgKj27vCzVyE';
+// The backend's format for any payload (the signature is not checked by the door, so the live one is reused).
+const hopToken = (payload) => `${Buffer.from(JSON.stringify(payload)).toString('base64url')}.${LIVE_JUDY_TOKEN.split('.')[1]}`;
+const JUDY_HOP = `https://api.pivota.cc/r?token=${LIVE_JUDY_TOKEN}`;
 const JUDY_ROW = Object.freeze({
   product_id: 'sig_6433c8107859a484fb72d14861e84690',
   title: 'Silky Matte Lip Ink',
@@ -1808,4 +1808,16 @@ test('S2: armed, a code on update_checkout of a NON-Reap checkout is not applied
   assert.match(notice[0].content, /CREATED/);
   const plain = keep(await withEnv(CODES_ON, () => ucp.callTool('update_checkout', args(null), SESSION)));
   assert.equal((plain.messages || []).some((x) => x.path === '$.discounts.codes[0]'), false);
+});
+
+test('the live token re-encoded with `dest` on ANOTHER host: refused at the door for judydoll.com, nothing opened', async () => {
+  const m = await mods();
+  const payload = JSON.parse(Buffer.from(LIVE_JUDY_TOKEN.split('.')[0], 'base64url').toString('utf8'));
+  const row = { ...JUDY_ROW, external_redirect_url: `https://api.pivota.cc/r?token=${hopToken({ ...payload, dest: 'https://other-seller.example/products/x?variant=1' })}` };
+  for (const env of [ON, ESC_ON]) {
+    const ctx = await build({ rows: { [JUDY_ROW.product_id]: row } });
+    const r = await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } }), SESSION)));
+    assert.deepEqual([errorOf(r)?.detail?.cause, errorOf(r)?.detail?.merchant_domain], ['different_seller', 'other-seller.example']);
+    assert.equal(ctx.backend.calls.length, 0);
+  }
 });
