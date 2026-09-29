@@ -464,6 +464,15 @@ test('the lane answer leaves through the REAL money filter: a secret-shaped valu
   assert.equal(out.line_items[0].item.title, 'Serum [REDACTED_SECRET] — Standard');
 });
 
+test('the title leaves through the real filter and shaper: plain for LTR text, the RTL half alone isolated', async () => {
+  const backend = fakeBackend();
+  backend.state.get.set(PID, { status: 200, body: view('resolving', { product_name: 'Lip Ink \u05E9\u05E4\u05EA\u05D5\u05DF\u200F', variant_title: '07 BURGUNDY INK' }) });
+  const ctx = await build({ backend });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+  assert.equal(out.line_items[0].item.title, '\u2068Lip Ink \u05E9\u05E4\u05EA\u05D5\u05DF\u200F\u2069 — 07 BURGUNDY INK');
+});
+
 // =========================================================================================================
 // 2. get_checkout — every backend state, through the BUILT response
 // =========================================================================================================
