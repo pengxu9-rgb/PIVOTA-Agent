@@ -1316,17 +1316,47 @@ function extractStrongIdentity(product, axes) {
   };
 }
 
-function normalizeTitleCore(title, brand, axes) {
+// The title with the brand prefix and the variant-axis tokens removed, and nothing else.
+// normalizeTitleCore goes further and drops qualifier words (refill, travel, size, …) and the
+// tokenizer's stopwords. That is what lets two sellers' spellings of one product meet in one
+// soft-exact key, and also what makes "Travel-Size X" and "X" identical there.
+function normalizeTitleWithoutBrandOrAxes(title, brand, axes) {
   let normalized = normalizeTitleToken(title);
   const brandToken = normalizeBrandToken(brand);
   if (brandToken && normalized.startsWith(`${brandToken} `)) {
     normalized = normalized.slice(brandToken.length).trim();
   }
-  normalized = stripAxisTokensFromTitle(normalized, axes);
+  return stripAxisTokensFromTitle(normalized, axes);
+}
+
+function normalizeTitleCore(title, brand, axes) {
+  const normalized = normalizeTitleWithoutBrandOrAxes(title, brand, axes);
   const tokens = tokenizeResolverQuery(normalized).filter(
     (token) => !['refill', 'tester', 'sample', 'travel', 'size', 'jumbo'].includes(token),
   );
   return tokens.join(' ').trim() || normalized;
+}
+
+// A title that is word-for-word one of the product's own variant option values ("50 ml | 1.7
+// fl. oz.", a scent name) names a variant, not the product. The seed refresh stamped exactly
+// that into snapshot.title on tatcha.com (2026-09-28), after which every tatcha product sold in
+// 50 ml shared one brand|title_core|axes key. Compared as a sorted token list because the seed
+// builder re-spells the option ("50 ml | 1.7 fl. oz." is served as "1.7 fl oz / 50 mL").
+function toSortedTitleTokens(value) {
+  return normalizeTitleToken(value).split(' ').filter(Boolean).sort().join(' ');
+}
+
+function isVariantOptionLabelTitle(product, title) {
+  const titleTokens = toSortedTitleTokens(title);
+  if (!titleTokens) return false;
+  return asArray(product?.variants).some((variant) =>
+    [
+      variant?.option1,
+      variant?.option2,
+      variant?.option3,
+      ...collectIdentityVariantOptionEntries(variant).map((item) => item.value),
+    ].some((value) => toSortedTitleTokens(value) === titleTokens),
+  );
 }
 
 function extractSoftIdentity(product, axes) {
@@ -1337,10 +1367,22 @@ function extractSoftIdentity(product, axes) {
     product?.vendor,
     product?.vendor_name,
   );
-  const title = firstNonEmptyString(product?.title, product?.name, product?.display_name);
+  const titleCandidates = [
+    product?.title,
+    product?.name,
+    product?.display_name,
+    product?.seed_data?.product_name,
+    product?.seed_data?.title,
+  ];
+  const productTitle = firstNonEmptyString(
+    ...titleCandidates.filter((candidate) => !isVariantOptionLabelTitle(product, candidate)),
+  );
+  // With no candidate that names the product, keep the label as title_norm but give it no
+  // title core: a variant label must key neither soft_brand_title_axes nor a soft-exact cluster.
+  const title = productTitle || firstNonEmptyString(...titleCandidates);
   const officialUrl = extractOfficialUrl(product);
   const officialDomain = normalizeComparableDomain(officialUrl);
-  const titleCore = normalizeTitleCore(title, brand, axes);
+  const titleCore = productTitle ? normalizeTitleCore(productTitle, brand, axes) : '';
   return {
     ...(brand ? { brand_norm: normalizeBrandToken(brand) } : {}),
     ...(title ? { title_norm: normalizeTitleToken(title) } : {}),
@@ -1753,6 +1795,42 @@ function findStrongIdentityConflict(listings) {
   return '';
 }
 
+// Two listings on DIFFERENT official product pages whose titles differ are two products, however
+// alike their title cores are. The core drops "travel", "size", "refill", so tarte's travel-size
+// and full-size concealer pages (and tower28's refill, MAC's refill, …) met in one key and were
+// served as one sellable item. The titles compared here keep those words; only the brand prefix
+// and the variant-axis tokens come off (plus a bare "the": cosrx.com's "The Alpha Arbutin …" is
+// sokoglam.com's "Alpha Arbutin …"), so one product spelled with and without its brand on two
+// sellers still clusters, as do a brand's regional (-us/-eu/-uk) and duplicate (-copy) pages.
+// Deliberately NOT the resolver tokenizer: it also drops "plus" and single letters, which is how
+// "Toner" / "Toner Plus" and cushion "Type B" / "Type G" share a title core.
+function findOfficialUrlTitleConflict(listings) {
+  const pages = [];
+  for (const listing of listings || []) {
+    const officialUrl = asString(listing?.official_url || listing?.strong_identity?.official_url);
+    if (!officialUrl) continue;
+    pages.push({
+      officialUrl,
+      title: normalizeTitleWithoutBrandOrAxes(
+        listing?.soft_identity?.title_norm || listing?.title_norm,
+        listing?.soft_identity?.brand_norm || listing?.brand_norm,
+        listing?.variant_axes,
+      )
+        .replace(/\bthe\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    });
+  }
+  for (let i = 0; i < pages.length; i += 1) {
+    for (let j = i + 1; j < pages.length; j += 1) {
+      if (pages[i].officialUrl !== pages[j].officialUrl && pages[i].title !== pages[j].title) {
+        return 'distinct_official_urls_different_titles';
+      }
+    }
+  }
+  return '';
+}
+
 function clusterIdentityListings(listings) {
   const safeListings = Array.isArray(listings) ? listings : [];
   const groups = new Map();
@@ -1772,6 +1850,13 @@ function clusterIdentityListings(listings) {
       decisions.set(key, { conflict });
       continue;
     }
+    // Not a review case: each listing keeps the identity its own official page earned; only the
+    // merge is refused, and the refusal is recorded so a census can find it.
+    const refused = findOfficialUrlTitleConflict(group);
+    if (refused) {
+      decisions.set(key, { refused });
+      continue;
+    }
     const [brand, titleCore] = key.split('|');
     const lineKey = `${brand}|${titleCore}`;
     decisions.set(key, {
@@ -1786,6 +1871,15 @@ function clusterIdentityListings(listings) {
     const key = buildSoftExactClusterKey(listing);
     const decision = decisions.get(key);
     if (!decision) return listing;
+    if (decision.refused) {
+      return {
+        ...listing,
+        match_basis: uniqueStrings([
+          ...asArray(listing.match_basis),
+          `soft_exact_cluster_refused:${decision.refused}`,
+        ]),
+      };
+    }
     if (decision.conflict) {
       return {
         ...listing,
