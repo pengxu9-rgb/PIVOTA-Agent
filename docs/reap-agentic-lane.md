@@ -332,9 +332,28 @@ refused `ucp_unknown_field`, as on main.
   port, path, single label, Pivota host or non-ASCII) is refused `ucp_expected_merchant_domain_invalid`
   (§5.3).
 - **The door checks it ONCE, before any route.** The Reap lane, the storefront escalation and the kernel
-  all run after this check. The door reads every line's row (the same memoized read the routes use, so
-  a match costs nothing extra) and takes the row's merchant: an explicit `merchant_domain` /
-  `source_domain`, else the storefront target's host, else the row's URL host, never a Pivota host.
+  all run after this check. The door reads every line's row, using the same memoized read the routes
+  use: a match costs no second read, pinned at exactly one `get_product` per product. **Every**
+  destination the row can sell from or send the buyer to must then be the expected seller
+  (`mcp-server/src/ucpExpectedSeller.js`):
+  - the row's explicit merchant fields, `merchant_domain` and `source_domain`. These are what the Reap
+    lane buys from.
+  - the storefront target, `external_redirect_url` of a non-native row. This is the storefront
+    answer's `continue_url`.
+  - for a **native** row (no storefront target), the merchant's **registered store** destinations the
+    read carries: `online_store_url` and `external_redirect_url`. The backend derives both from the
+    merchant's verified connected store.
+    - A native row with none of these and no explicit field is `seller_unconfirmed`.
+    - Its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for,
+      so it is never used.
+  - A destination is **unconfirmed** (fail closed, whatever its host) when it:
+    - is a Pivota host (an `/r` attribution hop);
+    - carries another URL in its query or path (an affiliate or redirector hop, even one that ends
+      at the same seller);
+    - is not https, carries userinfo, or does not parse.
+
+  The storefront lane re-checks the one link it hands out, as belt and braces: a `continue_url` whose
+  host is not the expected seller is refused, never returned.
 - **Every line is the expected seller** → nothing changes. Each route answers exactly as it would
   without the member: Reap sends the same backend request and returns the same answer, a native row
   reaches the kernel, a storefront row gets its storefront link.
@@ -351,10 +370,12 @@ refused `ucp_unknown_field`, as on main.
                   "merchant_domain": "www.other.com", "merchant_id": "m_other" } } }
   ```
 
-  - `cause` is `different_seller`, or `seller_unconfirmed` when Pivota could not read a seller.
+  - `cause` is `different_seller`, or `seller_unconfirmed` when Pivota could not confirm a seller (see
+    above).
   - `line_item` names the first offending line. It is absent when the read itself failed.
-  - `merchant_domain` / `merchant_id` name the **served** seller, from Pivota's catalog, when known.
-    Neither is ever a request value.
+  - `merchant_domain` is the host that is **not** the expected seller, present on `different_seller`.
+  - `merchant_id` is the row's catalog merchant id, when known.
+  - Both come from Pivota's catalog; neither is ever a request value.
 - **What the UI does on `ucp_seller_mismatch`:** tell the buyer this item is not available here from
   the seller they were shown, and offer only **"Visit <the seller you showed>"**, built from the
   platform's own record of that seller. **Never follow, show or prefetch any link from the gateway for
@@ -402,6 +423,32 @@ publish it:
 
 Until then the member still works on `/ucp/mcp` (it is in `tools/list`); it is simply not in the
 profile.
+
+**Accepted before negotiation, deliberately.** `checkout.reap` is accepted on `/ucp/mcp` whether or not
+the platform negotiated `cc.pivota.reap_seller`, exactly as `cc.pivota.insights`' tools are callable
+without being negotiated. The member can only make a create **stricter**: it opens nothing and it never
+changes a matching answer. **Hosting the documents is a prerequisite for arming the lane in
+production.** A spec-following platform only learns the member from the profile.
+
+**Kernel path (native rows): what pins the seller, and the gap.** Checked read-only against
+pivota-backend `origin/main` `75b6f3cd6` and this gateway.
+- A UCP create for a native row goes to `kernel.previewQuote` →
+  `invokeCommerceKernelRawUpstream('preview_quote')` (`src/server.js`) →
+  `POST /agent/v2/quotes/preview`.
+- The gateway sends `merchant_id` only from `quote.merchant_id` (or an offer id), and the UCP quote
+  carries **none** (`ucpArgumentAdapter.js` `mapQuote`).
+- The backend's `QuotePreviewBody.merchant_id` is **required** (`routes/agent_v2.py`), and the quote is
+  bound to it. The item's `variant_id` does **not** choose the seller; it is looked up inside that
+  merchant.
+- The kernel then takes `merchant_of_record` from the request's `merchant_id` (`upstreamAdapter.js`)
+  and refuses a quote without one (`kernel.js` `previewQuote`).
+- So **today a UCP create cannot open a kernel checkout with any merchant**: there is no seller for the
+  kernel to drift to after the door's check.
+- **The gap:** if a later change fills `quote.merchant_id` for UCP carts, it must use the merchant of
+  the row the door checked (the same memoized read). Otherwise a multi-seller `sig_` could be quoted
+  against a merchant the check never saw. This PR does not pass `merchant_id` itself. Doing so would
+  newly enable native UCP checkouts, and the backend's per-merchant catalog cannot resolve a `sig_` id
+  anyway.
 
 ## 6. Budgets and failure modes
 

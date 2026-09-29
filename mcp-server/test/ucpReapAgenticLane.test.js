@@ -555,6 +555,44 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
     }
   });
 
+  test("judgeSellerUrl: the link's host must be the seller; hops, Pivota hosts, http and userinfo are unconfirmed", () => {
+    const j = lane.judgeSellerUrl;
+    assert.deepEqual(j("brand.example", "https://www.brand.example/products/x?variant=1&utm_source=pivota"), { ok: true });
+    assert.deepEqual(j("brand.example", "https://other-seller.example/p"), { ok: false, cause: "different_seller", host: "other-seller.example" });
+    for (const url of [
+      "https://click.linksynergy.com/deeplink?id=a&murl=https%3A%2F%2Fother-seller.example%2Fp",
+      "https://www.brand.example/go?url=https://www.brand.example/p",
+      "https://www.brand.example/go?u=%2F%2Fother-seller.example",
+      "https://www.brand.example/go?u=https%253A%252F%252Fother.example",
+      "https://www.brand.example/redirect/https://other-seller.example/p",
+      "https://www.brand.example/redirect/https%3A%2F%2Fother-seller.example",
+      "https://agent.pivota.cc/r?token=abc",
+      "http://www.brand.example/p",
+      "https://user:pw@www.brand.example/p",
+      "not a url",
+      "https://xn--brnd-hra.com/p",
+    ]) {
+      assert.equal(j("brand.example", url).ok, false, url);
+      if (!url.includes("xn--")) assert.equal(j("brand.example", url).cause, "seller_unconfirmed", url);
+    }
+  });
+
+  test("judgeRowSeller: native rows are checked against their REGISTERED store, never a catalog url", () => {
+    const native = { product_id: "p", merchant_id: "merchant_native", canonical_url: "https://native.example/p", url: "https://native.example/p" };
+    assert.deepEqual(lane.judgeRowSeller("native.example", native, null), { ok: false, cause: "seller_unconfirmed" }, "catalog url only: unconfirmed");
+    assert.deepEqual(lane.judgeRowSeller("native.example", { ...native, online_store_url: "https://www.native.example/products/p" }, null), { ok: true });
+    assert.deepEqual(lane.judgeRowSeller("native.example", { ...native, external_redirect_url: "https://native.example/products/p", purchase_route: "internal_checkout" }, null), { ok: true });
+    assert.equal(lane.judgeRowSeller("native.example", { ...native, online_store_url: "https://native.example/p", external_redirect_url: "https://other.example/p" }, null).cause, "different_seller", "EVERY registered destination");
+    assert.deepEqual(lane.judgeRowSeller("native.example", { ...native, merchant_domain: "native.example" }, null), { ok: true }, "an explicit merchant field");
+    assert.equal(lane.judgeRowSeller("native.example", { ...native, merchant_domain: "native.example", online_store_url: "https://other.example/p" }, null).cause, "different_seller");
+    // A non-native row: the explicit field AND the storefront target, never online_store_url (not a destination there).
+    const esc = { external_redirect_url: "https://www.brand.example/p", online_store_url: "https://ignored.example/p" };
+    assert.deepEqual(lane.judgeRowSeller("brand.example", esc, esc.external_redirect_url), { ok: true });
+    assert.equal(lane.judgeRowSeller("brand.example", { ...esc, merchant_domain: "other.example" }, esc.external_redirect_url).cause, "different_seller");
+    assert.equal(lane.judgeRowSeller("brand.example", null, null).cause, "seller_unconfirmed");
+    assert.equal(lane.judgeRowSeller("brand.example", { merchant_domain: "Kiko.com" }, null).cause, "seller_unconfirmed");
+  });
+
   const createOp = { id: "create_checkout_session" };
   const updateOp = { id: "update_checkout_session" };
   const body = (reap, extra = {}) => ({

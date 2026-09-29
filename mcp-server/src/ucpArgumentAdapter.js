@@ -152,7 +152,8 @@ import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
-import { canonicalReapMerchantDomain, reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
 
