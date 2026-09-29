@@ -579,10 +579,12 @@ const ENRICHMENT_AGREEING_HOST_FIELDS = Object.freeze(["source_domain", "merchan
 /**
  * The host an ENRICHMENT cart-link POST names: `{ host }`, or `{ host: null, code }` when there is none to send.
  *
- * THE STOREFRONT TARGET (`external_redirect_url`, as `escalationTargetOf` classified it) — the ONE merchant URL
- * every live enrichment read carries, and exactly the URL the door's expected-seller check judges
- * (`judgeSellerUrl`), so the host POSTed is a host the door has seen. Validated as `storefrontPageHost`; anything
- * else is `no_merchant_domain`. As observed, lowercased: `www.` is not stripped from what is sent.
+ * THE STOREFRONT TARGET: the row's `external_redirect_url` — the ONE merchant URL every live enrichment read
+ * carries, and the field the door's expected-seller check judges (`judgeSellerUrl`, on `escalationTargetOf`'s
+ * parsed form of it), so the host POSTed is a host the door has seen. The shape checks run on the field EXACTLY AS
+ * THE ROW CARRIES IT, never on that parsed form: `new URL(...).toString()` drops a `:443` and resolves a `/a/../`
+ * that pivota-backend `storefront_page` refuses. Validated as `storefrontPageHost`; anything else is
+ * `no_merchant_domain`. As observed, lowercased: `www.` is not stripped from what is sent.
  *
  * EVERY OTHER MERCHANT FIELD MUST AGREE: `source_url`, `destination_url` (hosts of) and `source_domain`,
  * `merchant_domain`, whenever present, must be the same merchant after the door's own fold
@@ -590,8 +592,9 @@ const ENRICHMENT_AGREEING_HOST_FIELDS = Object.freeze(["source_domain", "merchan
  * a retailer's page beside a brand's, an unreadable value — is `merchant_domain_conflict`: which seller the row is
  * cannot be told, so nothing is opened. `canonical_url` / `url` are never read (Pivota's own PDP on these reads).
  */
-export function enrichmentCartLinkMerchantDomain(row, target) {
-  const host = storefrontPageHost(target);
+export function enrichmentCartLinkMerchantDomain(row) {
+  // The same field, picked the same way, as escalationTargetOf — but unparsed.
+  const host = storefrontPageHost(own(row, "external_redirect_url") || own(row, "externalRedirectUrl"));
   if (!host) return { host: null, code: "no_merchant_domain" };
   const want = canonicalReapMerchantDomain(host);
   if (want === null) return { host: null, code: "no_merchant_domain" };
@@ -614,16 +617,26 @@ export function enrichmentCartLinkMerchantDomain(row, target) {
 }
 
 /**
- * Is this read variant the product-level PLACEHOLDER, not a variant the store sells? The producer writes a
- * canonical sku `<product_key>::canonical` whose `source_variant_id` restates the product key (or, for a key too
- * long for the column, the bounded `source_product_id`) — ingestion.py `canonical_sku_variant_id`. A read that
- * exposed it would name it by one of those, or by the requested product id restated.
+ * Is this read variant the product-level PLACEHOLDER, not a variant the store sells? The producer writes one canonical
+ * sku per product: sku key `<product_key>::canonical`, `source_variant_id` the product key (or, for a key too long
+ * for the column, the bounded `source_product_id`) — ingestion.py `canonical_sku_variant_id`; and pdpBuilder
+ * `buildVariants` restates a variant-less product as ONE entry whose `variant_id` is the product id.
+ *
+ * EXACT MATCHES ONLY. An entry is the placeholder when it carries at least one id and EVERY id it carries
+ * (`variant_id` / `id`, `sku_id`, `source_variant_id`) is exactly one of: the product key, the product key +
+ * `::canonical`, the source product id, the product id. Never a prefix match (`isRestatedProductId`): a real
+ * variant's sku is `<product_key>::v:<id>`, and pdpBuilder names id-less variants `<product_id>-1`, `<product_id>-2`
+ * — each is a DIFFERENT variant, and dropping them would send a multi-variant row as canonical-only. A numeric id
+ * (a number, or a digit-only string) always makes the entry real. An entry with no id at all is real (fail closed).
  */
 function isPlaceholderVariant(v, row) {
-  // A numeric id is never a restatement of a key or product id, so only string ids are read.
-  const ids = [own(v, "variant_id") ?? own(v, "id"), own(v, "sku_id"), own(v, "source_variant_id")].map(str).filter(Boolean);
-  const bases = [str(own(row, "product_key")), str(own(row, "source_product_id")), str(own(row, "product_id"))].filter(Boolean);
-  return ids.length > 0 && ids.every((id) => bases.some((b) => isRestatedProductId(id, b)));
+  const ids = [own(v, "variant_id") ?? own(v, "id"), own(v, "sku_id"), own(v, "source_variant_id")]
+    .filter((x) => x !== undefined && x !== null);
+  if (ids.length === 0) return false;
+  const productKey = str(own(row, "product_key"));
+  const exact = new Set([productKey, productKey && `${productKey}::canonical`, str(own(row, "source_product_id")), str(own(row, "product_id"))].filter(Boolean));
+  // A number is never in `exact` (strings only); a digit-only STRING is refused explicitly, even if a source id is one.
+  return ids.every((id) => !/^\d+$/.test(id) && exact.has(id));
 }
 
 /**
@@ -1379,7 +1392,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     // An enrichment row's host is its storefront page, every other merchant field agreeing (see
     // enrichmentCartLinkMerchantDomain). Settled BEFORE the seller check, so a row with no host to send is logged
     // as that, not as a seller mismatch.
-    const resolved = enrichmentCartLinkMerchantDomain(row, target);
+    const resolved = enrichmentCartLinkMerchantDomain(row);
     if (!resolved.host) return skip(resolved.code);
     merchantDomain = resolved.host;
   } else {

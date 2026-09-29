@@ -2361,6 +2361,11 @@ test('enrichment ON, the host: the storefront page, every other merchant field a
     ['storefront target with a query', { external_redirect_url: 'https://stilacosmetics.com/products/x?utm_source=pivota' }, 'no_merchant_domain'],
     ['storefront target not a /products/ page', { external_redirect_url: 'https://stilacosmetics.com/collections/eye' }, 'no_merchant_domain'],
     ['storefront target with a port', { external_redirect_url: 'https://stilacosmetics.com:8443/products/x' }, 'no_merchant_domain'],
+    // Review R2: the door and escalationTargetOf see the PARSED target (`:443` dropped, `/x/../` resolved); the host is
+    // taken from the field as the row carries it, which pivota-backend storefront_page would refuse.
+    ['storefront target with :443', { external_redirect_url: 'https://stilacosmetics.com:443/products/x' }, 'no_merchant_domain'],
+    ['storefront target with a dot segment', { external_redirect_url: 'https://stilacosmetics.com/x/../products/x' }, 'no_merchant_domain'],
+    ['storefront target with an escaped handle the parser keeps as written', { external_redirect_url: 'https://stilacosmetics.com/products/x%2Fy' }, 'stilacosmetics.com'],
     ['storefront target a Pivota hop', { external_redirect_url: `https://api.pivota.cc/r?token=${hopToken({ dest: 'https://stilacosmetics.com/products/x' })}` }, 'no_merchant_domain'],
   ]) {
     const { backend, logger } = await enrichCreate(withRow(STILA_LIVE, patch));
@@ -2394,7 +2399,7 @@ test('enrichment ON, the variant pre-filter: canonical-only (the producer\'s pla
     ['no variants member', { variants: undefined, default_variant_id: undefined }, 1],
     ['variants: []', { variants: [], default_variant_id: undefined }, 1],
     ['only the producer placeholder (sku <pk>::canonical, id = product_key)', { variants: [placeholderOf(S)], default_variant_id: undefined }, 1],
-    ['a placeholder restating source_product_id (a key too long for the column), beside the real one', { variants: [{ variant_id: S.source_product_id, sku_id: `${S.source_product_id}::canonical` }, real] }, 1],
+    ['the long-key placeholder (source_variant_id = source_product_id, sku <pk>::canonical), beside the real one', { variants: [{ variant_id: S.source_product_id, sku_id: `${S.product_key}::canonical` }, real] }, 1],
     ['a placeholder named only by its sku <pk>::canonical, beside the real one', { variants: [{ sku_id: `${S.product_key}::canonical`, title: 'Default' }, real] }, 1],
     ['the placeholder beside the ONE real variant', { variants: [placeholderOf(S), real] }, 1],
     ['a placeholder named only by source_variant_id = product_key, beside the real one', { variants: [{ source_variant_id: S.product_key, title: 'Default' }, real] }, 1],
@@ -2408,11 +2413,39 @@ test('enrichment ON, the variant pre-filter: canonical-only (the producer\'s pla
     ['the same id twice', { variants: [real, real] }, 0],
     ['a real id whose sku merely STARTS like the key is not a placeholder', { variants: [real, { variant_id: '40318467145832', sku_id: `${S.product_key}::canonical` }] }, 0],
     ['variants not an array', { variants: { variant_id: real.variant_id } }, 0],
+    // Review R1: only EXACT restatements are the placeholder. Each of these is two variants the store sells.
+    ['c2: two <pk>::v:<id> variant ids (prefix-restating the key)', { variants: [{ variant_id: `${S.product_key}::v:111` }, { variant_id: `${S.product_key}::v:222` }] }, 0],
+    ['c2\': two <pk>::v:<id> skus, no variant ids', { variants: [{ sku_id: `${S.product_key}::v:111` }, { sku_id: `${S.product_key}::v:222` }] }, 0],
+    ['c3: numeric variant ids whose skus restate source_product_id', { variants: [{ variant_id: 111, sku_id: S.source_product_id }, { variant_id: 222, sku_id: `${S.source_product_id}-2` }] }, 0],
+    ['a digit-only id equal to a digit-only source_product_id is still real', { source_product_id: '8812345', variants: [{ variant_id: '8812345' }, real] }, 0],
+    ['<pk>::canonical-2 is not the placeholder', { variants: [{ sku_id: `${S.product_key}::canonical-2` }, real] }, 0],
+    ['a placeholder-looking entry with an EMPTY extra id is real', { variants: [{ variant_id: S.product_key, sku_id: '' }, real] }, 0],
   ]) {
     const { backend, logger } = await enrichCreate(withRow(S, patch));
     assert.equal(backend.calls.length, posts, label);
     if (posts === 0) assert.deepEqual(skipCodes(logger), ['multi_variant'], label);
     else assert.equal(Object.hasOwn(backend.calls[0].body, 'variant_key'), false, label);
+  }
+});
+
+test('enrichment ON, pdpBuilder.buildVariants shapes (review R1 c1): two id-less variants are TWO; one, or none, still passes', async () => {
+  const { buildPdpPayload } = require('../src/pdpBuilder');
+  const S = STILA_LIVE;
+  const built = (variants) => buildPdpPayload({ product: { product_id: S.product_id, title: S.title, currency: 'USD', price: 20, ...(variants ? { variants } : {}) } }).product.variants;
+  const two = built([{ title: 'Amber / Dark Brown' }, { title: 'Black' }]);
+  assert.deepEqual(two.map((v) => v.variant_id), [`${S.product_id}-1`, `${S.product_id}-2`], 'the producer really names them <product_id>-N');
+  const one = built([{ title: 'Amber / Dark Brown' }]);
+  const none = built(undefined);
+  assert.deepEqual(none.map((v) => [v.variant_id, v.sku_id]), [[S.product_id, S.product_id]], 'a variant-less product is ONE entry restating the product id');
+  for (const [label, variants, posts] of [
+    ['c1: two id-less variants -> <pid>-1, <pid>-2', two, 0],
+    ['control: one id-less variant -> <pid>-1', one, 1],
+    ['control: no variants -> the product id restated (the placeholder)', none, 1],
+    ['control: that placeholder beside one real variant', [...none, S.variants[0]], 1],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(S, { variants, default_variant_id: undefined }));
+    assert.equal(backend.calls.length, posts, label);
+    if (posts === 0) assert.deepEqual(skipCodes(logger), ['multi_variant'], label);
   }
 });
 

@@ -334,8 +334,9 @@ of `_load_cart_link_item` (PR C) to resolve against its variant proof table. Arm
   own PDP (`https://agent.pivota.cc/products/sig_…`). The merchant's page is `external_redirect_url`, with
   `destination_url` and `source_url` beside it.
 - **Host sent.** The host of the storefront target (`external_redirect_url`), as observed and lowercased. That is
-  the URL the door's expected-seller check already judges. It must be exactly `https://<host>/products/<handle>`, the
-  shape pivota-backend `storefront_page` accepts:
+  the field the door's expected-seller check already judges. The shape is checked on the field AS THE ROW CARRIES
+  IT, not on the parsed form the door sees, because parsing drops a `:443` and resolves `/a/../`. It must be exactly
+  `https://<host>/products/<handle>`, the shape pivota-backend `storefront_page` accepts:
   - no userinfo, no port, no query or fragment;
   - no Pivota host or `/r` hop, no redirector;
   - the handle not `.js` / `.json`.
@@ -349,8 +350,12 @@ of `_load_cart_link_item` (PR C) to resolve against its variant proof table. Arm
 - **Seller.** The door check is unchanged, and the host POSTed is one of its destinations. The host is settled
   before the lane's own seller re-check, so a row with no host logs `no_merchant_domain`, not `seller_mismatch`.
 - **Variants.** Two kinds of row are sent with no variant:
-  - a canonical-only row: no variants, or only the producer's product-level placeholder (sku
-    `<product_key>::canonical`, its id restating the product key, the source product id or the product id);
+  - a canonical-only row: no variants, or only the product-level placeholder. An entry is the placeholder only when
+    every id it carries (`variant_id` / `id`, `sku_id`, `source_variant_id`) is EXACTLY the product key,
+    `<product_key>::canonical`, the source product id or the product id. The producer's canonical sku and
+    pdpBuilder's variant-less entry are both that shape. A prefix is not enough: `<product_key>::v:<id>` and
+    pdpBuilder's `<product_id>-1`, `<product_id>-2` are real variants. A numeric id makes the entry real, and so does
+    an entry with no id;
   - a row with one variant.
 
   The backend proves the variant itself, either the store's sole live variant or one its proof table names. Two or

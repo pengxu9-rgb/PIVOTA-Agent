@@ -866,6 +866,8 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
       ["a Pivota PDP", "https://agent.pivota.cc/products/sig_1d54c9e3b5d3969ea4327b5de4f5d101"],
       ["a path hop", "https://tartecosmetics.com/r/https://other.example/p"],
       ["collection path", "https://tartecosmetics.com/collections/face/products/x"],
+      ["a bare /<handle> page (no /products/)", "https://tartecosmetics.com/shape-tape-blur-concealer-stick"],
+      ["/product/ singular", "https://tartecosmetics.com/product/x"],
       ["trailing slash", "https://tartecosmetics.com/products/x/"],
       ["no handle", "https://tartecosmetics.com/products/"],
       [".js handle", "https://tartecosmetics.com/products/x.js"],
@@ -892,7 +894,7 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
     destination_url: "https://stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown",
     source_url: "https://www.stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown",
   };
-  const d = (row) => lane.enrichmentCartLinkMerchantDomain(row, row.external_redirect_url);
+  const d = (row) => lane.enrichmentCartLinkMerchantDomain(row);
 
   test("merchant host: the storefront target's host; the live read's www. source_url AGREES (the door's fold); canonical_url is never read", () => {
     assert.deepEqual(d(STILA), { host: "stilacosmetics.com" });
@@ -932,8 +934,13 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
       ["target with a query", STILA, `${STILA.external_redirect_url}?utm_source=pivota`],
       ["target not a /products/ page", STILA, "https://stilacosmetics.com/collections/eye"],
       ["a host the door's fold cannot read (www. + a TLD)", {}, "https://www.com/products/x"],
+      ["target with :443 (the parsed form would drop it)", STILA, "https://stilacosmetics.com:443/products/x"],
+      ["target with a dot segment (the parsed form would resolve it)", STILA, "https://stilacosmetics.com/a/../products/x"],
+      ["target with surrounding whitespace (escalationTargetOf would trim it)", STILA, " https://stilacosmetics.com/products/x "],
     ]) {
-      assert.deepEqual(lane.enrichmentCartLinkMerchantDomain(row, target), { host: null, code: "no_merchant_domain" }, label);
+      const r = { ...row };
+      if (target === null) delete r.external_redirect_url; else r.external_redirect_url = target;
+      assert.deepEqual(lane.enrichmentCartLinkMerchantDomain(r), { host: null, code: "no_merchant_domain" }, label);
     }
   });
 
@@ -975,6 +982,9 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
       ["merchant_domain another seller", { merchant_domain: "ulta.com" }, "merchant_domain_conflict"],
       // These pass the seller judgement and are still refused by the host rules.
       ["target a /collections/ page", { external_redirect_url: "https://stilacosmetics.com/collections/eye" }, "no_merchant_domain"],
+      // The door and escalationTargetOf see the PARSED form (no :443, no dot segment), which passes; the raw field does not.
+      ["target with :443", { external_redirect_url: "https://stilacosmetics.com:443/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown" }, "no_merchant_domain"],
+      ["target with a dot segment", { external_redirect_url: "https://stilacosmetics.com/x/../products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown" }, "no_merchant_domain"],
       ["affiliate destination_url", { destination_url: "https://click.linksynergy.com/deeplink?murl=x" }, "merchant_domain_conflict"],
     ]) {
       const r = await run({ ...base, ...patch }, "stilacosmetics.com");
