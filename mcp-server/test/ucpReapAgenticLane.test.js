@@ -405,6 +405,9 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
 
   test("the merchant id is the product key's <merchant> segment, or nothing", () => {
     assert.equal(lane.reapMerchantIdOfProductKey("prod::m_brand::shopify::1001"), "m_brand");
+    assert.equal(lane.reapMerchantIdOfProductKey("prod::merch_obs_judydoll::external_seed::ext_1"), "merch_obs_judydoll", "a per-brand observed seller IS a seller");
+    assert.equal(lane.reapMerchantIdOfProductKey("prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada"), null, "the shared sentinel is not");
+    assert.equal(lane.reapMerchantIdOfProductKey("ext:jungsaemmool-skin-nuder-cushion::9f2c1e7ab04d"), null, "not the prod:: form");
     for (const bad of ["prod::m_brand::shopify", "sku::m_brand::shopify::1", "prod::::shopify::1", "prod::a b::shopify::1", null, 7]) {
       assert.equal(lane.reapMerchantIdOfProductKey(bad), null, String(bad));
     }

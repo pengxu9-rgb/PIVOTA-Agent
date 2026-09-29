@@ -17,6 +17,9 @@
 // UNCONFIRMED — fail closed, whatever its host.
 
 import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
+// The shared external-seed SENTINEL seller id, from its one owner (ADR-009): a product key minted under it names
+// no seller, so it is never published as one.
+import pdpRenderability from "../../src/services/pdpRenderability.js";
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
   && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
@@ -62,12 +65,14 @@ export function isSameReapMerchant(expected, rowDomain) {
 
 /**
  * The `<merchant>` segment of a catalog product key (`prod::<merchant>::<platform>::<source id>`, the backend's
- * `catalog_products.merchant_id`), or null when the key is not that form.
+ * `catalog_products.merchant_id`), or null when the key is not that form — or when the segment is the shared
+ * external-seed SENTINEL, which is a supply bucket, not a seller (an external-seed row's seller is its host).
  */
 export function reapMerchantIdOfProductKey(productKey) {
   if (typeof productKey !== "string") return null;
   const parts = productKey.split("::");
   if (parts.length < 4 || parts[0] !== "prod") return null;
+  if (parts[1] === pdpRenderability.EXTERNAL_SEED_MERCHANT_ID) return null;
   return MERCHANT_ID_RE.test(parts[1]) ? parts[1] : null;
 }
 

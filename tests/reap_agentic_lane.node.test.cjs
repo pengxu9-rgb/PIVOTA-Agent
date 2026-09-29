@@ -1810,6 +1810,165 @@ test('S2: armed, a code on update_checkout of a NON-Reap checkout is not applied
   assert.equal((plain.messages || []).some((x) => x.path === '$.discounts.codes[0]'), false);
 });
 
+// =========================================================================================================
+// Tier B cart-link, DIRECT, for EXTERNAL-SEED / mirror rows (the two demo merchants)
+// =========================================================================================================
+
+const JSM_ROW = Object.freeze({
+  product_id: 'sig_jsm_skin_nuder_cushion',
+  title: 'Skin Nuder Cushion',
+  brand: 'JUNGSAEMMOOL',
+  price: 38,
+  currency: 'SGD',
+  merchant_id: 'merch_obs_jungsaemmool',
+  platform: 'external_seed',
+  // The MIRROR shape (prod::external_seed::external_seed::<external_product_id>) -- the one key the backend's
+  // cart-link lane resolves. The live jsmbeauty.sg rows carry an enrichment `ext:` key instead (JSM_EXT_ROW below),
+  // which that lane refuses, so the gateway skips them.
+  product_key: 'prod::external_seed::external_seed::ext_jsm_9f2c1e7ab04d',
+  external_redirect_url: `https://api.pivota.cc/r?token=${hopToken({
+    dest: 'https://jsmbeauty.sg/products/skin-nuder-cushion?utm_source=pivota&utm_medium=agent',
+    merchant_canonical_url: 'https://jsmbeauty.sg',
+    destination_url: 'https://jsmbeauty.sg/products/skin-nuder-cushion',
+  })}`,
+  destination_url: 'https://jsmbeauty.sg/products/skin-nuder-cushion',
+  source_variant_id: '44012345678901',
+  purchase_grain: 'product',
+  variants: [{ variant_id: 'sig_jsm_skin_nuder_cushion' }],
+});
+const SG_DESTINATION = Object.freeze({ ...DESTINATION, street_address: '1 Raffles Place', address_locality: 'Singapore', address_region: undefined, postal_code: '048616', address_country: 'SG' });
+const CART_ROWS = Object.freeze({ [JUDY_ROW.product_id]: JUDY_ROW, [JSM_ROW.product_id]: JSM_ROW });
+const sgArgs = (extra = {}) => {
+  const a = createArgs({ productId: JSM_ROW.product_id, destination: JSON.parse(JSON.stringify(SG_DESTINATION)), ...extra });
+  a.checkout.context = { address_country: 'SG' };
+  return a;
+};
+
+test('Tier B DIRECT: the judydoll mirror row is POSTed ONCE as item_source cart_link, with exactly the body the backend reads', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { out, backend, m } = await createReap(CODES_ON, { rows: CART_ROWS, args: { productId: JUDY_ROW.product_id } });
+  assert.match(out.id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1, 'one POST: no variant attempt first');
+  assert.deepEqual(backend.calls[0].body, {
+    merchant_domain: 'judydoll.com', // the host of the hop's dest -- the catalog source_domain, as observed
+    product_key: 'prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada',
+    quantity: 1,
+    buyer: {
+      email: EMAIL,
+      consent_version: 'reap-agentic-v1',
+      shipping_address: {
+        firstName: 'Ada', lastName: LAST, phone: PHONE, addressLine1: STREET, addressLine2: SUITE,
+        city: 'San Francisco', region: 'CA', postalCode: POSTAL, country: 'US',
+      },
+    },
+    idempotency_key: m.lane.reapCartLinkIdempotencyKey('idem-reap-0001'),
+    item_source: 'cart_link',
+  });
+  assert.equal(message(out, 'reap.merchant_domain').content, 'judydoll.com');
+  assert.equal(message(out, 'reap.merchant_id'), undefined, 'the external-seed sentinel is not a seller id');
+  assert.equal(out.currency, 'USD');
+});
+
+test('Tier B DIRECT: the jsmbeauty.sg mirror row in the SG market -- SGD, the ext: key, the SG buyer, and its seller check', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const ctx = await build({ rows: CART_ROWS });
+  const res = keep(await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', sgArgs({ reap: { expected_merchant_domain: 'jsmbeauty.sg' } }), SESSION)));
+  assert.match(res.id, REAP_ID_RE);
+  assert.equal(res.currency, 'SGD');
+  assert.equal(res.line_items[0].item.price, 3800);
+  assert.equal(ctx.backend.calls.length, 1);
+  const body = ctx.backend.calls[0].body;
+  assert.deepEqual(
+    { merchant_domain: body.merchant_domain, product_key: body.product_key, item_source: body.item_source, country: body.buyer.shipping_address.country },
+    { merchant_domain: 'jsmbeauty.sg', product_key: 'prod::external_seed::external_seed::ext_jsm_9f2c1e7ab04d', item_source: 'cart_link', country: 'SG' },
+  );
+  assert.equal(Object.hasOwn(body, 'variant_key'), false, 'no caller variant: the backend proves the sole one');
+  assert.equal(body.idempotency_key, ctx.m.lane.reapCartLinkIdempotencyKey('idem-reap-0001'));
+  // The seller check stays in force: another expected seller is refused at the door, nothing POSTed.
+  const ctx2 = await build({ rows: CART_ROWS });
+  const refused = await withEnv(CODES_ON, () => outcome(ctx2.m, ctx2.ucp.callTool('create_checkout', sgArgs({ reap: { expected_merchant_domain: 'judydoll.com' } }), SESSION)));
+  assert.deepEqual([errorOf(refused)?.detail?.reason, errorOf(refused)?.detail?.merchant_domain], ['ucp_seller_mismatch', 'jsmbeauty.sg']);
+  assert.equal(ctx2.backend.calls.length, 0);
+});
+
+test('Tier B DIRECT needs BOTH dials: lane on + cart-link off skips an external-seed row exactly as before (0 POSTs)', async () => {
+  for (const env of [ON, { ...ON, [CART_LINK_FLAG]: '0' }]) {
+    const logger = fakeLogger();
+    const { out, backend } = await createReap(env, { logger, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id } });
+    assert.deepEqual(out, { session_id: 'q_kernel' }, 'the kernel path answers, as before');
+    assert.equal(backend.calls.length, 0);
+    assert.ok(logger.lines.some((l) => l.event === 'reap_agentic_lane' && l.code === 'not_shopify'), 'the same skip code as before');
+  }
+});
+
+test('Tier B DIRECT requires ONE resolvable variant: source_variant_id, or variant= on the merchant URL; otherwise skipped', async () => {
+  const cases = [
+    ['source_variant_id on the single variant', { source_variant_id: undefined, variants: [{ variant_id: 'x', source_variant_id: 'gid://shopify/ProductVariant/44012345678901' }] }, 1],
+    ['no variant anywhere', { source_variant_id: undefined }, 0],
+    ['source_variant_id not numeric', { source_variant_id: 'default' }, 0],
+    ['variant= on another host is not the merchant\'s', { source_variant_id: undefined, external_redirect_url: 'https://jsmbeauty.sg/products/x', destination_url: 'https://other.example/p?variant=1' }, 0],
+    ['variant= on the merchant URL', { source_variant_id: undefined, destination_url: 'https://jsmbeauty.sg/products/x?variant=440123' }, 1],
+    ['two variant= values', { source_variant_id: undefined, destination_url: 'https://jsmbeauty.sg/products/x?variant=1&variant=2' }, 0],
+  ];
+  for (const [label, patch, posts] of cases) {
+    const row = { ...JSM_ROW, ...patch };
+    for (const k of Object.keys(row)) if (row[k] === undefined) delete row[k];
+    const logger = fakeLogger();
+    const ctx = await build({ logger, rows: { [JSM_ROW.product_id]: row } });
+    await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', sgArgs(), SESSION).catch(() => null));
+    assert.equal(ctx.backend.calls.length, posts, label);
+    if (!posts) assert.ok(logger.lines.some((l) => l.code === 'variant_unresolvable' || l.code === 'no_merchant_domain'), label);
+  }
+});
+
+test('Tier B DIRECT: a backend refusal (not a Tier B merchant) falls through with NO second POST; Shopify rows keep the variant lane + retry', async () => {
+  const b = fakeBackend();
+  b.state.post = { status: 409, body: houseError('merchant_not_eligible', 409) };
+  const { out, backend } = await createReap({ ...CODES_ON, [ESCALATION_FLAG]: '1' }, { backend: b, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id } });
+  assert.equal(backend.calls.length, 1, 'no retry of a cart-link refusal');
+  assert.equal(backend.calls[0].body.item_source, 'cart_link');
+  assert.match(out.id, /^esc_/, 'the storefront answers');
+  // A Shopify row: the variant lane first, the Tier B retry second -- unchanged.
+  const b2 = fakeBackend();
+  b2.state.post = [{ status: 409, body: houseError('merchant_not_eligible', 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
+  const shop = await createReap(CODES_ON, { backend: b2 });
+  assert.deepEqual(shop.backend.calls.map((c) => c.body.item_source), [undefined, 'cart_link']);
+});
+
+test('Tier B DIRECT, lane OFF (cart-link dial on or off): external-seed creates are byte-identical to a door without the lane, 0 POSTs', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const m = await mods();
+  for (const escalation of [undefined, '1']) {
+    for (const cart of [undefined, '1']) {
+      for (const laneFlag of [undefined, '0']) {
+        const withLane = await build({ lane: true, rows: CART_ROWS });
+        const without = await build({ lane: false, rows: CART_ROWS });
+        const env = { [LANE_FLAG]: laneFlag, [CART_LINK_FLAG]: cart, [ESCALATION_FLAG]: escalation };
+        for (const args of [createArgs({ productId: JUDY_ROW.product_id }), sgArgs()]) {
+          const a = await withEnv(env, () => outcome(m, withLane.ucp.callTool('create_checkout', structuredClone(args), SESSION)));
+          const b = await withEnv(env, () => outcome(m, without.ucp.callTool('create_checkout', structuredClone(args), SESSION)));
+          assert.equal(JSON.stringify(a), JSON.stringify(b), JSON.stringify(env));
+        }
+        assert.equal(withLane.backend.calls.length, 0);
+      }
+    }
+  }
+});
+
+test('Tier B DIRECT is for EXTERNAL-SEED rows only: another non-Shopify row (WooCommerce, Wix) is still skipped, 0 POSTs', async () => {
+  for (const [pid, patch] of [
+    ['sig_woo', { platform: 'woocommerce', product_key: 'prod::m_brand::woocommerce::9' }],
+    ['sig_wix', { platform: undefined, product_key: 'prod::m_brand::wix::9' }],
+  ]) {
+    const row = { ...JUDY_ROW, product_id: pid, ...patch };
+    if (row.platform === undefined) delete row.platform;
+    const logger = fakeLogger();
+    const { backend } = await createReap(CODES_ON, { logger, rows: { [pid]: row }, args: { productId: pid } });
+    assert.equal(backend.calls.length, 0, pid);
+    assert.ok(logger.lines.some((l) => l.code === 'not_shopify'), pid);
+  }
+});
+
 test('the live token re-encoded with `dest` on ANOTHER host: refused at the door for judydoll.com, nothing opened', async () => {
   const m = await mods();
   const payload = JSON.parse(Buffer.from(LIVE_JUDY_TOKEN.split('.')[0], 'base64url').toString('utf8'));
@@ -1819,5 +1978,52 @@ test('the live token re-encoded with `dest` on ANOTHER host: refused at the door
     const r = await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } }), SESSION)));
     assert.deepEqual([errorOf(r)?.detail?.cause, errorOf(r)?.detail?.merchant_domain], ['different_seller', 'other-seller.example']);
     assert.equal(ctx.backend.calls.length, 0);
+  }
+});
+
+// ---- B3: only a key the backend's cart-link lane RESOLVES is sent ----------------------------------------------
+// pivota-backend `_load_cart_link_item` resolves an external_seed row only when it is the seed MIRROR
+// (source_system external_product_seeds_mirror_v1, key prod::external_seed::external_seed::<id>). An enrichment
+// `ext:<canonical>::<hash>` key -- what the live jsmbeauty.sg rows carry, e.g.
+// ext:jungsaemmool-essential-mool-toner::4b4c3cfe -- is a catalog_products key with the agent's source_system,
+// which that lane refuses (`row_variant_unverified`). An affiliate-feed `platform: external` row is not a mirror.
+const JSM_EXT_ROW = Object.freeze({ ...JSM_ROW, product_id: 'sig_jsm_essential_mool_toner', product_key: 'ext:jungsaemmool-essential-mool-toner::4b4c3cfe' });
+
+test('Tier B DIRECT sends ONLY a key the backend resolves: ext: / affiliate / non-mirror rows are skipped row_key_unsupported, 0 POSTs', async () => {
+  const cases = [
+    ['live jsmbeauty.sg ext: key', JSM_EXT_ROW, sgArgs, 0],
+    ['platform external, affiliate-feed key', { ...JUDY_ROW, product_id: 'sig_aff', product_key: 'prod::merch_aff::external::B0CXYZ' }, null, 0],
+    ['mirror key, another source_system', { ...JUDY_ROW, product_id: 'sig_mx', source_system: 'catalog_enrichment_agent_v3' }, null, 0],
+    ['mirror key with no id after the prefix', { ...JUDY_ROW, product_id: 'sig_m0', product_key: 'prod::external_seed::external_seed::' }, null, 0],
+    ['mirror key, the mirror source_system', { ...JUDY_ROW, product_id: 'sig_mm', source_system: 'external_product_seeds_mirror_v1' }, null, 1],
+    ['mirror key, no source_system on the read (judydoll)', JUDY_ROW, null, 1],
+  ];
+  for (const [label, row, argsFn, posts] of cases) {
+    const logger = fakeLogger();
+    const ctx = await build({ logger, rows: { [row.product_id]: row } });
+    const args = argsFn ? { ...argsFn(), checkout: { ...argsFn().checkout, line_items: [{ item: { id: row.product_id }, quantity: 1 }] } } : createArgs({ productId: row.product_id });
+    await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', args, SESSION).catch(() => null));
+    assert.equal(ctx.backend.calls.length, posts, label);
+    if (posts) assert.equal(ctx.backend.calls[0].body.product_key, row.product_key, label);
+    else assert.ok(logger.lines.some((l) => l.code === 'row_key_unsupported'), label);
+  }
+});
+
+// ---- B2: which host is sent when the explicit field and the URL differ only by `www.` ---------------------------
+// The backend matches lower(catalog_products.source_domain) BYTE FOR BYTE, so the explicit catalog field is sent as
+// observed (lowercased) -- never the URL's spelling, never a folded one.
+test('Tier B DIRECT: an explicit merchant_domain / source_domain wins over the URL host, www. and all, as observed', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const [label, patch, sent] of [
+    ['source_domain www., URL bare', { source_domain: 'WWW.Judydoll.com' }, 'www.judydoll.com'],
+    ['merchant_domain bare, URL www.', { merchant_domain: 'judydoll.com', external_redirect_url: 'https://www.judydoll.com/products/silky-matte-lip-ink?variant=49819267301653', destination_url: 'https://www.judydoll.com/products/silky-matte-lip-ink' }, 'judydoll.com'],
+    ['no explicit field: the hop dest host', {}, 'judydoll.com'],
+    ['no explicit field, no hop: destination_url as observed', { external_redirect_url: 'https://www.judydoll.com/products/x?variant=49819267301653', destination_url: 'https://www.judydoll.com/products/x' }, 'www.judydoll.com'],
+  ]) {
+    const row = { ...JUDY_ROW, ...patch };
+    const ctx = await build({ rows: { [row.product_id]: row } });
+    await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id }), SESSION));
+    assert.equal(ctx.backend.calls.length, 1, label);
+    assert.equal(ctx.backend.calls[0].body.merchant_domain, sent, label);
   }
 });

@@ -289,6 +289,49 @@ retried on `merchant_disabled` (an operator turned the merchant off — the back
 on the cart-link POST's own answer. A client retry of the same create replays: the backend remembers the
 variant refusal against the variant key, and the cart-link key is deterministic.
 
+**Tier B DIRECT for external-seed rows.** An external-seed / mirror row cannot be bought on the variant lane: the
+backend's variant rail reads Shopify catalog rows only. Examples are judydoll.com (platform `external`, key
+`prod::external_seed::external_seed::ext_…`, its link a Pivota `/r` hop) and jsmbeauty.sg (platform
+`external_seed`, key `ext:…::<hash>`, SGD — see below: that key is not one this lane can send).
+
+While BOTH dials are on (`REAP_AGENTIC_LANE_ENABLED` and `REAP_AGENTIC_CART_LINK_LANE_ENABLED`), such a row is
+POSTed ONCE with `item_source: "cart_link"` and the cart-link idempotency key. This is exactly the body the Tier B
+retry sends, not a variant attempt first. The body carries:
+- `merchant_domain`: the merchant's host as observed, lowercased. It is the explicit merchant field, else the
+  host of the `/r` hop's token `dest`, else `destination_url`. The backend's cart-link catalog read compares
+  `lower(source_domain)` to it byte for byte.
+- `product_key`: the row's key, as is.
+- quantity, buyer, and offer code, as on the variant lane.
+- **no variant**. pivota-backend `_load_cart_link_item` accepts no caller variant; it proves the sole Shopify
+  variant from the seed's storefront evidence.
+
+**Only a key the backend's cart-link lane resolves is sent.**
+- `_load_cart_link_item` resolves an external-seed row only when it is the seed **mirror**: key
+  `prod::external_seed::external_seed::<external_product_id>`, `source_system external_product_seeds_mirror_v1`.
+- An enrichment-agent `ext:<canonical>::<hash>` key IS a `catalog_products` key, but its source system is the
+  agent's, which that function refuses (`row_variant_unverified`). The live jsmbeauty.sg rows carry such keys,
+  e.g. `ext:jungsaemmool-essential-mool-toner::4b4c3cfe`.
+- The mirror writes no `prod::external_seed::…` row for a seed attached to an `ext:` product, so there is no
+  mirror key to map these rows to.
+- So they are skipped `row_key_unsupported`, with no POST, as is any `platform: external` row that is not a mirror
+  (an affiliate-feed row), and any mirror-shaped key whose read names another source system.
+- The jsmbeauty.sg demo therefore needs a mirror row, or a backend change, before this lane can buy it.
+
+**Which host is sent.** The backend matches `lower(catalog_products.source_domain)` byte for byte, so an explicit
+`merchant_domain` / `source_domain` on the read is sent as observed, lowercased. It wins over the URL's host even
+when the two differ only by `www.`. Without one, the host of the hop's `dest` (then `destination_url`) is sent.
+
+A row is still skipped before any POST unless ONE variant can be named: a Shopify numeric `source_variant_id` (on
+the row, or on its single variant), or a single numeric `variant=` on the merchant's own URL on the merchant's
+host. Whether the merchant IS a Tier B cart-link merchant is the backend's daily verdict in the buyer's market.
+Any refusal (`merchant_not_eligible`, `row_not_found`, `row_variant_unverified`, `row_currency_mismatch`, …) falls
+through with no second POST.
+
+With the cart-link dial off, an external-seed row is skipped `not_shopify` exactly as before. Shopify rows keep
+the variant lane and its one retry, unchanged. The expected-seller check (§5.4) runs at the door first, as for
+every create. On these rows `reap.merchant_id` is omitted: their key's merchant segment is the shared
+external-seed sentinel, which is a supply bucket, not a seller.
+
 **After a merchant is ENABLED on the variant lane, use a NEW idempotency key for 24 hours.** The backend
 remembers a variant-lane `merchant_not_eligible` against the key for the key's whole 24 h window (so a retry
 replays the cart-link purchase instead of opening a second one). A create re-sent with the SAME key after the

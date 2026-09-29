@@ -131,12 +131,16 @@ import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer
 // The purchasability gate's ONE process client and ONE switch — the same default-interop import the
 // escalation lane uses, so there is one cache and one `enforced` rule for the whole gateway.
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
+// The external-seed sentinel seller id, from its one owner (ADR-009).
+import pdpRenderability from "../../src/services/pdpRenderability.js";
 // The expected-seller rule: ONE module, shared with the storefront lane (no import cycle).
 import {
   HOSTNAME_RE,
   PRINTABLE_ASCII_RE,
   SELF_HOST_RE,
+  canonicalReapMerchantDomain,
   judgeRowSeller,
+  pivotaHopDestination,
   reapExpectedMerchantDomain,
   reapMerchantIdOfProductKey,
   sellerMismatchRefusal,
@@ -443,6 +447,107 @@ function isShopifyRow(row, productKey) {
   if (platform) return platform.toLowerCase() === "shopify";
   const parts = productKey.split("::");
   return parts.length >= 4 && parts[0] === "prod" && parts[2].toLowerCase() === "shopify";
+}
+
+// ---- Tier B cart-link, DIRECT (external-seed / mirror rows) -------------------------------------------------
+//
+// An EXTERNAL-SEED row (a mirror of a merchant's storefront that Pivota does not transact: judydoll.com,
+// jsmbeauty.sg) is not a Shopify catalog row, so the VARIANT lane can never buy it — the backend's variant rail
+// reads Shopify rows only. The backend's CART-LINK lane can (`_load_cart_link_item` accepts platform
+// `external_seed` from `external_product_seeds_mirror_v1`, and proves the sole Shopify variant from the seed's
+// storefront evidence). So while BOTH dials are on (the lane AND `REAP_AGENTIC_CART_LINK_LANE_ENABLED`), such a
+// row is POSTed with `item_source: "cart_link"` directly — not first as a variant purchase that can only be
+// refused. The backend decides whether the merchant IS a Tier B cart-link merchant (its daily verdict, in the
+// buyer's market); a refusal falls through like any other. The gateway sends catalog keys only (merchant host,
+// product key): no URL, no price, no variant — the backend accepts none of them from a caller.
+
+const EXTERNAL_SEED_PLATFORMS = new Set(["external", "external_seed"]);
+/**
+ * THE ONE KEY SHAPE THE BACKEND'S CART-LINK LANE RESOLVES for a non-Shopify row: the seed MIRROR's
+ * `prod::external_seed::external_seed::<external_product_id>` (pivota-backend
+ * scripts/mirror_external_seeds_to_catalog_products.py, source_system `external_product_seeds_mirror_v1`).
+ * `_load_cart_link_item` refuses every other external_seed row: an enrichment-agent `ext:<canonical>::<hash>` key
+ * (services/catalog_enrichment_agent/ingestion.py `derive_product_key`) IS a catalog_products key, but its
+ * source_system is the agent's, which that function answers `row_variant_unverified`. The merchant segment is the
+ * shared sentinel seller, read from its one owner (ADR-009); the platform segment is the mirror's platform.
+ */
+const MIRROR_KEY_PREFIX = `prod::${pdpRenderability.EXTERNAL_SEED_MERCHANT_ID}::external_seed::`;
+const MIRROR_SOURCE_SYSTEM = "external_product_seeds_mirror_v1";
+
+/** Is this an external-seed row (platform `external` / `external_seed`, else an external-seed key shape)? */
+function isExternalSeedRow(row, productKey) {
+  const platform = str(own(row, "platform")) || str(own(row, "source_platform"));
+  if (platform) return EXTERNAL_SEED_PLATFORMS.has(platform.toLowerCase());
+  return productKey.startsWith("ext:") || productKey.startsWith(MIRROR_KEY_PREFIX);
+}
+
+/**
+ * Is it a seed MIRROR row, i.e. one whose key the backend's cart-link lane resolves? The mirror key shape, and — when
+ * the read carries a source system — the mirror's. An affiliate-feed or enrichment row (`platform: external`, an
+ * `ext:` key, another source system) is NOT, and is never POSTed.
+ */
+function isSeedMirrorRow(row, productKey) {
+  if (!productKey.startsWith(MIRROR_KEY_PREFIX) || productKey.length === MIRROR_KEY_PREFIX.length) return false;
+  const system = str(own(row, "source_system"));
+  return system === null || system === MIRROR_SOURCE_SYSTEM;
+}
+
+/** A parsed URL, or null. */
+function parseUrl(raw) {
+  const s = str(raw);
+  if (!s) return null;
+  try { return new URL(s); } catch { return null; }
+}
+
+/**
+ * The merchant's own URLs on the row: the storefront target (or, when it is a Pivota `/r` hop, the `dest` its
+ * token names — see ucpExpectedSeller.js `pivotaHopDestination`), then `destination_url`. Pivota hosts never.
+ */
+function merchantUrlsOf(row, target) {
+  const out = [];
+  const t = parseUrl(target);
+  if (t) {
+    const hop = pivotaHopDestination(t);
+    if (hop && hop.dest) { const d = parseUrl(hop.dest); if (d) out.push(d); }
+    else if (!hop) out.push(t);
+  }
+  const dest = parseUrl(own(row, "destination_url"));
+  if (dest) out.push(dest);
+  return out.filter((u) => u.protocol === "https:" && !SELF_HOST_RE.test(u.hostname.toLowerCase()));
+}
+
+/**
+ * The host the CART-LINK POST names: an explicit merchant field when the read carries one, else the host of the
+ * merchant's own URL (a hop's `dest`, then `destination_url`) — AS OBSERVED, lowercased, because the backend's
+ * cart-link catalog read compares `lower(source_domain)` byte for byte.
+ */
+function cartLinkMerchantDomain(row, target) {
+  const explicit = str(own(row, "merchant_domain")) || str(own(row, "source_domain"));
+  const hosts = explicit
+    ? [PRINTABLE_ASCII_RE.test(explicit) ? explicit.toLowerCase() : null]
+    : merchantUrlsOf(row, target).map((u) => u.hostname.toLowerCase());
+  return hosts.find((h) => h && HOSTNAME_RE.test(h) && !SELF_HOST_RE.test(h)) || null;
+}
+
+const SHOPIFY_VARIANT_ID_RE = /^(?:gid:\/\/shopify\/ProductVariant\/)?\d{1,20}$/;
+
+/**
+ * Can ONE variant be named for this row? A `source_variant_id` (on the row, or on its single variant), else the
+ * `variant=` of the merchant's own URL on the merchant's host. A PRE-FILTER only: the variant is not sent (the
+ * backend accepts no caller variant on this lane and proves the sole one from storefront evidence), but a row
+ * with none is not POSTed to be refused.
+ */
+function cartLinkVariantResolvable(row, target, merchantDomain) {
+  const ids = [own(row, "source_variant_id")];
+  const variants = own(row, "variants");
+  if (Array.isArray(variants) && variants.length === 1) ids.push(own(variants[0], "source_variant_id"));
+  if (ids.some((v) => typeof v === "string" ? SHOPIFY_VARIANT_ID_RE.test(v.trim()) : Number.isSafeInteger(v) && v > 0)) return true;
+  const want = canonicalReapMerchantDomain(merchantDomain);
+  return merchantUrlsOf(row, target).some((u) => {
+    if (want === null || canonicalReapMerchantDomain(u.hostname) !== want) return false;
+    const values = u.searchParams.getAll("variant");
+    return values.length === 1 && /^\d{1,20}$/.test(values[0]);
+  });
 }
 
 /** Real variants by buyerIntake's own readers — the same count the response shaper and checkout resolver use. */
@@ -1074,14 +1179,19 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // 3. ROW ELIGIBILITY — cheap pre-filters; the backend decides authoritatively and its refusal falls through.
   const productKey = productKeyOf(row);
   if (!productKey) return skip("no_product_key");
-  if (!isShopifyRow(row, productKey)) return skip("not_shopify");
+  // A Shopify row takes the VARIANT lane (unchanged). An external-seed row takes the CART-LINK lane DIRECTLY while
+  // both dials are on; with the cart-link dial off it is skipped exactly as before.
+  const cartLinkDirect = !isShopifyRow(row, productKey) && reapCartLinkLaneEnabled(env) && isExternalSeedRow(row, productKey);
+  if (!isShopifyRow(row, productKey) && !cartLinkDirect) return skip("not_shopify");
+  // Only a key the backend's cart-link lane resolves is ever sent (see MIRROR_KEY_PREFIX).
+  if (cartLinkDirect && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
   // The UCP line item has no variant carrier and the backend matches `variant_key` exactly (it has three live
   // spellings, never re-derived), so this lane omits it — which the backend accepts only for a product with
   // exactly one variant. A multi-variant row is not sent to be refused.
   if (realVariantCount(row) > 1) return skip("multi_variant");
   const price = rowPrice(row);
   if (!price) return skip("row_unpriced");
-  const merchantDomain = reapMerchantDomain(row, target);
+  const merchantDomain = cartLinkDirect ? cartLinkMerchantDomain(row, target) : reapMerchantDomain(row, target);
   // THE EXPECTED SELLER, AGAIN. The door has already REFUSED a create whose expected seller differs
   // (`assertExpectedSeller`, before every lane); this is belt and braces for a caller of this function that
   // skipped the door: never open a purchase from a seller the platform did not show. Fail closed.
@@ -1090,6 +1200,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     return skip("seller_mismatch");
   }
   if (!merchantDomain) return skip("no_merchant_domain");
+  if (cartLinkDirect && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
 
   // 4. THE PURCHASABILITY GATE — exactly as the escalation lane consults it: same switch, same singleton
   // client, same fail-open rule, same market source (the request's `checkout.context.address_country`, never
@@ -1137,19 +1248,19 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   };
   const offerCode = reapOfferCodesEnabled(env) ? reapOfferCode(ucpArgs) : undefined;
   if (offerCode !== undefined) body.offer_code = offerCode;
-  let res = await client.startPurchase(body);
+  // The cart-link body is the SAME shape the Tier B retry below sends — `item_source` and the cart-link
+  // idempotency namespace — so a direct cart-link purchase and a retried one are one request to the backend.
+  const cartLinkBody = () => ({ ...body, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) });
+  if (cartLinkDirect) emit(log, "info", { op: "create_checkout_session", outcome: "cart_link_direct", code: "external_seed" });
+  let res = await client.startPurchase(cartLinkDirect ? cartLinkBody() : body);
 
   // TIER B, ONCE. Only on the one refusal that means "not on the operator allowlist" — never on a consent,
   // address or catalog refusal, which would refuse the cart-link lane for the same reason. A separate
   // idempotency key, because the two bodies differ (the backend hashes `item_source` into the request) and a
   // retry of this create must replay the cart-link purchase rather than conflict with the variant attempt.
-  if (res && res.kind === "refused" && res.code === "merchant_not_eligible" && reapCartLinkLaneEnabled(env)) {
+  if (!cartLinkDirect && res && res.kind === "refused" && res.code === "merchant_not_eligible" && reapCartLinkLaneEnabled(env)) {
     emit(log, "info", { op: "create_checkout_session", outcome: "retry_cart_link", code: res.code });
-    res = await client.startPurchase({
-      ...body,
-      item_source: "cart_link",
-      idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key),
-    });
+    res = await client.startPurchase(cartLinkBody());
   }
 
   if (res && res.kind === "refused" && res.http_status === 400 && res.code === "invalid_offer_code") {
