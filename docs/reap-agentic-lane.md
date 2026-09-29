@@ -325,18 +325,37 @@ of `_load_cart_link_item` (PR C) to resolve against its variant proof table. Arm
   `ext:<slug>::<8 lowercase hex>` (`derive_product_key`: the slug is lowercase alnum and `-`, starts with an alnum,
   at most 200 chars) or `ext:retailer:<32 lowercase hex>` (a retailer listing). Any other `ext:` shape
   (`ext:foo`, 31 or 33 hex, uppercase hex, an empty slug) stays `row_key_unsupported`.
+- **Not `ext:unknown::<hash>`.** The generator gives that one key to EVERY brand + name with no ASCII letter or
+  digit, so its row is whichever product was written last. It is `row_key_unsupported`.
 - **Source system.** Absent on the read, or `catalog_enrichment_agent_v1`. Any other (the mirror's included) is
-  `row_key_unsupported`.
-- **Host sent.** The row's explicit `source_domain`, as observed and lowercased; else the host of its https
-  `canonical_url`. Never `destination_url` or the storefront target: either can be an affiliate link or a
-  redirect. An explicit `source_domain` that is not a hostname is not replaced by the URL (`no_merchant_domain`).
-- **Seller.** The door check is unchanged (`source_domain` and the storefront target are its destinations). The
-  `canonical_url` host is not one of them, so with an expected seller the lane also requires the host it would
-  POST to be that seller; otherwise it skips `seller_mismatch` and the storefront answers.
-- **Variants.** A canonical-only row (no variants, or only the placeholder that restates the product id) or a
-  sole-variant row is sent with no variant; the backend proves the store's sole live variant. Two or more
-  entries, counted with or without ids, are `multi_variant` until a line item can carry a variant. Mirror rows
-  keep the `variant_unresolvable` rule below.
+  `row_key_unsupported`. (Live reads carry none.)
+- **What the read carries.** Live get_product reads of enrichment rows (tarte, stila, MAC, bluemercury,
+  2026-09-29) have NO `source_domain`, `source_system` or `platform`, and their `canonical_url` / `url` is Pivota's
+  own PDP (`https://agent.pivota.cc/products/sig_…`). The merchant's page is `external_redirect_url`, with
+  `destination_url` and `source_url` beside it.
+- **Host sent.** The host of the storefront target (`external_redirect_url`), as observed and lowercased. That is
+  the URL the door's expected-seller check already judges. It must be exactly `https://<host>/products/<handle>`, the
+  shape pivota-backend `storefront_page` accepts:
+  - no userinfo, no port, no query or fragment;
+  - no Pivota host or `/r` hop, no redirector;
+  - the handle not `.js` / `.json`.
+
+  Otherwise the row is skipped `no_merchant_domain`. `canonical_url` and `url` are never read.
+- **Every other merchant field must agree.** When present, `source_url`, `destination_url`, `source_domain` and
+  `merchant_domain` must each name the same merchant, compared as the door compares (lowercase, one leading `www.`
+  folded). Live reads do differ by `www.` (stila's and MAC's `source_url`), and that is accepted. Anything else is
+  skipped `merchant_domain_conflict`: an affiliate `destination_url`, another seller's host, a sibling subdomain, or
+  an unreadable value.
+- **Seller.** The door check is unchanged, and the host POSTed is one of its destinations. The host is settled
+  before the lane's own seller re-check, so a row with no host logs `no_merchant_domain`, not `seller_mismatch`.
+- **Variants.** Two kinds of row are sent with no variant:
+  - a canonical-only row: no variants, or only the producer's product-level placeholder (sku
+    `<product_key>::canonical`, its id restating the product key, the source product id or the product id);
+  - a row with one variant.
+
+  The backend proves the variant itself, either the store's sole live variant or one its proof table names. Two or
+  more entries, counted with or without ids, are `multi_variant` until a line item can carry a variant. Mirror rows
+  keep `realVariantCount` and the `variant_unresolvable` rule below.
 
 **Which host is sent.** The backend matches `lower(catalog_products.source_domain)` byte for byte, so an explicit
 `merchant_domain` / `source_domain` on the read is sent as observed, lowercased. It wins over the URL's host even
