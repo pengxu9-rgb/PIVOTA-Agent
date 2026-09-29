@@ -627,6 +627,235 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  // Prod 2026-09-29 (job oneoff-8762-27407): the seed refresh had stamped the 50 ml variant label
+  // into snapshot.title on both tatcha.com seeds, the seed builder serves snapshot.title first, and
+  // both listings were minted into sig_1b52c3ff0045a6d39c40dd7d as one sellable item. These rows
+  // are the two seeds' shapes as stored, trimmed to the fields the backfill reads.
+  test('backfill keeps two tatcha.com products apart when both titles are the same variant label', async () => {
+    const { backfillPdpIdentityGraph } = require('../../src/services/pdpIdentityGraph');
+    const tatchaSeedRow = ({ hash, slug, title, variants }) => ({
+      id: `seed:catalog_enrichment_agent_v1:${hash}`,
+      external_product_id: `tatcha:${hash}`,
+      market: 'US',
+      tool: 'catalog_enrichment_agent_v1',
+      destination_url: `https://tatcha.com/products/${slug}`,
+      canonical_url: `https://tatcha.com/products/${slug}`,
+      domain: 'tatcha.com',
+      title,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Tatcha',
+        title,
+        product_name: title,
+        variants,
+        snapshot: {
+          title: '50 ml | 1.7 fl. oz.',
+          domain: 'tatcha.com',
+          canonical_url: `https://tatcha.com/products/${slug}`,
+        },
+      },
+      catalog_merchant_id: 'merch_obs_87b90d9e5eb4a5c7',
+    });
+    const sizeVariant = (variantId, sku, label, barcode, price) => ({
+      variant_id: variantId,
+      sku,
+      title: label,
+      barcode,
+      options: [{ name: 'size', value: label }],
+      price,
+      currency: 'USD',
+      in_stock: true,
+    });
+    const seedRows = [
+      tatchaSeedRow({
+        hash: 'ad0a007feb7f2d6a',
+        slug: 'the-indigo-calming-cream',
+        title: 'The Indigo Calming Cream',
+        variants: [
+          sizeVariant('51323249787189', 'CA04210T', '50 ml | 1.7 fl. oz.', '00793888704947', 92),
+          sizeVariant('51323249819957', 'CA04231T', '15 ml | 0.5 fl. oz.', '00691835532257', 28),
+        ],
+      }),
+      tatchaSeedRow({
+        hash: 'dc241fde4286b0ce',
+        slug: 'the-silk-sunscreen-spf-50',
+        title: 'The Silk Sunscreen SPF 50',
+        variants: [
+          sizeVariant('52085660975413', 'CK02011T', '50 ml | 1.7 fl. oz.', '00793888689848', 64),
+          sizeVariant('52085661008181', 'CK02031T', '15 ml | 0.5 fl. oz.', '00793888689343', 25),
+        ],
+      }),
+    ];
+    const queryFn = jest.fn(async (sql) =>
+      String(sql || '').includes('FROM external_product_seeds e') ? { rows: seedRows } : { rows: [] },
+    );
+    const written = [];
+    const withClientFn = async (fn) =>
+      fn({
+        query: async (sql, params) => {
+          if (String(sql || '').includes('INSERT INTO pdp_identity_listing')) {
+            written.push({
+              source_listing_ref: params[0],
+              sellable_item_group_id: params[6],
+              matched_by_rule: params[11],
+              match_basis: JSON.parse(params[12]),
+              title_norm: params[21],
+              title_core_norm: params[22],
+            });
+          }
+          return { rows: [] };
+        },
+      });
+
+    await backfillPdpIdentityGraph({ brand: 'Tatcha', queryFn, withClientFn });
+
+    const byRef = Object.fromEntries(written.map((row) => [row.source_listing_ref, row]));
+    const cream = byRef['merch_obs_87b90d9e5eb4a5c7:tatcha:ad0a007feb7f2d6a'];
+    const sunscreen = byRef['merch_obs_87b90d9e5eb4a5c7:tatcha:dc241fde4286b0ce'];
+    expect(written).toHaveLength(2);
+    expect(cream.sellable_item_group_id).not.toBe(sunscreen.sellable_item_group_id);
+    expect([cream.sellable_item_group_id, sunscreen.sellable_item_group_id]).not.toContain(
+      'sig_1b52c3ff0045a6d39c40dd7d',
+    );
+    expect(cream.matched_by_rule).toBe('official_url_axes');
+    expect(sunscreen.matched_by_rule).toBe('official_url_axes');
+    expect(cream.title_norm).toBe('the indigo calming cream');
+    expect(sunscreen.title_norm).toBe('the silk sunscreen spf50');
+    expect([...cream.match_basis, ...sunscreen.match_basis].join(' ')).not.toMatch(/soft_exact_cluster/);
+  });
+
+  test('a variant label with no product title behind it keys no soft identity', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    // "Style" is not a variant axis, so nothing strips the label out of the title core: only the
+    // label rule stands between this listing and a brand|title|axes key shared with every other
+    // Cocodor product sold in a Pure Cotton style.
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'merch_retail',
+      productId: 'cocodor-pure-cotton',
+      sourceKind: 'internal',
+      product: {
+        title: 'Pure Cotton',
+        vendor: 'Cocodor',
+        variants: [
+          { variant_id: 'a', options: [{ name: 'Size', value: '6.7oz' }, { name: 'Style', value: 'Pure Cotton' }] },
+          { variant_id: 'b', options: [{ name: 'Size', value: '6.7oz' }, { name: 'Style', value: 'Garden Lavender' }] },
+        ],
+        default_variant_id: 'a',
+      },
+    });
+
+    expect(listing.title_norm).toBe('pure cotton');
+    expect(listing.title_core_norm).toBeNull();
+    expect(listing.matched_by_rule).toBe('singleton_source_ref');
+    expect(listing.review_reason_codes).toContain('insufficient_exact_item_evidence');
+  });
+
+  test('clusterIdentityListings refuses one brand store\'s travel-size and full-size pages as one item', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+    const tartePage = (productId, slug, title) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'merch_obs_tarte',
+        productId,
+        sourceKind: 'external_seed',
+        product: {
+          title,
+          brand: 'tarte',
+          canonical_url: `https://tartecosmetics.com/products/${slug}`,
+          variants: [
+            { variant_id: `${productId}-fair`, options: [{ name: 'Shade', value: 'Fair Neutral' }] },
+            { variant_id: `${productId}-light`, options: [{ name: 'Shade', value: 'Light Sand' }] },
+          ],
+          default_variant_id: `${productId}-fair`,
+        },
+      });
+    const fullSize = tartePage(
+      'tarte-full',
+      'creaseless-creamy-full-coverage-concealer',
+      'creaseless creamy full-coverage concealer',
+    );
+    const travelSize = tartePage(
+      'tarte-travel',
+      'travel-size-creaseless-creamy-full-coverage-concealer',
+      'travel-size creaseless creamy full-coverage concealer',
+    );
+    expect(fullSize.title_core_norm).toBe(travelSize.title_core_norm);
+
+    const clustered = _internals.clusterIdentityListings([fullSize, travelSize]);
+
+    expect(clustered[0].sellable_item_group_id).toBe(fullSize.sellable_item_group_id);
+    expect(clustered[1].sellable_item_group_id).toBe(travelSize.sellable_item_group_id);
+    expect(clustered[0].sellable_item_group_id).not.toBe(clustered[1].sellable_item_group_id);
+    expect(clustered.map((listing) => listing.matched_by_rule)).toEqual([
+      'official_url_axes',
+      'official_url_axes',
+    ]);
+    expect(clustered.every((listing) => listing.identity_status === 'approved')).toBe(true);
+    expect(clustered[0].match_basis).toContain(
+      'soft_exact_cluster_refused:distinct_official_urls_different_titles',
+    );
+  });
+
+  test('clusterIdentityListings still joins one brand store\'s regional pages that carry the same title', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+    const meritPage = (productId, slug) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'merch_obs_merit',
+        productId,
+        sourceKind: 'external_seed',
+        product: {
+          title: 'The Mascara Duo',
+          brand: 'Merit',
+          canonical_url: `https://meritbeauty.com/products/${slug}`,
+          variants: [{ variant_id: `${productId}-v`, option_name: 'Size', option_value: '2 x 8 ml' }],
+        },
+      });
+
+    const clustered = _internals.clusterIdentityListings([
+      meritPage('merit-us', 'the-mascara-duo'),
+      meritPage('merit-eu', 'the-mascara-duo-eu'),
+      meritPage('merit-uk', 'the-mascara-duo-uk'),
+    ]);
+
+    expect(new Set(clustered.map((listing) => listing.sellable_item_group_id)).size).toBe(1);
+    expect(clustered.every((listing) => listing.matched_by_rule === 'official_url_soft_exact_cluster')).toBe(true);
+  });
+
+  test('clusterIdentityListings still joins a brand page and a seller page that differ only by "The"', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+    const page = (merchantId, productId, url, title) =>
+      buildIdentityListingFromProduct({
+        merchantId,
+        productId,
+        sourceKind: 'external_seed',
+        product: {
+          title,
+          brand: 'COSRX',
+          canonical_url: url,
+          variants: [{ variant_id: `${productId}-v`, option_name: 'Size', option_value: '50 mL' }],
+        },
+      });
+
+    const [brandPage, sellerPage] = _internals.clusterIdentityListings([
+      page(
+        'merch_obs_cosrx',
+        'cosrx-arbutin',
+        'https://cosrx.com/products/the-alpha-arbutin-2-discoloration-care-serum',
+        'The Alpha Arbutin 2% Discoloration Care Serum',
+      ),
+      page(
+        'merch_obs_soko',
+        'soko-arbutin',
+        'https://sokoglam.com/products/cosrx-alpha-arbutin-2-discoloration-care-serum',
+        'COSRX Alpha Arbutin 2% Discoloration Care Serum',
+      ),
+    ]);
+
+    expect(brandPage.sellable_item_group_id).toBe(sellerPage.sellable_item_group_id);
+    expect(brandPage.matched_by_rule).toBe('official_url_soft_exact_cluster');
+  });
+
   test('buildIdentityListingFromProduct uses canonical content key sig aliases when supplied', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
