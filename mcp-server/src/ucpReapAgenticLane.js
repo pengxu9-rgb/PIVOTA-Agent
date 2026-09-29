@@ -531,17 +531,51 @@ function cartLinkMerchantDomain(row, target) {
 
 const SHOPIFY_VARIANT_ID_RE = /^(?:gid:\/\/shopify\/ProductVariant\/)?\d{1,20}$/;
 
+/** A Shopify variant id (`41596313010251`, or its `gid://shopify/ProductVariant/N` form) as bare digits, else null. */
+function shopifyVariantDigits(v) {
+  if (Number.isSafeInteger(v) && v > 0) return String(v);
+  if (typeof v !== "string" || !SHOPIFY_VARIANT_ID_RE.test(v.trim())) return null;
+  return v.trim().replace(/^gid:\/\/shopify\/ProductVariant\//, "");
+}
+
+/**
+ * The row's ONE variant, named by the read's own variant fields: `variants[0].variant_id` when the row has exactly
+ * one variant, and/or `default_variant_id` when it has at most one. Every one of those that is present must be a
+ * Shopify variant id and they must AGREE; a `default_variant_id` beside two or more variants names nothing. Live
+ * shape (KraveBeauty 24 Carrot Retinal, 2026-09-29): `default_variant_id: "41596313010251"` and
+ * `variants: [{ variant_id: "41596313010251", sku_id: "K108-01-0000-EU", … }]`, no `variant=` on any URL.
+ */
+export function soleReadVariantId(row) {
+  const raw = own(row, "variants");
+  const variants = Array.isArray(raw) ? raw : [];
+  const defaultId = own(row, "default_variant_id");
+  const hasDefault = defaultId !== undefined && defaultId !== null && defaultId !== "";
+  if (hasDefault && variants.length >= 2) return null;
+  const named = [];
+  if (variants.length === 1) {
+    const only = own(variants[0], "variant_id");
+    if (only !== undefined && only !== null && only !== "") named.push(only);
+  }
+  if (hasDefault) named.push(defaultId);
+  if (named.length === 0) return null;
+  const digits = named.map(shopifyVariantDigits);
+  if (digits.some((d) => d === null) || new Set(digits).size !== 1) return null;
+  return digits[0];
+}
+
 /**
  * Can ONE variant be named for this row? A `source_variant_id` (on the row, or on its single variant), else the
- * `variant=` of the merchant's own URL on the merchant's host. A PRE-FILTER only: the variant is not sent (the
- * backend accepts no caller variant on this lane and proves the sole one from storefront evidence), but a row
- * with none is not POSTed to be refused.
+ * read's sole variant id (`soleReadVariantId`), else the `variant=` of the merchant's own URL on the merchant's
+ * host. A PRE-FILTER only: the variant is NEVER sent (the backend accepts no caller variant on this lane and
+ * proves the sole one from the seed's storefront evidence — it is the authority), but a row with none is not
+ * POSTed to be refused.
  */
 function cartLinkVariantResolvable(row, target, merchantDomain) {
   const ids = [own(row, "source_variant_id")];
   const variants = own(row, "variants");
   if (Array.isArray(variants) && variants.length === 1) ids.push(own(variants[0], "source_variant_id"));
   if (ids.some((v) => typeof v === "string" ? SHOPIFY_VARIANT_ID_RE.test(v.trim()) : Number.isSafeInteger(v) && v > 0)) return true;
+  if (soleReadVariantId(row) !== null) return true;
   const want = canonicalReapMerchantDomain(merchantDomain);
   return merchantUrlsOf(row, target).some((u) => {
     if (want === null || canonicalReapMerchantDomain(u.hostname) !== want) return false;
