@@ -721,3 +721,31 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
     assert.deepEqual(member, JSON.parse(JSON.stringify(adapter.ucpInputSchemasFor(LANE_ON).create_checkout_session.properties.checkout.properties.reap)), "the door advertises exactly the hosted member");
   });
 });
+
+describe("soleReadVariantId: the cart-link pre-filter's read of the row's own sole variant", async () => {
+  const lane = await import("../src/ucpReapAgenticLane.js");
+  const LIVE = { default_variant_id: "41596313010251", variants: [{ variant_id: "41596313010251", sku_id: "K108-01-0000-EU", title: "1.01 oz" }] };
+  test("accepts the live KraveBeauty shape and each agreeing / sole form", () => {
+    assert.equal(lane.soleReadVariantId(LIVE), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ variants: LIVE.variants }), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ default_variant_id: "41596313010251" }), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ default_variant_id: "41596313010251", variants: [] }), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ variants: [{ variant_id: "gid://shopify/ProductVariant/41596313010251" }] }), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ ...LIVE, default_variant_id: "gid://shopify/ProductVariant/41596313010251" }), "41596313010251");
+    assert.equal(lane.soleReadVariantId({ variants: [{ variant_id: 41596313010251 }] }), "41596313010251");
+  });
+  test("refuses: two variants, non-Shopify ids, a default beside two or more variants, disagreement, nothing", () => {
+    for (const [label, row] of [
+      ["two variants, different ids", { variants: [{ variant_id: "1" }, { variant_id: "2" }] }],
+      ["two variants, same id", { variants: [{ variant_id: "1" }, { variant_id: "1" }] }],
+      ["default beside two variants", { default_variant_id: "1", variants: [{ variant_id: "1" }, { variant_id: "2" }] }],
+      ["non-numeric variant id", { variants: [{ variant_id: "K108-01-0000-EU" }] }],
+      ["non-numeric default", { default_variant_id: "ext_8026e90301d17f1f7745b5c7:single" }],
+      ["disagreeing ids", { ...LIVE, default_variant_id: "41596313010999" }],
+      ["Shopify variant id beside a non-Shopify default", { ...LIVE, default_variant_id: "ext_x:single" }],
+      ["zero / negative", { variants: [{ variant_id: 0 }] }],
+      ["nothing", {}],
+      ["variants not an array, no default", { variants: { variant_id: "1" } }],
+    ]) assert.equal(lane.soleReadVariantId(row), null, label);
+  });
+});

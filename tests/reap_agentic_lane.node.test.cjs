@@ -2027,3 +2027,97 @@ test('Tier B DIRECT: an explicit merchant_domain / source_domain wins over the U
     assert.equal(ctx.backend.calls[0].body.merchant_domain, sent, label);
   }
 });
+
+// =========================================================================================================
+// The cart-link variant PRE-FILTER reads the row's own sole variant id (staging demo, 2026-09-29)
+// =========================================================================================================
+// LIVE: create_checkout for KraveBeauty 24 Carrot Retinal was skipped `variant_unresolvable`. Its read names the one
+// variant only as `variants[0].variant_id` / `default_variant_id` -- no source_variant_id, no `variant=` on any URL.
+const KRAVE_URL = 'https://kravebeauty.com/products/24-carrot-retinal';
+const KRAVE_ROW = Object.freeze({
+  product_id: 'sig_bb8acf5d9319c377ce7710dd06fd3395',
+  title: '24 Carrot Retinal',
+  brand: 'KraveBeauty',
+  price: 26,
+  currency: 'USD',
+  platform: 'external_seed',
+  source: 'external_seed',
+  product_key: 'prod::external_seed::external_seed::ext_8026e90301d17f1f7745b5c7',
+  destination_url: KRAVE_URL,
+  external_redirect_url: KRAVE_URL,
+  source_url: KRAVE_URL,
+  default_variant_id: '41596313010251',
+  variants: [{ variant_id: '41596313010251', sku_id: 'K108-01-0000-EU', title: '1.01 oz', price: 26, currency: 'USD' }],
+  purchase_grain: 'variant',
+});
+const kraveCreate = async (row, env = CODES_ON, extra = {}) => {
+  const logger = fakeLogger();
+  const ctx = await build({ logger, rows: { [row.product_id]: row } });
+  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, ...extra }), SESSION)));
+  return { ...ctx, logger, r };
+};
+
+test('pre-filter: the LIVE KraveBeauty row (sole variant named only by variant_id / default_variant_id) is POSTed once as cart_link -- and no variant is sent', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { r, backend, m } = await kraveCreate(KRAVE_ROW);
+  assert.match(r.ok.id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1);
+  const body = backend.calls[0].body;
+  assert.deepEqual(
+    { merchant_domain: body.merchant_domain, product_key: body.product_key, item_source: body.item_source, idempotency_key: body.idempotency_key },
+    { merchant_domain: 'kravebeauty.com', product_key: 'prod::external_seed::external_seed::ext_8026e90301d17f1f7745b5c7', item_source: 'cart_link', idempotency_key: m.lane.reapCartLinkIdempotencyKey('idem-reap-0001') },
+  );
+  assert.equal(Object.hasOwn(body, 'variant_key'), false, 'the backend accepts no caller variant');
+  assert.equal(JSON.stringify(body).includes('41596313010251'), false, 'the variant id never leaves the door');
+  // The seller check is still in force.
+  const ok = await kraveCreate(KRAVE_ROW, CODES_ON, { reap: { expected_merchant_domain: 'kravebeauty.com' } });
+  assert.equal(ok.backend.calls.length, 1);
+  const other = await kraveCreate(KRAVE_ROW, CODES_ON, { reap: { expected_merchant_domain: 'other-seller.example' } });
+  assert.equal(errorOf(other.r)?.detail?.reason, 'ucp_seller_mismatch');
+  assert.equal(other.backend.calls.length, 0);
+});
+
+test('pre-filter: only the variant_id, only the default_variant_id, or the gid form each resolve; disagreeing or non-Shopify ids do not (0 POSTs, variant_unresolvable)', async () => {
+  const cases = [
+    ['variants[0].variant_id alone', { default_variant_id: undefined }, 1],
+    ['default_variant_id alone, no variants', { variants: [] }, 1],
+    ['default_variant_id alone, variants absent', { variants: undefined }, 1],
+    ['gid form on the variant', { default_variant_id: undefined, variants: [{ variant_id: 'gid://shopify/ProductVariant/41596313010251' }] }, 1],
+    ['gid default agreeing with a bare variant id', { default_variant_id: 'gid://shopify/ProductVariant/41596313010251' }, 1],
+    ['non-numeric variant id (the SKU)', { default_variant_id: undefined, variants: [{ variant_id: 'K108-01-0000-EU' }] }, 0],
+    ['non-numeric default (ext_…:single)', { variants: [], default_variant_id: 'ext_8026e90301d17f1f7745b5c7:single' }, 0],
+    ['variant_id and default_variant_id disagree', { default_variant_id: '41596313010999' }, 0],
+    ['a Shopify variant_id beside a non-Shopify default', { default_variant_id: 'ext_8026e90301d17f1f7745b5c7:single' }, 0],
+  ];
+  for (const [label, patch, posts] of cases) {
+    const row = { ...KRAVE_ROW, ...patch };
+    for (const k of Object.keys(row)) if (row[k] === undefined) delete row[k];
+    const { backend, logger } = await kraveCreate(row);
+    assert.equal(backend.calls.length, posts, label);
+    if (posts === 0) assert.ok(logger.lines.some((l) => l.code === 'variant_unresolvable'), label);
+    else assert.equal(Object.hasOwn(backend.calls[0].body, 'variant_key'), false, label);
+  }
+  // Two variants with different ids are never POSTed (the multi-variant skip runs first), whatever default says.
+  for (const def of [undefined, '41596313010251']) {
+    const row = { ...KRAVE_ROW, variants: [{ variant_id: '41596313010251' }, { variant_id: '41596313010252' }] };
+    if (def === undefined) delete row.default_variant_id;
+    const { backend } = await kraveCreate(row);
+    assert.equal(backend.calls.length, 0, `two variants, default ${def}`);
+  }
+});
+
+test('pre-filter, flags off: the KraveBeauty create is byte-identical to a door without the lane, 0 POSTs; cart-link dial off still skips it', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const m = await mods();
+  for (const env of [{ [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1' }, { [LANE_FLAG]: undefined, [CART_LINK_FLAG]: undefined }, { [LANE_FLAG]: '0', [CART_LINK_FLAG]: '1' }]) {
+    const withLane = await build({ lane: true, rows: { [KRAVE_ROW.product_id]: KRAVE_ROW } });
+    const without = await build({ lane: false, rows: { [KRAVE_ROW.product_id]: KRAVE_ROW } });
+    const a = await withEnv(env, () => outcome(m, withLane.ucp.callTool('create_checkout', createArgs({ productId: KRAVE_ROW.product_id }), SESSION)));
+    const b = await withEnv(env, () => outcome(m, without.ucp.callTool('create_checkout', createArgs({ productId: KRAVE_ROW.product_id }), SESSION)));
+    assert.equal(JSON.stringify(a), JSON.stringify(b), JSON.stringify(env));
+    assert.equal(withLane.backend.calls.length, 0);
+  }
+  const { backend, logger } = await kraveCreate(KRAVE_ROW, ON);
+  assert.equal(backend.calls.length, 0);
+  assert.ok(logger.lines.some((l) => l.code === 'not_shopify'));
+});

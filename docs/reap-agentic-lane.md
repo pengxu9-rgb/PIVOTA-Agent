@@ -321,9 +321,17 @@ retry sends, not a variant attempt first. The body carries:
 `merchant_domain` / `source_domain` on the read is sent as observed, lowercased. It wins over the URL's host even
 when the two differ only by `www.`. Without one, the host of the hop's `dest` (then `destination_url`) is sent.
 
-A row is still skipped before any POST unless ONE variant can be named: a Shopify numeric `source_variant_id` (on
-the row, or on its single variant), or a single numeric `variant=` on the merchant's own URL on the merchant's
-host. Whether the merchant IS a Tier B cart-link merchant is the backend's daily verdict in the buyer's market.
+A row is still skipped before any POST (`variant_unresolvable`) unless ONE variant can be named. Any of these counts:
+- a Shopify numeric `source_variant_id`, on the row or on its single variant;
+- the read's own sole variant id: `variants[0].variant_id` when the row has exactly one variant, and/or
+  `default_variant_id` when it has at most one. Every one present must be a Shopify variant id (digits, or
+  `gid://shopify/ProductVariant/N`), and they must agree. A `default_variant_id` beside two or more variants names
+  nothing. This is the live KraveBeauty shape: `default_variant_id "41596313010251"`, one variant with that
+  `variant_id`, and no `variant=` on any URL.
+- a single numeric `variant=` on the merchant's own URL on the merchant's host.
+
+This is a pre-filter only, to avoid wasted POSTs. The variant is never sent; the backend proves it from the seed's
+storefront evidence and is the authority. Whether the merchant IS a Tier B cart-link merchant is the backend's daily verdict in the buyer's market.
 Any refusal (`merchant_not_eligible`, `row_not_found`, `row_variant_unverified`, `row_currency_mismatch`, …) falls
 through with no second POST.
 
