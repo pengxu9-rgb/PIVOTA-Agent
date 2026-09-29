@@ -2121,3 +2121,364 @@ test('pre-filter, flags off: the KraveBeauty create is byte-identical to a door 
   assert.equal(backend.calls.length, 0);
   assert.ok(logger.lines.some((l) => l.code === 'not_shopify'));
 });
+
+// =========================================================================================================
+// Option 2 PR D: ENRICHMENT rows (catalog_enrichment_agent_v1) on the cart-link lane, behind their own dial
+// =========================================================================================================
+// pivota-backend option 2 (PR C) teaches `_load_cart_link_item` to resolve an enrichment row against its variant
+// proof table. This gateway half lets those rows reach that POST -- ONLY with REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED
+// on (default OFF) on top of both existing dials.
+//
+// FIXTURES ARE LIVE READS, copied from get_product on 2026-09-29 (image, description and per-variant media members
+// dropped; nothing else changed unless the name says so). NONE carries source_domain, source_system or platform;
+// canonical_url / url are Pivota's own PDP; the merchant's page is external_redirect_url, with destination_url and
+// source_url beside it (stila's and MAC's source_url carry `www.` where the others do not).
+const ENRICH_FLAG = 'REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED';
+const ENRICH_ON = { ...CODES_ON, [ENRICH_FLAG]: '1' };
+const liveVariant = (variant_id, sku_id, title, amount, in_stock = true) => ({
+  variant_id, sku_id, title, options: [{ name: 'Color', value: title, axis_kind: 'color' }],
+  price: { current: { amount, currency: 'USD' } }, availability: in_stock ? { in_stock: true } : { in_stock: false, available_quantity: 0 },
+  axis_kind: 'color', display_label: `Color: ${title}`, source_quality_status: 'captured',
+});
+const pdp = (sig) => `https://agent.pivota.cc/products/${sig}`;
+// stila, ONE variant: the row this lane is for.
+const STILA_LIVE = Object.freeze({
+  product_id: 'sig_07176ee6bdd7c39f60dd4f9fc121df0d',
+  merchant_id: 'merch_obs_7f59d9487c6e0762',
+  title: 'Dual-Ended Waterproof Liquid Eye Liner - Amber / Brown | Stila Cosmetics',
+  brand: 'Stila',
+  source: 'external_seed',
+  readiness_tier: null, serving_eligible: true, purchase_route: null, commerce_mode: null, checkout_handoff: null,
+  external_redirect_url: 'https://stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown',
+  url: pdp('sig_07176ee6bdd7c39f60dd4f9fc121df0d'),
+  canonical_url: pdp('sig_07176ee6bdd7c39f60dd4f9fc121df0d'),
+  destination_url: 'https://stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown',
+  source_url: 'https://www.stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown',
+  default_variant_id: '40318467145831',
+  variants: [liveVariant('40318467145831', 'SC91020001', 'Amber / Dark Brown', 20)],
+  purchase_grain: 'variant',
+  price: 20,
+  availability: { in_stock: true },
+  source_product_id: 'stila:d51136bb9c4d8454',
+  product_key: 'ext:stila-stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown-last-chance-shade::73fc0547',
+  sellable_item_group_id: 'sig_07176ee6bdd7c39f60dd4f9fc121df0d',
+  product_group_id: 'sig_aa1c66fa39df46adf89e4580',
+  pivota_signature_id: 'sig_07176ee6bdd7c39f60dd4f9fc121df0d',
+  pivota_canonical_url: pdp('sig_07176ee6bdd7c39f60dd4f9fc121df0d'),
+  canonical_scope: 'synthetic',
+  currency: 'USD',
+});
+// bluemercury (a retailer, ext:retailer: key): NINE variants live; the first three kept.
+const BLUEMERCURY_LIVE = Object.freeze({
+  product_id: 'sig_016e4c1188aad178f54edf96f9d486fc',
+  merchant_id: 'merch_obs_a2e07b1e8a08148b',
+  title: 'Afterglow Liquid Blush',
+  brand: 'NARS',
+  source: 'external_seed',
+  readiness_tier: null, serving_eligible: true, purchase_route: null, commerce_mode: null, checkout_handoff: null,
+  external_redirect_url: 'https://bluemercury.com/products/nars-afterglow-liquid-blush',
+  url: pdp('sig_016e4c1188aad178f54edf96f9d486fc'),
+  canonical_url: pdp('sig_016e4c1188aad178f54edf96f9d486fc'),
+  destination_url: 'https://bluemercury.com/products/nars-afterglow-liquid-blush',
+  source_url: 'https://bluemercury.com/products/nars-afterglow-liquid-blush',
+  default_variant_id: '40020810465355',
+  variants: [
+    liveVariant('40020810465355', '9425113202', 'Orgasm', 34, false),
+    liveVariant('40020810498123', '9425113203', 'Behave', 34, false),
+    liveVariant('40020810530891', '9425113204', 'Dolce Vita', 34, false),
+  ],
+  purchase_grain: 'variant',
+  price: 34,
+  availability: { in_stock: true },
+  source_product_id: 'bluemercury-com:a257e56e2b97fc71',
+  product_key: 'ext:retailer:1af5dd8fd7ce370b37e13eedcdd32fc7',
+  pivota_signature_id: 'sig_016e4c1188aad178f54edf96f9d486fc',
+  pivota_canonical_url: pdp('sig_016e4c1188aad178f54edf96f9d486fc'),
+  currency: 'USD',
+});
+// tarte: 48 variants live; two kept.
+const TARTE_LIVE = Object.freeze({
+  product_id: 'sig_1d54c9e3b5d3969ea4327b5de4f5d101',
+  merchant_id: 'merch_obs_c75008da8d4366d6',
+  title: 'Shape Tape™ Blur Concealer Stick | Creamy, Buildable Coverage in 47 Shades – Tarte™',
+  brand: 'Tarte',
+  source: 'external_seed',
+  external_redirect_url: 'https://tartecosmetics.com/products/shape-tape-blur-concealer-stick',
+  url: pdp('sig_1d54c9e3b5d3969ea4327b5de4f5d101'),
+  canonical_url: pdp('sig_1d54c9e3b5d3969ea4327b5de4f5d101'),
+  destination_url: 'https://tartecosmetics.com/products/shape-tape-blur-concealer-stick',
+  source_url: 'https://tartecosmetics.com/products/shape-tape-blur-concealer-stick',
+  default_variant_id: '52789610643478',
+  variants: [liveVariant('52789610643478', 'FG14427', '8B porcelain beige', 32), liveVariant('52789610676246', 'FG14428', '12B fair beige', 32)],
+  purchase_grain: 'variant',
+  price: 32,
+  source_product_id: 'tarte:5c0800334c4a222a',
+  product_key: 'ext:tarte-shape-tape-blur-concealer-stick::874dcfea',
+  currency: 'USD',
+});
+// MAC: 7 variants live (the shade family); two kept. Its source_url is www., the others bare.
+const MAC_LIVE = Object.freeze({
+  product_id: 'sig_f5da0819600319955648dc6b9da64125',
+  merchant_id: 'merch_obs_28b3afd14edf211f',
+  title: 'Retro Matte Lipstick - Bronx',
+  brand: 'MAC Cosmetics',
+  source: 'external_seed',
+  external_redirect_url: 'https://maccosmetics.com/products/retro-matte-lipstick',
+  url: pdp('sig_f5da0819600319955648dc6b9da64125'),
+  canonical_url: pdp('sig_f5da0819600319955648dc6b9da64125'),
+  destination_url: 'https://maccosmetics.com/products/retro-matte-lipstick',
+  source_url: 'https://www.maccosmetics.com/products/retro-matte-lipstick',
+  default_variant_id: '54057345941699',
+  variants: [liveVariant('54057345941699', 'M0N904', 'Ruby Woo', 24), liveVariant('54057345908931', 'M0N901', 'Bronx', 24)],
+  purchase_grain: 'variant',
+  price: 24,
+  source_product_id: 'mac-cosmetics:b9fbf06a66abf0ed',
+  product_key: 'ext:mac-cosmetics-retro-matte-lipstick::a234aae1',
+  currency: 'USD',
+});
+// The PRODUCER's product-level placeholder (ingestion.py): sku `<product_key>::canonical`, source_variant_id = the
+// product key. No live read exposes it (the view assembler drops it; none of the four above has it); if one did, it
+// would carry those identities.
+const placeholderOf = (row) => ({ variant_id: row.product_key, sku_id: `${row.product_key}::canonical`, title: 'Default' });
+
+const enrichCreate = async (row, env = ENRICH_ON, extra = {}) => {
+  const logger = fakeLogger();
+  const ctx = await build({ logger, rows: { [row.product_id]: row } });
+  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, ...extra }), SESSION)));
+  return { ...ctx, logger, r };
+};
+const skipCodes = (logger) => logger.lines.filter((l) => l.event === 'reap_agentic_lane' && l.outcome === 'skipped').map((l) => l.code);
+const withRow = (base, patch) => {
+  const row = { ...base, ...patch };
+  for (const k of Object.keys(row)) if (row[k] === undefined) delete row[k];
+  return row;
+};
+
+test('enrichment ON: the LIVE stila read (one variant) is POSTed ONCE as cart_link -- the storefront host, the key as is, no variant', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { r, backend, logger, m } = await enrichCreate(STILA_LIVE);
+  assert.match(keep(r.ok).id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1, 'one POST, no variant attempt first');
+  const body = backend.calls[0].body;
+  assert.deepEqual(
+    { merchant_domain: body.merchant_domain, product_key: body.product_key, item_source: body.item_source, quantity: body.quantity, idempotency_key: body.idempotency_key },
+    { merchant_domain: 'stilacosmetics.com', product_key: STILA_LIVE.product_key, item_source: 'cart_link', quantity: 1, idempotency_key: m.lane.reapCartLinkIdempotencyKey('idem-reap-0001') },
+  );
+  assert.equal(Object.hasOwn(body, 'variant_key'), false);
+  assert.equal(JSON.stringify(body).includes('40318467145831'), false, 'the variant id never leaves the door');
+  assert.ok(logger.lines.some((l) => l.outcome === 'cart_link_direct' && l.code === 'enrichment'));
+  assert.equal(message(r.ok, 'reap.merchant_domain').content, 'stilacosmetics.com');
+  assert.equal(message(r.ok, 'reap.merchant_id'), undefined, 'an ext: key names no seller id');
+  assert.equal(m.lane.decodeReapCheckoutId(r.ok.id).productKey, STILA_LIVE.product_key, 'the id round-trips the ext: key');
+});
+
+test('enrichment ON: the LIVE bluemercury read (ext:retailer: key), cut to its first variant, sends bluemercury.com', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { r, backend } = await enrichCreate(withRow(BLUEMERCURY_LIVE, { variants: BLUEMERCURY_LIVE.variants.slice(0, 1) }));
+  assert.match(r.ok.id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1);
+  assert.deepEqual(
+    { merchant_domain: backend.calls[0].body.merchant_domain, product_key: backend.calls[0].body.product_key, item_source: backend.calls[0].body.item_source },
+    { merchant_domain: 'bluemercury.com', product_key: 'ext:retailer:1af5dd8fd7ce370b37e13eedcdd32fc7', item_source: 'cart_link' },
+  );
+});
+
+test('enrichment ON: the LIVE multi-variant reads (bluemercury, tarte, MAC) are multi_variant, 0 POSTs', async () => {
+  for (const row of [BLUEMERCURY_LIVE, TARTE_LIVE, MAC_LIVE]) {
+    const { backend, logger } = await enrichCreate(row);
+    assert.equal(backend.calls.length, 0, row.product_id);
+    assert.deepEqual(skipCodes(logger), ['multi_variant'], row.product_id);
+  }
+  // Control: the MAC read cut to one variant IS sent, its www. source_url agreeing with the bare storefront host.
+  const mac = await enrichCreate(withRow(MAC_LIVE, { variants: MAC_LIVE.variants.slice(0, 1), default_variant_id: MAC_LIVE.variants[0].variant_id }));
+  assert.equal(mac.backend.calls.length, 1);
+  assert.equal(mac.backend.calls[0].body.merchant_domain, 'maccosmetics.com');
+});
+
+test('enrichment dial OFF (unset, "0", "off"): the live ext: rows are skipped row_key_unsupported exactly as before, 0 POSTs', async () => {
+  for (const flag of [undefined, '0', 'off']) {
+    for (const row of [STILA_LIVE, withRow(BLUEMERCURY_LIVE, { variants: BLUEMERCURY_LIVE.variants.slice(0, 1) })]) {
+      const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag });
+      assert.equal(backend.calls.length, 0, `${row.product_id} flag ${flag}`);
+      assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], `${row.product_id} flag ${flag}`);
+      assert.deepEqual(r, { ok: { session_id: 'q_kernel' } }, 'the kernel path answers, as before');
+    }
+  }
+});
+
+test('enrichment dial ON but a lower dial off: cart-link off -> not_shopify as before; lane off -> byte-identical to no lane', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { backend, logger } = await enrichCreate(STILA_LIVE, { ...ON, [CART_LINK_FLAG]: undefined, [ENRICH_FLAG]: '1' });
+  assert.equal(backend.calls.length, 0);
+  assert.deepEqual(skipCodes(logger), ['not_shopify']);
+  const m = await mods();
+  for (const env of [{ [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1', [ENRICH_FLAG]: '1' }, { [LANE_FLAG]: '0', [CART_LINK_FLAG]: '1', [ENRICH_FLAG]: '1' }]) {
+    const withLane = await build({ lane: true, rows: { [STILA_LIVE.product_id]: STILA_LIVE } });
+    const without = await build({ lane: false, rows: { [STILA_LIVE.product_id]: STILA_LIVE } });
+    const a = await withEnv(env, () => outcome(m, withLane.ucp.callTool('create_checkout', createArgs({ productId: STILA_LIVE.product_id }), SESSION)));
+    const b = await withEnv(env, () => outcome(m, without.ucp.callTool('create_checkout', createArgs({ productId: STILA_LIVE.product_id }), SESSION)));
+    assert.equal(JSON.stringify(a), JSON.stringify(b), JSON.stringify(env));
+    assert.equal(withLane.backend.calls.length, 0);
+  }
+});
+
+test('enrichment ON: every OTHER ext: shape, the collapsed ext:unknown:: key, and another source system stay row_key_unsupported, 0 POSTs', async () => {
+  const hex32 = '1af5dd8fd7ce370b37e13eedcdd32fc7';
+  for (const [label, patch] of [
+    ['ext:foo (no hash)', { product_key: 'ext:foo' }],
+    ['the collapsed all-non-ASCII key', { product_key: 'ext:unknown::bfb6e8a3' }],
+    ['uppercase hash', { product_key: 'ext:stila-stay-all-day::73FC0547' }],
+    ['7-hex hash', { product_key: 'ext:stila-stay-all-day::73fc054' }],
+    ['uppercase slug', { product_key: 'ext:Stila-stay-all-day::73fc0547' }],
+    ['empty slug', { product_key: 'ext:::73fc0547' }],
+    ['retailer, 31 hex', { product_key: `ext:retailer:${hex32.slice(0, 31)}` }],
+    ['retailer, 33 hex', { product_key: `ext:retailer:${hex32}a` }],
+    ['retailer, uppercase hex', { product_key: `ext:retailer:${hex32.toUpperCase()}` }],
+    ['the mirror source system', { source_system: 'external_product_seeds_mirror_v1' }],
+    ['another agent version', { source_system: 'catalog_enrichment_agent_v2' }],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(STILA_LIVE, patch));
+    assert.equal(backend.calls.length, 0, label);
+    assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], label);
+  }
+  // Control: the agent's source system on the read is accepted like none.
+  const { backend } = await enrichCreate(withRow(STILA_LIVE, { source_system: 'catalog_enrichment_agent_v1' }));
+  assert.equal(backend.calls.length, 1);
+});
+
+test('enrichment ON, the host: the storefront page, every other merchant field agreeing (www. folded); else nothing is opened', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const [label, patch, expected] of [
+    ['a www. storefront target is sent as observed', { external_redirect_url: 'https://www.stilacosmetics.com/products/x' }, 'www.stilacosmetics.com'],
+    ['canonical_url / url on another host are never read', { canonical_url: 'https://other-seller.example/products/x', url: 'https://other-seller.example/products/x' }, 'stilacosmetics.com'],
+    ['agreeing explicit source_domain / merchant_domain', { source_domain: 'www.stilacosmetics.com', merchant_domain: 'StilaCosmetics.com' }, 'stilacosmetics.com'],
+    ['no destination_url / source_url at all', { destination_url: undefined, source_url: undefined }, 'stilacosmetics.com'],
+    ['an affiliate destination_url', { destination_url: 'https://click.linksynergy.com/deeplink?id=abc&murl=https%3A%2F%2Fstilacosmetics.com%2Fp' }, 'merchant_domain_conflict'],
+    ['a source_url on a retailer', { source_url: 'https://bluemercury.com/products/stila-liner' }, 'merchant_domain_conflict'],
+    ['a source_domain naming another seller', { source_domain: 'bluemercury.com' }, 'merchant_domain_conflict'],
+    ['a merchant_domain naming another seller', { merchant_domain: 'ulta.com' }, 'merchant_domain_conflict'],
+    ['a sibling subdomain source_url', { source_url: 'https://shop.stilacosmetics.com/products/x' }, 'merchant_domain_conflict'],
+    ['storefront target with a query', { external_redirect_url: 'https://stilacosmetics.com/products/x?utm_source=pivota' }, 'no_merchant_domain'],
+    ['storefront target not a /products/ page', { external_redirect_url: 'https://stilacosmetics.com/collections/eye' }, 'no_merchant_domain'],
+    ['storefront target with a port', { external_redirect_url: 'https://stilacosmetics.com:8443/products/x' }, 'no_merchant_domain'],
+    // Review R2: the door and escalationTargetOf see the PARSED target (`:443` dropped, `/x/../` resolved); the host is
+    // taken from the field as the row carries it, which pivota-backend storefront_page would refuse.
+    ['storefront target with :443', { external_redirect_url: 'https://stilacosmetics.com:443/products/x' }, 'no_merchant_domain'],
+    ['storefront target with a dot segment', { external_redirect_url: 'https://stilacosmetics.com/x/../products/x' }, 'no_merchant_domain'],
+    ['storefront target with an escaped handle the parser keeps as written', { external_redirect_url: 'https://stilacosmetics.com/products/x%2Fy' }, 'stilacosmetics.com'],
+    ['storefront target a Pivota hop', { external_redirect_url: `https://api.pivota.cc/r?token=${hopToken({ dest: 'https://stilacosmetics.com/products/x' })}` }, 'no_merchant_domain'],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(STILA_LIVE, patch));
+    if (expected.includes('.')) {
+      assert.equal(backend.calls.length, 1, label);
+      assert.equal(backend.calls[0].body.merchant_domain, expected, label);
+    } else {
+      assert.equal(backend.calls.length, 0, label);
+      assert.deepEqual(skipCodes(logger), [expected], label);
+    }
+  }
+});
+
+test('enrichment ON, the seller: the door still refuses ucp_seller_mismatch; the host POSTed is the one the door judged', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const expected of ['stilacosmetics.com', 'WWW.STILACOSMETICS.COM']) {
+    const { backend } = await enrichCreate(STILA_LIVE, ENRICH_ON, { reap: { expected_merchant_domain: expected } });
+    assert.equal(backend.calls.length, 1, expected);
+    assert.equal(backend.calls[0].body.merchant_domain, 'stilacosmetics.com');
+  }
+  const other = await enrichCreate(STILA_LIVE, ENRICH_ON, { reap: { expected_merchant_domain: 'bluemercury.com' } });
+  assert.deepEqual([errorOf(other.r)?.detail?.reason, errorOf(other.r)?.detail?.merchant_domain], ['ucp_seller_mismatch', 'stilacosmetics.com']);
+  assert.equal(other.backend.calls.length, 0);
+});
+
+test('enrichment ON, the variant pre-filter: canonical-only (the producer\'s placeholder, or nothing) and one-variant rows pass; two or more are multi_variant', async () => {
+  const S = STILA_LIVE;
+  const real = S.variants[0];
+  const second = liveVariant('40318467145832', 'SC91020002', 'Black', 20);
+  for (const [label, patch, posts] of [
+    ['no variants member', { variants: undefined, default_variant_id: undefined }, 1],
+    ['variants: []', { variants: [], default_variant_id: undefined }, 1],
+    ['only the producer placeholder (sku <pk>::canonical, id = product_key)', { variants: [placeholderOf(S)], default_variant_id: undefined }, 1],
+    ['the long-key placeholder (source_variant_id = source_product_id, sku <pk>::canonical), beside the real one', { variants: [{ variant_id: S.source_product_id, sku_id: `${S.product_key}::canonical` }, real] }, 1],
+    ['a placeholder named only by its sku <pk>::canonical, beside the real one', { variants: [{ sku_id: `${S.product_key}::canonical`, title: 'Default' }, real] }, 1],
+    ['the placeholder beside the ONE real variant', { variants: [placeholderOf(S), real] }, 1],
+    ['a placeholder named only by source_variant_id = product_key, beside the real one', { variants: [{ source_variant_id: S.product_key, title: 'Default' }, real] }, 1],
+    ['a placeholder restating the requested product id, beside the real one', { variants: [{ variant_id: S.product_id }, real] }, 1],
+    ['a placeholder named by `id` (the read\'s other id member), beside the real one', { variants: [{ id: S.product_key }, real] }, 1],
+    ['a sole variant the door cannot name (the backend proves it)', { variants: [{ ...real, variant_id: 'SC91020001' }] }, 1],
+    ['a sole variant with no id', { variants: [{ title: 'Amber / Dark Brown' }] }, 1],
+    ['two real variants', { variants: [real, second] }, 0],
+    ['the placeholder beside TWO real variants', { variants: [placeholderOf(S), real, second] }, 0],
+    ['two shade entries with no ids', { variants: [{ title: 'Fair' }, { title: 'Light' }] }, 0],
+    ['the same id twice', { variants: [real, real] }, 0],
+    ['a real id whose sku merely STARTS like the key is not a placeholder', { variants: [real, { variant_id: '40318467145832', sku_id: `${S.product_key}::canonical` }] }, 0],
+    ['variants not an array', { variants: { variant_id: real.variant_id } }, 0],
+    // Review R1: only EXACT restatements are the placeholder. Each of these is two variants the store sells.
+    ['c2: two <pk>::v:<id> variant ids (prefix-restating the key)', { variants: [{ variant_id: `${S.product_key}::v:111` }, { variant_id: `${S.product_key}::v:222` }] }, 0],
+    ['c2\': two <pk>::v:<id> skus, no variant ids', { variants: [{ sku_id: `${S.product_key}::v:111` }, { sku_id: `${S.product_key}::v:222` }] }, 0],
+    ['c3: numeric variant ids whose skus restate source_product_id', { variants: [{ variant_id: 111, sku_id: S.source_product_id }, { variant_id: 222, sku_id: `${S.source_product_id}-2` }] }, 0],
+    ['a digit-only id equal to a digit-only source_product_id is still real', { source_product_id: '8812345', variants: [{ variant_id: '8812345' }, real] }, 0],
+    ['<pk>::canonical-2 is not the placeholder', { variants: [{ sku_id: `${S.product_key}::canonical-2` }, real] }, 0],
+    ['a placeholder-looking entry with an EMPTY extra id is real', { variants: [{ variant_id: S.product_key, sku_id: '' }, real] }, 0],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(S, patch));
+    assert.equal(backend.calls.length, posts, label);
+    if (posts === 0) assert.deepEqual(skipCodes(logger), ['multi_variant'], label);
+    else assert.equal(Object.hasOwn(backend.calls[0].body, 'variant_key'), false, label);
+  }
+});
+
+test('enrichment ON, pdpBuilder.buildVariants shapes (review R1 c1): two id-less variants are TWO; one, or none, still passes', async () => {
+  const { buildPdpPayload } = require('../src/pdpBuilder');
+  const S = STILA_LIVE;
+  const built = (variants) => buildPdpPayload({ product: { product_id: S.product_id, title: S.title, currency: 'USD', price: 20, ...(variants ? { variants } : {}) } }).product.variants;
+  const two = built([{ title: 'Amber / Dark Brown' }, { title: 'Black' }]);
+  assert.deepEqual(two.map((v) => v.variant_id), [`${S.product_id}-1`, `${S.product_id}-2`], 'the producer really names them <product_id>-N');
+  const one = built([{ title: 'Amber / Dark Brown' }]);
+  const none = built(undefined);
+  assert.deepEqual(none.map((v) => [v.variant_id, v.sku_id]), [[S.product_id, S.product_id]], 'a variant-less product is ONE entry restating the product id');
+  for (const [label, variants, posts] of [
+    ['c1: two id-less variants -> <pid>-1, <pid>-2', two, 0],
+    ['control: one id-less variant -> <pid>-1', one, 1],
+    ['control: no variants -> the product id restated (the placeholder)', none, 1],
+    ['control: that placeholder beside one real variant', [...none, S.variants[0]], 1],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(S, { variants, default_variant_id: undefined }));
+    assert.equal(backend.calls.length, posts, label);
+    if (posts === 0) assert.deepEqual(skipCodes(logger), ['multi_variant'], label);
+  }
+});
+
+test('enrichment ON does not change MIRROR rows (#2326/#2327): a named sole variant is still required; KraveBeauty still posts', async () => {
+  const noVariant = withRow(JSM_ROW, { source_variant_id: undefined });
+  const ctx = await build({ logger: fakeLogger(), rows: { [JSM_ROW.product_id]: noVariant } });
+  await withEnv(ENRICH_ON, () => ctx.ucp.callTool('create_checkout', sgArgs(), SESSION).catch(() => null));
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.deepEqual(skipCodes(ctx.logger), ['variant_unresolvable']);
+  const k = await kraveCreate(KRAVE_ROW, ENRICH_ON);
+  assert.equal(k.backend.calls.length, 1);
+  assert.equal(k.backend.calls[0].body.merchant_domain, 'kravebeauty.com');
+  const disagree = await kraveCreate({ ...KRAVE_ROW, default_variant_id: '41596313010999' }, ENRICH_ON);
+  assert.equal(disagree.backend.calls.length, 0);
+  // Mirror multi-variant: still realVariantCount's rule (two distinct ids), not the enrichment one.
+  const idless = await build({ logger: fakeLogger(), rows: { [JSM_ROW.product_id]: { ...JSM_ROW, variants: [{ title: 'a' }, { title: 'b' }] } } });
+  await withEnv(ENRICH_ON, () => idless.ucp.callTool('create_checkout', sgArgs(), SESSION));
+  assert.equal(idless.backend.calls.length, 1, 'mirror rows keep realVariantCount (entries without ids are not counted)');
+  // The mirror host rule (hop dest, then destination_url) is untouched by the enrichment one.
+  const judy = await enrichCreate(JUDY_ROW);
+  assert.equal(judy.backend.calls[0].body.merchant_domain, 'judydoll.com');
+  const judyDest = await enrichCreate({ ...JUDY_ROW, external_redirect_url: 'https://www.judydoll.com/products/x?variant=49819267301653', destination_url: 'https://www.judydoll.com/products/x' });
+  assert.equal(judyDest.backend.calls[0].body.merchant_domain, 'www.judydoll.com');
+});
+
+test('enrichment ON does not touch SHOPIFY rows: a Shopify-platform row is the variant lane, whatever its key', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const row = withRow(STILA_LIVE, {
+    product_id: 'sig_shop_extkey', platform: 'shopify',
+    external_redirect_url: 'https://www.brand.example/products/x',
+  });
+  const { backend } = await enrichCreate(row);
+  assert.equal(backend.calls.length, 1);
+  assert.equal(backend.calls[0].body.item_source, undefined, 'the variant lane');
+  assert.equal(backend.calls[0].body.merchant_domain, 'www.brand.example');
+});

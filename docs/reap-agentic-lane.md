@@ -292,7 +292,7 @@ variant refusal against the variant key, and the cart-link key is deterministic.
 **Tier B DIRECT for external-seed rows.** An external-seed / mirror row cannot be bought on the variant lane: the
 backend's variant rail reads Shopify catalog rows only. Examples are judydoll.com (platform `external`, key
 `prod::external_seed::external_seed::ext_…`, its link a Pivota `/r` hop) and jsmbeauty.sg (platform
-`external_seed`, key `ext:…::<hash>`, SGD — see below: that key is not one this lane can send).
+`external_seed`, key `ext:…::<hash>`, SGD — see below: that key is sent only with the enrichment dial on).
 
 While BOTH dials are on (`REAP_AGENTIC_LANE_ENABLED` and `REAP_AGENTIC_CART_LINK_LANE_ENABLED`), such a row is
 POSTed ONCE with `item_source: "cart_link"` and the cart-link idempotency key. This is exactly the body the Tier B
@@ -316,6 +316,51 @@ retry sends, not a variant attempt first. The body carries:
 - So they are skipped `row_key_unsupported`, with no POST, as is any `platform: external` row that is not a mirror
   (an affiliate-feed row), and any mirror-shaped key whose read names another source system.
 - The jsmbeauty.sg demo therefore needs a mirror row, or a backend change, before this lane can buy it.
+
+**Enrichment rows (option 2, PR D), behind `REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED`.** Default OFF, read per call,
+consulted only while the lane AND the cart-link dial are on. Off, everything above holds byte for byte. On, an
+enrichment-agent row is POSTed as `item_source: "cart_link"` like a mirror row, for the backend's option 2 branch
+of `_load_cart_link_item` (PR C) to resolve against its variant proof table. Arm it only after PR C is live.
+- **Key shape.** Exactly what pivota-backend `services/catalog_enrichment_agent/ingestion.py` mints:
+  `ext:<slug>::<8 lowercase hex>` (`derive_product_key`: the slug is lowercase alnum and `-`, starts with an alnum,
+  at most 200 chars) or `ext:retailer:<32 lowercase hex>` (a retailer listing). Any other `ext:` shape
+  (`ext:foo`, 31 or 33 hex, uppercase hex, an empty slug) stays `row_key_unsupported`.
+- **Not `ext:unknown::<hash>`.** The generator gives that one key to EVERY brand + name with no ASCII letter or
+  digit, so its row is whichever product was written last. It is `row_key_unsupported`.
+- **Source system.** Absent on the read, or `catalog_enrichment_agent_v1`. Any other (the mirror's included) is
+  `row_key_unsupported`. (Live reads carry none.)
+- **What the read carries.** Live get_product reads of enrichment rows (tarte, stila, MAC, bluemercury,
+  2026-09-29) have NO `source_domain`, `source_system` or `platform`, and their `canonical_url` / `url` is Pivota's
+  own PDP (`https://agent.pivota.cc/products/sig_…`). The merchant's page is `external_redirect_url`, with
+  `destination_url` and `source_url` beside it.
+- **Host sent.** The host of the storefront target (`external_redirect_url`), as observed and lowercased. That is
+  the field the door's expected-seller check already judges. The shape is checked on the field AS THE ROW CARRIES
+  IT, not on the parsed form the door sees, because parsing drops a `:443` and resolves `/a/../`. It must be exactly
+  `https://<host>/products/<handle>`, the shape pivota-backend `storefront_page` accepts:
+  - no userinfo, no port, no query or fragment;
+  - no Pivota host or `/r` hop, no redirector;
+  - the handle not `.js` / `.json`.
+
+  Otherwise the row is skipped `no_merchant_domain`. `canonical_url` and `url` are never read.
+- **Every other merchant field must agree.** When present, `source_url`, `destination_url`, `source_domain` and
+  `merchant_domain` must each name the same merchant, compared as the door compares (lowercase, one leading `www.`
+  folded). Live reads do differ by `www.` (stila's and MAC's `source_url`), and that is accepted. Anything else is
+  skipped `merchant_domain_conflict`: an affiliate `destination_url`, another seller's host, a sibling subdomain, or
+  an unreadable value.
+- **Seller.** The door check is unchanged, and the host POSTed is one of its destinations. The host is settled
+  before the lane's own seller re-check, so a row with no host logs `no_merchant_domain`, not `seller_mismatch`.
+- **Variants.** Two kinds of row are sent with no variant:
+  - a canonical-only row: no variants, or only the product-level placeholder. An entry is the placeholder only when
+    every id it carries (`variant_id` / `id`, `sku_id`, `source_variant_id`) is EXACTLY the product key,
+    `<product_key>::canonical`, the source product id or the product id. The producer's canonical sku and
+    pdpBuilder's variant-less entry are both that shape. A prefix is not enough: `<product_key>::v:<id>` and
+    pdpBuilder's `<product_id>-1`, `<product_id>-2` are real variants. A numeric id makes the entry real, and so does
+    an entry with no id;
+  - a row with one variant.
+
+  The backend proves the variant itself, either the store's sole live variant or one its proof table names. Two or
+  more entries, counted with or without ids, are `multi_variant` until a line item can carry a variant. Mirror rows
+  keep `realVariantCount` and the `variant_unresolvable` rule below.
 
 **Which host is sent.** The backend matches `lower(catalog_products.source_domain)` byte for byte, so an explicit
 `merchant_domain` / `source_domain` on the read is sent as observed, lowercased. It wins over the URL's host even

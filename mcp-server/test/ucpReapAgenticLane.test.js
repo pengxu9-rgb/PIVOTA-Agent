@@ -749,3 +749,248 @@ describe("soleReadVariantId: the cart-link pre-filter's read of the row's own so
     ]) assert.equal(lane.soleReadVariantId(row), null, label);
   });
 });
+
+// ---- option 2 PR D: ENRICHMENT rows on the cart-link lane (behind REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED) ------
+
+describe("enrichment cart-link rows: key shape, source system, merchant host", async () => {
+  const lane = await import("../src/ucpReapAgenticLane.js");
+  const { createHash } = await import("node:crypto");
+  // THE PRODUCER, transcribed: pivota-backend services/catalog_enrichment_agent/ingestion.py `_normalize_token`
+  // (`[^a-z0-9]+` -> " " over str.lower(), stripped), `canonical_product_name` (spaces -> "-", "" -> "unknown"),
+  // `derive_product_key` ("ext:" + canonical[:200] + "::" + sha1(canonical)[:8]), and the retailer branch of
+  // `_build_pdp_insert` ("ext:retailer:" + sha256(listing)[:32]). The accepted keys below are what it emits.
+  const canonical = (brand, name) => (`${brand || ""} ${name || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/ /g, "-")) || "unknown";
+  const deriveProductKey = (brand, name) => {
+    const c = canonical(brand, name);
+    return `ext:${c.slice(0, 200)}::${createHash("sha1").update(c, "utf8").digest("hex").slice(0, 8)}`;
+  };
+  const retailerKey = (listing) => `ext:retailer:${createHash("sha256").update(listing, "utf8").digest("hex").slice(0, 32)}`;
+  const LONG_NAME = `Kiss Professional Full Cover Press On Fake Toenails - Tippy Toes | 130 Toenails, Includes Nail Glue, ${"Solid White Short Squoval Pedicure ".repeat(6)}`;
+  const PRODUCED = [
+    deriveProductKey("JUNGSAEMMOOL", "Essential Mool Toner"),
+    deriveProductKey("tarte", "shape tape™ concealer"),
+    deriveProductKey("Kérastase", "Élixir Ultime L'Huile Originale"),
+    deriveProductKey("Kiss", LONG_NAME),
+    retailerKey("bluemercury.com/products/tatcha-the-dewy-skin-cream"),
+    retailerKey("global.oliveyoung.com/product/detail?prdtNo=GA123"),
+  ];
+  // Keys read LIVE on 2026-09-29 (get_product): tarte, stila, MAC, bluemercury.
+  const LIVE_KEYS = [
+    "ext:tarte-shape-tape-blur-concealer-stick::874dcfea",
+    "ext:stila-stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown-last-chance-shade::73fc0547",
+    "ext:mac-cosmetics-retro-matte-lipstick::a234aae1",
+    "ext:retailer:1af5dd8fd7ce370b37e13eedcdd32fc7",
+  ];
+
+  test("the producer's own keys and the live keys are accepted (source system absent, or the agent's)", () => {
+    assert.ok(PRODUCED[3].length > 200, "a long name really reaches the 200-char cut");
+    for (const key of [...LIVE_KEYS, ...PRODUCED, `ext:${"a".repeat(199)}-::0123abcd`, "ext:unknown-brand-serum::0123abcd"]) {
+      for (const source_system of [undefined, null, "", "catalog_enrichment_agent_v1", " catalog_enrichment_agent_v1 "]) {
+        assert.equal(lane.isEnrichmentCartLinkRow(source_system === undefined ? {} : { source_system }, key), true, `${key.slice(0, 60)} / ${source_system}`);
+      }
+    }
+  });
+
+  test("REFUSES the collapsed `ext:unknown::` key: every name with no ASCII letter or digit shares it", () => {
+    const collapsed = [deriveProductKey("", ""), deriveProductKey("설화수", "자음생크림"), deriveProductKey("雪肌精", "化粧水"), deriveProductKey("—", "™")];
+    assert.equal(new Set(collapsed).size, 1, "the generator really collapses them to one key");
+    assert.equal(collapsed[0], `ext:unknown::${createHash("sha1").update("unknown").digest("hex").slice(0, 8)}`);
+    assert.equal(lane.isEnrichmentCartLinkRow({}, collapsed[0]), false);
+    assert.equal(lane.isEnrichmentCartLinkRow({ source_system: "catalog_enrichment_agent_v1" }, collapsed[0]), false);
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:unknown::0123abcd"), false);
+  });
+
+  test("REFUSES every other `ext:` shape (and the mirror key, which has its own path)", () => {
+    const hex32 = "0123456789abcdef0123456789abcdef";
+    for (const [label, key] of [
+      ["no hash", "ext:foo"],
+      ["empty hash", "ext:foo::"],
+      ["empty slug", "ext:::0123abcd"],
+      ["uppercase slug", "ext:Foo::0123abcd"],
+      ["uppercase hex", "ext:foo::0123ABCD"],
+      ["7 hex", "ext:foo::0123abc"],
+      ["9 hex", "ext:foo::0123abcde"],
+      ["non-hex", "ext:foo::0123abcg"],
+      ["leading hyphen", "ext:-foo::0123abcd"],
+      ["space in slug", "ext:foo bar::0123abcd"],
+      ["underscore in slug", "ext:foo_bar::0123abcd"],
+      ["colon in slug", "ext:foo:bar::0123abcd"],
+      ["slug over 200", `ext:${"a".repeat(201)}::0123abcd`],
+      ["trailing newline", "ext:foo::0123abcd\n"],
+      ["leading space", " ext:foo::0123abcd"],
+      ["prefix case", "EXT:foo::0123abcd"],
+      ["ext_ not ext:", "ext_foo::0123abcd"],
+      ["retailer, 31 hex", `ext:retailer:${hex32.slice(0, 31)}`],
+      ["retailer, 33 hex", `ext:retailer:${hex32}0`],
+      ["retailer, uppercase hex", `ext:retailer:${hex32.toUpperCase()}`],
+      ["retailer, non-hex", `ext:retailer:${hex32.slice(0, 31)}g`],
+      ["retailer, double colon", `ext:retailer::${hex32}`],
+      ["retailer, with a hash suffix", `ext:retailer:${hex32}::0123abcd`],
+      ["mirror key", "prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada"],
+      ["shopify key", "prod::m_brand::shopify::1001"],
+      ["null", null],
+      ["number", 42],
+    ]) {
+      assert.equal(lane.isEnrichmentCartLinkRow({}, key), false, label);
+    }
+  });
+
+  test("REFUSES a well-shaped key whose read names ANOTHER source system", () => {
+    for (const source_system of ["external_product_seeds_mirror_v1", "catalog_enrichment_agent_v2", "CATALOG_ENRICHMENT_AGENT_V1", "affiliate_feed_v1"]) {
+      assert.equal(lane.isEnrichmentCartLinkRow({ source_system }, LIVE_KEYS[0]), false, source_system);
+      assert.equal(lane.isEnrichmentCartLinkRow({ source_system }, LIVE_KEYS[3]), false, `${source_system} (retailer)`);
+    }
+  });
+
+  test("storefrontPageHost: exactly https://<host>/products/<handle> (pivota-backend storefront_page + the door's seller rules)", () => {
+    const h = lane.storefrontPageHost;
+    assert.equal(h("https://tartecosmetics.com/products/shape-tape-blur-concealer-stick"), "tartecosmetics.com", "live tarte");
+    assert.equal(h("https://bluemercury.com/products/nars-afterglow-liquid-blush"), "bluemercury.com", "live bluemercury");
+    assert.equal(h("https://WWW.StilaCosmetics.com/products/x"), "www.stilacosmetics.com", "lowercased, www. kept");
+    assert.equal(h("https://shop.brand.example/products/Shade_01%C3%A9"), "shop.brand.example", "an encoded handle as written");
+    assert.equal(h("HTTPS://Tartecosmetics.com/products/x"), "tartecosmetics.com", "scheme case does not matter");
+    for (const [label, url] of [
+      ["http", "http://tartecosmetics.com/products/x"],
+      ["userinfo", "https://tartecosmetics.com@evil.example/products/x"],
+      ["userinfo with password", "https://u:p@tartecosmetics.com/products/x"],
+      ["empty userinfo", "https://@tartecosmetics.com/products/x"],
+      ["a tab in the path (the parser drops it)", "https://tartecosmetics.com/products/x\ty"],
+      ["uppercase scheme is still https, but a raw path must match", "HTTPS://tartecosmetics.com/products/x/../y"],
+      ["explicit port", "https://tartecosmetics.com:8443/products/x"],
+      ["explicit default port", "https://tartecosmetics.com:443/products/x"],
+      ["a query (utm)", "https://tartecosmetics.com/products/x?utm_source=pivota"],
+      ["a redirector query", "https://tartecosmetics.com/products/x?url=https://other.example/p"],
+      ["an empty query", "https://tartecosmetics.com/products/x?"],
+      ["a fragment", "https://tartecosmetics.com/products/x#reviews"],
+      ["a Pivota /r hop", "https://api.pivota.cc/r?token=a.b"],
+      ["a Pivota PDP", "https://agent.pivota.cc/products/sig_1d54c9e3b5d3969ea4327b5de4f5d101"],
+      ["a path hop", "https://tartecosmetics.com/r/https://other.example/p"],
+      ["collection path", "https://tartecosmetics.com/collections/face/products/x"],
+      ["a bare /<handle> page (no /products/)", "https://tartecosmetics.com/shape-tape-blur-concealer-stick"],
+      ["/product/ singular", "https://tartecosmetics.com/product/x"],
+      ["trailing slash", "https://tartecosmetics.com/products/x/"],
+      ["no handle", "https://tartecosmetics.com/products/"],
+      [".js handle", "https://tartecosmetics.com/products/x.js"],
+      [".json handle", "https://tartecosmetics.com/products/x.json"],
+      ["dot segment", "https://tartecosmetics.com/a/../products/x"],
+      ["backslash", "https://tartecosmetics.com/products\\x"],
+      ["whitespace", "https://tartecosmetics.com/products/x y"],
+      ["trailing newline", "https://tartecosmetics.com/products/x\n"],
+      ["a raw non-ASCII handle (re-encoded by the parser)", "https://tartecosmetics.com/products/crème"],
+      ["single-label host", "https://localhost/products/x"],
+      ["not a url", "not a url"],
+      ["empty", ""],
+      ["null", null],
+    ]) {
+      assert.equal(h(url), null, label);
+    }
+  });
+
+  // The LIVE stila read (get_product sig_07176ee6bdd7c39f60dd4f9fc121df0d, 2026-09-29), merchant fields only.
+  const STILA = {
+    external_redirect_url: "https://stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown",
+    url: "https://agent.pivota.cc/products/sig_07176ee6bdd7c39f60dd4f9fc121df0d",
+    canonical_url: "https://agent.pivota.cc/products/sig_07176ee6bdd7c39f60dd4f9fc121df0d",
+    destination_url: "https://stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown",
+    source_url: "https://www.stilacosmetics.com/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown",
+  };
+  const d = (row) => lane.enrichmentCartLinkMerchantDomain(row);
+
+  test("merchant host: the storefront target's host; the live read's www. source_url AGREES (the door's fold); canonical_url is never read", () => {
+    assert.deepEqual(d(STILA), { host: "stilacosmetics.com" });
+    for (const [label, patch, host] of [
+      ["no destination_url / source_url", { destination_url: undefined, source_url: undefined }, "stilacosmetics.com"],
+      ["empty ones are absent", { destination_url: "", source_url: null, source_domain: "", merchant_domain: null }, "stilacosmetics.com"],
+      ["a padded explicit field is read trimmed (as the door reads it)", { source_domain: "  stilacosmetics.com " }, "stilacosmetics.com"],
+      ["www. target, bare others", { external_redirect_url: "https://www.stilacosmetics.com/products/x" }, "www.stilacosmetics.com"],
+      ["agreeing source_domain / merchant_domain, any case, www. or not", { source_domain: "WWW.StilaCosmetics.com", merchant_domain: "stilacosmetics.com" }, "stilacosmetics.com"],
+      ["canonical_url on ANOTHER host is not read", { canonical_url: "https://other-seller.example/products/x", url: "https://other-seller.example/p" }, "stilacosmetics.com"],
+    ]) {
+      const row = { ...STILA, ...patch };
+      assert.deepEqual(d(row), { host }, label);
+    }
+  });
+
+  test("merchant host: any merchant field naming ANOTHER seller, or unreadable, is merchant_domain_conflict", () => {
+    for (const [label, patch] of [
+      ["affiliate destination_url", { destination_url: "https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fstilacosmetics.com%2Fp" }],
+      ["a retailer's source_url", { source_url: "https://bluemercury.com/products/stila-liner" }],
+      ["source_domain another seller", { source_domain: "bluemercury.com" }],
+      ["merchant_domain another seller", { merchant_domain: "ulta.com" }],
+      ["a sibling subdomain is not the same host", { source_url: "https://shop.stilacosmetics.com/products/x" }],
+      ["a Pivota hop destination_url", { destination_url: "https://api.pivota.cc/r?token=a.b" }],
+      ["unparseable destination_url", { destination_url: "not a url" }],
+      ["non-string source_domain", { source_domain: 42 }],
+      ["non-ASCII lookalike merchant_domain", { merchant_domain: "Kiko.com" }],
+    ]) {
+      assert.deepEqual(d({ ...STILA, ...patch }), { host: null, code: "merchant_domain_conflict" }, label);
+    }
+  });
+
+  test("merchant host: no valid storefront page is no_merchant_domain -- destination_url / source_url never stand in for it", () => {
+    for (const [label, row, target] of [
+      ["no target", STILA, null],
+      ["target a Pivota hop", STILA, "https://api.pivota.cc/r?token=a.b"],
+      ["target with a query", STILA, `${STILA.external_redirect_url}?utm_source=pivota`],
+      ["target not a /products/ page", STILA, "https://stilacosmetics.com/collections/eye"],
+      ["a host the door's fold cannot read (www. + a TLD)", {}, "https://www.com/products/x"],
+      ["target with :443 (the parsed form would drop it)", STILA, "https://stilacosmetics.com:443/products/x"],
+      ["target with a dot segment (the parsed form would resolve it)", STILA, "https://stilacosmetics.com/a/../products/x"],
+      ["target with surrounding whitespace (escalationTargetOf would trim it)", STILA, " https://stilacosmetics.com/products/x "],
+    ]) {
+      const r = { ...row };
+      if (target === null) delete r.external_redirect_url; else r.external_redirect_url = target;
+      assert.deepEqual(lane.enrichmentCartLinkMerchantDomain(r), { host: null, code: "no_merchant_domain" }, label);
+    }
+  });
+
+  test("the dial: OFF by default; truthy spellings only", () => {
+    assert.equal(lane.REAP_AGENTIC_CART_LINK_ENRICHMENT_FLAG, "REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED");
+    assert.equal(lane.reapCartLinkEnrichmentEnabled({}), false);
+    for (const v of ["0", "no", "off", "false", ""]) assert.equal(lane.reapCartLinkEnrichmentEnabled({ REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED: v }), false, v);
+    for (const v of ["1", "true", "on", " YES "]) assert.equal(lane.reapCartLinkEnrichmentEnabled({ REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED: v }), true, v);
+  });
+
+  // The lane called DIRECTLY (no door in front), so its own ordering is what is observed.
+  test("lane order: a row with no host to send is skipped no_merchant_domain / merchant_domain_conflict, never seller_mismatch", async () => {
+    const ENV = { REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED: "1" };
+    const base = {
+      product_id: "sig_07176ee6bdd7c39f60dd4f9fc121df0d", title: "Dual-Ended Waterproof Liquid Eye Liner", price: 20, currency: "USD",
+      product_key: LIVE_KEYS[1], ...STILA, default_variant_id: "40318467145831", variants: [{ variant_id: "40318467145831", sku_id: "SC91020001", title: "Amber / Dark Brown" }],
+    };
+    const run = async (row, expected) => {
+      const logs = [];
+      let starts = 0;
+      const out = await lane.tryReapAgenticCheckout({
+        op: { id: "create_checkout_session" }, ctx: {}, env: ENV, now: NOW, hints: [],
+        params: { idempotency_key: "idem-order-1", quote: { items: [{ product_id: row.product_id, quantity: 1 }] } },
+        executor: { async execute() { return { product: { ...row } }; } },
+        client: { hasCallerCredentials: () => true, startPurchase: async () => { starts += 1; return { kind: "accepted", purchase: { id: PID, state: "resolving", poll_after_seconds: 60 } }; }, getPurchase: async () => ({ kind: "unavailable" }) },
+        log: { info: (x) => logs.push(x), warn: (x) => logs.push(x) },
+        shouldOfferPurchase: async () => true,
+        ucpArgs: { checkout: { context: { address_country: "US" }, ...(expected ? { reap: { expected_merchant_domain: expected } } : {}) } },
+      });
+      return { out, starts, codes: logs.filter((l) => l.outcome === "skipped").map((l) => l.code) };
+    };
+    const ok = await run(base, "stilacosmetics.com");
+    assert.equal(ok.starts, 1, "control: the live row with its own seller is opened");
+    for (const [label, patch, code] of [
+      // Each of these ALSO fails the seller judgement (judgeRowSeller), which used to run first.
+      ["target a Pivota hop with an unreadable token", { external_redirect_url: "https://api.pivota.cc/r?token=junk" }, "no_merchant_domain"],
+      ["target a redirector", { external_redirect_url: `${STILA.external_redirect_url}?url=https://other-seller.example/p` }, "no_merchant_domain"],
+      ["source_domain another seller", { source_domain: "bluemercury.com" }, "merchant_domain_conflict"],
+      ["merchant_domain another seller", { merchant_domain: "ulta.com" }, "merchant_domain_conflict"],
+      // These pass the seller judgement and are still refused by the host rules.
+      ["target a /collections/ page", { external_redirect_url: "https://stilacosmetics.com/collections/eye" }, "no_merchant_domain"],
+      // The door and escalationTargetOf see the PARSED form (no :443, no dot segment), which passes; the raw field does not.
+      ["target with :443", { external_redirect_url: "https://stilacosmetics.com:443/products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown" }, "no_merchant_domain"],
+      ["target with a dot segment", { external_redirect_url: "https://stilacosmetics.com/x/../products/stay-all-day-dual-ended-liquid-eye-liner-amber-dark-brown" }, "no_merchant_domain"],
+      ["affiliate destination_url", { destination_url: "https://click.linksynergy.com/deeplink?murl=x" }, "merchant_domain_conflict"],
+    ]) {
+      const r = await run({ ...base, ...patch }, "stilacosmetics.com");
+      assert.equal(r.out, null, label);
+      assert.equal(r.starts, 0, label);
+      assert.deepEqual(r.codes, [code], label);
+    }
+  });
+});

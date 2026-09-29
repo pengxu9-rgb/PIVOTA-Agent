@@ -175,6 +175,15 @@ export const REAP_AGENTIC_LANE_FLAG = "REAP_AGENTIC_LANE_ENABLED";
  * before.
  */
 export const REAP_AGENTIC_CART_LINK_LANE_FLAG = "REAP_AGENTIC_CART_LINK_LANE_ENABLED";
+/**
+ * ENRICHMENT rows on the cart-link lane (option 2, PR D). Default OFF, read per call, and only consulted when the
+ * lane AND the cart-link dial are both on. When on, an enrichment-agent row (`ext:<slug>::<8 hex>` /
+ * `ext:retailer:<32 hex>`, source system `catalog_enrichment_agent_v1` or none on the read) is POSTed as
+ * `item_source: "cart_link"` like a seed mirror row. Off, such a row is skipped `row_key_unsupported` exactly as
+ * before. Arm it only after pivota-backend's `_load_cart_link_item` enrichment branch (option 2, PR C) is live:
+ * until then the backend refuses these rows and the storefront answers as before.
+ */
+export const REAP_AGENTIC_CART_LINK_ENRICHMENT_FLAG = "REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED";
 export const REAP_CHECKOUT_ID_PREFIX = "reap_";
 /** The backend's MAX_QUANTITY (services/reap_agentic_purchase.py). A larger cart is not this lane's. */
 export const REAP_MAX_QUANTITY = 10;
@@ -231,6 +240,11 @@ export function reapAgenticLaneEnabled(env = process.env) {
 
 export function reapCartLinkLaneEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_CART_LINK_LANE_FLAG]) || "").trim());
+}
+
+/** The enrichment dial ALONE (the caller also requires the lane and the cart-link dial). */
+export function reapCartLinkEnrichmentEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_CART_LINK_ENRICHMENT_FLAG]) || "").trim());
 }
 
 /**
@@ -468,8 +482,10 @@ const EXTERNAL_SEED_PLATFORMS = new Set(["external", "external_seed"]);
  * scripts/mirror_external_seeds_to_catalog_products.py, source_system `external_product_seeds_mirror_v1`).
  * `_load_cart_link_item` refuses every other external_seed row: an enrichment-agent `ext:<canonical>::<hash>` key
  * (services/catalog_enrichment_agent/ingestion.py `derive_product_key`) IS a catalog_products key, but its
- * source_system is the agent's, which that function answers `row_variant_unverified`. The merchant segment is the
- * shared sentinel seller, read from its one owner (ADR-009); the platform segment is the mirror's platform.
+ * source_system is the agent's, which that function answers `row_variant_unverified` until pivota-backend option 2
+ * (PR C) — those rows have their own gate below (`isEnrichmentCartLinkRow`, behind
+ * `REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED`). The merchant segment is the shared sentinel seller, read from its
+ * one owner (ADR-009); the platform segment is the mirror's platform.
  */
 const MIRROR_KEY_PREFIX = `prod::${pdpRenderability.EXTERNAL_SEED_MERCHANT_ID}::external_seed::`;
 const MIRROR_SOURCE_SYSTEM = "external_product_seeds_mirror_v1";
@@ -484,12 +500,156 @@ function isExternalSeedRow(row, productKey) {
 /**
  * Is it a seed MIRROR row, i.e. one whose key the backend's cart-link lane resolves? The mirror key shape, and — when
  * the read carries a source system — the mirror's. An affiliate-feed or enrichment row (`platform: external`, an
- * `ext:` key, another source system) is NOT, and is never POSTed.
+ * `ext:` key, another source system) is NOT; an enrichment row is POSTed only through `isEnrichmentCartLinkRow`.
  */
 function isSeedMirrorRow(row, productKey) {
   if (!productKey.startsWith(MIRROR_KEY_PREFIX) || productKey.length === MIRROR_KEY_PREFIX.length) return false;
   const system = str(own(row, "source_system"));
   return system === null || system === MIRROR_SOURCE_SYSTEM;
+}
+
+// ---- Tier B cart-link, DIRECT, ENRICHMENT rows (option 2, PR D; behind REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED) --
+//
+// The enrichment agent (source_system `catalog_enrichment_agent_v1`) writes brand-store and retailer rows whose keys
+// are NOT mirror keys, so `isSeedMirrorRow` refuses them. pivota-backend option 2 (PR C) teaches
+// `_load_cart_link_item` to resolve them against its own variant proof table; this gateway half only lets them
+// reach that POST. The two key shapes are EXACTLY what the backend mints
+// (services/catalog_enrichment_agent/ingestion.py):
+//   - `derive_product_key`: `ext:` + canonical_product_name(brand, name)[:200] + `::` + sha1(canonical)[:8]. The
+//     canonical is `[^a-z0-9]+` -> `-` over the lowercased name, stripped, so it is lowercase alnum and `-`, starts
+//     with an alnum, and is at most 200 chars (a cut at 200 can end on `-`). The hash is LOWERCASE hex.
+//   - a retailer listing: `ext:retailer:` + sha256(listing identity)[:32], lowercase hex.
+// Anything else under `ext:` (`ext:foo`, 31 / 33 hex, uppercase hex, an empty slug) is not one of those keys. And
+// `ext:unknown::<hash>` is REFUSED although the generator emits it: `canonical_product_name` answers "unknown" for
+// EVERY brand + name with no ASCII letter or digit, so all of them share ONE key and the row is whichever product
+// was written last — not an identity a purchase can be opened against.
+//
+// THE READ. What this lane sees is the gateway's get_product read, not the catalog row. Live reads of enrichment rows
+// (2026-09-29: tarte sig_1d54c9e3…, bluemercury sig_016e4c11…, stila sig_07176ee6…, MAC sig_f5da0819…) carry NO
+// `source_domain`, `source_system` or `platform`; their `canonical_url` / `url` is Pivota's own PDP
+// (`https://agent.pivota.cc/products/sig_…`). The merchant's page is `external_redirect_url` (the storefront target),
+// with `destination_url` and `source_url` alongside — `source_url` sometimes with `www.` where the others have none.
+const ENRICHMENT_SOURCE_SYSTEM = "catalog_enrichment_agent_v1";
+const ENRICHMENT_BRAND_KEY_RE = /^ext:[a-z0-9][a-z0-9-]{0,199}::[0-9a-f]{8}$/;
+const ENRICHMENT_RETAILER_KEY_RE = /^ext:retailer:[0-9a-f]{32}$/;
+const ENRICHMENT_COLLAPSED_KEY_PREFIX = "ext:unknown::";
+
+/**
+ * Is it an ENRICHMENT row the backend's cart-link lane can resolve (once PR C is live)? One of the two minted key
+ * shapes (never the collapsed `ext:unknown::` one), and — when the read carries a source system — the agent's own.
+ * A mirror-system or any other system's row under an `ext:` key is NOT.
+ */
+export function isEnrichmentCartLinkRow(row, productKey) {
+  if (typeof productKey !== "string") return false;
+  if (!ENRICHMENT_BRAND_KEY_RE.test(productKey) && !ENRICHMENT_RETAILER_KEY_RE.test(productKey)) return false;
+  if (productKey.startsWith(ENRICHMENT_COLLAPSED_KEY_PREFIX)) return false;
+  const system = str(own(row, "source_system"));
+  return system === null || system === ENRICHMENT_SOURCE_SYSTEM;
+}
+
+/**
+ * The merchant host of an `https://<host>/products/<handle>` storefront page, lowercased as observed, or null — the
+ * shape pivota-backend `storefront_page` (services/reap_enrichment_cart_proof.py) accepts, under the door's seller
+ * rules (`judgeSellerUrl`):
+ *   - https, and an authority with NO `@` (userinfo, even empty) and NO `:` (a port, even `:443`, which the URL
+ *     parser would silently drop);
+ *   - the path AS WRITTEN equal to the parsed path, which refuses a query or fragment (so no `?url=` / `?murl=`
+ *     redirector), whitespace or control characters, a backslash, a dot segment, and any character the parser
+ *     re-encodes — the backend's urlsplit normalises none of them;
+ *   - exactly `/products/<handle>` (so no `/r/https://…` path hop, no trailing slash), the handle not `.js`/`.json`;
+ *   - a hostname, never one of Pivota's own (so never a `/r?token=` hop or a Pivota PDP).
+ */
+export function storefrontPageHost(raw) {
+  if (typeof raw !== "string") return null;
+  const authority = /^https:\/\/([^/?#]*)/i.exec(raw);
+  if (!authority || authority[1].includes("@") || authority[1].includes(":")) return null;
+  let u;
+  try { u = new URL(raw); } catch { return null; }
+  if (raw.slice(authority[0].length) !== u.pathname) return null;
+  const m = /^\/products\/([^/]+)$/.exec(u.pathname);
+  if (!m || /\.(js|json)$/i.test(m[1])) return null;
+  const host = u.hostname.toLowerCase();
+  return HOSTNAME_RE.test(host) && !SELF_HOST_RE.test(host) ? host : null;
+}
+
+/** The fields that, when present, must name the SAME merchant as the storefront page (www. folded, as the door). */
+const ENRICHMENT_AGREEING_URL_FIELDS = Object.freeze(["source_url", "destination_url"]);
+const ENRICHMENT_AGREEING_HOST_FIELDS = Object.freeze(["source_domain", "merchant_domain"]);
+
+/**
+ * The host an ENRICHMENT cart-link POST names: `{ host }`, or `{ host: null, code }` when there is none to send.
+ *
+ * THE STOREFRONT TARGET: the row's `external_redirect_url` — the ONE merchant URL every live enrichment read
+ * carries, and the field the door's expected-seller check judges (`judgeSellerUrl`, on `escalationTargetOf`'s
+ * parsed form of it), so the host POSTed is a host the door has seen. The shape checks run on the field EXACTLY AS
+ * THE ROW CARRIES IT, never on that parsed form: `new URL(...).toString()` drops a `:443` and resolves a `/a/../`
+ * that pivota-backend `storefront_page` refuses. Validated as `storefrontPageHost`; anything else is
+ * `no_merchant_domain`. As observed, lowercased: `www.` is not stripped from what is sent.
+ *
+ * EVERY OTHER MERCHANT FIELD MUST AGREE: `source_url`, `destination_url` (hosts of) and `source_domain`,
+ * `merchant_domain`, whenever present, must be the same merchant after the door's own fold
+ * (`canonicalReapMerchantDomain`: lowercase, one leading `www.`). One that is not — an affiliate `destination_url`,
+ * a retailer's page beside a brand's, an unreadable value — is `merchant_domain_conflict`: which seller the row is
+ * cannot be told, so nothing is opened. `canonical_url` / `url` are never read (Pivota's own PDP on these reads).
+ */
+export function enrichmentCartLinkMerchantDomain(row) {
+  // The same field, picked the same way, as escalationTargetOf — but unparsed.
+  const host = storefrontPageHost(own(row, "external_redirect_url") || own(row, "externalRedirectUrl"));
+  if (!host) return { host: null, code: "no_merchant_domain" };
+  const want = canonicalReapMerchantDomain(host);
+  if (want === null) return { host: null, code: "no_merchant_domain" };
+  const others = [];
+  for (const key of ENRICHMENT_AGREEING_URL_FIELDS) {
+    const raw = own(row, key);
+    if (raw === undefined || raw === null || raw === "") continue;
+    const u = parseUrl(raw);
+    others.push(u ? u.hostname : null);
+  }
+  for (const key of ENRICHMENT_AGREEING_HOST_FIELDS) {
+    const raw = own(row, key);
+    if (raw === undefined || raw === null || raw === "") continue;
+    others.push(typeof raw === "string" ? raw.trim() : null);
+  }
+  for (const other of others) {
+    if (canonicalReapMerchantDomain(other) !== want) return { host: null, code: "merchant_domain_conflict" };
+  }
+  return { host };
+}
+
+/**
+ * Is this read variant the product-level PLACEHOLDER, not a variant the store sells? The producer writes one canonical
+ * sku per product: sku key `<product_key>::canonical`, `source_variant_id` the product key (or, for a key too long
+ * for the column, the bounded `source_product_id`) — ingestion.py `canonical_sku_variant_id`; and pdpBuilder
+ * `buildVariants` restates a variant-less product as ONE entry whose `variant_id` is the product id.
+ *
+ * EXACT MATCHES ONLY. An entry is the placeholder when it carries at least one id and EVERY id it carries
+ * (`variant_id` / `id`, `sku_id`, `source_variant_id`) is exactly one of: the product key, the product key +
+ * `::canonical`, the source product id, the product id. Never a prefix match (`isRestatedProductId`): a real
+ * variant's sku is `<product_key>::v:<id>`, and pdpBuilder names id-less variants `<product_id>-1`, `<product_id>-2`
+ * — each is a DIFFERENT variant, and dropping them would send a multi-variant row as canonical-only. A numeric id
+ * (a number, or a digit-only string) always makes the entry real. An entry with no id at all is real (fail closed).
+ */
+function isPlaceholderVariant(v, row) {
+  const ids = [own(v, "variant_id") ?? own(v, "id"), own(v, "sku_id"), own(v, "source_variant_id")]
+    .filter((x) => x !== undefined && x !== null);
+  if (ids.length === 0) return false;
+  const productKey = str(own(row, "product_key"));
+  const exact = new Set([productKey, productKey && `${productKey}::canonical`, str(own(row, "source_product_id")), str(own(row, "product_id"))].filter(Boolean));
+  // A number is never in `exact` (strings only); a digit-only STRING is refused explicitly, even if a source id is one.
+  return ids.every((id) => !/^\d+$/.test(id) && exact.has(id));
+}
+
+/**
+ * At most ONE variant the store sells on the read: none (canonical-only — the product-level placeholder alone, or
+ * nothing), or one. Every other entry counts, with or without an id, so two id-less shade entries are two; a
+ * duplicated id is two. Replaces `realVariantCount` for enrichment rows, which would count a placeholder named by
+ * the product KEY as a second real variant.
+ */
+function enrichmentAtMostOneVariant(row) {
+  const raw = own(row, "variants");
+  if (raw === undefined || raw === null) return true;
+  if (!Array.isArray(raw)) return false;
+  return raw.filter((v) => !isPlaceholderVariant(v, row)).length <= 1;
 }
 
 /** A parsed URL, or null. */
@@ -1217,24 +1377,40 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // both dials are on; with the cart-link dial off it is skipped exactly as before.
   const cartLinkDirect = !isShopifyRow(row, productKey) && reapCartLinkLaneEnabled(env) && isExternalSeedRow(row, productKey);
   if (!isShopifyRow(row, productKey) && !cartLinkDirect) return skip("not_shopify");
-  // Only a key the backend's cart-link lane resolves is ever sent (see MIRROR_KEY_PREFIX).
-  if (cartLinkDirect && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
+  // Only a key the backend's cart-link lane resolves is ever sent: a seed MIRROR key (see MIRROR_KEY_PREFIX), or,
+  // with the enrichment dial on too, an ENRICHMENT key (see ENRICHMENT_BRAND_KEY_RE). Dial off: skipped as before.
+  const enrichment = cartLinkDirect && reapCartLinkEnrichmentEnabled(env) && isEnrichmentCartLinkRow(row, productKey);
+  if (cartLinkDirect && !enrichment && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
   // The UCP line item has no variant carrier and the backend matches `variant_key` exactly (it has three live
   // spellings, never re-derived), so this lane omits it — which the backend accepts only for a product with
   // exactly one variant. A multi-variant row is not sent to be refused.
-  if (realVariantCount(row) > 1) return skip("multi_variant");
+  if (enrichment ? !enrichmentAtMostOneVariant(row) : realVariantCount(row) > 1) return skip("multi_variant");
   const price = rowPrice(row);
   if (!price) return skip("row_unpriced");
-  const merchantDomain = cartLinkDirect ? cartLinkMerchantDomain(row, target) : reapMerchantDomain(row, target);
+  let merchantDomain;
+  if (enrichment) {
+    // An enrichment row's host is its storefront page, every other merchant field agreeing (see
+    // enrichmentCartLinkMerchantDomain). Settled BEFORE the seller check, so a row with no host to send is logged
+    // as that, not as a seller mismatch.
+    const resolved = enrichmentCartLinkMerchantDomain(row);
+    if (!resolved.host) return skip(resolved.code);
+    merchantDomain = resolved.host;
+  } else {
+    merchantDomain = cartLinkDirect ? cartLinkMerchantDomain(row, target) : reapMerchantDomain(row, target);
+  }
   // THE EXPECTED SELLER, AGAIN. The door has already REFUSED a create whose expected seller differs
   // (`assertExpectedSeller`, before every lane); this is belt and braces for a caller of this function that
-  // skipped the door: never open a purchase from a seller the platform did not show. Fail closed.
+  // skipped the door: never open a purchase from a seller the platform did not show. Fail closed. (An enrichment
+  // row POSTs the host of the storefront target, which is one of the destinations judged here.)
   const expectedSeller = reapExpectedMerchantDomain(ucpArgs);
   if (expectedSeller !== undefined && !judgeRowSeller(expectedSeller, row, target).ok) {
     return skip("seller_mismatch");
   }
   if (!merchantDomain) return skip("no_merchant_domain");
-  if (cartLinkDirect && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
+  // Mirror rows must NAME one variant. An enrichment row need not: at most one variant was checked above, and the
+  // backend proves the variant itself (the store's sole live variant, or one its proof names) before it opens
+  // anything.
+  if (cartLinkDirect && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
 
   // 4. THE PURCHASABILITY GATE — exactly as the escalation lane consults it: same switch, same singleton
   // client, same fail-open rule, same market source (the request's `checkout.context.address_country`, never
@@ -1285,7 +1461,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // The cart-link body is the SAME shape the Tier B retry below sends — `item_source` and the cart-link
   // idempotency namespace — so a direct cart-link purchase and a retried one are one request to the backend.
   const cartLinkBody = () => ({ ...body, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) });
-  if (cartLinkDirect) emit(log, "info", { op: "create_checkout_session", outcome: "cart_link_direct", code: "external_seed" });
+  if (cartLinkDirect) emit(log, "info", { op: "create_checkout_session", outcome: "cart_link_direct", code: enrichment ? "enrichment" : "external_seed" });
   let res = await client.startPurchase(cartLinkDirect ? cartLinkBody() : body);
 
   // TIER B, ONCE. Only on the one refusal that means "not on the operator allowlist" — never on a consent,
