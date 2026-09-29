@@ -513,16 +513,23 @@ function isSeedMirrorRow(row, productKey) {
 // The enrichment agent (source_system `catalog_enrichment_agent_v1`) writes brand-store and retailer rows whose keys
 // are NOT mirror keys, so `isSeedMirrorRow` refuses them. pivota-backend option 2 (PR C) teaches
 // `_load_cart_link_item` to resolve them against its own variant proof table; this gateway half only lets them
-// reach that POST. The two key shapes are EXACTLY what the backend mints
+// reach that POST. The key shapes are EXACTLY what the backend mints
 // (services/catalog_enrichment_agent/ingestion.py):
-//   - `derive_product_key`: `ext:` + canonical_product_name(brand, name)[:200] + `::` + sha1(canonical)[:8]. The
-//     canonical is `[^a-z0-9]+` -> `-` over the lowercased name, stripped, so it is lowercase alnum and `-`, starts
-//     with an alnum, and is at most 200 chars (a cut at 200 can end on `-`). The hash is LOWERCASE hex.
+//   - `derive_product_key`, legacy (every name whose ASCII slug stands for the product): `ext:` +
+//     canonical_product_name(brand, name)[:200] + `::` + sha1(canonical)[:8]. The canonical is `[^a-z0-9]+` -> `-`
+//     over the lowercased name, stripped, so it is lowercase alnum and `-`, starts with an alnum, and is at most 200
+//     chars (a cut at 200 can end on `-`). The hash is LOWERCASE hex.
+//   - `derive_product_key`, script identity (pivota-backend #2461: a name the slug cannot stand for — a non-Latin
+//     letter, a Vietnamese letter, a non-ASCII digit or numeral): `ext:` + prefix[:192] + `::` +
+//     sha1(product_identity_text)[:16]. The prefix is the same `[^a-z0-9]+` -> `-` slug of the identity text, or
+//     "unknown" when that is empty (every all-CJK / all-Hangul name), so `ext:unknown::<16 hex>` is a DISTINCT key.
+//     Both forms are at most 214 chars; the 16-hex digest is LOWERCASE hex.
 //   - a retailer listing: `ext:retailer:` + sha256(listing identity)[:32], lowercase hex.
-// Anything else under `ext:` (`ext:foo`, 31 / 33 hex, uppercase hex, an empty slug) is not one of those keys. And
-// `ext:unknown::<hash>` is REFUSED although the generator emits it: `canonical_product_name` answers "unknown" for
-// EVERY brand + name with no ASCII letter or digit, so all of them share ONE key and the row is whichever product
-// was written last — not an identity a purchase can be opened against.
+// Anything else under `ext:` (`ext:foo`, 7 / 9..15 / 17 hex, 31 / 33 hex, uppercase hex, an empty slug) is not one of
+// those keys. And the LEGACY `ext:unknown::<8 hex>` is REFUSED although rows written before #2461 carry it: the old
+// generator answered "unknown" for EVERY brand + name with no ASCII letter or digit, so all of them shared ONE key and
+// the row is whichever product was written last — not an identity a purchase can be opened against. (#2461 no longer
+// ingests the only names that still derive it: symbol-only ones.) Its 16-hex successor is one product, and accepted.
 //
 // THE READ. What this lane sees is the gateway's get_product read, not the catalog row. Live reads of enrichment rows
 // (2026-09-29: tarte sig_1d54c9e3…, bluemercury sig_016e4c11…, stila sig_07176ee6…, MAC sig_f5da0819…) carry NO
@@ -530,19 +537,20 @@ function isSeedMirrorRow(row, productKey) {
 // (`https://agent.pivota.cc/products/sig_…`). The merchant's page is `external_redirect_url` (the storefront target),
 // with `destination_url` and `source_url` alongside — `source_url` sometimes with `www.` where the others have none.
 const ENRICHMENT_SOURCE_SYSTEM = "catalog_enrichment_agent_v1";
-const ENRICHMENT_BRAND_KEY_RE = /^ext:[a-z0-9][a-z0-9-]{0,199}::[0-9a-f]{8}$/;
+const ENRICHMENT_BRAND_KEY_RE = /^ext:(?:[a-z0-9][a-z0-9-]{0,199}::[0-9a-f]{8}|[a-z0-9][a-z0-9-]{0,191}::[0-9a-f]{16})$/;
 const ENRICHMENT_RETAILER_KEY_RE = /^ext:retailer:[0-9a-f]{32}$/;
-const ENRICHMENT_COLLAPSED_KEY_PREFIX = "ext:unknown::";
+const ENRICHMENT_COLLAPSED_KEY_RE = /^ext:unknown::[0-9a-f]{8}$/;
 
 /**
  * Is it an ENRICHMENT row the backend's cart-link lane can resolve (once PR C is live)? One of the two minted key
- * shapes (never the collapsed `ext:unknown::` one), and — when the read carries a source system — the agent's own.
+ * shapes (never the legacy collapsed `ext:unknown::<8 hex>` one), and — when the read carries a source system — the
+ * agent's own.
  * A mirror-system or any other system's row under an `ext:` key is NOT.
  */
 export function isEnrichmentCartLinkRow(row, productKey) {
   if (typeof productKey !== "string") return false;
   if (!ENRICHMENT_BRAND_KEY_RE.test(productKey) && !ENRICHMENT_RETAILER_KEY_RE.test(productKey)) return false;
-  if (productKey.startsWith(ENRICHMENT_COLLAPSED_KEY_PREFIX)) return false;
+  if (ENRICHMENT_COLLAPSED_KEY_RE.test(productKey)) return false;
   const system = str(own(row, "source_system"));
   return system === null || system === ENRICHMENT_SOURCE_SYSTEM;
 }

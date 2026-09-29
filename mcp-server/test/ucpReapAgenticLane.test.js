@@ -791,13 +791,73 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
     }
   });
 
-  test("REFUSES the collapsed `ext:unknown::` key: every name with no ASCII letter or digit shares it", () => {
+  test("REFUSES the LEGACY collapsed `ext:unknown::<8 hex>` key: every name with no ASCII letter or digit shared it", () => {
+    // `deriveProductKey` above is the pre-#2461 generator (still exact for every name its slug stands for).
     const collapsed = [deriveProductKey("", ""), deriveProductKey("설화수", "자음생크림"), deriveProductKey("雪肌精", "化粧水"), deriveProductKey("—", "™")];
-    assert.equal(new Set(collapsed).size, 1, "the generator really collapses them to one key");
+    assert.equal(new Set(collapsed).size, 1, "the legacy generator really collapses them to one key");
     assert.equal(collapsed[0], `ext:unknown::${createHash("sha1").update("unknown").digest("hex").slice(0, 8)}`);
-    assert.equal(lane.isEnrichmentCartLinkRow({}, collapsed[0]), false);
-    assert.equal(lane.isEnrichmentCartLinkRow({ source_system: "catalog_enrichment_agent_v1" }, collapsed[0]), false);
-    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:unknown::0123abcd"), false);
+    assert.equal(collapsed[0], "ext:unknown::50d8b4a9", "the key #2461's tests name");
+    for (const key of [collapsed[0], "ext:unknown::0123abcd", "ext:unknown::00000000", "ext:unknown::ffffffff"]) {
+      for (const source_system of [undefined, "catalog_enrichment_agent_v1"]) {
+        assert.equal(lane.isEnrichmentCartLinkRow(source_system === undefined ? {} : { source_system }, key), false, `${key} / ${source_system}`);
+      }
+    }
+  });
+
+  // pivota-backend #2461 `_script_identity`: a name whose ASCII slug cannot stand for it (a non-Latin letter, a
+  // Vietnamese letter, a non-ASCII digit or numeral) is keyed `ext:` + prefix[:192] + `::` + sha1(identity)[:16], the
+  // prefix being the `[^a-z0-9]+` slug of the identity text or "unknown". These are that PR's derive_product_key
+  // OUTPUTS (head 3d33719c, run on the real function), not a transcription of it.
+  const SCRIPT_IDENTITY_KEYS = [
+    ["설화수 / 자음생크림", "ext:unknown::d3bac5e705f83353"],
+    ["雪肌精 / 化粧水", "ext:unknown::af6477008cb7405c"],
+    ["설×300 / 크림 (the slug is still empty)", "ext:unknown::7c34f59310294da6"],
+    ["Sulwhasoo / 자음생크림", "ext:sulwhasoo::86a6cd5aec54a25a"],
+    ["Sulwhasoo / 윤조에센스", "ext:sulwhasoo::8191647c363b22a0"],
+    ["Cos de BAHA / 【美容神ゆりちゃん監修】MVマルチビタ導入美容液 50ml (the live key #2461 moves)", "ext:cos-de-baha-mv-50ml::63c46c9fb300432e"],
+    ["a×300 / 크림 (prefix cut at 192, 214 chars)", `ext:${"a".repeat(192)}::4320095d0dd5b799`],
+  ];
+
+  test("ACCEPTS #2461's distinct 16-hex keys, `ext:unknown::` included: one product each", () => {
+    // The pure-Hangul / pure-Han digest is sha1 over the words joined by "-" (NFKC + casefold change nothing there).
+    const sha16 = (s) => createHash("sha1").update(s, "utf8").digest("hex").slice(0, 16);
+    assert.equal(SCRIPT_IDENTITY_KEYS[0][1], `ext:unknown::${sha16("설화수-자음생크림")}`);
+    assert.equal(SCRIPT_IDENTITY_KEYS[1][1], `ext:unknown::${sha16("雪肌精-化粧水")}`);
+    assert.equal(SCRIPT_IDENTITY_KEYS[3][1], `ext:sulwhasoo::${sha16("sulwhasoo-자음생크림")}`);
+    assert.equal(SCRIPT_IDENTITY_KEYS[6][1].length, 214, "the widest key #2461 mints");
+    assert.equal(new Set(SCRIPT_IDENTITY_KEYS.map(([, k]) => k)).size, SCRIPT_IDENTITY_KEYS.length);
+    for (const [label, key] of [...SCRIPT_IDENTITY_KEYS, ["a 191-char slug ending on the cut", `ext:${"a".repeat(191)}-::0123456789abcdef`]]) {
+      for (const source_system of [undefined, null, "", "catalog_enrichment_agent_v1"]) {
+        assert.equal(lane.isEnrichmentCartLinkRow(source_system === undefined ? {} : { source_system }, key), true, `${label} / ${source_system}`);
+      }
+    }
+  });
+
+  test("REFUSES everything near #2461's 16-hex shape: 9..15 and 17+ hex, uppercase, a slug over 192", () => {
+    const hex = "d3bac5e705f83353a1b2";
+    for (const slug of ["unknown", "sulwhasoo", "cos-de-baha-mv-50ml"]) {
+      for (let n = 1; n <= 20; n++) {
+        if (n === 8 && slug === "unknown") {
+          assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${slug}::${hex.slice(0, n)}`), false, `${slug} 8 hex is the legacy collapsed key`);
+          continue;
+        }
+        const expected = n === 8 || n === 16;
+        assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${slug}::${hex.slice(0, n)}`), expected, `${slug} ${n} hex`);
+      }
+      assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${slug}::${hex.slice(0, 16).toUpperCase()}`), false, `${slug} uppercase 16 hex`);
+      assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${slug}::D${hex.slice(1, 16)}`), false, `${slug} one uppercase hex digit`);
+      assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${slug}::${hex.slice(0, 15)}g`), false, `${slug} non-hex`);
+    }
+    assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${"a".repeat(193)}::${hex.slice(0, 16)}`), false, "slug over 192 with 16 hex");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${"a".repeat(192)}::${hex.slice(0, 16)}`), true, "control: 192 with 16 hex");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, `ext:${"a".repeat(200)}::${hex.slice(0, 8)}`), true, "control: 200 with 8 hex");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:unknown::d3bac5e705f83353\n"), false, "trailing newline");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:unknown::d3bac5e705f83353::0123abcd"), false, "a second hash");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:Unknown::d3bac5e705f83353"), false, "uppercase slug");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:-unknown::d3bac5e705f83353"), false, "leading hyphen (the slug is stripped)");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:-::d3bac5e705f83353"), false, "a hyphen-only slug");
+    assert.equal(lane.isEnrichmentCartLinkRow({}, "ext:::d3bac5e705f83353"), false, "empty slug (#2461 answers \"unknown\")");
+    assert.equal(lane.isEnrichmentCartLinkRow({ source_system: "external_product_seeds_mirror_v1" }, SCRIPT_IDENTITY_KEYS[0][1]), false, "another source system");
   });
 
   test("REFUSES every other `ext:` shape (and the mirror key, which has its own path)", () => {
