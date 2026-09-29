@@ -938,6 +938,42 @@ function breakdownRows({ lineTotal, total, shipping, tax, taxIncluded, discount 
   return { rows: [], unreconciled: true };
 }
 
+/**
+ * THE LINE ITEM'S DISPLAYED TITLE: `<product name> — <variant title>`, or the product name alone when there is no
+ * variant title (or it repeats the name). Both halves are MERCHANT text and each is wrapped in its own bidi
+ * isolate, FIRST STRONG ISOLATE ... POP DIRECTIONAL ISOLATE (U+2068 ... U+2069).
+ *
+ * WHY. The backend strips embeddings, overrides and isolates from merchant text but KEEPS the marks (LRM/RLM),
+ * and real right-to-left letters exist. A name ending in RLM or an RTL letter makes the neutrals and digits that
+ * FOLLOW it resolve right-to-left: "Silky Matte Lip Ink — 07 BURGUNDY INK" can display as "...Ink07 — BURGUNDY
+ * INK", and digit runs can reorder across the dash. An isolate makes each half one neutral unit to its
+ * surroundings, whose own direction comes from its own first strong letter: nothing leaks out, nothing leaks in.
+ *
+ * A LONE NAME IS ISOLATED TOO. Nothing follows it inside this string, but consumers append to it: the agent-ui
+ * Reap panel renders the title with " × <quantity>" right after it in the same line, and an agent quotes it in
+ * prose. One rule -- every merchant half is isolated -- is also one rule for a consumer that wants plain text:
+ * delete U+2068/U+2069.
+ *
+ * THE PAIRS ARE BALANCED BY CONSTRUCTION. Embedding, override and isolate controls (U+202A..U+202E,
+ * U+2066..U+2069) are removed from each half first. The backend already removes them, so on conforming input this
+ * is a no-op; it is here because a stray PDI inside a name would close OUR isolate early and let the name's
+ * direction leak into the dash and the variant. The marks (U+200E/U+200F) are kept: they cannot unbalance a pair.
+ * A half that is nothing but such controls is absent. The checkout id and the idempotency key never include the
+ * title (encodeReapCheckoutId, reapIdempotencyKey), so the isolates change what is displayed and nothing else.
+ */
+const BIDI_FSI = "\u2068";
+const BIDI_PDI = "\u2069";
+const BIDI_NESTING_CONTROL_RE = /[\u202A-\u202E\u2066-\u2069]/g;
+const titleHalf = (v) => str(typeof v === "string" ? v.replace(BIDI_NESTING_CONTROL_RE, "") : null);
+const bidiIsolate = (text) => `${BIDI_FSI}${text}${BIDI_PDI}`;
+
+export function reapLineItemTitle(productName, variantTitle) {
+  const name = titleHalf(productName);
+  if (!name) return null;
+  const variant = titleHalf(variantTitle);
+  return variant && variant !== name ? `${bidiIsolate(name)} — ${bidiIsolate(variant)}` : bidiIsolate(name);
+}
+
 function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, finalTotal, discount, shipping, tax, taxIncluded, degraded }) {
   const lineTotal = unitMinor * quantity;
   if (!Number.isSafeInteger(lineTotal)) return null;
@@ -1036,9 +1072,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
   if (str(own(view, "product_key")) !== snapshot.productKey) return null;
   if (!currency || unitMinor === null || !itemId
     || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > REAP_MAX_QUANTITY) return null;
-  const productName = str(own(view, "product_name"));
-  const variantTitle = str(own(view, "variant_title"));
-  const title = productName ? (variantTitle && variantTitle !== productName ? `${productName} — ${variantTitle}` : productName) : null;
+  const title = reapLineItemTitle(own(view, "product_name"), own(view, "variant_title"));
   const lt = lineItemsAndTotals({
     itemId,
     title,

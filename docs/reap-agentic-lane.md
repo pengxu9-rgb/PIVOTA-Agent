@@ -154,6 +154,14 @@ view; a view missing any of them is treated as a failed read. The checkout id's 
 to check the view is for this purchase: the id travels through the caller, so it is not trusted. On a
 failed read the snapshot is the only source, and the answer says so (`reap.view_unavailable`).
 
+**The title is bidi-isolated.** `line_items[0].item.title` is `<product name> — <variant title>`, or the
+product name alone, and EACH merchant half is wrapped in FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE
+(U+2068 … U+2069), so a name that ends in a right-to-left letter or an RLM cannot reorder the dash, the
+variant's digits, or whatever a consumer prints after the title. The title therefore carries one or two
+invisible isolate pairs: render it as-is (browsers and most text stacks honour isolates), or delete
+U+2068/U+2069 for a plain-text copy. Do not compare it to a catalog title byte-for-byte. A failed read's
+title is the item id, unwrapped. The checkout id never includes the title.
+
 ## 5. The contract for Minds
 
 ### 5.1 What to send
