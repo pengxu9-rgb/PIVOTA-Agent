@@ -37,8 +37,10 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
 import {
+  assertExpectedSeller,
   DISCOUNT_CODE_PATH,
   REAP_CHECKOUT_ID_PREFIX,
+  reapAgenticLaneEnabled,
   reapOfferCode,
   reapOfferCodesEnabled,
   tryReapAgenticCheckout,
@@ -333,6 +335,15 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       // unscoped `get_product` read; a memoizing view of the executor lets a contracted cart (classified
       // "kernel path" here) be read once and the resolver reuse the same result. Scoped to this call.
       const reads = memoizedProductReads(executor);
+      // 3a-0) THE EXPECTED SELLER (docs/reap-agentic-lane.md §5.4), ONCE, BEFORE EVERY ROUTE. A create carrying
+      //     `checkout.reap.expected_merchant_domain` whose resolved rows are not ALL that seller is REFUSED here
+      //     (`ucp_seller_mismatch`) — before the Reap lane, the storefront escalation and the kernel, because each
+      //     of them would sell from, or send the buyer to, the SERVED row's seller. Fails closed on a row it
+      //     cannot read or whose merchant it cannot read. A no-op without the member (and the adapter accepts the
+      //     member only while the Reap lane is on), so every other create is untouched.
+      if (op.id === "create_checkout_session") {
+        await assertExpectedSeller({ ucpArgs: toolArgs, params, executor: reads, ctx });
+      }
       // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
       //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
       //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
@@ -1005,16 +1016,23 @@ export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS
 });
 
 /**
- * The UCP declarations for THIS env: `ucpCommerceToolDefinitions` unless offer codes are armed
- * (`reapOfferCodesEnabled`), when create_checkout also advertises `checkout.discounts`. Two memoized variants.
+ * The UCP declarations for THIS env — three memoized variants, the adapter's (`ucpInputSchemasFor`):
+ * `ucpCommerceToolDefinitions` while the Reap lane is off; with the lane on, create_checkout also advertises
+ * `checkout.reap` (the expected seller); with offer codes armed (`reapOfferCodesEnabled`), also
+ * `checkout.discounts`.
  */
-const ucpCommerceToolDefinitionsArmed = definitionsFor(UCP_COMMERCE_OPERATIONS, {
-  nameOf: (op) => op.ucpTool,
-  schemaOf: (op) => ucpInputSchemasFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
-  describeOf: (op) => ucpToolDescriptionsFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
-});
+function ucpDefinitionsForEnv(env) {
+  return definitionsFor(UCP_COMMERCE_OPERATIONS, {
+    nameOf: (op) => op.ucpTool,
+    schemaOf: (op) => ucpInputSchemasFor(env)[op.id],
+    describeOf: (op) => ucpToolDescriptionsFor(env)[op.id],
+  });
+}
+const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
+const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  return reapOfferCodesEnabled(env) ? ucpCommerceToolDefinitionsArmed : ucpCommerceToolDefinitions;
+  if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
+  return reapAgenticLaneEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1064,7 +1082,7 @@ export function ucpDialectSurface(surface) {
   }
   return Object.freeze({
     ...surface,
-    // Read per `tools/list`, so the advertised create_checkout follows the offer-code dial (see
+    // Read per `tools/list`, so the advertised create_checkout follows the Reap lane and offer-code dials (see
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
       return ucpCommerceToolDefinitionsFor(process.env);

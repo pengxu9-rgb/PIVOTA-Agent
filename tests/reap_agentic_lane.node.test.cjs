@@ -105,7 +105,7 @@ const DESTINATION = Object.freeze({
 });
 
 const ABSENT = Symbol('absent');
-function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem-reap-0001', consent = 'reap-agentic-v1', destination = DESTINATION, buyerExtra = {}, discounts = ABSENT } = {}) {
+function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem-reap-0001', consent = 'reap-agentic-v1', destination = DESTINATION, buyerExtra = {}, discounts = ABSENT, reap = ABSENT } = {}) {
   const buyer = { email: EMAIL, ...buyerExtra };
   if (consent !== ABSENT) buyer.consent_version = consent;
   return {
@@ -116,6 +116,7 @@ function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem
       context: { address_country: 'US' },
       ...(destination ? { fulfillment: { methods: [{ type: 'shipping', destinations: [{ ...destination }] }] } } : {}),
       ...(discounts !== ABSENT ? { discounts } : {}),
+      ...(reap !== ABSENT ? { reap } : {}),
     },
   };
 }
@@ -206,6 +207,7 @@ function fakeLogger() {
   return { lines, info: sink('info'), warn: sink('warn'), error: sink('error') };
 }
 
+const READ_FAILS = Symbol('read fails');
 function recordingExecutor(rows, errors) {
   const seen = [];
   return {
@@ -214,6 +216,7 @@ function recordingExecutor(rows, errors) {
       seen.push({ op, params });
       if (op === 'get_product') {
         const row = rows[params.payload.product.product_id];
+        if (row === READ_FAILS) throw new Error('upstream read failed');
         return row ? { product: { ...row } } : { product: null };
       }
       if (op === 'get_checkout_session' || op === 'update_checkout_session' || op === 'complete_checkout_session') {
@@ -233,10 +236,10 @@ const ROWS = Object.freeze({
 
 const FULL_AUTH = () => ({ 'X-API-Key': API_KEY, Authorization: `Bearer ${API_KEY}`, 'X-Agent-User-JWT': USER_JWT });
 
-async function build({ lane = true, logger = fakeLogger(), backend = fakeBackend(), clientTimeoutMs, authHeaders = FULL_AUTH } = {}) {
+async function build({ lane = true, logger = fakeLogger(), backend = fakeBackend(), clientTimeoutMs, authHeaders = FULL_AUTH, rows = ROWS } = {}) {
   const m = await mods();
   m.lane.resetReapLaneLogOnceForTest();
-  const executor = recordingExecutor(ROWS, m.errors);
+  const executor = recordingExecutor(rows, m.errors);
   const client = createReapAgenticPurchaseClient({
     baseUrl: 'https://backend.example',
     fetchImpl: backend.fetchImpl,
@@ -1201,6 +1204,269 @@ test('server wiring: the client sends the caller\'s X-API-Key + forwarded X-Agen
 });
 
 // =========================================================================================================
+// 8b. THE SELLER -- a create whose expected seller differs is REFUSED at the door; Reap answers name the seller
+// =========================================================================================================
+
+const ESC_ON = { ...ON, [ESCALATION_FLAG]: '1' };
+const sellerOf = (out) => ({
+  domain: (message(out, 'reap.merchant_domain') || {}).content,
+  id: (message(out, 'reap.merchant_id') || {}).content,
+});
+const errorOf = (r) => (r.err ? JSON.parse(r.err.content[0].text).error : null);
+
+test('seller OUT: create and get name the seller (bare content at $.line_items[0]); the degraded get names none', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { out, ucp, backend } = await createReap(ON);
+  assert.match(out.id, REAP_ID_RE);
+  assert.deepEqual(sellerOf(out), { domain: 'www.brand.example', id: 'm_brand' });
+  assert.equal(backend.calls[0].body.merchant_domain, message(out, 'reap.merchant_domain').content, 'the SAME host the purchase was opened for');
+  for (const code of ['reap.merchant_domain', 'reap.merchant_id']) {
+    const m = message(out, code);
+    assert.deepEqual([m.type, m.path, m.content_type], ['info', '$.line_items[0]', 'plain'], code);
+  }
+  assert.equal(JSON.stringify(out).includes('prod::'), false, 'the product key itself is still never published');
+  backend.state.get.set(PID, { status: 200, body: view('quoting', { merchant_domain: 'WWW.Brand.Example' }) });
+  const got = keep(await withEnv(ON, () => ucp.callTool('get_checkout', { meta: META, id: out.id }, SESSION)));
+  assert.deepEqual(sellerOf(got), { domain: 'www.brand.example', id: 'm_brand' });
+  assertSpecCheckout(got);
+  backend.state.mode = 'throw';
+  const degraded = keep(await withEnv(ON, () => ucp.callTool('get_checkout', { meta: META, id: out.id }, SESSION)));
+  assert.ok(message(degraded, 'reap.view_unavailable'));
+  assert.deepEqual(sellerOf(degraded), { domain: undefined, id: undefined }, 'never from the caller-carried id');
+});
+
+// Every path a create can take, each with a DIFFERENT expected seller: refused at the door, with escalation off
+// AND on, and NOTHING downstream runs -- no backend call, no kernel op, only the row reads.
+const OTHER = { reap: { expected_merchant_domain: 'other-seller.example' } };
+// A NATIVE row that carries its merchant's REGISTERED store (the backend derives `online_store_url` from the
+// merchant's verified connected store). NATIVE_ROW itself carries only a catalog `canonical_url`, which is not
+// the merchant of record, so it can never be confirmed.
+const NATIVE_REGISTERED_ROW = Object.freeze({ ...NATIVE_ROW, product_id: 'p_native_reg', online_store_url: 'https://www.native.example/products/serum' });
+const SELLER_PATHS = [
+  ['eligible Reap row', { productId: REAP_ROW.product_id }, {}, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['no caller credentials (MCP-OAuth / no user JWT)', { productId: REAP_ROW.product_id }, { authHeaders: () => ({ 'X-API-Key': API_KEY }) }, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['native row with a registered store', { productId: 'p_native_reg' }, { rows: { p_native_reg: NATIVE_REGISTERED_ROW } }, 'www.native.example', 'merchant_native', 'different_seller'],
+  ['native row with NO registered store (catalog url only)', { productId: NATIVE_ROW.product_id }, {}, undefined, 'merchant_native', 'seller_unconfirmed'],
+  ['explicit domain is the seller, the storefront link is another (probe A)', { productId: 'sig_a' }, { rows: { sig_a: { ...MULTI_VARIANT_ROW, product_id: 'sig_a', merchant_domain: 'other-seller.example', external_redirect_url: 'https://www.brand.example/p' } } }, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['multi-variant row', { productId: MULTI_VARIANT_ROW.product_id }, {}, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['no product key', { productId: 'sig_nokey' }, { rows: { sig_nokey: { ...REAP_ROW, product_id: 'sig_nokey', product_key: undefined } } }, 'www.brand.example', undefined, 'different_seller'],
+  ['not Shopify', { productId: 'sig_woo' }, { rows: { sig_woo: { ...REAP_ROW, product_id: 'sig_woo', product_key: 'prod::m_brand::woocommerce::9' } } }, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['unpriced row', { productId: 'sig_np' }, { rows: { sig_np: { ...REAP_ROW, product_id: 'sig_np', price: null } } }, 'www.brand.example', 'm_brand', 'different_seller'],
+  ['row read fails', { productId: 'sig_down' }, { rows: { sig_down: READ_FAILS } }, undefined, undefined, 'seller_unconfirmed'],
+  ['row has no merchant domain', { productId: 'sig_nohost' }, { rows: { sig_nohost: { ...REAP_ROW, product_id: 'sig_nohost', external_redirect_url: 'https://agent.pivota.cc/r?token=abc' } } }, undefined, 'm_brand', 'seller_unconfirmed'],
+];
+
+test('seller IN, MISMATCH on EVERY path: refused ucp_seller_mismatch at the door; no lane, no kernel, no backend call', async () => {
+  const m = await mods();
+  for (const [label, argOpts, buildOpts, domain, merchantId, cause] of SELLER_PATHS) {
+    for (const env of [ON, ESC_ON]) {
+      const ctx = await build(buildOpts);
+      const r = keep(await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ ...argOpts, ...OTHER }), SESSION))));
+      ALL_LOGS.push(...ctx.logger.lines);
+      const e = errorOf(r);
+      const tag = `${label} (escalation ${env === ESC_ON ? 'on' : 'off'})`;
+      assert.ok(e, `${tag}: refused, not answered`);
+      assert.equal(e.code, 'QUOTE_REQUIRED', tag);
+      assert.equal(e.detail.reason, 'ucp_seller_mismatch', tag);
+      assert.equal(e.detail.cause, cause, tag);
+      assert.equal(e.detail.merchant_domain, domain, tag);
+      assert.equal(e.detail.merchant_id, merchantId, tag);
+      assert.equal(JSON.stringify(r).includes('continue_url'), false, `${tag}: no link of any kind`);
+      assert.equal(ctx.backend.calls.length, 0, `${tag}: no backend call`);
+      assert.deepEqual([...new Set(ctx.executor.seen.map((c) => c.op))], ['get_product'], `${tag}: only the row read -- no kernel op`);
+      assert.deepEqual(ctx.logger.lines.filter((l) => /^reap_agentic/.test(String(l.event || ''))), [], `${tag}: the Reap lane never ran`);
+    }
+  }
+});
+
+test('seller IN, a MULTI-LINE cart: every line must be the expected seller; one other seller refuses the whole create', async () => {
+  const m = await mods();
+  const args = createArgs({ reap: { expected_merchant_domain: 'brand.example' } });
+  args.checkout.line_items = [{ item: { id: REAP_ROW.product_id }, quantity: 1 }, { item: { id: 'p_native_reg' }, quantity: 1 }];
+  for (const env of [ON, ESC_ON]) {
+    const ctx = await build({ rows: { ...ROWS, p_native_reg: NATIVE_REGISTERED_ROW } });
+    const e = errorOf(await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', structuredClone(args), SESSION))));
+    assert.deepEqual([e.detail.reason, e.detail.line_item, e.detail.merchant_domain], ['ucp_seller_mismatch', '$.line_items[1]', 'www.native.example']);
+    assert.equal(ctx.backend.calls.length, 0);
+    assert.deepEqual([...new Set(ctx.executor.seen.map((c) => c.op))], ['get_product']);
+  }
+});
+
+test('seller IN, MATCH: every route proceeds exactly as without it (Reap: same POST + answer; native: the kernel)', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { backend: plain, out: plainOut } = await createReap(ON);
+  for (const expected of ['brand.example', 'www.brand.example', 'BRAND.EXAMPLE', 'Www.Brand.Example']) {
+    const { out, backend } = await createReap(ON, { args: { reap: { expected_merchant_domain: expected } } });
+    assert.equal(backend.calls.length, 1, expected);
+    assert.deepEqual(backend.calls[0].body, plain.calls[0].body, `${expected}: the expected seller never reaches the backend`);
+    assert.equal(JSON.stringify(out), JSON.stringify(plainOut), `${expected}: the answer is the one without it`);
+  }
+  // A native row whose REGISTERED store matches reaches the kernel, as without the member.
+  const { out: kernel, executor } = await createReap(ON, { rows: { ...ROWS, p_native_reg: NATIVE_REGISTERED_ROW }, args: { productId: 'p_native_reg', reap: { expected_merchant_domain: 'native.example' } } });
+  assert.deepEqual(kernel, { session_id: 'q_kernel' });
+  assert.ok(executor.seen.some((c) => c.op === 'create_checkout_session'));
+  // The storefront answer for a matching non-Reap row is unchanged too (escalation on, lane refuses).
+  const b = fakeBackend();
+  b.state.post = { status: 409, body: houseError('row_not_found', 409) };
+  const { out: esc } = await createReap(ESC_ON, { backend: b, args: { reap: { expected_merchant_domain: 'brand.example' } } });
+  const b2 = fakeBackend();
+  b2.state.post = { status: 409, body: houseError('row_not_found', 409) };
+  const { out: escPlain } = await createReap(ESC_ON, { backend: b2 });
+  assert.equal(JSON.stringify(esc), JSON.stringify(escPlain));
+});
+
+// EVERY destination a row can send the buyer to must be the expected seller -- not just the one the Reap lane buys
+// from (review round 2, P1). The storefront answer hands out `external_redirect_url`; the Reap lane buys from the
+// explicit merchant field first. Probes from the review, through the REAL door, escalation ON.
+const EXPECT_BRAND = { reap: { expected_merchant_domain: 'brand.example' } };
+const DEST_PROBES = [
+  ['A: merchant_domain is the seller, the storefront link is another seller', { merchant_domain: 'brand.example', external_redirect_url: 'https://other-seller.example/products/x' }, 'different_seller', 'other-seller.example'],
+  ['B: an affiliate hop to another seller', { external_redirect_url: 'https://click.linksynergy.com/deeplink?id=abc&mid=1&murl=https%3A%2F%2Fother-seller.example%2Fp' }, 'seller_unconfirmed', undefined],
+  ['B2: an affiliate hop even to the SAME seller (its end is not this URL)', { external_redirect_url: 'https://www.brand.example/go?url=https://www.brand.example/p' }, 'seller_unconfirmed', undefined],
+  ['a Pivota /r attribution hop', { external_redirect_url: 'https://agent.pivota.cc/r?token=abc' }, 'seller_unconfirmed', undefined],
+  ['a path-embedded redirect', { external_redirect_url: 'https://www.brand.example/redirect/https://other-seller.example/p' }, 'seller_unconfirmed', undefined],
+  ['source_domain is another seller', { source_domain: 'www.other-seller.example' }, 'different_seller', 'www.other-seller.example'],
+];
+
+test('seller IN: EVERY destination of the row must be the expected seller -- probes A, B, the /r hop (refused, nothing runs)', async () => {
+  const m = await mods();
+  for (const [label, extra, cause, host] of DEST_PROBES) {
+    const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_probe', ...extra };
+    for (const env of [ON, ESC_ON]) {
+      const ctx = await build({ rows: { sig_probe: row } });
+      const r = await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: 'sig_probe', ...EXPECT_BRAND }), SESSION)));
+      const e = errorOf(r);
+      assert.ok(e, `${label}: refused`);
+      assert.deepEqual([e.detail.reason, e.detail.cause, e.detail.merchant_domain], ['ucp_seller_mismatch', cause, host], label);
+      assert.equal(JSON.stringify(r).includes('continue_url'), false, label);
+      assert.equal(ctx.backend.calls.length, 0, label);
+      assert.deepEqual([...new Set(ctx.executor.seen.map((c) => c.op))], ['get_product'], label);
+    }
+  }
+});
+
+test('seller IN: a matching explicit domain AND a matching storefront link pass -- the storefront answer links to that seller', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_ok', merchant_domain: 'Brand.example', external_redirect_url: 'https://www.brand.example/products/x' };
+  const { out } = await createReap(ESC_ON, { rows: { sig_ok: row }, args: { productId: 'sig_ok', ...EXPECT_BRAND } });
+  assert.match(out.id, /^esc_/, 'multi-variant: the storefront route answers');
+  assert.equal(out.continue_url, 'https://www.brand.example/products/x');
+});
+
+test('storefront lane, belt and braces: handed an expected seller the link does not match, it REFUSES instead of linking', async () => {
+  const esc = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+  const m = await mods();
+  const run = (expected, url) => esc.tryEscalateUcpCheckout({
+    op: { id: 'create_checkout_session' },
+    params: { idempotency_key: 'k', quote: { items: [{ product_id: 'sig_x', quantity: 1 }] } },
+    ctx: {},
+    executor: recordingExecutor({ sig_x: { ...REAP_ROW, product_id: 'sig_x', external_redirect_url: url } }, m.errors),
+    ucpArgs: { checkout: { line_items: [{ item: { id: 'sig_x' }, quantity: 1 }], reap: { expected_merchant_domain: expected } } },
+    env: { [ESCALATION_FLAG]: '1' },
+    now: NOW,
+  });
+  for (const [url, cause] of [
+    ['https://other-seller.example/p', 'different_seller'],
+    ['https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fbrand.example%2Fp', 'seller_unconfirmed'],
+    ['https://agent.pivota.cc/r?token=abc', 'seller_unconfirmed'],
+  ]) {
+    const r = await outcome(m, run('brand.example', url));
+    assert.deepEqual([errorOf(r)?.detail?.reason, errorOf(r)?.detail?.cause], ['ucp_seller_mismatch', cause], url);
+  }
+  const ok = await run('brand.example', 'https://www.brand.example/p');
+  assert.equal(ok.continue_url, 'https://www.brand.example/p');
+  // Without an expected seller the lane answers exactly as before.
+  const plain = await esc.tryEscalateUcpCheckout({
+    op: { id: 'create_checkout_session' }, params: { idempotency_key: 'k', quote: { items: [{ product_id: 'sig_x', quantity: 1 }] } }, ctx: {},
+    executor: recordingExecutor({ sig_x: { ...REAP_ROW, product_id: 'sig_x', external_redirect_url: 'https://other-seller.example/p' } }, m.errors),
+    ucpArgs: { checkout: { line_items: [{ item: { id: 'sig_x' }, quantity: 1 }] } }, env: { [ESCALATION_FLAG]: '1' }, now: NOW,
+  });
+  assert.equal(plain.continue_url, 'https://other-seller.example/p');
+});
+
+test('seller IN, MATCH reads each product ONCE: the door and every route share the one memoized read', async () => {
+  const reads = (ctx, pid) => ctx.executor.seen.filter((c) => c.op === 'get_product' && c.params.payload.product.product_id === pid).length;
+  // Reap route.
+  const reap = await createReap(ON, { args: EXPECT_BRAND });
+  assert.match(reap.out.id, REAP_ID_RE);
+  assert.equal(reads(reap, REAP_ROW.product_id), 1, 'Reap: one read');
+  // Kernel route (a native row with its registered store).
+  const kernel = await createReap(ON, { rows: { p_native_reg: NATIVE_REGISTERED_ROW }, args: { productId: 'p_native_reg', reap: { expected_merchant_domain: 'native.example' } } });
+  assert.deepEqual(kernel.out, { session_id: 'q_kernel' });
+  assert.equal(reads(kernel, 'p_native_reg'), 1, 'kernel: one read');
+  // Storefront route (the backend refuses the Reap purchase; escalation answers).
+  const b = fakeBackend();
+  b.state.post = { status: 409, body: houseError('row_not_found', 409) };
+  const store = await createReap(ESC_ON, { backend: b, args: EXPECT_BRAND });
+  assert.match(store.out.id, /^esc_/);
+  assert.equal(reads(store, REAP_ROW.product_id), 1, 'storefront: one read');
+});
+
+// THE LIVE DEMO ROW (round 3): judydoll's "Silky Matte Lip Ink", an external-seed row whose external_redirect_url is a
+// Pivota attribution hop. The hop's token payload `dest` is the merchant's own PDP; that is the seller judged.
+// The live row's external_redirect_url token, read 2026-09-29 via search_catalog: the backend's TWO-segment format
+// (`<b64url(payload JSON)>.<b64url(HMAC-SHA256)>`, pivota-backend make_redirect_token). Its payload `dest` is
+// https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&…
+const LIVE_JUDY_TOKEN = 'eyJ2IjowLCJ0IjoicmVkaXJlY3QiLCJtYXJrZXQiOiJVUyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsIm1hcmtldF9vYnNlcnZlZCI6dHJ1ZSwiZGVzdCI6Imh0dHBzOi8vanVkeWRvbGwuY29tL3Byb2R1Y3RzL3NpbGt5LW1hdHRlLWxpcC1pbms_dmFyaWFudD00OTgxOTI2NzMwMTY1MyZ1dG1fc291cmNlPXBpdm90YSZ1dG1fbWVkaXVtPWFmZmlsaWF0ZSZ1dG1fY2FtcGFpZ249VVMmcHZ0X2NsaWNrX2lkPWNsa18zNjQ1YmYyZjdkMDk0OWZmYTMxYTRlZjEmdXRtX2NvbnRlbnQ9Y2xrXzM2NDViZjJmN2QwOTQ5ZmZhMzFhNGVmMSIsImN0eCI6eyJzZWVkSWQiOiJlcHN2XzM4YWQ4OGQ0MzZjMzJlMjRiYTdjNjQ0NiIsInNvdXJjZSI6ImV4dGVybmFsX3NlZWRfbGlua3MiLCJwdnRfY2xpY2tfaWQiOiJjbGtfMzY0NWJmMmY3ZDA5NDlmZmEzMWE0ZWYxIiwicHZ0X3N1cmZhY2UiOiJjcmVhdG9yX2FnZW50cyIsInRvb2wiOiJjcmVhdG9yX2FnZW50cyIsImpvaW5fbW9kZSI6InJlZmVycmFsX29ubHkifSwiaWF0IjoxNzkwNjUzMTYyLCJleHAiOjE3OTEyNTc5NjJ9.z2eUZz-tCUGToldwJc-Y_i4XNkDV39QTgKj27vCzVyE';
+// The backend's format for any payload (the signature is not checked by the door, so the live one is reused).
+const hopToken = (payload) => `${Buffer.from(JSON.stringify(payload)).toString('base64url')}.${LIVE_JUDY_TOKEN.split('.')[1]}`;
+const JUDY_HOP = `https://api.pivota.cc/r?token=${LIVE_JUDY_TOKEN}`;
+const JUDY_ROW = Object.freeze({
+  product_id: 'sig_6433c8107859a484fb72d14861e84690',
+  title: 'Silky Matte Lip Ink',
+  brand: 'Judydoll',
+  price: 9.99,
+  currency: 'USD',
+  merchant_id: 'external_seed',
+  platform: 'external',
+  product_key: 'prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada',
+  external_redirect_url: JUDY_HOP,
+  destination_url: 'https://judydoll.com/products/silky-matte-lip-ink',
+  purchase_grain: 'product',
+  variants: [{ variant_id: 'sig_6433c8107859a484fb72d14861e84690' }],
+});
+
+test('the live demo row (a Pivota /r hop): its own seller passes and keeps the attributed link; any other seller is refused', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const m = await mods();
+  const rows = { [JUDY_ROW.product_id]: JUDY_ROW };
+  const ok = await createReap(ESC_ON, { rows, args: { productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } } });
+  assert.match(ok.out.id, /^esc_/, 'not Shopify: the storefront route answers');
+  assert.equal(ok.out.continue_url, JUDY_HOP, 'the attributed hop is handed out, unchanged');
+  for (const expected of ['other-seller.example', 'judydoll.co']) {
+    const ctx = await build({ rows });
+    const r = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: expected } }), SESSION)));
+    assert.deepEqual([errorOf(r)?.detail?.reason, errorOf(r)?.detail?.cause, errorOf(r)?.detail?.merchant_domain], ['ucp_seller_mismatch', 'different_seller', 'judydoll.com'], expected);
+    assert.equal(JSON.stringify(r).includes('continue_url'), false);
+    assert.equal(ctx.backend.calls.length, 0);
+  }
+  // The storefront lane's own re-check decodes the hop the same way.
+  const esc = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+  const direct = (expected) => esc.tryEscalateUcpCheckout({
+    op: { id: 'create_checkout_session' },
+    params: { idempotency_key: 'k', quote: { items: [{ product_id: JUDY_ROW.product_id, quantity: 1 }] } },
+    ctx: {}, executor: recordingExecutor(rows, m.errors),
+    ucpArgs: { checkout: { line_items: [{ item: { id: JUDY_ROW.product_id }, quantity: 1 }], reap: { expected_merchant_domain: expected } } },
+    env: { [ESCALATION_FLAG]: '1' }, now: NOW,
+  });
+  assert.equal((await direct('judydoll.com')).continue_url, JUDY_HOP);
+  assert.equal(errorOf(await outcome(m, direct('other-seller.example')))?.detail?.cause, 'different_seller');
+});
+
+test('seller IN with the lane OFF: `checkout.reap` is refused as an unknown field, exactly as on main, with 0 backend calls', async () => {
+  const m = await mods();
+  for (const esc of [undefined, '1']) {
+    const { ucp, backend } = await build({ lane: true });
+    const r = await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: esc }, () => outcome(m, ucp.callTool('create_checkout', createArgs({ reap: { expected_merchant_domain: 'brand.example' } }), SESSION)));
+    const error = errorOf(r);
+    assert.equal(error.detail.reason, 'ucp_unknown_field');
+    assert.equal(error.detail.rejected_field, 'checkout.reap');
+    assert.deepEqual(error.detail.accepted_fields, ['line_items', 'cart_id', 'buyer', 'context', 'fulfillment', 'attribution'], 'the same list main names');
+    assert.equal(backend.calls.length, 0);
+  }
+});
+
+// =========================================================================================================
 // 9. the deep walk — no card field, no buyer data, no purchase_route, in any response or log line
 // =========================================================================================================
 
@@ -1542,4 +1808,16 @@ test('S2: armed, a code on update_checkout of a NON-Reap checkout is not applied
   assert.match(notice[0].content, /CREATED/);
   const plain = keep(await withEnv(CODES_ON, () => ucp.callTool('update_checkout', args(null), SESSION)));
   assert.equal((plain.messages || []).some((x) => x.path === '$.discounts.codes[0]'), false);
+});
+
+test('the live token re-encoded with `dest` on ANOTHER host: refused at the door for judydoll.com, nothing opened', async () => {
+  const m = await mods();
+  const payload = JSON.parse(Buffer.from(LIVE_JUDY_TOKEN.split('.')[0], 'base64url').toString('utf8'));
+  const row = { ...JUDY_ROW, external_redirect_url: `https://api.pivota.cc/r?token=${hopToken({ ...payload, dest: 'https://other-seller.example/products/x?variant=1' })}` };
+  for (const env of [ON, ESC_ON]) {
+    const ctx = await build({ rows: { [JUDY_ROW.product_id]: row } });
+    const r = await withEnv(env, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } }), SESSION)));
+    assert.deepEqual([errorOf(r)?.detail?.cause, errorOf(r)?.detail?.merchant_domain], ['different_seller', 'other-seller.example']);
+    assert.equal(ctx.backend.calls.length, 0);
+  }
 });

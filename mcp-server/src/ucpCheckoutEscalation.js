@@ -90,6 +90,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 // (Node resolves `src/services/*` against the repo-root package.json, which declares no `type`, so the
 // default interop import is the module's `module.exports` object.)
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
+import { judgeSellerUrl, reapExpectedMerchantDomain, sellerMismatchRefusal } from "./ucpExpectedSeller.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -474,6 +475,17 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     }
     const normalized = items.map((it) => ({ product_id: it.product_id, quantity: it.quantity }));
     const continueUrl = targets.get(normalized[0].product_id);
+    // THE EXPECTED SELLER, AGAIN, ON THE LINK ITSELF (docs/reap-agentic-lane.md §5.4). The door has already
+    // refused a create whose rows are not that seller (ucpReapAgenticLane.js `assertExpectedSeller`); this is
+    // belt and braces on the one value this lane hands the buyer: a continue_url whose host is not the expected
+    // seller — or a hop that cannot be confirmed — is REFUSED, never handed out.
+    const expectedSeller = reapExpectedMerchantDomain(ucpArgs);
+    if (expectedSeller !== undefined) {
+      const verdict = judgeSellerUrl(expectedSeller, continueUrl);
+      if (!verdict.ok) {
+        throw sellerMismatchRefusal({ cause: verdict.cause, merchantDomain: verdict.cause === "different_seller" ? verdict.host : null });
+      }
+    }
     // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
     // function already gives for every row that is not eligible for a continue_url. See the note above
     // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.

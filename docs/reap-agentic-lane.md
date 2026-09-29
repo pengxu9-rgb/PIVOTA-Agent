@@ -15,7 +15,10 @@ snapshot) — **EXCEPT** that a malformed `checkout.buyer.consent_version` (not 
 32 characters) is refused `ucp_consent_version_invalid` at the argument adapter, whatever the switch
 says. **`tools/list` is not byte-identical either:** the `create_checkout` / `update_checkout` `buyer`
 schema carries the optional `consent_version` member (`maxLength: 32`), and the `create_checkout`
-description mentions the Reap route.
+description mentions the Reap route. The seller contract (§5.4) adds nothing while the switch is off:
+`checkout.reap` is neither advertised nor accepted (refused `ucp_unknown_field`, as before it existed),
+the vendor capability `cc.pivota.reap_seller` is not in `/.well-known/ucp`, and no answer carries a
+seller message.
 
 ---
 
@@ -74,6 +77,11 @@ All of these, otherwise the lane is skipped silently (logged with a code) and th
   without one), is priced, and has a merchant domain (an explicit field, else the storefront host;
   never a Pivota host — sent **as observed, lowercased only**: no `www.` is stripped, because the
   backend canonicalises both sides at lookup);
+- when the create carries `checkout.reap.expected_merchant_domain`, the DOOR has already checked it
+  against every line before any lane ran, and refused a difference (§5.4); the lane checks it once
+  more (belt and braces) and opens nothing on a difference;
+- the checkout id it would mint decodes back to the same values (checked **before** the POST; an
+  item id or key the id cannot carry is skipped as `id_unencodable`, never minted undecodable);
 - the merchant-purchasability gate did not decline it — consulted **exactly as the escalation lane
   consults it**: same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`), same singleton client, same
   fail-open rule, same market source (`checkout.context.address_country`), same budget clamp;
@@ -195,6 +203,9 @@ claim (`sid` / `session_id`). The Reap lane needs three things a storefront chec
    (below). A code sent on a create whose answer is **not** a Reap checkout is **not applied**: that answer
    carries a `discount_code_invalid` warning at `$.discounts.codes[0]`.
 
+5. **`checkout.reap.expected_merchant_domain`** — optional, create_checkout only, and only while
+   `REAP_AGENTIC_LANE_ENABLED` is on: the seller the buyer was shown. See §5.4.
+
 `meta["idempotency-key"]` is required as on every state-changing call. **Retry with the same key**:
 the backend key is derived from it (hashed, namespaced — never random, never the raw key), so a
 retried `create_checkout` replays the same purchase instead of opening a second one.
@@ -203,8 +214,9 @@ retried `create_checkout` replays the same purchase instead of opening a second 
 
 `create_checkout` → `status: "incomplete"`, `id: "reap_rp_<24 hex>.<opaque>"`. Treat the id as
 opaque; it carries the backend purchase id and a snapshot of the line (product id, quantity,
-currency, unit price) so a failed read can still answer a well-formed checkout. It carries **no
-buyer data**.
+currency, unit price) so a failed read can still answer a well-formed checkout. It carries **no buyer
+data**. **Do not decode it**: its format is not a contract and may change. The seller is published in
+`messages` (§5.4).
 
 Then poll `get_checkout { meta, id }`:
 
@@ -243,6 +255,9 @@ Then poll `get_checkout { meta, id }`:
   `reap.purchase_expired` with the reason when there is a safe one. Create a new checkout to try
   again.
 
+- **Seller**: `create_checkout` and every good `get_checkout` carry `reap.merchant_domain` and
+  `reap.merchant_id` (§5.4); a `reap.view_unavailable` answer carries neither.
+
 ### 5.3 Refusal codes
 
 | where | code / reason | meaning | what to do |
@@ -250,11 +265,15 @@ Then poll `get_checkout { meta, id }`:
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_consent_version_invalid` | `consent_version` is not a string, or longer than 32 characters | fix the value |
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_offer_code_invalid` | (armed) `checkout.discounts` is not `{ codes: [one string of 1..128 code points] }` | fix the value, or send no code |
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_unknown_field` | (not armed) `checkout.discounts` was sent | send no code |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_seller_mismatch` | (lane on) an item resolves to a seller other than `checkout.reap.expected_merchant_domain`, or to one Pivota cannot confirm | §5.4 — show the buyer "Visit <the seller you showed>" only |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_expected_merchant_domain_invalid` | (lane on) `checkout.reap` is not `{ expected_merchant_domain: <bare ASCII host> }` — a URL, port, path, single label, non-ASCII character, a Pivota host, not a string, or > 253 characters | send the bare host (`brand.com`) |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_unknown_field` | (lane off) `checkout.reap` was sent, or any member other than `expected_merchant_domain` inside it | send no `reap` member while the lane is off |
 | `update_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_update_refused` | a Reap checkout cannot be changed | create a new checkout |
 | `complete_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_complete_refused` | completion is on Reap's page | poll `get_checkout`, open `continue_url` |
 | `get_checkout` | `QUOTE_NOT_FOUND` | unknown id (or another buyer's) | — |
 
-There is **no Reap refusal on create.** A backend refusal of any kind (`consent_required`,
+There is **no Reap refusal on create.** (The one create refusal the seller contract adds,
+`ucp_seller_mismatch`, is the door's, taken before any route runs; see §5.4.) A backend refusal of any kind (`consent_required`,
 `merchant_not_eligible`, `row_not_found`, `row_unpriced`, `merchant_not_purchasable`,
 `not_available_on_this_rail`, `idempotency_conflict`, `currency_unsupported`, …) is **not** surfaced as
 an error. When the buyer block was short, the storefront answer carries one `info` message with
@@ -287,6 +306,164 @@ a residual is shown as its own `Rounding` row (`fee` when positive, `discount` w
 always add up; a larger residual shows no breakdown at all and is logged `breakdown_unreconciled`. The backend checks its daily Tier B verdict and its own
 `REAP_AGENTIC_CART_LINK_ENABLED`; any refusal of that second POST falls through exactly as above. No other
 refusal is retried. The multi-variant skip still applies (this door sends no `variant_key`).
+
+### 5.4 The seller contract (stable) — vendor extension `cc.pivota.reap_seller`
+
+A `sig_` product id can have several sellers. The door resolves it to ONE served row (the lowest
+`product_key`), and **every** route — the kernel, Reap, the storefront link — sells from, or sends the
+buyer to, **that row's** merchant, which can differ from the seller a platform showed the buyer. This
+contract guarantees the buyer is never sent to a seller other than the one the platform asserts, and
+lets a platform see who a Reap purchase is with. It is **stable**: the field, reason and code names
+below do not change without a new name beside them.
+
+**In — `checkout.reap.expected_merchant_domain`** on `create_checkout` only. It is advertised in
+`tools/list` and accepted only while `REAP_AGENTIC_LANE_ENABLED` is on. With the lane off it is
+refused `ucp_unknown_field`, as on main.
+
+```json
+{ "checkout": { "line_items": [{ "item": { "id": "sig_…" }, "quantity": 1 }],
+                "reap": { "expected_merchant_domain": "brand.com" }, "…": "…" } }
+```
+
+- A bare ASCII host. `www.` and case do not matter: `brand.com`, `www.brand.com` and `BRAND.com` are
+  one seller, and `shop.brand.com` is another. The comparison uses the backend's canonical rule:
+  lowercase, then ONE leading `www.` removed. Non-ASCII is refused **before** any case fold, so a
+  lookalike such as U+212A KELVIN SIGN cannot become `k`. A value that could never match (a URL,
+  port, path, single label, Pivota host or non-ASCII) is refused `ucp_expected_merchant_domain_invalid`
+  (§5.3).
+- **The door checks it ONCE, before any route.** The Reap lane, the storefront escalation and the kernel
+  all run after this check. The door reads every line's row, using the same memoized read the routes
+  use: a match costs no second read, pinned at exactly one `get_product` per product. **Every**
+  destination the row can sell from or send the buyer to must then be the expected seller
+  (`mcp-server/src/ucpExpectedSeller.js`):
+  - the row's explicit merchant fields, `merchant_domain` and `source_domain`. These are what the Reap
+    lane buys from.
+  - the storefront target, `external_redirect_url` of a non-native row. This is the storefront
+    answer's `continue_url`.
+  - for a **native** row (no storefront target), the merchant's **registered store** destinations the
+    read carries: `online_store_url` and `external_redirect_url`. The backend derives both from the
+    merchant's verified connected store.
+    - A native row with none of these and no explicit field is `seller_unconfirmed`.
+    - Its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for,
+      so it is never used.
+  - A **Pivota attribution hop** (`https://api.pivota.cc/r?token=…` or the same on
+    `agent.pivota.cc`, path exactly `/r`) is judged by the `dest` in its token payload, under the same
+    rules. The token is the backend's own two-segment format, not a JWT: `<b64url(payload
+    JSON)>.<b64url(HMAC-SHA256)>`, payload first, no header, padding stripped (pivota-backend
+    `make_redirect_token`; every `/r` minter on main uses it). The payload carries `v`, `t`, `market`,
+    `dest`, `ctx`, `iat` and `exp`. The live demo rows carry exactly this: judydoll's `external_redirect_url` is such a hop to
+    `https://judydoll.com/products/…`. So a hop to the expected seller passes, the attributed link is
+    handed out unchanged, and a hop to another seller is refused.
+    - The token is **decoded, not verified**. Every URL judged here comes from Pivota's own backend row;
+      the caller supplies only the expected host. If a caller-supplied URL ever reaches this check, the
+      token must be verified first.
+    - The hop is unconfirmed if: the token is malformed (not exactly two non-empty base64url
+      segments, or the first is not base64url JSON of an object); `dest` is missing, not https, carries userinfo, or is itself a
+      hop; or there is more than one `token`.
+  - Any other destination is **unconfirmed** (fail closed, whatever its host) when it:
+    - is any other Pivota host or path;
+    - carries another URL in its query or path, i.e. an affiliate or redirector hop, even one that ends
+      at the same seller. The values of `ref` and `utm_*` are tracking context and are ignored. A path
+      whose encoding does not decode is unconfirmed.
+    - is not https, carries userinfo, or does not parse.
+
+  The storefront lane re-checks the one link it hands out, as belt and braces: a `continue_url` whose
+  host is not the expected seller is refused, never returned.
+- **Every line is the expected seller** → nothing changes. Each route answers exactly as it would
+  without the member: Reap sends the same backend request and returns the same answer, a native row
+  reaches the kernel, a storefront row gets its storefront link.
+- **Any line is another seller, or cannot be confirmed** (the read fails, the row is absent, or it has
+  no readable merchant) → the create is **REFUSED**. Nothing is opened, nothing is charged, no
+  `continue_url` or any other link is returned, and **no other route is offered**. This holds whatever
+  the caller's credentials and whatever `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` says:
+
+  ```json
+  { "error": { "code": "QUOTE_REQUIRED", "message": "The item at checkout.line_items[0] is sold by www.other.com, …",
+      "detail": { "reason": "ucp_seller_mismatch", "dialect": "ucp",
+                  "rejected_field": "checkout.reap.expected_merchant_domain",
+                  "cause": "different_seller", "line_item": "$.line_items[0]",
+                  "merchant_domain": "www.other.com", "merchant_id": "m_other" } } }
+  ```
+
+  - `cause` is `different_seller`, or `seller_unconfirmed` when Pivota could not confirm a seller (see
+    above).
+  - `line_item` names the first offending line. It is absent when the read itself failed.
+  - `merchant_domain` is the host that is **not** the expected seller, present on `different_seller`.
+  - `merchant_id` is the row's catalog merchant id, when known.
+  - Both come from Pivota's catalog; neither is ever a request value.
+- **What the UI does on `ucp_seller_mismatch`:** tell the buyer this item is not available here from
+  the seller they were shown, and offer only **"Visit <the seller you showed>"**, built from the
+  platform's own record of that seller. **Never follow, show or prefetch any link from the gateway for
+  this item**, including any URL of a previous answer. The detail's `merchant_domain` is for logging
+  and diagnostics, not a link.
+- **Absent** → nothing changes.
+
+**Out — on a Reap checkout answer read from a server-side source**: `create_checkout`, and
+`get_checkout` when the backend read succeeds. Two `info` messages at `path: "$.line_items[0]"`, each
+with the bare value as `content` (read `content`, not prose, like `reap.poll_after_seconds` and
+`reap.order_reference`):
+
+| `code` | `content` | source |
+|---|---|---|
+| `reap.merchant_domain` | The merchant's host, **lowercase, as observed**. `www.` is kept when the row carries it (`www.brand.com`); this is exactly the host the purchase was opened for. Compare it with **`www.` folded** (lowercase, remove ONE leading `www.`). | create: the host the lane POSTed; get: the backend view's `merchant_domain` |
+| `reap.merchant_id` | Pivota's catalog merchant id: the `<merchant>` segment of the catalog key the purchase was opened for (`prod::<merchant>::<platform>::<id>`) | create: that key; get: the view's key, checked equal to the checkout's |
+
+Either message is omitted when its value is unknown; a message is never a guess. **The degraded
+`get_checkout` (`reap.view_unavailable`) carries neither.** Its only source is the checkout id, which
+travels through the caller, so a crafted id must not be able to make Pivota name a seller. Keep the
+seller from the last good answer.
+
+**Where these live in UCP, and why.**
+- UCP 2026-04-08 has no seller member on the checkout, the line item or the item. Its only `seller` is
+  the catalog *variant*'s display `name` and `links`.
+- **Inbound**, the member is added by a **vendor extension**, as the spec's extension model provides
+  (overview, "Extensions" / "Extension Schema Pattern"):
+  - Capability `cc.pivota.reap_seller`: reverse-DNS of pivota.cc, `extends: ["dev.ucp.shopping.checkout"]`.
+  - It has a self-describing schema composed with `allOf` onto checkout, keyed in `$defs` by the
+    parent's full name, with `requires`. That schema is `docs/ucp/reap_seller.json`, generated from the
+    member the door advertises and pinned equal to it by a test.
+  - `context` is ruled out because the spec defines it as non-authoritative hints a business MAY
+    ignore, and this is a guard the door must honour.
+- **Outbound**, `messages[]` with a freeform `code` is the spec's carrier for business-specific
+  checkout state (`info_code`: "freeform codes are permitted").
+
+**Advertising the capability.** `/.well-known/ucp` lists `cc.pivota.reap_seller` only while the Reap
+lane is on **and** its documents are hosted. Both URLs must be on the namespace authority, pivota.cc.
+The profile builder withholds a vendor capability without them, as it does `cc.pivota.insights`. To
+publish it:
+1. Host `docs/ucp/reap_seller.json` byte for byte at its `$id`,
+   `https://pivota.cc/ucp/schemas/reap_seller.json`.
+2. Host this section as the spec page.
+3. Set `UCP_REAP_SELLER_SCHEMA_URL` and `UCP_REAP_SELLER_SPEC_URL` on the gateway.
+
+Until then the member still works on `/ucp/mcp` (it is in `tools/list`); it is simply not in the
+profile.
+
+**Accepted before negotiation, deliberately.** `checkout.reap` is accepted on `/ucp/mcp` whether or not
+the platform negotiated `cc.pivota.reap_seller`, exactly as `cc.pivota.insights`' tools are callable
+without being negotiated. The member can only make a create **stricter**: it opens nothing and it never
+changes a matching answer. **Hosting the documents is a prerequisite for arming the lane in
+production.** A spec-following platform only learns the member from the profile.
+
+**Kernel path (native rows): what pins the seller, and the gap.** Checked read-only against
+pivota-backend `origin/main` `75b6f3cd6` and this gateway.
+- A UCP create for a native row goes to `kernel.previewQuote` →
+  `invokeCommerceKernelRawUpstream('preview_quote')` (`src/server.js`) →
+  `POST /agent/v2/quotes/preview`.
+- The gateway sends `merchant_id` only from `quote.merchant_id` (or an offer id), and the UCP quote
+  carries **none** (`ucpArgumentAdapter.js` `mapQuote`).
+- The backend's `QuotePreviewBody.merchant_id` is **required** (`routes/agent_v2.py`), and the quote is
+  bound to it. The item's `variant_id` does **not** choose the seller; it is looked up inside that
+  merchant.
+- The kernel then takes `merchant_of_record` from the request's `merchant_id` (`upstreamAdapter.js`)
+  and refuses a quote without one (`kernel.js` `previewQuote`).
+- So **today a UCP create cannot open a kernel checkout with any merchant**: there is no seller for the
+  kernel to drift to after the door's check.
+- **The gap:** if a later change fills `quote.merchant_id` for UCP carts, it must use the merchant of
+  the row the door checked (the same memoized read). Otherwise a multi-seller `sig_` could be quoted
+  against a merchant the check never saw. This PR does not pass `merchant_id` itself. Doing so would
+  newly enable native UCP checkouts, and the backend's per-merchant catalog cannot resolve a `sig_` id
+  anyway.
 
 ## 6. Budgets and failure modes
 

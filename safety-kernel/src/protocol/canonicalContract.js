@@ -126,6 +126,20 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
     extends: ['dev.ucp.shopping.checkout'],
     optIn: true,
   },
+  // Pivota's VENDOR extension of checkout (docs/reap-agentic-lane.md §5.4): adds `checkout.reap` -- the seller
+  // the buyer was shown, `expected_merchant_domain` -- which the door checks against every line's resolved row
+  // BEFORE any route and refuses on a difference (`ucp_seller_mismatch`). OPT-IN, like `discount`: the gateway
+  // opts in ONLY while the Reap lane is on (ucpReapAgenticLane.js `reapAgenticLaneEnabled`), the one dial that
+  // also advertises and accepts the member. NO specName/schemaName: a vendor capability's documents live on
+  // its own namespace authority (pivota.cc), supplied via `vendorCapabilityDocs`; without them the profile
+  // WITHHOLDS it, exactly as it withholds `insights` (see that entry). The schema to host is
+  // docs/ucp/reap_seller.json (generated from mcp-server/src/ucpArgumentAdapter.js, pinned by a test).
+  reap_seller: {
+    ucp: 'cc.pivota.reap_seller',
+    title: 'Expected seller on checkout: a create whose items resolve to a different seller is refused',
+    extends: ['dev.ucp.shopping.checkout'],
+    optIn: true,
+  },
   fulfillment: {
     ucp: 'dev.ucp.shopping.fulfillment',
     title: 'Shipping destination on checkout',

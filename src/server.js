@@ -32550,8 +32550,10 @@ async function getCommerceUcpRouteHandlers() {
     omitCapabilityIds: ucpOmitCapabilityIdsForFlags(),
     vendorCapabilityDocs: ucpVendorCapabilityDocs(),
     // `dev.ucp.shopping.discount` ONLY while buyer offer codes are armed -- the SAME rule the door's
-    // tools/list and argument adapter read (ucpReapAgenticLane.js `reapOfferCodesEnabled`).
-    optInCapabilities: (await getReapAgenticLaneModule()).reapOfferCodesEnabled(process.env) ? ['discount'] : [],
+    // tools/list and argument adapter read (ucpReapAgenticLane.js `reapOfferCodesEnabled`). The vendor
+    // `cc.pivota.reap_seller` ONLY while the Reap lane is on (`reapAgenticLaneEnabled`, the rule that also
+    // advertises and accepts `checkout.reap`), and even then only with its hosted documents (see below).
+    optInCapabilities: ucpOptInCapabilities(await getReapAgenticLaneModule()),
   });
   return createUcpRouteHandlers(profile);
 }
@@ -32570,14 +32572,30 @@ async function getCommerceUcpRouteHandlers() {
  * defect the withholding filter exists to prevent. Both agent-surface flags must be on.
  */
 function ucpVendorCapabilityDocs() {
+  const docs = {};
   const spec = firstNonEmptyString(process.env.UCP_INSIGHTS_SPEC_URL);
   const schema = firstNonEmptyString(process.env.UCP_INSIGHTS_SCHEMA_URL);
-  if (!spec || !schema) return {};
   const flagOn = (name) => /^(1|true|yes|on|enabled)$/i.test(String(process.env[name] || '').trim());
-  if (!flagOn('AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED') || !flagOn('AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED')) {
-    return {};
+  if (spec && schema
+    && flagOn('AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED') && flagOn('AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED')) {
+    docs['cc.pivota.insights'] = { spec, schema };
   }
-  return { 'cc.pivota.insights': { spec, schema } };
+  // `cc.pivota.reap_seller` (docs/reap-agentic-lane.md §5.4). Same rule: BOTH URLs, set only AFTER the documents
+  // return 200 on pivota.cc (the schema is docs/ucp/reap_seller.json, whose `$id` is the URL to host it at).
+  // Supplying them does not advertise it on its own: it is opt-in, and `ucpOptInCapabilities` opts in only
+  // while the Reap lane is on.
+  const sellerSpec = firstNonEmptyString(process.env.UCP_REAP_SELLER_SPEC_URL);
+  const sellerSchema = firstNonEmptyString(process.env.UCP_REAP_SELLER_SCHEMA_URL);
+  if (sellerSpec && sellerSchema) docs['cc.pivota.reap_seller'] = { spec: sellerSpec, schema: sellerSchema };
+  return docs;
+}
+
+/** The opt-in capability keys for THIS env — each gated on the SAME dial that lights its door. */
+function ucpOptInCapabilities(lane, env = process.env) {
+  return [
+    ...(lane.reapOfferCodesEnabled(env) ? ['discount'] : []),
+    ...(lane.reapAgenticLaneEnabled(env) ? ['reap_seller'] : []),
+  ];
 }
 
 const ACP_PUBLIC_FEED_MAX_BODY_BYTES = 32 * 1024;
