@@ -1402,6 +1402,57 @@ test('seller IN, MATCH reads each product ONCE: the door and every route share t
   assert.equal(reads(store, REAP_ROW.product_id), 1, 'storefront: one read');
 });
 
+// THE LIVE DEMO ROW (round 3): judydoll's "Silky Matte Lip Ink", an external-seed row whose external_redirect_url is a
+// Pivota attribution hop. The hop's token payload `dest` is the merchant's own PDP; that is the seller judged.
+const hopToken = (payload) => ['eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9', Buffer.from(JSON.stringify(payload)).toString('base64url'), 'c2lnbmF0dXJl'].join('.');
+const JUDY_HOP = `https://api.pivota.cc/r?token=${hopToken({
+  dest: 'https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&utm_medium=agent&utm_campaign=reap_demo',
+  merchant_canonical_url: 'https://judydoll.com',
+  destination_url: 'https://judydoll.com/products/silky-matte-lip-ink',
+  click_id: 'clk_fixture',
+})}`;
+const JUDY_ROW = Object.freeze({
+  product_id: 'sig_6433c8107859a484fb72d14861e84690',
+  title: 'Silky Matte Lip Ink',
+  brand: 'Judydoll',
+  price: 9.99,
+  currency: 'USD',
+  merchant_id: 'external_seed',
+  platform: 'external',
+  product_key: 'prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada',
+  external_redirect_url: JUDY_HOP,
+  destination_url: 'https://judydoll.com/products/silky-matte-lip-ink',
+  purchase_grain: 'product',
+  variants: [{ variant_id: 'sig_6433c8107859a484fb72d14861e84690' }],
+});
+
+test('the live demo row (a Pivota /r hop): its own seller passes and keeps the attributed link; any other seller is refused', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const m = await mods();
+  const rows = { [JUDY_ROW.product_id]: JUDY_ROW };
+  const ok = await createReap(ESC_ON, { rows, args: { productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } } });
+  assert.match(ok.out.id, /^esc_/, 'not Shopify: the storefront route answers');
+  assert.equal(ok.out.continue_url, JUDY_HOP, 'the attributed hop is handed out, unchanged');
+  for (const expected of ['other-seller.example', 'judydoll.co']) {
+    const ctx = await build({ rows });
+    const r = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: expected } }), SESSION)));
+    assert.deepEqual([errorOf(r)?.detail?.reason, errorOf(r)?.detail?.cause, errorOf(r)?.detail?.merchant_domain], ['ucp_seller_mismatch', 'different_seller', 'judydoll.com'], expected);
+    assert.equal(JSON.stringify(r).includes('continue_url'), false);
+    assert.equal(ctx.backend.calls.length, 0);
+  }
+  // The storefront lane's own re-check decodes the hop the same way.
+  const esc = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+  const direct = (expected) => esc.tryEscalateUcpCheckout({
+    op: { id: 'create_checkout_session' },
+    params: { idempotency_key: 'k', quote: { items: [{ product_id: JUDY_ROW.product_id, quantity: 1 }] } },
+    ctx: {}, executor: recordingExecutor(rows, m.errors),
+    ucpArgs: { checkout: { line_items: [{ item: { id: JUDY_ROW.product_id }, quantity: 1 }], reap: { expected_merchant_domain: expected } } },
+    env: { [ESCALATION_FLAG]: '1' }, now: NOW,
+  });
+  assert.equal((await direct('judydoll.com')).continue_url, JUDY_HOP);
+  assert.equal(errorOf(await outcome(m, direct('other-seller.example')))?.detail?.cause, 'different_seller');
+});
+
 test('seller IN with the lane OFF: `checkout.reap` is refused as an unknown field, exactly as on main, with 0 backend calls', async () => {
   const m = await mods();
   for (const esc of [undefined, '1']) {

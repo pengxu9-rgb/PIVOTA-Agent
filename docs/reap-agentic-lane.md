@@ -346,10 +346,22 @@ refused `ucp_unknown_field`, as on main.
     - A native row with none of these and no explicit field is `seller_unconfirmed`.
     - Its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for,
       so it is never used.
-  - A destination is **unconfirmed** (fail closed, whatever its host) when it:
-    - is a Pivota host (an `/r` attribution hop);
-    - carries another URL in its query or path (an affiliate or redirector hop, even one that ends
-      at the same seller);
+  - A **Pivota attribution hop** (`https://api.pivota.cc/r?token=<JWT>` or the same on
+    `agent.pivota.cc`, path exactly `/r`) is judged by the `dest` in its token payload, under the same
+    rules. The live demo rows carry exactly this: judydoll's `external_redirect_url` is such a hop to
+    `https://judydoll.com/products/…`. So a hop to the expected seller passes, the attributed link is
+    handed out unchanged, and a hop to another seller is refused.
+    - The token is **decoded, not verified**. Every URL judged here comes from Pivota's own backend row;
+      the caller supplies only the expected host. If a caller-supplied URL ever reaches this check, the
+      token must be verified first.
+    - The hop is unconfirmed if: the token is malformed (not three segments, the payload is not
+      base64url JSON, or not an object); `dest` is missing, not https, carries userinfo, or is itself a
+      hop; or there is more than one `token`.
+  - Any other destination is **unconfirmed** (fail closed, whatever its host) when it:
+    - is any other Pivota host or path;
+    - carries another URL in its query or path, i.e. an affiliate or redirector hop, even one that ends
+      at the same seller. The values of `ref` and `utm_*` are tracking context and are ignored. A path
+      whose encoding does not decode is unconfirmed.
     - is not https, carries userinfo, or does not parse.
 
   The storefront lane re-checks the one link it hands out, as belt and braces: a `continue_url` whose

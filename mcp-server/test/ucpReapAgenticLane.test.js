@@ -577,6 +577,54 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
     }
   });
 
+  // The LIVE judydoll demo row's shape (sig_6433c8107859a484fb72d14861e84690): its external_redirect_url is a
+  // Pivota attribution hop whose JWT payload `dest` is the merchant's own PDP.
+  const hopToken = (payload) => ["eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9", Buffer.from(JSON.stringify(payload)).toString("base64url"), "c2lnbmF0dXJl"].join(".");
+  const JUDY_DEST = "https://judydoll.com/products/silky-matte-lip-ink?variant=49819267301653&utm_source=pivota&utm_medium=agent&utm_campaign=reap_demo";
+  const JUDY_PAYLOAD = { dest: JUDY_DEST, merchant_canonical_url: "https://judydoll.com", destination_url: "https://judydoll.com/products/silky-matte-lip-ink", click_id: "clk_1", exp: 1790000000 };
+  const judyHop = (payload = JUDY_PAYLOAD, host = "api.pivota.cc") => `https://${host}/r?token=${hopToken(payload)}`;
+
+  test("a Pivota /r?token= hop is judged by its token's `dest` (the live demo row passes for its own seller only)", () => {
+    const j = lane.judgeSellerUrl;
+    for (const expected of ["judydoll.com", "www.judydoll.com", "JUDYDOLL.COM"]) assert.deepEqual(j(expected, judyHop()), { ok: true }, expected);
+    assert.deepEqual(j("judydoll.com", judyHop(JUDY_PAYLOAD, "agent.pivota.cc")), { ok: true }, "agent.pivota.cc hop too");
+    assert.deepEqual(j("other-seller.example", judyHop()), { ok: false, cause: "different_seller", host: "judydoll.com" });
+    assert.deepEqual(j("judydoll.co", judyHop()), { ok: false, cause: "different_seller", host: "judydoll.com" });
+    // Unreadable hops: fail closed.
+    const unconfirmed = [
+      ["two segments", `https://api.pivota.cc/r?token=aaa.${Buffer.from(JSON.stringify(JUDY_PAYLOAD)).toString("base64url")}`],
+      ["payload not base64url JSON", "https://api.pivota.cc/r?token=aaa.!!!.ccc"],
+      ["payload not JSON", `https://api.pivota.cc/r?token=aaa.${Buffer.from("not json").toString("base64url")}.ccc`],
+      ["payload not an object", judyHop(["https://judydoll.com/p"])],
+      ["no dest", judyHop({ merchant_canonical_url: "https://judydoll.com" })],
+      ["dest http", judyHop({ dest: "http://judydoll.com/p" })],
+      ["dest with userinfo", judyHop({ dest: "https://u:p@judydoll.com/p" })],
+      ["dest itself a hop", judyHop({ dest: judyHop() })],
+      ["dest carries another URL", judyHop({ dest: "https://judydoll.com/go?url=https://other-seller.example/p" })],
+      ["dest unparseable", judyHop({ dest: "not a url" })],
+      ["two token params", `${judyHop()}&token=${hopToken(JUDY_PAYLOAD)}`],
+      ["not exactly /r", `https://api.pivota.cc/r/?token=${hopToken(JUDY_PAYLOAD)}`],
+      ["another Pivota host", `https://pivota.cc/r?token=${hopToken(JUDY_PAYLOAD)}`],
+      ["the hop over http", `http://api.pivota.cc/r?token=${hopToken(JUDY_PAYLOAD)}`],
+    ];
+    for (const [label, url] of unconfirmed) assert.deepEqual(j("judydoll.com", url), { ok: false, cause: "seller_unconfirmed" }, label);
+  });
+
+  test("hop detection ignores `ref` and `utm_*` values, and a malformed path encoding fails CLOSED", () => {
+    const j = lane.judgeSellerUrl;
+    assert.deepEqual(j("brand.example", "https://www.brand.example/p?ref=https://pivota.cc/x&utm_source=https%3A%2F%2Fa.example&UTM_Campaign=//b"), { ok: true });
+    assert.equal(j("brand.example", "https://www.brand.example/p?refx=https://other.example").cause, "seller_unconfirmed", "only `ref` itself");
+    assert.equal(j("brand.example", "https://www.brand.example/r/https%3A%2F%2Fother.com%ZZ").cause, "seller_unconfirmed", "decodeURIComponent throws: unconfirmed");
+  });
+
+  test("native rows: a Pivota hop is judged by its dest; the registered store still counts", () => {
+    const native = { product_id: "p", merchant_id: "m" };
+    assert.deepEqual(lane.judgeRowSeller("judydoll.com", { ...native, external_redirect_url: judyHop(), purchase_route: "internal_checkout" }, null), { ok: true });
+    assert.deepEqual(lane.judgeRowSeller("judydoll.com", { ...native, external_redirect_url: judyHop(), online_store_url: "https://judydoll.com/products/x" }, null), { ok: true });
+    assert.equal(lane.judgeRowSeller("judydoll.com", { ...native, external_redirect_url: judyHop(), online_store_url: "https://other.example/x" }, null).cause, "different_seller");
+    assert.equal(lane.judgeRowSeller("judydoll.com", { ...native, external_redirect_url: "https://api.pivota.cc/r?token=junk" }, null).cause, "seller_unconfirmed");
+  });
+
   test("judgeRowSeller: native rows are checked against their REGISTERED store, never a catalog url", () => {
     const native = { product_id: "p", merchant_id: "merchant_native", canonical_url: "https://native.example/p", url: "https://native.example/p" };
     assert.deepEqual(lane.judgeRowSeller("native.example", native, null), { ok: false, cause: "seller_unconfirmed" }, "catalog url only: unconfirmed");

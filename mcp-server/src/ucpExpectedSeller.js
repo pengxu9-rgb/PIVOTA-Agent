@@ -11,8 +11,10 @@
 //     carries (`online_store_url`, `external_redirect_url` — both derived by the backend from the merchant's
 //     verified connected store). A native row with none of these and no explicit field cannot be confirmed:
 //     its `canonical_url` / `url` is a catalog page, not the merchant of record the kernel sells for.
-// A destination that is a Pivota host (an `/r` attribution hop), a redirector (a URL carrying another URL), not
-// https, carries userinfo, or does not parse is UNCONFIRMED — fail closed, whatever its host.
+// A Pivota attribution hop (`https://api.pivota.cc/r?token=<JWT>`, as the live demo rows carry) is judged by the
+// `dest` in its token payload (see `pivotaHopDestination`). Any other Pivota host, a redirector (a URL carrying
+// another URL outside `ref` / `utm_*`), a URL that is not https, carries userinfo, or does not parse is
+// UNCONFIRMED — fail closed, whatever its host.
 
 import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 
@@ -80,9 +82,14 @@ export function reapExpectedMerchantDomain(ucpArgs) {
   return own(own(own(ucpArgs, "checkout"), "reap"), "expected_merchant_domain");
 }
 
+// Query members whose VALUE is tracking context, never a destination: a `ref=https://…` or `utm_source=…` does not
+// make a URL a hop (review finding 3).
+const TRACKING_PARAM_RE = /^(ref|utm_[a-z0-9_]*)$/i;
+
 /** Does this URL carry ANOTHER URL (an affiliate / redirector hop: `?murl=https://…`, `/r/https://…`)? */
 function carriesAnotherUrl(parsed) {
-  for (const value of parsed.searchParams.values()) {
+  for (const [key, value] of parsed.searchParams.entries()) {
+    if (TRACKING_PARAM_RE.test(key)) continue;
     if (/^\s*(https?:)?\/\//i.test(value) || /^\s*https?%3a/i.test(value)) return true;
   }
   let path = parsed.pathname;
@@ -90,18 +97,50 @@ function carriesAnotherUrl(parsed) {
   return /https?:\/|\/\/[^/]/i.test(path.slice(1));
 }
 
+// PIVOTA'S OWN ATTRIBUTION HOP: `https://api.pivota.cc/r?token=<JWT>` (or agent.pivota.cc), minted by the backend
+// and stored on the row as `external_redirect_url` — the live judydoll demo row carries exactly this. The JWT's
+// payload `dest` is where the hop sends the buyer, so THAT is the destination judged.
+export const PIVOTA_HOP_HOSTS = Object.freeze(["api.pivota.cc", "agent.pivota.cc"]);
+
+/**
+ * `{ dest }` for a Pivota `/r?token=` hop, `{ bad: true }` for one that cannot be read, `null` for any other URL.
+ * The token payload (the middle JWT segment, base64url JSON) is DECODED, NOT VERIFIED: every URL this module judges
+ * comes from Pivota's own backend row read (`external_redirect_url`, `online_store_url`) — never from the caller,
+ * whose only input is the expected host — so the signature adds nothing here. A caller cannot put a URL in front
+ * of this function. If that ever changes, verify the token before trusting `dest`.
+ */
+export function pivotaHopDestination(parsed) {
+  if (parsed.protocol !== "https:" || !PIVOTA_HOP_HOSTS.includes(parsed.hostname.toLowerCase())) return null;
+  if (parsed.pathname !== "/r" || !parsed.searchParams.has("token")) return null;
+  const tokens = parsed.searchParams.getAll("token");
+  if (tokens.length !== 1) return { bad: true };
+  const parts = tokens[0].split(".");
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1])) return { bad: true };
+  let payload;
+  try { payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")); } catch { return { bad: true }; }
+  const dest = isPlainObject(payload) ? str(payload.dest) : null;
+  return dest ? { dest } : { bad: true };
+}
+
 /**
  * One destination URL against the expected seller: `{ ok: true }`, or `{ ok: false, cause, host? }` where `cause`
  * is `different_seller` (a readable merchant host that is not the seller; `host` names it) or
- * `seller_unconfirmed` (not https, userinfo, unparseable, a Pivota host, a non-ASCII or unreadable host, or a hop
- * that carries another URL — its final destination is not this URL's host).
+ * `seller_unconfirmed` (not https, userinfo, unparseable, a non-ASCII or unreadable host, any other Pivota host,
+ * or a hop that carries another URL — its final destination is not this URL's host). A Pivota `/r?token=` hop is
+ * judged by its token's `dest` under the SAME rules, once: a malformed token, a missing or non-https dest, or a
+ * dest that is itself a hop is unconfirmed.
  */
-export function judgeSellerUrl(expected, url) {
+export function judgeSellerUrl(expected, url, { viaHop = false } = {}) {
   const want = canonicalReapMerchantDomain(expected);
   if (want === null) return { ok: false, cause: "seller_unconfirmed" };
   let parsed;
   try { parsed = new URL(String(url)); } catch { return { ok: false, cause: "seller_unconfirmed" }; }
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) return { ok: false, cause: "seller_unconfirmed" };
+  const hop = pivotaHopDestination(parsed);
+  if (hop) {
+    if (viaHop || hop.bad) return { ok: false, cause: "seller_unconfirmed" };
+    return judgeSellerUrl(expected, hop.dest, { viaHop: true });
+  }
   const host = canonicalReapMerchantDomain(parsed.hostname);
   if (host === null) return { ok: false, cause: "seller_unconfirmed" };
   if (carriesAnotherUrl(parsed)) return { ok: false, cause: "seller_unconfirmed" };
