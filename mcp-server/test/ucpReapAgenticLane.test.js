@@ -66,24 +66,9 @@ describe("checkout id", () => {
   test("round-trips, starts with reap_ + the backend purchase id, and is canonical", () => {
     const id = encodeReapCheckoutId(SNAP);
     assert.ok(id.startsWith(`reap_${PID}.`));
-    // An id minted BEFORE the seller contract has no `m`, and still decodes (merchantDomain null).
-    assert.deepEqual(decodeReapCheckoutId(id), { ...SNAP, merchantDomain: null });
+    assert.deepEqual(decodeReapCheckoutId(id), { ...SNAP });
     assert.equal(isReapCheckoutId(id), true);
     assert.ok(id.length < 200);
-  });
-
-  test("the seller rides as `m` (the host as POSTed), round-trips, and only an observed host is accepted", () => {
-    const id = encodeReapCheckoutId({ ...SNAP, merchantDomain: "www.brand.example" });
-    assert.deepEqual(decodeReapCheckoutId(id), { ...SNAP, merchantDomain: "www.brand.example" });
-    assert.ok(id.length < 260);
-    const j = (o) => `reap_${PID}.${Buffer.from(JSON.stringify(o)).toString("base64url")}`;
-    const base = { v: 1, i: "a", k: "k", q: 1, c: "USD", u: 1 };
-    assert.ok(decodeReapCheckoutId(j({ ...base, m: "brand.example" })), "control");
-    for (const m of ["Brand.example", "https://brand.example", "brand", "agent.pivota.cc", "brand.example:443", "", null, 7, ["brand.example"]]) {
-      assert.equal(decodeReapCheckoutId(j({ ...base, m })), null, JSON.stringify(m));
-    }
-    // Canonical member order only: `m` before the others is not an id this door minted.
-    assert.equal(decodeReapCheckoutId(j({ m: "brand.example", ...base })), null);
   });
 
   test("refuses anything this door did not mint", () => {
@@ -373,15 +358,16 @@ describe("offer codes are advertised and accepted ONLY while armed (review of #2
   });
 });
 
-// ---- THE SELLER: published on every Reap answer; an expected seller that differs opens nothing ---------------
+// ---- THE SELLER (docs/reap-agentic-lane.md §5.4): refused at the door on a difference; published on Reap answers --
 
-describe("the seller contract (reap.merchant_domain / reap.merchant_id out, checkout.reap.expected_merchant_domain in)", async () => {
+describe("the seller contract (cc.pivota.reap_seller)", async () => {
   const lane = await import("../src/ucpReapAgenticLane.js");
   const adapter = await import("../src/ucpArgumentAdapter.js");
+  const { CANONICAL_CAPABILITIES } = await import("../../safety-kernel/src/protocol/canonicalContract.js");
   const LANE_ON = { [REAP_AGENTIC_LANE_FLAG]: "1" };
   const msg = (out, code) => (out.messages || []).filter((m) => m.code === code);
 
-  test("canonicalisation is the backend's: lowercase, ONE leading www. removed, bare hosts only", () => {
+  test("canonicalisation is the backend's: lowercase, ONE leading www. removed, bare ASCII hosts only", () => {
     const c = lane.canonicalReapMerchantDomain;
     assert.equal(c("brand.com"), "brand.com");
     assert.equal(c("Brand.COM"), "brand.com");
@@ -390,8 +376,11 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
     assert.equal(c("www.www.brand.com"), "www.brand.com", "folded ONCE, as pivota-backend canonical_merchant_domain");
     assert.equal(c("wwwbrand.com"), "wwwbrand.com", "only a whole `www.` label");
     assert.equal(c("shop.brand.com"), "shop.brand.com", "no other subdomain is stripped");
+    assert.equal(c("xn--brnd-hra.com"), "xn--brnd-hra.com", "punycode is ASCII");
     for (const bad of ["", " brand.com", "brand.com ", "https://brand.com", "brand.com/x", "brand.com:443", "user@brand.com",
-      "brand", "www.com", "agent.pivota.cc", "PIVOTA.CC", "brand..com", null, undefined, 42, ["brand.com"]]) {
+      "brand", "www.com", "agent.pivota.cc", "PIVOTA.CC", "brand..com", null, undefined, 42, ["brand.com"],
+      // Non-ASCII is refused BEFORE the fold: U+212A KELVIN SIGN lowercases to ASCII `k`, U+0130 to `i̇`.
+      "Kiko.com", "www.Kiko.com", "bränd.com", "İnfo.com", "brand．com"]) {
       assert.equal(c(bad), null, JSON.stringify(bad));
     }
   });
@@ -403,9 +392,15 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
     assert.equal(same("BRAND.com", "www.brand.COM"), true, "case");
     assert.equal(same("other.com", "www.brand.com"), false, "a different seller");
     assert.equal(same("shop.brand.com", "brand.com"), false, "a different host of the same registrable domain");
+    assert.equal(same("Kiko.com", "kiko.com"), false, "a lookalike is not the seller");
     assert.equal(same("brand.com", null), false, "missing row merchant: fail closed");
     assert.equal(same("brand.com", undefined), false);
     assert.equal(same("not a host", "not a host"), false, "two unreadable values are never a match");
+  });
+
+  test("a row's explicit non-ASCII merchant domain is not folded into an ASCII one", () => {
+    assert.equal(lane.reapMerchantDomain({ merchant_domain: "Kiko.com" }, null), null);
+    assert.equal(lane.reapMerchantDomain({ merchant_domain: "Kiko.com" }, null), "kiko.com");
   });
 
   test("the merchant id is the product key's <merchant> segment, or nothing", () => {
@@ -417,113 +412,147 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
 
   const VIEW = { id: PID, state: "resolving", merchant_domain: "WWW.Brand.example", product_key: SNAP.productKey, product_name: "N", quantity: 1, totals: { currency: "USD", our_price_minor: 4250 }, poll_after_seconds: 30 };
   test("get: the seller comes from the VIEW (lowercased as observed) and the checked product key, at $.line_items[0]", () => {
-    const id = encodeReapCheckoutId({ ...SNAP, merchantDomain: "stale.example" });
-    const out = mapReapPurchaseToCheckout({ id, snapshot: decodeReapCheckoutId(id), view: VIEW, now: NOW, env: {} });
+    const id = encodeReapCheckoutId(SNAP);
+    const out = mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: VIEW, now: NOW, env: {} });
     assert.deepEqual(msg(out, "reap.merchant_domain"), [{ type: "info", code: "reap.merchant_domain", path: "$.line_items[0]", content: "www.brand.example", content_type: "plain" }]);
     assert.deepEqual(msg(out, "reap.merchant_id"), [{ type: "info", code: "reap.merchant_id", path: "$.line_items[0]", content: "m_brand", content_type: "plain" }]);
     assert.equal(out.messages.at(-1).code, "reap.lane", "the lane note stays last");
-    // A view without a readable merchant_domain publishes no domain (never the id's snapshot on a good read).
-    for (const merchant_domain of [undefined, null, "", "agent.pivota.cc", "https://brand.example"]) {
-      const o = mapReapPurchaseToCheckout({ id, snapshot: decodeReapCheckoutId(id), view: { ...VIEW, merchant_domain }, now: NOW, env: {} });
+    for (const merchant_domain of [undefined, null, "", "agent.pivota.cc", "https://brand.example", "Kiko.com"]) {
+      const o = mapReapPurchaseToCheckout({ id, snapshot: SNAP, view: { ...VIEW, merchant_domain }, now: NOW, env: {} });
       assert.equal(msg(o, "reap.merchant_domain").length, 0, String(merchant_domain));
       assert.equal(msg(o, "reap.merchant_id")[0].content, "m_brand");
     }
   });
 
-  test("degraded get: the seller as recorded in the id (under reap.view_unavailable); an old id has no domain", () => {
-    const withM = encodeReapCheckoutId({ ...SNAP, merchantDomain: "www.brand.example" });
-    const out = buildDegradedReapCheckout({ id: withM, snapshot: decodeReapCheckoutId(withM), now: NOW, env: {} });
-    assert.equal(msg(out, "reap.merchant_domain")[0].content, "www.brand.example");
-    assert.equal(msg(out, "reap.merchant_id")[0].content, "m_brand");
+  test("degraded get: NO seller message at all -- its only source is the caller-carried id", () => {
+    // A crafted id (a product key naming any merchant) must not make this door name a seller.
+    const crafted = { ...SNAP, productKey: "prod::m_attacker::shopify::1" };
+    const id = encodeReapCheckoutId(crafted);
+    const out = buildDegradedReapCheckout({ id, snapshot: decodeReapCheckoutId(id), now: NOW, env: {} });
     assert.ok(msg(out, "reap.view_unavailable").length);
-    const old = encodeReapCheckoutId(SNAP);
-    const o2 = buildDegradedReapCheckout({ id: old, snapshot: decodeReapCheckoutId(old), now: NOW, env: {} });
-    assert.equal(msg(o2, "reap.merchant_domain").length, 0);
-    assert.equal(msg(o2, "reap.merchant_id")[0].content, "m_brand");
+    assert.equal(msg(out, "reap.merchant_domain").length + msg(out, "reap.merchant_id").length, 0);
+    assert.equal(JSON.stringify(out).includes("m_attacker"), false);
   });
 
   // The lane, called directly with SPIES: the purchase client and the purchasability gate.
   const ROW = { product_id: "sig_reap_a", title: "T", price: 42.5, currency: "USD", external_redirect_url: "https://www.brand.example/products/x", product_key: "prod::m_brand::shopify::1001", purchase_grain: "product", variants: [{ variant_id: "sig_reap_a" }] };
   function harness(row = ROW) {
-    const calls = { start: 0, get: 0, gate: 0 };
+    const calls = { start: 0, get: 0, gate: 0, reads: 0 };
     const client = {
       hasCallerCredentials: () => true,
       startPurchase: async () => { calls.start += 1; return { kind: "accepted", purchase: { id: PID, state: "resolving", poll_after_seconds: 60 } }; },
       getPurchase: async () => { calls.get += 1; return { kind: "unavailable" }; },
     };
-    const executor = { async execute(op, params) { return { product: params.payload.product.product_id === row.product_id ? { ...row } : null }; } };
+    const executor = { async execute(op, params) { calls.reads += 1; return { product: params.payload.product.product_id === row.product_id ? { ...row } : null }; } };
     const logs = [];
     const log = { info: (d) => logs.push(d), warn: (d) => logs.push(d) };
+    const ucpArgs = (expected) => ({ checkout: { line_items: [{ item: { id: row.product_id }, quantity: 1 }], context: { address_country: "US" }, ...(expected === undefined ? {} : { reap: { expected_merchant_domain: expected } }) } });
+    const params = { idempotency_key: "idem-seller-1", quote: { items: [{ product_id: row.product_id, quantity: 1 }], customer_email: "a@b.example" } };
     const run = (expected, hints = []) => lane.tryReapAgenticCheckout({
-      op: { id: "create_checkout_session" },
-      params: { idempotency_key: "idem-seller-1", quote: { items: [{ product_id: row.product_id, quantity: 1 }], customer_email: "a@b.example" } },
+      op: { id: "create_checkout_session" }, params, ctx: {}, executor, client, log, now: NOW, hints,
       // The purchasability gate ON, so "the gate was not asked" is a real claim (off, it is never asked).
-      ctx: {}, executor, client, log, env: { ...LANE_ON, MERCHANT_PURCHASABILITY_GATE_ENABLED: "1" }, now: NOW, hints,
+      env: { ...LANE_ON, MERCHANT_PURCHASABILITY_GATE_ENABLED: "1" },
       shouldOfferPurchase: async () => { calls.gate += 1; return true; },
-      ucpArgs: { checkout: { line_items: [{ item: { id: row.product_id }, quantity: 1 }], context: { address_country: "US" }, ...(expected === undefined ? {} : { reap: { expected_merchant_domain: expected } }) } },
+      ucpArgs: ucpArgs(expected),
     });
-    return { calls, run, logs };
+    const door = (expected) => lane.assertExpectedSeller({ ucpArgs: ucpArgs(expected), params, executor, ctx: {} });
+    return { calls, run, door, logs };
   }
+  const refusal = async (p) => { try { await p; } catch (e) { return e; } return null; };
 
-  test("a DIFFERENT seller: NO purchase is opened (the client is never invoked), the gate is not asked, and the hint says why", async () => {
+  test("DOOR: a different seller is REFUSED ucp_seller_mismatch with the served seller in the detail", async () => {
     const h = harness();
-    const hints = [];
-    assert.equal(await h.run("other.example", hints), null);
-    assert.deepEqual(h.calls, { start: 0, get: 0, gate: 0 }, "no backend call of any kind");
-    assert.deepEqual(hints.map((m) => [m.type, m.code, m.path]), [
-      ["warning", "reap.seller_mismatch", "$.line_items[0]"],
-      ["info", "reap.merchant_domain", "$.line_items[0]"],
-      ["info", "reap.merchant_id", "$.line_items[0]"],
-    ]);
-    assert.equal(hints[1].content, "www.brand.example", "who the lane WOULD have bought from");
-    assert.equal(h.logs.at(-1).code, "seller_mismatch");
+    const e = await refusal(h.door("other.example"));
+    assert.equal(e.code, "QUOTE_REQUIRED");
+    assert.equal(e.detail.reason, lane.SELLER_MISMATCH_REASON);
+    assert.equal(lane.SELLER_MISMATCH_REASON, "ucp_seller_mismatch");
+    assert.deepEqual(e.detail.acp_detail, {
+      reason: "ucp_seller_mismatch", dialect: "ucp", rejected_field: "checkout.reap.expected_merchant_domain",
+      cause: "different_seller", line_item: "$.line_items[0]", merchant_domain: "www.brand.example", merchant_id: "m_brand",
+    });
+    assert.equal(e.detail.acp_message.includes("other.example"), false, "no request value is echoed");
+    assert.deepEqual([h.calls.start, h.calls.gate], [0, 0]);
   });
 
-  test("the SAME seller (bare vs www., any case) proceeds: one purchase, the seller published", async () => {
+  test("DOOR: the same seller (bare vs www., any case) passes; absent reads NOTHING", async () => {
     for (const expected of ["brand.example", "www.brand.example", "BRAND.Example", "WWW.BRAND.EXAMPLE"]) {
-      const h = harness();
-      const hints = [];
-      const out = await h.run(expected, hints);
-      assert.ok(out && out.id.startsWith(`reap_${PID}.`), expected);
-      assert.equal(h.calls.start, 1, expected);
-      assert.equal(hints.length, 0);
-      assert.equal(msg(out, "reap.merchant_domain")[0].content, "www.brand.example", "published as POSTed");
-      assert.equal(decodeReapCheckoutId(out.id).merchantDomain, "www.brand.example", "and recorded in the id");
+      assert.equal(await refusal(harness().door(expected)), null, expected);
     }
-  });
-
-  test("a row with NO merchant domain: skipped before any call (fail closed) and the mismatch hint carries no domain", async () => {
-    const h = harness({ ...ROW, external_redirect_url: "https://agent.pivota.cc/r?token=abc" });
-    const hints = [];
-    assert.equal(await h.run("brand.example", hints), null);
-    assert.deepEqual(h.calls, { start: 0, get: 0, gate: 0 });
-    assert.deepEqual(hints.map((m) => m.code), ["reap.seller_mismatch", "reap.merchant_id"]);
-    assert.equal(h.logs.at(-1).code, "seller_unconfirmed");
-    // ...and WITHOUT an expected seller the same row is today's silent skip, with no hint.
-    const h2 = harness({ ...ROW, external_redirect_url: "https://agent.pivota.cc/r?token=abc" });
-    const hints2 = [];
-    assert.equal(await h2.run(undefined, hints2), null);
-    assert.deepEqual(hints2, []);
-    assert.equal(h2.logs.at(-1).code, "no_merchant_domain");
-  });
-
-  test("behind a bypassed adapter, a present non-string expected seller fails CLOSED (never reads as absent)", async () => {
-    for (const v of [null, 42, { host: "brand.example" }, ["brand.example"]]) {
-      const h = harness();
-      const hints = [];
-      assert.equal(await h.run(v, hints), null, JSON.stringify(v));
-      assert.equal(h.calls.start, 0, JSON.stringify(v));
-      assert.equal(hints[0].code, "reap.seller_mismatch");
-    }
-  });
-
-  test("ABSENT expected seller: unchanged -- the purchase opens exactly as it did", async () => {
     const h = harness();
-    const hints = [];
-    const out = await h.run(undefined, hints);
-    assert.ok(out.id.startsWith(`reap_${PID}.`));
-    assert.deepEqual(h.calls, { start: 1, get: 0, gate: 1 });
-    assert.deepEqual(hints, []);
+    assert.equal(await refusal(h.door(undefined)), null);
+    assert.equal(h.calls.reads, 0, "no expected seller: the door does not even read");
+  });
+
+  test("DOOR fails CLOSED: no row merchant, an absent row, a failed read, a non-string value", async () => {
+    const noHost = harness({ ...ROW, external_redirect_url: "https://agent.pivota.cc/r?token=abc" });
+    let e = await refusal(noHost.door("brand.example"));
+    assert.deepEqual([e.detail.reason, e.detail.acp_detail.cause, e.detail.acp_detail.merchant_domain, e.detail.acp_detail.merchant_id], ["ucp_seller_mismatch", "seller_unconfirmed", undefined, "m_brand"]);
+    const absent = harness();
+    e = await refusal(lane.assertExpectedSeller({
+      ucpArgs: { checkout: { reap: { expected_merchant_domain: "brand.example" } } },
+      params: { quote: { items: [{ product_id: "sig_gone", quantity: 1 }] } }, executor: { execute: async () => ({ product: null }) }, ctx: {},
+    }));
+    assert.equal(e.detail.acp_detail.cause, "seller_unconfirmed");
+    e = await refusal(lane.assertExpectedSeller({
+      ucpArgs: { checkout: { reap: { expected_merchant_domain: "brand.example" } } },
+      params: { quote: { items: [{ product_id: "sig_reap_a", quantity: 1 }] } }, executor: { execute: async () => { throw new Error("upstream down"); } }, ctx: {},
+    }));
+    assert.deepEqual([e.detail.reason, e.detail.acp_detail.cause, e.detail.acp_detail.line_item], ["ucp_seller_mismatch", "seller_unconfirmed", undefined]);
+    for (const v of [null, 42, { host: "brand.example" }, ["brand.example"]]) {
+      e = await refusal(absent.door(v));
+      assert.equal(e && e.detail.reason, "ucp_seller_mismatch", JSON.stringify(v));
+    }
+  });
+
+  test("DOOR: EVERY line must be the expected seller; the first that is not is named", async () => {
+    const rows = { a: { ...ROW, product_id: "a" }, b: { ...ROW, product_id: "b", external_redirect_url: "https://other.example/p", product_key: "prod::m_other::shopify::2" } };
+    const executor = { async execute(op, params) { return { product: rows[params.payload.product.product_id] || null }; } };
+    const e = await refusal(lane.assertExpectedSeller({
+      ucpArgs: { checkout: { reap: { expected_merchant_domain: "brand.example" } } },
+      params: { quote: { items: [{ product_id: "a", quantity: 1 }, { product_id: "b", quantity: 2 }] } }, executor, ctx: {},
+    }));
+    assert.deepEqual([e.detail.acp_detail.line_item, e.detail.acp_detail.merchant_domain, e.detail.acp_detail.merchant_id], ["$.line_items[1]", "other.example", "m_other"]);
+  });
+
+  test("LANE (belt and braces behind the door): a different seller opens nothing, silently", async () => {
+    for (const expected of ["other.example", null, 42]) {
+      const h = harness();
+      const hints = [];
+      assert.equal(await h.run(expected, hints), null);
+      assert.deepEqual([h.calls.start, h.calls.gate], [0, 0], String(expected));
+      assert.deepEqual(hints, []);
+      assert.equal(h.logs.at(-1).code, "seller_mismatch");
+    }
+  });
+
+  test("LANE: the same seller proceeds and the create answer names it; absent is unchanged", async () => {
+    for (const expected of ["brand.example", "WWW.BRAND.EXAMPLE", undefined]) {
+      const h = harness();
+      const out = await h.run(expected);
+      assert.ok(out && out.id.startsWith(`reap_${PID}.`), String(expected));
+      assert.equal(h.calls.start, 1);
+      assert.equal(msg(out, "reap.merchant_domain")[0].content, "www.brand.example", "published as POSTed");
+      assert.equal(msg(out, "reap.merchant_id")[0].content, "m_brand");
+      assert.deepEqual(decodeReapCheckoutId(out.id), { purchaseId: PID, productId: ROW.product_id, productKey: ROW.product_key, quantity: 1, currency: "USD", unitMinor: 4250 }, "the id format is main's");
+    }
+  });
+
+  test("the checkout id must ROUND-TRIP before the POST: near-bound inputs", async () => {
+    // At the bound (256-char item id, 256-char key, quantity 10, the largest unit price): opens, and decodes back.
+    const key256 = `prod::m_brand::shopify::${"9".repeat(256 - "prod::m_brand::shopify::".length)}`;
+    const atBound = { ...ROW, product_id: "s".repeat(256), product_key: key256, price: 1e10 - 0.01 };
+    const h = harness(atBound);
+    const out = await h.run(undefined);
+    assert.ok(out, "at the bound the purchase opens");
+    assert.ok(out.id.length <= 1100);
+    assert.equal(decodeReapCheckoutId(out.id).productId, atBound.product_id);
+    // One past it (an item id the id codec cannot carry back): skipped BEFORE the POST, not minted undecodable.
+    for (const productId of ["s".repeat(257), "sig_a\u0007b"]) {
+      const h2 = harness({ ...ROW, product_id: productId });
+      assert.equal(await h2.run(undefined), null, JSON.stringify(productId).slice(0, 20));
+      assert.equal(h2.calls.start, 0, "no purchase opened");
+      assert.equal(h2.logs.at(-1).code, "id_unencodable");
+    }
   });
 
   const createOp = { id: "create_checkout_session" };
@@ -544,7 +573,7 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
     assert.equal(has({ REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" }, "create_checkout_session"), false, "the cart-link dial alone is not the lane");
     assert.equal(adapter.ucpInputSchemasFor({}), adapter.UCP_INPUT_SCHEMAS, "off is the very same object as main's");
     assert.equal(adapter.ucpToolDescriptionsFor({}), adapter.UCP_TOOL_DESCRIPTIONS);
-    assert.match(adapter.ucpToolDescriptionsFor(LANE_ON).create_checkout_session, /checkout\.reap\.expected_merchant_domain/);
+    assert.match(adapter.ucpToolDescriptionsFor(LANE_ON).create_checkout_session, /checkout\.reap\.expected_merchant_domain.*cc\.pivota\.reap_seller/);
     assert.doesNotMatch(adapter.UCP_TOOL_DESCRIPTIONS.create_checkout_session, /expected_merchant_domain/);
 
     assert.equal(reasonOf(() => adapter.ucpToNativeToolArgs(createOp, body({ expected_merchant_domain: "brand.com" }), {})), "ucp_unknown_field", "lane off: unknown field, as before");
@@ -555,7 +584,7 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
   });
 
   test("adapter: a value that could never match any seller is refused loudly, by the lane's own rule", () => {
-    for (const v of ["https://brand.com", "brand.com/p", "brand.com:443", "brand", "", " brand.com", "agent.pivota.cc", 42, null, ["brand.com"], "a".repeat(254)]) {
+    for (const v of ["https://brand.com", "brand.com/p", "brand.com:443", "brand", "", " brand.com", "agent.pivota.cc", "Kiko.com", 42, null, ["brand.com"], "a".repeat(254)]) {
       assert.equal(reasonOf(() => adapter.ucpToNativeToolArgs(createOp, body({ expected_merchant_domain: v }), LANE_ON)), "ucp_expected_merchant_domain_invalid", JSON.stringify(v).slice(0, 40));
     }
     for (const reap of ["brand.com", ["brand.com"], null]) {
@@ -565,5 +594,23 @@ describe("the seller contract (reap.merchant_domain / reap.merchant_id out, chec
     for (const ok of ["brand.com", "WWW.Brand.com", "shop.brand.co.uk"]) {
       assert.equal(reasonOf(() => adapter.ucpToNativeToolArgs(createOp, body({ expected_merchant_domain: ok }), LANE_ON)), "accepted", ok);
     }
+  });
+
+  test("the vendor extension schema is self-describing, composed onto checkout, and IS the advertised member", () => {
+    const hosted = JSON.parse(fs.readFileSync(path.join(HERE, "..", "..", "docs", "ucp", "reap_seller.json"), "utf8"));
+    assert.deepEqual(hosted, JSON.parse(JSON.stringify(adapter.REAP_SELLER_EXTENSION_SCHEMA)), "docs/ucp/reap_seller.json is the byte copy to host");
+    const cap = CANONICAL_CAPABILITIES.reap_seller;
+    assert.equal(hosted.name, cap.ucp);
+    assert.equal(hosted.name, adapter.REAP_SELLER_CAPABILITY_ID);
+    assert.equal(new URL(hosted.$id).host, "pivota.cc", "hosted on the namespace authority (reverse of cc.pivota)");
+    // "Extension schemas MUST have a $defs entry for each parent declared in extends" -- keyed by full name.
+    for (const parent of cap.extends) {
+      assert.ok(hosted.$defs[parent], parent);
+      assert.ok(Array.isArray(hosted.$defs[parent].allOf));
+      assert.match(hosted.$defs[parent].allOf[0].$ref, /\/schemas\/shopping\/checkout\.json$/);
+    }
+    assert.deepEqual(Object.keys(hosted.requires.capabilities).filter((k) => !hosted.$defs[k]), [], "requires keys are $defs keys");
+    const { title, ...member } = hosted.$defs.reap_object;
+    assert.deepEqual(member, JSON.parse(JSON.stringify(adapter.ucpInputSchemasFor(LANE_ON).create_checkout_session.properties.checkout.properties.reap)), "the door advertises exactly the hosted member");
   });
 });

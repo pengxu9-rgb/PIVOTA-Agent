@@ -51,9 +51,7 @@
 //   purchase_id  the backend's id, EXACTLY `rp_` + 24 lowercase hex (db/reap_agentic_ledger.py). It is the
 //                only thing ever sent back to the backend, and it is validated before it is.
 //   snapshot     base64url JSON {v:1, i:<the caller's item id>, k:<catalog product_key>, q:<quantity>,
-//                c:<currency>, u:<unit price, minor>[, m:<merchant domain>]} — the line as it stood at creation (`m`,
-//                the seller's host as POSTed, since the seller contract; an id minted before it has none and still
-//                decodes), so a `get_checkout` whose backend read FAILS can
+//                c:<currency>, u:<unit price, minor>} — the line as it stood at creation, so a `get_checkout` whose backend read FAILS can
 //                still answer a spec-conformant `incomplete` checkout (line items, currency, totals are required
 //                members) instead of a terminal state — and SAYS it is doing so (`reap.view_unavailable`). NO buyer
 //                data. The id travels through the caller, so the snapshot is NOT TRUSTED for anything displayed
@@ -91,32 +89,36 @@
 // module EXCEPT that the argument adapter refuses a malformed `consent_version` (`ucp_consent_version_invalid`)
 // whatever the switch says. (`tools/list` is not byte-identical: the UCP `buyer` schema carries the optional
 // `consent_version` member and the create_checkout description mentions the Reap route.) The seller contract
-// below (`checkout.reap.expected_merchant_domain` in, `reap.merchant_domain` / `reap.merchant_id` /
-// `reap.seller_mismatch` out) is advertised, accepted and answered ONLY while this switch is on: off, the
-// member is refused as an unknown field exactly as before it existed.
+// below (vendor capability `cc.pivota.reap_seller`: `checkout.reap.expected_merchant_domain` in, the refusal
+// `ucp_seller_mismatch`, and `reap.merchant_domain` / `reap.merchant_id` out) is advertised, accepted and
+// answered ONLY while this switch is on: off, the member is refused as an unknown field exactly as before it
+// existed.
 //
-// ---- THE SELLER ---------------------------------------------------------------------------------------------
+// ---- THE SELLER (docs/reap-agentic-lane.md §5.4) -------------------------------------------------------------
 //
-// A multi-seller `sig_` id resolves to ONE served row, and this lane buys from THAT row's merchant — which can
-// differ from the seller a platform showed the buyer. So:
-//   OUT  every Reap checkout answer (create, get, and the degraded get) names the seller the purchase is with, as
-//        two `info` messages at `$.line_items[0]` whose `content` is the bare value (like `reap.order_reference`):
-//        `reap.merchant_domain` — the host as the lane POSTed it (lowercased, `www.` kept as observed; on a
-//        successful get, the backend view's own `merchant_domain`) — and `reap.merchant_id`, the `<merchant>`
-//        segment of the catalog key the purchase was opened for (`prod::<merchant>::<platform>::<id>`), when the
-//        key has that form. UCP 2026-04-08 has no checkout / line-item / item seller member (its only `seller`
-//        is the catalog variant's display name + links), and `messages[]` with freeform codes is the spec's own
-//        carrier for business-specific state — the channel this lane already publishes its cadence, deadline
-//        and order reference on.
-//   IN   `checkout.reap.expected_merchant_domain` on create_checkout: the seller the buyer was shown. Compared on
-//        the backend's canonical form (`canonicalReapMerchantDomain`: lowercase, ONE leading `www.` removed) with
-//        the row's merchant BEFORE the purchasability gate and BEFORE any backend call; a different seller, or a
-//        row with no merchant domain, skips the lane (fail closed) and the storefront answer carries the warning
-//        `reap.seller_mismatch` (plus `reap.merchant_domain` when the row has one). Absent: nothing changes.
+// A multi-seller `sig_` id resolves to ONE served row, and every route of the door (kernel, Reap, storefront)
+// sells from THAT row's merchant — which can differ from the seller a platform showed the buyer. So:
+//   IN   `checkout.reap.expected_merchant_domain` on create_checkout: the seller the buyer was shown. The DOOR
+//        (`assertExpectedSeller`, called by commerceToolSurface BEFORE any lane or the kernel) compares it, on
+//        the backend's canonical form (`canonicalReapMerchantDomain`), with the merchant of EVERY line's resolved
+//        row, and REFUSES the create (`QUOTE_REQUIRED` / `ucp_seller_mismatch`) on any difference, any row it
+//        cannot read, and any row with no readable merchant (fail closed). Nothing is opened and no other route
+//        is offered: every fallback would send the buyer to the served seller's storefront.
+//   OUT  a Reap checkout answer read from a server-side source (create; get on a good backend read) names the
+//        seller the purchase is with, as two `info` messages at `$.line_items[0]` whose `content` is the bare
+//        value (like `reap.order_reference`): `reap.merchant_domain` — the host as the lane POSTed it
+//        (lowercased, `www.` kept as observed; on get, the backend view's own `merchant_domain`) — and
+//        `reap.merchant_id`, the `<merchant>` segment of the catalog key the purchase was opened for. The
+//        DEGRADED get (`reap.view_unavailable`) names no seller: its only source is the caller-carried id.
+//        UCP 2026-04-08 has no checkout / line-item / item seller member (its only `seller` is the catalog
+//        variant's display name + links); `messages[]` with freeform codes is the spec's own carrier for
+//        business-specific state, the channel this lane already publishes its cadence, deadline and order
+//        reference on.
 
 import { createHash } from "node:crypto";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import {
+  intakeRefusal,
   isRestatedProductId,
   normalizeEmail,
   variantIdsFromProductRead,
@@ -170,6 +172,8 @@ const ORDER_REFERENCE_RE = /^[A-Za-z0-9_#:.\-/]{1,128}$/;
 const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 /** The `<merchant>` segment of a catalog product key, as the backend mints it (merchant ids are this shape). */
 const MERCHANT_ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
+/** Printable ASCII only — checked BEFORE any case fold, so a lookalike (U+212A KELVIN SIGN) cannot fold to `k`. */
+const PRINTABLE_ASCII_RE = /^[\x21-\x7e]+$/;
 const DEFAULT_POLL_SECONDS = 30;
 const MAX_POLL_SECONDS = 3600;
 
@@ -223,24 +227,14 @@ export function reapOfferCodesEnabled(env = process.env) {
 
 // ---- id ----------------------------------------------------------------------------------------------------
 
-export function encodeReapCheckoutId({ purchaseId, productId, productKey, quantity, currency, unitMinor, merchantDomain }) {
+export function encodeReapCheckoutId({ purchaseId, productId, productKey, quantity, currency, unitMinor }) {
   if (!PURCHASE_ID_RE.test(String(purchaseId || ""))) throw new Error("encodeReapCheckoutId: not a backend purchase id");
-  // `m` only when there is one: an id minted before the seller contract (no `m`) re-encodes to itself.
-  const snap = { v: 1, i: productId, k: productKey, q: quantity, c: currency, u: unitMinor };
-  if (merchantDomain !== undefined && merchantDomain !== null) snap.m = merchantDomain;
-  const snapshot = Buffer.from(JSON.stringify(snap), "utf8").toString("base64url");
+  const snapshot = Buffer.from(JSON.stringify({ v: 1, i: productId, k: productKey, q: quantity, c: currency, u: unitMinor }), "utf8")
+    .toString("base64url");
   return `${REAP_CHECKOUT_ID_PREFIX}${purchaseId}.${snapshot}`;
 }
 
-/** An observed merchant host as the lane sends it: lowercase, a hostname, never one of Pivota's own. */
-function isObservedMerchantHost(v) {
-  return typeof v === "string" && v === v.toLowerCase() && HOSTNAME_RE.test(v) && !SELF_HOST_RE.test(v);
-}
-
-/**
- * `{ purchaseId, productId, productKey, quantity, currency, unitMinor, merchantDomain }` for one of ours, else
- * null. Never throws. `merchantDomain` is null for an id minted before the seller contract.
- */
+/** `{ purchaseId, productId, productKey, quantity, currency, unitMinor }` for one of ours, else null. Never throws. */
 export function decodeReapCheckoutId(id) {
   if (typeof id !== "string" || id.length > MAX_ID_CHARS || !id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return null;
   const body = id.slice(REAP_CHECKOUT_ID_PREFIX.length);
@@ -264,13 +258,10 @@ export function decodeReapCheckoutId(id) {
   if (!Number.isSafeInteger(snap.q) || snap.q < 1 || snap.q > REAP_MAX_QUANTITY) return null;
   if (typeof snap.c !== "string" || !CURRENCY_RE.test(snap.c)) return null;
   if (safeMinor(snap.u) === null) return null;
-  const hasM = Object.prototype.hasOwnProperty.call(snap, "m");
-  if (hasM && !isObservedMerchantHost(snap.m)) return null;
-  const merchantDomain = hasM ? snap.m : null;
   // Canonical form only: a re-encoding of the same values with extra members or another key order is not an
   // id this door minted.
-  if (encodeReapCheckoutId({ purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u, merchantDomain }) !== id) return null;
-  return { purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u, merchantDomain };
+  if (encodeReapCheckoutId({ purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u }) !== id) return null;
+  return { purchaseId, productId, productKey, quantity: snap.q, currency: snap.c, unitMinor: snap.u };
 }
 
 export function isReapCheckoutId(id) {
@@ -428,7 +419,8 @@ const SELF_HOST_RE = /(^|\.)pivota\.cc$/;
 export function reapMerchantDomain(row, escalationTarget) {
   const explicit = str(own(row, "merchant_domain")) || str(own(row, "source_domain"));
   const hosts = explicit
-    ? [explicit.toLowerCase()]
+    // Non-ASCII is refused BEFORE the fold (a URL's hostname below is already ASCII/punycode).
+    ? [PRINTABLE_ASCII_RE.test(explicit) ? explicit.toLowerCase() : null]
     : [hostOf(escalationTarget), hostOf(str(own(row, "canonical_url"))), hostOf(str(own(row, "url")))];
   const candidate = hosts.find((h) => h && HOSTNAME_RE.test(h) && !SELF_HOST_RE.test(h));
   return candidate || null;
@@ -437,13 +429,13 @@ export function reapMerchantDomain(row, escalationTarget) {
 /**
  * THE ONE SELLER-COMPARISON RULE: the backend's canonical merchant-domain spelling (pivota-backend #2258,
  * `canonical_merchant_domain`) — lowercase, then ONE leading `www.` removed (`www.www.a.com` -> `www.a.com`, as
- * there). Null for anything that is not a bare host name (a scheme, port, path, userinfo, single label, or
- * one of Pivota's own hosts). Used on BOTH sides of the expected-seller check, and by the argument adapter to
+ * there). Null for anything that is not a bare host name (a scheme, port, path, userinfo, single label, any
+ * non-ASCII character — refused BEFORE the case fold — or one of Pivota's own hosts). Used on BOTH sides of the expected-seller check, and by the argument adapter to
  * refuse an expected seller that could never match. It is NEVER applied to what the lane POSTs or publishes:
  * those stay as observed (see `reapMerchantDomain` for why).
  */
 export function canonicalReapMerchantDomain(raw) {
-  if (typeof raw !== "string") return null;
+  if (typeof raw !== "string" || !PRINTABLE_ASCII_RE.test(raw)) return null;
   const lower = raw.toLowerCase();
   if (!HOSTNAME_RE.test(lower) || SELF_HOST_RE.test(lower)) return null;
   const folded = lower.startsWith("www.") ? lower.slice(4) : lower;
@@ -563,10 +555,14 @@ function sellerMessages({ merchantDomain, productKey }) {
   if (merchantId) out.push(info("reap.merchant_id", merchantId, REAP_SELLER_PATH));
   return out;
 }
-/** The view's `merchant_domain`, lowercased, if it is a host this door would publish; else null. */
+/** An observed merchant host as the lane sends it: lowercase ASCII, a hostname, never one of Pivota's own. */
+function isObservedMerchantHost(v) {
+  return typeof v === "string" && PRINTABLE_ASCII_RE.test(v) && v === v.toLowerCase() && HOSTNAME_RE.test(v) && !SELF_HOST_RE.test(v);
+}
+/** The view's `merchant_domain`, lowercased (ASCII checked first), if it is a host this door would publish. */
 function viewMerchantDomain(view) {
   const raw = str(own(view, "merchant_domain"));
-  const lower = raw ? raw.toLowerCase() : null;
+  const lower = raw && PRINTABLE_ASCII_RE.test(raw) ? raw.toLowerCase() : null;
   return isObservedMerchantHost(lower) ? lower : null;
 }
 function pollMessage(seconds) {
@@ -729,8 +725,8 @@ export function buildDegradedReapCheckout({ id, snapshot, now = Date.now(), env 
     messages: [
       warning("reap.view_unavailable", VIEW_UNAVAILABLE_MESSAGE, "$"),
       pollMessage(DEFAULT_POLL_SECONDS),
-      // As recorded at creation (the id's snapshot), under the same `reap.view_unavailable` warning as the line.
-      ...sellerMessages({ merchantDomain: snapshot.merchantDomain, productKey: snapshot.productKey }),
+      // NO seller messages: the only source here is the id, which travels through the caller, and a crafted id
+      // must not be able to make this door name a seller. A platform keeps the seller its last good answer named.
       info("reap.lane", LANE_MESSAGE, "$"),
     ],
   });
@@ -925,26 +921,6 @@ function attestedOrBodyEmail(attested, bodyValue) {
 // reach it.
 const CONSENT_HINT_CODES = new Set(["consent_required"]);
 const BUYER_DETAIL_HINT_CODES = new Set(["invalid_request", "invalid_address"]);
-/**
- * The expected seller (`checkout.reap.expected_merchant_domain`) is not the seller of the row this lane would buy,
- * or the row names no seller: the lane opened NOTHING (no backend call). Rides on the storefront answer like the
- * consent hint, beside `reap.merchant_domain` when the row has one. CONSTANT text. A warning, because UCP says
- * a warning MUST be displayed, and that answer's `continue_url` is the SERVED row's storefront, which may not be
- * the seller the buyer was shown.
- */
-export const REAP_SELLER_MISMATCH_MESSAGE = Object.freeze({
-  type: "warning",
-  code: "reap.seller_mismatch",
-  path: REAP_SELLER_PATH,
-  content: [
-    "The payment-partner (Reap) route was not opened: the seller Pivota would buy this item from is not the",
-    "seller named in checkout.reap.expected_merchant_domain, or could not be confirmed. No purchase was opened",
-    "and nothing was charged. The rest of this answer describes the seller Pivota serves for this item, which may",
-    "not be the seller the buyer was shown.",
-  ].join(" "),
-  content_type: "plain",
-});
-
 export const REAP_AVAILABLE_WITH_CONSENT_MESSAGE = Object.freeze({
   type: "info",
   code: "reap.available_with_consent",
@@ -959,6 +935,67 @@ export const REAP_AVAILABLE_WITH_CONSENT_MESSAGE = Object.freeze({
   ].join(" "),
   content_type: "plain",
 });
+
+/** The refusal reason for a create whose expected seller is not the seller of the resolved rows. */
+export const SELLER_MISMATCH_REASON = "ucp_seller_mismatch";
+
+function sellerMismatchRefusal({ lineIndex, merchantDomain, productKey, cause }) {
+  const merchantId = reapMerchantIdOfProductKey(productKey);
+  const where = lineIndex === null ? "this cart" : `checkout.line_items[${lineIndex}]`;
+  const who = merchantDomain ? `is sold by ${merchantDomain}` : "has a seller Pivota cannot confirm";
+  return intakeRefusal("QUOTE_REQUIRED", SELLER_MISMATCH_REASON, [
+    `The item at ${where} ${who}, not by the seller named in checkout.reap.expected_merchant_domain.`,
+    "No checkout was opened, nothing was charged, and no other route is offered for it. Do not send the buyer to",
+    "any link from Pivota for this item; send them to the seller they were shown.",
+  ].join(" "), {
+    dialect: "ucp",
+    rejected_field: "checkout.reap.expected_merchant_domain",
+    cause,
+    ...(lineIndex === null ? {} : { line_item: `$.line_items[${lineIndex}]` }),
+    // The SERVED seller, from Pivota's own catalog read (never a request value), when known.
+    ...(merchantDomain ? { merchant_domain: merchantDomain } : {}),
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+  });
+}
+
+/**
+ * THE DOOR-LEVEL EXPECTED-SELLER CHECK. Called by commerceToolSurface.callTool for EVERY UCP create_checkout,
+ * BEFORE the Reap lane, the storefront escalation and the kernel. A no-op when the create carries no
+ * `checkout.reap.expected_merchant_domain` (the adapter accepts that member only while the lane is on).
+ * Otherwise every line's row is read (the SAME memoized read the lanes and the resolver use, so a match costs
+ * no second read) and its merchant (`reapMerchantDomain`: an explicit field, else the storefront target, else
+ * the row's URL) must be the expected seller under `isSameReapMerchant`. Throws `QUOTE_REQUIRED` /
+ * `ucp_seller_mismatch` — with the served seller's `merchant_domain` / `merchant_id` in the detail when known —
+ * on a different seller (`cause: "different_seller"`), and FAILS CLOSED (`cause: "seller_unconfirmed"`) on a
+ * read that fails, a row that is absent, or a row with no readable merchant.
+ */
+export async function assertExpectedSeller({ ucpArgs, params, executor, ctx, timeoutMs }) {
+  const expected = reapExpectedMerchantDomain(ucpArgs);
+  if (expected === undefined) return;
+  const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
+  const items = Array.isArray(quote.items) ? quote.items : [];
+  const ids = items.map((it) => (isPlainObject(it) ? str(it.product_id) : null));
+  if (ids.length === 0 || ids.some((id) => !id)) {
+    throw sellerMismatchRefusal({ lineIndex: null, merchantDomain: null, productKey: null, cause: "seller_unconfirmed" });
+  }
+  let rows;
+  try {
+    rows = await readCheckoutRows(ids.map((product_id) => ({ product_id, quantity: 1 })), executor, ctx, { timeoutMs });
+  } catch {
+    throw sellerMismatchRefusal({ lineIndex: null, merchantDomain: null, productKey: null, cause: "seller_unconfirmed" });
+  }
+  ids.forEach((id, lineIndex) => {
+    const row = rows.get(id);
+    const merchantDomain = isPlainObject(row) ? reapMerchantDomain(row, escalationTargetOf(row)) : null;
+    if (isSameReapMerchant(expected, merchantDomain)) return;
+    throw sellerMismatchRefusal({
+      lineIndex,
+      merchantDomain,
+      productKey: isPlainObject(row) ? productKeyOf(row) : null,
+      cause: merchantDomain ? "different_seller" : "seller_unconfirmed",
+    });
+  });
+}
 
 /**
  * Called by commerceToolSurface.callTool on the UCP dialect for the checkout operations, AFTER argument
@@ -1099,15 +1136,12 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   const price = rowPrice(row);
   if (!price) return skip("row_unpriced");
   const merchantDomain = reapMerchantDomain(row, target);
-  // THE EXPECTED SELLER — before the gate and before ANY backend call, so a mismatch never opens a purchase.
-  // Compared canonically on both sides (lowercase, one leading `www.`); a row with no merchant domain cannot be
-  // confirmed and is skipped too (fail closed). Absent: this block does nothing.
+  // THE EXPECTED SELLER, AGAIN. The door has already REFUSED a create whose expected seller differs
+  // (`assertExpectedSeller`, before every lane); this is belt and braces for a caller of this function that
+  // skipped the door: never open a purchase from a seller the platform did not show. Fail closed.
   const expectedSeller = reapExpectedMerchantDomain(ucpArgs);
   if (expectedSeller !== undefined && !isSameReapMerchant(expectedSeller, merchantDomain)) {
-    if (Array.isArray(hints)) {
-      hints.push(REAP_SELLER_MISMATCH_MESSAGE, ...sellerMessages({ merchantDomain, productKey }));
-    }
-    return skip(merchantDomain ? "seller_mismatch" : "seller_unconfirmed");
+    return skip("seller_mismatch");
   }
   if (!merchantDomain) return skip("no_merchant_domain");
 
@@ -1132,6 +1166,13 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // judgement: only the rail can say whether it is armed, whether this merchant is eligible, and whether the
   // buyer block is complete, and it says the first two before the third. The buyer's email and address go to
   // the backend ONLY. Attested email wins over the body's, exactly as intake rule 1.
+  // THE CHECKOUT ID MUST ROUND-TRIP, checked BEFORE the POST: the id is minted after the backend opens the
+  // purchase, and an id this door cannot decode again would answer every later get_checkout as an unknown id
+  // (an invitation to buy twice). Everything but the purchase id is known now, and that has a fixed shape.
+  const probe = { purchaseId: `rp_${"0".repeat(24)}`, productId, productKey, quantity, currency: price.currency, unitMinor: price.amount };
+  const decodedProbe = decodeReapCheckoutId(encodeReapCheckoutId(probe));
+  if (!decodedProbe || Object.keys(probe).some((k) => decodedProbe[k] !== probe[k])) return skip("id_unencodable");
+
   const email = attestedOrBodyEmail(attested, quote.customer_email);
   const idempotencyKey = reapIdempotencyKey(params.idempotency_key);
   if (!idempotencyKey) return skip("no_idempotency_key");
@@ -1192,7 +1233,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     return null;
   }
 
-  const snapshot = { purchaseId: res.purchase.id, productId, productKey, quantity, currency: price.currency, unitMinor: price.amount, merchantDomain };
+  const snapshot = { purchaseId: res.purchase.id, productId, productKey, quantity, currency: price.currency, unitMinor: price.amount };
   const id = encodeReapCheckoutId(snapshot);
   emit(log, "info", { op: "create_checkout_session", outcome: "opened", code: "accepted" });
   // The 202 carries no line; the view is completed from OUR OWN server-side read of the row (never from the

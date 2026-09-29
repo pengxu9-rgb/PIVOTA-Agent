@@ -606,6 +606,8 @@ test('every capability ID is bound to its operations IN THE CONTRACT, published 
     'dev.ucp.shopping.ap2_mandate': [],
     // A modifier of checkout, OPT-IN (only advertised while buyer offer codes are armed on the Reap lane).
     'dev.ucp.shopping.discount': [],
+    // Pivota's VENDOR modifier of checkout (the expected seller), OPT-IN while the Reap lane is on.
+    'cc.pivota.reap_seller': [],
     'dev.ucp.shopping.fulfillment': [],
   });
 });
@@ -625,6 +627,24 @@ test('the discount capability is OPT-IN: never in the default profile, present o
     Object.keys(armed).sort(),
     [...Object.keys(buildUcpProfile(base).ucp.capabilities), 'dev.ucp.shopping.discount'].sort(),
   );
+});
+
+test('cc.pivota.reap_seller is OPT-IN and VENDOR: absent by default, withheld without pivota.cc documents, a checkout modifier with them', () => {
+  const base = { baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' };
+  const docs = { 'cc.pivota.reap_seller': { spec: 'https://pivota.cc/ucp/specification/reap_seller', schema: 'https://pivota.cc/ucp/schemas/reap_seller.json' } };
+  const ids = (cfg) => Object.keys(buildUcpProfile({ ...base, ...cfg }).ucp.capabilities);
+  assert.equal(ids({}).includes('cc.pivota.reap_seller'), false);
+  assert.equal(ids({ vendorCapabilityDocs: docs }).includes('cc.pivota.reap_seller'), false, 'documents alone do not opt in');
+  assert.equal(ids({ optInCapabilities: ['reap_seller'] }).includes('cc.pivota.reap_seller'), false, 'no documents: withheld, never partial');
+  assert.equal(ids({ optInCapabilities: ['reap_seller'], vendorCapabilityDocs: { 'cc.pivota.reap_seller': { spec: 'https://ucp.dev/x', schema: 'https://ucp.dev/y' } } }).includes('cc.pivota.reap_seller'), false, 'documents off the namespace authority are refused');
+  const armed = buildUcpProfile({ ...base, optInCapabilities: ['reap_seller'], vendorCapabilityDocs: docs }).ucp.capabilities;
+  assert.deepEqual(armed['cc.pivota.reap_seller'], [{
+    version: armed['dev.ucp.shopping.checkout'][0].version,
+    spec: docs['cc.pivota.reap_seller'].spec,
+    schema: docs['cc.pivota.reap_seller'].schema,
+    extends: ['dev.ucp.shopping.checkout'],
+  }]);
+  assert.deepEqual(Object.keys(armed).sort(), [...ids({}), 'cc.pivota.reap_seller'].sort(), 'adds exactly that one id');
 });
 
 test('the PUBLISHED id is bound to its operations — not just the internal key', () => {

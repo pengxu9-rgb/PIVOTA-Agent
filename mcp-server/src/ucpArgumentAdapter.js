@@ -153,6 +153,8 @@ import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
 import { canonicalReapMerchantDomain, reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+// The pinned UCP line (CommonJS, so the named exports arrive on the default import).
+import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -805,13 +807,14 @@ const DISCOUNTS_SCHEMA = {
 /** The longest host name DNS allows; the lane's own host rule (`canonicalReapMerchantDomain`) bounds it again. */
 const EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH = 253;
 
-// `checkout.reap` -- the Reap lane's namespaced request member, create_checkout ONLY, ADVERTISED AND ACCEPTED
-// ONLY WHILE THE LANE IS ON (`reapAgenticLaneEnabled`); off, it is refused as an unknown field exactly as before
-// it existed. UCP 2026-04-08 has no request member naming the seller of a line (checkout / line_item / item carry
-// none; `context` is non-authoritative hints a business MAY ignore, and this is a guard it must not), so it is a
-// namespaced member of the open `checkout` object, under the same `reap` namespace as the lane's `reap.*`
-// message codes. Read by NOTHING but the Reap lane (ucpReapAgenticLane.js `reapExpectedMerchantDomain`), from the
-// raw body; never mapped into the canonical quote (UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED).
+// `checkout.reap` -- the member Pivota's VENDOR extension `cc.pivota.reap_seller` adds to checkout
+// (REAP_SELLER_EXTENSION_SCHEMA below; docs/reap-agentic-lane.md §5.4). create_checkout ONLY, ADVERTISED AND
+// ACCEPTED ONLY WHILE THE REAP LANE IS ON (`reapAgenticLaneEnabled`); off, it is refused as an unknown field
+// exactly as before it existed. UCP 2026-04-08 has no request member naming the seller of a line (checkout /
+// line_item / item carry none; `context` is non-authoritative hints a business MAY ignore, and this is a guard
+// it must not), so a vendor extension composes one onto checkout, as the spec's extension model provides. Read
+// from the raw body by the DOOR's expected-seller check (ucpReapAgenticLane.js `assertExpectedSeller`, before
+// every route) and the Reap lane; never mapped into the canonical quote (UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED).
 const REAP_EXPECTED_SELLER_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -822,13 +825,58 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
       maxLength: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH,
       examples: ["brand.com"],
       description:
-        "Optional. The seller the buyer was shown, as a bare host name (`brand.com`; `www.` and case do not"
-        + " matter). If the item resolves to a DIFFERENT seller, or to one that cannot be confirmed, no Reap"
-        + " purchase is opened: the answer is the non-Reap one, with the warning `reap.seller_mismatch`. A Reap"
-        + " checkout names its seller in the info messages `reap.merchant_domain` and `reap.merchant_id`.",
+        "Optional. The seller the buyer was shown, as a bare ASCII host name (`brand.com`; `www.` and case do"
+        + " not matter). If ANY item resolves to a different seller, or to one Pivota cannot confirm, the create is"
+        + " REFUSED (`QUOTE_REQUIRED`, reason `ucp_seller_mismatch`, the served seller in `merchant_domain` /"
+        + " `merchant_id` of the error detail): nothing is opened and no other route is offered. A Reap checkout"
+        + " names its seller in the info messages `reap.merchant_domain` and `reap.merchant_id`.",
     },
   },
 };
+
+/** Pivota's vendor capability that adds `checkout.reap`; also its id in `canonicalContract.js`. */
+export const REAP_SELLER_CAPABILITY_ID = "cc.pivota.reap_seller";
+/** Where the extension schema is to be HOSTED (the namespace authority, pivota.cc) — also its `$id`. */
+export const REAP_SELLER_SCHEMA_URL = "https://pivota.cc/ucp/schemas/reap_seller.json";
+
+/**
+ * THE SELF-DESCRIBING EXTENSION SCHEMA (UCP overview, "Extension Schema Pattern"): composed with `allOf` onto
+ * the checkout it extends, keyed in `$defs` by that parent's full capability name, with `requires`. Generated
+ * from the SAME member schema the door advertises, so the two cannot drift; docs/ucp/reap_seller.json is its
+ * byte copy for hosting (pinned by mcp-server/test/ucpReapAgenticLane.test.js).
+ */
+export const REAP_SELLER_EXTENSION_SCHEMA = Object.freeze({
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: REAP_SELLER_SCHEMA_URL,
+  name: REAP_SELLER_CAPABILITY_ID,
+  title: "Pivota Expected Seller",
+  description:
+    "Extends Checkout with the seller the buyer was shown. A create_checkout whose items do not ALL resolve to that"
+    + " seller is refused (QUOTE_REQUIRED, reason ucp_seller_mismatch) before any checkout or purchase is opened."
+    + " A checkout fulfilled through Pivota's payment partner (Reap) names its seller in info messages"
+    + " reap.merchant_domain and reap.merchant_id at $.line_items[0].",
+  version: ucpSpecVersion.UCP_SPEC_VERSION,
+  requires: {
+    protocol: { min: ucpSpecVersion.UCP_SPEC_VERSION },
+    capabilities: { "dev.ucp.shopping.checkout": { min: ucpSpecVersion.UCP_SPEC_VERSION } },
+  },
+  $defs: {
+    reap_object: { title: "Expected seller", ...REAP_EXPECTED_SELLER_SCHEMA },
+    "dev.ucp.shopping.checkout": {
+      title: "Checkout with Expected Seller",
+      description: "Checkout extended with the expected-seller guard.",
+      allOf: [
+        { $ref: `${ucpSpecVersion.UCP_SCHEMA_BASE}shopping/checkout.json` },
+        {
+          type: "object",
+          properties: {
+            reap: { $ref: "#/$defs/reap_object", ucp_request: { create: "optional", update: "omit", complete: "omit" } },
+          },
+        },
+      ],
+    },
+  },
+});
 
 const ATTRIBUTION_SCHEMA = {
   type: "object",
@@ -1061,8 +1109,8 @@ function requireExpectedSellerShape(checkout, code) {
   if (reap === undefined) return;
   const refuse = () => {
     throw ucpRefusal(code, "ucp_expected_merchant_domain_invalid", [
-      "`checkout.reap` must be `{ expected_merchant_domain: host }` where host is a bare host name such as",
-      "`brand.com` (no scheme, port, path or userinfo; `www.` and case do not matter), at most",
+      "`checkout.reap` must be `{ expected_merchant_domain: host }` where host is a bare ASCII host name such as",
+      "`brand.com` (no scheme, port, path, userinfo or non-ASCII character; `www.` and case do not matter), at most",
       `${EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH} characters.`,
     ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
   };
@@ -1267,10 +1315,10 @@ const CREATE_CHECKOUT_DESCRIPTION = [
 ].join(" ");
 /** Appended to the create_checkout description only while the Reap lane is on (`ucpInputSchemasFor`). */
 const CREATE_CHECKOUT_SELLER_SENTENCE = [
-  "To be sure the Reap route buys from the seller the buyer was shown, send its host as",
-  "`checkout.reap.expected_merchant_domain`: a different seller opens no Reap purchase (warning",
-  "`reap.seller_mismatch`). A Reap checkout names its seller in the info messages `reap.merchant_domain` and",
-  "`reap.merchant_id`.",
+  "To be sure the buyer is only ever sold to by the seller they were shown, send that seller's host as",
+  "`checkout.reap.expected_merchant_domain` (vendor extension cc.pivota.reap_seller): if any item resolves to",
+  "another seller the create is refused (`ucp_seller_mismatch`) and nothing is opened. A Reap checkout names its",
+  "seller in the info messages `reap.merchant_domain` and `reap.merchant_id`.",
 ].join(" ");
 /** Appended to the create_checkout description only while offer codes are armed (`ucpInputSchemasFor`). */
 const CREATE_CHECKOUT_OFFER_CODE_SENTENCE = [
