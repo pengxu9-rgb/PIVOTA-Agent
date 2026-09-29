@@ -2322,11 +2322,19 @@ test('enrichment dial ON but a lower dial off: cart-link off -> not_shopify as b
   }
 });
 
-test('enrichment ON: every OTHER ext: shape, the collapsed ext:unknown:: key, and another source system stay row_key_unsupported, 0 POSTs', async () => {
+test('enrichment ON: every OTHER ext: shape, the LEGACY collapsed ext:unknown::<8 hex> key, and another source system stay row_key_unsupported, 0 POSTs', async () => {
   const hex32 = '1af5dd8fd7ce370b37e13eedcdd32fc7';
+  const hex16 = 'd3bac5e705f83353';
   for (const [label, patch] of [
     ['ext:foo (no hash)', { product_key: 'ext:foo' }],
     ['the collapsed all-non-ASCII key', { product_key: 'ext:unknown::bfb6e8a3' }],
+    ['the collapsed key the legacy generator really minted (sha1("unknown")[:8])', { product_key: 'ext:unknown::50d8b4a9' }],
+    ['ext:unknown::, 15 hex', { product_key: `ext:unknown::${hex16.slice(0, 15)}` }],
+    ['ext:unknown::, 17 hex', { product_key: `ext:unknown::${hex16}0` }],
+    ['ext:unknown::, uppercase 16 hex', { product_key: `ext:unknown::${hex16.toUpperCase()}` }],
+    ['a slug, 15 hex', { product_key: 'ext:cos-de-baha-mv-50ml::63c46c9fb300432' }],
+    ['a slug, 17 hex', { product_key: 'ext:cos-de-baha-mv-50ml::63c46c9fb300432e0' }],
+    ['a slug, uppercase 16 hex', { product_key: 'ext:cos-de-baha-mv-50ml::63C46C9FB300432E' }],
     ['uppercase hash', { product_key: 'ext:stila-stay-all-day::73FC0547' }],
     ['7-hex hash', { product_key: 'ext:stila-stay-all-day::73fc054' }],
     ['uppercase slug', { product_key: 'ext:Stila-stay-all-day::73fc0547' }],
@@ -2344,6 +2352,21 @@ test('enrichment ON: every OTHER ext: shape, the collapsed ext:unknown:: key, an
   // Control: the agent's source system on the read is accepted like none.
   const { backend } = await enrichCreate(withRow(STILA_LIVE, { source_system: 'catalog_enrichment_agent_v1' }));
   assert.equal(backend.calls.length, 1);
+});
+
+// pivota-backend #2461 (`_script_identity`): a name its ASCII slug cannot stand for is keyed `ext:<slug of the
+// identity text, or "unknown">::<sha1(identity)[:16]>`, one DISTINCT key per product. Minted by that PR's own
+// derive_product_key (head 3d33719c): ("설화수", "자음생크림"), and the one live key it moves (Cos de BAHA, pinned there).
+test('enrichment ON: #2461 distinct 16-hex keys (ext:unknown:: included) are POSTed ONCE as is, and the id round-trips them', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const key of ['ext:unknown::d3bac5e705f83353', 'ext:cos-de-baha-mv-50ml::63c46c9fb300432e']) {
+    const { r, backend, logger, m } = await enrichCreate(withRow(STILA_LIVE, { product_key: key }));
+    assert.equal(backend.calls.length, 1, key);
+    assert.equal(backend.calls[0].body.product_key, key);
+    assert.equal(backend.calls[0].body.item_source, 'cart_link');
+    assert.deepEqual(skipCodes(logger), [], key);
+    assert.equal(m.lane.decodeReapCheckoutId(keep(r.ok).id).productKey, key, key);
+  }
 });
 
 test('enrichment ON, the host: the storefront page, every other merchant field agreeing (www. folded); else nothing is opened', async (t) => {
