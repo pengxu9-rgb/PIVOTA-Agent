@@ -292,7 +292,7 @@ variant refusal against the variant key, and the cart-link key is deterministic.
 **Tier B DIRECT for external-seed rows.** An external-seed / mirror row cannot be bought on the variant lane: the
 backend's variant rail reads Shopify catalog rows only. Examples are judydoll.com (platform `external`, key
 `prod::external_seed::external_seed::ext_…`, its link a Pivota `/r` hop) and jsmbeauty.sg (platform
-`external_seed`, key `ext:…::<hash>`, SGD — see below: that key is not one this lane can send).
+`external_seed`, key `ext:…::<hash>`, SGD — see below: that key is sent only with the enrichment dial on).
 
 While BOTH dials are on (`REAP_AGENTIC_LANE_ENABLED` and `REAP_AGENTIC_CART_LINK_LANE_ENABLED`), such a row is
 POSTed ONCE with `item_source: "cart_link"` and the cart-link idempotency key. This is exactly the body the Tier B
@@ -316,6 +316,27 @@ retry sends, not a variant attempt first. The body carries:
 - So they are skipped `row_key_unsupported`, with no POST, as is any `platform: external` row that is not a mirror
   (an affiliate-feed row), and any mirror-shaped key whose read names another source system.
 - The jsmbeauty.sg demo therefore needs a mirror row, or a backend change, before this lane can buy it.
+
+**Enrichment rows (option 2, PR D), behind `REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED`.** Default OFF, read per call,
+consulted only while the lane AND the cart-link dial are on. Off, everything above holds byte for byte. On, an
+enrichment-agent row is POSTed as `item_source: "cart_link"` like a mirror row, for the backend's option 2 branch
+of `_load_cart_link_item` (PR C) to resolve against its variant proof table. Arm it only after PR C is live.
+- **Key shape.** Exactly what pivota-backend `services/catalog_enrichment_agent/ingestion.py` mints:
+  `ext:<slug>::<8 lowercase hex>` (`derive_product_key`: the slug is lowercase alnum and `-`, starts with an alnum,
+  at most 200 chars) or `ext:retailer:<32 lowercase hex>` (a retailer listing). Any other `ext:` shape
+  (`ext:foo`, 31 or 33 hex, uppercase hex, an empty slug) stays `row_key_unsupported`.
+- **Source system.** Absent on the read, or `catalog_enrichment_agent_v1`. Any other (the mirror's included) is
+  `row_key_unsupported`.
+- **Host sent.** The row's explicit `source_domain`, as observed and lowercased; else the host of its https
+  `canonical_url`. Never `destination_url` or the storefront target: either can be an affiliate link or a
+  redirect. An explicit `source_domain` that is not a hostname is not replaced by the URL (`no_merchant_domain`).
+- **Seller.** The door check is unchanged (`source_domain` and the storefront target are its destinations). The
+  `canonical_url` host is not one of them, so with an expected seller the lane also requires the host it would
+  POST to be that seller; otherwise it skips `seller_mismatch` and the storefront answers.
+- **Variants.** A canonical-only row (no variants, or only the placeholder that restates the product id) or a
+  sole-variant row is sent with no variant; the backend proves the store's sole live variant. Two or more
+  entries, counted with or without ids, are `multi_variant` until a line item can carry a variant. Mirror rows
+  keep the `variant_unresolvable` rule below.
 
 **Which host is sent.** The backend matches `lower(catalog_products.source_domain)` byte for byte, so an explicit
 `merchant_domain` / `source_domain` on the read is sent as observed, lowercased. It wins over the URL's host even

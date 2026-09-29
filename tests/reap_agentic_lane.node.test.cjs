@@ -2121,3 +2121,246 @@ test('pre-filter, flags off: the KraveBeauty create is byte-identical to a door 
   assert.equal(backend.calls.length, 0);
   assert.ok(logger.lines.some((l) => l.code === 'not_shopify'));
 });
+
+// =========================================================================================================
+// Option 2 PR D: ENRICHMENT rows (catalog_enrichment_agent_v1) on the cart-link lane, behind their own dial
+// =========================================================================================================
+// pivota-backend option 2 (PR C) teaches `_load_cart_link_item` to resolve an enrichment row against its variant
+// proof table. This gateway half lets those rows reach that POST -- ONLY with REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED
+// on (default OFF) on top of both existing dials. Row shapes from the option 2 design (2026-09-29): canonical_url
+// https://<host>/products/<handle> on every live row, source_ref NULL, platform external_seed, and the offers'
+// destination_url can be an affiliate link.
+const ENRICH_FLAG = 'REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED';
+const ENRICH_ON = { ...CODES_ON, [ENRICH_FLAG]: '1' };
+const AFFILIATE_URL = 'https://click.linksynergy.com/deeplink?id=abc&murl=https%3A%2F%2Fwww.affiliate-seller.example%2Fp';
+// A brand-store row (tarte): derive_product_key shape, source_domain on the read, NO variants (canonical-only).
+const ENRICH_BRAND_ROW = Object.freeze({
+  product_id: 'sig_enrich_tarte_shape_tape',
+  title: 'shape tape concealer',
+  brand: 'tarte',
+  price: 32,
+  currency: 'USD',
+  merchant_id: 'merch_obs_tarte',
+  platform: 'external_seed',
+  source_system: 'catalog_enrichment_agent_v1',
+  product_key: 'ext:tarte-shape-tape-concealer::1a2b3c4d',
+  source_domain: 'tartecosmetics.com',
+  canonical_url: 'https://tartecosmetics.com/products/shape-tape-concealer',
+  external_redirect_url: 'https://tartecosmetics.com/products/shape-tape-concealer',
+  destination_url: AFFILIATE_URL,
+  purchase_grain: 'product',
+});
+// A retailer row (bluemercury): ext:retailer:<32 hex>, NO source_domain and NO source_system on the read, a sole
+// variant, and an affiliate destination_url.
+const ENRICH_RETAILER_ROW = Object.freeze({
+  product_id: 'sig_enrich_bluemercury_tatcha',
+  title: 'The Dewy Skin Cream',
+  brand: 'Tatcha',
+  price: 72,
+  currency: 'USD',
+  merchant_id: 'merch_obs_bluemercury_com',
+  platform: 'external_seed',
+  product_key: 'ext:retailer:9c1f0e2d3b4a59687766554433221100',
+  canonical_url: 'https://bluemercury.com/products/tatcha-the-dewy-skin-cream',
+  external_redirect_url: 'https://bluemercury.com/products/tatcha-the-dewy-skin-cream',
+  destination_url: AFFILIATE_URL,
+  purchase_grain: 'variant',
+  variants: [{ variant_id: '40111222333444', title: '50 ml' }],
+});
+const enrichCreate = async (row, env = ENRICH_ON, extra = {}) => {
+  const logger = fakeLogger();
+  const ctx = await build({ logger, rows: { [row.product_id]: row } });
+  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, ...extra }), SESSION)));
+  return { ...ctx, logger, r };
+};
+const skipCodes = (logger) => logger.lines.filter((l) => l.event === 'reap_agentic_lane' && l.outcome === 'skipped').map((l) => l.code);
+const withRow = (base, patch) => {
+  const row = { ...base, ...patch };
+  for (const k of Object.keys(row)) if (row[k] === undefined) delete row[k];
+  return row;
+};
+
+test('enrichment ON: a brand-store ext: row is POSTed ONCE as cart_link -- source_domain, the key as is, no variant', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { r, backend, logger, m } = await enrichCreate(ENRICH_BRAND_ROW);
+  assert.match(keep(r.ok).id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1, 'one POST, no variant attempt first');
+  const body = backend.calls[0].body;
+  assert.deepEqual(
+    { merchant_domain: body.merchant_domain, product_key: body.product_key, item_source: body.item_source, quantity: body.quantity, idempotency_key: body.idempotency_key },
+    { merchant_domain: 'tartecosmetics.com', product_key: 'ext:tarte-shape-tape-concealer::1a2b3c4d', item_source: 'cart_link', quantity: 1, idempotency_key: m.lane.reapCartLinkIdempotencyKey('idem-reap-0001') },
+  );
+  assert.equal(Object.hasOwn(body, 'variant_key'), false);
+  assert.equal(JSON.stringify(body).includes('linksynergy'), false, 'the affiliate destination_url never reaches the POST');
+  assert.ok(logger.lines.some((l) => l.outcome === 'cart_link_direct' && l.code === 'enrichment'));
+  assert.equal(message(r.ok, 'reap.merchant_domain').content, 'tartecosmetics.com');
+  assert.equal(message(r.ok, 'reap.merchant_id'), undefined, 'an ext: key names no seller id');
+  assert.equal(m.lane.decodeReapCheckoutId(r.ok.id).productKey, ENRICH_BRAND_ROW.product_key, 'the id round-trips the ext: key');
+});
+
+test('enrichment ON: a retailer ext:retailer: row with NO source_domain sends the canonical_url host -- never the affiliate destination_url', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const { r, backend } = await enrichCreate(ENRICH_RETAILER_ROW);
+  assert.match(r.ok.id, REAP_ID_RE);
+  assert.equal(backend.calls.length, 1);
+  assert.deepEqual(
+    { merchant_domain: backend.calls[0].body.merchant_domain, product_key: backend.calls[0].body.product_key, item_source: backend.calls[0].body.item_source },
+    { merchant_domain: 'bluemercury.com', product_key: 'ext:retailer:9c1f0e2d3b4a59687766554433221100', item_source: 'cart_link' },
+  );
+  assert.equal(JSON.stringify(backend.calls[0].body).includes('40111222333444'), false, 'the variant id never leaves the door');
+});
+
+test('enrichment dial OFF (unset, "0", "off"): ext: rows are skipped row_key_unsupported exactly as before, 0 POSTs', async () => {
+  for (const flag of [undefined, '0', 'off']) {
+    for (const row of [ENRICH_BRAND_ROW, ENRICH_RETAILER_ROW]) {
+      const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag });
+      assert.equal(backend.calls.length, 0, `${row.product_id} flag ${flag}`);
+      assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], `${row.product_id} flag ${flag}`);
+      assert.deepEqual(r, { ok: { session_id: 'q_kernel' } }, 'the kernel path answers, as before');
+    }
+  }
+});
+
+test('enrichment dial ON but a lower dial off: cart-link off -> not_shopify as before; lane off -> byte-identical to no lane', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const row of [ENRICH_BRAND_ROW, ENRICH_RETAILER_ROW]) {
+    const { backend, logger } = await enrichCreate(row, { ...ON, [CART_LINK_FLAG]: undefined, [ENRICH_FLAG]: '1' });
+    assert.equal(backend.calls.length, 0);
+    assert.deepEqual(skipCodes(logger), ['not_shopify']);
+  }
+  const m = await mods();
+  for (const env of [{ [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1', [ENRICH_FLAG]: '1' }, { [LANE_FLAG]: '0', [CART_LINK_FLAG]: '1', [ENRICH_FLAG]: '1' }]) {
+    for (const row of [ENRICH_BRAND_ROW, ENRICH_RETAILER_ROW]) {
+      const withLane = await build({ lane: true, rows: { [row.product_id]: row } });
+      const without = await build({ lane: false, rows: { [row.product_id]: row } });
+      const a = await withEnv(env, () => outcome(m, withLane.ucp.callTool('create_checkout', createArgs({ productId: row.product_id }), SESSION)));
+      const b = await withEnv(env, () => outcome(m, without.ucp.callTool('create_checkout', createArgs({ productId: row.product_id }), SESSION)));
+      assert.equal(JSON.stringify(a), JSON.stringify(b), JSON.stringify(env));
+      assert.equal(withLane.backend.calls.length, 0);
+    }
+  }
+});
+
+test('enrichment ON: every OTHER ext: shape, and an ext: key under another source system, is still row_key_unsupported, 0 POSTs', async () => {
+  const hex32 = '9c1f0e2d3b4a59687766554433221100';
+  for (const [label, patch] of [
+    ['ext:foo (no hash)', { product_key: 'ext:foo' }],
+    ['uppercase hash', { product_key: 'ext:tarte-shape-tape-concealer::1A2B3C4D' }],
+    ['7-hex hash', { product_key: 'ext:tarte-shape-tape-concealer::1a2b3c4' }],
+    ['uppercase slug', { product_key: 'ext:Tarte-shape-tape-concealer::1a2b3c4d' }],
+    ['empty slug', { product_key: 'ext:::1a2b3c4d' }],
+    ['retailer, 31 hex', { product_key: `ext:retailer:${hex32.slice(0, 31)}` }],
+    ['retailer, 33 hex', { product_key: `ext:retailer:${hex32}a` }],
+    ['retailer, uppercase hex', { product_key: `ext:retailer:${hex32.toUpperCase()}` }],
+    ['the mirror source system', { source_system: 'external_product_seeds_mirror_v1' }],
+    ['another agent version', { source_system: 'catalog_enrichment_agent_v2' }],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(ENRICH_BRAND_ROW, patch));
+    assert.equal(backend.calls.length, 0, label);
+    assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], label);
+  }
+  // Control: the same row with the agent's source system, or none, IS sent.
+  for (const source_system of ['catalog_enrichment_agent_v1', undefined]) {
+    const { backend } = await enrichCreate(withRow(ENRICH_BRAND_ROW, { source_system }));
+    assert.equal(backend.calls.length, 1, `source_system ${source_system}`);
+  }
+});
+
+test('enrichment ON, the host: source_domain first, else canonical_url; never destination_url / the redirect; unreadable -> no_merchant_domain', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  for (const [label, patch, sent] of [
+    ['source_domain as observed, www. kept', { source_domain: 'WWW.TarteCosmetics.com' }, 'www.tartecosmetics.com'],
+    ['no source_domain: canonical_url host', { source_domain: undefined }, 'tartecosmetics.com'],
+    ['no source_domain, www. canonical_url', { source_domain: undefined, canonical_url: 'https://www.tartecosmetics.com/products/shape-tape-concealer' }, 'www.tartecosmetics.com'],
+    ['no source_domain, no canonical_url, a clean destination_url', { source_domain: undefined, canonical_url: undefined, destination_url: 'https://tartecosmetics.com/products/x' }, null],
+    ['no source_domain, canonical_url over http', { source_domain: undefined, canonical_url: 'http://tartecosmetics.com/products/x' }, null],
+    ['no source_domain, canonical_url a Pivota page', { source_domain: undefined, canonical_url: 'https://agent.pivota.cc/products/sig_enrich_tarte_shape_tape' }, null],
+    ['an explicit source_domain that is not a host (no fallback)', { source_domain: 'tartecosmetics.com/products' }, null],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(ENRICH_BRAND_ROW, patch));
+    if (sent === null) {
+      assert.equal(backend.calls.length, 0, label);
+      assert.deepEqual(skipCodes(logger), ['no_merchant_domain'], label);
+    } else {
+      assert.equal(backend.calls.length, 1, label);
+      assert.equal(backend.calls[0].body.merchant_domain, sent, label);
+    }
+  }
+});
+
+test('enrichment ON, the seller: the door still refuses ucp_seller_mismatch; a canonical_url host the door never judged must ALSO match', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  // Match (bare / www. / case) -> POSTed.
+  for (const expected of ['tartecosmetics.com', 'WWW.TARTECOSMETICS.COM']) {
+    const { backend } = await enrichCreate(ENRICH_BRAND_ROW, ENRICH_ON, { reap: { expected_merchant_domain: expected } });
+    assert.equal(backend.calls.length, 1, expected);
+  }
+  // Another seller -> refused at the DOOR (source_domain and the storefront target are its destinations), 0 POSTs.
+  const other = await enrichCreate(ENRICH_BRAND_ROW, ENRICH_ON, { reap: { expected_merchant_domain: 'other-seller.example' } });
+  assert.deepEqual([errorOf(other.r)?.detail?.reason, errorOf(other.r)?.detail?.merchant_domain], ['ucp_seller_mismatch', 'tartecosmetics.com']);
+  assert.equal(other.backend.calls.length, 0);
+  // No source_domain, and a canonical_url on ANOTHER host than the storefront target: the door judged only the target
+  // (which matches), so the LANE refuses to POST the canonical host -- skipped seller_mismatch, 0 POSTs.
+  const split = withRow(ENRICH_RETAILER_ROW, { canonical_url: 'https://other-seller.example/products/tatcha' });
+  const s = await enrichCreate(split, ENRICH_ON, { reap: { expected_merchant_domain: 'bluemercury.com' } });
+  assert.equal(s.backend.calls.length, 0);
+  assert.deepEqual(skipCodes(s.logger), ['seller_mismatch']);
+  // Control: the same split row with NO expected seller is POSTed with its canonical host (as the design says).
+  const s2 = await enrichCreate(split);
+  assert.equal(s2.backend.calls[0].body.merchant_domain, 'other-seller.example');
+});
+
+test('enrichment ON, the variant pre-filter: canonical-only and sole-variant rows pass; two or more variants are multi_variant', async () => {
+  const B = ENRICH_BRAND_ROW;
+  for (const [label, patch, posts] of [
+    ['no variants member', { variants: undefined }, 1],
+    ['variants: []', { variants: [] }, 1],
+    ['only the canonical placeholder (restates the product id)', { variants: [{ variant_id: B.product_id }] }, 1],
+    ['a sole Shopify variant', { variants: [{ variant_id: '40111222333444' }] }, 1],
+    ['a sole variant the door cannot name (the backend proves it)', { variants: [{ variant_id: 'K108-01-0000-EU' }] }, 1],
+    ['a sole variant with no id', { variants: [{ title: '50 ml' }] }, 1],
+    ['the placeholder beside ONE real variant', { variants: [{ variant_id: B.product_id }, { variant_id: '40111222333444' }] }, 1],
+    ['two real variants', { variants: [{ variant_id: '40111222333444' }, { variant_id: '40111222333445' }] }, 0],
+    ['two shade entries with no ids', { variants: [{ title: 'Fair' }, { title: 'Light' }] }, 0],
+    ['the same id twice', { variants: [{ variant_id: '40111222333444' }, { variant_id: '40111222333444' }] }, 0],
+    ['the placeholder beside TWO real variants', { variants: [{ variant_id: B.product_id }, { variant_id: '1' }, { variant_id: '2' }] }, 0],
+    ['variants not an array', { variants: { variant_id: '40111222333444' } }, 0],
+  ]) {
+    const { backend, logger } = await enrichCreate(withRow(B, patch));
+    assert.equal(backend.calls.length, posts, label);
+    if (posts === 0) assert.deepEqual(skipCodes(logger), ['multi_variant'], label);
+    else assert.equal(Object.hasOwn(backend.calls[0].body, 'variant_key'), false, label);
+  }
+});
+
+test('enrichment ON does not change MIRROR rows (#2326/#2327): a named sole variant is still required; KraveBeauty still posts', async () => {
+  // A mirror row with no nameable variant is still skipped variant_unresolvable.
+  const noVariant = withRow(JSM_ROW, { source_variant_id: undefined });
+  const ctx = await build({ logger: fakeLogger(), rows: { [JSM_ROW.product_id]: noVariant } });
+  await withEnv(ENRICH_ON, () => ctx.ucp.callTool('create_checkout', sgArgs(), SESSION).catch(() => null));
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.deepEqual(skipCodes(ctx.logger), ['variant_unresolvable']);
+  // variants[0].variant_id / default_variant_id still resolve, and the host is still the mirror rule's.
+  const k = await kraveCreate(KRAVE_ROW, ENRICH_ON);
+  assert.equal(k.backend.calls.length, 1);
+  assert.equal(k.backend.calls[0].body.merchant_domain, 'kravebeauty.com');
+  const disagree = await kraveCreate({ ...KRAVE_ROW, default_variant_id: '41596313010999' }, ENRICH_ON);
+  assert.equal(disagree.backend.calls.length, 0);
+  // The mirror host rule (hop dest, then destination_url) is untouched by the enrichment one.
+  const judy = await enrichCreate(JUDY_ROW);
+  assert.equal(judy.backend.calls[0].body.merchant_domain, 'judydoll.com');
+  const judyDest = await enrichCreate({ ...JUDY_ROW, external_redirect_url: 'https://www.judydoll.com/products/x?variant=49819267301653', destination_url: 'https://www.judydoll.com/products/x' });
+  assert.equal(judyDest.backend.calls[0].body.merchant_domain, 'www.judydoll.com');
+});
+
+test('enrichment ON does not touch SHOPIFY rows: a Shopify-platform row is the variant lane, whatever its key', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const row = withRow(ENRICH_BRAND_ROW, {
+    product_id: 'sig_shop_extkey', platform: 'shopify', source_domain: undefined,
+    external_redirect_url: 'https://www.brand.example/products/x', canonical_url: 'https://canonical-host.example/products/x',
+  });
+  const { backend } = await enrichCreate(row);
+  assert.equal(backend.calls.length, 1);
+  assert.equal(backend.calls[0].body.item_source, undefined, 'the variant lane');
+  assert.equal(backend.calls[0].body.merchant_domain, 'www.brand.example', 'the variant lane host rule (storefront target first)');
+});

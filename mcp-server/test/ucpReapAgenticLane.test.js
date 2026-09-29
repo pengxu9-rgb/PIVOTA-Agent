@@ -749,3 +749,113 @@ describe("soleReadVariantId: the cart-link pre-filter's read of the row's own so
     ]) assert.equal(lane.soleReadVariantId(row), null, label);
   });
 });
+
+// ---- option 2 PR D: ENRICHMENT rows on the cart-link lane (behind REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED) ------
+
+describe("enrichment cart-link rows: key shape, source system, merchant host", async () => {
+  const lane = await import("../src/ucpReapAgenticLane.js");
+  const { createHash } = await import("node:crypto");
+  // THE PRODUCER, transcribed: pivota-backend services/catalog_enrichment_agent/ingestion.py `_normalize_token`
+  // (`[^a-z0-9]+` -> " " over str.lower(), stripped), `canonical_product_name` (spaces -> "-", "" -> "unknown"),
+  // `derive_product_key` ("ext:" + canonical[:200] + "::" + sha1(canonical)[:8]), and the retailer branch of
+  // `_build_pdp_insert` ("ext:retailer:" + sha256(listing)[:32]). The accepted keys below are what it emits.
+  const canonical = (brand, name) => (`${brand || ""} ${name || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/ /g, "-")) || "unknown";
+  const deriveProductKey = (brand, name) => {
+    const c = canonical(brand, name);
+    return `ext:${c.slice(0, 200)}::${createHash("sha1").update(c, "utf8").digest("hex").slice(0, 8)}`;
+  };
+  const retailerKey = (listing) => `ext:retailer:${createHash("sha256").update(listing, "utf8").digest("hex").slice(0, 32)}`;
+  const LONG_NAME = `Kiss Professional Full Cover Press On Fake Toenails - Tippy Toes | 130 Toenails, Includes Nail Glue, ${"Solid White Short Squoval Pedicure ".repeat(6)}`;
+  const PRODUCED = [
+    deriveProductKey("JUNGSAEMMOOL", "Essential Mool Toner"),
+    deriveProductKey("tarte", "shape tape™ concealer"),
+    deriveProductKey("Kérastase", "Élixir Ultime L'Huile Originale"),
+    deriveProductKey("", ""),
+    deriveProductKey("Kiss", LONG_NAME),
+    retailerKey("bluemercury.com/products/tatcha-the-dewy-skin-cream"),
+    retailerKey("global.oliveyoung.com/product/detail?prdtNo=GA123"),
+  ];
+  const LIVE = "ext:jungsaemmool-essential-mool-toner::4b4c3cfe";
+
+  test("the producer's own keys are accepted (source system absent, or the agent's)", () => {
+    assert.equal(PRODUCED[3], `ext:unknown::${createHash("sha1").update("unknown").digest("hex").slice(0, 8)}`);
+    assert.ok(PRODUCED[4].length > 200, "a long name really reaches the 200-char cut");
+    for (const key of [LIVE, ...PRODUCED, `ext:${"a".repeat(199)}-::0123abcd`]) {
+      for (const source_system of [undefined, null, "", "catalog_enrichment_agent_v1", " catalog_enrichment_agent_v1 "]) {
+        assert.equal(lane.isEnrichmentCartLinkRow(source_system === undefined ? {} : { source_system }, key), true, `${key.slice(0, 60)} / ${source_system}`);
+      }
+    }
+  });
+
+  test("REFUSES every other `ext:` shape (and the mirror key, which has its own path)", () => {
+    const hex32 = "0123456789abcdef0123456789abcdef";
+    for (const [label, key] of [
+      ["no hash", "ext:foo"],
+      ["empty hash", "ext:foo::"],
+      ["empty slug", "ext:::0123abcd"],
+      ["uppercase slug", "ext:Foo::0123abcd"],
+      ["uppercase hex", "ext:foo::0123ABCD"],
+      ["7 hex", "ext:foo::0123abc"],
+      ["9 hex", "ext:foo::0123abcde"],
+      ["non-hex", "ext:foo::0123abcg"],
+      ["leading hyphen", "ext:-foo::0123abcd"],
+      ["space in slug", "ext:foo bar::0123abcd"],
+      ["underscore in slug", "ext:foo_bar::0123abcd"],
+      ["colon in slug", "ext:foo:bar::0123abcd"],
+      ["slug over 200", `ext:${"a".repeat(201)}::0123abcd`],
+      ["trailing newline", "ext:foo::0123abcd\n"],
+      ["leading space", " ext:foo::0123abcd"],
+      ["prefix case", "EXT:foo::0123abcd"],
+      ["ext_ not ext:", "ext_foo::0123abcd"],
+      ["retailer, 31 hex", `ext:retailer:${hex32.slice(0, 31)}`],
+      ["retailer, 33 hex", `ext:retailer:${hex32}0`],
+      ["retailer, uppercase hex", `ext:retailer:${hex32.toUpperCase()}`],
+      ["retailer, non-hex", `ext:retailer:${hex32.slice(0, 31)}g`],
+      ["retailer, double colon", `ext:retailer::${hex32}`],
+      ["retailer, with a hash suffix", `ext:retailer:${hex32}::0123abcd`],
+      ["mirror key", "prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada"],
+      ["shopify key", "prod::m_brand::shopify::1001"],
+      ["null", null],
+      ["number", 42],
+    ]) {
+      assert.equal(lane.isEnrichmentCartLinkRow({}, key), false, label);
+    }
+  });
+
+  test("REFUSES a well-shaped key whose read names ANOTHER source system", () => {
+    for (const source_system of ["external_product_seeds_mirror_v1", "catalog_enrichment_agent_v2", "CATALOG_ENRICHMENT_AGENT_V1", "affiliate_feed_v1"]) {
+      assert.equal(lane.isEnrichmentCartLinkRow({ source_system }, LIVE), false, source_system);
+      assert.equal(lane.isEnrichmentCartLinkRow({ source_system }, PRODUCED[5]), false, `${source_system} (retailer)`);
+    }
+  });
+
+  test("merchant host: explicit source_domain first (as observed), else the canonical_url host; NEVER destination_url or the redirect", () => {
+    const d = lane.enrichmentCartLinkMerchantDomain;
+    const AFF = "https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fwww.bluemercury.com%2Fp";
+    assert.equal(d({ source_domain: "WWW.Tarte.com", canonical_url: "https://other.example/products/x" }), "www.tarte.com", "the explicit field wins, www. kept");
+    assert.equal(d({ canonical_url: "https://Www.Bluemercury.com/products/tatcha?variant=1" }), "www.bluemercury.com", "the canonical_url host, as observed");
+    assert.equal(d({ canonical_url: "https://tarte.com/products/x", destination_url: AFF, external_redirect_url: AFF }), "tarte.com");
+    for (const [label, row] of [
+      ["destination_url only", { destination_url: "https://tarte.com/products/x" }],
+      ["external_redirect_url only", { external_redirect_url: "https://tarte.com/products/x" }],
+      ["url only", { url: "https://tarte.com/products/x" }],
+      ["canonical_url over http", { canonical_url: "http://tarte.com/products/x" }],
+      ["canonical_url with userinfo", { canonical_url: "https://u:p@tarte.com/products/x" }],
+      ["canonical_url a Pivota page", { canonical_url: "https://agent.pivota.cc/products/sig_a" }],
+      ["canonical_url unparseable", { canonical_url: "not a url" }],
+      ["explicit source_domain not a host: no fallback", { source_domain: "tarte.com/products", canonical_url: "https://tarte.com/products/x" }],
+      ["explicit non-ASCII source_domain", { source_domain: "Kiko.com", canonical_url: "https://kiko.com/p" }],
+      ["explicit Pivota source_domain", { source_domain: "agent.pivota.cc", canonical_url: "https://tarte.com/products/x" }],
+      ["nothing", {}],
+    ]) {
+      assert.equal(d(row), null, label);
+    }
+  });
+
+  test("the dial: OFF by default; truthy spellings only", () => {
+    assert.equal(lane.REAP_AGENTIC_CART_LINK_ENRICHMENT_FLAG, "REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED");
+    assert.equal(lane.reapCartLinkEnrichmentEnabled({}), false);
+    for (const v of ["0", "no", "off", "false", ""]) assert.equal(lane.reapCartLinkEnrichmentEnabled({ REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED: v }), false, v);
+    for (const v of ["1", "true", "on", " YES "]) assert.equal(lane.reapCartLinkEnrichmentEnabled({ REAP_AGENTIC_CART_LINK_ENRICHMENT_ENABLED: v }), true, v);
+  });
+});
