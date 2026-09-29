@@ -152,7 +152,7 @@ import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
-import { reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { canonicalReapMerchantDomain, reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -802,6 +802,34 @@ const DISCOUNTS_SCHEMA = {
   },
 };
 
+/** The longest host name DNS allows; the lane's own host rule (`canonicalReapMerchantDomain`) bounds it again. */
+const EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH = 253;
+
+// `checkout.reap` -- the Reap lane's namespaced request member, create_checkout ONLY, ADVERTISED AND ACCEPTED
+// ONLY WHILE THE LANE IS ON (`reapAgenticLaneEnabled`); off, it is refused as an unknown field exactly as before
+// it existed. UCP 2026-04-08 has no request member naming the seller of a line (checkout / line_item / item carry
+// none; `context` is non-authoritative hints a business MAY ignore, and this is a guard it must not), so it is a
+// namespaced member of the open `checkout` object, under the same `reap` namespace as the lane's `reap.*`
+// message codes. Read by NOTHING but the Reap lane (ucpReapAgenticLane.js `reapExpectedMerchantDomain`), from the
+// raw body; never mapped into the canonical quote (UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED).
+const REAP_EXPECTED_SELLER_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    expected_merchant_domain: {
+      type: "string",
+      minLength: 1,
+      maxLength: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH,
+      examples: ["brand.com"],
+      description:
+        "Optional. The seller the buyer was shown, as a bare host name (`brand.com`; `www.` and case do not"
+        + " matter). If the item resolves to a DIFFERENT seller, or to one that cannot be confirmed, no Reap"
+        + " purchase is opened: the answer is the non-Reap one, with the warning `reap.seller_mismatch`. A Reap"
+        + " checkout names its seller in the info messages `reap.merchant_domain` and `reap.merchant_id`.",
+    },
+  },
+};
+
 const ATTRIBUTION_SCHEMA = {
   type: "object",
   additionalProperties: true,
@@ -833,7 +861,13 @@ function checkoutSchema({ update } = {}) {
 
 /** The `checkout` members the mapper accepts, kept in lockstep with `checkoutSchema` above. */
 const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "context", "fulfillment", "attribution"]);
-const CREATE_CHECKOUT_FIELDS = Object.freeze([...CHECKOUT_FIELDS, "discounts"]);
+/**
+ * The leaves the LANE-ON create_checkout schema adds (see `ucpInputSchemasFor`): accepted-but-unmapped, read
+ * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
+ */
+export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain"]),
+});
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
@@ -1007,9 +1041,37 @@ function requireCheckoutObject(args, tool, env = process.env) {
   // so a platform may send `discounts` on either. It is only ever APPLIED at creation -- an update answers a
   // `discount_code_invalid` warning (not a Reap checkout) or the Reap update refusal naming the create-only rule.
   const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && reapOfferCodesEnabled(env);
-  rejectUnknown(checkout, offerCodes ? CREATE_CHECKOUT_FIELDS : CHECKOUT_FIELDS, "checkout", code);
+  // The expected seller: create only, and only while the Reap lane is on (the one reader).
+  const expectedSeller = tool === "create_checkout" && reapAgenticLaneEnabled(env);
+  const allowed = [...CHECKOUT_FIELDS, ...(offerCodes ? ["discounts"] : []), ...(expectedSeller ? ["reap"] : [])];
+  rejectUnknown(checkout, allowed, "checkout", code);
   if (offerCodes) requireDiscountsShape(checkout, code);
+  if (expectedSeller) requireExpectedSellerShape(checkout, code);
   return checkout;
+}
+
+/**
+ * `checkout.reap`, when present, is `{ expected_merchant_domain?: <a bare host name> }`. The host is judged by the
+ * LANE's own comparison rule (`canonicalReapMerchantDomain`) — one rule, one function — so a value that could
+ * never match any seller (a URL, a port, a path, a single label) is refused here, loudly, instead of silently
+ * costing the buyer the Reap route.
+ */
+function requireExpectedSellerShape(checkout, code) {
+  const reap = own(checkout, "reap");
+  if (reap === undefined) return;
+  const refuse = () => {
+    throw ucpRefusal(code, "ucp_expected_merchant_domain_invalid", [
+      "`checkout.reap` must be `{ expected_merchant_domain: host }` where host is a bare host name such as",
+      "`brand.com` (no scheme, port, path or userinfo; `www.` and case do not matter), at most",
+      `${EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH} characters.`,
+    ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
+  };
+  if (!isPlainObject(reap)) refuse();
+  rejectUnknown(reap, ["expected_merchant_domain"], "checkout.reap", code);
+  const domain = own(reap, "expected_merchant_domain");
+  if (domain === undefined) return;
+  if (typeof domain !== "string" || domain.length === 0 || domain.length > EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH) refuse();
+  if (canonicalReapMerchantDomain(domain) === null) refuse();
 }
 
 /**
@@ -1202,6 +1264,13 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "`incomplete` checkout whose id starts `reap_`; poll `get_checkout` and send the buyer to its `continue_url` to",
   "add a card and approve the total. That route needs `checkout.buyer.consent_version`, a destination with a",
   "phone number and a last name, and completes on Reap's page, never through `complete_checkout`.",
+].join(" ");
+/** Appended to the create_checkout description only while the Reap lane is on (`ucpInputSchemasFor`). */
+const CREATE_CHECKOUT_SELLER_SENTENCE = [
+  "To be sure the Reap route buys from the seller the buyer was shown, send its host as",
+  "`checkout.reap.expected_merchant_domain`: a different seller opens no Reap purchase (warning",
+  "`reap.seller_mismatch`). A Reap checkout names its seller in the info messages `reap.merchant_domain` and",
+  "`reap.merchant_id`.",
 ].join(" ");
 /** Appended to the create_checkout description only while offer codes are armed (`ucpInputSchemasFor`). */
 const CREATE_CHECKOUT_OFFER_CODE_SENTENCE = [
@@ -1950,16 +2019,18 @@ export const UCP_INPUT_SCHEMAS = Object.freeze(
 );
 
 /**
- * The UCP `tools/list` inputSchemas for THIS request's env. Identical to `UCP_INPUT_SCHEMAS` unless offer codes
- * are armed (`reapOfferCodesEnabled`), in which case create_checkout's `checkout` also advertises `discounts`.
- * Memoized per variant; the env is read on every call, like the lane's own dials.
+ * The UCP `tools/list` inputSchemas for THIS request's env — THREE memoized variants, read per call like the
+ * lane's own dials:
+ *   - Reap lane OFF: exactly `UCP_INPUT_SCHEMAS` (the same object).
+ *   - lane ON: create_checkout's `checkout` also advertises `reap` (the expected seller).
+ *   - offer codes ARMED (`reapOfferCodesEnabled`, which implies the lane): also `discounts` on create/update.
  */
-const ARMED_INPUT_SCHEMAS = Object.freeze(armedInputSchemas());
-function armedInputSchemas() {
+function variantInputSchemas({ seller, codes }) {
   return Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => {
-    if (id !== "create_checkout_session" && id !== "update_checkout_session") {
-      return [id, Object.freeze(spec.inputSchema)];
-    }
+    const extra = {};
+    if (codes && (id === "create_checkout_session" || id === "update_checkout_session")) extra.discounts = DISCOUNTS_SCHEMA;
+    if (seller && id === "create_checkout_session") extra.reap = REAP_EXPECTED_SELLER_SCHEMA;
+    if (Object.keys(extra).length === 0) return [id, Object.freeze(spec.inputSchema)];
     const base = spec.inputSchema;
     return [id, Object.freeze({
       ...base,
@@ -1967,21 +2038,29 @@ function armedInputSchemas() {
         ...base.properties,
         checkout: {
           ...base.properties.checkout,
-          properties: { ...base.properties.checkout.properties, discounts: DISCOUNTS_SCHEMA },
+          properties: { ...base.properties.checkout.properties, ...extra },
         },
       },
     })];
   }));
 }
-const ARMED_DESCRIPTIONS = Object.freeze(Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => [
-  id, id === "create_checkout_session" ? `${spec.description} ${CREATE_CHECKOUT_OFFER_CODE_SENTENCE}` : spec.description,
-])));
+const LANE_INPUT_SCHEMAS = Object.freeze(variantInputSchemas({ seller: true, codes: false }));
+const ARMED_INPUT_SCHEMAS = Object.freeze(variantInputSchemas({ seller: true, codes: true }));
+function variantDescriptions(sentences) {
+  return Object.freeze(Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => [
+    id, id === "create_checkout_session" ? [spec.description, ...sentences].join(" ") : spec.description,
+  ])));
+}
+const LANE_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE]);
+const ARMED_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE, CREATE_CHECKOUT_OFFER_CODE_SENTENCE]);
 
 export function ucpInputSchemasFor(env = process.env) {
-  return reapOfferCodesEnabled(env) ? ARMED_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
+  if (reapOfferCodesEnabled(env)) return ARMED_INPUT_SCHEMAS;
+  return reapAgenticLaneEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
 }
 export function ucpToolDescriptionsFor(env = process.env) {
-  return reapOfferCodesEnabled(env) ? ARMED_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
+  if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
+  return reapAgenticLaneEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
 
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */

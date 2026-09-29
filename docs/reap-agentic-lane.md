@@ -15,7 +15,9 @@ snapshot) — **EXCEPT** that a malformed `checkout.buyer.consent_version` (not 
 32 characters) is refused `ucp_consent_version_invalid` at the argument adapter, whatever the switch
 says. **`tools/list` is not byte-identical either:** the `create_checkout` / `update_checkout` `buyer`
 schema carries the optional `consent_version` member (`maxLength: 32`), and the `create_checkout`
-description mentions the Reap route.
+description mentions the Reap route. The seller contract (§5.4) adds nothing while the switch is off:
+`checkout.reap` is neither advertised nor accepted (refused `ucp_unknown_field`, as before it existed),
+and no answer carries a seller message.
 
 ---
 
@@ -74,6 +76,11 @@ All of these, otherwise the lane is skipped silently (logged with a code) and th
   without one), is priced, and has a merchant domain (an explicit field, else the storefront host;
   never a Pivota host — sent **as observed, lowercased only**: no `www.` is stripped, because the
   backend canonicalises both sides at lookup);
+- when the create carries `checkout.reap.expected_merchant_domain` (§5.4), that seller IS the row's
+  merchant domain, compared canonically (lowercase, one leading `www.` removed — the backend's own
+  rule). A different seller, or a row with no merchant domain, is skipped here — **before the
+  purchasability gate and before any backend call** — and the storefront answer carries the warning
+  `reap.seller_mismatch`;
 - the merchant-purchasability gate did not decline it — consulted **exactly as the escalation lane
   consults it**: same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`), same singleton client, same
   fail-open rule, same market source (`checkout.context.address_country`), same budget clamp;
@@ -195,6 +202,9 @@ claim (`sid` / `session_id`). The Reap lane needs three things a storefront chec
    (below). A code sent on a create whose answer is **not** a Reap checkout is **not applied**: that answer
    carries a `discount_code_invalid` warning at `$.discounts.codes[0]`.
 
+5. **`checkout.reap.expected_merchant_domain`** — optional, create_checkout only, and only while
+   `REAP_AGENTIC_LANE_ENABLED` is on: the seller the buyer was shown. See §5.4.
+
 `meta["idempotency-key"]` is required as on every state-changing call. **Retry with the same key**:
 the backend key is derived from it (hashed, namespaced — never random, never the raw key), so a
 retried `create_checkout` replays the same purchase instead of opening a second one.
@@ -203,8 +213,9 @@ retried `create_checkout` replays the same purchase instead of opening a second 
 
 `create_checkout` → `status: "incomplete"`, `id: "reap_rp_<24 hex>.<opaque>"`. Treat the id as
 opaque; it carries the backend purchase id and a snapshot of the line (product id, quantity,
-currency, unit price) so a failed read can still answer a well-formed checkout. It carries **no
-buyer data**.
+currency, unit price, and — since the seller contract — the merchant host) so a failed read can still
+answer a well-formed checkout. It carries **no buyer data**. **Do not decode it**: its format is not a
+contract and may change. The seller is published in `messages` (§5.4).
 
 Then poll `get_checkout { meta, id }`:
 
@@ -243,6 +254,8 @@ Then poll `get_checkout { meta, id }`:
   `reap.purchase_expired` with the reason when there is a safe one. Create a new checkout to try
   again.
 
+- **Seller**: every Reap answer carries `reap.merchant_domain` and `reap.merchant_id` (§5.4).
+
 ### 5.3 Refusal codes
 
 | where | code / reason | meaning | what to do |
@@ -250,6 +263,8 @@ Then poll `get_checkout { meta, id }`:
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_consent_version_invalid` | `consent_version` is not a string, or longer than 32 characters | fix the value |
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_offer_code_invalid` | (armed) `checkout.discounts` is not `{ codes: [one string of 1..128 code points] }` | fix the value, or send no code |
 | `create_checkout` | `QUOTE_REQUIRED` / `ucp_unknown_field` | (not armed) `checkout.discounts` was sent | send no code |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_expected_merchant_domain_invalid` | (lane on) `checkout.reap` is not `{ expected_merchant_domain: <bare host> }` — a URL, port, path, single label, a Pivota host, not a string, or > 253 characters | send the bare host (`brand.com`) |
+| `create_checkout` | `QUOTE_REQUIRED` / `ucp_unknown_field` | (lane off) `checkout.reap` was sent, or any member other than `expected_merchant_domain` inside it | send no `reap` member while the lane is off |
 | `update_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_update_refused` | a Reap checkout cannot be changed | create a new checkout |
 | `complete_checkout` | `OPERATION_NOT_ALLOWED` / `ucp_reap_complete_refused` | completion is on Reap's page | poll `get_checkout`, open `continue_url` |
 | `get_checkout` | `QUOTE_NOT_FOUND` | unknown id (or another buyer's) | — |
@@ -287,6 +302,59 @@ a residual is shown as its own `Rounding` row (`fee` when positive, `discount` w
 always add up; a larger residual shows no breakdown at all and is logged `breakdown_unreconciled`. The backend checks its daily Tier B verdict and its own
 `REAP_AGENTIC_CART_LINK_ENABLED`; any refusal of that second POST falls through exactly as above. No other
 refusal is retried. The multi-variant skip still applies (this door sends no `variant_key`).
+
+### 5.4 The seller contract (stable)
+
+A `sig_` product id can have several sellers. The lane resolves it to ONE served row (the lowest
+`product_key`) and buys from **that row's** merchant, which can differ from the seller a platform
+showed the buyer. This contract lets a platform see who the purchase is with, and stop a purchase
+from a seller it did not show. It is **stable**: the field and code names below do not change without
+a new name beside them.
+
+**Out — on every Reap checkout answer** (`create_checkout`, `get_checkout`, and the degraded
+`get_checkout` that carries `reap.view_unavailable`), two `info` messages at
+`path: "$.line_items[0]"`, each with the bare value as `content` (read `content`, not prose — like
+`reap.poll_after_seconds` and `reap.order_reference`):
+
+| `code` | `content` | source |
+|---|---|---|
+| `reap.merchant_domain` | the merchant's host, **lowercase, as observed** — `www.` is kept when the row carries it (`www.brand.com`), exactly the host the purchase was opened for. Compare it with **`www.` folded** (lowercase, remove ONE leading `www.`) | create: the host the lane POSTed; get: the backend view's `merchant_domain`; degraded get: as recorded at creation |
+| `reap.merchant_id` | Pivota's catalog merchant id — the `<merchant>` segment of the catalog key the purchase was opened for (`prod::<merchant>::<platform>::<id>`) | create and every get: that key (on a successful get, the view's key, checked equal to the checkout's) |
+
+Either message is omitted when its value is unknown (e.g. an id minted before this contract has no
+recorded host, so its degraded answer carries only `reap.merchant_id`). A message is never a guess.
+
+**In — `checkout.reap.expected_merchant_domain`** on `create_checkout` (advertised in `tools/list`
+and accepted only while `REAP_AGENTIC_LANE_ENABLED` is on):
+
+```json
+{ "checkout": { "line_items": [{ "item": { "id": "sig_…" }, "quantity": 1 }],
+                "reap": { "expected_merchant_domain": "brand.com" }, "…": "…" } }
+```
+
+- A bare host; `www.` and case do not matter (`brand.com`, `www.brand.com` and `BRAND.com` are one
+  seller; `shop.brand.com` is another). Anything that could never match (a URL, a port, a path, a
+  single label, a Pivota host) is refused `ucp_expected_merchant_domain_invalid` (§5.3).
+- **Same seller** → nothing changes: the purchase opens with the same backend request as without it.
+- **Different seller, or a row with no merchant domain** → **no purchase is opened** (the lane makes no
+  backend call and does not consult the purchasability gate). The answer is the non-Reap one it would
+  otherwise be — the storefront `requires_escalation` checkout (id `esc_…`) — plus a `warning` at
+  `$.line_items[0]` with `code: "reap.seller_mismatch"`, and `reap.merchant_domain` /
+  `reap.merchant_id` naming the seller the lane would have bought from (when known). Note that this
+  answer's `continue_url` is **that** seller's storefront. With storefront escalation off, the kernel
+  path answers as today and the warning has nowhere to ride (the code `seller_mismatch` /
+  `seller_unconfirmed` is logged) — read "no `reap_` id" as "not bought through Reap".
+- **Absent** → nothing changes.
+
+**Where these live in UCP, and why.** UCP 2026-04-08 has no seller member on the checkout, the line
+item or the item (its only `seller` is the catalog *variant*'s display `name` and `links`), so there
+is no spec field to fill. Outbound, `messages[]` with a freeform `code` is the spec's own carrier for
+business-specific checkout state (`info_code` / `warning_code`: "freeform codes are permitted"), the
+same channel this lane already uses for the cadence, the approval deadline and the order reference.
+Inbound, `context` is ruled out because the spec defines it as non-authoritative hints a business
+MAY ignore, and this is a guard it must honour; the open `checkout` object (`additionalProperties:
+true`) takes a namespaced member, `reap`, under the same namespace as the `reap.*` codes, advertised
+only while the lane that reads it is on — the pattern `checkout.discounts` follows (§5.1 item 4).
 
 ## 6. Budgets and failure modes
 

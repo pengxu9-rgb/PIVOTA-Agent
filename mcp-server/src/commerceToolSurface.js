@@ -39,6 +39,7 @@ import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
 import {
   DISCOUNT_CODE_PATH,
   REAP_CHECKOUT_ID_PREFIX,
+  reapAgenticLaneEnabled,
   reapOfferCode,
   reapOfferCodesEnabled,
   tryReapAgenticCheckout,
@@ -1005,16 +1006,23 @@ export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS
 });
 
 /**
- * The UCP declarations for THIS env: `ucpCommerceToolDefinitions` unless offer codes are armed
- * (`reapOfferCodesEnabled`), when create_checkout also advertises `checkout.discounts`. Two memoized variants.
+ * The UCP declarations for THIS env — three memoized variants, the adapter's (`ucpInputSchemasFor`):
+ * `ucpCommerceToolDefinitions` while the Reap lane is off; with the lane on, create_checkout also advertises
+ * `checkout.reap` (the expected seller); with offer codes armed (`reapOfferCodesEnabled`), also
+ * `checkout.discounts`.
  */
-const ucpCommerceToolDefinitionsArmed = definitionsFor(UCP_COMMERCE_OPERATIONS, {
-  nameOf: (op) => op.ucpTool,
-  schemaOf: (op) => ucpInputSchemasFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
-  describeOf: (op) => ucpToolDescriptionsFor({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" })[op.id],
-});
+function ucpDefinitionsForEnv(env) {
+  return definitionsFor(UCP_COMMERCE_OPERATIONS, {
+    nameOf: (op) => op.ucpTool,
+    schemaOf: (op) => ucpInputSchemasFor(env)[op.id],
+    describeOf: (op) => ucpToolDescriptionsFor(env)[op.id],
+  });
+}
+const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
+const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  return reapOfferCodesEnabled(env) ? ucpCommerceToolDefinitionsArmed : ucpCommerceToolDefinitions;
+  if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
+  return reapAgenticLaneEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1064,7 +1072,7 @@ export function ucpDialectSurface(surface) {
   }
   return Object.freeze({
     ...surface,
-    // Read per `tools/list`, so the advertised create_checkout follows the offer-code dial (see
+    // Read per `tools/list`, so the advertised create_checkout follows the Reap lane and offer-code dials (see
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
       return ucpCommerceToolDefinitionsFor(process.env);

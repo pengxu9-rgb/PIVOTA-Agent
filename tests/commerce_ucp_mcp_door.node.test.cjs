@@ -504,3 +504,33 @@ test('/.well-known/ucp advertises dev.ucp.shopping.discount only with BOTH Reap 
     });
   }
 });
+
+// ---- the expected-seller member follows the Reap LANE dial on the SERVED door (seller contract) ------------
+
+test('/ucp/mcp tools/list advertises checkout.reap (the expected seller) only with the Reap lane on; the profile never changes for it', async () => {
+  const LANE = 'REAP_AGENTIC_LANE_ENABLED';
+  const CART = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
+  const profiles = [];
+  for (const [dials, expected] of [
+    [{ [LANE]: '1', [CART]: undefined }, true],
+    [{ [LANE]: '1', [CART]: '1' }, true],
+    [{ [LANE]: undefined, [CART]: '1' }, false],
+    [{ [LANE]: undefined, [CART]: undefined }, false],
+  ]) {
+    await withEnv({ ...DOOR_LIT, ...CHARGE_ON, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1', ...dials }, async () => {
+      const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 8)).expect(200);
+      const byName = Object.fromEntries(listed.body.result.tools.map((t) => [t.name, t]));
+      const reap = byName.create_checkout.inputSchema.properties.checkout.properties.reap;
+      assert.equal(Boolean(reap), expected, JSON.stringify(dials));
+      if (expected) assert.deepEqual(Object.keys(reap.properties), ['expected_merchant_domain']);
+      assert.equal(Object.hasOwn(byName.update_checkout.inputSchema.properties.checkout.properties, 'reap'), false, 'create only');
+      assert.equal(/expected_merchant_domain/.test(byName.create_checkout.description), expected);
+      if (!dials[CART]) {
+        const resp = await supertest(app).get('/.well-known/ucp').expect(200);
+        profiles.push(JSON.stringify(resp.body));
+      }
+    });
+  }
+  assert.equal(profiles.length, 2);
+  assert.equal(profiles[0], profiles[1], 'the lane dial alone does not move /.well-known/ucp');
+});
