@@ -179,100 +179,142 @@ describe("the approval deadline is the quote TTL, not the hosted page's expiry (
   });
 });
 
-describe("the line item title: each merchant half in its own bidi isolate (FSI U+2068 ... PDI U+2069)", () => {
+describe("the line item title: plain unless a half carries RTL text, then that half alone is bidi-isolated", () => {
   // Escapes only -- no literal invisible characters in this file (the last test below checks the lane's source).
   const FSI = "\u2068";
   const PDI = "\u2069";
   const RLM = "\u200F";
-  const HEBREW = "\u05E9\u05E4\u05EA\u05D5\u05DF"; // five right-to-left letters
+  const LRM = "\u200E";
+  const ALM = "\u061C";
+  const ZWSP = "\u200B";
+  const HEBREW = "\u05E9\u05E4\u05EA\u05D5\u05DF"; // Bidi_Class R
+  const ARABIC = "\u0623\u062D\u0645\u0631"; // Bidi_Class AL
+  const SYRIAC = "\u0710\u0712"; // AL
+  const THAANA = "\u0780\u0781"; // AL
+  const NKO = "\u07CA\u07CB"; // R
+  const ADLAM = "\u{1E900}\u{1E901}"; // R, supplementary plane
   const count = (s, ch) => s.split(ch).length - 1;
-  // The composed title's two halves, each asserted to be EXACTLY one isolate pair around its text.
-  const halves = (title) => {
-    const parts = title.split(`${PDI} — ${FSI}`);
-    assert.equal(parts.length, 2, `two halves in ${JSON.stringify(title)}`);
-    return [`${parts[0]}${PDI}`, `${FSI}${parts[1]}`];
-  };
-  const assertOnePair = (half, text) => {
-    assert.equal(half, `${FSI}${text}${PDI}`);
-    assert.equal(count(half, FSI), 1, `one FSI in ${JSON.stringify(half)}`);
-    assert.equal(count(half, PDI), 1, `one PDI in ${JSON.stringify(half)}`);
+  const iso = (text) => `${FSI}${text}${PDI}`;
+  // main's composition at 8c9205fda, verbatim: an all-LTR title must be byte-identical to it.
+  const str = (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  const mainTitle = (n, v) => {
+    const productName = str(n);
+    const variantTitle = str(v);
+    return productName ? (variantTitle && variantTitle !== productName ? `${productName} — ${variantTitle}` : productName) : null;
   };
 
-  test("LTR name + variant: both halves isolated, the separator between them outside both", () => {
-    const title = reapLineItemTitle("Silky Matte Lip Ink", "07 BURGUNDY INK");
-    assert.equal(title, `${FSI}Silky Matte Lip Ink${PDI} — ${FSI}07 BURGUNDY INK${PDI}`);
-    const [a, b] = halves(title);
-    assertOnePair(a, "Silky Matte Lip Ink");
-    assertOnePair(b, "07 BURGUNDY INK");
-  });
-
-  test("a name ENDING in an RTL letter: its direction is closed before the dash and the variant's digits", () => {
-    const name = `Lip Ink ${HEBREW}`;
-    const title = reapLineItemTitle(name, "07 BURGUNDY INK");
-    assert.equal(title, `${FSI}${name}${PDI} — ${FSI}07 BURGUNDY INK${PDI}`);
-    const [a, b] = halves(title);
-    assertOnePair(a, name);
-    assertOnePair(b, "07 BURGUNDY INK");
-    // The last RTL letter sits INSIDE the first pair: the PDI comes after it and before the separator.
-    assert.ok(title.lastIndexOf(HEBREW.slice(-1)) < title.indexOf(PDI));
-  });
-
-  test("a name ENDING in RLM: the mark is kept (a mark, not a control) and stays inside the name's isolate", () => {
-    const name = `Silky Matte Lip Ink${RLM}`;
-    const title = reapLineItemTitle(name, "07 BURGUNDY INK");
-    assert.equal(title, `${FSI}Silky Matte Lip Ink${RLM}${PDI} — ${FSI}07 BURGUNDY INK${PDI}`);
-    const [a, b] = halves(title);
-    assertOnePair(a, name);
-    assertOnePair(b, "07 BURGUNDY INK");
-    assert.equal(title.indexOf(RLM) + 1, title.indexOf(PDI), "RLM is the last character before the first PDI");
-    // An RTL variant under an RTL-ending name: still exactly one pair each.
-    const both = reapLineItemTitle(name, `${HEBREW} 07`);
-    const [c, d] = halves(both);
-    assertOnePair(c, name);
-    assertOnePair(d, `${HEBREW} 07`);
-  });
-
-  test("no variant title (absent, blank, non-string, or the name repeated): the name alone, still ONE isolate pair", () => {
-    for (const variant of [undefined, null, "", "   ", 7, { t: "x" }, "Silky Matte Lip Ink", "  Silky Matte Lip Ink  "]) {
-      const title = reapLineItemTitle("Silky Matte Lip Ink", variant);
-      assertOnePair(title, "Silky Matte Lip Ink");
-      assert.equal(title.includes(" — "), false, `no separator for ${JSON.stringify(variant)}`);
+  test("an all-LTR title is BYTE-IDENTICAL to main's, lone name included: no isolate, no other change", () => {
+    const cases = [
+      ["Silky Matte Lip Ink", "07 BURGUNDY INK"],
+      ["Silky Matte Lip Ink", undefined],
+      ["Silky Matte Lip Ink", null],
+      ["  Standard Eau de Parfum ", " Standard "],
+      ["Standard Eau de Parfum", "Standard Eau de Parfum"],
+      ["Crème Brûlée Lip Balm — Nº 5", "Rosé 01"],
+      ["\u96EA\u82B1\u79C0 Serum", "50ml"], // CJK is left-to-right
+      ["Glow Oil ✨ 100% Pure", "1.01 oz / 30 mL"],
+      ["Tint", "#07 / Berry, 3.5g (Refill)"],
+    ];
+    for (const [n, v] of cases) {
+      const got = reapLineItemTitle(n, v);
+      assert.equal(got, mainTitle(n, v), JSON.stringify([n, v]));
+      assert.equal(/[\u2066-\u2069]/.test(got), false, JSON.stringify(got));
     }
-    assertOnePair(reapLineItemTitle(`Lip Ink ${HEBREW}`, null), `Lip Ink ${HEBREW}`);
   });
 
-  test("no product name: no title (the line falls back to the item id), whatever the variant says", () => {
-    for (const name of [undefined, null, "", "   ", 42]) assert.equal(reapLineItemTitle(name, "07 BURGUNDY INK"), null, JSON.stringify(name));
+  test("a name ENDING in an RTL letter (R or AL): that half is isolated, the Latin variant stays plain", () => {
+    for (const rtl of [HEBREW, ARABIC, SYRIAC, THAANA, NKO, ADLAM]) {
+      const name = `Lip Ink ${rtl}`;
+      const title = reapLineItemTitle(name, "07 BURGUNDY INK");
+      assert.equal(title, `${iso(name)} — 07 BURGUNDY INK`, JSON.stringify(rtl));
+      assert.equal(count(title, FSI), 1);
+      assert.equal(count(title, PDI), 1);
+    }
   });
 
-  test("each half is trimmed; a stray embedding/override/isolate control is removed so each pair stays balanced", () => {
+  test("a name ENDING in RLM or ALM: the mark is kept inside the name's isolate; the variant stays plain", () => {
+    for (const mark of [RLM, ALM]) {
+      const name = `Silky Matte Lip Ink${mark}`;
+      const title = reapLineItemTitle(name, "07 BURGUNDY INK");
+      assert.equal(title, `${iso(name)} — 07 BURGUNDY INK`);
+      assert.equal(title.indexOf(mark) + 1, title.indexOf(PDI), "the mark is the last character before the PDI");
+    }
+    // LRM alone is not RTL-bearing: plain, exactly as main.
+    assert.equal(reapLineItemTitle(`Lip Ink${LRM}`, "07"), `Lip Ink${LRM} — 07`);
+  });
+
+  test("an RTL variant under a Latin name, and RTL on both sides: each RTL half exactly one pair", () => {
+    assert.equal(reapLineItemTitle("Lip Ink", `${HEBREW} 07`), `Lip Ink — ${iso(`${HEBREW} 07`)}`);
+    const both = reapLineItemTitle(`${ARABIC} ${RLM}`, `07 ${HEBREW}`);
+    assert.equal(both, `${iso(`${ARABIC} ${RLM}`)} — ${iso(`07 ${HEBREW}`)}`);
+    assert.equal(count(both, FSI), 2);
+    assert.equal(count(both, PDI), 2);
+    const [a, b] = both.split(" — ");
+    for (const half of [a, b]) {
+      assert.equal(count(half, FSI), 1);
+      assert.equal(count(half, PDI), 1);
+      assert.ok(half.startsWith(FSI) && half.endsWith(PDI));
+    }
+    assert.equal(reapLineItemTitle(`Lip Ink ${HEBREW}`, null), iso(`Lip Ink ${HEBREW}`), "a lone RTL name");
+  });
+
+  test("a half made only of invisible characters is ABSENT: no name -> null (item id shown); no variant -> omitted", () => {
+    const invisible = [RLM, LRM, ALM, ZWSP, `${RLM}${ZWSP} ${LRM}`, "\uFEFF", "   ", ""];
+    for (const v of invisible) {
+      assert.equal(reapLineItemTitle(v, "07 BURGUNDY INK"), null, `name ${JSON.stringify(v)}`);
+      assert.equal(reapLineItemTitle("Silky Matte Lip Ink", v), "Silky Matte Lip Ink", `variant ${JSON.stringify(v)}`);
+    }
+    for (const v of [undefined, null, 7, { t: "x" }]) {
+      assert.equal(reapLineItemTitle(v, "07"), null);
+      assert.equal(reapLineItemTitle("Silky Matte Lip Ink", v), "Silky Matte Lip Ink");
+    }
+    const id = encodeReapCheckoutId(SNAP);
+    const view = { id: PID, state: "processing", product_key: SNAP.productKey, product_name: RLM, variant_title: "07", quantity: 1, totals: { currency: "USD", our_price_minor: 4250 } };
+    assert.equal(mapReapPurchaseToCheckout({ id, snapshot: SNAP, view, now: NOW, env: {} }).line_items[0].item.title, "sig_reap_a", "the item id, not an invisible title");
+  });
+
+  test("the variant is de-duplicated against the name on the VISIBLE text (a trailing RLM does not defeat it)", () => {
+    const name = `Lip Ink ${HEBREW}`;
+    assert.equal(reapLineItemTitle(name, `${name}${RLM}`), iso(name));
+    assert.equal(reapLineItemTitle(`${name}${RLM}`, name), iso(`${name}${RLM}`));
+    assert.equal(reapLineItemTitle("Lip Ink", `Lip${ZWSP} Ink${LRM}`), "Lip Ink");
+    assert.equal(reapLineItemTitle("Lip Ink", "Lip  Ink"), "Lip Ink", "whitespace runs collapse on the key");
+    assert.equal(reapLineItemTitle("Lip Ink", "Lip Ink 2"), "Lip Ink — Lip Ink 2");
+  });
+
+  test("line and paragraph breaks inside an ISOLATED half are folded to spaces (they would close the isolate)", () => {
+    for (const br of ["\n", "\r", "\r\n", "\u2028", "\u2029", "\u0085", "\u001C"]) {
+      const title = reapLineItemTitle(`Lip${br}Ink ${HEBREW}`, `07${br}${ARABIC}`);
+      const spaces = " ".repeat(br.length);
+      assert.equal(title, `${iso(`Lip${spaces}Ink ${HEBREW}`)} — ${iso(`07${spaces}${ARABIC}`)}`, JSON.stringify(br));
+    }
+    // A Latin half is not isolated, so it is not rewritten: byte-identical to main.
+    assert.equal(reapLineItemTitle("Lip\nInk", "07"), mainTitle("Lip\nInk", "07"));
+  });
+
+  test("stray embedding/override/isolate controls are removed from every half, so each pair stays balanced", () => {
     const stray = "\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069";
-    const title = reapLineItemTitle(`  Lip Ink${PDI}${stray} `, ` ${FSI}07${PDI}\u202E BURGUNDY `);
-    const [a, b] = halves(title);
-    assertOnePair(a, "Lip Ink");
-    assertOnePair(b, "07 BURGUNDY");
-    // A half that is nothing but controls is absent, never an empty pair.
+    const title = reapLineItemTitle(`${stray}  Lip Ink ${HEBREW}${PDI}${stray} `, ` ${FSI}07${PDI}\u202E BURGUNDY `);
+    assert.equal(title, `${iso(`Lip Ink ${HEBREW}`)} — 07 BURGUNDY`);
     assert.equal(reapLineItemTitle(stray, "07"), null);
-    assertOnePair(reapLineItemTitle("Lip Ink", stray), "Lip Ink");
-    // Removed BEFORE trimming: a control in front of the space does not leave the space behind.
-    assert.equal(reapLineItemTitle(`${stray}  Lip Ink`, `${PDI} 07 `), `${FSI}Lip Ink${PDI} — ${FSI}07${PDI}`);
+    assert.equal(reapLineItemTitle("Lip Ink", stray), "Lip Ink");
   });
 
-  test("through the view mapping: the line item carries the isolated title; the checkout id does not carry it", () => {
+  test("through the view mapping: the line item carries the title; the checkout id does not carry it", () => {
     const id = encodeReapCheckoutId(SNAP);
     const view = {
       id: PID, state: "processing", product_key: SNAP.productKey, product_name: `Lip Ink ${HEBREW}`, variant_title: "07 BURGUNDY INK", quantity: 1,
       totals: { currency: "USD", our_price_minor: 4250 },
     };
     const out = mapReapPurchaseToCheckout({ id, snapshot: SNAP, view, now: NOW, env: {} });
-    assert.equal(out.line_items[0].item.title, `${FSI}Lip Ink ${HEBREW}${PDI} — ${FSI}07 BURGUNDY INK${PDI}`);
+    assert.equal(out.line_items[0].item.title, `${iso(`Lip Ink ${HEBREW}`)} — 07 BURGUNDY INK`);
     assert.equal(out.id, id);
     const snapshotJson = Buffer.from(id.split(".")[1], "base64url").toString("utf8");
-    assert.equal(/Lip|BURGUNDY|\u2068|\u2069/.test(snapshotJson), false, snapshotJson);
+    assert.equal(/Lip|BURGUNDY|[\u0590-\u05FF\u2068\u2069]/.test(snapshotJson), false, snapshotJson);
     assert.deepEqual(decodeReapCheckoutId(id), { ...SNAP });
   });
 
-  test("the lane source writes its isolates as escapes: no literal format (Cf) character in the file", () => {
+  test("the lane source writes its isolates and ranges as escapes: no literal format (Cf) character in the file", () => {
     const src = fs.readFileSync(path.join(HERE, "../src/ucpReapAgenticLane.js"), "utf8");
     assert.equal(/\p{Cf}/u.test(src), false);
   });
@@ -290,7 +332,7 @@ describe("a successful read is the ONLY source of what is displayed", () => {
     assert.equal(out.currency, "CAD");
     assert.deepEqual(out.line_items, [{
       id: "li_1",
-      item: { id: "sig_reap_a", title: "\u2068Backend Name\u2069", price: 999 },
+      item: { id: "sig_reap_a", title: "Backend Name", price: 999 },
       quantity: 2,
       totals: [{ type: "subtotal", amount: 1998 }, { type: "total", amount: 1998 }],
     }]);

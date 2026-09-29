@@ -939,39 +939,65 @@ function breakdownRows({ lineTotal, total, shipping, tax, taxIncluded, discount 
 }
 
 /**
- * THE LINE ITEM'S DISPLAYED TITLE: `<product name> — <variant title>`, or the product name alone when there is no
- * variant title (or it repeats the name). Both halves are MERCHANT text and each is wrapped in its own bidi
- * isolate, FIRST STRONG ISOLATE ... POP DIRECTIONAL ISOLATE (U+2068 ... U+2069).
+ * THE LINE ITEM'S DISPLAYED TITLE: `<product name> — <variant title>`, or the product name alone. Both halves are
+ * MERCHANT text. A half is returned AS MAIN RETURNED IT (trimmed, byte for byte) unless it carries right-to-left
+ * text; only then is it wrapped in FIRST STRONG ISOLATE ... POP DIRECTIONAL ISOLATE (U+2068 ... U+2069).
  *
- * WHY. The backend strips embeddings, overrides and isolates from merchant text but KEEPS the marks (LRM/RLM),
- * and real right-to-left letters exist. A name ending in RLM or an RTL letter makes the neutrals and digits that
- * FOLLOW it resolve right-to-left: "Silky Matte Lip Ink — 07 BURGUNDY INK" can display as "...Ink07 — BURGUNDY
- * INK", and digit runs can reorder across the dash. An isolate makes each half one neutral unit to its
- * surroundings, whose own direction comes from its own first strong letter: nothing leaks out, nothing leaks in.
+ * WHY ISOLATE. The backend strips embeddings, overrides and isolates from merchant text but KEEPS the marks, and
+ * real right-to-left letters exist. A name ending in RLM or an RTL letter makes the neutrals and digits that FOLLOW
+ * it resolve right-to-left: "Silky Matte Lip Ink — 07 BURGUNDY INK" can display as "...Ink07 — BURGUNDY INK", and
+ * digit runs can reorder across the dash. An isolate makes the half one neutral unit to its surroundings.
  *
- * A LONE NAME IS ISOLATED TOO. Nothing follows it inside this string, but consumers append to it: the agent-ui
- * Reap panel renders the title with " × <quantity>" right after it in the same line, and an agent quotes it in
- * prose. One rule -- every merchant half is isolated -- is also one rule for a consumer that wants plain text:
- * delete U+2068/U+2069.
+ * WHY ONLY THEN. A title without RTL text cannot reorder, and a plain title must stay plain: it is compared with the
+ * catalog title and with the storefront escalation lane's (which never isolates), it is forwarded to channels where
+ * one invisible character changes the encoding (SMS: GSM-7 -> UCS-2), and partners read it verbatim. So an
+ * all-Latin (or CJK, or any LTR) title is byte-identical to what this door returned before isolates existed.
  *
- * THE PAIRS ARE BALANCED BY CONSTRUCTION. Embedding, override and isolate controls (U+202A..U+202E,
- * U+2066..U+2069) are removed from each half first. The backend already removes them, so on conforming input this
- * is a no-op; it is here because a stray PDI inside a name would close OUR isolate early and let the name's
- * direction leak into the dash and the variant. The marks (U+200E/U+200F) are kept: they cannot unbalance a pair.
- * A half that is nothing but such controls is absent. The checkout id and the idempotency key never include the
- * title (encodeReapCheckoutId, reapIdempotencyKey), so the isolates change what is displayed and nothing else.
+ * THE TRIGGER (`RTL_BEARING_RE`): a character in Unicode's default right-to-left ranges -- the blocks
+ * DerivedBidiClass.txt assigns Bidi_Class R or AL by default (Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan,
+ * Mandaic, the Hebrew/Arabic presentation forms, and the SMP RTL blocks incl. Adlam) -- plus RLM (U+200F); ALM
+ * (U+061C) is inside the Arabic block. Explicit ranges because ECMAScript has no `\p{Bidi_Class=...}` (Node rejects
+ * it), and a Script list must name every RTL script and lags the engine's Unicode version, where these default
+ * ranges already cover the code points Unicode has not assigned yet. Measured against
+ * Python unicodedata 16.0: every assigned R/AL code point is inside; the extra members are the same scripts' marks,
+ * digits and punctuation (NSM/AN/EN/ON/...), for which an isolate is harmless. U+FEFF (BN) is excluded.
+ *
+ * INSIDE AN ISOLATED HALF, line and paragraph breaks (CR, LF, U+001C..U+001E, U+0085, U+2028, U+2029) are folded
+ * to spaces -- a paragraph separator ends every isolate, so one inside a half would close ours early.
+ *
+ * IN EVERY HALF, embedding, override and isolate controls (U+202A..U+202E, U+2066..U+2069) are removed. The backend
+ * already removes them, so on its output this is a no-op; it keeps every pair balanced (a stray PDI would close
+ * OUR isolate early) and keeps a stray override from reaching the dash.
+ *
+ * ABSENT AND DUPLICATE HALVES are judged on the VISIBLE text: format characters (Cf) removed, whitespace runs
+ * collapsed, trimmed. A half that is only RLM, LRM, ZWSP, ... is absent -- a missing name makes the title null
+ * (the line shows the item id), a missing variant is omitted -- and a variant equal to the name on that key (a
+ * trailing RLM on one of them included) is omitted.
+ *
+ * The checkout id and the idempotency key never include the title (encodeReapCheckoutId, reapIdempotencyKey).
  */
 const BIDI_FSI = "\u2068";
 const BIDI_PDI = "\u2069";
+const RTL_BEARING_RE = /[\u0590-\u08FF\uFB1D-\uFDCF\uFDF0-\uFDFF\uFE70-\uFEFE\u200F\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
 const BIDI_NESTING_CONTROL_RE = /[\u202A-\u202E\u2066-\u2069]/g;
-const titleHalf = (v) => str(typeof v === "string" ? v.replace(BIDI_NESTING_CONTROL_RE, "") : null);
-const bidiIsolate = (text) => `${BIDI_FSI}${text}${BIDI_PDI}`;
+const PARAGRAPH_BREAK_RE = /[\n\r\u001C-\u001E\u0085\u2028\u2029]/g;
+const FORMAT_CHAR_RE = /\p{Cf}/gu;
+
+/** `{ key, display }` for one merchant half, or null when it has no visible text. */
+function titleHalf(value) {
+  if (typeof value !== "string") return null;
+  const text = value.replace(BIDI_NESTING_CONTROL_RE, "").trim();
+  const key = text.replace(FORMAT_CHAR_RE, "").replace(/\s+/g, " ").trim();
+  if (!key) return null;
+  if (!RTL_BEARING_RE.test(text)) return { key, display: text };
+  return { key, display: `${BIDI_FSI}${text.replace(PARAGRAPH_BREAK_RE, " ").trim()}${BIDI_PDI}` };
+}
 
 export function reapLineItemTitle(productName, variantTitle) {
   const name = titleHalf(productName);
   if (!name) return null;
   const variant = titleHalf(variantTitle);
-  return variant && variant !== name ? `${bidiIsolate(name)} — ${bidiIsolate(variant)}` : bidiIsolate(name);
+  return variant && variant.key !== name.key ? `${name.display} — ${variant.display}` : name.display;
 }
 
 function lineItemsAndTotals({ itemId, title, unitMinor, quantity, quotedTotal, finalTotal, discount, shipping, tax, taxIncluded, degraded }) {

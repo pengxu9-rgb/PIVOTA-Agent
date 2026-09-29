@@ -154,13 +154,16 @@ view; a view missing any of them is treated as a failed read. The checkout id's 
 to check the view is for this purchase: the id travels through the caller, so it is not trusted. On a
 failed read the snapshot is the only source, and the answer says so (`reap.view_unavailable`).
 
-**The title is bidi-isolated.** `line_items[0].item.title` is `<product name> — <variant title>`, or the
-product name alone, and EACH merchant half is wrapped in FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE
-(U+2068 … U+2069), so a name that ends in a right-to-left letter or an RLM cannot reorder the dash, the
-variant's digits, or whatever a consumer prints after the title. The title therefore carries one or two
-invisible isolate pairs: render it as-is (browsers and most text stacks honour isolates), or delete
-U+2068/U+2069 for a plain-text copy. Do not compare it to a catalog title byte-for-byte. A failed read's
-title is the item id, unwrapped. The checkout id never includes the title.
+**The title is plain text, except for right-to-left halves.** `line_items[0].item.title` is
+`<product name> — <variant title>`, or the product name alone (the variant is omitted when it is missing,
+only invisible characters, or the same visible text as the name). A half with no right-to-left text is
+exactly the merchant text, trimmed: an all-Latin (or CJK) title is byte-for-byte what it always was. A half
+that carries right-to-left text (a Hebrew/Arabic/Syriac/Thaana/NKo/... letter, or an RLM/ALM) is wrapped in
+FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE (U+2068 … U+2069), with any line or paragraph break inside it
+folded to a space, so it cannot reorder the dash, the variant's digits, or whatever a consumer prints after
+the title. Render such a title as-is (browsers and most text stacks honour isolates), or delete U+2068/U+2069
+for a plain-text copy. A name that is only invisible characters counts as absent, and the line shows the item
+id, which is also the title on a failed read. The checkout id never includes the title.
 
 ## 5. The contract for Minds
 

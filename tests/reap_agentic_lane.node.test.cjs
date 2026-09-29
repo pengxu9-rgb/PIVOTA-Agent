@@ -398,7 +398,7 @@ test('on + eligible: ONE backend POST -> 202 -> checkout {id: reap_…, status: 
   assertSpecCheckout(out);
   assert.equal(out.currency, 'USD');
   // item.id ECHOES the caller's id (as the storefront lane does); the product_key is never published.
-  assert.deepEqual(out.line_items, [{ id: 'li_1', item: { id: 'sig_reap_a', title: '\u2068Standard Eau de Parfum\u2069', price: 4250 }, quantity: 1, totals: [{ type: 'subtotal', amount: 4250 }, { type: 'total', amount: 4250 }] }]);
+  assert.deepEqual(out.line_items, [{ id: 'li_1', item: { id: 'sig_reap_a', title: 'Standard Eau de Parfum', price: 4250 }, quantity: 1, totals: [{ type: 'subtotal', amount: 4250 }, { type: 'total', amount: 4250 }] }]);
   assert.equal(JSON.stringify(out).includes('prod::'), false);
   assert.equal(message(out, 'reap.poll_after_seconds').content, '60', 'the backend cadence is carried');
   assert.ok(message(out, 'reap.resolving'));
@@ -461,7 +461,16 @@ test('the lane answer leaves through the REAL money filter: a secret-shaped valu
   const ctx = await build({ backend });
   const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
-  assert.equal(out.line_items[0].item.title, '\u2068Serum [REDACTED_SECRET]\u2069 — \u2068Standard\u2069');
+  assert.equal(out.line_items[0].item.title, 'Serum [REDACTED_SECRET] — Standard');
+});
+
+test('the title leaves through the real filter and shaper: plain for LTR text, the RTL half alone isolated', async () => {
+  const backend = fakeBackend();
+  backend.state.get.set(PID, { status: 200, body: view('resolving', { product_name: 'Lip Ink \u05E9\u05E4\u05EA\u05D5\u05DF\u200F', variant_title: '07 BURGUNDY INK' }) });
+  const ctx = await build({ backend });
+  const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
+  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
+  assert.equal(out.line_items[0].item.title, '\u2068Lip Ink \u05E9\u05E4\u05EA\u05D5\u05DF\u200F\u2069 — 07 BURGUNDY INK');
 });
 
 // =========================================================================================================
@@ -657,7 +666,7 @@ test('get_checkout: the completed checkout carries the order reference and the c
   assert.equal(message(out, 'reap.order_reference').content, 'ord_991');
   // Shipping and tax as their own rows now (they reconcile with the charged total).
   assert.deepEqual(out.totals.map((x) => [x.type, x.amount]), [['subtotal', 4250], ['fulfillment', 100], ['tax', 150], ['total', 4500]]);
-  assert.equal(out.line_items[0].item.title, '\u2068Standard Eau de Parfum\u2069 — \u2068Standard\u2069');
+  assert.equal(out.line_items[0].item.title, 'Standard Eau de Parfum — Standard');
 });
 
 test('get_checkout: a refused purchase names its reason; an unsafe reason string is not echoed', async () => {
