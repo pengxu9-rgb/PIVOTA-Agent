@@ -1,9 +1,12 @@
 const {
   APPLY_CONFIRM_TOKEN,
+  HUMAN_APPROVAL_FRESHNESS_INTERVAL,
+  applyRenewals,
   evaluateRenewalCandidates,
   parseArgs,
   runRenewal,
 } = require('../../scripts/renew-relationship-ai-approved-labels');
+const { DEFAULT_EXPIRY_DAYS } = require('../../scripts/publish-product-relationship-graph-review');
 
 const NOW_MS = new Date('2026-08-04T00:00:00.000Z').getTime();
 const RESOLVABLE = new Set(['ext_active_seed', 'catalog_key_1', 'pg_group_1']);
@@ -576,4 +579,126 @@ describe('renew-relationship-ai-approved-labels', () => {
       expect(progress.some((event) => event.phase === 'ref_set')).toBe(true);
     });
   });
+
+  describe('human_approved renewal', () => {
+    // Shaped like the prod cohort measured 2026-09-30: verified up to 2026-08-04,
+    // published with a flat 90-day expiry, all due on 2026-11-02.
+    const humanRow = (overrides = {}) => baseRow({
+      id: 'human_1',
+      label_state: 'human_approved',
+      last_verified_at: '2026-01-01T00:00:00.000Z',
+      expires_at: '2026-08-10T00:00:00.000Z',
+      ...overrides,
+    });
+
+    function stateAwareQueryFn({ rows, seeds = [{ k2: 'ext_active_seed' }], renewedByState = null, calls = [] }) {
+      return async (sql, params) => {
+        calls.push({ sql, params });
+        if (/UPDATE relationship_candidate_labels/.test(sql)) {
+          const state = /label_state = 'human_approved'/.test(sql) ? 'human_approved' : 'ai_approved';
+          const count = renewedByState ? renewedByState[state] : params[0].length;
+          return { rowCount: count, rows: [] };
+        }
+        if (/FROM relationship_candidate_labels/.test(sql)) return { rows };
+        if (/FROM external_product_seeds/.test(sql)) return { rows: seeds };
+        return { rows: [] };
+      };
+    }
+
+    test('the human interval is the review publisher\'s own expiry, not a second number', () => {
+      expect(HUMAN_APPROVAL_FRESHNESS_INTERVAL).toBe(`${DEFAULT_EXPIRY_DAYS} days`);
+      expect(HUMAN_APPROVAL_FRESHNESS_INTERVAL).toBe('90 days');
+    });
+
+    test('parseArgs renews human_approved by default; --skip-human-approved turns it off', () => {
+      expect(parseArgs([]).includeHumanApproved).toBe(true);
+      expect(parseArgs(['--skip-human-approved']).includeHumanApproved).toBe(false);
+    });
+
+    test('no AI age cap for a human verdict, but the serving guard and resolvability still apply', () => {
+      const ancient = '2025-01-01T00:00:00.000Z'; // far past the 180-day AI cap at NOW_MS
+      const result = evaluateRenewalCandidates([
+        humanRow({ id: 'human_old', last_verified_at: ancient }),
+        baseRow({ id: 'ai_old', last_verified_at: ancient }),
+        humanRow({ id: 'human_suppressed', candidate_product_ref: 'product:retailer-com:0123456789abcdef' }),
+        humanRow({ id: 'human_dead_candidate', candidate_product_ref: 'ext_retired_seed' }),
+      ], RESOLVABLE, { nowMs: NOW_MS });
+
+      expect(result.renewableIds).toEqual(['human_old']);
+      expect(result.renewableByState).toEqual({ ai_approved: [], human_approved: ['human_old'] });
+      expect(result.scannedByState).toEqual({ ai_approved: 1, human_approved: 3 });
+      expect(result.skipped).toEqual(expect.objectContaining({
+        age_capped: 1,
+        suppressed: 1,
+        candidate_unresolvable: 1,
+      }));
+    });
+
+    test('the scan selects live human_approved rows only; skipping human restores the AI-only scan', async () => {
+      const calls = [];
+      await runRenewal({ queryFn: stateAwareQueryFn({ rows: [], calls }), generatedAt: '2026-08-04T00:00:00.000Z' });
+      const selectSql = calls.find(({ sql }) => /FROM relationship_candidate_labels/.test(sql)).sql;
+      expect(selectSql).toContain("(label_state = 'ai_approved' OR (label_state = 'human_approved' AND expires_at > now()))");
+
+      const aiOnlyCalls = [];
+      await runRenewal({
+        queryFn: stateAwareQueryFn({ rows: [], calls: aiOnlyCalls }),
+        generatedAt: '2026-08-04T00:00:00.000Z',
+        includeHumanApproved: false,
+      });
+      const aiOnlySql = aiOnlyCalls.find(({ sql }) => /FROM relationship_candidate_labels/.test(sql)).sql;
+      expect(aiOnlySql).toContain("label_state = 'ai_approved'");
+      expect(aiOnlySql).not.toContain('human_approved');
+    });
+
+    test('apply writes one UPDATE per state, each with its own interval, state literal and guard', async () => {
+      const calls = [];
+      const report = await runRenewal({
+        apply: true,
+        queryFn: stateAwareQueryFn({ rows: [baseRow({ id: 'ai_1' }), humanRow({ id: 'human_1' })], calls }),
+        generatedAt: '2026-08-04T00:00:00.000Z',
+        operator: 'unit_test',
+      });
+
+      const updates = calls.filter(({ sql }) => /UPDATE relationship_candidate_labels/.test(sql));
+      expect(updates).toHaveLength(2);
+      const ai = updates.find(({ sql }) => /label_state = 'ai_approved'/.test(sql));
+      const human = updates.find(({ sql }) => /label_state = 'human_approved'/.test(sql));
+      expect(ai.params[0]).toEqual(['ai_1']);
+      expect(ai.params[1]).toBe('45 days');
+      expect(ai.sql).not.toContain('human_approved');
+      expect(ai.sql).not.toMatch(/AND expires_at > now\(\)/);
+      expect(human.params[0]).toEqual(['human_1']);
+      expect(human.params[1]).toBe('90 days');
+      expect(human.sql).toMatch(/AND label_state = 'human_approved'\s+AND expires_at > now\(\)/);
+      for (const { sql } of updates) expect(sql.split('WHERE')[0]).not.toContain('label_state');
+      expect(report.ok).toBe(true);
+      expect(report.renewed_count).toBe(2);
+      expect(report.by_label_state).toEqual({
+        ai_approved: { scanned: 1, renewable: 1, renewed: 1 },
+        human_approved: { scanned: 1, renewable: 1, renewed: 1 },
+      });
+    });
+
+    test('a human pass that renews nothing fails the run even when the AI pass worked', async () => {
+      const report = await runRenewal({
+        apply: true,
+        queryFn: stateAwareQueryFn({
+          rows: [baseRow({ id: 'ai_1' }), humanRow({ id: 'human_1' })],
+          renewedByState: { ai_approved: 1, human_approved: 0 },
+        }),
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+      expect(report.renewed_count).toBe(1);
+      expect(report.ok).toBe(false);
+    });
+
+    test('applyRenewals refuses any state outside the allow-list', async () => {
+      const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+      await expect(applyRenewals(['x'], { queryFn, labelState: 'needs_evidence' }))
+        .rejects.toThrow('renewal_label_state_not_allowed:needs_evidence');
+      expect(queryFn).not.toHaveBeenCalled();
+    });
+  });
 });
+
