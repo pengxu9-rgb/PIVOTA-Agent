@@ -325,7 +325,9 @@ async function withOtpStartLock(mail, fn) {
     const txQuery = (text, params) => client.query(text, params);
     await txQuery('BEGIN');
     try {
-      await txQuery('SELECT pg_advisory_xact_lock(hashtext($1))', [`aurora_otp_start:${mail}`]);
+      // Two-key form (like the bookings lock): a namespace key plus the email, so no email hash can
+      // coincide with the single-key session lock the migrations/seeds take (72403119).
+      await txQuery('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', ['aurora_otp_start', mail]);
       const result = await fn(txQuery);
       await txQuery('COMMIT');
       return result;
@@ -493,16 +495,20 @@ async function verifyOtpChallenge({ email, code } = {}) {
     [row.challenge_id, OTP_MAX_ATTEMPTS],
   );
   const reservedRow = reserved && reserved.rows && reserved.rows[0] ? reserved.rows[0] : null;
-  // The public reason stays invalid_or_expired when the cap closes a code: a distinct answer would
-  // confirm that the address has a live code under attack. closedByCap is for the caller's log only.
+  // No reservation left: refuse WITHOUT closing. The attempts already reserved may still be in flight,
+  // and one of them may carry the right code; closing here let a 6th concurrent right-code request
+  // shut the code before any of the first five consumed it, so nobody signed in. attempts = cap
+  // already refuses every later reservation, and the guess that reached the cap closes the code
+  // itself if it was wrong.
   if (!reservedRow) {
-    await closeChallenge(row.challenge_id);
-    return { ok: false, reason: 'invalid_or_expired', closedByCap: true };
+    return { ok: false, reason: 'invalid_or_expired' };
   }
   const attemptsUsed = Number(reservedRow.attempts);
 
   const actualHash = hashWithPepper(`${row.challenge_id}:${inputCode}`);
   if (!hashesEqual(row.code_hash, actualHash)) {
+    // The public reason stays invalid_or_expired when the cap closes a code: a distinct answer would
+    // confirm that the address has a live code under attack. closedByCap is for the caller's log only.
     if (!Number.isFinite(attemptsUsed) || attemptsUsed >= OTP_MAX_ATTEMPTS) {
       await closeChallenge(row.challenge_id);
       return { ok: false, reason: 'invalid_or_expired', closedByCap: true };

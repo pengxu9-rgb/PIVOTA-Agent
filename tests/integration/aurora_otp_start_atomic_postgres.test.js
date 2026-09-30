@@ -170,13 +170,20 @@ suite('Aurora sign-in bounds on PostgreSQL under concurrency', () => {
     expect((await instances[1].verifyOtpChallenge({ email, code })).ok).toBe(false);
   });
 
-  test('concurrent uses of the right code across instances mint exactly one session', async () => {
-    const email = 'race@example.com';
-    const { debug_code: code } = await instances[2].createOtpChallenge({ email });
-    const outs = await Promise.all(
-      Array.from({ length: 8 }, (_, i) => instances[i % INSTANCES].verifyOtpChallenge({ email, code })),
-    );
-    expect(outs.filter((o) => o.ok)).toHaveLength(1);
+  test('concurrent uses of the right code across instances mint exactly one session, every time', async () => {
+    // 8 racers > the 5 reservations, repeated: with the fix every trial is exactly one session, not
+    // "usually". (Closing on a failed reservation left 0 sessions in ~0.5% of trials.)
+    const TRIALS = 40;
+    const sessionsPerTrial = [];
+    for (let t = 0; t < TRIALS; t += 1) {
+      const email = `race-${t}@example.com`;
+      const { debug_code: code } = await instances[t % INSTANCES].createOtpChallenge({ email });
+      const outs = await Promise.all(
+        Array.from({ length: 8 }, (_, i) => instances[(t + i) % INSTANCES].verifyOtpChallenge({ email, code })),
+      );
+      sessionsPerTrial.push(outs.filter((o) => o.ok).length);
+    }
+    expect(sessionsPerTrial).toEqual(Array(TRIALS).fill(1));
   });
 
   test(`${BURST} concurrent wrong passwords make at most 5 scrypt comparisons, then the account is locked`, async () => {

@@ -38,7 +38,7 @@ function makeAuroraAuthDb() {
   db.public.registerFunction({ name: 'hashtext', args: [DataType.text], returns: DataType.integer, implementation: () => 0 });
   db.public.registerFunction({
     name: 'pg_advisory_xact_lock',
-    args: [DataType.integer],
+    args: [DataType.integer, DataType.integer],
     returns: DataType.text,
     implementation: () => '',
     impure: true,

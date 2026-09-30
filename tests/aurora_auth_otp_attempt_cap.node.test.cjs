@@ -211,8 +211,10 @@ test('/start runs count, close and insert in one transaction under the per-email
   await store.createOtpChallenge({ email: 'Tx@Example.com ' });
   const kinds = seen.map(({ sql }) => sql.split(' ').slice(0, 2).join(' '));
   // Mutant killed: statements outside the transaction, or the lock taken after the count.
-  assert.deepEqual(kinds, ['BEGIN', 'SELECT pg_advisory_xact_lock(hashtext($1))', 'SELECT COUNT(*)', 'UPDATE aurora_auth_challenges', 'INSERT INTO', 'COMMIT']);
-  assert.deepEqual(seen[1].params, ['aurora_otp_start:tx@example.com']);
+  assert.deepEqual(kinds, ['BEGIN', 'SELECT pg_advisory_xact_lock(hashtext($1),', 'SELECT COUNT(*)', 'UPDATE aurora_auth_challenges', 'INSERT INTO', 'COMMIT']);
+  // Two-key form, namespace + normalised email (a single-key hash could equal the migrations lock).
+  assert.equal(seen[1].sql, 'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))');
+  assert.deepEqual(seen[1].params, ['aurora_otp_start', 'tx@example.com']);
 });
 
 test('a refused /start rolls its transaction back', async () => {
@@ -235,6 +237,23 @@ test('a refused /start rolls its transaction back', async () => {
   seen.length = 0;
   await assert.rejects(store.createOtpChallenge({ email: 'rb@example.com' }), { code: 'AUTH_RATE_LIMITED' });
   assert.deepEqual(seen, ['BEGIN', 'SELECT', 'SELECT', 'ROLLBACK']);
+});
+
+test('a request that finds no attempt left does NOT close the code: in-flight guesses may be right', async () => {
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
+  const email = 'inflight@example.com';
+  const { debug_code: code } = await store.createOtpChallenge({ email });
+  // Five reservations taken and still in flight (none has compared or consumed yet).
+  await query('UPDATE aurora_auth_challenges SET attempts = 5 WHERE email = $1', [email]);
+  const sixth = await store.verifyOtpChallenge({ email, code });
+  assert.deepEqual(sixth, { ok: false, reason: 'invalid_or_expired' });
+  const [row] = await challengeRows(query, email);
+  // Mutant killed: closing on the reservation-failure path (the 6th of several concurrent right-code
+  // submissions then shut the code before any of the first five consumed it — nobody signed in).
+  assert.equal(row.consumed_at, null);
+  assert.equal(Number(row.attempts), 5);
 });
 
 test('concurrent uses of the right code mint exactly one session', async () => {
