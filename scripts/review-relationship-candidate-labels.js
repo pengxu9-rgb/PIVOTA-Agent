@@ -37,6 +37,7 @@ const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
+const { getRelationshipEdgeServingSuppressionReasons } = require('../src/auroraBff/productRelationshipGraph');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v2';
@@ -75,6 +76,9 @@ function usage() {
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
+    'Rows the serving guard would suppress once approved are never approved: they move to needs_evidence',
+    '(reason flag serving_guard:<reason>) without an LLM call. Exception: --allow-dupe-ai-approval overrides',
+    'the guard\'s blanket ai_approved dupe quarantine, so dupes approved under it are still hidden at serving.',
   ].join('\n');
 }
 
@@ -206,7 +210,9 @@ function readVerdictsFile(filePath) {
     const id = normalizeString(row.id, 160);
     if (!id) continue;
     const verdict = normalizeString(row.verdict, 20).toLowerCase();
-    if (verdict === 'error') continue;
+    // guard_blocked rows come from a previous --out file; runReview re-asks the guard before it
+    // ever consults a replay, so they carry no verdict to replay.
+    if (verdict === 'error' || verdict === 'guard_blocked') continue;
     if (!['approve', 'reject'].includes(verdict)) {
       throw new Error(`invalid verdict for ${id}: ${row.verdict}`);
     }
@@ -689,10 +695,71 @@ function buildReviewErrorDecision(err) {
   };
 }
 
+// The serving guard hides some edges ONLY once they are ai_approved (e.g. a related_product
+// between two shades/styles of one product line). Approving such an edge publishes nothing to
+// buyers and trips the routine's serving-audit gate, so the reviewer asks the guard first — the
+// guard's own function, evaluated as the row would be after approval, not a copy of its rules.
+//
+// The guard quarantines EVERY ai_approved dupe; whether a dupe may be AI-approved at all is the
+// separate, explicit --allow-dupe-ai-approval decision, so that one reason defers to the flag.
+const DUPE_QUARANTINE_REASON = 'ai_approved_dupe_quarantined';
+
+function servingGuardReasonsIfApproved(row, { allowDupeAiApproval = false } = {}) {
+  const reasons = getRelationshipEdgeServingSuppressionReasons({
+    ...(row || {}),
+    label_state: 'ai_approved',
+    review_status: 'approved',
+  });
+  return allowDupeAiApproval ? reasons.filter((reason) => reason !== DUPE_QUARANTINE_REASON) : reasons;
+}
+
+async function applyGuardBlock(row, reasons, queryFn = query) {
+  const reasonFlags = reasons.map((reason) => `serving_guard:${normalizeString(reason, 150).toLowerCase()}`);
+  const stamp = {
+    action: 'relationship_graph_review_serving_guard_block',
+    reasons,
+    reviewer: REVIEWER_ID,
+    rubric: RUBRIC_VERSION,
+    blocked_at: new Date().toISOString(),
+  };
+  const res = await queryFn(
+    `
+      UPDATE relationship_candidate_labels
+      SET
+        label_state = 'needs_evidence',
+        reason_flags = ARRAY(
+          SELECT DISTINCT flag
+          FROM unnest(COALESCE(reason_flags, '{}'::text[]) || $2::text[]) AS flags(flag)
+          WHERE flag IS NOT NULL AND flag <> ''
+          ORDER BY flag
+        ),
+        provenance = jsonb_set(
+          COALESCE(provenance, '{}'::jsonb),
+          '{review_serving_guard}',
+          $3::jsonb || jsonb_build_object('previous_reason_flags', to_jsonb(COALESCE(reason_flags, '{}'::text[]))),
+          true
+        ),
+        updated_at = now()
+      WHERE id = $1
+        AND label_state = 'generated'
+      RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
+    `,
+    [row.id, reasonFlags, JSON.stringify(stamp)],
+  );
+  return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
+}
+
 async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false } = {}) {
   if (normalizeString(row && row.relation_type, 80).toLowerCase() === 'dupe' && !allowDupeAiApproval) {
     const err = new Error('dupe_ai_approval_requires_explicit_allow_dupe_ai_approval');
     err.code = 'DUPE_AI_APPROVAL_BLOCKED';
+    throw err;
+  }
+  const guardReasons = servingGuardReasonsIfApproved(row, { allowDupeAiApproval });
+  if (guardReasons.length) {
+    const err = new Error(`serving_guard_would_suppress:${guardReasons.join(',')}`);
+    err.code = 'SERVING_GUARD_AI_APPROVAL_BLOCKED';
+    err.reasons = guardReasons;
     throw err;
   }
   const aiReview = buildAiReview(decision);
@@ -714,13 +781,18 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
 
+function targetLabelState(verdict) {
+  if (verdict === 'approve') return 'ai_approved';
+  if (verdict === 'guard_blocked') return 'needs_evidence';
+  return 'generated';
+}
+
 function verdictToLine(row, decision, appliedRow, { apply }) {
   const oldState = 'generated';
-  const newState = decision.verdict === 'approve'
-    ? (apply ? (appliedRow ? 'ai_approved' : 'generated') : 'ai_approved')
-    : 'generated';
+  const target = targetLabelState(decision.verdict);
+  const newState = target === 'generated' ? target : (apply ? (appliedRow ? target : 'generated') : target);
   const mode = apply ? 'apply' : 'dry-run';
-  const applyNote = apply && decision.verdict === 'approve' && !appliedRow ? ' guarded_noop' : '';
+  const applyNote = apply && target !== 'generated' && !appliedRow ? ' guarded_noop' : '';
   return [
     `[${mode}]`,
     row.id,
@@ -791,11 +863,21 @@ async function runReview({
 
   const decisions = [];
   let appliedCount = 0;
+  let guardBlockedAppliedCount = 0;
   for (const row of rows) {
     const evidence = buildEvidence(row, supplements);
     // eslint-disable-next-line no-await-in-loop
     let decision = null;
-    if (verdictReplay) {
+    const guardReasons = servingGuardReasonsIfApproved(row, { allowDupeAiApproval });
+    if (guardReasons.length) {
+      // Never sent to the LLM (or taken from a verdict replay): no verdict can make it servable.
+      decision = {
+        verdict: 'guard_blocked',
+        confidence: 0,
+        rationale: `serving guard would suppress this edge once approved (${guardReasons.join(', ')}); moved to needs_evidence without review.`,
+        serving_guard_reasons: guardReasons,
+      };
+    } else if (verdictReplay) {
       decision = verdictReplay.byId.get(row.id);
     } else {
       try {
@@ -813,6 +895,10 @@ async function runReview({
       // eslint-disable-next-line no-await-in-loop
       appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval });
       if (appliedRow) appliedCount += 1;
+    } else if (apply && decision.verdict === 'guard_blocked') {
+      // eslint-disable-next-line no-await-in-loop
+      appliedRow = await applyGuardBlock(row, decision.serving_guard_reasons, queryFn);
+      if (appliedRow) guardBlockedAppliedCount += 1;
     }
     const outputRow = {
       id: row.id,
@@ -824,9 +910,10 @@ async function runReview({
       confidence: decision.confidence,
       rationale: decision.rationale,
       old_label_state: 'generated',
-      new_label_state: decision.verdict === 'approve' ? 'ai_approved' : 'generated',
+      new_label_state: targetLabelState(decision.verdict),
       applied: Boolean(appliedRow),
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
+      ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
     };
     decisions.push(outputRow);
     process.stdout.write(`${verdictToLine(row, decision, appliedRow, { apply })}\n`);
@@ -835,6 +922,13 @@ async function runReview({
   const approvedCount = decisions.filter((row) => row.verdict === 'approve').length;
   const rejectedCount = decisions.filter((row) => row.verdict === 'reject').length;
   const reviewErrorCount = decisions.filter((row) => row.verdict === 'error').length;
+  const guardBlocked = decisions.filter((row) => row.verdict === 'guard_blocked');
+  const guardBlockedByReason = {};
+  for (const row of guardBlocked) {
+    for (const reason of row.serving_guard_reasons || []) {
+      guardBlockedByReason[reason] = (guardBlockedByReason[reason] || 0) + 1;
+    }
+  }
   const approvalRate = decisions.length ? approvedCount / decisions.length : 0;
   const summary = {
     dry_run: !apply,
@@ -854,6 +948,9 @@ async function runReview({
     approved_count: approvedCount,
     rejected_count: rejectedCount,
     review_error_count: reviewErrorCount,
+    guard_blocked_count: guardBlocked.length,
+    guard_blocked_by_reason: guardBlockedByReason,
+    guard_blocked_applied_count: guardBlockedAppliedCount,
     applied_count: appliedCount,
     approval_rate: Number(approvalRate.toFixed(4)),
     reviewer: REVIEWER_ID,
@@ -910,6 +1007,7 @@ module.exports = {
   AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
   applyApproval,
+  applyGuardBlock,
   buildEvidence,
   buildReviewPrompt,
   buildAiReview,
@@ -917,4 +1015,5 @@ module.exports = {
   fetchSupplementsForRows,
   parseArgs,
   runReview,
+  servingGuardReasonsIfApproved,
 };

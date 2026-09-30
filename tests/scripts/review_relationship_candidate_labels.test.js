@@ -5,7 +5,69 @@ const {
   fetchCandidates,
   parseArgs,
   runReview,
+  servingGuardReasonsIfApproved,
 } = require('../../scripts/review-relationship-candidate-labels');
+const { getRelationshipEdgeServingSuppressionReasons } = require('../../src/auroraBff/productRelationshipGraph');
+
+// Titles are the pair the prod serving-guard audit printed on 2026-09-29 (two styles of one
+// Impress lash line approved as related_product), i.e. what the builder actually emits.
+function labelRow(id, overrides = {}) {
+  return {
+    id,
+    edge_id: id,
+    anchor_type: 'product',
+    anchor_ref: `product:sig_anchor_${id}`,
+    anchor_snapshot: {
+      product_id: `sig_anchor_${id}`,
+      brand: 'Impress',
+      title: 'Impress Falsies Long Lasting Pre-Glued False Eyelashes - Demi Edgy | 48 Lash Clusters, Up To 5 Day Wear, 8mm-16mm',
+      category: 'False Lashes',
+    },
+    candidate_product_ref: `product:sig_candidate_${id}`,
+    candidate_snapshot: {
+      product_id: `sig_candidate_${id}`,
+      brand: 'Impress',
+      title: 'Impress Falsies Long Lasting Pre-Glued False Eyelashes - Demi Bold | 48 Lash Clusters, Up To 5 Day Wear, 8mm-16mm',
+      category: 'False Lashes',
+    },
+    relation_type: 'related_product',
+    display_label: 'related_product',
+    market: 'US',
+    vertical: 'beauty',
+    category_taxonomy: ['False Lashes'],
+    use_case: 'False Lashes',
+    label_state: 'generated',
+    score_total: 0.8,
+    score_breakdown: {},
+    price_evidence: {},
+    source_refs: [],
+    evidence_grade: 'B',
+    why_candidate: { summary: 'Same brand, same line.' },
+    tradeoffs: [],
+    watchouts: [],
+    provenance: {},
+    created_at: '2026-09-29T00:00:00.000Z',
+    updated_at: '2026-09-29T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function genuineRelatedRow(id) {
+  return labelRow(id, {
+    candidate_snapshot: {
+      product_id: `sig_candidate_${id}`,
+      brand: 'Impress',
+      title: 'Impress Lash Glue Remover',
+      category: 'Lash Adhesive',
+    },
+  });
+}
+
+const APPROVE = {
+  verdict: 'approve',
+  confidence: 0.9,
+  rationale: 'Same brand products used together in one lash routine.',
+};
 
 describe('review-relationship-candidate-labels', () => {
   afterEach(() => {
@@ -335,4 +397,203 @@ describe('review-relationship-candidate-labels', () => {
       review_error: expect.objectContaining({ code: 'LLM_SCHEMA_INVALID' }),
     }));
   });
+
+  describe('serving guard gate', () => {
+    test('asks the guard as the row would be AFTER approval, using the guard function itself', () => {
+      const row = labelRow('rcl_variant');
+      expect(row.label_state).toBe('generated');
+      // Read as stored (generated) the guard says nothing — the related_product rules only fire on ai_approved.
+      expect(getRelationshipEdgeServingSuppressionReasons(row)).toEqual([]);
+      expect(servingGuardReasonsIfApproved(row)).toEqual(['related_product_same_family_variant']);
+      expect(servingGuardReasonsIfApproved(row)).toEqual(
+        getRelationshipEdgeServingSuppressionReasons({ ...row, label_state: 'ai_approved' }),
+      );
+      expect(servingGuardReasonsIfApproved(genuineRelatedRow('rcl_ok'))).toEqual([]);
+    });
+
+    test('dry run: a variant sibling is never sent to the LLM and is reported guard_blocked', async () => {
+      const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql)
+          ? { rows: [labelRow('rcl_variant'), genuineRelatedRow('rcl_ok')] }
+          : { rows: [] }
+      ));
+
+      const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, queryFn, provider });
+
+      expect(provider.analyzeTextToJson).toHaveBeenCalledTimes(1);
+      expect(queryFn.mock.calls.some(([sql]) => /UPDATE relationship_candidate_labels/i.test(sql))).toBe(false);
+      const byId = Object.fromEntries(result.decisions.map((d) => [d.id, d]));
+      expect(byId.rcl_variant).toEqual(expect.objectContaining({
+        verdict: 'guard_blocked',
+        new_label_state: 'needs_evidence',
+        applied: false,
+        serving_guard_reasons: ['related_product_same_family_variant'],
+      }));
+      expect(byId.rcl_ok).toEqual(expect.objectContaining({ verdict: 'approve', new_label_state: 'ai_approved' }));
+      expect(result.summary).toEqual(expect.objectContaining({
+        reviewed_count: 2,
+        approved_count: 1,
+        guard_blocked_count: 1,
+        guard_blocked_by_reason: { related_product_same_family_variant: 1 },
+        guard_blocked_applied_count: 0,
+        applied_count: 0,
+      }));
+    });
+
+    test('apply: the sibling moves generated -> needs_evidence with a serving_guard flag; the genuine row is approved', async () => {
+      const saved = process.env.RELGRAPH_AI_REVIEW_APPLY;
+      process.env.RELGRAPH_AI_REVIEW_APPLY = '1';
+      try {
+        const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+        const queryFn = jest.fn(async (sql, params) => {
+          if (/^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql)) {
+            return { rows: [labelRow('rcl_variant'), genuineRelatedRow('rcl_ok')] };
+          }
+          if (/UPDATE relationship_candidate_labels/i.test(sql)) {
+            const next = /label_state = 'needs_evidence'/.test(sql) ? 'needs_evidence' : 'ai_approved';
+            return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: next }] };
+          }
+          return { rows: [] };
+        });
+
+        const result = await runReview({
+          cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, apply: true, queryFn, provider,
+        });
+
+        const updates = queryFn.mock.calls.filter(([sql]) => /UPDATE relationship_candidate_labels/i.test(sql));
+        expect(updates).toHaveLength(2);
+        const [blockSql, blockParams] = updates.find(([, params]) => params[0] === 'rcl_variant');
+        expect(blockSql).toMatch(/label_state = 'needs_evidence'/);
+        expect(blockSql).not.toMatch(/'ai_approved'/);
+        expect(blockSql).toMatch(/AND label_state = 'generated'/);
+        expect(blockParams[1]).toEqual(['serving_guard:related_product_same_family_variant']);
+        expect(JSON.parse(blockParams[2])).toEqual(expect.objectContaining({
+          action: 'relationship_graph_review_serving_guard_block',
+          reasons: ['related_product_same_family_variant'],
+        }));
+        const [approveSql] = updates.find(([, params]) => params[0] === 'rcl_ok');
+        expect(approveSql).toMatch(/label_state = 'ai_approved'/);
+        expect(result.summary).toEqual(expect.objectContaining({
+          approved_count: 1,
+          applied_count: 1,
+          guard_blocked_count: 1,
+          guard_blocked_applied_count: 1,
+        }));
+      } finally {
+        if (saved === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY;
+        else process.env.RELGRAPH_AI_REVIEW_APPLY = saved;
+      }
+    });
+
+    test('a replayed approve verdict cannot approve a variant sibling', async () => {
+      const fs = require('node:fs');
+      const os = require('node:os');
+      const path = require('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-review-'));
+      const verdictsFile = path.join(dir, 'verdicts.json');
+      fs.writeFileSync(verdictsFile, JSON.stringify({ decisions: [{ id: 'rcl_variant', ...APPROVE }] }));
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql) ? { rows: [labelRow('rcl_variant')] } : { rows: [] }
+      ));
+
+      const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, verdictsFile, queryFn });
+
+      expect(result.decisions[0]).toEqual(expect.objectContaining({ verdict: 'guard_blocked' }));
+      expect(result.summary.approved_count).toBe(0);
+    });
+
+    test('the dupe quarantine reason defers to --allow-dupe-ai-approval; variant reasons do not', () => {
+      const dupe = genuineRelatedRow('rcl_dupe');
+      dupe.relation_type = 'dupe';
+      expect(servingGuardReasonsIfApproved(dupe)).toEqual(['ai_approved_dupe_quarantined']);
+      expect(servingGuardReasonsIfApproved(dupe, { allowDupeAiApproval: true })).toEqual([]);
+      expect(servingGuardReasonsIfApproved(labelRow('rcl_variant'), { allowDupeAiApproval: true }))
+        .toEqual(['related_product_same_family_variant']);
+    });
+
+    test('the reviewer\'s own --out file (with a guard_blocked row) replays cleanly', async () => {
+      const fs = require('node:fs');
+      const os = require('node:os');
+      const path = require('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-review-out-'));
+      const out = path.join(dir, 'review.json');
+      const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql)
+          ? { rows: [labelRow('rcl_variant'), genuineRelatedRow('rcl_ok')] }
+          : { rows: [] }
+      ));
+      await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, out, queryFn, provider });
+
+      const replayed = await runReview({
+        cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, verdictsFile: out, queryFn,
+      });
+
+      const byId = Object.fromEntries(replayed.decisions.map((d) => [d.id, d.verdict]));
+      expect(byId).toEqual({ rcl_variant: 'guard_blocked', rcl_ok: 'approve' });
+      expect(replayed.summary.verdicts_file_count).toBe(1);
+    });
+
+    test('a nested product: ref is blocked whatever the relation type (the routine fails on it)', async () => {
+      const row = genuineRelatedRow('rcl_nested');
+      row.relation_type = 'competitive_alternative';
+      row.candidate_product_ref = 'product:japanesetaste-com:0123456789abcdef';
+      row.candidate_snapshot = { ...row.candidate_snapshot, brand: 'Other Brand' };
+      expect(servingGuardReasonsIfApproved(row)).toEqual(['candidate_ref_unresolvable_nested_product_prefix']);
+      const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql) ? { rows: [row] } : { rows: [] }
+      ));
+
+      const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, queryFn, provider });
+
+      expect(provider.analyzeTextToJson).not.toHaveBeenCalled();
+      expect(result.decisions[0]).toEqual(expect.objectContaining({
+        verdict: 'guard_blocked',
+        serving_guard_reasons: ['candidate_ref_unresolvable_nested_product_prefix'],
+      }));
+    });
+
+    test('apply: a guard block that loses a race (row no longer generated) is a guarded no-op', async () => {
+      const saved = process.env.RELGRAPH_AI_REVIEW_APPLY;
+      process.env.RELGRAPH_AI_REVIEW_APPLY = '1';
+      const lines = [];
+      jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => { lines.push(String(chunk)); return true; });
+      try {
+        const queryFn = jest.fn(async (sql) => (
+          /^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql) ? { rows: [labelRow('rcl_variant')] } : { rows: [] }
+        ));
+
+        const result = await runReview({
+          cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, apply: true, queryFn, provider: { analyzeTextToJson: jest.fn() },
+        });
+
+        expect(result.decisions[0]).toEqual(expect.objectContaining({ verdict: 'guard_blocked', applied: false }));
+        expect(result.summary.guard_blocked_applied_count).toBe(0);
+        expect(lines.join('')).toMatch(/rcl_variant generated->generated verdict=guard_blocked .* guarded_noop/);
+      } finally {
+        if (saved === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY;
+        else process.env.RELGRAPH_AI_REVIEW_APPLY = saved;
+      }
+    });
+
+    test('the guard-block UPDATE records the row\'s previous reason_flags from the stored row', async () => {
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+      const { applyGuardBlock } = require('../../scripts/review-relationship-candidate-labels');
+      await applyGuardBlock(labelRow('rcl_variant'), ['related_product_same_family_variant'], queryFn);
+      const [sql] = queryFn.mock.calls[0];
+      expect(sql).toMatch(/jsonb_build_object\('previous_reason_flags', to_jsonb\(COALESCE\(reason_flags, '\{\}'::text\[\]\)\)\)/);
+    });
+
+    test('applyApproval itself refuses a row the serving guard would suppress', async () => {
+      const queryFn = jest.fn(async () => ({ rows: [{ id: 'rcl_variant' }] }));
+      await expect(applyApproval(labelRow('rcl_variant'), APPROVE, queryFn)).rejects.toMatchObject({
+        code: 'SERVING_GUARD_AI_APPROVAL_BLOCKED',
+        reasons: ['related_product_same_family_variant'],
+      });
+      expect(queryFn).not.toHaveBeenCalled();
+    });
+  });
 });
+
