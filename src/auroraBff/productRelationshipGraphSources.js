@@ -1069,6 +1069,7 @@ async function loadAffectedProductAnchorCandidates({
   market = DEFAULT_MARKET,
   limit = DEFAULT_SOURCE_LIMIT,
   prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
 } = {}) {
   const terms = normalizeAffectedRefTerms(refs);
   if (!terms.length) return [];
@@ -1103,7 +1104,7 @@ async function loadAffectedProductAnchorCandidates({
           cp.product_key,
           cp.source_product_id,
           cp.pivota_signature_id,
-          cp.content_key,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
+          cp.content_key,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$2', cooldownDays: uncoveredCooldownDays })} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
           COALESCE(
             'product:' || NULLIF(cp.pivota_signature_id, ''),
             'product:' || NULLIF(eps.external_product_id, ''),
@@ -1114,7 +1115,7 @@ async function loadAffectedProductAnchorCandidates({
           ON cp.source_product_id = eps.external_product_id
           -- Path-C / retailer-lane seeds point at their catalog row only through
           -- attached_product_key (same join as the affected-products selector).
-          OR cp.product_key = eps.attached_product_key
+          OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? '\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id' : ''}
         WHERE COALESCE(eps.status, 'active') = 'active'
           AND upper(COALESCE(eps.market, $2)) = $2
           AND (
@@ -1128,7 +1129,7 @@ async function loadAffectedProductAnchorCandidates({
             OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
             OR cp.content_key = ANY($1::text[])
           )
-        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
+        ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, ' : ''}eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
         LIMIT $3
       `,
       [terms, normalizedMarket, rowLimit],
@@ -1149,14 +1150,14 @@ async function loadAffectedProductAnchorCandidates({
           cp.product_key,
           cp.source_product_id,
           cp.pivota_signature_id,
-          cp.content_key${prioritizeUncovered ? `,\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live` : ''}
+          cp.content_key${prioritizeUncovered ? `,\n          CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$3', cooldownDays: uncoveredCooldownDays })} THEN true ELSE false END AS relgraph_uncovered_live` : ''}
         FROM products_cache pc
         LEFT JOIN catalog_products cp
           ON cp.source_product_id = COALESCE(
             NULLIF(pc.platform_product_id, ''),
             NULLIF(pc.product_data->>'product_id', ''),
             NULLIF(pc.product_data->>'id', '')
-          )
+          )${prioritizeUncovered ? '\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id' : ''}
         WHERE (
           pc.platform_product_id = ANY($1::text[])
           OR pc.product_data->>'product_id' = ANY($1::text[])
@@ -1169,10 +1170,10 @@ async function loadAffectedProductAnchorCandidates({
           OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
           OR cp.content_key = ANY($1::text[])
         )
-        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}pc.cached_at DESC NULLS LAST, pc.id DESC
+        ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, ' : ''}pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $2
       `,
-      [terms, rowLimit],
+      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket] : [])],
     ),
     guardedRows(
       queryFn,
@@ -1193,23 +1194,23 @@ async function loadAffectedProductAnchorCandidates({
           cp.pivota_canonical_url,
           cp.product_payload,
           cp.updated_at,
-          cp.created_at,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
+          cp.created_at,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$3', cooldownDays: uncoveredCooldownDays })} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
           COALESCE(
             'product:' || NULLIF(cp.pivota_signature_id, ''),
             'product:' || NULLIF(cp.source_product_id, ''),
             cp.product_key
           ) AS product_ref
-        FROM catalog_products cp
+        FROM catalog_products cp${prioritizeUncovered ? '\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id' : ''}
         WHERE cp.product_key = ANY($1::text[])
            OR cp.source_product_id = ANY($1::text[])
            OR cp.pivota_signature_id = ANY($1::text[])
            OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
            OR ('product:' || cp.source_product_id) = ANY($1::text[])
            OR cp.content_key = ANY($1::text[])
-        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}cp.updated_at DESC NULLS LAST, cp.product_key ASC
+        ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, ' : ''}cp.updated_at DESC NULLS LAST, cp.product_key ASC
         LIMIT $2
       `,
-      [terms, rowLimit],
+      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket] : [])],
     ),
   ]);
 
@@ -2498,6 +2499,7 @@ async function loadProductRelationshipGraphSourceInputs({
   approvedLiveExternalSeedAnchorLimit = limit,
   missingCandidateLabelsOnly = false,
   prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
 } = {}) {
   const sourceLimit = normalizeLimit(limit);
   const approvedLiveExternalSeedAnchors = includeApprovedLiveExternalSeedAnchors
@@ -2518,6 +2520,7 @@ async function loadProductRelationshipGraphSourceInputs({
     queryFn,
     refs: affectedRefs,
     prioritizeUncovered,
+    uncoveredCooldownDays,
     market,
     limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
   });

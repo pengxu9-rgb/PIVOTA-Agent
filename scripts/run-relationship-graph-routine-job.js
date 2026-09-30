@@ -160,6 +160,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
     minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
@@ -277,7 +278,10 @@ function buildRoutineSteps(options) {
       '--out',
       artifacts.build,
     ];
-    if (options.prioritizeUncovered) args.push('--prioritize-uncovered');
+    if (options.prioritizeUncovered) {
+      args.push('--prioritize-uncovered');
+      pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+    }
     if (options.sourceLimit) pushArg(args, 'source-limit', options.sourceLimit);
     pushArg(args, 'affected-refs', options.affectedRefs);
     pushArg(args, 'affected-refs-file', options.affectedRefsFile);

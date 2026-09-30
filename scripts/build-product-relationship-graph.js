@@ -874,6 +874,7 @@ async function buildInputsFromDb({
   approvedLiveExternalSeedAnchorLimit = sourceLimit,
   missingCandidateLabelsOnly = false,
   prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
 } = {}) {
   if (scopeProvided && !(Array.isArray(affectedRefs) && affectedRefs.length)) {
     // An explicit, empty scope: this run touches no products. Nothing to anchor, no need-node
@@ -903,6 +904,7 @@ async function buildInputsFromDb({
     market,
     affectedRefs,
     prioritizeUncovered,
+    uncoveredCooldownDays,
     includeApprovedLiveExternalSeedAnchors,
     approvedLiveExternalSeedAnchorLimit,
     missingCandidateLabelsOnly,
@@ -1027,6 +1029,7 @@ async function main() {
     market,
     affectedRefs,
     prioritizeUncovered: hasFlag('prioritize-uncovered'),
+    uncoveredCooldownDays: numberArg('uncovered-cooldown-days', 7, { min: 1, max: 90 }),
     affectedScopeProvided: affectedScopeProvided(),
     maxPerAnchor,
     includeTransitiveRecall,

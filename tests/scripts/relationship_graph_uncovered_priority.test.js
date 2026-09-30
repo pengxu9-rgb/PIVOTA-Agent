@@ -17,22 +17,16 @@ test('default and explicit flag off preserve every selector and affected-loader 
   expect(await fetchCalls(false)).toEqual(baselineCalls);
 });
 
-test('flag on uses indexed anti-joins for both served ref forms and orders before existing tie breakers', async () => {
+test('flag on projects priority once and sorts the alias before existing tie breakers', async () => {
   const calls = await fetchCalls(true);
-  const predicate = uncoveredLiveCatalogSql();
-  expect(predicate).toContain('cp.pdp_will_render IS TRUE');
-  expect(predicate).toContain('cp.suppressed_at IS NULL AND cp.suppression_reason IS NULL');
-  expect(predicate).toContain("lower(rcl.anchor_ref) = lower('product:' || cp.pivota_signature_id)");
-  expect(predicate).toContain('coverage_seed.attached_product_key = cp.product_key');
-  expect(predicate).toContain("lower(rcl.anchor_ref) = lower('product:' || coverage_seed.external_product_id)");
-  expect(predicate.match(/NOT EXISTS/g)).toHaveLength(2);
-  expect(predicate.match(/rcl.label_state IN \('ai_approved', 'human_approved'\)/g)).toHaveLength(2);
-  expect(predicate.match(/rcl.last_verified_at IS NOT NULL AND rcl.expires_at > now\(\)/g)).toHaveLength(2);
   calls.forEach(([sql, params], i) => {
     const [oldSql, oldParams] = baselineCalls[i];
-    expect(params).toEqual(oldParams);
-    expect(sql).toContain(`ORDER BY CASE WHEN ${predicate} THEN 0 ELSE 1 END, `);
+    expect(params.slice(0, oldParams.length)).toEqual(oldParams);
+    expect(sql).toContain('LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id');
+    expect(sql).toContain('ORDER BY relgraph_uncovered_live DESC, ');
     expect(sql).toContain(oldSql.split('ORDER BY ')[1]);
+    expect(sql.match(/AS relgraph_uncovered_live/g)).toHaveLength(1);
+    expect(sql.split('ORDER BY')[1]).not.toContain('NOT EXISTS');
   });
 });
 
@@ -68,13 +62,16 @@ test('cron flag defaults off and reaches selector and build child only when arme
   const sync = require('../../scripts/run-relationship-graph-sync-routine');
   const routine = require('../../scripts/run-relationship-graph-routine-job');
   for (const value of [undefined, 'false', 'true']) {
-    const config = cron.buildCronArgs({ RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: value });
+    const config = cron.buildCronArgs({ RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: value, RELGRAPH_SYNC_UNCOVERED_COOLDOWN_DAYS: '11' });
     const steps = sync.buildSyncRoutineSteps(sync.parseArgs(config.args)).steps;
     const selectorStep = steps.find((step) => step.id === 'affected_product_selector');
     const routineStep = steps.find((step) => step.args[0].endsWith('run-relationship-graph-routine-job.js'));
     const build = routine.buildRoutineSteps(routine.parseArgs(routineStep.args)).steps.find((step) => step.id === 'build');
     for (const argv of [config.args, selectorStep.args, routineStep.args, build.args]) {
       expect(argv.includes('--prioritize-uncovered')).toBe(value === 'true');
+      const i = argv.indexOf('--uncovered-cooldown-days');
+      expect(i >= 0).toBe(value === 'true');
+      if (i >= 0) expect(argv[i + 1]).toBe('11');
     }
   }
 });
