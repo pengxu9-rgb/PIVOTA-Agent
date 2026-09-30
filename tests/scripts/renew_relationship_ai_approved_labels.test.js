@@ -645,6 +645,10 @@ describe('renew-relationship-ai-approved-labels', () => {
         suppressed: 1,
         candidate_unresolvable: 1,
       }));
+      expect(result.skippedByState).toEqual({
+        ai_approved: { age_capped: 1 },
+        human_approved: { age_capped: 2, suppressed: 1, candidate_unresolvable: 1 },
+      });
     });
 
     test('an already-expired human row is never renewed, even if the scan let it through', () => {
@@ -699,8 +703,8 @@ describe('renew-relationship-ai-approved-labels', () => {
       expect(report.ok).toBe(true);
       expect(report.renewed_count).toBe(2);
       expect(report.by_label_state).toEqual({
-        ai_approved: { scanned: 1, renewable: 1, renewed: 1 },
-        human_approved: { scanned: 1, renewable: 1, renewed: 1 },
+        ai_approved: { scanned: 1, renewable: 1, renewed: 1, skipped: {} },
+        human_approved: { scanned: 1, renewable: 1, renewed: 1, skipped: {} },
       });
     });
 
@@ -723,7 +727,9 @@ describe('renew-relationship-ai-approved-labels', () => {
         queryFn: stateAwareQueryFn({ rows }), generatedAt: '2026-08-04T00:00:00.000Z', humanMaxAgeDays: 30,
       });
       expect(tight.human_max_age_days).toBe(30);
-      expect(tight.by_label_state.human_approved).toEqual({ scanned: 1, renewable: 0, renewed: 0 });
+      expect(tight.by_label_state.human_approved).toEqual({
+        scanned: 1, renewable: 0, renewed: 0, skipped: { age_capped: 1 },
+      });
       expect(tight.skipped.age_capped).toBe(1);
       const loose = await runRenewal({ queryFn: stateAwareQueryFn({ rows }), generatedAt: '2026-08-04T00:00:00.000Z' });
       expect(loose.by_label_state.human_approved.renewable).toBe(1);

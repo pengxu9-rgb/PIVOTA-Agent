@@ -258,6 +258,7 @@ function createRenewalTally() {
     renewableIds: [],
     renewableByState: { ai_approved: [], human_approved: [] },
     scannedByState: { ai_approved: 0, human_approved: 0 },
+    skippedByState: { ai_approved: {}, human_approved: {} },
     skipped: {
       suppressed: 0,
       anchor_unresolvable: 0,
@@ -274,6 +275,7 @@ function foldRenewalBatch(tally, batchLength, evaluation = {}) {
     renewableIds = [],
     renewableByState = {},
     scannedByState = {},
+    skippedByState = {},
     skipped = {},
     suppressionReasons = {},
   } = evaluation;
@@ -282,6 +284,9 @@ function foldRenewalBatch(tally, batchLength, evaluation = {}) {
   for (const state of Object.keys(tally.renewableByState)) {
     for (const id of renewableByState[state] || []) tally.renewableByState[state].push(id);
     tally.scannedByState[state] += Number(scannedByState[state] || 0);
+    for (const [reason, count] of Object.entries(skippedByState[state] || {})) {
+      tally.skippedByState[state][reason] = Number(tally.skippedByState[state][reason] || 0) + Number(count || 0);
+    }
   }
   for (const key of Object.keys(tally.skipped)) {
     tally.skipped[key] += Number(skipped[key] || 0);
@@ -384,6 +389,12 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
     human_expired: 0,
   };
   const suppressionReasons = {};
+  // Per-state skip counts, so a human cohort aging out is not hidden inside the AI totals.
+  const skippedByState = { ai_approved: {}, human_approved: {} };
+  const skip = (state, reason) => {
+    skipped[reason] += 1;
+    skippedByState[state][reason] = Number(skippedByState[state][reason] || 0) + 1;
+  };
   const maxAgeMsByState = { ai_approved: maxAgeDays * DAY_MS, human_approved: humanMaxAgeDays * DAY_MS };
 
   for (const row of rows) {
@@ -393,18 +404,18 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
     if (state === 'human_approved') {
       const expiresMs = new Date(row.expires_at || '').getTime();
       if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
-        skipped.human_expired += 1;
+        skip(state, 'human_expired');
         continue;
       }
     }
     const verdictMs = verdictDateMs(row);
     if (verdictMs != null && nowMs - verdictMs > maxAgeMsByState[state]) {
-      skipped.age_capped += 1;
+      skip(state, 'age_capped');
       continue;
     }
     const reasons = suppressionFn(row);
     if (Array.isArray(reasons) && reasons.length) {
-      skipped.suppressed += 1;
+      skip(state, 'suppressed');
       for (const reason of reasons) {
         suppressionReasons[reason] = Number(suppressionReasons[reason] || 0) + 1;
       }
@@ -413,18 +424,18 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
     const anchorOk = normalizeString(row.anchor_type, 40).toLowerCase() === 'need'
       || refResolves(row.anchor_ref, resolvableRefs, { allowNeed: true });
     if (!anchorOk) {
-      skipped.anchor_unresolvable += 1;
+      skip(state, 'anchor_unresolvable');
       continue;
     }
     if (!refResolves(row.candidate_product_ref, resolvableRefs)) {
-      skipped.candidate_unresolvable += 1;
+      skip(state, 'candidate_unresolvable');
       continue;
     }
     renewableIds.push(row.id);
     renewableByState[state].push(row.id);
   }
 
-  return { renewableIds, renewableByState, scannedByState, skipped, suppressionReasons };
+  return { renewableIds, renewableByState, scannedByState, skippedByState, skipped, suppressionReasons };
 }
 
 async function applyRenewals(renewableIds, {
@@ -561,7 +572,7 @@ async function runRenewal({
       }
     }
   }
-  const { renewableIds, renewableByState, scannedByState, skipped, suppressionReasons } = tally;
+  const { renewableIds, renewableByState, scannedByState, skippedByState, skipped, suppressionReasons } = tally;
 
   const renewedByState = { ai_approved: 0, human_approved: 0 };
   if (apply && renewableIds.length) {
@@ -617,6 +628,7 @@ async function runRenewal({
       scanned: scannedByState[state],
       renewable: renewableByState[state].length,
       renewed: renewedByState[state],
+      skipped: skippedByState[state],
     }])),
     ok,
   };
