@@ -789,8 +789,15 @@ describe('bounded review concurrency', () => {
         await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 5)));
         return APPROVE;
       }) };
+      // The UPDATE takes real time, so applies from different workers overlap: a counter updated
+      // read-before-await / write-after would lose increments here.
+      const slowUpdates = rowsQuery(rows, async (sql, params) => {
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        const next = /label_state = 'needs_evidence'/.test(sql) ? 'needs_evidence' : 'ai_approved';
+        return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: next }] };
+      });
       const result = await withApply(() => runReview({
-        cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 3, apply: true, queryFn: rowsQuery(rows), provider,
+        cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 3, apply: true, queryFn: slowUpdates, provider,
       }));
       expect(result.summary).toEqual(expect.objectContaining({
         concurrency: 3,
