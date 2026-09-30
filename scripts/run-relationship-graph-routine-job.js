@@ -160,6 +160,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
@@ -281,6 +282,7 @@ function buildRoutineSteps(options) {
     if (options.prioritizeUncovered) {
       args.push('--prioritize-uncovered');
       pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+      pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
     }
     if (options.sourceLimit) pushArg(args, 'source-limit', options.sourceLimit);
     pushArg(args, 'affected-refs', options.affectedRefs);

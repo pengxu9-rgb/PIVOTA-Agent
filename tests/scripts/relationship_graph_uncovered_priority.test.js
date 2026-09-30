@@ -23,10 +23,10 @@ test('flag on projects priority once and sorts the alias before existing tie bre
     const [oldSql, oldParams] = baselineCalls[i];
     expect(params.slice(0, oldParams.length)).toEqual(oldParams);
     expect(sql).toContain('LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id');
-    expect(sql).toContain('ORDER BY relgraph_uncovered_live DESC, ');
+    expect(sql).toContain('ORDER BY relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ');
     expect(sql).toContain(oldSql.split('ORDER BY ')[1]);
     expect(sql.match(/AS relgraph_uncovered_live/g)).toHaveLength(1);
-    expect(sql.split('ORDER BY')[1]).not.toContain('NOT EXISTS');
+    expect(sql.split('ORDER BY').at(-1)).not.toContain('NOT EXISTS');
   });
 });
 
@@ -62,7 +62,7 @@ test('cron flag defaults off and reaches selector and build child only when arme
   const sync = require('../../scripts/run-relationship-graph-sync-routine');
   const routine = require('../../scripts/run-relationship-graph-routine-job');
   for (const value of [undefined, 'false', 'true']) {
-    const config = cron.buildCronArgs({ RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: value, RELGRAPH_SYNC_UNCOVERED_COOLDOWN_DAYS: '11' });
+    const config = cron.buildCronArgs({ RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: value, RELGRAPH_SYNC_UNCOVERED_COOLDOWN_DAYS: '11', RELGRAPH_SYNC_COVERAGE_SIBLING_REFS: 'false' });
     const steps = sync.buildSyncRoutineSteps(sync.parseArgs(config.args)).steps;
     const selectorStep = steps.find((step) => step.id === 'affected_product_selector');
     const routineStep = steps.find((step) => step.args[0].endsWith('run-relationship-graph-routine-job.js'));
@@ -72,6 +72,9 @@ test('cron flag defaults off and reaches selector and build child only when arme
       const i = argv.indexOf('--uncovered-cooldown-days');
       expect(i >= 0).toBe(value === 'true');
       if (i >= 0) expect(argv[i + 1]).toBe('11');
+      const sibling = argv.indexOf('--coverage-sibling-refs');
+      expect(sibling >= 0).toBe(value === 'true');
+      if (sibling >= 0) expect(argv[sibling + 1]).toBe('false');
     }
   }
 });
@@ -87,4 +90,19 @@ test('full source pool retains uncovered priority after its final dedupe', async
   });
   const result = await sources.loadProductRelationshipGraphSourceInputs({ queryFn, affectedRefs: ['sig_a', 'sig_z'], prioritizeUncovered: true });
   expect(result.products.map((product) => product.product_ref)).toEqual(['product:sig_z', 'product:sig_a']);
+});
+
+
+test('normalization preserves never-attempted, oldest-pending and terminal ordering', async () => {
+  const rows = [
+    { product_key:'terminal',pivota_signature_id:'sig_a',relgraph_priority:1,relgraph_last_activity:'2026-01-01' },
+    { product_key:'new',pivota_signature_id:'sig_b',relgraph_priority:2,relgraph_last_activity:'2026-02-01' },
+    { product_key:'old',pivota_signature_id:'sig_c',relgraph_priority:2,relgraph_last_activity:'2026-01-01' },
+    { product_key:'never',pivota_signature_id:'sig_z',relgraph_priority:3,relgraph_last_activity:null },
+  ].map((row)=>({...row,title:'Beauty serum',brand:row.product_key,category:'Serum',relgraph_uncovered_live:true}));
+  const queryFn=async(sql)=>({ rows:sql.includes('FROM catalog_products cp') ? rows : [] });
+  const result=await sources.loadAffectedProductAnchorCandidates({queryFn,refs:['fixture'],prioritizeUncovered:true});
+  expect(result.map((product)=>product.pivota_signature_id)).toEqual(['sig_z','sig_c','sig_b','sig_a']);
+  const final=prioritizeUncoveredProducts(sources.dedupeNormalizedProducts(result),result);
+  expect(final.map((product)=>product.pivota_signature_id)).toEqual(['sig_z','sig_c','sig_b','sig_a']);
 });

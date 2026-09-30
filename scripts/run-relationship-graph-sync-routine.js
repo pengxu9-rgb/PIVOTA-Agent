@@ -194,6 +194,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     selectUpdatedSince,
     selectSources: parseDelimitedList(argValue(argv, 'select-sources'), DEFAULT_SELECT_SOURCES),
     prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     selectLimit: parseNumber(argValue(argv, 'select-limit'), DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 }),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
@@ -378,6 +379,7 @@ function buildSyncRoutineSteps(options = {}) {
     ];
     pushFlag(args, 'prioritize-uncovered', options.prioritizeUncovered);
     if (options.prioritizeUncovered) pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+    if (options.prioritizeUncovered) pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
     pushFlag(args, 'allow-empty-selection', options.allowEmptySelection);
     steps.push({
       id: 'affected_product_selector',
@@ -464,6 +466,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushFlag(routineArgs, 'db-lock', options.dbLock);
   pushFlag(routineArgs, 'prioritize-uncovered', options.prioritizeUncovered);
   if (options.prioritizeUncovered) pushArg(routineArgs, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+  if (options.prioritizeUncovered) pushArg(routineArgs, 'coverage-sibling-refs', options.coverageSiblingRefs);
   pushArg(routineArgs, 'db-lock-key', options.dbLockKey);
   pushFlag(routineArgs, 'apply-build', options.applyBuild);
   pushFlag(routineArgs, 'apply-review', options.applyReview);
