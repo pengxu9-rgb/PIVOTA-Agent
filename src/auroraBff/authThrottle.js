@@ -49,6 +49,7 @@ function defaultLimits() {
     email: {
       start: { capacity: 5, periodSec: QUARTER_HOUR_SEC },
       verify: { capacity: 10, periodSec: QUARTER_HOUR_SEC },
+      password: { capacity: 10, periodSec: QUARTER_HOUR_SEC },
     },
   };
 }

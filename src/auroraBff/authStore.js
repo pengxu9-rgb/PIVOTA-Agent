@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const { query } = require('../db');
+const { query, withClient } = require('../db');
 
 const AUTH_ENABLED = String(process.env.AURORA_BFF_AUTH_ENABLED || '').toLowerCase() === 'true';
 const AUTH_DEBUG = String(process.env.AURORA_BFF_AUTH_DEBUG || '').toLowerCase() === 'true';
@@ -317,6 +317,25 @@ async function sendOtpEmail({ email, code, language }) {
   }
 }
 
+// Runs fn(txQuery) in one transaction holding a per-email advisory lock (released at COMMIT/ROLLBACK).
+// The same pattern as the bookings idempotency lock (services/bookings/repository.js).
+async function withOtpStartLock(mail, fn) {
+  if (typeof withClient !== 'function') throw makeError('AUTH_START_FAILED', 500, 'db_client_unavailable');
+  return withClient(async (client) => {
+    const txQuery = (text, params) => client.query(text, params);
+    await txQuery('BEGIN');
+    try {
+      await txQuery('SELECT pg_advisory_xact_lock(hashtext($1))', [`aurora_otp_start:${mail}`]);
+      const result = await fn(txQuery);
+      await txQuery('COMMIT');
+      return result;
+    } catch (err) {
+      await txQuery('ROLLBACK').catch(() => {});
+      throw err;
+    }
+  });
+}
+
 async function createOtpChallenge({ email, language } = {}) {
   requireAuthConfigured();
   await pruneExpired();
@@ -324,55 +343,62 @@ async function createOtpChallenge({ email, language } = {}) {
   const mail = String(email || '').trim().toLowerCase();
   if (!isValidEmail(mail)) throw makeError('INVALID_EMAIL', 400);
 
-  const createdAtMs = nowMs();
-
-  // The cross-instance /start bound (see OTP_START_MAX_PER_EMAIL). The answer is the same whether or
-  // not an account exists for the email: it counts challenges, which /start mints for any address.
-  const recent = await query(
-    `
-      SELECT COUNT(*) AS n, MIN(created_at) AS oldest
-      FROM aurora_auth_challenges
-      WHERE email = $1
-        AND created_at > $2
-    `,
-    [mail, toIso(createdAtMs - OTP_START_WINDOW_MS)],
-  );
-  const recentRow = recent && recent.rows && recent.rows[0] ? recent.rows[0] : null;
-  const recentCount = recentRow ? Number(recentRow.n) : 0;
-  if (!Number.isFinite(recentCount)) throw makeError('AUTH_START_FAILED', 500, 'challenge_count_unreadable');
-  if (recentCount >= OTP_START_MAX_PER_EMAIL) {
-    const oldestMs = recentRow && recentRow.oldest ? new Date(recentRow.oldest).getTime() : NaN;
-    const retryAfterMs = Number.isFinite(oldestMs) ? oldestMs + OTP_START_WINDOW_MS - createdAtMs : OTP_START_WINDOW_MS;
-    const err = makeError('AUTH_RATE_LIMITED', 429, 'otp_start_limit_per_email');
-    err.retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
-    throw err;
-  }
-
   const challengeId = crypto.randomBytes(16).toString('hex');
   const code = String(crypto.randomInt(100000, 1000000));
-  const expiresAtMs = createdAtMs + CHALLENGE_TTL_MS;
-
   const codeHash = hashWithPepper(`${challengeId}:${code}`);
 
-  // Keep only one active challenge per email. The superseded one is CLOSED, not deleted: it still
-  // counts toward the /start bound above until it ages out.
-  await query(
-    `
-      UPDATE aurora_auth_challenges
-      SET consumed_at = $2
-      WHERE email = $1
-        AND consumed_at IS NULL
-    `,
-    [mail, toIso(createdAtMs)],
-  );
+  // Count, close the open code and insert the new one as ONE transaction, serialised per email by a
+  // transaction-scoped advisory lock. As three autocommit statements, concurrent /start calls all read
+  // the same count and each inserted a code: 40 concurrent calls minted 35-40 codes with 9-28 left
+  // open, turning a 25-guess bound into 45-140. The partial unique index from migration 060 (one open
+  // challenge per email) is the backstop if anything ever writes around this lock.
+  const { createdAtMs, expiresAtMs } = await withOtpStartLock(mail, async (txQuery) => {
+    const startedAtMs = nowMs();
 
-  await query(
-    `
-      INSERT INTO aurora_auth_challenges (challenge_id, email, code_hash, expires_at, created_at)
-      VALUES ($1, $2, $3, $4, $5)
-    `,
-    [challengeId, mail, codeHash, new Date(expiresAtMs).toISOString(), toIso(createdAtMs)],
-  );
+    // The cross-instance /start bound (see OTP_START_MAX_PER_EMAIL). The answer is the same whether
+    // or not an account exists for the email: it counts challenges, which /start mints for any address.
+    const recent = await txQuery(
+      `
+        SELECT COUNT(*) AS n, MIN(created_at) AS oldest
+        FROM aurora_auth_challenges
+        WHERE email = $1
+          AND created_at > $2
+      `,
+      [mail, toIso(startedAtMs - OTP_START_WINDOW_MS)],
+    );
+    const recentRow = recent && recent.rows && recent.rows[0] ? recent.rows[0] : null;
+    const recentCount = recentRow ? Number(recentRow.n) : 0;
+    if (!Number.isFinite(recentCount)) throw makeError('AUTH_START_FAILED', 500, 'challenge_count_unreadable');
+    if (recentCount >= OTP_START_MAX_PER_EMAIL) {
+      const oldestMs = recentRow && recentRow.oldest ? new Date(recentRow.oldest).getTime() : NaN;
+      const retryAfterMs = Number.isFinite(oldestMs) ? oldestMs + OTP_START_WINDOW_MS - startedAtMs : OTP_START_WINDOW_MS;
+      const err = makeError('AUTH_RATE_LIMITED', 429, 'otp_start_limit_per_email');
+      err.retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
+      throw err;
+    }
+
+    // Keep only one open challenge per email. The superseded one is CLOSED, not deleted: it still
+    // counts toward the /start bound above until it ages out.
+    await txQuery(
+      `
+        UPDATE aurora_auth_challenges
+        SET consumed_at = $2
+        WHERE email = $1
+          AND consumed_at IS NULL
+      `,
+      [mail, toIso(startedAtMs)],
+    );
+
+    const challengeExpiresAtMs = startedAtMs + CHALLENGE_TTL_MS;
+    await txQuery(
+      `
+        INSERT INTO aurora_auth_challenges (challenge_id, email, code_hash, expires_at, created_at)
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [challengeId, mail, codeHash, toIso(challengeExpiresAtMs), toIso(startedAtMs)],
+    );
+    return { createdAtMs: startedAtMs, expiresAtMs: challengeExpiresAtMs };
+  });
 
   const deliveryResult = await sendOtpEmail({ email: mail, code, language });
   if (!deliveryResult.ok && !AUTH_DEBUG && !AUTH_DEBUG_RETURN_CODE) {
@@ -467,9 +493,11 @@ async function verifyOtpChallenge({ email, code } = {}) {
     [row.challenge_id, OTP_MAX_ATTEMPTS],
   );
   const reservedRow = reserved && reserved.rows && reserved.rows[0] ? reserved.rows[0] : null;
+  // The public reason stays invalid_or_expired when the cap closes a code: a distinct answer would
+  // confirm that the address has a live code under attack. closedByCap is for the caller's log only.
   if (!reservedRow) {
     await closeChallenge(row.challenge_id);
-    return { ok: false, reason: 'too_many_attempts' };
+    return { ok: false, reason: 'invalid_or_expired', closedByCap: true };
   }
   const attemptsUsed = Number(reservedRow.attempts);
 
@@ -477,7 +505,7 @@ async function verifyOtpChallenge({ email, code } = {}) {
   if (!hashesEqual(row.code_hash, actualHash)) {
     if (!Number.isFinite(attemptsUsed) || attemptsUsed >= OTP_MAX_ATTEMPTS) {
       await closeChallenge(row.challenge_id);
-      return { ok: false, reason: 'too_many_attempts' };
+      return { ok: false, reason: 'invalid_or_expired', closedByCap: true };
     }
     return { ok: false, reason: 'invalid_or_expired' };
   }
@@ -695,6 +723,36 @@ async function verifyPasswordForEmail({ email, password } = {}) {
     maxmem: 64 * 1024 * 1024,
   };
 
+  // Reserve the attempt BEFORE the comparison, in one guarded statement, the same shape as the OTP cap.
+  // Read-then-write let concurrent wrong passwords all read the same count: 40 at once made 28 real
+  // comparisons against a lockout of 5. The row lock serialises these UPDATEs and each re-checks the
+  // WHERE, so once a reservation has set password_locked_until the rest get no row. The reservation
+  // that reaches the limit sets the lock itself (a crash after it cannot leave the count stuck), and a
+  // right password on that attempt clears it below. An expired lock starts a fresh count.
+  const reservedAtMs = nowMs();
+  const reservation = await query(
+    `
+      UPDATE aurora_users
+      SET password_failed_attempts =
+            (CASE WHEN password_locked_until IS NOT NULL AND password_locked_until <= $2::timestamptz
+                  THEN 0 ELSE password_failed_attempts END) + 1,
+          password_locked_until =
+            CASE WHEN (CASE WHEN password_locked_until IS NOT NULL AND password_locked_until <= $2::timestamptz
+                            THEN 0 ELSE password_failed_attempts END) + 1 >= $3
+                 THEN $4::timestamptz
+                 ELSE NULL END,
+          updated_at = now()
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND (password_locked_until IS NULL OR password_locked_until <= $2::timestamptz)
+      RETURNING password_failed_attempts, password_locked_until
+    `,
+    [userId, toIso(reservedAtMs), PASSWORD_MAX_FAILED_ATTEMPTS, toIso(reservedAtMs + PASSWORD_LOCKOUT_MS)],
+  );
+  const reservedRow = reservation && reservation.rows && reservation.rows[0] ? reservation.rows[0] : null;
+  if (!reservedRow) return { ok: false, reason: 'locked' };
+  const reservedLockIso = reservedRow.password_locked_until ? new Date(reservedRow.password_locked_until).toISOString() : null;
+
   let derived = null;
   try {
     derived = await scryptPromise(`${AUTH_PEPPER}:${inputPassword}`, saltBuf, keylen, options);
@@ -707,26 +765,7 @@ async function verifyPasswordForEmail({ email, password } = {}) {
     expectedBuf.length === actualBuf.length && expectedBuf.length > 0 && crypto.timingSafeEqual(expectedBuf, actualBuf);
 
   if (!match) {
-    const attempts = Number.isFinite(Number(row.password_failed_attempts)) ? Number(row.password_failed_attempts) : 0;
-    const nextAttempts = Math.max(0, Math.min(32000, attempts + 1));
-    const shouldLock = nextAttempts >= PASSWORD_MAX_FAILED_ATTEMPTS;
-    const lockedUntilIso = shouldLock ? new Date(nowMs() + PASSWORD_LOCKOUT_MS).toISOString() : null;
-    try {
-      await query(
-        `
-          UPDATE aurora_users
-          SET password_failed_attempts = $2,
-              password_locked_until = $3,
-              updated_at = now()
-          WHERE user_id = $1
-            AND deleted_at IS NULL
-        `,
-        [userId, nextAttempts, lockedUntilIso],
-      );
-    } catch {
-      // ignore
-    }
-    return { ok: false, reason: 'mismatch', locked_until: lockedUntilIso };
+    return { ok: false, reason: 'mismatch', locked_until: reservedLockIso };
   }
 
   try {

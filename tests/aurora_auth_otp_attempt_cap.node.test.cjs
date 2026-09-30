@@ -10,11 +10,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
-const { newDb } = require('pg-mem');
+const { makeAuroraAuthDb } = require('./fixtures/auroraAuthPgMem.cjs');
 
-const MIGRATION_PATH = path.join(__dirname, '..', 'src', 'db', 'migrations', '013_aurora_accounts.sql');
 const AUTH_STORE_ID = require.resolve('../src/auroraBff/authStore');
 const DB_MODULE = require('../src/db');
 
@@ -30,34 +27,12 @@ const BASE_ENV = {
   AURORA_BFF_AUTH_OTP_START_WINDOW_MS: '',
 };
 
-function authTablesDdl() {
-  // Only the tables authStore touches; the rest of 013 references tables from other migrations.
-  return fs
-    .readFileSync(MIGRATION_PATH, 'utf8')
-    .replace(/--[^\n]*/g, ' ')
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((s) => /\b(aurora_users|aurora_auth_challenges|aurora_auth_sessions)\b/.test(s))
-    .filter((s) => !/aurora_identity_links|aurora_account_/.test(s));
-}
-
 function makeDb() {
-  const db = newDb();
-  const pg = db.adapters.createPg();
-  const pool = new pg.Pool();
-  const ready = (async () => {
-    for (const stmt of authTablesDdl()) await pool.query(stmt);
-  })();
-  const query = async (sql, params) => {
-    await ready;
-    return pool.query(sql, params);
-  };
-  return { query, ready };
+  return makeAuroraAuthDb();
 }
 
 // Loads a FRESH authStore bound to `query` — two loads over one db are two gateway instances.
-function loadAuthStore(query, envOverrides = {}) {
+function loadAuthStore(db, envOverrides = {}) {
   const env = { ...BASE_ENV, ...envOverrides };
   const previous = {};
   for (const [k, v] of Object.entries(env)) {
@@ -66,12 +41,15 @@ function loadAuthStore(query, envOverrides = {}) {
     else process.env[k] = v;
   }
   const originalQuery = DB_MODULE.query;
-  DB_MODULE.query = query;
+  const originalWithClient = DB_MODULE.withClient;
+  DB_MODULE.query = db.query;
+  DB_MODULE.withClient = db.withClient;
   delete require.cache[AUTH_STORE_ID];
   try {
     return require('../src/auroraBff/authStore');
   } finally {
     DB_MODULE.query = originalQuery;
+    DB_MODULE.withClient = originalWithClient;
     delete require.cache[AUTH_STORE_ID];
     for (const [k, v] of Object.entries(previous)) {
       if (v === undefined) delete process.env[k];
@@ -93,8 +71,9 @@ async function challengeRows(query, email) {
 }
 
 test('the 5th wrong code closes the challenge; the right code is refused after that', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'cap@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   assert.match(code, /^\d{6}$/);
@@ -104,7 +83,13 @@ test('the 5th wrong code closes the challenge; the right code is refused after t
     assert.deepEqual(out, { ok: false, reason: 'invalid_or_expired' }, `wrong guess ${i}`);
   }
   const fifth = await store.verifyOtpChallenge({ email, code: wrongCodeFor(code) });
-  assert.deepEqual(fifth, { ok: false, reason: 'too_many_attempts' });
+  // Same public answer as any wrong code (a distinct one would confirm a live code under attack);
+  // closedByCap is for the route's log only.
+  assert.deepEqual(fifth, { ok: false, reason: 'invalid_or_expired', closedByCap: true });
+  // Mutant killed: a cap that leaves the row open after the guess that reached it (the code must be
+  // closed by THAT guess, not by whichever request happens to come next).
+  const [afterFifth] = await challengeRows(query, email);
+  assert.ok(afterFifth.consumed_at, 'closed by the 5th guess itself');
 
   // Mutant killed: a cap that only reports, or one that closes a guess late — the right code now fails.
   const right = await store.verifyOtpChallenge({ email, code });
@@ -118,8 +103,9 @@ test('the 5th wrong code closes the challenge; the right code is refused after t
 });
 
 test('four wrong codes then the right one still signs in (the cap is 5 guesses, not 4)', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'fifth-right@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   for (let i = 0; i < 4; i += 1) {
@@ -132,8 +118,9 @@ test('four wrong codes then the right one still signs in (the cap is 5 guesses, 
 });
 
 test('after the cap only a new /start helps, and its code works', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'restart@example.com';
   const first = await store.createOtpChallenge({ email });
   for (let i = 0; i < 5; i += 1) await store.verifyOtpChallenge({ email, code: wrongCodeFor(first.debug_code) });
@@ -145,9 +132,10 @@ test('after the cap only a new /start helps, and its code works', async () => {
 });
 
 test('the counter is shared by every instance: 3 guesses on one + 2 on another close the code', async () => {
-  const { query } = makeDb();
-  const instanceA = loadAuthStore(query);
-  const instanceB = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const instanceA = loadAuthStore(db);
+  const instanceB = loadAuthStore(db);
   const email = 'two-instances@example.com';
   const { debug_code: code } = await instanceA.createOtpChallenge({ email });
   for (let i = 0; i < 3; i += 1) await instanceA.verifyOtpChallenge({ email, code: wrongCodeFor(code) });
@@ -158,8 +146,9 @@ test('the counter is shared by every instance: 3 guesses on one + 2 on another c
 });
 
 test('concurrent guesses cannot exceed the cap: a burst of wrong codes then the right one is refused', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'burst@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   const burst = await Promise.all(
@@ -172,17 +161,86 @@ test('concurrent guesses cannot exceed the cap: a burst of wrong codes then the 
 });
 
 test('a code signs in once: the second use of the same right code is refused', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'once@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   assert.equal((await store.verifyOtpChallenge({ email, code })).ok, true);
   assert.deepEqual(await store.verifyOtpChallenge({ email, code }), { ok: false, reason: 'invalid_or_expired' });
 });
 
+test('at most one open code per email: a new /start closes the old code', async () => {
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
+  const email = 'one-open@example.com';
+  const first = await store.createOtpChallenge({ email });
+  const second = await store.createOtpChallenge({ email });
+  const third = await store.createOtpChallenge({ email });
+
+  const open = (await challengeRows(query, email)).filter((r) => !r.consumed_at);
+  // Mutant killed: dropping the close of the older code, which leaves several codes guessable at once
+  // (in production the 060 index would refuse the insert instead).
+  assert.equal(open.length, 1);
+  assert.equal(open[0].challenge_id, third.challengeId);
+  assert.equal((await store.verifyOtpChallenge({ email, code: first.debug_code })).ok, false);
+  assert.equal((await store.verifyOtpChallenge({ email, code: second.debug_code })).ok, false);
+  assert.equal((await store.verifyOtpChallenge({ email, code: third.debug_code })).ok, true);
+
+  // Migration 060's unique index (the backstop) is pinned on real PostgreSQL:
+  // tests/integration/aurora_otp_start_atomic_postgres.test.js.
+});
+
+test('/start runs count, close and insert in one transaction under the per-email advisory lock', async () => {
+  const db = makeDb();
+  const seen = [];
+  const recording = {
+    query: db.query,
+    withClient: (fn) =>
+      db.withClient((client) =>
+        fn({
+          query: (sql, params) => {
+            seen.push({ sql: String(sql).replace(/\s+/g, ' ').trim(), params });
+            return client.query(sql, params);
+          },
+        }),
+      ),
+  };
+  const store = loadAuthStore(recording);
+  await store.createOtpChallenge({ email: 'Tx@Example.com ' });
+  const kinds = seen.map(({ sql }) => sql.split(' ').slice(0, 2).join(' '));
+  // Mutant killed: statements outside the transaction, or the lock taken after the count.
+  assert.deepEqual(kinds, ['BEGIN', 'SELECT pg_advisory_xact_lock(hashtext($1))', 'SELECT COUNT(*)', 'UPDATE aurora_auth_challenges', 'INSERT INTO', 'COMMIT']);
+  assert.deepEqual(seen[1].params, ['aurora_otp_start:tx@example.com']);
+});
+
+test('a refused /start rolls its transaction back', async () => {
+  const db = makeDb();
+  const seen = [];
+  const recording = {
+    query: db.query,
+    withClient: (fn) =>
+      db.withClient((client) =>
+        fn({
+          query: (sql, params) => {
+            seen.push(String(sql).trim().split(/\s+/)[0].toUpperCase());
+            return client.query(sql, params);
+          },
+        }),
+      ),
+  };
+  const store = loadAuthStore(recording);
+  for (let i = 0; i < 5; i += 1) await store.createOtpChallenge({ email: 'rb@example.com' });
+  seen.length = 0;
+  await assert.rejects(store.createOtpChallenge({ email: 'rb@example.com' }), { code: 'AUTH_RATE_LIMITED' });
+  assert.deepEqual(seen, ['BEGIN', 'SELECT', 'SELECT', 'ROLLBACK']);
+});
+
 test('concurrent uses of the right code mint exactly one session', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'race@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   const outs = await Promise.all(Array.from({ length: 5 }, () => store.verifyOtpChallenge({ email, code })));
@@ -191,8 +249,9 @@ test('concurrent uses of the right code mint exactly one session', async () => {
 });
 
 test('no code, a wrong code and an expired code all give the same answer', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const none = await store.verifyOtpChallenge({ email: 'nobody@example.com', code: '123456' });
 
   const email = 'someone@example.com';
@@ -218,9 +277,10 @@ test('no code, a wrong code and an expired code all give the same answer', async
 });
 
 test('/start is bounded per email across instances, whatever became of the earlier codes', async () => {
-  const { query } = makeDb();
-  const instanceA = loadAuthStore(query);
-  const instanceB = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const instanceA = loadAuthStore(db);
+  const instanceB = loadAuthStore(db);
   const email = 'starts@example.com';
 
   // 1 used successfully, 1 capped, 3 simply superseded: all five count.
@@ -254,8 +314,9 @@ test('/start is bounded per email across instances, whatever became of the earli
 });
 
 test('the /start bound answers the same for an address with an account and one without', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   await query('INSERT INTO aurora_users (user_id, email) VALUES ($1, $2)', ['usr_known', 'known@example.com']);
   const outcomes = {};
   for (const email of ['known@example.com', 'unknown@example.com']) {
@@ -275,8 +336,9 @@ test('the /start bound answers the same for an address with an account and one w
 });
 
 test('the code comparison is constant-time (crypto.timingSafeEqual over the stored hash)', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const email = 'ct@example.com';
   const { debug_code: code } = await store.createOtpChallenge({ email });
   const [row] = (await query('SELECT code_hash FROM aurora_auth_challenges WHERE email = $1', [email])).rows;
@@ -299,8 +361,9 @@ test('the code comparison is constant-time (crypto.timingSafeEqual over the stor
 });
 
 test('hashesEqual refuses unequal, different-length and empty digests', () => {
-  const { query } = makeDb();
-  const { hashesEqual } = loadAuthStore(query).__test__;
+  const db = makeDb();
+  const { query } = db;
+  const { hashesEqual } = loadAuthStore(db).__test__;
   const a = 'a'.repeat(64);
   assert.equal(hashesEqual(a, a), true);
   assert.equal(hashesEqual(a, `${'a'.repeat(63)}b`), false);
@@ -310,8 +373,9 @@ test('hashesEqual refuses unequal, different-length and empty digests', () => {
 });
 
 test('codes come from the CSPRNG (crypto.randomInt), six digits', async () => {
-  const { query } = makeDb();
-  const store = loadAuthStore(query);
+  const db = makeDb();
+  const { query } = db;
+  const store = loadAuthStore(db);
   const original = crypto.randomInt;
   let calls = 0;
   crypto.randomInt = (...args) => {
@@ -329,14 +393,15 @@ test('codes come from the CSPRNG (crypto.randomInt), six digits', async () => {
 });
 
 test('the attempt cap and /start bound are configurable within safe bounds only', () => {
-  const { query } = makeDb();
-  const loose = loadAuthStore(query, {
+  const db = makeDb();
+  const { query } = db;
+  const loose = loadAuthStore(db, {
     AURORA_BFF_AUTH_OTP_MAX_ATTEMPTS: '1000',
     AURORA_BFF_AUTH_OTP_START_MAX_PER_EMAIL: '1000',
   }).__test__;
   assert.equal(loose.OTP_MAX_ATTEMPTS, 10);
   assert.equal(loose.OTP_START_MAX_PER_EMAIL, 20);
-  const junk = loadAuthStore(query, {
+  const junk = loadAuthStore(db, {
     AURORA_BFF_AUTH_OTP_MAX_ATTEMPTS: 'lots',
     AURORA_BFF_AUTH_OTP_START_MAX_PER_EMAIL: '0',
   }).__test__;

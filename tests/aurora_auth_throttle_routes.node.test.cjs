@@ -13,15 +13,11 @@ process.env.AURORA_DECISION_BASE_URL = '';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
 const supertest = require('supertest');
-const { newDb } = require('pg-mem');
+const { makeAuroraAuthDb } = require('./fixtures/auroraAuthPgMem.cjs');
 
-const MIGRATION_PATH = path.join(__dirname, '..', 'src', 'db', 'migrations', '013_aurora_accounts.sql');
-const PASSWORD_MIGRATION_PATH = path.join(__dirname, '..', 'src', 'db', 'migrations', '014_aurora_password_auth.sql');
 const DB_MODULE = require('../src/db');
 const LB_HOP = '35.190.0.1';
 
@@ -43,28 +39,7 @@ const MODULE_IDS = [
   '../src/auroraBff/routes',
 ].map((id) => require.resolve(id));
 
-function makeDb() {
-  const db = newDb();
-  const pg = db.adapters.createPg();
-  const pool = new pg.Pool();
-  const ddl = fs
-    .readFileSync(MIGRATION_PATH, 'utf8')
-    .replace(/--[^\n]*/g, ' ')
-    .split(';')
-    .map((s) => s.trim())
-    .filter((s) => /\b(aurora_users|aurora_auth_challenges|aurora_auth_sessions)\b/.test(s))
-    .filter((s) => !/aurora_identity_links|aurora_account_/.test(s));
-  const ready = (async () => {
-    for (const stmt of ddl) await pool.query(stmt);
-    await pool.query(fs.readFileSync(PASSWORD_MIGRATION_PATH, 'utf8'));
-  })();
-  return async (sql, params) => {
-    await ready;
-    return pool.query(sql, params);
-  };
-}
-
-function buildApp(envOverrides = {}) {
+function buildApp(envOverrides = {}, { logger = null } = {}) {
   const env = { ...BASE_ENV, ...envOverrides };
   const previous = {};
   for (const [k, v] of Object.entries(env)) {
@@ -72,16 +47,18 @@ function buildApp(envOverrides = {}) {
     if (v === '' || v == null) delete process.env[k];
     else process.env[k] = v;
   }
-  const query = makeDb();
+  const { query, withClient } = makeAuroraAuthDb();
   const originalQuery = DB_MODULE.query;
+  const originalWithClient = DB_MODULE.withClient;
   DB_MODULE.query = query;
+  DB_MODULE.withClient = withClient;
   for (const id of MODULE_IDS) delete require.cache[id];
   const chatRoutes = require('../src/auroraBff/routes/chat');
   chatRoutes.__resetRouterForTests();
   const routes = require('../src/auroraBff/routes');
   const expressApp = express();
   expressApp.use(express.json({ limit: '1mb' }));
-  routes.mountAuroraBffRoutes(expressApp, { logger: null });
+  routes.mountAuroraBffRoutes(expressApp, { logger });
   // Bound to 127.0.0.1 explicitly: supertest(app) listens on '::' and dials 127.0.0.1, so a process
   // elsewhere on the machine holding the same port number on IPv4 can answer instead (seen: a stray
   // 404 / 500 / ECONNRESET under parallel test load).
@@ -93,6 +70,7 @@ function buildApp(envOverrides = {}) {
     await new Promise((resolve) => app.close(resolve));
     chatRoutes.__resetRouterForTests();
     DB_MODULE.query = originalQuery;
+    DB_MODULE.withClient = originalWithClient;
     for (const id of MODULE_IDS) delete require.cache[id];
     for (const [k, v] of Object.entries(previous)) {
       if (v === undefined) delete process.env[k];
@@ -133,7 +111,9 @@ function wrongCodeFor(code) {
 }
 
 test('HTTP: five wrong codes close the code, the right one then fails, a new /start works', async () => {
-  const { app, cleanup } = await buildApp();
+  const warnings = [];
+  const logger = { warn: (obj, msg) => warnings.push({ obj, msg }), info() {}, error() {}, debug() {} };
+  const { app, cleanup } = await buildApp({}, { logger });
   try {
     const email = 'http-cap@example.com';
     const first = await start(app, email, '198.51.100.10');
@@ -148,8 +128,12 @@ test('HTTP: five wrong codes close the code, the right one then fails, a new /st
     }
     const fifth = await verify(app, email, wrongCodeFor(code), '198.51.100.10');
     assert.equal(fifth.status, 401);
-    assert.equal(errorCard(fifth)?.reason, 'too_many_attempts');
-    assert.match(fifth.body.assistant_message.content, /request a new one/i);
+    // The guess that closes the code answers exactly like any wrong code.
+    assert.equal(errorCard(fifth)?.reason, 'invalid_or_expired');
+    assert.equal(fifth.body.assistant_message.content, 'Invalid or expired code.');
+    // ...and the cap is recorded server-side only.
+    assert.equal(warnings.filter((w) => w.obj?.event === 'aurora_otp_attempt_cap_reached').length, 1);
+    assert.ok(!JSON.stringify(fifth.body).includes('attempt_cap'));
 
     const right = await verify(app, email, code, '198.51.100.10');
     assert.equal(right.status, 401, 'the capped code no longer signs in');
@@ -272,6 +256,27 @@ test('per-IP: /password/login admits 30 an hour from one client address, then 42
       .post('/v1/auth/password/login')
       .set(headers(ip))
       .send({ email: 'pw-over@example.com', password: 'not-the-password' });
+    assert.equal(blocked.status, 429, JSON.stringify(blocked.body));
+    assert.equal(errorCard(blocked)?.error, 'RATE_LIMITED');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('per-email: /password/login for one address from many IPs is throttled after 10', async () => {
+  const { app, cleanup } = await buildApp();
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      const res = await supertest(app)
+        .post('/v1/auth/password/login')
+        .set(headers(`192.0.2.${150 + i}`))
+        .send({ email: 'pw-email@example.com', password: 'not-the-password' });
+      assert.equal(res.status, 401, `login ${i + 1}`);
+    }
+    const blocked = await supertest(app)
+      .post('/v1/auth/password/login')
+      .set(headers('192.0.2.250'))
+      .send({ email: 'PW-Email@example.com', password: 'not-the-password' });
     assert.equal(blocked.status, 429, JSON.stringify(blocked.body));
     assert.equal(errorCard(blocked)?.error, 'RATE_LIMITED');
   } finally {

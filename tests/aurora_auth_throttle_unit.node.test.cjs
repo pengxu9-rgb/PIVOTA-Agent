@@ -102,4 +102,5 @@ test('per-IP capacities can be raised by env for a shared address, within a ceil
   // The per-email numbers have no env knob: they are the ones a person typing codes never reaches.
   assert.equal(__test__.defaultLimits().email.start.capacity, 5);
   assert.equal(__test__.defaultLimits().email.verify.capacity, 10);
+  assert.equal(__test__.defaultLimits().email.password.capacity, 10);
 });

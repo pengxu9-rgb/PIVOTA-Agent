@@ -87140,16 +87140,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const verification = await verifyOtpChallenge({ email: parsed.data.email, code: parsed.data.code });
       if (!verification.ok) {
-        const tooMany = verification.reason === 'too_many_attempts';
+        if (verification.closedByCap) {
+          // Internal only: the caller sees the same invalid_or_expired answer as any wrong code.
+          logger?.warn?.({ event: 'aurora_otp_attempt_cap_reached', request_id: ctx.request_id }, 'aurora bff: login code closed by attempt cap');
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
-            tooMany
-              ? ctx.lang === 'CN'
-                ? '验证码错误次数过多，该验证码已失效。请重新获取验证码。'
-                : 'Too many wrong codes. That code no longer works; request a new one.'
-              : ctx.lang === 'CN'
-                ? '验证码无效或已过期。'
-                : 'Invalid or expired code.',
+            ctx.lang === 'CN' ? '验证码无效或已过期。' : 'Invalid or expired code.',
           ),
           suggested_chips: [],
           cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'INVALID_CODE', reason: verification.reason } }],
@@ -87253,6 +87250,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return res.status(400).json(envelope);
       }
+
+      const emailVerdict = authThrottle.checkEmail(parsed.data.email, 'password');
+      if (!emailVerdict.ok) return sendAuroraAuthThrottled(res, ctx, emailVerdict);
 
       const verification = await verifyPasswordForEmail({ email: parsed.data.email, password: parsed.data.password });
       if (!verification.ok) {
