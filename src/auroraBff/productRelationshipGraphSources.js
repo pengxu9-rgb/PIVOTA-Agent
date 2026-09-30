@@ -1,3 +1,4 @@
+const { uncoveredLiveCatalogSql, prioritizeUncoveredProducts, productAnchorRefs } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 
 const DEFAULT_MARKET = 'US';
@@ -1067,6 +1068,7 @@ async function loadAffectedProductAnchorCandidates({
   refs = [],
   market = DEFAULT_MARKET,
   limit = DEFAULT_SOURCE_LIMIT,
+  prioritizeUncovered = false,
 } = {}) {
   const terms = normalizeAffectedRefTerms(refs);
   if (!terms.length) return [];
@@ -1101,7 +1103,7 @@ async function loadAffectedProductAnchorCandidates({
           cp.product_key,
           cp.source_product_id,
           cp.pivota_signature_id,
-          cp.content_key,
+          cp.content_key,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
           COALESCE(
             'product:' || NULLIF(cp.pivota_signature_id, ''),
             'product:' || NULLIF(eps.external_product_id, ''),
@@ -1126,7 +1128,7 @@ async function loadAffectedProductAnchorCandidates({
             OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
             OR cp.content_key = ANY($1::text[])
           )
-        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
+        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
         LIMIT $3
       `,
       [terms, normalizedMarket, rowLimit],
@@ -1147,7 +1149,7 @@ async function loadAffectedProductAnchorCandidates({
           cp.product_key,
           cp.source_product_id,
           cp.pivota_signature_id,
-          cp.content_key
+          cp.content_key${prioritizeUncovered ? `,\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live` : ''}
         FROM products_cache pc
         LEFT JOIN catalog_products cp
           ON cp.source_product_id = COALESCE(
@@ -1167,7 +1169,7 @@ async function loadAffectedProductAnchorCandidates({
           OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
           OR cp.content_key = ANY($1::text[])
         )
-        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $2
       `,
       [terms, rowLimit],
@@ -1191,7 +1193,7 @@ async function loadAffectedProductAnchorCandidates({
           cp.pivota_canonical_url,
           cp.product_payload,
           cp.updated_at,
-          cp.created_at,
+          cp.created_at,${prioritizeUncovered ? `\n          CASE WHEN ${uncoveredLiveCatalogSql()} THEN true ELSE false END AS relgraph_uncovered_live,` : ''}
           COALESCE(
             'product:' || NULLIF(cp.pivota_signature_id, ''),
             'product:' || NULLIF(cp.source_product_id, ''),
@@ -1204,18 +1206,26 @@ async function loadAffectedProductAnchorCandidates({
            OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
            OR ('product:' || cp.source_product_id) = ANY($1::text[])
            OR cp.content_key = ANY($1::text[])
-        ORDER BY cp.updated_at DESC NULLS LAST, cp.product_key ASC
+        ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}cp.updated_at DESC NULLS LAST, cp.product_key ASC
         LIMIT $2
       `,
       [terms, rowLimit],
     ),
   ]);
 
-  return dedupeNormalizedProducts([
+  const products = dedupeNormalizedProducts([
     ...externalSeedRows.map(normalizeExternalProductSeedRow),
     ...productsCacheRows.map(normalizeProductsCacheRow),
     ...catalogRows.map(normalizeCatalogProductRow),
   ].filter(Boolean));
+  if (!prioritizeUncovered) return products;
+  const uncoveredRows = [...externalSeedRows, ...productsCacheRows, ...catalogRows]
+    .filter((row) => row.relgraph_uncovered_live === true);
+  const uncoveredRefs = new Set(uncoveredRows.flatMap(productAnchorRefs));
+  for (const product of products) {
+    product._relgraph_uncovered_live = productAnchorRefs(product).some((ref) => uncoveredRefs.has(ref));
+  }
+  return prioritizeUncoveredProducts(products, products.filter((product) => product._relgraph_uncovered_live));
 }
 
 async function loadApprovedLiveExternalSeedAnchors({
@@ -2487,6 +2497,7 @@ async function loadProductRelationshipGraphSourceInputs({
   includeApprovedLiveExternalSeedAnchors = false,
   approvedLiveExternalSeedAnchorLimit = limit,
   missingCandidateLabelsOnly = false,
+  prioritizeUncovered = false,
 } = {}) {
   const sourceLimit = normalizeLimit(limit);
   const approvedLiveExternalSeedAnchors = includeApprovedLiveExternalSeedAnchors
@@ -2506,6 +2517,7 @@ async function loadProductRelationshipGraphSourceInputs({
   const affectedProducts = await loadAffectedProductAnchorCandidates({
     queryFn,
     refs: affectedRefs,
+    prioritizeUncovered,
     market,
     limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
   });
@@ -2519,7 +2531,9 @@ async function loadProductRelationshipGraphSourceInputs({
     ...approvedLiveExternalSeedAnchors,
   ]);
   return {
-    products,
+    products: prioritizeUncovered
+      ? prioritizeUncoveredProducts(products, affectedProducts.filter((product) => product._relgraph_uncovered_live))
+      : products,
     approvedLiveExternalSeedAnchors,
     productsCache,
     externalSeeds,

@@ -1,0 +1,76 @@
+[
+  [
+    "\n      SELECT\n        cp.product_key,\n        cp.source_product_id,\n        cp.pivota_signature_id,\n        cp.content_key,\n        cp.merchant_id,\n        cp.platform,\n        cp.title,\n        cp.description,\n        cp.brand,\n        cp.product_type,\n        cp.category,\n        cp.category_path,\n        cp.canonical_url,\n        cp.pivota_canonical_url,\n        cp.updated_at,\n        cp.created_at\n      FROM catalog_products cp\n      WHERE (\n          cp.updated_at >= $1::timestamptz\n          OR cp.created_at >= $1::timestamptz\n        )\n        AND (\n          lower(concat_ws(\n            ' ',\n            cp.title,\n            cp.description,\n            cp.brand,\n            cp.product_type,\n            cp.category,\n            cp.category_path,\n            cp.category_label\n          )) LIKE ANY($3::text[])\n          OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($3::text[])\n        )\n      ORDER BY cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC\n      LIMIT $2\n    ",
+    [
+      "2026-09-29T00:00:00.000Z",
+      250,
+      [
+        "%beauty%",
+        "%skincare%",
+        "%skin care%",
+        "%serum%",
+        "%moisturizer%",
+        "%cleanser%",
+        "%sunscreen%",
+        "%spf%",
+        "%makeup%",
+        "%cosmetic%",
+        "%fragrance%",
+        "%hair%"
+      ]
+    ]
+  ],
+  [
+    "\n      SELECT\n        eps.id,\n        eps.external_product_id,\n        eps.attached_product_key,\n        eps.market,\n        eps.domain,\n        eps.title,\n        eps.canonical_url,\n        eps.destination_url,\n        eps.updated_at,\n        eps.created_at,\n        cp.product_key AS catalog_product_key,\n        cp.pivota_signature_id,\n        cp.content_key,\n        cp.title AS catalog_title,\n        cp.brand AS catalog_brand,\n        cp.canonical_url AS catalog_canonical_url,\n        cp.updated_at AS catalog_updated_at\n      FROM external_product_seeds eps\n      LEFT JOIN catalog_products cp\n        ON cp.source_product_id = eps.external_product_id\n        OR cp.product_key = eps.attached_product_key\n      WHERE COALESCE(eps.status, 'active') = 'active'\n        AND upper(COALESCE(eps.market, $2)) = $2\n        AND (\n          eps.updated_at >= $1::timestamptz\n          OR eps.created_at >= $1::timestamptz\n          OR cp.updated_at >= $1::timestamptz\n        )\n        AND (\n          lower(concat_ws(\n            ' ',\n            eps.title,\n            eps.domain,\n            cp.title,\n            cp.brand,\n            cp.product_type,\n            cp.category,\n            cp.category_path\n          )) LIKE ANY($4::text[])\n          OR lower(to_jsonb(eps.seed_data)::text) LIKE ANY($4::text[])\n          OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($4::text[])\n        )\n      ORDER BY GREATEST(\n        COALESCE(eps.updated_at, '-infinity'::timestamptz),\n        COALESCE(eps.created_at, '-infinity'::timestamptz),\n        COALESCE(cp.updated_at, '-infinity'::timestamptz)\n      ) DESC,\n      eps.id ASC\n      LIMIT $3\n    ",
+    [
+      "2026-09-29T00:00:00.000Z",
+      "US",
+      250,
+      [
+        "%beauty%",
+        "%skincare%",
+        "%skin care%",
+        "%serum%",
+        "%moisturizer%",
+        "%cleanser%",
+        "%sunscreen%",
+        "%spf%",
+        "%makeup%",
+        "%cosmetic%",
+        "%fragrance%",
+        "%hair%"
+      ]
+    ]
+  ],
+  [
+    "\n        SELECT\n          eps.id,\n          eps.external_product_id,\n          eps.attached_product_key,\n          eps.title,\n          COALESCE(\n            NULLIF(eps.seed_data->>'category', ''),\n            NULLIF(eps.seed_data->>'product_type', ''),\n            NULLIF(eps.seed_data->'snapshot'->>'category', ''),\n            NULLIF(eps.seed_data->'snapshot'->>'product_type', ''),\n            NULLIF(cp.category, ''),\n            NULLIF(cp.product_type, ''),\n            NULLIF(cp.category_path, '')\n          ) AS category,\n          eps.price_amount,\n          eps.price_currency,\n          eps.market,\n          eps.canonical_url,\n          eps.destination_url,\n          eps.seed_data,\n          eps.updated_at,\n          eps.created_at,\n          cp.product_key,\n          cp.source_product_id,\n          cp.pivota_signature_id,\n          cp.content_key,\n          COALESCE(\n            'product:' || NULLIF(cp.pivota_signature_id, ''),\n            'product:' || NULLIF(eps.external_product_id, ''),\n            eps.id\n          ) AS product_ref\n        FROM external_product_seeds eps\n        LEFT JOIN catalog_products cp\n          ON cp.source_product_id = eps.external_product_id\n          -- Path-C / retailer-lane seeds point at their catalog row only through\n          -- attached_product_key (same join as the affected-products selector).\n          OR cp.product_key = eps.attached_product_key\n        WHERE COALESCE(eps.status, 'active') = 'active'\n          AND upper(COALESCE(eps.market, $2)) = $2\n          AND (\n            eps.id = ANY($1::text[])\n            OR eps.external_product_id = ANY($1::text[])\n            OR eps.attached_product_key = ANY($1::text[])\n            OR ('product:' || eps.external_product_id) = ANY($1::text[])\n            OR cp.product_key = ANY($1::text[])\n            OR cp.source_product_id = ANY($1::text[])\n            OR cp.pivota_signature_id = ANY($1::text[])\n            OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])\n            OR cp.content_key = ANY($1::text[])\n          )\n        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC\n        LIMIT $3\n      ",
+    [
+      [
+        "sig_fixture",
+        "product:sig_fixture"
+      ],
+      "US",
+      250
+    ]
+  ],
+  [
+    "\n        SELECT\n          COALESCE(\n            'product:' || NULLIF(cp.pivota_signature_id, ''),\n            NULLIF(pc.platform_product_id, ''),\n            NULLIF(pc.product_data->>'product_id', ''),\n            NULLIF(pc.product_data->>'id', ''),\n            pc.id::text\n          ) AS product_ref,\n          pc.product_data,\n          pc.cached_at,\n          cp.product_key,\n          cp.source_product_id,\n          cp.pivota_signature_id,\n          cp.content_key\n        FROM products_cache pc\n        LEFT JOIN catalog_products cp\n          ON cp.source_product_id = COALESCE(\n            NULLIF(pc.platform_product_id, ''),\n            NULLIF(pc.product_data->>'product_id', ''),\n            NULLIF(pc.product_data->>'id', '')\n          )\n        WHERE (\n          pc.platform_product_id = ANY($1::text[])\n          OR pc.product_data->>'product_id' = ANY($1::text[])\n          OR pc.product_data->>'id' = ANY($1::text[])\n          OR ('product:' || pc.platform_product_id) = ANY($1::text[])\n          OR ('product:' || (pc.product_data->>'product_id')) = ANY($1::text[])\n          OR cp.product_key = ANY($1::text[])\n          OR cp.source_product_id = ANY($1::text[])\n          OR cp.pivota_signature_id = ANY($1::text[])\n          OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])\n          OR cp.content_key = ANY($1::text[])\n        )\n        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC\n        LIMIT $2\n      ",
+    [
+      [
+        "sig_fixture",
+        "product:sig_fixture"
+      ],
+      250
+    ]
+  ],
+  [
+    "\n        SELECT\n          cp.product_key,\n          cp.source_product_id,\n          cp.pivota_signature_id,\n          cp.content_key,\n          cp.title,\n          cp.description,\n          cp.brand,\n          cp.product_type,\n          cp.category,\n          cp.category_path,\n          cp.category_label,\n          cp.canonical_url,\n          cp.pivota_canonical_url,\n          cp.product_payload,\n          cp.updated_at,\n          cp.created_at,\n          COALESCE(\n            'product:' || NULLIF(cp.pivota_signature_id, ''),\n            'product:' || NULLIF(cp.source_product_id, ''),\n            cp.product_key\n          ) AS product_ref\n        FROM catalog_products cp\n        WHERE cp.product_key = ANY($1::text[])\n           OR cp.source_product_id = ANY($1::text[])\n           OR cp.pivota_signature_id = ANY($1::text[])\n           OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])\n           OR ('product:' || cp.source_product_id) = ANY($1::text[])\n           OR cp.content_key = ANY($1::text[])\n        ORDER BY cp.updated_at DESC NULLS LAST, cp.product_key ASC\n        LIMIT $2\n      ",
+    [
+      [
+        "sig_fixture",
+        "product:sig_fixture"
+      ],
+      250
+    ]
+  ]
+]

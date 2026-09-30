@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
+const { uncoveredLiveCatalogSql } = require('../src/auroraBff/relationshipGraphCoverage');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 250;
@@ -203,6 +204,7 @@ async function fetchCatalogProductRows({
   queryFn = query,
   updatedSince,
   limit = DEFAULT_LIMIT,
+  prioritizeUncovered = false,
 } = {}) {
   const res = await queryFn(
     `
@@ -241,7 +243,7 @@ async function fetchCatalogProductRows({
           )) LIKE ANY($3::text[])
           OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($3::text[])
         )
-      ORDER BY cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC
+      ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC
       LIMIT $2
     `,
     [updatedSince, limit, BEAUTY_TEXT_PATTERNS],
@@ -254,6 +256,7 @@ async function fetchExternalSeedRows({
   updatedSince,
   market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
+  prioritizeUncovered = false,
 } = {}) {
   const normalizedMarket = normalizeString(market).toUpperCase() || DEFAULT_MARKET;
   const res = await queryFn(
@@ -301,7 +304,7 @@ async function fetchExternalSeedRows({
           OR lower(to_jsonb(eps.seed_data)::text) LIKE ANY($4::text[])
           OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($4::text[])
         )
-      ORDER BY GREATEST(
+      ORDER BY ${prioritizeUncovered ? `CASE WHEN ${uncoveredLiveCatalogSql()} THEN 0 ELSE 1 END, ` : ''}GREATEST(
         COALESCE(eps.updated_at, '-infinity'::timestamptz),
         COALESCE(eps.created_at, '-infinity'::timestamptz),
         COALESCE(cp.updated_at, '-infinity'::timestamptz)
@@ -364,6 +367,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   return {
     updatedSince,
     sources,
+    prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit') || argValue(argv, 'select-limit'), DEFAULT_LIMIT, { min: 1, max: 5000 }),
     out: resolvePathMaybeRelative(argValue(argv, 'out'), cwd),
@@ -374,7 +378,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
 function usage() {
   return [
     'Usage:',
-    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path]',
+    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path] [--prioritize-uncovered]',
     '',
     'Read-only selector. Writes an affected-products manifest for relationship graph routines.',
   ].join('\n');
@@ -392,6 +396,7 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     const catalogRows = await fetchCatalogProductRows({
       queryFn,
       updatedSince: options.updatedSince,
+      prioritizeUncovered: options.prioritizeUncovered,
       limit: options.limit,
     });
     rows.push(...catalogRows.map((row) => buildCatalogAffectedRow(row, options.market)));
@@ -400,6 +405,7 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     const seedRows = await fetchExternalSeedRows({
       queryFn,
       updatedSince: options.updatedSince,
+      prioritizeUncovered: options.prioritizeUncovered,
       market: options.market,
       limit: options.limit,
     });

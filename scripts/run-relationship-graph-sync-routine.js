@@ -193,6 +193,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     usesSelector,
     selectUpdatedSince,
     selectSources: parseDelimitedList(argValue(argv, 'select-sources'), DEFAULT_SELECT_SOURCES),
+    prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
     selectLimit: parseNumber(argValue(argv, 'select-limit'), DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 }),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
     applySync,
@@ -374,6 +375,7 @@ function buildSyncRoutineSteps(options = {}) {
       '--out',
       options.affectedProductsFile,
     ];
+    pushFlag(args, 'prioritize-uncovered', options.prioritizeUncovered);
     pushFlag(args, 'allow-empty-selection', options.allowEmptySelection);
     steps.push({
       id: 'affected_product_selector',
@@ -451,6 +453,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'min-reviews-for-error-gate', options.minReviewsForErrorGate);
   pushArg(routineArgs, 'max-review-error-rate', options.maxReviewErrorRate);
   pushArg(routineArgs, 'min-approval-confidence', options.minApprovalConfidence);
+  pushFlag(routineArgs, 'prioritize-uncovered', options.prioritizeUncovered);
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   pushArg(routineArgs, 'review-relation-types', options.reviewRelationTypes);
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
