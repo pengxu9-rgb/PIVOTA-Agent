@@ -316,7 +316,72 @@ describe('services bookings: identity and PII', () => {
     });
   });
 
+  describe('admin token and the public view', () => {
+    test('the admin token is compared in constant time and only the exact token passes', async () => {
+      repository.findById.mockResolvedValue(bookingRow());
+      const nodeCrypto = require('crypto');
+      const spy = jest.spyOn(nodeCrypto, 'timingSafeEqual');
+      const exact = await request(app).get(`/api/services/bookings/${BOOKING_ID}`).set('X-Pivota-Admin-Token', ADMIN_TOKEN);
+      const prefix = await request(app).get(`/api/services/bookings/${BOOKING_ID}`).set('X-Pivota-Admin-Token', ADMIN_TOKEN.slice(0, -1));
+      const longer = await request(app).get(`/api/services/bookings/${BOOKING_ID}`).set('X-Pivota-Admin-Token', `${ADMIN_TOKEN}x`);
+      expect(exact.body.contact_email).toBe('owner@example.com');
+      expectNoPii(prefix.body);
+      expectNoPii(longer.body);
+      // Mutant killed: `presented === expected` (never reaches timingSafeEqual).
+      expect(spy).toHaveBeenCalled();
+    });
+
+    test('no admin token configured means no admin, whatever is sent', async () => {
+      delete process.env.SERVICES_BOOKING_ADMIN_TOKEN;
+      repository.findById.mockResolvedValue(bookingRow());
+      const res = await request(app).get(`/api/services/bookings/${BOOKING_ID}`).set('X-Pivota-Admin-Token', '');
+      expectNoPii(res.body);
+    });
+
+    test('the public view is an allow-list: an unknown or payment column never leaves', async () => {
+      repository.findById.mockResolvedValue(
+        bookingRow({ deposit_payment_intent: 'pi_secret', internal_ops_note: 'call before 9', guest_ip: '203.0.113.9' }),
+      );
+      const res = await request(app).get(`/api/services/bookings/${BOOKING_ID}`);
+      expect(res.body.deposit_payment_intent).toBeUndefined();
+      expect(res.body.internal_ops_note).toBeUndefined();
+      expect(res.body.guest_ip).toBeUndefined();
+      expect(res.body.status).toBe('requested');
+      // Mutant killed: a deny-list sanitiser (a new column would leak by default).
+      const publicView = bookingsInternals.sanitizePublicBooking({ ...bookingRow(), anything_new: 1 });
+      expect(Object.keys(publicView).sort()).toEqual([...bookingsInternals.PUBLIC_BOOKING_FIELDS].filter((f) => f in bookingRow()).sort());
+    });
+  });
+
   describe('POST /api/services/bookings (create)', () => {
+    test('a guest cannot book under an account (usr_) id: Aurora ids are derivable from an email', async () => {
+      for (const userId of ['usr_owner', 'USR_owner', 'usr_4f1c2a9b0d3e5f67']) {
+        const res = await request(app).post('/api/services/bookings').send(createPayload({ user_id: userId }));
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('USER_ID_RESERVED');
+      }
+      expect(repository.withTransaction).not.toHaveBeenCalled();
+      expect(repository.insert).not.toHaveBeenCalled();
+    });
+
+    test('the owner session may name its own usr_ id', async () => {
+      repository.findByIdempotencyKey.mockResolvedValue(null);
+      repository.findActiveListingWithProvider.mockResolvedValue({
+        listing_id: LISTING_ID,
+        provider_id: PROVIDER_ID,
+        listing_status: 'active',
+        provider_status: 'live',
+        price_cents: 1000,
+        currency: 'KRW',
+      });
+      repository.insert.mockImplementation(async (input) => bookingRow(input));
+      const res = await request(app)
+        .post('/api/services/bookings')
+        .set('Authorization', 'Bearer tok-owner')
+        .send(createPayload({ user_id: 'usr_owner' }));
+      expect(res.status).toBe(201);
+    });
+
     test('a guest can still book (the live agent-ui sheet), and gets the public view back', async () => {
       repository.findByIdempotencyKey.mockResolvedValue(null);
       repository.findActiveListingWithProvider.mockResolvedValue({

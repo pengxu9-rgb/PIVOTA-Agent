@@ -1,4 +1,6 @@
-const { randomUUID } = require('crypto');
+const nodeCrypto = require('crypto');
+
+const { randomUUID } = nodeCrypto;
 const logger = require('../../logger');
 const { query } = require('../../db');
 const repository = require('./repository');
@@ -59,10 +61,16 @@ function requireBookingFlagOn(_req, res, next) {
   return next();
 }
 
+// Constant-time: both sides are hashed to a fixed length first, so neither the content nor the
+// length of the configured token leaks through the comparison's timing.
 function hasAdminToken(req) {
   const expected = process.env.SERVICES_BOOKING_ADMIN_TOKEN;
   if (!expected) return false;
-  return String(req.get('X-Pivota-Admin-Token') || '') === expected;
+  const presented = String(req.get('X-Pivota-Admin-Token') || '');
+  if (!presented) return false;
+  const a = nodeCrypto.createHash('sha256').update(presented).digest();
+  const b = nodeCrypto.createHash('sha256').update(String(expected)).digest();
+  return nodeCrypto.timingSafeEqual(a, b);
 }
 
 function requireAdminToken(req) {
@@ -81,7 +89,10 @@ function requireAdminToken(req) {
 //     session), but a request that carries a session books as that session's user.
 // SERVICES_BOOKING_REQUIRE_AUTH=false restores the caller-asserted user_id for list and cancel (a
 // rollback valve, logged on every use). It never restores contact fields to an unauthenticated caller:
-// output sanitisation does not depend on the flag.
+// output sanitisation does not depend on the flag. BUT it re-exposes list and cancel to anyone who can
+// name a user_id, and Aurora ids are derivable from an email (usr_ + sha256(email)[:16]): with the flag
+// off, knowing someone's email is enough to list their bookings (public fields) and cancel them. Use it
+// only as a short rollback.
 function isBookingAuthEnforced() {
   return String(process.env.SERVICES_BOOKING_REQUIRE_AUTH || '').trim().toLowerCase() !== 'false';
 }
@@ -288,14 +299,32 @@ function getDepositPct() {
   return Math.min(100, Math.max(0, parsed));
 }
 
+// The public view is an ALLOW-list: a column added to service_bookings later stays private until it is
+// named here. Never: user_id, contact_email, contact_phone, notes, metadata, deposit_payment_intent.
+const PUBLIC_BOOKING_FIELDS = Object.freeze([
+  'booking_id',
+  'listing_id',
+  'provider_id',
+  'requested_slot',
+  'alternate_slots',
+  'status',
+  'deposit_cents',
+  'deposit_currency',
+  'provider_notified_at',
+  'provider_confirmed_at',
+  'provider_rejected_at',
+  'cancelled_at',
+  'expires_at',
+  'created_at',
+  'updated_at',
+]);
+
 function sanitizePublicBooking(row) {
   if (!row) return row;
-  const out = { ...row };
-  delete out.contact_email;
-  delete out.contact_phone;
-  delete out.notes;
-  delete out.metadata;
-  delete out.user_id;
+  const out = {};
+  for (const field of PUBLIC_BOOKING_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(row, field)) out[field] = row[field];
+  }
   return out;
 }
 
@@ -309,6 +338,12 @@ function normalizeCreatePayload(body, { sessionUserId = null } = {}) {
     userId = sessionUserId;
   } else {
     userId = normalizeUserId(body.user_id);
+    // Aurora account ids are derivable from an email (usr_ + sha256(email)[:16]), so a guest could
+    // otherwise file a booking under a signed-in user's id and have it show up in their list. Guests
+    // keep to their own namespace; a usr_ id needs that user's session.
+    if (/^usr_/i.test(userId)) {
+      throw new BookingValidationError('USER_ID_RESERVED', 'Sign in to book under an account user_id', 403);
+    }
   }
   const idempotencyKey = normalizeIdempotencyKey(body.idempotency_key);
   const requestedSlot = normalizeRequestedSlot(body.requested_slot);
@@ -611,5 +646,6 @@ module.exports = {
     normalizePagination,
     isBookingAuthEnforced,
     resolveBookingIdentity,
+    PUBLIC_BOOKING_FIELDS,
   },
 };
