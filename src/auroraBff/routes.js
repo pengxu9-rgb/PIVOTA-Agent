@@ -583,6 +583,7 @@ const {
   setUserPassword,
   verifyPasswordForEmail,
 } = require('./authStore');
+const { createAuroraAuthThrottle } = require('./authThrottle');
 const {
   profileCompleteness,
   looksLikeDiagnosisStart,
@@ -86520,7 +86521,25 @@ async function runV1ChatMainlineInProcess({ req, body } = {}) {
   return responseState.body;
 }
 
+// 429 for the sign-in doors. The same envelope whichever bucket refused (IP or email), and whether or
+// not an account exists for the email: a throttle keyed on the address must not become an oracle for it.
+function sendAuroraAuthThrottled(res, ctx, verdict) {
+  const retryAfterSec = verdict && Number.isFinite(Number(verdict.retryAfterSec)) ? Number(verdict.retryAfterSec) : 60;
+  res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterSec))));
+  const envelope = buildEnvelope(ctx, {
+    assistant_message: makeAssistantMessage(
+      ctx.lang === 'CN' ? '尝试次数过多，请稍后再试。' : 'Too many sign-in attempts. Please wait a few minutes and try again.',
+    ),
+    suggested_chips: [],
+    cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'RATE_LIMITED', retry_after_seconds: retryAfterSec } }],
+    session_patch: {},
+    events: [makeEvent(ctx, 'error', { code: 'RATE_LIMITED' })],
+  });
+  return res.status(429).json(envelope);
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
+  const authThrottle = createAuroraAuthThrottle({ logger });
   const { mountDiagnosisV2Routes } = require('./diagnosisV2Routes');
   const { createDiagnosisV2LlmProvider } = require('./diagnosisV2LlmProvider');
   const { registerRoutes } = require('./index');
@@ -87009,6 +87028,8 @@ function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/auth/start', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
+      const ipVerdict = authThrottle.checkIp(req, 'start');
+      if (!ipVerdict.ok) return sendAuroraAuthThrottled(res, ctx, ipVerdict);
       requireAuroraUid(ctx);
       const parsed = AuthStartRequestSchema.safeParse(req.body || {});
       if (!parsed.success) {
@@ -87023,6 +87044,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return res.status(400).json(envelope);
       }
+
+      const emailVerdict = authThrottle.checkEmail(parsed.data.email, 'start');
+      if (!emailVerdict.ok) return sendAuroraAuthThrottled(res, ctx, emailVerdict);
 
       const challenge = await createOtpChallenge({ email: parsed.data.email, language: ctx.lang });
       const envelope = buildEnvelope(ctx, {
@@ -87052,6 +87076,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
+      if (err && err.code === 'AUTH_RATE_LIMITED') {
+        return sendAuroraAuthThrottled(res, ctx, { retryAfterSec: err.retryAfterSec });
+      }
       const fallbackCode = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_START_FAILED';
       const { code: storageCode, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
       const code = storageCode || fallbackCode;
@@ -87091,6 +87118,8 @@ function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/auth/verify', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
+      const ipVerdict = authThrottle.checkIp(req, 'verify');
+      if (!ipVerdict.ok) return sendAuroraAuthThrottled(res, ctx, ipVerdict);
       requireAuroraUid(ctx);
       const parsed = AuthVerifyRequestSchema.safeParse(req.body || {});
       if (!parsed.success) {
@@ -87106,11 +87135,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
+      const emailVerdict = authThrottle.checkEmail(parsed.data.email, 'verify');
+      if (!emailVerdict.ok) return sendAuroraAuthThrottled(res, ctx, emailVerdict);
+
       const verification = await verifyOtpChallenge({ email: parsed.data.email, code: parsed.data.code });
       if (!verification.ok) {
+        const tooMany = verification.reason === 'too_many_attempts';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
-            ctx.lang === 'CN' ? '验证码无效或已过期。' : 'Invalid or expired code.',
+            tooMany
+              ? ctx.lang === 'CN'
+                ? '验证码错误次数过多，该验证码已失效。请重新获取验证码。'
+                : 'Too many wrong codes. That code no longer works; request a new one.'
+              : ctx.lang === 'CN'
+                ? '验证码无效或已过期。'
+                : 'Invalid or expired code.',
           ),
           suggested_chips: [],
           cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'INVALID_CODE', reason: verification.reason } }],
@@ -87198,6 +87237,8 @@ function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/auth/password/login', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
+      const ipVerdict = authThrottle.checkIp(req, 'password');
+      if (!ipVerdict.ok) return sendAuroraAuthThrottled(res, ctx, ipVerdict);
       requireAuroraUid(ctx);
       const parsed = AuthPasswordLoginRequestSchema.safeParse(req.body || {});
       if (!parsed.success) {

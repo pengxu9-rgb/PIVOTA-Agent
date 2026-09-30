@@ -30,6 +30,36 @@ const SESSION_TTL_MS = Math.max(
   Math.min(180 * 24 * 60_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 60_000)),
 );
 
+function boundedIntEnv(name, fallback, min, max) {
+  const raw = process.env[name];
+  const n = Number(raw);
+  const v = raw != null && String(raw).trim() !== '' && Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
+// A login code is 6 digits: 900,000 values, and a verified code buys a 30-day session. Every guess at
+// a challenge is counted IN THE ROW THAT HOLDS THE CODE, so the cap holds across every gateway
+// instance. The guess that reaches the cap closes the challenge; after that only a new /start helps.
+const OTP_MAX_ATTEMPTS = boundedIntEnv('AURORA_BFF_AUTH_OTP_MAX_ATTEMPTS', 5, 3, 10);
+
+// /start mints a fresh challenge with a fresh counter, so the per-code cap alone is a cap per /start.
+// This bounds /start per email ACROSS instances, from the same table: every challenge minted for the
+// email inside the window counts, whether it was used, superseded, expired or closed. With the
+// defaults one email admits at most 5 codes x 5 guesses = 25 guesses per 15 minutes (about 0.27% a
+// day against one account) wherever the requests land. The token buckets in authThrottle.js sit in
+// front of this; they are per instance, so they are a valve, not the bound.
+const OTP_START_WINDOW_MS = boundedIntEnv(
+  'AURORA_BFF_AUTH_OTP_START_WINDOW_MS',
+  15 * 60_000,
+  5 * 60_000,
+  24 * 60 * 60_000,
+);
+const OTP_START_MAX_PER_EMAIL = boundedIntEnv('AURORA_BFF_AUTH_OTP_START_MAX_PER_EMAIL', 5, 1, 20);
+
+// Challenge rows are the evidence the /start bound counts, so they are kept (closed, never reusable)
+// for as long as they can still count, and pruned only after that.
+const CHALLENGE_RETENTION_MS = Math.max(OTP_START_WINDOW_MS, Number.isFinite(CHALLENGE_TTL_MS) ? CHALLENGE_TTL_MS : 0);
+
 const PASSWORD_MAX_FAILED_ATTEMPTS = (() => {
   const n = Number(process.env.AURORA_BFF_AUTH_PASSWORD_MAX_ATTEMPTS || 5);
   const v = Number.isFinite(n) ? Math.trunc(n) : 5;
@@ -146,13 +176,14 @@ function extractEmailAddress(value) {
 async function pruneExpired() {
   if (!AUTH_ENABLED) return;
   try {
+    // Only rows too old to count toward the per-email /start bound. A closed challenge (consumed_at
+    // set) can never verify again; it stays only as evidence for that count.
     await query(
       `
         DELETE FROM aurora_auth_challenges
-        WHERE expires_at < now()
-           OR consumed_at IS NOT NULL
+        WHERE created_at < $1
       `,
-      [],
+      [toIso(nowMs() - CHALLENGE_RETENTION_MS)],
     );
   } catch {
     // ignore (auth can still work without pruning)
@@ -293,29 +324,54 @@ async function createOtpChallenge({ email, language } = {}) {
   const mail = String(email || '').trim().toLowerCase();
   if (!isValidEmail(mail)) throw makeError('INVALID_EMAIL', 400);
 
-  const challengeId = crypto.randomBytes(16).toString('hex');
-  const code = String(Math.floor(100000 + Math.random() * 900000)).padStart(6, '0');
   const createdAtMs = nowMs();
+
+  // The cross-instance /start bound (see OTP_START_MAX_PER_EMAIL). The answer is the same whether or
+  // not an account exists for the email: it counts challenges, which /start mints for any address.
+  const recent = await query(
+    `
+      SELECT COUNT(*) AS n, MIN(created_at) AS oldest
+      FROM aurora_auth_challenges
+      WHERE email = $1
+        AND created_at > $2
+    `,
+    [mail, toIso(createdAtMs - OTP_START_WINDOW_MS)],
+  );
+  const recentRow = recent && recent.rows && recent.rows[0] ? recent.rows[0] : null;
+  const recentCount = recentRow ? Number(recentRow.n) : 0;
+  if (!Number.isFinite(recentCount)) throw makeError('AUTH_START_FAILED', 500, 'challenge_count_unreadable');
+  if (recentCount >= OTP_START_MAX_PER_EMAIL) {
+    const oldestMs = recentRow && recentRow.oldest ? new Date(recentRow.oldest).getTime() : NaN;
+    const retryAfterMs = Number.isFinite(oldestMs) ? oldestMs + OTP_START_WINDOW_MS - createdAtMs : OTP_START_WINDOW_MS;
+    const err = makeError('AUTH_RATE_LIMITED', 429, 'otp_start_limit_per_email');
+    err.retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
+    throw err;
+  }
+
+  const challengeId = crypto.randomBytes(16).toString('hex');
+  const code = String(crypto.randomInt(100000, 1000000));
   const expiresAtMs = createdAtMs + CHALLENGE_TTL_MS;
 
   const codeHash = hashWithPepper(`${challengeId}:${code}`);
 
-  // Keep only one active challenge per email to reduce confusion.
+  // Keep only one active challenge per email. The superseded one is CLOSED, not deleted: it still
+  // counts toward the /start bound above until it ages out.
   await query(
     `
-      DELETE FROM aurora_auth_challenges
+      UPDATE aurora_auth_challenges
+      SET consumed_at = $2
       WHERE email = $1
         AND consumed_at IS NULL
     `,
-    [mail],
+    [mail, toIso(createdAtMs)],
   );
 
   await query(
     `
-      INSERT INTO aurora_auth_challenges (challenge_id, email, code_hash, expires_at)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO aurora_auth_challenges (challenge_id, email, code_hash, expires_at, created_at)
+      VALUES ($1, $2, $3, $4, $5)
     `,
-    [challengeId, mail, codeHash, new Date(expiresAtMs).toISOString()],
+    [challengeId, mail, codeHash, new Date(expiresAtMs).toISOString(), toIso(createdAtMs)],
   );
 
   const deliveryResult = await sendOtpEmail({ email: mail, code, language });
@@ -342,6 +398,30 @@ async function createOtpChallenge({ email, language } = {}) {
   };
 }
 
+// Constant-time comparison of two stored/derived hex digests. Both sides are SHA-256 hex of
+// pepper-keyed input, so an early-exit compare leaks little, but a code check should not be the one
+// place that depends on that argument.
+function hashesEqual(expectedHex, actualHex) {
+  const expected = Buffer.from(String(expectedHex || ''), 'utf8');
+  const actual = Buffer.from(String(actualHex || ''), 'utf8');
+  if (expected.length === 0 || expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
+
+// Closing sets consumed_at: the row can never verify again, and it still counts toward the per-email
+// /start bound until pruneExpired ages it out.
+async function closeChallenge(challengeId) {
+  await query(
+    `
+      UPDATE aurora_auth_challenges
+      SET consumed_at = $2
+      WHERE challenge_id = $1
+        AND consumed_at IS NULL
+    `,
+    [challengeId, toIso(nowMs())],
+  );
+}
+
 async function verifyOtpChallenge({ email, code } = {}) {
   requireAuthConfigured();
   await pruneExpired();
@@ -362,23 +442,58 @@ async function verifyOtpChallenge({ email, code } = {}) {
     [mail],
   );
   const row = res.rows && res.rows[0] ? res.rows[0] : null;
-  if (!row) return { ok: false, reason: 'not_found_or_expired' };
+  // One public answer for "no code", "expired code" and "wrong code": which of them it was says
+  // whether someone asked for a code for this email recently.
+  if (!row) return { ok: false, reason: 'invalid_or_expired' };
 
-  const expiresAt = row.expires_at ? Date.parse(row.expires_at) : NaN;
+  const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : NaN;
   if (!Number.isFinite(expiresAt) || expiresAt <= nowMs()) {
-    await query(`DELETE FROM aurora_auth_challenges WHERE challenge_id = $1`, [row.challenge_id]);
-    return { ok: false, reason: 'expired' };
+    await closeChallenge(row.challenge_id);
+    return { ok: false, reason: 'invalid_or_expired' };
   }
 
-  const expectedHash = String(row.code_hash || '');
+  // Reserve the guess BEFORE comparing, in one statement, so concurrent guesses cannot all read the
+  // same count: whichever request would exceed the cap gets no row back and is refused without a
+  // comparison. The counter lives in the challenge row itself, so it is shared by every instance.
+  const reserved = await query(
+    `
+      UPDATE aurora_auth_challenges
+      SET attempts = attempts + 1
+      WHERE challenge_id = $1
+        AND consumed_at IS NULL
+        AND attempts < $2
+      RETURNING attempts
+    `,
+    [row.challenge_id, OTP_MAX_ATTEMPTS],
+  );
+  const reservedRow = reserved && reserved.rows && reserved.rows[0] ? reserved.rows[0] : null;
+  if (!reservedRow) {
+    await closeChallenge(row.challenge_id);
+    return { ok: false, reason: 'too_many_attempts' };
+  }
+  const attemptsUsed = Number(reservedRow.attempts);
+
   const actualHash = hashWithPepper(`${row.challenge_id}:${inputCode}`);
-  if (!expectedHash || expectedHash !== actualHash) {
-    const attempts = Number.isFinite(Number(row.attempts)) ? Number(row.attempts) : 0;
-    await query(`UPDATE aurora_auth_challenges SET attempts = $2 WHERE challenge_id = $1`, [row.challenge_id, attempts + 1]);
-    return { ok: false, reason: 'code_mismatch' };
+  if (!hashesEqual(row.code_hash, actualHash)) {
+    if (!Number.isFinite(attemptsUsed) || attemptsUsed >= OTP_MAX_ATTEMPTS) {
+      await closeChallenge(row.challenge_id);
+      return { ok: false, reason: 'too_many_attempts' };
+    }
+    return { ok: false, reason: 'invalid_or_expired' };
   }
 
-  await query(`UPDATE aurora_auth_challenges SET consumed_at = now() WHERE challenge_id = $1`, [row.challenge_id]);
+  // Consume exactly once: a second request racing with the same right code gets no row back.
+  const consumed = await query(
+    `
+      UPDATE aurora_auth_challenges
+      SET consumed_at = $2
+      WHERE challenge_id = $1
+        AND consumed_at IS NULL
+      RETURNING challenge_id
+    `,
+    [row.challenge_id, toIso(nowMs())],
+  );
+  if (!(consumed && consumed.rows && consumed.rows[0])) return { ok: false, reason: 'invalid_or_expired' };
 
   // Find or create user for this email.
   const existing = await query(
@@ -645,5 +760,9 @@ module.exports = {
   __test__: {
     extractEmailAddress,
     sendOtpEmail,
+    hashesEqual,
+    OTP_MAX_ATTEMPTS,
+    OTP_START_MAX_PER_EMAIL,
+    OTP_START_WINDOW_MS,
   },
 };
