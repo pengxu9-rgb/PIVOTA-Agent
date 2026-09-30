@@ -5,6 +5,8 @@ const repository = require('./repository');
 const { STATUSES, BookingTransitionError, requireTransition } = require('./state');
 const { runNotifyOnce } = require('./notifyWorker');
 const { getProviderById } = require('../servicesSearch');
+// Read through the module object (not destructured) so the session resolver is looked up per call.
+const auroraAuthStore = require('../../auroraBff/authStore');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 20;
@@ -67,6 +69,57 @@ function requireAdminToken(req) {
   if (!hasAdminToken(req)) {
     throw new BookingValidationError('ADMIN_TOKEN_REQUIRED', 'Admin token is required', 403);
   }
+}
+
+// WHO MAY ACT ON A BOOKING. `user_id` in a query or body is whatever the caller typed, so it is not an
+// identity: before this, knowing (or guessing) someone's user_id listed their bookings with contact
+// email, phone, notes and metadata, and cancelled them. The only end-user identity this gateway can
+// verify is an Aurora session (Authorization: Bearer, resolved by authStore), so:
+//   - list and cancel need a verified session, and act only on that session's user_id;
+//   - get returns the full row only to that owner (or the admin token); everyone else gets the public view;
+//   - create stays open to guests (the live agent-ui booking sheet posts a per-browser guest id and no
+//     session), but a request that carries a session books as that session's user.
+// SERVICES_BOOKING_REQUIRE_AUTH=false restores the caller-asserted user_id for list and cancel (a
+// rollback valve, logged on every use). It never restores contact fields to an unauthenticated caller:
+// output sanitisation does not depend on the flag.
+function isBookingAuthEnforced() {
+  return String(process.env.SERVICES_BOOKING_REQUIRE_AUTH || '').trim().toLowerCase() !== 'false';
+}
+
+async function resolveBookingIdentity(req) {
+  const admin = hasAdminToken(req);
+  const token = auroraAuthStore.getBearerToken(req);
+  if (!token) return { admin, userId: null };
+  let session = null;
+  try {
+    session = await auroraAuthStore.resolveSessionFromToken(token);
+  } catch (err) {
+    logger.warn({ error_name: err?.name, error_code: err?.code }, 'Services booking session lookup failed');
+    throw new BookingValidationError('AUTH_UNAVAILABLE', 'Sign-in could not be checked; try again', 503);
+  }
+  const userId = session && session.userId ? cleanString(session.userId) : '';
+  if (!userId) {
+    throw new BookingValidationError('AUTH_INVALID', 'Session is invalid or expired', 401);
+  }
+  return { admin, userId };
+}
+
+// The user a list/cancel acts for: the verified session's user, never a different asserted one.
+function resolveActingUserId(identity, assertedUserId, route) {
+  const asserted = assertedUserId === undefined || assertedUserId === null || assertedUserId === ''
+    ? null
+    : normalizeUserId(assertedUserId);
+  if (identity.userId) {
+    if (asserted && asserted !== identity.userId) {
+      throw new BookingValidationError('USER_ID_MISMATCH', 'user_id does not match the signed-in user', 403);
+    }
+    return identity.userId;
+  }
+  if (!isBookingAuthEnforced() && asserted) {
+    logger.warn({ route, auth_enforced: false }, 'Services booking acted on a caller-asserted user_id (SERVICES_BOOKING_REQUIRE_AUTH=false)');
+    return asserted;
+  }
+  throw new BookingValidationError('AUTH_REQUIRED', 'Sign in to view or change bookings', 401);
 }
 
 function sendError(res, err) {
@@ -246,9 +299,17 @@ function sanitizePublicBooking(row) {
   return out;
 }
 
-function normalizeCreatePayload(body) {
+function normalizeCreatePayload(body, { sessionUserId = null } = {}) {
   const listingId = normalizeUuid(body.listing_id, 'BAD_LISTING_ID', 'listing_id');
-  const userId = normalizeUserId(body.user_id);
+  let userId;
+  if (sessionUserId) {
+    if (body.user_id !== undefined && body.user_id !== null && body.user_id !== '' && normalizeUserId(body.user_id) !== sessionUserId) {
+      throw new BookingValidationError('USER_ID_MISMATCH', 'user_id does not match the signed-in user', 403);
+    }
+    userId = sessionUserId;
+  } else {
+    userId = normalizeUserId(body.user_id);
+  }
   const idempotencyKey = normalizeIdempotencyKey(body.idempotency_key);
   const requestedSlot = normalizeRequestedSlot(body.requested_slot);
   const alternateSlots = normalizeAlternateSlots(body.alternate_slots);
@@ -282,7 +343,8 @@ function validateListingAvailability(row) {
 }
 
 const createBooking = wrap(async (req, res) => {
-  const payload = normalizeCreatePayload(bodyObject(req));
+  const identity = await resolveBookingIdentity(req);
+  const payload = normalizeCreatePayload(bodyObject(req), { sessionUserId: identity.userId });
 
   const result = await repository.withTransaction(async (txQuery) => {
     await repository.lockIdempotencyKey(payload.userId, payload.idempotencyKey, txQuery);
@@ -321,7 +383,11 @@ const createBooking = wrap(async (req, res) => {
     return { statusCode: 201, booking };
   });
 
-  return res.status(result.statusCode).json(result.booking);
+  // An idempotent replay returns an EXISTING row, found by (user_id, idempotency_key) the caller sent,
+  // so the create response is the public view unless the caller is that row's verified owner.
+  const isOwner = Boolean(identity.userId) && identity.userId === result.booking?.user_id;
+  const view = identity.admin || isOwner ? result.booking : sanitizePublicBooking(result.booking);
+  return res.status(result.statusCode).json(view);
 });
 
 const getBooking = wrap(async (req, res) => {
@@ -331,8 +397,9 @@ const getBooking = wrap(async (req, res) => {
     throw new BookingValidationError('BOOKING_NOT_FOUND', 'Booking not found', 404);
   }
 
-  const queryUserId = cleanString(req.query?.user_id);
-  const canSeeFull = hasAdminToken(req) || (queryUserId && queryUserId === booking.user_id);
+  // A ?user_id= that matches is NOT ownership (anyone can type it); only a verified session is.
+  const identity = await resolveBookingIdentity(req);
+  const canSeeFull = identity.admin || (Boolean(identity.userId) && identity.userId === booking.user_id);
   const view = canSeeFull ? booking : sanitizePublicBooking(booking);
 
   // Enrich with the provider + booked listing so the confirmation UI renders
@@ -354,9 +421,13 @@ const getBooking = wrap(async (req, res) => {
 const listBookings = wrap(async (req, res) => {
   const pagination = normalizePagination(req.query || {});
 
-  if (req.query?.user_id) {
-    const userId = normalizeUserId(req.query.user_id);
-    const bookings = await repository.findByUser(userId, pagination);
+  if (req.query?.user_id || (!req.query?.provider_id && auroraAuthStore.getBearerToken(req))) {
+    const identity = await resolveBookingIdentity(req);
+    const userId = resolveActingUserId(identity, req.query?.user_id, 'list');
+    const rows = await repository.findByUser(userId, pagination);
+    // The user list never carries contact email, phone, notes or metadata; GET /:booking_id gives the
+    // verified owner the full row.
+    const bookings = rows.map(sanitizePublicBooking);
     return res.json({ bookings, pagination: { ...pagination, count: bookings.length } });
   }
 
@@ -373,7 +444,9 @@ const listBookings = wrap(async (req, res) => {
 
 const cancelBooking = wrap(async (req, res) => {
   const bookingId = normalizeUuid(req.params.booking_id, 'BOOKING_NOT_FOUND', 'booking_id', 404);
-  const userId = normalizeUserId(bodyObject(req).user_id);
+  // Identity first: an unauthenticated caller learns nothing, not even whether the booking exists.
+  const identity = await resolveBookingIdentity(req);
+  const userId = resolveActingUserId(identity, bodyObject(req).user_id, 'cancel');
   const booking = await repository.findById(bookingId);
   if (!booking) {
     throw new BookingValidationError('BOOKING_NOT_FOUND', 'Booking not found', 404);
@@ -384,7 +457,7 @@ const cancelBooking = wrap(async (req, res) => {
 
   requireTransition(booking.status, 'cancelled');
   const updated = await repository.updateStatus(bookingId, 'cancelled');
-  return res.json(updated);
+  return res.json(identity.userId ? updated : sanitizePublicBooking(updated));
 });
 
 const providerAction = wrap(async (req, res) => {
@@ -536,5 +609,7 @@ module.exports = {
     sanitizePublicBooking,
     normalizeCreatePayload,
     normalizePagination,
+    isBookingAuthEnforced,
+    resolveBookingIdentity,
   },
 };

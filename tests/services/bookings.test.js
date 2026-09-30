@@ -15,6 +15,12 @@ jest.mock('../../src/auroraBff/routes', () => ({
   __internal: {},
 }));
 
+// The real bearer parsing, with the session lookup (a DB read) stubbed per test.
+jest.mock('../../src/auroraBff/authStore', () => ({
+  ...jest.requireActual('../../src/auroraBff/authStore'),
+  resolveSessionFromToken: jest.fn(),
+}));
+
 jest.mock('../../src/services/bookings/repository', () => ({
   findById: jest.fn(),
   findByUser: jest.fn(),
@@ -30,6 +36,7 @@ jest.mock('../../src/services/bookings/repository', () => ({
 
 const request = require('supertest');
 const repository = require('../../src/services/bookings/repository');
+const authStore = require('../../src/auroraBff/authStore');
 const app = require('../../src/server');
 const {
   STATUSES,
@@ -111,6 +118,10 @@ describe('services bookings', () => {
     delete process.env.SERVICES_BOOKING_DEPOSIT_PCT;
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
     Object.values(repository).forEach((mock) => mock.mockReset && mock.mockReset());
+    authStore.resolveSessionFromToken.mockReset();
+    authStore.resolveSessionFromToken.mockImplementation(async (token) =>
+      token === 'session-user-1' ? { userId: 'user-1', email: 'user@example.com', expiresAt: null } : null,
+    );
     installDefaultMocks();
   });
 
@@ -173,10 +184,13 @@ describe('services bookings', () => {
     expect(res.body).toMatchObject({
       listing_id: LISTING_ID,
       provider_id: PROVIDER_ID,
-      user_id: 'user-1',
       status: 'requested',
       expires_at: '2026-05-22T06:00:00.000Z',
     });
+    // A guest create gets the public view back (the agent-ui sheet reads booking_id + status only).
+    expect(res.body.user_id).toBeUndefined();
+    expect(res.body.contact_email).toBeUndefined();
+    expect(res.body.contact_phone).toBeUndefined();
   });
 
   test('create idempotency returns 200 with the existing booking on retry', async () => {
@@ -237,15 +251,28 @@ describe('services bookings', () => {
     expect(adminRes.body.user_id).toBe('user-1');
   });
 
-  test('list by user_id returns that user booking list', async () => {
+  test('list by user_id needs the signed-in owner and never carries contact fields', async () => {
     repository.findByUser.mockResolvedValue([bookingRow(), bookingRow({ booking_id: '55555555-5555-4555-8555-555555555555' })]);
 
-    const res = await request(app).get('/api/services/bookings').query({ user_id: 'user-1', limit: '2' });
+    const anonymous = await request(app).get('/api/services/bookings').query({ user_id: 'user-1', limit: '2' });
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.body.error).toBe('AUTH_REQUIRED');
+    expect(repository.findByUser).not.toHaveBeenCalled();
+
+    const res = await request(app)
+      .get('/api/services/bookings')
+      .set('Authorization', 'Bearer session-user-1')
+      .query({ user_id: 'user-1', limit: '2' });
 
     expect(res.status).toBe(200);
     expect(repository.findByUser).toHaveBeenCalledWith('user-1', { limit: 2, offset: 0 });
     expect(res.body.bookings).toHaveLength(2);
-    expect(res.body.bookings.every((row) => row.user_id === 'user-1')).toBe(true);
+    for (const row of res.body.bookings) {
+      expect(row.contact_email).toBeUndefined();
+      expect(row.contact_phone).toBeUndefined();
+      expect(row.notes).toBeUndefined();
+      expect(row.metadata).toBeUndefined();
+    }
   });
 
   test('list by provider_id requires admin token and returns provider bookings with token', async () => {
@@ -275,9 +302,11 @@ describe('services bookings', () => {
 
     const ok = await request(app)
       .post(`/api/services/bookings/${BOOKING_ID}/cancel`)
+      .set('Authorization', 'Bearer session-user-1')
       .send({ user_id: 'user-1' });
     const forbidden = await request(app)
       .post(`/api/services/bookings/${BOOKING_ID}/cancel`)
+      .set('Authorization', 'Bearer session-user-1')
       .send({ user_id: 'user-1' });
 
     expect(ok.status).toBe(200);
