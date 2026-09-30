@@ -72,7 +72,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
@@ -144,6 +144,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     cutoff,
     minScore,
     limit,
+    concurrency: Math.trunc(parseNumber(argValue(argv, 'concurrency'), 1, { min: 1, max: 16 })),
     idsFile,
     anchorRefsFile,
     anchorRefsFromBuild,
@@ -816,6 +817,7 @@ async function runReview({
   verdictsFile = '',
   out = '',
   apply = false,
+  concurrency = 1,
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
@@ -864,7 +866,8 @@ async function runReview({
   const decisions = [];
   let appliedCount = 0;
   let guardBlockedAppliedCount = 0;
-  for (const row of rows) {
+  const lines = [];
+  async function reviewRow(row, index) {
     const evidence = buildEvidence(row, supplements);
     // eslint-disable-next-line no-await-in-loop
     let decision = null;
@@ -915,9 +918,21 @@ async function runReview({
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
     };
-    decisions.push(outputRow);
-    process.stdout.write(`${verdictToLine(row, decision, appliedRow, { apply })}\n`);
+    decisions[index] = outputRow;
+    lines[index] = `${verdictToLine(row, decision, appliedRow, { apply })}\n`;
   }
+
+  // Workers claim fetch-order slots; no database connection is held during an LLM call.
+  const workerCount = Math.trunc(parseNumber(concurrency, 1, { min: 1, max: 16 }));
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(workerCount, rows.length) }, async () => {
+    while (nextIndex < rows.length) {
+      const index = nextIndex++;
+      await reviewRow(rows[index], index);
+      if (workerCount === 1) process.stdout.write(lines[index]);
+    }
+  }));
+  if (workerCount > 1) lines.forEach((line) => process.stdout.write(line));
 
   const approvedCount = decisions.filter((row) => row.verdict === 'approve').length;
   const rejectedCount = decisions.filter((row) => row.verdict === 'reject').length;

@@ -214,3 +214,26 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     }));
   });
 });
+
+
+test('review concurrency travels from cron env through both routines to the review child', () => {
+  const sync = require('../../scripts/run-relationship-graph-sync-routine');
+  const routine = require('../../scripts/run-relationship-graph-routine-job');
+  for (const env of [{}, { RELGRAPH_SYNC_REVIEW_CONCURRENCY: '6' }]) {
+    const cron = buildCronArgs(env, { now: NOW });
+    const syncOptions = sync.parseArgs(cron.args, { now: NOW });
+    const syncSteps = sync.buildSyncRoutineSteps(syncOptions);
+    const child = syncSteps.steps.find((step) => step.args[0].endsWith('run-relationship-graph-routine-job.js'));
+    const options = routine.parseArgs(child.args, { now: NOW });
+    const review = routine.buildRoutineSteps(options).steps.find((step) => step.id === 'ai_review');
+    if (env.RELGRAPH_SYNC_REVIEW_CONCURRENCY) {
+      expect(argValue(cron.args, 'review-concurrency')).toBe('6');
+      expect(argValue(child.args, 'review-concurrency')).toBe('6');
+      expect(argValue(review.args, 'concurrency')).toBe('6');
+    } else {
+      expect(cron.args).not.toContain('--review-concurrency');
+      expect(child.args).not.toContain('--review-concurrency');
+      expect(review.args).not.toContain('--concurrency');
+    }
+  }
+});

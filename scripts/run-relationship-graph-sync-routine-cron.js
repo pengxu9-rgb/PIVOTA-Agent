@@ -138,6 +138,7 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   }
 
   pushArg(args, 'source-limit', env.RELGRAPH_SYNC_SOURCE_LIMIT);
+  pushArg(args, 'review-concurrency', env.RELGRAPH_SYNC_REVIEW_CONCURRENCY);
   pushArg(args, 'review-min-score', env.RELGRAPH_SYNC_REVIEW_MIN_SCORE);
   pushArg(args, 'review-relation-types', env.RELGRAPH_SYNC_REVIEW_RELATION_TYPES);
   pushArg(args, 'review-exclude-relation-types', env.RELGRAPH_SYNC_REVIEW_EXCLUDE_RELATION_TYPES);

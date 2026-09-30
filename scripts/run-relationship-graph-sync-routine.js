@@ -210,6 +210,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     renewalOut: resolvePathMaybeRelative(argValue(argv, 'renewal-out') || path.join(outDir, 'ai_renewal.json'), cwd),
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
+    reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), 0, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
@@ -439,6 +440,7 @@ function buildSyncRoutineSteps(options = {}) {
   } else {
     routineArgs.push('--cutoff', options.cutoff);
   }
+  pushArg(routineArgs, 'review-concurrency', options.reviewConcurrency);
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   pushArg(routineArgs, 'review-relation-types', options.reviewRelationTypes);
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
