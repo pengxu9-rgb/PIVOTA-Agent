@@ -453,7 +453,6 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'min-reviews-for-error-gate', options.minReviewsForErrorGate);
   pushArg(routineArgs, 'max-review-error-rate', options.maxReviewErrorRate);
   pushArg(routineArgs, 'min-approval-confidence', options.minApprovalConfidence);
-  pushFlag(routineArgs, 'prioritize-uncovered', options.prioritizeUncovered);
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   pushArg(routineArgs, 'review-relation-types', options.reviewRelationTypes);
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
@@ -461,6 +460,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushFlag(routineArgs, 'allow-dupe-ai-approval', options.allowDupeAiApproval);
   pushFlag(routineArgs, 'scope-review-to-build-anchors', options.scopeReviewToBuildAnchors);
   pushFlag(routineArgs, 'db-lock', options.dbLock);
+  pushFlag(routineArgs, 'prioritize-uncovered', options.prioritizeUncovered);
   pushArg(routineArgs, 'db-lock-key', options.dbLockKey);
   pushFlag(routineArgs, 'apply-build', options.applyBuild);
   pushFlag(routineArgs, 'apply-review', options.applyReview);
