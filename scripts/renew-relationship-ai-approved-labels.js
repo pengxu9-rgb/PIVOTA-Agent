@@ -35,9 +35,11 @@
  * nothing else ever extends them: the review publisher stamps a flat
  * DEFAULT_EXPIRY_DAYS (90) and every human_approved edge then falls off the
  * serving view on the same day (all 1,890 served ones on 2026-11-02). They get
- * checks 1 and 2 and the publisher's own 90-day interval, but NOT the AI
- * verdict age cap (3) — that cap exists because an AI verdict must be re-earned
- * by a fresh review, which a human verdict is not waiting for. Unlike the AI
+ * checks 1 and 2 and the publisher's own 90-day interval, and their own, longer
+ * verdict age cap (--human-max-age-days, default 365) in place of the AI one:
+ * no verdict renews forever, and "human_approved" also covers owner-delegated
+ * AI promotions (1,558 of the 1,890 came from kbeauty_ai_approved_promotion_
+ * 2026_08_04, reviewer claude_opus_subagent_owner_delegated). Unlike the AI
  * path, a human_approved row is renewed only while it is still live
  * (expires_at > now()): an already-expired one may have been expired on purpose
  * (quarantine-relationship-graph-serving-unsafe.js --mode expire keeps
@@ -57,6 +59,7 @@ const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_AI_RENEWAL';
 const DEFAULT_WINDOW_DAYS = 14;
 const MAX_WINDOW_DAYS = 60;
 const DEFAULT_MAX_AGE_DAYS = 180;
+const DEFAULT_HUMAN_MAX_AGE_DAYS = 365;
 const DEFAULT_OPERATOR = 'relgraph_ai_renewal';
 const RENEWAL_METHOD = 'seed_catalog_active_check+serving_guard';
 const UPDATE_CHUNK_SIZE = 500;
@@ -96,7 +99,7 @@ function parseNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER }
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--deadline-ms N] [--skip-human-approved] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
+    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--human-max-age-days 365] [--market US] [--limit N] [--deadline-ms N] [--skip-human-approved] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
     '',
     'Dry-run by default. Renews ai_approved relationship_candidate_labels rows whose',
     'expires_at falls within --window-days (already-expired rows included) when they',
@@ -106,7 +109,8 @@ function usage() {
     '',
     'human_approved rows still live (expires_at > now()) and expiring within the window',
     'are renewed by the same guard + resolvability checks, by the review publisher\'s',
-    `${HUMAN_APPROVAL_FRESHNESS_INTERVAL} interval and without the AI age cap. --skip-human-approved turns this off.`,
+    `${HUMAN_APPROVAL_FRESHNESS_INTERVAL} interval, capped at --human-max-age-days from the verdict instead of the AI cap.`,
+    '--skip-human-approved turns this off.',
     'Exits non-zero if apply mode found renewable rows but renewed none.',
     '',
     '--deadline-ms stops SCANNING once the budget is spent, then applies what was',
@@ -129,6 +133,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     apply,
     windowDays: parseNumber(argValue(argv, 'window-days'), DEFAULT_WINDOW_DAYS, { min: 0, max: MAX_WINDOW_DAYS }),
     maxAgeDays: parseNumber(argValue(argv, 'max-age-days'), DEFAULT_MAX_AGE_DAYS, { min: 1, max: 3650 }),
+    humanMaxAgeDays: parseNumber(argValue(argv, 'human-max-age-days'), DEFAULT_HUMAN_MAX_AGE_DAYS, { min: 1, max: 3650 }),
     market: normalizeString(argValue(argv, 'market'), 24).toUpperCase(),
     limit: parseNumber(argValue(argv, 'limit'), 0, { min: 0, max: 250000 }),
     deadlineMs: parseNumber(argValue(argv, 'deadline-ms'), 0, { min: 0, max: 12 * 60 * 60 * 1000 }),
@@ -258,6 +263,7 @@ function createRenewalTally() {
       anchor_unresolvable: 0,
       candidate_unresolvable: 0,
       age_capped: 0,
+      human_expired: 0,
     },
     suppressionReasons: {},
   };
@@ -364,6 +370,7 @@ function verdictDateMs(row = {}) {
 function evaluateRenewalCandidates(rows = [], resolvableRefs, {
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
+  humanMaxAgeDays = DEFAULT_HUMAN_MAX_AGE_DAYS,
   nowMs = Date.now(),
 } = {}) {
   const renewableIds = [];
@@ -374,16 +381,24 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
     anchor_unresolvable: 0,
     candidate_unresolvable: 0,
     age_capped: 0,
+    human_expired: 0,
   };
   const suppressionReasons = {};
-  const maxAgeMs = maxAgeDays * DAY_MS;
+  const maxAgeMsByState = { ai_approved: maxAgeDays * DAY_MS, human_approved: humanMaxAgeDays * DAY_MS };
 
   for (const row of rows) {
     const state = normalizeString(row.label_state, 40).toLowerCase() === 'human_approved' ? 'human_approved' : 'ai_approved';
     scannedByState[state] += 1;
+    // Backstop for the scan's own filter: an expired human row may have been expired on purpose.
+    if (state === 'human_approved') {
+      const expiresMs = new Date(row.expires_at || '').getTime();
+      if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+        skipped.human_expired += 1;
+        continue;
+      }
+    }
     const verdictMs = verdictDateMs(row);
-    // The age cap is an AI-verdict rule; a human verdict is not waiting on a re-review.
-    if (state === 'ai_approved' && verdictMs != null && nowMs - verdictMs > maxAgeMs) {
+    if (verdictMs != null && nowMs - verdictMs > maxAgeMsByState[state]) {
       skipped.age_capped += 1;
       continue;
     }
@@ -428,9 +443,10 @@ async function applyRenewals(renewableIds, {
   let renewed = 0;
   for (let i = 0; i < renewableIds.length; i += UPDATE_CHUNK_SIZE) {
     const chunk = renewableIds.slice(i, i + UPDATE_CHUNK_SIZE);
-    // label_state='ai_approved' is load-bearing: renewal must never extend or
-    // otherwise touch human_approved rows, and must not resurrect a row whose
-    // state changed between select and update.
+    // The label_state literal is load-bearing: it must be the state this pass
+    // selected (one UPDATE per state, from RENEWAL_INTERVAL_BY_STATE), so a row
+    // whose state changed between select and update is never renewed, and never
+    // at another state's interval.
     //
     // re_verify is built row-side so first_verified_at preserves the ORIGINAL
     // AI-verdict date (prior first_verified_at, else the pre-update
@@ -474,6 +490,7 @@ async function runRenewal({
   apply = false,
   windowDays = DEFAULT_WINDOW_DAYS,
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
+  humanMaxAgeDays = DEFAULT_HUMAN_MAX_AGE_DAYS,
   market = '',
   limit = 0,
   batchSize = SELECT_BATCH_SIZE,
@@ -527,6 +544,7 @@ async function runRenewal({
       foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
         suppressionFn,
         maxAgeDays,
+        humanMaxAgeDays,
         nowMs,
       }));
       onProgress({
@@ -579,6 +597,7 @@ async function runRenewal({
     mode: apply ? 'apply' : 'dry-run',
     window_days: windowDays,
     max_age_days: maxAgeDays,
+    human_max_age_days: humanMaxAgeDays,
     market: market || 'all',
     deadline_ms: deadlineMs || null,
     elapsed_ms: elapsedMs(),
@@ -637,6 +656,7 @@ if (require.main === module) {
 
 module.exports = {
   APPLY_CONFIRM_TOKEN,
+  DEFAULT_HUMAN_MAX_AGE_DAYS,
   DEFAULT_MAX_AGE_DAYS,
   HUMAN_APPROVAL_FRESHNESS_INTERVAL,
   DEFAULT_WINDOW_DAYS,

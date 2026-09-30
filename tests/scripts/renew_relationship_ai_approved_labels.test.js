@@ -1,5 +1,6 @@
 const {
   APPLY_CONFIRM_TOKEN,
+  DEFAULT_HUMAN_MAX_AGE_DAYS,
   HUMAN_APPROVAL_FRESHNESS_INTERVAL,
   applyRenewals,
   evaluateRenewalCandidates,
@@ -186,6 +187,7 @@ describe('renew-relationship-ai-approved-labels', () => {
       anchor_unresolvable: 1,
       candidate_unresolvable: 1,
       age_capped: 1,
+      human_expired: 0,
     });
     expect(suppressionReasons.ai_approved_dupe_quarantined).toBe(1);
   });
@@ -581,12 +583,13 @@ describe('renew-relationship-ai-approved-labels', () => {
   });
 
   describe('human_approved renewal', () => {
-    // Shaped like the prod cohort measured 2026-09-30: verified up to 2026-08-04,
-    // published with a flat 90-day expiry, all due on 2026-11-02.
+    // Shaped like the prod cohort measured 2026-09-30 (verified 2026-08-04, flat
+    // 90-day expiry to 2026-11-02), shifted onto this file's clock: NOW_MS is
+    // 2026-08-04, so the row is verified ~3 months earlier and due in 6 days.
     const humanRow = (overrides = {}) => baseRow({
       id: 'human_1',
       label_state: 'human_approved',
-      last_verified_at: '2026-01-01T00:00:00.000Z',
+      last_verified_at: '2026-05-06T00:00:00.000Z',
       expires_at: '2026-08-10T00:00:00.000Z',
       ...overrides,
     });
@@ -613,25 +616,46 @@ describe('renew-relationship-ai-approved-labels', () => {
     test('parseArgs renews human_approved by default; --skip-human-approved turns it off', () => {
       expect(parseArgs([]).includeHumanApproved).toBe(true);
       expect(parseArgs(['--skip-human-approved']).includeHumanApproved).toBe(false);
+      expect(parseArgs([]).humanMaxAgeDays).toBe(DEFAULT_HUMAN_MAX_AGE_DAYS);
+      expect(DEFAULT_HUMAN_MAX_AGE_DAYS).toBe(365);
+      expect(parseArgs(['--human-max-age-days', '200']).humanMaxAgeDays).toBe(200);
     });
 
-    test('no AI age cap for a human verdict, but the serving guard and resolvability still apply', () => {
-      const ancient = '2025-01-01T00:00:00.000Z'; // far past the 180-day AI cap at NOW_MS
+    test('a human verdict gets its own longer cap, not the AI one; guard and resolvability still apply', () => {
+      const pastAiCap = '2025-12-01T00:00:00.000Z'; // ~246 days before NOW_MS: past 180, inside 365
+      const pastHumanCap = '2025-06-01T00:00:00.000Z'; // ~429 days: past 365
       const result = evaluateRenewalCandidates([
-        humanRow({ id: 'human_old', last_verified_at: ancient }),
-        baseRow({ id: 'ai_old', last_verified_at: ancient }),
+        humanRow({ id: 'human_past_ai_cap', last_verified_at: pastAiCap }),
+        baseRow({ id: 'ai_past_ai_cap', last_verified_at: pastAiCap }),
+        humanRow({ id: 'human_past_human_cap', last_verified_at: pastHumanCap }),
+        humanRow({
+          id: 'human_restamped',
+          last_verified_at: '2026-07-30T00:00:00.000Z',
+          provenance: { re_verify: { first_verified_at: pastHumanCap } },
+        }),
         humanRow({ id: 'human_suppressed', candidate_product_ref: 'product:retailer-com:0123456789abcdef' }),
         humanRow({ id: 'human_dead_candidate', candidate_product_ref: 'ext_retired_seed' }),
       ], RESOLVABLE, { nowMs: NOW_MS });
 
-      expect(result.renewableIds).toEqual(['human_old']);
-      expect(result.renewableByState).toEqual({ ai_approved: [], human_approved: ['human_old'] });
-      expect(result.scannedByState).toEqual({ ai_approved: 1, human_approved: 3 });
+      expect(result.renewableIds).toEqual(['human_past_ai_cap']);
+      expect(result.renewableByState).toEqual({ ai_approved: [], human_approved: ['human_past_ai_cap'] });
+      expect(result.scannedByState).toEqual({ ai_approved: 1, human_approved: 5 });
       expect(result.skipped).toEqual(expect.objectContaining({
-        age_capped: 1,
+        age_capped: 3,
         suppressed: 1,
         candidate_unresolvable: 1,
       }));
+    });
+
+    test('an already-expired human row is never renewed, even if the scan let it through', () => {
+      const result = evaluateRenewalCandidates([
+        humanRow({ id: 'human_expired', expires_at: '2026-08-03T00:00:00.000Z' }),
+        humanRow({ id: 'human_no_expiry', expires_at: null }),
+        baseRow({ id: 'ai_expired', expires_at: '2026-08-03T00:00:00.000Z' }),
+      ], RESOLVABLE, { nowMs: NOW_MS });
+      // The AI path keeps its established behaviour of renewing a lapsed row.
+      expect(result.renewableIds).toEqual(['ai_expired']);
+      expect(result.skipped.human_expired).toBe(2);
     });
 
     test('the scan selects live human_approved rows only; skipping human restores the AI-only scan', async () => {
@@ -691,6 +715,18 @@ describe('renew-relationship-ai-approved-labels', () => {
       });
       expect(report.renewed_count).toBe(1);
       expect(report.ok).toBe(false);
+    });
+
+    test('runRenewal passes --human-max-age-days through to the evaluation and the report', async () => {
+      const rows = [humanRow({ id: 'human_1' })]; // verified 2026-05-06, ~90 days before the run
+      const tight = await runRenewal({
+        queryFn: stateAwareQueryFn({ rows }), generatedAt: '2026-08-04T00:00:00.000Z', humanMaxAgeDays: 30,
+      });
+      expect(tight.human_max_age_days).toBe(30);
+      expect(tight.by_label_state.human_approved).toEqual({ scanned: 1, renewable: 0, renewed: 0 });
+      expect(tight.skipped.age_capped).toBe(1);
+      const loose = await runRenewal({ queryFn: stateAwareQueryFn({ rows }), generatedAt: '2026-08-04T00:00:00.000Z' });
+      expect(loose.by_label_state.human_approved.renewable).toBe(1);
     });
 
     test('applyRenewals refuses any state outside the allow-list', async () => {
