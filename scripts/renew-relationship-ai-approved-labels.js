@@ -29,8 +29,21 @@
  *      prior value) before overwriting last_verified_at, so the verdict date
  *      survives every renewal.
  * Rows that verify get last_verified_at/expires_at extended by the AI freshness
- * interval. label_state is NEVER modified, and human_approved rows are never
- * touched (selected and updated under label_state='ai_approved' only).
+ * interval. label_state is NEVER modified.
+ *
+ * human_approved rows are renewed too (unless --skip-human-approved), because
+ * nothing else ever extends them: the review publisher stamps a flat
+ * DEFAULT_EXPIRY_DAYS (90) and every human_approved edge then falls off the
+ * serving view on the same day (all 1,890 served ones on 2026-11-02). They get
+ * checks 1 and 2 and the publisher's own 90-day interval, and their own, longer
+ * verdict age cap (--human-max-age-days, default 365) in place of the AI one:
+ * no verdict renews forever, and "human_approved" also covers owner-delegated
+ * AI promotions (1,558 of the 1,890 came from kbeauty_ai_approved_promotion_
+ * 2026_08_04, reviewer claude_opus_subagent_owner_delegated). Unlike the AI
+ * path, a human_approved row is renewed only while it is still live
+ * (expires_at > now()): an already-expired one may have been expired on purpose
+ * (quarantine-relationship-graph-serving-unsafe.js --mode expire keeps
+ * label_state), so renewal never resurrects it.
  */
 
 const fs = require('node:fs');
@@ -40,15 +53,24 @@ const { closePool, query } = require('../src/db');
 const { getRelationshipEdgeServingSuppressionReasons } = require('../src/auroraBff/productRelationshipGraph');
 const { activeCatalogProductSourceWhere } = require('../src/services/activeCatalogSourceSql');
 const { AI_APPROVAL_FRESHNESS_INTERVAL } = require('./review-relationship-candidate-labels');
+const { DEFAULT_EXPIRY_DAYS: HUMAN_APPROVAL_EXPIRY_DAYS } = require('./publish-product-relationship-graph-review');
 
 const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_AI_RENEWAL';
 const DEFAULT_WINDOW_DAYS = 14;
 const MAX_WINDOW_DAYS = 60;
 const DEFAULT_MAX_AGE_DAYS = 180;
+const DEFAULT_HUMAN_MAX_AGE_DAYS = 365;
 const DEFAULT_OPERATOR = 'relgraph_ai_renewal';
 const RENEWAL_METHOD = 'seed_catalog_active_check+serving_guard';
 const UPDATE_CHUNK_SIZE = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HUMAN_APPROVAL_FRESHNESS_INTERVAL = `${HUMAN_APPROVAL_EXPIRY_DAYS} days`;
+// The only states renewal may touch, and the interval each is extended by. The
+// UPDATE's label_state literal comes from this map, never from input.
+const RENEWAL_INTERVAL_BY_STATE = Object.freeze({
+  ai_approved: AI_APPROVAL_FRESHNESS_INTERVAL,
+  human_approved: HUMAN_APPROVAL_FRESHNESS_INTERVAL,
+});
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
@@ -77,13 +99,18 @@ function parseNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER }
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--deadline-ms N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
+    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--human-max-age-days 365] [--market US] [--limit N] [--deadline-ms N] [--skip-human-approved] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
     '',
     'Dry-run by default. Renews ai_approved relationship_candidate_labels rows whose',
     'expires_at falls within --window-days (already-expired rows included) when they',
     'still pass the serving guard, their anchor/candidate refs still resolve to an',
     'actively-serving seed/catalog/group entity, and the row is younger than',
-    '--max-age-days. Never modifies label_state and never touches human_approved rows.',
+    '--max-age-days. Never modifies label_state.',
+    '',
+    'human_approved rows still live (expires_at > now()) and expiring within the window',
+    'are renewed by the same guard + resolvability checks, by the review publisher\'s',
+    `${HUMAN_APPROVAL_FRESHNESS_INTERVAL} interval, capped at --human-max-age-days from the verdict instead of the AI cap.`,
+    '--skip-human-approved turns this off.',
     'Exits non-zero if apply mode found renewable rows but renewed none.',
     '',
     '--deadline-ms stops SCANNING once the budget is spent, then applies what was',
@@ -106,11 +133,13 @@ function parseArgs(argv = process.argv.slice(2)) {
     apply,
     windowDays: parseNumber(argValue(argv, 'window-days'), DEFAULT_WINDOW_DAYS, { min: 0, max: MAX_WINDOW_DAYS }),
     maxAgeDays: parseNumber(argValue(argv, 'max-age-days'), DEFAULT_MAX_AGE_DAYS, { min: 1, max: 3650 }),
+    humanMaxAgeDays: parseNumber(argValue(argv, 'human-max-age-days'), DEFAULT_HUMAN_MAX_AGE_DAYS, { min: 1, max: 3650 }),
     market: normalizeString(argValue(argv, 'market'), 24).toUpperCase(),
     limit: parseNumber(argValue(argv, 'limit'), 0, { min: 0, max: 250000 }),
     deadlineMs: parseNumber(argValue(argv, 'deadline-ms'), 0, { min: 0, max: 12 * 60 * 60 * 1000 }),
     out: normalizeString(argValue(argv, 'out'), 2000),
     operator: normalizeString(argValue(argv, 'operator'), 120) || DEFAULT_OPERATOR,
+    includeHumanApproved: !hasFlag(argv, 'skip-human-approved'),
   };
 }
 
@@ -137,6 +166,7 @@ async function* iterateExpiringAiApprovedRowBatches({
   market = '',
   limit = 0,
   batchSize = SELECT_BATCH_SIZE,
+  includeHumanApproved = true,
 } = {}) {
   let cursor = null;
   let seen = 0;
@@ -145,7 +175,9 @@ async function* iterateExpiringAiApprovedRowBatches({
     if (take <= 0) break;
     const params = [windowDays];
     const where = [
-      "label_state = 'ai_approved'",
+      includeHumanApproved
+        ? "(label_state = 'ai_approved' OR (label_state = 'human_approved' AND expires_at > now()))"
+        : "label_state = 'ai_approved'",
       `expires_at <= now() + ($1::int * interval '1 day')`,
     ];
     if (market) {
@@ -224,20 +256,38 @@ function createRenewalTally() {
   return {
     scannedRows: 0,
     renewableIds: [],
+    renewableByState: { ai_approved: [], human_approved: [] },
+    scannedByState: { ai_approved: 0, human_approved: 0 },
+    skippedByState: { ai_approved: {}, human_approved: {} },
     skipped: {
       suppressed: 0,
       anchor_unresolvable: 0,
       candidate_unresolvable: 0,
       age_capped: 0,
+      human_expired: 0,
     },
     suppressionReasons: {},
   };
 }
 
 function foldRenewalBatch(tally, batchLength, evaluation = {}) {
-  const { renewableIds = [], skipped = {}, suppressionReasons = {} } = evaluation;
+  const {
+    renewableIds = [],
+    renewableByState = {},
+    scannedByState = {},
+    skippedByState = {},
+    skipped = {},
+    suppressionReasons = {},
+  } = evaluation;
   tally.scannedRows += batchLength;
   for (const id of renewableIds) tally.renewableIds.push(id);
+  for (const state of Object.keys(tally.renewableByState)) {
+    for (const id of renewableByState[state] || []) tally.renewableByState[state].push(id);
+    tally.scannedByState[state] += Number(scannedByState[state] || 0);
+    for (const [reason, count] of Object.entries(skippedByState[state] || {})) {
+      tally.skippedByState[state][reason] = Number(tally.skippedByState[state][reason] || 0) + Number(count || 0);
+    }
+  }
   for (const key of Object.keys(tally.skipped)) {
     tally.skipped[key] += Number(skipped[key] || 0);
   }
@@ -325,27 +375,47 @@ function verdictDateMs(row = {}) {
 function evaluateRenewalCandidates(rows = [], resolvableRefs, {
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
+  humanMaxAgeDays = DEFAULT_HUMAN_MAX_AGE_DAYS,
   nowMs = Date.now(),
 } = {}) {
   const renewableIds = [];
+  const renewableByState = { ai_approved: [], human_approved: [] };
+  const scannedByState = { ai_approved: 0, human_approved: 0 };
   const skipped = {
     suppressed: 0,
     anchor_unresolvable: 0,
     candidate_unresolvable: 0,
     age_capped: 0,
+    human_expired: 0,
   };
   const suppressionReasons = {};
-  const maxAgeMs = maxAgeDays * DAY_MS;
+  // Per-state skip counts, so a human cohort aging out is not hidden inside the AI totals.
+  const skippedByState = { ai_approved: {}, human_approved: {} };
+  const skip = (state, reason) => {
+    skipped[reason] += 1;
+    skippedByState[state][reason] = Number(skippedByState[state][reason] || 0) + 1;
+  };
+  const maxAgeMsByState = { ai_approved: maxAgeDays * DAY_MS, human_approved: humanMaxAgeDays * DAY_MS };
 
   for (const row of rows) {
+    const state = normalizeString(row.label_state, 40).toLowerCase() === 'human_approved' ? 'human_approved' : 'ai_approved';
+    scannedByState[state] += 1;
+    // Backstop for the scan's own filter: an expired human row may have been expired on purpose.
+    if (state === 'human_approved') {
+      const expiresMs = new Date(row.expires_at || '').getTime();
+      if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+        skip(state, 'human_expired');
+        continue;
+      }
+    }
     const verdictMs = verdictDateMs(row);
-    if (verdictMs != null && nowMs - verdictMs > maxAgeMs) {
-      skipped.age_capped += 1;
+    if (verdictMs != null && nowMs - verdictMs > maxAgeMsByState[state]) {
+      skip(state, 'age_capped');
       continue;
     }
     const reasons = suppressionFn(row);
     if (Array.isArray(reasons) && reasons.length) {
-      skipped.suppressed += 1;
+      skip(state, 'suppressed');
       for (const reason of reasons) {
         suppressionReasons[reason] = Number(suppressionReasons[reason] || 0) + 1;
       }
@@ -354,17 +424,18 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
     const anchorOk = normalizeString(row.anchor_type, 40).toLowerCase() === 'need'
       || refResolves(row.anchor_ref, resolvableRefs, { allowNeed: true });
     if (!anchorOk) {
-      skipped.anchor_unresolvable += 1;
+      skip(state, 'anchor_unresolvable');
       continue;
     }
     if (!refResolves(row.candidate_product_ref, resolvableRefs)) {
-      skipped.candidate_unresolvable += 1;
+      skip(state, 'candidate_unresolvable');
       continue;
     }
     renewableIds.push(row.id);
+    renewableByState[state].push(row.id);
   }
 
-  return { renewableIds, skipped, suppressionReasons };
+  return { renewableIds, renewableByState, scannedByState, skippedByState, skipped, suppressionReasons };
 }
 
 async function applyRenewals(renewableIds, {
@@ -372,13 +443,21 @@ async function applyRenewals(renewableIds, {
   operator = DEFAULT_OPERATOR,
   generatedAt = new Date().toISOString(),
   onProgress = () => {},
+  labelState = 'ai_approved',
 } = {}) {
+  if (!Object.prototype.hasOwnProperty.call(RENEWAL_INTERVAL_BY_STATE, labelState)) {
+    throw new Error(`renewal_label_state_not_allowed:${labelState}`);
+  }
+  const interval = RENEWAL_INTERVAL_BY_STATE[labelState];
+  // A human_approved row is extended only while still live; see the header.
+  const liveOnlySql = labelState === 'human_approved' ? '\n          AND expires_at > now()' : '';
   let renewed = 0;
   for (let i = 0; i < renewableIds.length; i += UPDATE_CHUNK_SIZE) {
     const chunk = renewableIds.slice(i, i + UPDATE_CHUNK_SIZE);
-    // label_state='ai_approved' is load-bearing: renewal must never extend or
-    // otherwise touch human_approved rows, and must not resurrect a row whose
-    // state changed between select and update.
+    // The label_state literal is load-bearing: it must be the state this pass
+    // selected (one UPDATE per state, from RENEWAL_INTERVAL_BY_STATE), so a row
+    // whose state changed between select and update is never renewed, and never
+    // at another state's interval.
     //
     // re_verify is built row-side so first_verified_at preserves the ORIGINAL
     // AI-verdict date (prior first_verified_at, else the pre-update
@@ -408,12 +487,12 @@ async function applyRenewals(renewableIds, {
           ),
           updated_at = now()
         WHERE id = ANY($1::text[])
-          AND label_state = 'ai_approved'
+          AND label_state = '${labelState}'${liveOnlySql}
       `,
-      [chunk, AI_APPROVAL_FRESHNESS_INTERVAL, generatedAt, RENEWAL_METHOD, operator],
+      [chunk, interval, generatedAt, RENEWAL_METHOD, operator],
     );
     renewed += Number(res && res.rowCount) || 0;
-    onProgress({ phase: 'apply', applied: Math.min(i + UPDATE_CHUNK_SIZE, renewableIds.length), total: renewableIds.length, renewed });
+    onProgress({ phase: 'apply', label_state: labelState, applied: Math.min(i + UPDATE_CHUNK_SIZE, renewableIds.length), total: renewableIds.length, renewed });
   }
   return renewed;
 }
@@ -422,6 +501,7 @@ async function runRenewal({
   apply = false,
   windowDays = DEFAULT_WINDOW_DAYS,
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
+  humanMaxAgeDays = DEFAULT_HUMAN_MAX_AGE_DAYS,
   market = '',
   limit = 0,
   batchSize = SELECT_BATCH_SIZE,
@@ -432,6 +512,7 @@ async function runRenewal({
   deadlineMs = 0,
   clock = () => Date.now(),
   onProgress = () => {},
+  includeHumanApproved = true,
 } = {}) {
   // The 2026-08-12 production tick spent the sync routine's entire 20-minute
   // step budget here and was SIGKILLed, so it wrote no report, renewed nothing,
@@ -467,11 +548,14 @@ async function runRenewal({
   // which is cheap (evaluation is pure and microseconds per row).
   let truncated = outOfBudget();
   if (!truncated) {
-    for await (const batch of iterateExpiringAiApprovedRowBatches({ queryFn, windowDays, market, limit, batchSize })) {
+    for await (const batch of iterateExpiringAiApprovedRowBatches({
+      queryFn, windowDays, market, limit, batchSize, includeHumanApproved,
+    })) {
       batchesScanned += 1;
       foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
         suppressionFn,
         maxAgeDays,
+        humanMaxAgeDays,
         nowMs,
       }));
       onProgress({
@@ -488,25 +572,34 @@ async function runRenewal({
       }
     }
   }
-  const { renewableIds, skipped, suppressionReasons } = tally;
+  const { renewableIds, renewableByState, scannedByState, skippedByState, skipped, suppressionReasons } = tally;
 
-  let renewed = 0;
+  const renewedByState = { ai_approved: 0, human_approved: 0 };
   if (apply && renewableIds.length) {
     onProgress({ phase: 'apply_start', renewable: renewableIds.length, elapsed_ms: elapsedMs() });
-    renewed = await applyRenewals(renewableIds, {
-      queryFn,
-      operator,
-      generatedAt,
-      onProgress: (progress) => onProgress({ ...progress, elapsed_ms: elapsedMs() }),
-    });
+    for (const labelState of Object.keys(renewedByState)) {
+      if (!renewableByState[labelState].length) continue;
+      // eslint-disable-next-line no-await-in-loop
+      renewedByState[labelState] = await applyRenewals(renewableByState[labelState], {
+        queryFn,
+        operator,
+        generatedAt,
+        labelState,
+        onProgress: (progress) => onProgress({ ...progress, elapsed_ms: elapsedMs() }),
+      });
+    }
   }
+  const renewed = renewedByState.ai_approved + renewedByState.human_approved;
 
   // Apply mode that found renewable rows but renewed none is an inert no-op
-  // behind a success signal — fail loudly instead. A run that burned its whole
-  // budget without reading a single batch is the same kind of lie: it renews
-  // nothing and would otherwise report success.
+  // behind a success signal — fail loudly instead, per state, so a human pass
+  // that silently writes nothing cannot hide behind a working AI pass. A run
+  // that burned its whole budget without reading a single batch is the same
+  // kind of lie: it renews nothing and would otherwise report success.
+  const inertState = Object.keys(renewedByState)
+    .some((state) => renewableByState[state].length > 0 && renewedByState[state] === 0);
   const ok = (!truncated || tally.scannedRows > 0)
-    && (!apply || !renewableIds.length || renewed > 0);
+    && (!apply || !inertState);
   const skippedTotal = Object.values(skipped).reduce((sum, n) => sum + n, 0);
 
   return {
@@ -515,6 +608,7 @@ async function runRenewal({
     mode: apply ? 'apply' : 'dry-run',
     window_days: windowDays,
     max_age_days: maxAgeDays,
+    human_max_age_days: humanMaxAgeDays,
     market: market || 'all',
     deadline_ms: deadlineMs || null,
     elapsed_ms: elapsedMs(),
@@ -528,6 +622,14 @@ async function runRenewal({
     skipped_total: skippedTotal,
     suppression_reasons: suppressionReasons,
     freshness_interval: AI_APPROVAL_FRESHNESS_INTERVAL,
+    include_human_approved: Boolean(includeHumanApproved),
+    human_freshness_interval: HUMAN_APPROVAL_FRESHNESS_INTERVAL,
+    by_label_state: Object.fromEntries(Object.keys(renewedByState).map((state) => [state, {
+      scanned: scannedByState[state],
+      renewable: renewableByState[state].length,
+      renewed: renewedByState[state],
+      skipped: skippedByState[state],
+    }])),
     ok,
   };
 }
@@ -566,7 +668,9 @@ if (require.main === module) {
 
 module.exports = {
   APPLY_CONFIRM_TOKEN,
+  DEFAULT_HUMAN_MAX_AGE_DAYS,
   DEFAULT_MAX_AGE_DAYS,
+  HUMAN_APPROVAL_FRESHNESS_INTERVAL,
   DEFAULT_WINDOW_DAYS,
   applyRenewals,
   evaluateRenewalCandidates,
