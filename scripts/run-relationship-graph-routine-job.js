@@ -158,6 +158,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
+    reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), DEFAULT_REVIEW_MIN_SCORE, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
@@ -304,6 +305,7 @@ function buildRoutineSteps(options) {
       '--out',
       artifacts.review,
     ];
+    pushArg(args, 'concurrency', options.reviewConcurrency);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);
     // Single-pass scoping: review only the anchors this run's build produced (its build report).
@@ -662,6 +664,7 @@ function serializableOptions(options) {
     source_limit: options.sourceLimit || null,
     anchor_offset: options.anchorOffset,
     review_limit: options.reviewLimit,
+    review_concurrency: options.reviewConcurrency || 1,
     review_min_score: options.reviewMinScore,
     review_relation_types: options.reviewRelationTypes || null,
     review_exclude_relation_types: options.reviewExcludeRelationTypes || null,

@@ -597,3 +597,219 @@ describe('review-relationship-candidate-labels', () => {
   });
 });
 
+
+
+describe('bounded review concurrency', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('clamps concurrency and defaults to one', () => {
+    const args = ['--cutoff', '2026-06-01T00:00:00Z'];
+    expect(parseArgs(args).concurrency).toBe(1);
+    expect(parseArgs([...args, '--concurrency', '99']).concurrency).toBe(16);
+    expect(parseArgs([...args, '--concurrency', '0']).concurrency).toBe(1);
+  });
+
+  test('out-of-order completions preserve decisions, stdout and file order within the bound', async () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-concurrency-'));
+    const rows = [genuineRelatedRow('slow'), genuineRelatedRow('fast'), labelRow('blocked'),
+      genuineRelatedRow('third'), genuineRelatedRow('fourth')];
+    const queryFn = jest.fn(async (sql) => /FROM relationship_candidate_labels/i.test(sql)
+      ? { rows } : { rows: [] });
+    const lines = [];
+    jest.spyOn(process.stdout, 'write').mockImplementation((line) => { lines.push(line); return true; });
+    async function run(concurrency) {
+      let active = 0;
+      let maximum = 0;
+      const completed = [];
+      const provider = { analyzeTextToJson: jest.fn(async ({ prompt }) => {
+        const id = rows.find((row) => prompt.includes(row.anchor_ref)).id;
+        active += 1;
+        maximum = Math.max(maximum, active);
+        await new Promise((resolve) => setTimeout(resolve, id === 'slow' ? 40 : 1));
+        active -= 1;
+        completed.push(id);
+        return { ...APPROVE, confidence: id === 'fast' ? 0.8 : 0.9 };
+      }) };
+      lines.length = 0;
+      const out = path.join(dir, `${concurrency}.json`);
+      const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10,
+        concurrency, provider, queryFn, out });
+      return { result, maximum, completed, lines: [...lines], provider,
+        saved: JSON.parse(fs.readFileSync(out, 'utf8')) };
+    }
+    try {
+      const serial = await run(1);
+      const parallel = await run(2);
+      expect(serial.maximum).toBe(1);
+      expect(parallel.maximum).toBe(2);
+      expect(parallel.completed[0]).toBe('fast');
+      // Identical except the recorded setting itself.
+      expect(parallel.result.summary.concurrency).toBe(2);
+      expect(serial.result.summary.concurrency).toBe(1);
+      expect({ ...parallel.result.summary, concurrency: 0 }).toEqual({ ...serial.result.summary, concurrency: 0 });
+      expect(parallel.result.decisions).toEqual(serial.result.decisions);
+      // Per-row lines are identical; the trailing summary differs only in the recorded concurrency.
+      const normalizeConcurrency = (ls) => ls.map((l) => String(l).replace(/"concurrency": \d+/, '"concurrency": N'));
+      expect(normalizeConcurrency(parallel.lines)).toEqual(normalizeConcurrency(serial.lines));
+      expect(parallel.saved.decisions).toEqual(serial.saved.decisions);
+      expect(parallel.result.decisions.map((row) => row.id)).toEqual(rows.map((row) => row.id));
+      expect(parallel.provider.analyzeTextToJson).toHaveBeenCalledTimes(4);
+      expect(parallel.result.decisions[2].verdict).toBe('guard_blocked');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('retryable quota failures leave the row generated and do not abort other workers', async () => {
+    const { LlmError } = require('../../src/llm/provider');
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const rows = [genuineRelatedRow('quota'), genuineRelatedRow('ok')];
+    const provider = { analyzeTextToJson: jest.fn(async ({ prompt }) => {
+      if (prompt.includes('product:sig_anchor_quota')) throw new LlmError('LLM_REQUEST_FAILED', 'Vertex 429');
+      return APPROVE;
+    }) };
+    const queryFn = jest.fn(async (sql) => /FROM relationship_candidate_labels/i.test(sql) ? { rows } : { rows: [] });
+    const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', limit: 10, concurrency: 2, queryFn, provider });
+    expect(result.decisions.map((row) => row.verdict)).toEqual(['error', 'approve']);
+    expect(result.decisions[0].new_label_state).toBe('generated');
+    expect(provider.analyzeTextToJson).toHaveBeenCalledTimes(3);
+  });
+
+  describe('review follow-ups: breaker, thrown rows, apply under concurrency', () => {
+    const { LlmError } = require('../../src/llm/provider');
+    const manyRows = (n) => Array.from({ length: n }, (_, i) => genuineRelatedRow(`r${i}`));
+    const rowsQuery = (rows, onUpdate = null) => jest.fn(async (sql, params) => {
+      if (/^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql)) return { rows };
+      if (/UPDATE relationship_candidate_labels/i.test(sql)) {
+        if (onUpdate) return onUpdate(sql, params);
+        const next = /label_state = 'needs_evidence'/.test(sql) ? 'needs_evidence' : 'ai_approved';
+        return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: next }] };
+      }
+      return { rows: [] };
+    });
+    const withApply = async (fn) => {
+      const saved = process.env.RELGRAPH_AI_REVIEW_APPLY;
+      process.env.RELGRAPH_AI_REVIEW_APPLY = '1';
+      try { return await fn(); } finally {
+        if (saved === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY;
+        else process.env.RELGRAPH_AI_REVIEW_APPLY = saved;
+      }
+    };
+
+    test('parseArgs defaults the breaker to 8 consecutive transport errors', () => {
+      const args = ['--cutoff', '2026-06-01T00:00:00Z'];
+      expect(parseArgs(args).maxConsecutiveTransportErrors).toBe(8);
+      expect(parseArgs([...args, '--max-consecutive-transport-errors', '3']).maxConsecutiveTransportErrors).toBe(3);
+    });
+
+    test('sustained quota failure opens the breaker: claims stop, the rest stay unreviewed', async () => {
+      jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const rows = manyRows(40);
+      const provider = { analyzeTextToJson: jest.fn(async () => { throw new LlmError('LLM_REQUEST_FAILED', 'Vertex 429'); }) };
+      const result = await runReview({
+        cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 3, llmAttempts: 1,
+        maxConsecutiveTransportErrors: 4, queryFn: rowsQuery(rows), provider,
+      });
+      expect(result.summary.review_circuit_open).toBe(true);
+      // 4 to trip, plus at most the other in-flight workers finishing.
+      expect(result.summary.reviewed_count).toBeGreaterThanOrEqual(4);
+      expect(result.summary.reviewed_count).toBeLessThanOrEqual(4 + 2);
+      expect(result.summary.unclaimed_count).toBe(40 - result.summary.reviewed_count);
+      expect(provider.analyzeTextToJson.mock.calls.length).toBe(result.summary.reviewed_count);
+      expect(result.decisions.every((d) => d.verdict === 'error' && d.new_label_state === 'generated')).toBe(true);
+    });
+
+    test('a success resets the count, and schema errors (a bad answer, not an outage) never trip it', async () => {
+      jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const rows = manyRows(12);
+      let call = 0;
+      const provider = { analyzeTextToJson: jest.fn(async () => {
+        call += 1;
+        if (call % 3 === 0) return APPROVE;
+        throw new LlmError(call % 2 ? 'LLM_REQUEST_FAILED' : 'LLM_SCHEMA_INVALID', 'x');
+      }) };
+      const result = await runReview({
+        cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 1, llmAttempts: 1,
+        maxConsecutiveTransportErrors: 2, queryFn: rowsQuery(rows), provider,
+      });
+      expect(result.summary.review_circuit_open).toBe(false);
+      expect(result.summary.reviewed_count).toBe(12);
+    });
+
+    test('a row that throws stops new claims, lets in-flight rows finish, keeps their lines, then rethrows', async () => {
+      const lines = [];
+      jest.spyOn(process.stdout, 'write').mockImplementation((line) => { lines.push(String(line)); return true; });
+      const rows = manyRows(20);
+      const provider = { analyzeTextToJson: jest.fn(async ({ prompt }) => {
+        await new Promise((resolve) => setTimeout(resolve, prompt.includes('sig_anchor_r1"') || prompt.includes('sig_anchor_r1 ') ? 30 : 2));
+        return APPROVE;
+      }) };
+      const updated = [];
+      const queryFn = rowsQuery(rows, (sql, params) => {
+        if (params[0] === 'r3') throw new Error('connection terminated unexpectedly');
+        updated.push(params[0]);
+        return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: 'ai_approved' }] };
+      });
+      await withApply(async () => {
+        await expect(runReview({
+          cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 3, apply: true, queryFn, provider,
+        })).rejects.toThrow('connection terminated unexpectedly');
+      });
+      // Far fewer than 20 rows were claimed, and every row that completed was printed.
+      expect(provider.analyzeTextToJson.mock.calls.length).toBeLessThan(20);
+      const printedIds = lines.filter((l) => l.startsWith('[apply]')).map((l) => l.split(' ')[1]);
+      expect(printedIds.sort()).toEqual([...updated].sort());
+      expect(printedIds).not.toContain('r3');
+    });
+
+    test('finished rows are printed while later rows are still in flight (a killed step keeps them)', async () => {
+      const lines = [];
+      jest.spyOn(process.stdout, 'write').mockImplementation((line) => { lines.push(String(line)); return true; });
+      // Concurrency 2: r0 and r1 answer at once; r2 is claimed next and is slow. While r2 is still
+      // in flight, r0 and r1 must already be on stdout, not buffered until the batch ends.
+      let printedWhileR2InFlight = null;
+      const provider = { analyzeTextToJson: jest.fn(async ({ prompt }) => {
+        if (prompt.includes('sig_anchor_r2')) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          printedWhileR2InFlight = lines.filter((l) => l.startsWith('[dry-run]')).map((l) => l.split(' ')[1]);
+        }
+        return APPROVE;
+      }) };
+      await runReview({ cutoff: '2026-06-01T00:00:00Z', limit: 10, concurrency: 2, queryFn: rowsQuery(manyRows(3)), provider });
+      expect(printedWhileR2InFlight).toEqual(['r0', 'r1']);
+    });
+
+    test('apply under concurrency counts every applied approval and guard block exactly once', async () => {
+      jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const rows = [...manyRows(9), labelRow('blocked_a'), labelRow('blocked_b')];
+      const provider = { analyzeTextToJson: jest.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 5)));
+        return APPROVE;
+      }) };
+      // The UPDATE takes real time, so applies from different workers overlap: a counter updated
+      // read-before-await / write-after would lose increments here.
+      const slowUpdates = rowsQuery(rows, async (sql, params) => {
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        const next = /label_state = 'needs_evidence'/.test(sql) ? 'needs_evidence' : 'ai_approved';
+        return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: next }] };
+      });
+      const result = await withApply(() => runReview({
+        cutoff: '2026-06-01T00:00:00Z', limit: 100, concurrency: 3, apply: true, queryFn: slowUpdates, provider,
+      }));
+      expect(result.summary).toEqual(expect.objectContaining({
+        concurrency: 3,
+        reviewed_count: 11,
+        approved_count: 9,
+        applied_count: 9,
+        guard_blocked_count: 2,
+        guard_blocked_applied_count: 2,
+        unclaimed_count: 0,
+        review_circuit_open: false,
+      }));
+    });
+  });
+});
+

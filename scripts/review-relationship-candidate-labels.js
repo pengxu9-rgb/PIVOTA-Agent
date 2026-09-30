@@ -51,6 +51,11 @@ const MAX_LLM_ATTEMPTS = 5;
 const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
 const DEFAULT_EXCLUDED_RELATION_TYPES = ['dupe'];
 const RETRYABLE_REVIEW_ERROR_CODES = new Set(['LLM_SCHEMA_INVALID', 'LLM_TIMEOUT', 'LLM_REQUEST_FAILED']);
+// Transport-level failures (quota, outage), as opposed to a bad answer for one row. After this many
+// in a row the reviewer stops claiming rows: every further call would fail too, and the night's
+// batch would otherwise turn silently into `error` rows behind a passing job.
+const TRANSPORT_REVIEW_ERROR_CODES = new Set(['LLM_TIMEOUT', 'LLM_REQUEST_FAILED']);
+const DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS = 8;
 
 const VerdictSchema = z.object({
   verdict: z.enum(['approve', 'reject']),
@@ -72,7 +77,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
@@ -144,6 +149,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     cutoff,
     minScore,
     limit,
+    concurrency: Math.trunc(parseNumber(argValue(argv, 'concurrency'), 1, { min: 1, max: 16 })),
+    maxConsecutiveTransportErrors: Math.trunc(parseNumber(
+      argValue(argv, 'max-consecutive-transport-errors'),
+      DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS,
+      { min: 1, max: 1000 },
+    )),
     idsFile,
     anchorRefsFile,
     anchorRefsFromBuild,
@@ -816,6 +827,8 @@ async function runReview({
   verdictsFile = '',
   out = '',
   apply = false,
+  concurrency = 1,
+  maxConsecutiveTransportErrors = DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS,
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
@@ -864,7 +877,8 @@ async function runReview({
   const decisions = [];
   let appliedCount = 0;
   let guardBlockedAppliedCount = 0;
-  for (const row of rows) {
+  const lines = [];
+  async function reviewRow(row, index) {
     const evidence = buildEvidence(row, supplements);
     // eslint-disable-next-line no-await-in-loop
     let decision = null;
@@ -915,21 +929,73 @@ async function runReview({
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
     };
-    decisions.push(outputRow);
-    process.stdout.write(`${verdictToLine(row, decision, appliedRow, { apply })}\n`);
+    decisions[index] = outputRow;
+    lines[index] = `${verdictToLine(row, decision, appliedRow, { apply })}\n`;
   }
 
-  const approvedCount = decisions.filter((row) => row.verdict === 'approve').length;
-  const rejectedCount = decisions.filter((row) => row.verdict === 'reject').length;
-  const reviewErrorCount = decisions.filter((row) => row.verdict === 'error').length;
-  const guardBlocked = decisions.filter((row) => row.verdict === 'guard_blocked');
+  // Workers claim fetch-order slots; no database connection is held during an LLM call.
+  // Lines are flushed as the in-order prefix completes, so a killed or failed run still leaves
+  // every finished row in the step's stdout tail (as the sequential loop always did).
+  const workerCount = Math.trunc(parseNumber(concurrency, 1, { min: 1, max: 16 }));
+  const breakerLimit = Math.trunc(parseNumber(maxConsecutiveTransportErrors, DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS, {
+    min: 1,
+    max: 1000,
+  }));
+  let nextIndex = 0;
+  let flushedThrough = 0;
+  let stop = false;
+  let consecutiveTransportErrors = 0;
+  let circuitOpen = false;
+  const flushPrefix = () => {
+    while (flushedThrough < rows.length && lines[flushedThrough] !== undefined) {
+      process.stdout.write(lines[flushedThrough]);
+      flushedThrough += 1;
+    }
+  };
+  const settled = await Promise.allSettled(Array.from({ length: Math.min(workerCount, rows.length) }, async () => {
+    while (!stop && nextIndex < rows.length) {
+      const index = nextIndex++;
+      try {
+        await reviewRow(rows[index], index);
+      } catch (err) {
+        // A thrown row (DB error, missing replay row) stops new claims; rows already in flight finish.
+        stop = true;
+        throw err;
+      }
+      const code = decisions[index] && decisions[index].review_error && decisions[index].review_error.code;
+      if (TRANSPORT_REVIEW_ERROR_CODES.has(code)) {
+        consecutiveTransportErrors += 1;
+        if (consecutiveTransportErrors >= breakerLimit) {
+          circuitOpen = true;
+          stop = true;
+        }
+      } else {
+        consecutiveTransportErrors = 0;
+      }
+      flushPrefix();
+    }
+  }));
+  flushPrefix();
+  // Rows never claimed (breaker or a thrown row) leave holes; they were not reviewed at all.
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i] !== undefined && i >= flushedThrough) process.stdout.write(lines[i]);
+  }
+  const firstFailure = settled.find((result) => result.status === 'rejected');
+  if (firstFailure) throw firstFailure.reason;
+  const completed = decisions.filter(Boolean);
+  const unclaimedCount = rows.length - completed.length;
+
+  const approvedCount = completed.filter((row) => row.verdict === 'approve').length;
+  const rejectedCount = completed.filter((row) => row.verdict === 'reject').length;
+  const reviewErrorCount = completed.filter((row) => row.verdict === 'error').length;
+  const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
     for (const reason of row.serving_guard_reasons || []) {
       guardBlockedByReason[reason] = (guardBlockedByReason[reason] || 0) + 1;
     }
   }
-  const approvalRate = decisions.length ? approvedCount / decisions.length : 0;
+  const approvalRate = completed.length ? approvedCount / completed.length : 0;
   const summary = {
     dry_run: !apply,
     cutoff,
@@ -941,7 +1007,11 @@ async function runReview({
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
     dupe_ai_approval_allowed: allowDupeAiApproval,
-    reviewed_count: decisions.length,
+    reviewed_count: completed.length,
+    concurrency: workerCount,
+    review_circuit_open: circuitOpen,
+    max_consecutive_transport_errors: breakerLimit,
+    unclaimed_count: unclaimedCount,
     verdicts_file: verdictReplay ? verdictReplay.path : null,
     verdicts_file_count: verdictReplay ? verdictReplay.count : 0,
     llm_attempts: verdictReplay ? 0 : llmAttempts,
@@ -963,12 +1033,12 @@ async function runReview({
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
     fs.writeFileSync(
       resolved,
-      `${JSON.stringify({ generated_at: new Date().toISOString(), summary, decisions }, null, 2)}\n`,
+      `${JSON.stringify({ generated_at: new Date().toISOString(), summary, decisions: completed }, null, 2)}\n`,
       'utf8',
     );
   }
 
-  return { summary, decisions };
+  return { summary, decisions: completed };
 }
 
 async function main() {
@@ -977,7 +1047,12 @@ async function main() {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  await runReview(args);
+  const { summary } = await runReview(args);
+  // An open breaker means the night's review did not happen; fail the step so the job says so.
+  if (summary.review_circuit_open) {
+    process.stderr.write(`relationship graph AI review stopped: ${summary.max_consecutive_transport_errors} consecutive LLM transport errors; ${summary.unclaimed_count} candidates left unreviewed\n`);
+    process.exitCode = 1;
+  }
 }
 
 if (require.main === module) {
