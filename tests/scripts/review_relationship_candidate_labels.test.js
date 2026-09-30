@@ -512,6 +512,80 @@ describe('review-relationship-candidate-labels', () => {
         .toEqual(['related_product_same_family_variant']);
     });
 
+    test('the reviewer\'s own --out file (with a guard_blocked row) replays cleanly', async () => {
+      const fs = require('node:fs');
+      const os = require('node:os');
+      const path = require('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-review-out-'));
+      const out = path.join(dir, 'review.json');
+      const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql)
+          ? { rows: [labelRow('rcl_variant'), genuineRelatedRow('rcl_ok')] }
+          : { rows: [] }
+      ));
+      await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, out, queryFn, provider });
+
+      const replayed = await runReview({
+        cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, verdictsFile: out, queryFn,
+      });
+
+      const byId = Object.fromEntries(replayed.decisions.map((d) => [d.id, d.verdict]));
+      expect(byId).toEqual({ rcl_variant: 'guard_blocked', rcl_ok: 'approve' });
+      expect(replayed.summary.verdicts_file_count).toBe(1);
+    });
+
+    test('a nested product: ref is blocked whatever the relation type (the routine fails on it)', async () => {
+      const row = genuineRelatedRow('rcl_nested');
+      row.relation_type = 'competitive_alternative';
+      row.candidate_product_ref = 'product:japanesetaste-com:0123456789abcdef';
+      row.candidate_snapshot = { ...row.candidate_snapshot, brand: 'Other Brand' };
+      expect(servingGuardReasonsIfApproved(row)).toEqual(['candidate_ref_unresolvable_nested_product_prefix']);
+      const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+      const queryFn = jest.fn(async (sql) => (
+        /FROM relationship_candidate_labels/i.test(sql) ? { rows: [row] } : { rows: [] }
+      ));
+
+      const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, queryFn, provider });
+
+      expect(provider.analyzeTextToJson).not.toHaveBeenCalled();
+      expect(result.decisions[0]).toEqual(expect.objectContaining({
+        verdict: 'guard_blocked',
+        serving_guard_reasons: ['candidate_ref_unresolvable_nested_product_prefix'],
+      }));
+    });
+
+    test('apply: a guard block that loses a race (row no longer generated) is a guarded no-op', async () => {
+      const saved = process.env.RELGRAPH_AI_REVIEW_APPLY;
+      process.env.RELGRAPH_AI_REVIEW_APPLY = '1';
+      const lines = [];
+      jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => { lines.push(String(chunk)); return true; });
+      try {
+        const queryFn = jest.fn(async (sql) => (
+          /^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql) ? { rows: [labelRow('rcl_variant')] } : { rows: [] }
+        ));
+
+        const result = await runReview({
+          cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, apply: true, queryFn, provider: { analyzeTextToJson: jest.fn() },
+        });
+
+        expect(result.decisions[0]).toEqual(expect.objectContaining({ verdict: 'guard_blocked', applied: false }));
+        expect(result.summary.guard_blocked_applied_count).toBe(0);
+        expect(lines.join('')).toMatch(/rcl_variant generated->generated verdict=guard_blocked .* guarded_noop/);
+      } finally {
+        if (saved === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY;
+        else process.env.RELGRAPH_AI_REVIEW_APPLY = saved;
+      }
+    });
+
+    test('the guard-block UPDATE records the row\'s previous reason_flags from the stored row', async () => {
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+      const { applyGuardBlock } = require('../../scripts/review-relationship-candidate-labels');
+      await applyGuardBlock(labelRow('rcl_variant'), ['related_product_same_family_variant'], queryFn);
+      const [sql] = queryFn.mock.calls[0];
+      expect(sql).toMatch(/jsonb_build_object\('previous_reason_flags', to_jsonb\(COALESCE\(reason_flags, '\{\}'::text\[\]\)\)\)/);
+    });
+
     test('applyApproval itself refuses a row the serving guard would suppress', async () => {
       const queryFn = jest.fn(async () => ({ rows: [{ id: 'rcl_variant' }] }));
       await expect(applyApproval(labelRow('rcl_variant'), APPROVE, queryFn)).rejects.toMatchObject({

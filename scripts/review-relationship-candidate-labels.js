@@ -76,6 +76,9 @@ function usage() {
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
+    'Rows the serving guard would suppress once approved are never approved: they move to needs_evidence',
+    '(reason flag serving_guard:<reason>) without an LLM call. Exception: --allow-dupe-ai-approval overrides',
+    'the guard\'s blanket ai_approved dupe quarantine, so dupes approved under it are still hidden at serving.',
   ].join('\n');
 }
 
@@ -207,7 +210,9 @@ function readVerdictsFile(filePath) {
     const id = normalizeString(row.id, 160);
     if (!id) continue;
     const verdict = normalizeString(row.verdict, 20).toLowerCase();
-    if (verdict === 'error') continue;
+    // guard_blocked rows come from a previous --out file; runReview re-asks the guard before it
+    // ever consults a replay, so they carry no verdict to replay.
+    if (verdict === 'error' || verdict === 'guard_blocked') continue;
     if (!['approve', 'reject'].includes(verdict)) {
       throw new Error(`invalid verdict for ${id}: ${row.verdict}`);
     }
@@ -728,7 +733,12 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
           WHERE flag IS NOT NULL AND flag <> ''
           ORDER BY flag
         ),
-        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{review_serving_guard}', $3::jsonb, true),
+        provenance = jsonb_set(
+          COALESCE(provenance, '{}'::jsonb),
+          '{review_serving_guard}',
+          $3::jsonb || jsonb_build_object('previous_reason_flags', to_jsonb(COALESCE(reason_flags, '{}'::text[]))),
+          true
+        ),
         updated_at = now()
       WHERE id = $1
         AND label_state = 'generated'
