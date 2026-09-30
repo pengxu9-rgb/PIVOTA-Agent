@@ -664,6 +664,7 @@ function serializableOptions(options) {
     source_limit: options.sourceLimit || null,
     anchor_offset: options.anchorOffset,
     review_limit: options.reviewLimit,
+    review_concurrency: options.reviewConcurrency || 1,
     review_min_score: options.reviewMinScore,
     review_relation_types: options.reviewRelationTypes || null,
     review_exclude_relation_types: options.reviewExcludeRelationTypes || null,
