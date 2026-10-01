@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
 
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
 
@@ -124,6 +125,8 @@ function usage() {
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
     'Use --serving-audit-timeout-minutes N to override the serving-audit child timeout separately.',
     'Use --db-lock-heartbeat-ms N to keep the advisory-lock connection active during long child steps.',
+    'Review fails above --max-review-error-rate (default 0.25) after --min-reviews-for-error-gate (default 20).',
+    'Use --min-approval-confidence (default 0.70, range 0.5..0.99) for AI approvals.',
     'Use --skip-need-nodes for a product-anchor-only canary that does not generate curated need-node candidates.',
   ].join('\n');
 }
@@ -158,6 +161,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
+    minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
+    maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
+    minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), DEFAULT_REVIEW_MIN_SCORE, { min: 0, max: 1 }),
@@ -306,6 +312,7 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);
     // Single-pass scoping: review only the anchors this run's build produced (its build report).
@@ -659,6 +666,9 @@ function runCommand(command, args, { cwd = process.cwd(), env = {}, timeoutMs = 
 function serializableOptions(options) {
   return {
     market: options.market,
+    min_reviews_for_error_gate: options.minReviewsForErrorGate,
+    max_review_error_rate: options.maxReviewErrorRate,
+    min_approval_confidence: options.minApprovalConfidence,
     cutoff: options.cutoff,
     limit: options.limit,
     source_limit: options.sourceLimit || null,
@@ -703,7 +713,7 @@ function writeSummary(outDir, summary) {
 
 async function runRoutineJob(
   options,
-  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient } = {},
+  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient, progressReader = readServingSnapshot, reviewReader = readReviewMetrics } = {},
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
@@ -736,9 +746,26 @@ async function runRoutineJob(
     artifacts,
     steps: [],
     ok: true,
+    ...reviewMetrics({}),
+    served_edges_before: null,
+    served_edges_after: null,
+    distinct_anchors_served_before: null,
+    distinct_anchors_served_after: null,
+    anchors_newly_covered: null,
   };
 
+  let beforeSnapshot;
   async function executeSteps() {
+    let reviewGateFailed = false;
+    try {
+      beforeSnapshot = await progressReader({ market: options.market });
+    } catch (error) {
+      summary.ok = false;
+      summary.failed_step = 'serving_progress_before';
+      summary.serving_progress_error = error.message;
+      error.summary = summary;
+      throw error;
+    }
     for (const step of steps) {
       const startedAt = new Date().toISOString();
       // eslint-disable-next-line no-await-in-loop
@@ -764,6 +791,25 @@ async function runRoutineJob(
         stderr_tail: tailOutput(result.stderr),
       };
       summary.steps.push(record);
+      if (step.id === 'ai_review') {
+        try {
+          Object.assign(summary, reviewReader(step.artifact, { required: result.exitCode === 0 }));
+          if (result.exitCode === 0 && reviewErrorGateExceeded(summary, options)) {
+            record.status = 'failed';
+            record.exit_code = 1;
+            record.threshold_status = 'failed';
+            reviewGateFailed = true;
+            summary.ok = false;
+            summary.failed_step = 'ai_review';
+            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`;
+          }
+        } catch (error) {
+          record.status = 'failed';
+          record.exit_code = 1;
+          record.stderr_tail = error.message;
+          result.exitCode = 1;
+        }
+      }
       if (result.exitCode !== 0) {
         summary.ok = false;
         summary.failed_step = step.id;
@@ -809,6 +855,14 @@ async function runRoutineJob(
       writeSummary(outDir, summary);
     }
 
+    if (reviewGateFailed) {
+      summary.ok = false;
+      summary.failed_step = 'ai_review';
+      summary.summary_path = writeSummary(outDir, summary);
+      const error = new Error('relationship graph routine job failed at step: ai_review');
+      error.summary = summary;
+      throw error;
+    }
     summary.summary_path = writeSummary(outDir, summary);
     return summary;
   }
@@ -832,7 +886,23 @@ async function runRoutineJob(
           };
           writeSummary(outDir, summary);
         }
-        return executeSteps();
+        try {
+          return await executeSteps();
+        } finally {
+          if (beforeSnapshot) {
+            try {
+              Object.assign(summary, servingProgress(beforeSnapshot, await progressReader({ market: options.market })));
+            } catch (error) {
+              summary.ok = false;
+              summary.failed_step = summary.failed_step || 'serving_progress';
+              summary.serving_progress_error = error.message;
+              error.summary = summary;
+              throw error;
+            } finally {
+              summary.summary_path = writeSummary(outDir, summary);
+            }
+          }
+        }
       },
       { withDbClient },
     );
@@ -851,6 +921,7 @@ async function runRoutineJob(
       summary.summary_path = writeSummary(outDir, summary);
       err.summary = summary;
     }
+    summary.summary_path = writeSummary(outDir, summary);
     throw err;
   } finally {
     if (releaseLock) releaseLock();

@@ -545,8 +545,8 @@ describe('product relationship graph store helpers', () => {
         queryFn,
       });
       const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
-      expect(rawCall[0]).not.toMatch(/\blabel_state\b/);
-      expect(rawCall[1][3]).toBe(500);
+      expect(rawCall[0]).toMatch(/\blabel_state\b/);
+      expect(rawCall[1][3]).toBe(1000);
       expect(edges).toHaveLength(2);
       expect(edges.map((edge) => edge.provenance.relationship_family_collapse.collapsed_edge_count).sort((a, b) => b - a)).toEqual([10, 1]);
       expect(edges[0].candidate_family_key).toMatch(/^family:v1:/);
@@ -614,6 +614,7 @@ describe('product relationship graph store helpers', () => {
           candidate_product_ref: 'product:label_state_candidate_ai',
           candidate_snapshot: { product_id: 'label_state_candidate_ai', brand: 'Value Brand', name: 'Value Serum - Shade A' },
           label_state: 'ai_approved',
+          relation_type: 'competitive_alternative',
           score_total: 0.99,
           evidence_grade: 'A',
           updated_at: new Date(NOW + 5_000).toISOString(),
@@ -629,6 +630,7 @@ describe('product relationship graph store helpers', () => {
           candidate_product_ref: 'product:label_state_candidate_human',
           candidate_snapshot: { product_id: 'label_state_candidate_human', brand: 'Value Brand', name: 'Value Serum - Shade B' },
           label_state: 'human_approved',
+          relation_type: 'competitive_alternative',
           score_total: 0.7,
           evidence_grade: 'B',
           updated_at: new Date(NOW + 1_000).toISOString(),

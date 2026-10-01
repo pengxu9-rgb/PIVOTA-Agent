@@ -43,6 +43,7 @@ const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v2';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
+const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
 const DEFAULT_LIMIT = 250;
 const MAX_LIMIT = 5000;
 const TEXT_LIMIT = 900;
@@ -77,7 +78,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
@@ -149,6 +150,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     cutoff,
     minScore,
     limit,
+    minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 }),
     concurrency: Math.trunc(parseNumber(argValue(argv, 'concurrency'), 1, { min: 1, max: 16 })),
     maxConsecutiveTransportErrors: Math.trunc(parseNumber(
       argValue(argv, 'max-consecutive-transport-errors'),
@@ -224,7 +226,7 @@ function readVerdictsFile(filePath) {
     // guard_blocked rows come from a previous --out file; runReview re-asks the guard before it
     // ever consults a replay, so they carry no verdict to replay.
     if (verdict === 'error' || verdict === 'guard_blocked') continue;
-    if (!['approve', 'reject'].includes(verdict)) {
+    if (!['approve', 'reject', 'low_confidence'].includes(verdict)) {
       throw new Error(`invalid verdict for ${id}: ${row.verdict}`);
     }
     const confidence = Number(row.confidence);
@@ -235,7 +237,7 @@ function readVerdictsFile(filePath) {
     if (!rationale) throw new Error(`missing rationale for ${id}`);
     byId.set(id, {
       verdict,
-      confidence: Number(confidence.toFixed(4)),
+      confidence,
       rationale,
     });
   }
@@ -669,7 +671,7 @@ async function reviewEvidenceWithLlm(provider, evidence, { attempts = DEFAULT_LL
       const confidence = Math.max(0, Math.min(1, Number(result.confidence)));
       return {
         verdict: result.verdict,
-        confidence: Number(confidence.toFixed(4)),
+        confidence,
         rationale: normalizeString(result.rationale, 700),
       };
     } catch (err) {
@@ -760,7 +762,13 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
 
-async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false } = {}) {
+async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE } = {}) {
+  const floor = parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 });
+  if (!Number.isFinite(decision.confidence) || decision.confidence < floor) {
+    const err = new Error(`AI approval confidence below ${floor}`);
+    err.code = 'LOW_CONFIDENCE_AI_APPROVAL_BLOCKED';
+    throw err;
+  }
   if (normalizeString(row && row.relation_type, 80).toLowerCase() === 'dupe' && !allowDupeAiApproval) {
     const err = new Error('dupe_ai_approval_requires_explicit_allow_dupe_ai_approval');
     err.code = 'DUPE_AI_APPROVAL_BLOCKED';
@@ -828,6 +836,7 @@ async function runReview({
   out = '',
   apply = false,
   concurrency = 1,
+  minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE,
   maxConsecutiveTransportErrors = DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS,
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
@@ -840,6 +849,7 @@ async function runReview({
     throw new Error('--apply requested but RELGRAPH_AI_REVIEW_APPLY=1 is not set');
   }
 
+  const confidenceFloor = parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 });
   const ids = readIdsFile(idsFile);
   // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
   // build that produced 0 edges, or a missing/unreadable report).
@@ -904,10 +914,13 @@ async function runReview({
     if (!decision) {
       throw new Error(`missing verdict replay row for candidate ${row.id}`);
     }
+    if (decision.verdict === 'approve' && decision.confidence < confidenceFloor) {
+      decision = { ...decision, verdict: 'low_confidence' };
+    }
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval });
+      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor });
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
       // eslint-disable-next-line no-await-in-loop
@@ -989,6 +1002,8 @@ async function runReview({
   const rejectedCount = completed.filter((row) => row.verdict === 'reject').length;
   const reviewErrorCount = completed.filter((row) => row.verdict === 'error').length;
   const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
+  const lowConfidenceCount = completed.filter((row) => row.verdict === 'low_confidence').length;
+  const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
     for (const reason of row.serving_guard_reasons || []) {
@@ -1015,13 +1030,18 @@ async function runReview({
     verdicts_file: verdictReplay ? verdictReplay.path : null,
     verdicts_file_count: verdictReplay ? verdictReplay.count : 0,
     llm_attempts: verdictReplay ? 0 : llmAttempts,
+    min_approval_confidence: confidenceFloor,
+    low_confidence_count: lowConfidenceCount,
     approved_count: approvedCount,
     rejected_count: rejectedCount,
     review_error_count: reviewErrorCount,
+    review_error_denominator: reviewErrorDenominator,
+    review_error_rate: reviewErrorDenominator ? reviewErrorCount / reviewErrorDenominator : 0,
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,
-    applied_count: appliedCount,
+    approved_applied_count: appliedCount,
+    applied_count: appliedCount + guardBlockedAppliedCount,
     approval_rate: Number(approvalRate.toFixed(4)),
     reviewer: REVIEWER_ID,
     rubric: RUBRIC_VERSION,
@@ -1076,6 +1096,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  MIN_AI_APPROVAL_CONFIDENCE,
   REVIEWER_ID,
   RUBRIC_VERSION,
   PRIMARY_REASON,

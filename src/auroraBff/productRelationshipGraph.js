@@ -258,6 +258,31 @@ function relationshipFamilyTitle(title) {
     .trim();
 }
 
+// Preserve product-name words, formulation, strength and SPF. Only explicit listing
+// sizes are stripped on both sides. Descriptive tails require an otherwise exact
+// shorter title; two different tails (including scents/styles) never become equal.
+function sameProductListingTitle(title, brand) {
+  const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return normalizeLower(title, 600)
+    .replace(new RegExp(`^\\[${escapedBrand}\\]\\s*`), '')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz|grams?|g|litres?|liters?)\b/g, ' ')
+    .replace(/\b(?:mini|travel\s+size|full\s+size|refill)\b/g, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/\s+/g, ' ').replace(/\s*[-–—|,]\s*$/, '').trim();
+}
+
+function isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, brand) {
+  const a = sameProductListingTitle(anchorTitle, brand);
+  const b = sameProductListingTitle(candidateTitle, brand);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  if (!long.startsWith(short)) return false;
+  // A comma or spaced dash is a listing-description separator, not a generic
+  // word prefix. Never strip these tails independently on both sides.
+  return /^(?: for\s+|,\s+| [-–—]\s+)\S/.test(long.slice(short.length));
+}
+
 function isComplexionSkuTitle(title) {
   return /\b(foundation|concealer|bright fix|match stix|skin stick|skinstick|tinted fluid|tinted moisturizer|hydra vizor)\b/i.test(
     String(title || ''),
@@ -544,6 +569,9 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
       extractBrand(edge.anchor_snapshot) &&
         extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot),
     );
+    if (sameBrand && isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, extractBrand(edge.anchor_snapshot))) {
+      reasons.push('related_product_same_product_across_listings_or_sizes');
+    }
     const bothComplexionSku = isComplexionSkuTitle(anchorTitle) && isComplexionSkuTitle(candidateTitle);
     if (
       anchorMarker &&
@@ -1258,11 +1286,12 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
   const rels = (Array.isArray(relationTypes) ? relationTypes : [])
     .map((item) => normalizeLower(item, 64))
     .filter((item) => RELATION_TYPES.has(item));
+  const requestedLimit = Math.max(1, Math.min(500, Math.trunc(Number(limit) || 120)));
   const params = [
     normalizeLower(anchorType, 24) || 'product',
     refs,
     normalizeLower(market || DEFAULT_MARKET, 24) || DEFAULT_MARKET.toLowerCase(),
-    Math.max(1, Math.min(500, Number(limit) || 120)),
+    Math.min(1000, requestedLimit * 2),
   ];
   let relationSql = '';
   if (rels.length) {
@@ -1276,7 +1305,7 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
           id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref, candidate_snapshot,
           relation_type, display_label, market, vertical, category_taxonomy, use_case,
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
-          review_status, why_candidate, tradeoffs, watchouts, provenance,
+          review_status, label_state, why_candidate, tradeoffs, watchouts, provenance,
           last_verified_at, expires_at, created_at, updated_at
         FROM product_relationship_edges
         WHERE anchor_type = $1
@@ -1293,7 +1322,13 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
       params,
     );
     const edges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
-    return dedupeApprovedRelationshipEdges(edges);
+    const safeEdges = edges.filter(isRelationshipEdgeServingSafe);
+    const dropped = edges.length - safeEdges.length;
+    if (dropped) {
+      logger.warn?.({ kind: 'metric', name: 'aurora_bff_relationship_graph_serving_guard_dropped', dropped_count: dropped },
+        'aurora bff: relationship graph serving guard dropped unsafe edges');
+    }
+    return dedupeApprovedRelationshipEdges(safeEdges).slice(0, requestedLimit);
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
     if (code === 'NO_DATABASE' || code === '42P01') return [];
@@ -1751,7 +1786,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
     throw err;
   }
 
-  await queryFn(
+  const result = await queryFn(
     `
       INSERT INTO relationship_candidate_labels (
         id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
@@ -1812,6 +1847,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
           AND NOT (EXCLUDED.label_state = ANY (ARRAY['human_approved', 'human_rejected', 'needs_evidence']::text[]))
         )
       )
+      RETURNING id
     `,
     [
       id,
@@ -1846,7 +1882,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       edge.expires_at || null,
     ],
   );
-  return { id, edge_id: edgeId, label_state: labelState };
+  return { id, edge_id: edgeId, label_state: labelState, written: Boolean(result && result.rows && result.rows.length) };
 }
 
 module.exports = {

@@ -197,10 +197,10 @@ describe('persistEdgesWithGlobalFanInCap (write path)', () => {
       query: async (text, params) => {
         log.push({ text: String(text).replace(/\s+/g, ' ').trim(), params });
         if (/FROM relationship_candidate_labels/.test(text)) return { rows: existingRows };
-        return { rows: [] };
+        return { rows: /INSERT INTO relationship_candidate_labels/.test(text) ? [{ id: params[0] }] : [] };
       },
     };
-    const direct = async (text, params) => { log.push({ text: `DIRECT ${String(text).replace(/\s+/g, ' ').trim()}`, params }); return { rows: [] }; };
+    const direct = async (text, params) => { log.push({ text: `DIRECT ${String(text).replace(/\s+/g, ' ').trim()}`, params }); return { rows: /INSERT INTO relationship_candidate_labels/.test(text) ? [{ id: params[0] }] : [] }; };
     return { log, client, runInClient: async (fn) => fn(client), queryFn: direct };
   }
 
@@ -241,7 +241,7 @@ describe('persistEdgesWithGlobalFanInCap (write path)', () => {
       query: async (text, params) => {
         if (/FROM relationship_candidate_labels/.test(text)) return { rows: stored.map((anchor) => storedRow(anchor, 'generated', { fresh: true })) };
         if (/INSERT INTO relationship_candidate_labels/.test(text)) stored.push(String(params[3]).toLowerCase());
-        return { rows: [] };
+        return { rows: /INSERT INTO relationship_candidate_labels/.test(text) ? [{ id: params[0] }] : [] };
       },
     };
     const run = (anchors) => persistEdgesWithGlobalFanInCap({ edges: anchors.map((a) => edge(a, 'hub')), cap: 8, runInClient: async (fn) => fn(client), queryFn: client.query });
@@ -257,7 +257,7 @@ describe('persistEdgesWithGlobalFanInCap (write path)', () => {
 describe('persistEdgesWithGlobalFanInCap: classification first, only real writes count', () => {
   function recordingClient(existingRows = []) {
     const log = [];
-    const client = { query: async (text, params) => { log.push({ text: String(text).replace(/\s+/g, ' ').trim(), params }); return /FROM relationship_candidate_labels/.test(text) ? { rows: existingRows } : { rows: [] }; } };
+    const client = { query: async (text, params) => { log.push({ text: String(text).replace(/\s+/g, ' ').trim(), params }); return /FROM relationship_candidate_labels/.test(text) ? { rows: existingRows } : { rows: /INSERT INTO relationship_candidate_labels/.test(text) ? [{ id: params[0] }] : [] }; } };
     return { log, client, runInClient: async (fn) => fn(client), queryFn: client.query };
   }
   const upserts = (db) => db.log.filter((row) => /INSERT INTO relationship_candidate_labels/.test(row.text));

@@ -289,3 +289,13 @@ describe('publish-product-relationship-graph-review helpers', () => {
     );
   });
 });
+
+test('an explicit protected-row no-op is skipped rather than published', async () => {
+  const result = await publishReviewReport({
+    report: { edges: [relationshipEdge()] },
+    decisions: [{ edge_id: 'prel_fixture_1', decision: 'approved', reviewer: 'human_reviewer', last_verified_at: NOW, expires_at: FUTURE }],
+    apply: true, now: NOW, upsertFn: async () => ({ written: false }),
+  });
+  expect(result.summary).toMatchObject({ published: 0, skipped: 1 });
+  expect(result.rows[0]).toMatchObject({ status: 'skipped', reason: 'skipped_protected' });
+});

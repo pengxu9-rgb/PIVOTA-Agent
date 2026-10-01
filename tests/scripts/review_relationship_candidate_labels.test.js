@@ -476,7 +476,7 @@ describe('review-relationship-candidate-labels', () => {
         expect(approveSql).toMatch(/label_state = 'ai_approved'/);
         expect(result.summary).toEqual(expect.objectContaining({
           approved_count: 1,
-          applied_count: 1,
+          applied_count: 2,
           guard_blocked_count: 1,
           guard_blocked_applied_count: 1,
         }));
@@ -803,7 +803,7 @@ describe('bounded review concurrency', () => {
         concurrency: 3,
         reviewed_count: 11,
         approved_count: 9,
-        applied_count: 9,
+        applied_count: 11,
         guard_blocked_count: 2,
         guard_blocked_applied_count: 2,
         unclaimed_count: 0,

@@ -1109,6 +1109,7 @@ async function main() {
   }, {});
 
   let applied = 0;
+  let skippedProtected = 0;
   let prefilterRejected = 0;
   let prefilterPassed = 0;
   let prefilterSkipped = 0;
@@ -1134,6 +1135,7 @@ async function main() {
       classify,
     });
     applied = persisted.applied;
+    skippedProtected = persisted.skipped_protected;
     fanInCappedAtWrite = persisted.dropped.length;
     const removedAtWrite = [...persisted.dropped, ...persisted.skipped];
     if (removedAtWrite.length) {
@@ -1162,6 +1164,8 @@ async function main() {
       skip_need_nodes: !includeNeedNodes,
       dry_run: !hasFlag('apply'),
       applied_count: applied,
+      written_count: applied,
+      skipped_protected_count: skippedProtected + globalCap.skipped.length,
       prefilter_applied: hasFlag('apply') && defaultLabelState === 'generated',
       prefilter_rejected_count: prefilterRejected,
       prefilter_passed_count: prefilterPassed,
@@ -1217,19 +1221,21 @@ async function persistEdgesWithGlobalFanInCap({
   queryFn = query,
 } = {}) {
   let applied = 0;
+  let skippedProtected = 0;
   const dropped = [];
   const skipped = [];
   // Classification comes first: it decides the label_state a row will land in, and only rows
   // that land in a counting state may spend a fan-in slot.
   const classified = edges.map((edge) => ({ edge, classification: classify(edge) }));
   const upsert = async ({ edge, classification }, queryFnForRow) => {
-    await upsertRelationshipCandidateLabel({
+    const result = await upsertRelationshipCandidateLabel({
       ...edge,
       edge_id: edge.id,
       label_state: classification.label_state,
       prefilter_reasons: classification.prefilter_reasons,
     }, { queryFn: queryFnForRow });
-    applied += 1;
+    if (result.written) applied += 1;
+    else skippedProtected += 1;
   };
 
   const byCandidate = new Map();
@@ -1265,6 +1271,7 @@ async function persistEdgesWithGlobalFanInCap({
         for (const row of group) {
           if (COUNTING_LABEL_STATES.has(row.classification.label_state)) continue;
           if (unwritable.has(normalizeLower(row.edge.anchor_ref, 260))) {
+            skippedProtected += 1;
             skipped.push({ anchor_ref: row.edge.anchor_ref, candidate_ref: row.edge.candidate_product_ref, errors: ['stored_row_not_writable'], metrics: { relation_type: row.edge.relation_type, score_total: row.edge.score_total } });
             continue;
           }
@@ -1273,6 +1280,7 @@ async function persistEdgesWithGlobalFanInCap({
         }
         dropped.push(...decision.dropped);
         skipped.push(...decision.skipped);
+        skippedProtected += decision.skipped.length;
         await clientQuery('COMMIT');
       } catch (err) {
         try {
@@ -1284,7 +1292,7 @@ async function persistEdgesWithGlobalFanInCap({
       }
     });
   }
-  return { applied, dropped, skipped };
+  return { applied, written: applied, skipped_protected: skippedProtected, dropped, skipped };
 }
 
 async function runCli({ runMain = main, closeDbPool = closePool } = {}) {
