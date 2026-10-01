@@ -466,3 +466,35 @@ test('cleansing cream and moisturizer retain distinct routine jobs through appro
 test.each([['Foundation Brushes','foundation_brush'],['Blush Sponges','blush_sponge'],['Lip Gloss Applicators','lip_gloss_applicator'],['Face Powder Puffs','powder_puff']])('plural application tools preserve their job: %s', (name,role) => {
   expect(optionRole(snapshot('House',name,'tools'))).toBe(role);
 });
+
+
+const attachmentModes = [
+  ['Magnetic','Glue On'], ['Self Adhesive','Glue Required'],
+  ['No Glue','Requires Glue'], ['Pre Applied Adhesive','Adhesive'],
+];
+const decorativeRoles = [['Salon Collection False Eyelashes','false eyelashes'],['Salon Collection Press On Nails','press on nails']];
+const attachmentPairs = decorativeRoles.flatMap(([name,category])=>attachmentModes.map(([a,b])=>[name,category,a,b]));
+test.each(attachmentPairs)('attachment constraints remain meaningful choices: %s %s %s/%s', (name,category,aMode,bMode) => {
+  const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
+  // The existing set-composition guard treats 'Collection' as a possible set.
+  // Preserve that evidence requirement, but never reject this pair as a variant.
+  expect(assertRetainedPair(a,b).relation_type).toBe('related_product');
+  expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement')).verdict).toBe('reject');
+});
+
+test.each(decorativeRoles.flatMap(([name,category])=>['Magnetic','No Glue','Glue Required','Self Adhesive'].map(mode=>[name,category,mode])))('same attachment mode still rejects decorative style siblings: %s %s %s', (name,category,mode) => {
+  const a=snapshot('House',`${name} - ${mode}, Rose`,category);const b=snapshot('House',`${name} - ${mode}, Midnight`,category);
+  expect(isSameFamilyVariant(a,b)).toBe(true);
+  for(const relation of ['related_product','competitive_alternative']) expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toContain(`${relation}_same_family_variant`);
+  expect(buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9},nowIso:NOW}).edge).toBeNull();
+});
+
+
+test.each([
+  ['Studio False Lash Extensions','false eyelashes','Magnetic','Glue On'],
+  ['Studio Press On Nails','press-on-nails','No Glue','Glue Required'],
+])('compatible single-product attachment choices enter the alternative lane: %s', (name,category,aMode,bMode) => {
+  const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
+  expect(assertRetainedPair(a,b).relation_type).toBe('competitive_alternative');
+  expect(validateRecommendationDecision(edge(a,b,'competitive_alternative'),decision(a,b)).verdict).toBe('approve');
+});

@@ -90,9 +90,22 @@ function variantCore(snapshot = {}) {
       !/^(?:shade|colou?r|style|scent|flavou?r)\s*:/i.test(text(snapshot.variant_title || snapshot.variant_detail_label))) return value;
   return [parts[0], ...productParts].join(' | ').replace(/\s+/g, ' ').trim();
 }
+function attachmentMarkers(snapshot = {}) {
+  if (!['lashes','nails'].includes(optionRole(snapshot))) return [];
+  const value = normalizedTitle(snapshot);
+  const modes = [];
+  if (/\bmagnetic\b/.test(value)) modes.push('attachment:magnetic');
+  const selfAdhesive = /\b(?:no[ -]?glue|glue[ -]?free|self[ -]?adhesive|pre[ -]?glued|pre[ -]?applied adhesive|adhesive tabs|stick[ -]?on)\b/.test(value);
+  if (selfAdhesive) modes.push('attachment:self_adhesive');
+  if (/\b(?:glue[ -]?(?:on|required)|requires? (?:nail |lash )?glue|with (?:nail |lash )?glue)\b/.test(value)) modes.push('attachment:glue_required');
+  if (!selfAdhesive && /\badhesive\b/.test(value)) modes.push('attachment:adhesive_unspecified');
+  return modes;
+}
 function formulaMarkers(snapshot = {}) {
   const value = normalizedTitle(snapshot);
   const markers = value.match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || [];
+  // Attachment is a shopper constraint, independently of decorative style names.
+  markers.push(...attachmentMarkers(snapshot));
   // Finish is meaningful for complexion/lip products. A lash collection's named
   // 'Glow Up' style remains an option, not a different cosmetic formulation.
   if (['powder', 'setting_powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
