@@ -4,8 +4,8 @@
 /**
  * Relationship graph AI reviewer (generated -> ai_approved).
  *
- * Rubric v3: useful recommendations require quoted supplied facts, correct
- * substitute/complement semantics, and explicit substitution differences.
+ * Rubric v4: useful recommendations require quoted supplied facts, correct
+ * substitute/complement semantics, and an exact deterministic consumer-copy contract.
  * The historical reviewer identifier is retained; provider/model configuration
  * still comes from the existing runtime environment.
  *
@@ -44,7 +44,7 @@ const { __internal: { inferRelationship } } = require('../src/auroraBff/productR
 const { optionRole } = require('../src/auroraBff/relationshipPairPolicy');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
-const RUBRIC_VERSION = 'v3';
+const RUBRIC_VERSION = 'v4';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
@@ -469,6 +469,7 @@ function buildEvidence(row, supplements) {
     watchouts: compactArray(row.watchouts, 6),
     source_refs: summarizeSourceRefs(row.source_refs),
     price_evidence: asObject(row.price_evidence),
+    consumer_copy_by_kind: Object.fromEntries(['dupe', 'substitute', 'alternative', 'complement'].map((kind) => [kind, consumerCopyForKind(kind)])),
     curated_pair_evidence: asObject(row.provenance?.curated_pair_evidence || row.candidate_snapshot?.curated_pair_evidence),
     anchor: summarizeProductSnapshot(row.anchor_snapshot, anchorSupplement),
     candidate: summarizeProductSnapshot(row.candidate_snapshot, candidateSupplement),
@@ -643,7 +644,7 @@ function buildReviewPrompt(evidence) {
     'You are the relationship graph AI reviewer for Pivota beauty commerce.',
     'Return strict JSON only with keys: verdict, confidence, rationale, relationship_kind, recommendation_reason, shared_evidence, tradeoffs, watchouts.',
     '',
-    'Rubric v3: recommendation utility, not catalog similarity.',
+    'Rubric v4: recommendation utility with a verified-fact consumer-copy contract.',
     '- First classify the pair: dupe, substitute, alternative, complement, variant, or none. A high score/confidence is not utility evidence.',
     '- variant means the same product/collection with another shade, size, scent, flavour or decorative style. Reject variants even when descriptions and routine match.',
     '- substitute replaces the same shopper job; alternative is a distinct product-line option for that job with concrete differences; complement is used alongside the anchor for a different step/area.',
@@ -654,7 +655,8 @@ function buildReviewPrompt(evidence) {
     '- related_product must be a complement: explain the different step or area and evidence for using them alongside one another. Same brand/line/routine alone is insufficient. Distinct-line substitutes belong to competitive_alternative, not related_product.',
     '- competitive_alternative may be same-brand when it is a distinct line/formulation. Another colour/style of one collection is still a variant.',
     '- A dupe requires concrete formula/ingredient or curated pair/performance evidence, plus fresh comparable price evidence. Similar names/categories alone cannot establish a dupe or equivalent performance.',
-    '- For every approval give recommendation_reason (when/why a shopper would choose it), shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product, tradeoffs describing supported differences/unknown equivalence, and watchouts for constraints. Substitutes/alternatives/dupes need at least one tradeoff. Never invent a formula, skin compatibility, wear time or shade match.',
+    '- For every approval choose shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product. These attributed facts explain the choice.',
+    '- Copy recommendation_reason, tradeoffs and watchouts EXACTLY from consumer_copy_by_kind[relationship_kind]. Do not add, rewrite or omit text. Shopper copy is deterministic: source quotes carry supported differences; formula/performance/safety equivalence remains unknown. Your rationale is internal and must never be copied into shopper fields.',
     '- Reject a claimed relation when your relationship_kind does not match it; do not silently relabel the pair.',
     '- Reject if evidence is sparse, generic, brand-only, source-only, missing the price evidence expected for a dupe, mismatched category/target area, an unhelpful shade/format cross-product, or not aligned to relation_type.',
     '- Never assume unstated ingredient, medical, social, or performance claims.',
@@ -747,6 +749,9 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   }
   if (!reason && row.relation_type === 'related_product') {
     const aRole = optionRole(row.anchor_snapshot); const bRole = optionRole(row.candidate_snapshot);
+    const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
+      ...row.candidate_snapshot, ...row.score_breakdown, similarity_score: row.score_total,
+    });
     const norm = (value) => normalizeString(value, 700).toLowerCase();
     const mentionsCounterpart = (notes, counterpart) => {
       const identity = norm(counterpart?.title);
@@ -756,16 +761,46 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     // origin and require it to identify the opposite product in this candidate.
     const pairGrounded = mentionsCounterpart(evidence.anchor?.routine_fit?.pairing_notes, evidence.candidate) ||
       mentionsCounterpart(evidence.candidate?.routine_fit?.pairing_notes, evidence.anchor);
-    if (aRole && aRole === bRole && !pairGrounded) reason = 'same_step_substitutes_are_not_complements';
+    if (!pairGrounded) {
+      // Structural substitution evidence is independent of the role vocabulary.
+      if (['dupe', 'competitive_alternative'].includes(inferred.relation_type) || (aRole && aRole === bRole)) {
+        reason = 'same_step_substitutes_are_not_complements';
+      } else if (!aRole || !bRole) {
+        reason = 'complement_role_evidence_unresolved';
+      }
+    }
   }
+  if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';
   if (!reason) return decision;
   return { ...decision, verdict: 'reject', utility_rejection: reason,
     rationale: `${reason}: ${normalizeString(decision.rationale, 600)}` };
 }
+// Model prose cannot establish efficacy, strength, medical safety or performance.
+// Keep consumer copy deterministic; the exact verified quotes provide pair facts.
+function consumerCopyForKind(kind) {
+  const summary = {
+    dupe: 'A lower-priced option for the same shopper job; compare the supplied formula and product facts.',
+    substitute: 'A different product option for the same shopper job; compare the supplied product facts.',
+    alternative: 'A distinct product option for the same shopper job; compare the supplied product facts.',
+    complement: 'A possible companion for a different routine step or area; compare the supplied product facts.',
+  }[kind];
+  if (!summary) return null;
+  return {
+    recommendation_reason: summary,
+    tradeoffs: kind === 'complement' ? [] : ['Formula and performance equivalence is not established.'],
+    watchouts: ['Check the full ingredient list and product instructions before choosing.'],
+  };
+}
+function matchesConsumerCopy(decision) {
+  const expected = consumerCopyForKind(decision.relationship_kind);
+  return Boolean(expected && decision.recommendation_reason === expected.recommendation_reason &&
+    JSON.stringify(decision.tradeoffs) === JSON.stringify(expected.tradeoffs) &&
+    JSON.stringify(decision.watchouts) === JSON.stringify(expected.watchouts));
+}
 function recommendationFields(decision) {
   return {
     relationship_kind: decision.relationship_kind,
-    summary: normalizeString(decision.recommendation_reason, 700),
+    summary: consumerCopyForKind(decision.relationship_kind)?.recommendation_reason || '',
     reasons_user_visible: quotedEvidence(decision.shared_evidence).map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
     shared_evidence: quotedEvidence(decision.shared_evidence),
   };
@@ -780,8 +815,8 @@ function buildAiReview(decision) {
     confidence: decision.confidence,
     rationale: decision.rationale,
     ...recommendationFields(decision),
-    tradeoffs: compactArray(decision.tradeoffs, 6),
-    watchouts: compactArray(decision.watchouts, 6),
+    tradeoffs: consumerCopyForKind(decision.relationship_kind)?.tradeoffs || [],
+    watchouts: consumerCopyForKind(decision.relationship_kind)?.watchouts || [],
   };
 }
 
@@ -872,7 +907,7 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
     err.reasons = guardReasons;
     throw err;
   }
-  if (row.relation_type && validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence).verdict !== 'approve') {
+  if (validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence).verdict !== 'approve') {
     const err = new Error('AI approval lacks matching recommendation utility evidence');
     err.code = 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED';
     throw err;
@@ -895,8 +930,8 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
       RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
     `,
     [row.id, JSON.stringify(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL,
-      JSON.stringify(recommendationFields(decision)), JSON.stringify(compactArray(decision.tradeoffs, 6)),
-      JSON.stringify(compactArray(decision.watchouts, 6))],
+      JSON.stringify(recommendationFields(decision)), JSON.stringify(consumerCopyForKind(decision.relationship_kind).tradeoffs),
+      JSON.stringify(consumerCopyForKind(decision.relationship_kind).watchouts)],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -1232,6 +1267,7 @@ module.exports = {
   buildAiReview,
   validateRecommendationDecision,
   recommendationFields,
+  consumerCopyForKind,
   fetchCandidates,
   fetchSupplementsForRows,
   parseArgs,

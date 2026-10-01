@@ -3,6 +3,7 @@ const {
   applyApproval,
   buildAiReview,
   recommendationFields,
+  consumerCopyForKind,
   fetchCandidates,
   parseArgs,
   runReview,
@@ -66,9 +67,9 @@ function genuineRelatedRow(id) {
 
 const UTILITY = {
   relationship_kind: 'complement',
-  recommendation_reason: 'Choose the remover alongside false lashes when removing adhesive.',
+  ...consumerCopyForKind('complement'),
   shared_evidence: [{ anchor_fact: 'False Eyelashes', candidate_fact: 'Lash Glue Remover' }],
-  tradeoffs: [], watchouts: ['Use the remover according to its product instructions.'],
+
 };
 const APPROVE = {
   ...UTILITY,
@@ -83,8 +84,9 @@ describe('review-relationship-candidate-labels', () => {
   });
 
   test('applyApproval stamps freshness for future ai approvals', async () => {
-    const row = { id: 'rcl_fixture' };
+    const row = genuineRelatedRow('rcl_fixture');
     const decision = {
+      ...APPROVE,
       confidence: 0.91,
       rationale: 'Both products have matching serum category and facial barrier support use case.',
     };
@@ -168,7 +170,7 @@ describe('review-relationship-candidate-labels', () => {
 
   test('applyApproval blocks dupe promotion unless explicitly allowed', async () => {
     const decision = {
-      ...UTILITY, relationship_kind: 'dupe', tradeoffs: ['Performance equivalence still requires human review.'],
+      ...UTILITY, ...consumerCopyForKind('dupe'), relationship_kind: 'dupe',
       confidence: 0.91,
       rationale: 'Products are close substitutes with matching category and lower price.',
     };
@@ -255,7 +257,7 @@ describe('review-relationship-candidate-labels', () => {
       analyzeTextToJson: jest.fn()
         .mockRejectedValueOnce(schemaErr)
         .mockResolvedValueOnce({
-          ...UTILITY, shared_evidence: [{anchor_fact: 'Anchor Serum', candidate_fact: 'Candidate Serum'}], relationship_kind: 'alternative', tradeoffs: ['Formula equivalence is not established.'],
+          ...UTILITY, ...consumerCopyForKind('alternative'), shared_evidence: [{anchor_fact: 'Anchor Serum', candidate_fact: 'Candidate Serum'}], relationship_kind: 'alternative',
           verdict: 'approve',
           confidence: 0.84,
           rationale: 'Both products have concrete category and routine evidence supporting a complementary relationship.',

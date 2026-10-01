@@ -24,6 +24,7 @@ function variantCore(snapshot = {}) {
 }
 const COSMETIC_ROLES = [
   ['bb_cream', /\bbb\s*cream\b/], ['cc_cream', /\bcc\s*cream\b/],
+  ['mascara', /\bmascara\b/], ['powder', /\b(?:face\s*)?powder\b/],
   ['foundation', /\bfoundation\b/], ['concealer', /\bconcealer\b/],
   ['blush', /\b(?:cream\s*)?blush(?:er)?\b/], ['bronzer', /\bbronzer\b/],
   ['contour', /\bcontour\b/], ['lipstick', /\blipstick\b/],
@@ -36,7 +37,8 @@ function optionRole(snapshot = {}) {
   // Product words can occur after punctuation; those tails are roles, not options.
   if (/\b(?:eyelashes|false lashes?|cluster lashes?|lash clusters|lash extensions)\b/.test(value)) return 'lashes';
   if (/\b(?:press[ -]?on nails|fake.*nails)\b/.test(value)) return 'nails';
-  if (/\beye\b/.test(value) && /\bcream\b/.test(value)) return 'eye_cream';
+  if (/\blash(?:es)?\b/.test(value) && /\b(?:glue|adhesive)\b/.test(value) && /\bremover\b/.test(value)) return 'lash_glue_remover';
+  if (/\beye\b/.test(value) && /\b(?:cream|moisturi[sz]er)\b/.test(value)) return 'eye_cream';
   if (/\blip\b/.test(value) && /\b(?:sleeping )?mask\b/.test(value)) return 'lip_mask';
   // Specific cosmetic roles precede generic cream/serum words. An explicit leaf
   // category also identifies colour products whose titles omit the form noun.
@@ -48,13 +50,21 @@ function optionRole(snapshot = {}) {
   }
   // 'Fragrance free' in a cream title is a formula trait, never a perfume job.
   if (/\bfragrance\b/.test(category)) return 'perfume';
+  if (/\bmoisturi[sz]er\b/.test(value)) return 'cream';
   for (const role of ['emulsion', 'ampoule', 'essence', 'toner', 'cleanser', 'serum', 'cream', 'shampoo', 'conditioner']) {
     if (new RegExp(`\\b${role}\\b`).test(value)) return role;
   }
   return '';
 }
 function formulaMarkers(snapshot = {}) {
-  return (normalizedTitle(snapshot).match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || []).sort().join('|');
+  const value = normalizedTitle(snapshot);
+  const markers = value.match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || [];
+  // Finish is meaningful for complexion/lip products. A lash collection's named
+  // 'Glow Up' style remains an option, not a different cosmetic formulation.
+  if (['powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
+    markers.push(...(value.match(/\b(?:matte|glow|dewy|satin|shimmer|luminous)\b/g) || []));
+  }
+  return markers.sort().join('|');
 }
 function hasExplicitVariant(snapshot = {}) {
   if (/#/.test(normalizedTitle(snapshot))) return true;

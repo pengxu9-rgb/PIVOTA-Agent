@@ -184,7 +184,7 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
   });
   test('same-brand alternatives persist, review and resolve through the alternative relation filter', async () => {
     const { buildEdgeForCandidate } = require('../../src/auroraBff/productRelationshipGraphBuilder');
-    const { applyApproval } = require('../../scripts/review-relationship-candidate-labels');
+    const { applyApproval, consumerCopyForKind } = require('../../scripts/review-relationship-candidate-labels');
     const { listApprovedRelationshipEdgesForAnchor } = require('../../src/auroraBff/productRelationshipGraph');
     const { relationshipEdgesToSignals } = require('../../src/agentSignals/relationshipEdgeToSignal');
     const anchor = {product_id: 'utility_anchor', brand: 'House', name: 'Classic French No Glue Press On Nails - Blush', category: 'press-on-nails'};
@@ -195,9 +195,9 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     await upsertRelationshipCandidateLabel({...built.edge, label_state: 'generated'}, {queryFn});
     const decision = {verdict: 'approve', confidence: 0.95, relationship_kind: 'alternative',
       rationale: 'The quoted product facts identify distinct press-on nail lines for the same manicure job.',
-      recommendation_reason: 'Compare the French line with the distinct Premium Design line for a different nail design.',
+      ...consumerCopyForKind('alternative'),
       shared_evidence: [{anchor_fact: anchor.name, candidate_fact: candidate.name}],
-      tradeoffs: ['Different product lines and designs; identical performance is not established.'], watchouts: []};
+    };
     const promoted = await applyApproval(built.edge, decision, queryFn);
     expect(promoted.new_label_state).toBe('ai_approved');
     const readQuery = (sql, params) => sql.includes('FROM product_relationship_edges') ? queryFn(sql, params) : Promise.resolve({rows: []});

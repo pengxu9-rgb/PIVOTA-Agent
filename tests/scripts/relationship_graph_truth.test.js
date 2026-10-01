@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const samples = require('../fixtures/relgraph_0930_titles.json');
 const { getRelationshipEdgeServingSuppressionReasons: reasons } = require('../../src/auroraBff/productRelationshipGraph');
-const { parseArgs: reviewArgs, runReview, applyApproval } = require('../../scripts/review-relationship-candidate-labels');
+const { parseArgs: reviewArgs, runReview, applyApproval, consumerCopyForKind } = require('../../scripts/review-relationship-candidate-labels');
 const { runRoutineJob, parseArgs } = require('../../scripts/run-relationship-graph-routine-job');
 const { readServingSnapshot, servingProgress, reviewErrorGateExceeded, reviewMetrics } = require('../../src/services/relationshipGraphServingProgress');
 const { buildCronArgs } = require('../../scripts/run-relationship-graph-sync-routine-cron');
@@ -55,7 +55,7 @@ test('confidence floor clamps and defence in depth refuses without a database wr
 test.each([false, true])('LLM/replay obey confidence floor (replay=%s)', async (replay) => {
   jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
   const rows = [0.69999, 0.70].map((confidence, i) => ({ ...edge('Test | Hydrating Face Cream', 'Test | Gentle Face Cleanser', 'generated'), id: `r${i}`, confidence }));
-  const verdict = (confidence) => ({ verdict: 'approve', confidence, rationale: 'Complementary products in one facial care routine.', relationship_kind: 'complement', recommendation_reason: 'Cleanse first, then moisturize with the cream.', shared_evidence: [{anchor_fact: 'Hydrating Face Cream', candidate_fact: 'Gentle Face Cleanser'}], tradeoffs: [], watchouts: [] });
+  const verdict = (confidence) => ({ verdict: 'approve', confidence, rationale: 'Complementary products in one facial care routine.', relationship_kind: 'complement', ...consumerCopyForKind('complement'), shared_evidence: [{anchor_fact: 'Hydrating Face Cream', candidate_fact: 'Gentle Face Cleanser'}] });
   const provider = { analyzeTextToJson: jest.fn(async () => verdict(rows[provider.analyzeTextToJson.mock.calls.length - 1].confidence)) };
   const dir = temp(); const replayFile = path.join(dir, 'verdicts.json');
   fs.writeFileSync(replayFile, JSON.stringify(rows.map((r) => ({ id: r.id, ...verdict(r.confidence) }))));

@@ -3,12 +3,12 @@ const { isSameFamilyVariant, optionRole } = require('../src/auroraBff/relationsh
 const { getRelationshipEdgeServingSuppressionReasons, relationshipEdgeToSimilarItem } = require('../src/auroraBff/productRelationshipGraph');
 const { buildEdgeForCandidate, __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { buildCandidatesByAnchorFromSources, __internal: { selectCandidateOpportunities } } = require('../src/auroraBff/productRelationshipGraphSources');
-const { validateRecommendationDecision, applyApproval, runReview } = require('../scripts/review-relationship-candidate-labels');
+const { validateRecommendationDecision, applyApproval, runReview, consumerCopyForKind } = require('../scripts/review-relationship-candidate-labels');
 const { relationshipEdgeToSignal } = require('../src/agentSignals/relationshipEdgeToSignal');
 const NOW = '2026-10-01T10:37:00.000Z';
 const snapshot = (brand, title, category = 'face cream', other = {}) => ({ product_id: title, brand, title, name: title, category, price: 50, price_currency: 'USD', ...other });
 const edge = (a, b, relation_type = 'related_product') => ({ id: 'fixture', anchor_type: 'product', anchor_ref: 'product:a', candidate_product_ref: 'product:b', anchor_snapshot: a, candidate_snapshot: b, relation_type, label_state: 'ai_approved', score_total: 0.9, score_breakdown: { category_use_case_match: 0.9 }, source_refs: [{ type: 'catalog_products' }] });
-const decision = (a, b, relationship_kind = 'alternative') => ({ verdict: 'approve', confidence: 0.99, rationale: 'The supplied product titles identify the claimed shopper job and differences.', relationship_kind, recommendation_reason: 'Consider the distinct product line for the same shopper job.', shared_evidence: [{ anchor_fact: a.title, candidate_fact: b.title }], tradeoffs: ['Product-line and formula equivalence has not been established.'], watchouts: [] });
+const decision = (a, b, relationship_kind = 'alternative') => ({ verdict: 'approve', confidence: 0.99, rationale: 'The supplied product titles identify the claimed shopper job and differences.', relationship_kind, ...consumerCopyForKind(relationship_kind), shared_evidence: [{ anchor_fact: a.title, candidate_fact: b.title }] });
 
 describe('actual 10-01 supplied sample: variants versus retained opportunities', () => {
   test.each(sample)('sample $i has expected variant behavior ($expected_kind)', (row) => {
@@ -123,7 +123,7 @@ test('actionable reviewed rationale and constraints reach both consumer shapes',
 });
 
 // Replay exercises pre-approval policy and useful quality counters, not a live model.
-test('v3 offline review reports utility rejection separately from model/schema errors', async () => {
+test('v4 offline review reports utility rejection separately from model/schema errors', async () => {
   jest.spyOn(process.stdout,'write').mockImplementation(()=>true);
   const a=snapshot('House','Hydrating Face Cream'); const b=snapshot('House','Rich Recovery Face Cream');
   const row={...edge(a,b),label_state:'generated'};
@@ -222,4 +222,91 @@ test('fragrance-free formula language preserves the facial moisturizer role and 
   expect(optionRole(a)).toBe('cream');expect(optionRole(b)).toBe('cream');
   expect(inferRelationship(a,b,{category_use_case_match:0.9,similarity_score:0.9}).relation_type).toBe('competitive_alternative');
   expect(optionRole(snapshot('House','Signature Line - Amber','fragrance'))).toBe('perfume');
+});
+
+
+test.each([
+  ['Volume Mascara - Black', 'Volume Mascara - Brown', 'mascara'],
+  ['Flawless Face Powder - Ivory', 'Flawless Face Powder - Beige', 'facepowder'],
+])('shade options are rejected by full serving and builder paths: %s/%s', (aName,bName,category) => {
+  const a=snapshot('House',aName,category,{product_id:'shade-a'});const b=snapshot('House',bName,category,{product_id:'shade-b'});
+  expect(isSameFamilyVariant(a,b)).toBe(true);
+  for (const relation of ['related_product','competitive_alternative']) {
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toContain(`${relation}_same_family_variant`);
+  }
+  expect(buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9},nowIso:NOW})).toMatchObject({edge:null,metrics:{utilityCompatibility:{reason:'same_family_variant'}}});
+});
+
+test('meaningful powder finish and mascara formulation differences remain separate choices', () => {
+  for (const [aName,bName,category] of [
+    ['Flawless Face Powder - Matte','Flawless Face Powder - Glow','facepowder'],
+    ['Volume Mascara - Waterproof Black','Volume Mascara - Washable Brown','mascara'],
+  ]) {
+    const a=snapshot('House',aName,category);const b=snapshot('House',bName,category);
+    expect(isSameFamilyVariant(a,b)).toBe(false);
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,'competitive_alternative'))).toEqual([]);
+  }
+});
+
+test.each([
+  ['Barrier Face Cream','Daily Facial Moisturizer'],
+  ['Barrier Facial Moisturizer','Daily Facial Moisturizer'],
+  ['Barrier Daily Hydrator','Daily Facial Hydrator'],
+])('same-job substitution cannot pass complement review regardless of role spelling: %s/%s', async (aName,bName) => {
+  const a=snapshot('House',aName,'moisturizer',{description:'Facial moisturizer for daily hydration.'});
+  const b=snapshot('House',bName,'moisturizer',{description:'Facial moisturizer for daily hydration.'});
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(inferRelationship(a,b,{similarity_score:0.95,category_use_case_match:0.9}).relation_type).toBe('competitive_alternative');
+  expect(validateRecommendationDecision(row,approved).utility_rejection).toBe('same_step_substitutes_are_not_complements');
+  const queryFn=jest.fn();await expect(applyApproval(row,approved,queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
+  expect(queryFn).not.toHaveBeenCalled();
+});
+
+test('unresolved complement roles require grounded counterpart-specific pairing evidence', () => {
+  const a=snapshot('House','Morning Ritual','beauty');const b=snapshot('House','Evening Ritual','beauty');
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(validateRecommendationDecision(row,approved).utility_rejection).toBe('complement_role_evidence_unresolved');
+  const {buildEvidence}=require('../scripts/review-relationship-candidate-labels');const evidence=buildEvidence(row,new Map());
+  evidence.anchor.routine_fit.pairing_notes=[`Use with ${b.title} as part of this routine.`];
+  expect(validateRecommendationDecision(row,approved,evidence).verdict).toBe('approve');
+});
+
+test.each([
+  {recommendation_reason:'Clinically proven 48-hour hydration, safe during pregnancy, and identical performance.'},
+  {tradeoffs:['20% retinol versus 1% retinol.']},
+  {watchouts:['Eczema tested safe.']},
+  {recommendation_reason:'Manufactured in France using a patented process.'},
+])('valid fact quotes cannot authorize invented consumer prose: %j', async (invented) => {
+  const a=snapshot('House','Hydrating Barrier Face Cream');const b=snapshot('House','Rich Recovery Face Cream');
+  const row=edge(a,b,'competitive_alternative');const approved={...decision(a,b),...invented};
+  expect(validateRecommendationDecision(row,approved).utility_rejection).toBe('consumer_copy_not_verified_contract');
+  const queryFn=jest.fn();await expect(applyApproval(row,approved,queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
+  expect(queryFn).not.toHaveBeenCalled();
+});
+
+test('positive approval persists deterministic consumer copy and verified facts, never internal model prose', async () => {
+  const a=snapshot('House','Hydrating Barrier Face Cream');const b=snapshot('House','Rich Recovery Face Cream');
+  const row=edge(a,b,'competitive_alternative');const approved={...decision(a,b),rationale:'Internal model prose is not consumer evidence.'};
+  const queryFn=jest.fn(async()=>({rows:[{id:row.id,new_label_state:'ai_approved'}]}));
+  await applyApproval(row,approved,queryFn);
+  const [,params]=queryFn.mock.calls[0];const persisted={...row,why_candidate:JSON.parse(params[3]),tradeoffs:JSON.parse(params[4]),watchouts:JSON.parse(params[5])};
+  expect(persisted.why_candidate.shared_evidence).toEqual(approved.shared_evidence);
+  const item=relationshipEdgeToSimilarItem(persisted);const signal=relationshipEdgeToSignal(persisted);
+  expect(item.reason).toBe(consumerCopyForKind('alternative').recommendation_reason);
+  expect(signal.value.tradeoffs).toEqual(consumerCopyForKind('alternative').tradeoffs);
+  expect(signal.value.watchouts).toEqual(consumerCopyForKind('alternative').watchouts);
+  expect(JSON.stringify([item,signal])).not.toContain(approved.rationale);
+});
+
+test('approval fails closed when relation identity is missing', async () => {
+  const a=snapshot('House','Hydrating Barrier Face Cream');const b=snapshot('House','Rich Recovery Face Cream');const queryFn=jest.fn();
+  await expect(applyApproval({id:'missing_relation'},decision(a,b),queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
+  expect(queryFn).not.toHaveBeenCalled();
+});
+
+
+test('eye moisturizer synonym preserves a different target-area complement', () => {
+  const a=snapshot('House','Herbal Face Cream');const b=snapshot('House','Herbal Eye Moisturizer');
+  expect(optionRole(b)).toBe('eye_cream');
+  expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement')).verdict).toBe('approve');
 });
