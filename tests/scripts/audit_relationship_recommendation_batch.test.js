@@ -32,6 +32,10 @@ test('missing exported rows remain incomplete, not counted as reviewed or useful
   const exported=exportRows(decisions,[row('a')]);const report=evaluateBatch(exported);
   expect(report).toMatchObject({complete_batch:false,batch_count:4,exported_count:1,missing_ids:['b','c','d']});
   expect(report.summary.observed_useful_precision).toBeNull();
+  expect(report.summary).toMatchObject({total:4,unreviewed:4,missing_count:3});
+  const assessed=evaluateBatch(exported,independent(exported,['useful']));
+  expect(assessed.summary).toMatchObject({total:4,useful:1,unreviewed:3,adjudicated_coverage:.25,observed_useful_precision:1});
+  expect(assessed.by_anchor_brand.unknown).toMatchObject({total:3,unreviewed:3});
 });
 test('export is bounded and only queries exact applied review IDs, not newest rows or a time window',async()=>{
   const query=jest.fn(async(sql,params)=>({rows:params[0].map(id=>row(id))}));

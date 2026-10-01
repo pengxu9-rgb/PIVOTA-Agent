@@ -20,7 +20,7 @@ node scripts/audit-relationship-recommendation-batch.js --batch /tmp/batch.json 
   --labels /tmp/independent-labels.json --out /tmp/quality.json
 ```
 
-The report shows useful/incorrect/uncertain/unreviewed counts by stored and expected kind, both brands and cross-brand status, adjudicated coverage, observed useful precision and an adjudicated relation confusion matrix. Unknown/unreviewed/missing pairs never count as useful. Observed precision covers only independently adjudicated exported rows. A complete export without independent labels still has unknown precision; this is not a green quality acceptance gate. Modified snapshots, stale labels and foreign/duplicate IDs are rejected.
+The report shows useful/incorrect/uncertain/unreviewed counts by stored and expected kind, both brands and cross-brand status, adjudicated coverage, observed useful precision and an adjudicated relation confusion matrix. Unknown/unreviewed/missing pairs never count as useful. Coverage uses every applied batch identity, including missing snapshots as unreviewed rows in unknown brand/kind groups. Observed precision covers only independently adjudicated exported rows. A complete export without independent labels still has unknown precision; this is not a green quality acceptance gate. Modified snapshots, stale labels and foreign/duplicate IDs are rejected.
 
 ## Reviewable legacy remediation
 

@@ -137,13 +137,24 @@ function evaluateBatch(batch, independent = {}) {
       action:label.expected_kind==='variant'?'review_ai_variant_retirement':'review_original_identity_and_generate_separate_correct_relation',
       human_approved_protected:edge.label_state==='human_approved',apply:false});
   }
+  // Missing snapshots remain in the full-batch coverage denominator. Their
+  // product/kind attribution is unknown until an exact snapshot can be exported.
+  const missingCount = batch.missing_ids.length;
+  total.total += missingCount;
+  total.unreviewed += missingCount;
+  for (const rows of Object.values(groups)) {
+    if (!missingCount) continue;
+    const missing = rows.unknown ||= bucket();
+    missing.total += missingCount;
+    missing.unreviewed += missingCount;
+  }
   return {schema_version:'relgraph_batch_quality.v1',run_id:batch.run_id,complete_batch:batch.complete,
     batch_count:batch.batch_count,missing_ids:batch.missing_ids,exported_count:batch.edges.length,
     batch_scope_fingerprint:batch.batch_scope_fingerprint,
     snapshot_semantics:batch.snapshot_semantics,assessor:independent.assessor || null,method:independent.method || null,
-    summary:finalize(total),...Object.fromEntries(Object.entries(groups).map(([name,rows])=>[name,Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,finalize(value)]))])),
+    summary:finalize({...total,missing_count:missingCount}),...Object.fromEntries(Object.entries(groups).map(([name,rows])=>[name,Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,finalize(value)]))])),
     relation_confusion_matrix:confusion,remediation_review_queue:reviewQueue,
-    limits:['Observed precision covers adjudicated exported rows only; uncertain, missing and unreviewed rows are not counted as useful.',
+    limits:['Observed precision covers adjudicated exported rows only; uncertain, missing and unreviewed rows are not counted as useful. Coverage uses all applied batch identities; missing snapshots stay unreviewed in unknown groups.',
       'Current-row exports do not establish historical approval-time precision; independent labels are bound to the export fingerprint.',
       'Heuristic hints and model verdicts are not independent quality labels. No label writes or relation identity changes are performed.']};
 }
