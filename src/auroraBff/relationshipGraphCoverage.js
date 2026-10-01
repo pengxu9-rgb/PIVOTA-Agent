@@ -121,19 +121,30 @@ function uncoveredLiveCatalogSql(alias = 'cp', options = {}) {
 }
 
 async function requireAnchorAttemptsTable(queryFn) {
-  const result = await queryFn(`WITH target AS (SELECT to_regclass('relationship_graph_anchor_attempts') AS table_name)
-    SELECT table_name::text AS table_name,
+  const result = await queryFn(`WITH schema_access AS (
+      SELECT has_schema_privilege(current_user, 'public', 'USAGE') AS has_schema_usage
+    ), target AS (
+      SELECT has_schema_usage,
+        CASE WHEN has_schema_usage THEN to_regclass('relationship_graph_anchor_attempts') ELSE NULL END AS table_name
+      FROM schema_access
+    )
+    SELECT has_schema_usage, table_name::text AS table_name,
       CASE WHEN table_name IS NOT NULL THEN has_table_privilege(current_user, table_name, 'INSERT') ELSE false END AS can_insert,
       CASE WHEN table_name IS NOT NULL THEN has_table_privilege(current_user, table_name, 'SELECT') ELSE false END AS can_select,
       CASE WHEN table_name IS NOT NULL THEN has_table_privilege(current_user, table_name, 'UPDATE') ELSE false END AS can_update
     FROM target`);
-  if (!result.rows || !result.rows[0] || !result.rows[0].table_name) {
+  if (result.rows?.[0]?.has_schema_usage !== true) {
+    const error = new Error('Uncovered priority requires USAGE on schema public for the role in secret DATABASE_URL_NOVERIFY (mounted as DATABASE_URL)');
+    error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES';
+    throw error;
+  }
+  if (!result.rows[0].table_name) {
     const error = new Error('Uncovered priority requires migration 061_relationship_graph_anchor_attempts.sql before enabling the flag');
     error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_MISSING';
     throw error;
   }
   if (result.rows[0].can_insert !== true || result.rows[0].can_select !== true || result.rows[0].can_update !== true) {
-    const error = new Error('Uncovered priority requires INSERT, SELECT and UPDATE on relationship_graph_anchor_attempts for the job DATABASE_URL_NOVERIFY role');
+    const error = new Error('Uncovered priority requires INSERT, SELECT and UPDATE on relationship_graph_anchor_attempts for the role in secret DATABASE_URL_NOVERIFY (mounted as DATABASE_URL)');
     error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES';
     throw error;
   }

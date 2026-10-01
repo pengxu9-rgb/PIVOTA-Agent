@@ -766,13 +766,17 @@ async function runRoutineJob(
   };
 
   let beforeSnapshot;
-  async function executeSteps() {
+  async function executeSteps(dbLockClient) {
     let reviewGateFailed = false;
     if (options.prioritizeUncovered) {
       try {
         // Direct affected-products manifests bypass selection. Check before the
         // first child (including pba_sig_refresh), not just inside the builder.
-        await requireAnchorAttemptsTable(preflightQueryFn);
+        // The default db.query resets its shared pool on transient errors.
+        // Use the held client here so a reset cannot wait on this callback.
+        const preflightQuery = preflightQueryFn === query && dbLockClient
+          ? dbLockClient.query.bind(dbLockClient) : preflightQueryFn;
+        await requireAnchorAttemptsTable(preflightQuery);
       } catch (error) {
         summary.ok = false;
         summary.failed_step = 'uncovered_priority_preflight';
@@ -899,7 +903,7 @@ async function runRoutineJob(
         started_at: now.toISOString(),
         out_dir: outDir,
       },
-      async (dbLockInfo) => {
+      async (dbLockInfo, dbLockClient) => {
         if (dbLockInfo) {
           summary.db_lock = {
             requested: true,
@@ -910,7 +914,7 @@ async function runRoutineJob(
           writeSummary(outDir, summary);
         }
         try {
-          return await executeSteps();
+          return await executeSteps(dbLockClient);
         } finally {
           if (beforeSnapshot) {
             try {

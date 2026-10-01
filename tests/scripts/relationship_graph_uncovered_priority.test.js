@@ -5,7 +5,7 @@ const baselineCalls = require('../fixtures/relgraph_selection_default_sql.json')
 const SINCE = '2026-09-29T00:00:00.000Z';
 
 async function fetchCalls(prioritizeUncovered) {
-  const queryFn = jest.fn(async (sql) => ({ rows: sql.includes('to_regclass') ? [{ table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] : [] }));
+  const queryFn = jest.fn(async (sql) => ({ rows: sql.includes('to_regclass') ? [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] : [] }));
   await selector.fetchCatalogProductRows({ queryFn, updatedSince: SINCE, limit: 250, prioritizeUncovered });
   await selector.fetchExternalSeedRows({ queryFn, updatedSince: SINCE, limit: 250, market: 'US', prioritizeUncovered });
   await sources.loadAffectedProductAnchorCandidates({ queryFn, refs: ['sig_fixture'], market: 'US', limit: 250, prioritizeUncovered });
@@ -45,7 +45,7 @@ test('uncovered live catalog anchor precedes covered signatures, covered attache
     title: 'b_covered_seed beauty serum', brand: 'b_covered_seed', category: 'Serum',
     canonical_url: 'https://b_covered_seed.example/serum', relgraph_uncovered_live: false };
   const queryFn = jest.fn(async (sql) => {
-    if (sql.includes('to_regclass')) return { rows: [{ table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
+    if (sql.includes('to_regclass')) return { rows: [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
     if (sql.includes('FROM relationship_candidate_labels') && !sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (sql.includes('FROM external_product_seeds eps')) return { rows: [seed] };
     if (sql.includes('FROM products_cache pc')) return { rows: [] };
@@ -87,7 +87,7 @@ test('cron flag defaults off and reaches selector and build child only when arme
 
 test('full source pool retains uncovered priority after its final dedupe', async () => {
   const queryFn = jest.fn(async (sql) => {
-    if (sql.includes('to_regclass')) return { rows: [{ table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
+    if (sql.includes('to_regclass')) return { rows: [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
     if (sql.includes('FROM relationship_candidate_labels') && !sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (!sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (!sql.includes('FROM catalog_products cp')) return { rows: [] };
@@ -108,7 +108,7 @@ test('normalization preserves never-attempted, oldest-pending and terminal order
     { product_key:'old',pivota_signature_id:'sig_c',relgraph_priority:2,relgraph_last_activity:'2026-01-01' },
     { product_key:'never',pivota_signature_id:'sig_z',relgraph_priority:3,relgraph_last_activity:null },
   ].map((row)=>({...row,title:'Beauty serum',brand:row.product_key,category:'Serum',relgraph_uncovered_live:true}));
-  const queryFn=async(sql)=>({ rows:sql.includes('to_regclass') ? [{ table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] : sql.includes('FROM catalog_products cp') ? rows : [] });
+  const queryFn=async(sql)=>({ rows:sql.includes('to_regclass') ? [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] : sql.includes('FROM catalog_products cp') ? rows : [] });
   const result=await sources.loadAffectedProductAnchorCandidates({queryFn,refs:['fixture'],prioritizeUncovered:true});
   expect(result.map((product)=>product.pivota_signature_id)).toEqual(['sig_z','sig_c','sig_b','sig_a']);
   const final=prioritizeUncoveredProducts(sources.dedupeNormalizedProducts(result),result);
@@ -117,7 +117,7 @@ test('normalization preserves never-attempted, oldest-pending and terminal order
 
 const { loadCoverageSuppressedIds, requireAnchorAttemptsTable } = require('../../src/auroraBff/relationshipGraphCoverage');
 test.each(['selector', 'affected-loader', 'source-pool'])('missing migration fails up front in %s, including empty refs', async (entry) => {
-  const queryFn = jest.fn(async () => ({ rows: [{ table_name: null }] }));
+  const queryFn = jest.fn(async () => ({ rows: [{ has_schema_usage: true, table_name: null }] }));
   const operation = entry === 'selector'
     ? selector.run(['--updated-since', SINCE, '--prioritize-uncovered', '--allow-empty-selection'], { queryFn })
     : entry === 'affected-loader' ? sources.loadAffectedProductAnchorCandidates({ queryFn, refs: [], prioritizeUncovered: true })
@@ -130,7 +130,7 @@ test('shared serving guard determines title-based coverage exclusions once per s
   const hidden = { id:'hidden', label_state:'ai_approved', relation_type:'related_product', anchor_ref:'product:a',candidate_product_ref:'product:b',
     anchor_snapshot:{ brand:'Test',title:'Hydrating Face Foundation - 100 Light' }, candidate_snapshot:{ brand:'Test',title:'Hydrating Face Foundation - 200 Dark' } };
   const queryFn = jest.fn(async (sql) => {
-    if (sql.includes('to_regclass')) return { rows:[{ table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
+    if (sql.includes('to_regclass')) return { rows:[{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
     if (!sql.includes('AS relgraph_uncovered_live')) return { rows:[hidden] };
     return { rows:[] };
   });
@@ -147,7 +147,7 @@ test('coverage automatically uses a newly installed reason from the shared servi
   const graph = require('../../src/auroraBff/productRelationshipGraph');
   const guard = jest.spyOn(graph,'isRelationshipEdgeServingSafe')
     .mockImplementation((row)=>row.id !== 'same_product');
-  const queryFn=async(sql)=>({rows:sql.includes('to_regclass')?[{table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true}]:[{id:'safe'},{id:'same_product'}]});
+  const queryFn=async(sql)=>({rows:sql.includes('to_regclass')?[{has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true}]:[{id:'safe'},{id:'same_product'}]});
   try {expect(await loadCoverageSuppressedIds({queryFn})).toEqual(['same_product']);expect(guard).toHaveBeenCalledTimes(2);}
   finally {guard.mockRestore();}
 });
@@ -158,7 +158,7 @@ test('coverage SQL refuses an omitted hidden-id input', () => {
   expect(uncoveredLiveCatalogSql('cp', { suppressedIdsSql: '$2::text[]' })).toContain('ANY($2::text[])');
 });
 test.each([[false, true, true], [true, false, true], [true, true, false], [false, false, false]])('preflight requires INSERT=%s, SELECT=%s and UPDATE=%s', async (can_insert, can_select, can_update) => {
-  await expect(requireAnchorAttemptsTable(async () => ({ rows: [{ table_name: 'relationship_graph_anchor_attempts', can_insert, can_select, can_update }] })))
+  await expect(requireAnchorAttemptsTable(async () => ({ rows: [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert, can_select, can_update }] })))
     .rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES' });
 });
 test('direct manifest routine fails before PBA refresh or any child when schema is unavailable', async () => {
@@ -168,8 +168,35 @@ test('direct manifest routine fails before PBA refresh or any child when schema 
   const runner = jest.fn(); const progressReader = jest.fn();
   try {
     const options = parseArgs(['--cutoff', SINCE, '--prioritize-uncovered', '--affected-products-file', path.join(dir, 'affected.json'), '--out-dir', dir]);
-    await expect(runRoutineJob(options, { runner, progressReader, preflightQueryFn: async () => ({ rows: [{ table_name: null }] }) }))
+    await expect(runRoutineJob(options, { runner, progressReader, preflightQueryFn: async () => ({ rows: [{ has_schema_usage: true, table_name: null }] }) }))
       .rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_MISSING', summary: { failed_step: 'uncovered_priority_preflight', steps: [] } });
     expect(runner).not.toHaveBeenCalled(); expect(progressReader).not.toHaveBeenCalled();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('missing public schema USAGE reports privileges before a missing migration', async () => {
+  const queryFn = jest.fn(async () => ({ rows: [{ has_schema_usage: false, table_name: null }] }));
+  await expect(requireAnchorAttemptsTable(queryFn)).rejects.toMatchObject({
+    code: 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES', message: expect.stringContaining('USAGE on schema public'),
+  });
+  expect(queryFn).toHaveBeenCalledTimes(1);
+});
+test('routine permission preflight uses its held lock client and fails closed on a transient error', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const { runRoutineJob, parseArgs } = require('../../scripts/run-relationship-graph-routine-job');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-preflight-lock-'));
+  const runner = jest.fn(); const progressReader = jest.fn();
+  const transient = Object.assign(new Error('injected preflight connection reset'), { code: 'ECONNRESET' });
+  const lockQuery = jest.fn(async (sql) => {
+    if (sql.includes('has_schema_privilege')) throw transient;
+    return { rows: [{ acquired: true }] };
+  });
+  try {
+    const options = parseArgs(['--cutoff', SINCE, '--prioritize-uncovered', '--db-lock', '--db-lock-heartbeat-ms', '0', '--affected-products-file', path.join(dir, 'affected.json'), '--out-dir', dir]);
+    await expect(runRoutineJob(options, { runner, progressReader, withDbClient: (fn) => fn({ query: lockQuery }) }))
+      .rejects.toMatchObject({ code: 'ECONNRESET', summary: { failed_step: 'uncovered_priority_preflight', steps: [] } });
+    expect(lockQuery.mock.calls.filter(([sql]) => sql.includes('has_schema_privilege'))).toHaveLength(1);
+    expect(runner).not.toHaveBeenCalled(); expect(progressReader).not.toHaveBeenCalled();
+    expect(lockQuery.mock.calls.at(-1)[0]).toContain('pg_advisory_unlock');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

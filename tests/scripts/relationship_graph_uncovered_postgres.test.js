@@ -106,6 +106,22 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
       await client.query('DROP ROLE relgraph_priority_round5_job');
     }
   });
+  test('a real role with table privileges but no public schema USAGE gets a privilege error', async () => {
+    const { requireAnchorAttemptsTable } = require('../../src/auroraBff/relationshipGraphCoverage');
+    await client.query('BEGIN');
+    try {
+      await client.query('CREATE ROLE relgraph_priority_round6_no_schema');
+      await client.query('CREATE TABLE public.relationship_graph_anchor_attempts (LIKE relgraph_uncovered_test.relationship_graph_anchor_attempts INCLUDING ALL)');
+      await client.query('GRANT INSERT, SELECT, UPDATE ON public.relationship_graph_anchor_attempts TO relgraph_priority_round6_no_schema');
+      // USAGE inherited from PUBLIC must be revoked too; all changes roll back.
+      await client.query('REVOKE USAGE ON SCHEMA public FROM PUBLIC');
+      await client.query('SET LOCAL ROLE relgraph_priority_round6_no_schema');
+      await client.query('SET LOCAL search_path TO public');
+      expect((await client.query("SELECT to_regclass('relationship_graph_anchor_attempts') AS table_name")).rows[0].table_name).toBeNull();
+      await expect(requireAnchorAttemptsTable((sql, params) => client.query(sql, params)))
+        .rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES', message: expect.stringContaining('USAGE on schema public') });
+    } finally { await client.query('ROLLBACK'); }
+  });
   async function priority(days = 7, coverageSiblingRefs = true) {
     const ids = await loadCoverageSuppressedIds({ queryFn: (sql, params) => client.query(sql, params), market: 'US' });
     const result = await client.query(`SELECT CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$1', suppressedIdsSql: '$2::text[]', cooldownDays: days, coverageSiblingRefs })}
