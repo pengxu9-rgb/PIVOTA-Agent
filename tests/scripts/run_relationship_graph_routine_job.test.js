@@ -22,6 +22,13 @@ const {
   startPostgresAdvisoryLockHeartbeat,
 } = require('../../scripts/run-relationship-graph-routine-job');
 
+const tempRoots = [];
+function tempOutput(prefix) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); tempRoots.push(root);
+  const out = path.join(root, 'out'); fs.mkdirSync(out); return out;
+}
+afterAll(() => tempRoots.forEach((root) => fs.rmSync(root, {recursive: true, force: true})));
+
 const NOW = new Date('2026-06-08T00:00:00.000Z');
 const CUTOFF = '2026-06-01T00:00:00Z';
 
@@ -246,7 +253,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob records command results and writes a summary manifest', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const options = parseArgs([
       '--cutoff',
       CUTOFF,
@@ -265,7 +272,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob acquires and releases a single-flight lock', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const options = parseArgs([
       '--cutoff',
       CUTOFF,
@@ -290,7 +297,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob rejects when the single-flight lock is already held', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const lockDir = path.join(outDir, 'held.lock');
     fs.mkdirSync(lockDir);
     const options = parseArgs([
@@ -313,7 +320,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob replaces a stale relationship graph local lock when explicitly allowed', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const lockDir = path.join(outDir, 'stale.lock');
     fs.mkdirSync(lockDir);
     fs.writeFileSync(path.join(lockDir, 'owner.json'), `${JSON.stringify({
@@ -350,7 +357,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob can deliberately skip the local lock', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const lockDir = path.join(outDir, 'held.lock');
     fs.mkdirSync(lockDir);
     const options = parseArgs([
@@ -422,7 +429,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob executes under a Postgres advisory lock when requested', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const client = {
       query: jest.fn(async (sql) => {
         if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }] };
@@ -459,7 +466,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob passes the child step timeout to the runner', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const options = parseArgs([
       '--cutoff',
       CUTOFF,
@@ -488,7 +495,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob passes the serving audit timeout override to that child step', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const options = parseArgs([
       '--skip-review',
       '--skip-build',
@@ -537,7 +544,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob fails before steps when Postgres advisory lock is held', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const client = {
       query: jest.fn(async (sql) => {
         if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: false }] };
@@ -608,7 +615,7 @@ describe('run-relationship-graph-routine-job', () => {
   });
 
   test('runRoutineJob fails closed when serving audit thresholds are exceeded', async () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const outDir = tempOutput('relgraph-routine-');
     const options = parseArgs([
       '--cutoff',
       CUTOFF,
@@ -651,7 +658,7 @@ describe('run-relationship-graph-routine-job', () => {
   // pba_sig_refresh" and no exit code, command, or child stderr — so the run
   // was undiagnosable even though the routine had captured all three.
   test('the CLI prints the failing step exit code, command, and stderr tail', () => {
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-job-cli-'));
+    const outDir = tempOutput('relgraph-job-cli-');
     const missingManifest = path.join(outDir, 'affected-products-does-not-exist.json');
     const preload = path.join(outDir, 'mock-db.cjs');
     fs.writeFileSync(preload, `require(${JSON.stringify(require.resolve('../../src/db'))}).query = async () => ({ rows: [] });`);

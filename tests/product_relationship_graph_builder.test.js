@@ -41,16 +41,18 @@ function candidate(overrides = {}) {
 describe('product relationship graph dry-run builder', () => {
   test('builds review packets, dedupes product families, and rejects below-threshold candidates', () => {
     const out = buildProductRelationshipGraphDryRun({
-      anchors: [anchor()],
+      anchors: [anchor({ingredient_text: 'Water, Glycerin, Squalane, Ceramide NP, Peptide, Phenoxyethanol'})],
       candidatesByAnchor: {
         'product:anchor_lux_serum': [
           candidate({
+            ingredient_text: 'Water, Glycerin, Squalane, Ceramide NP, Peptide, Phenoxyethanol',
             product_id: 'value_serum_a',
             product_family_id: 'fam_value_serum',
             price: 80,
             price_currency: 'USD',
           }),
           candidate({
+            ingredient_text: 'Water, Glycerin, Squalane, Ceramide NP, Peptide, Phenoxyethanol',
             product_id: 'value_serum_b',
             product_family_id: 'fam_value_serum',
             price: 79,

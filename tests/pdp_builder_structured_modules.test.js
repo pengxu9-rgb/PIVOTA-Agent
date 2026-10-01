@@ -3042,3 +3042,18 @@ describe('buildBundleCompositionModuleData', () => {
     expect(data.price_status_counts).toMatchObject({ priced: 0, not_sold_separately: 1 });
   });
 });
+
+test.each(['relationship_graph', 'catalog'])('PDP retains graph explanation after hydration source=%s', (source) => {
+  const why = {relationship_kind: 'alternative', summary: 'Choose the distinct moisturizer line for the same facial step.'};
+  const tradeoffs = ['Different formula; equivalent performance is not established.'];
+  const watchouts = ['Review formula and skin preferences before substituting.'];
+  const evidence = [{type: 'catalog_products', name: 'source_fixture'}];
+  const payload = buildPdpPayload({product: {product_id: 'anchor', title: 'Hydrating Face Cream', brand: 'House', merchant_id: 'external_seed', category: 'face cream'},
+    relatedProducts: [{product_id: 'candidate', title: 'Rich Recovery Face Cream', brand: 'Value', source,
+      recommendation_source: 'relationship_graph', relationship_edge_id: 'edge_fixture', relationship_type: 'competitive_alternative',
+      why_candidate: why, tradeoffs, watchouts, evidence_refs: evidence}]});
+  const item = payload.modules.find(module=>module.type === 'recommendations').data.items[0];
+  expect(item.reason).toBe(why.summary); expect(item.why_candidate).toEqual(why);
+  expect(item.tradeoffs).toEqual(tradeoffs); expect(item.watchouts).toEqual(watchouts); expect(item.evidence_refs).toEqual(evidence);
+  expect(item.product_id).toBe('candidate');
+});

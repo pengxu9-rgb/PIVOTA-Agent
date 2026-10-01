@@ -102,7 +102,7 @@ function relationshipEdgeToSignal(edge, { anchorId = null, servingCurrency } = {
     value: {
       related: {
         ref: edge.candidate_product_ref || null,
-        title: snapshot.title || null,
+        title: snapshot.title || snapshot.name || null,
         brand: snapshot.brand || null,
         // Amount and currency travel together or not at all: a bare amount invites the reader to assume
         // the anchor's (or the market's) currency, which fabricates a price when they differ.
@@ -111,6 +111,7 @@ function relationshipEdgeToSignal(edge, { anchorId = null, servingCurrency } = {
         image_url: snapshot.image_url || null,
       },
       relation,
+      relationship_kind: edge.why_candidate?.relationship_kind || null,
       score,
       // The cross-product price comparison (price_ratio etc.). Named distinctly from value.related.price
       // (the candidate's own numeric price) to avoid two same-named fields of different shape on one Signal.

@@ -124,12 +124,12 @@ describe('relationship graph builder: a dupe needs product evidence beyond the s
     expect(got['product:sig_sizes']).not.toBe('dupe');
   });
 
-  test('accepts: a cheaper product named for the same job and form is still a dupe', () => {
+  test('a cheaper product with only shared name/job evidence remains an alternative', () => {
     const got = relations([
       candidate({ product_id: 'sig_biore', brand: 'Bioré', name: 'Bioré UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++' }),
     ]);
 
-    expect(got['product:sig_biore']).toBe('dupe');
+    expect(got['product:sig_biore']).toBe('competitive_alternative');
   });
 
   test('accepts: curated dupe evidence stands without shared name words', () => {
@@ -139,6 +139,7 @@ describe('relationship graph builder: a dupe needs product evidence beyond the s
         brand: 'Curated',
         name: 'Daily Shield Fluid',
         source_refs: [{ type: 'aurora_dupe_kb', authoritative: true }],
+        curated_pair_evidence: {anchor_ref:'product:sig_anchor',candidate_ref:'product:sig_curated',relation_type:'dupe',verified:true},
       }),
     ]);
 

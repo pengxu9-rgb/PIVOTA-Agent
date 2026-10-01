@@ -182,6 +182,34 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
       expect(queries[0][1][3]).toBe(collapse ? 1000 : 4);
     } finally { if (old === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED; else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = old; }
   });
+  test('same-brand alternatives persist, review and resolve through the alternative relation filter', async () => {
+    const { buildEdgeForCandidate } = require('../../src/auroraBff/productRelationshipGraphBuilder');
+    const { applyApproval } = require('../../scripts/review-relationship-candidate-labels');
+    const { listApprovedRelationshipEdgesForAnchor } = require('../../src/auroraBff/productRelationshipGraph');
+    const { relationshipEdgesToSignals } = require('../../src/agentSignals/relationshipEdgeToSignal');
+    const anchor = {product_id: 'utility_anchor', brand: 'House', name: 'Classic French No Glue Press On Nails - Blush', category: 'press-on-nails'};
+    const candidate = {product_id: 'utility_candidate', brand: 'House', name: 'Premium Design No Glue Press On Nails - Jewel', category: 'press-on-nails',
+      category_use_case_match: 0.9, similarity_score: 0.9, source_refs: [{type: 'catalog_products'}]};
+    const built = buildEdgeForCandidate({anchor, candidate, nowIso: new Date().toISOString()});
+    expect(built.errors).toEqual([]); expect(built.edge.relation_type).toBe('competitive_alternative');
+    await upsertRelationshipCandidateLabel({...built.edge, label_state: 'generated'}, {queryFn});
+    const decision = {verdict: 'approve', confidence: 0.95, relationship_kind: 'alternative',
+      rationale: 'The quoted product facts identify distinct press-on nail lines for the same manicure job.',
+      recommendation_reason: 'Compare the French line with the distinct Premium Design line for a different nail design.',
+      shared_evidence: [{anchor_fact: anchor.name, candidate_fact: candidate.name}],
+      tradeoffs: ['Different product lines and designs; identical performance is not established.'], watchouts: []};
+    const promoted = await applyApproval(built.edge, decision, queryFn);
+    expect(promoted.new_label_state).toBe('ai_approved');
+    const readQuery = (sql, params) => sql.includes('FROM product_relationship_edges') ? queryFn(sql, params) : Promise.resolve({rows: []});
+    const approved = await listApprovedRelationshipEdgesForAnchor({anchorRefs: ['product:utility_anchor'], relationTypes: ['competitive_alternative'], queryFn: readQuery});
+    expect(approved).toHaveLength(1);
+    expect(approved[0].why_candidate.summary).toBe(decision.recommendation_reason);
+    expect(approved[0].tradeoffs).toEqual(decision.tradeoffs);
+    const signals = relationshipEdgesToSignals(approved);
+    expect(signals[0].signal_type).toBe('alternative');
+    expect(signals[0].value.relationship_kind).toBe('alternative');
+    expect(await listApprovedRelationshipEdgesForAnchor({anchorRefs: ['product:utility_anchor'], relationTypes: ['related_product'], queryFn: readQuery})).toEqual([]);
+  });
   (process.env.RELGRAPH_TEST_EXPLAIN === '1' ? test : test.skip)('70k-label metric query plan and JS guard timing', async () => {
     await client.query(`INSERT INTO relationship_candidate_labels(id,anchor_type,anchor_ref,candidate_product_ref,relation_type,market,label_state,last_verified_at,expires_at,anchor_snapshot,candidate_snapshot)
       SELECT 'bench_'||i, 'product','product:'||i,'product:c_'||i,'related_product','US',

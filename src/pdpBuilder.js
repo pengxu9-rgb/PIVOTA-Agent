@@ -4713,7 +4713,13 @@ function buildRecommendations(items, currencyFallback) {
         card_image_status: imageUrl ? 'ready' : 'image_missing',
         // Additive fields (safe for older clients to ignore).
         source: p.source || p.recommendation_source || undefined,
-        reason: p.reason || p.recommendation_reason || undefined,
+        reason: ((p.source === 'relationship_graph' || p.recommendation_source === 'relationship_graph' || p.relationship_edge_id)
+          && p.why_candidate?.summary) || p.reason || p.recommendation_reason || undefined,
+        ...((p.source === 'relationship_graph' || p.recommendation_source === 'relationship_graph' || p.relationship_edge_id) ? {
+          relationship_type: p.relationship_type,
+          why_candidate: p.why_candidate, tradeoffs: p.tradeoffs, watchouts: p.watchouts,
+          evidence_refs: p.evidence_refs,
+        } : {}),
         x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
         rating: p.rating || p.review_rating || undefined,
         review_count: p.review_count || p.reviews_count || undefined,
