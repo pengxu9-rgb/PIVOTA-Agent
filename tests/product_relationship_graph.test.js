@@ -614,6 +614,7 @@ describe('product relationship graph store helpers', () => {
           candidate_product_ref: 'product:label_state_candidate_ai',
           candidate_snapshot: { product_id: 'label_state_candidate_ai', brand: 'Value Brand', name: 'Value Serum - Shade A' },
           label_state: 'ai_approved',
+          relation_type: 'competitive_alternative',
           score_total: 0.99,
           evidence_grade: 'A',
           updated_at: new Date(NOW + 5_000).toISOString(),
@@ -629,6 +630,7 @@ describe('product relationship graph store helpers', () => {
           candidate_product_ref: 'product:label_state_candidate_human',
           candidate_snapshot: { product_id: 'label_state_candidate_human', brand: 'Value Brand', name: 'Value Serum - Shade B' },
           label_state: 'human_approved',
+          relation_type: 'competitive_alternative',
           score_total: 0.7,
           evidence_grade: 'B',
           updated_at: new Date(NOW + 1_000).toISOString(),
@@ -677,7 +679,7 @@ describe('product relationship graph store helpers', () => {
       expect(edges[0].id).toBe('prel_served_human');
       expect(edges[0].label_state).toBe('human_approved');
       expect(edges[0].provenance.relationship_family_collapse).toMatchObject({
-        collapsed_edge_count: 1,
+        collapsed_edge_count: 2,
         representative_edge_id: 'prel_served_human',
       });
     } finally {

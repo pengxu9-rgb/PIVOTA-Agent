@@ -217,3 +217,11 @@ test('paged scan fails on a repeated cursor and does not retry permanent errors'
   await expect(scanServingLabels({ queryFn })).rejects.toThrow('permission denied');
   expect(queryFn).toHaveBeenCalledTimes(1);
 });
+
+
+test('250 reviewed with 240 guard blocks and 3 errors out of 10 eligible reviews does not activate the minimum-20 gate', () => {
+  const metrics = reviewMetrics({ reviewed_count: 250, guard_blocked_count: 240, review_error_count: 3 });
+  expect(metrics).toMatchObject({ review_error_denominator: 10, review_error_rate: 0.3 });
+  expect(reviewErrorGateExceeded(metrics)).toBe(false);
+  expect(reviewErrorGateExceeded(metrics, { minReviewsForErrorGate: 10 })).toBe(true);
+});

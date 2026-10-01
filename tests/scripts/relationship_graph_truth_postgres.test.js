@@ -106,6 +106,56 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     await recordRelationshipGraphRun({run_id:'fixture_progress',ok:true,options:{market:'US'},...metrics,approved_count:2,review_error_count:15,review_error_rate:0.06,guard_blocked_count:1},{queryFn});
     expect((await client.query("SELECT summary FROM relationship_graph_routine_runs WHERE run_id='fixture_progress'")).rows[0].summary).toMatchObject({...metrics,approved_count:2,review_error_count:15,review_error_rate:0.06,guard_blocked_count:1});
   });
+  test('shared scan retries a transient first page while an advisory-lock client is checked out', async () => {
+    const db = require('../../src/db');
+    const { scanServingLabels } = require('../../src/services/relationshipGraphServingScan');
+    const { withPostgresAdvisoryLock } = require('../../scripts/run-relationship-graph-routine-job');
+    for (let i = 0; i < 3; i++) await upsertRelationshipCandidateLabel(edge(`retry_${i}`, `candidate_${i}`, 'related_product', 'ai_approved'), { queryFn });
+    const saved = Object.fromEntries(['DATABASE_URL', 'DB_SSL', 'DB_QUERY_RETRIES'].map((key) => [key, process.env[key]]));
+    const params = client.connectionParameters;
+    const url = new URL(`postgres://${encodeURIComponent(params.user)}@${params.host}:${params.port}/${encodeURIComponent(params.database)}`);
+    if (params.password) url.password = params.password;
+    url.searchParams.set('options', '-c search_path=relgraph_truth_test');
+    process.env.DATABASE_URL = url.toString(); process.env.DB_SSL = 'false'; process.env.DB_QUERY_RETRIES = '1';
+    const pool = db.getPool();
+    const actualQuery = pool.query.bind(pool);
+    let injected = false;
+    const querySpy = jest.spyOn(pool, 'query').mockImplementation((sql, values) => {
+      if (sql.includes('FROM relationship_candidate_labels') && !injected) {
+        injected = true;
+        return Promise.reject(Object.assign(new Error('injected first-page connection reset'), { code: 'ECONNRESET' }));
+      }
+      return actualQuery(sql, values);
+    });
+    let scan;
+    try {
+      await withPostgresAdvisoryLock({ dbLock: true, dbLockKey: 'relgraph_scan_retry_test', dbLockHeartbeatMs: 0 }, {}, async (_lock, lockClient) => {
+        expect(pool.totalCount - pool.idleCount).toBeGreaterThanOrEqual(1);
+        let timer;
+        try {
+          scan = scanServingLabels({ batchSize: 2, collectAnchors: true, queryRetryBackoffMs: 0 });
+          const result = await Promise.race([scan, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('shared scan did not finish within 1000ms while holding the lock client')), 1000);
+          })]);
+          expect(result.servedEdges).toBe(3);
+          expect(result.anchors.size).toBe(3);
+          expect(querySpy).toHaveBeenCalledTimes(3); // Failed first page, successful first and final pages.
+          expect((await lockClient.query('SELECT 1 AS alive')).rows[0].alive).toBe(1);
+          expect(db.getPool()).toBe(pool);
+        } finally { clearTimeout(timer); }
+      });
+      expect(injected).toBe(true);
+    } finally {
+      querySpy.mockRestore();
+      // On a failing mutation, releasing the held client unblocks pool.end().
+      // Drain that scan before cleanup so no retry opens a pool after teardown.
+      if (scan) await scan.catch(() => {});
+      await db.closePool();
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  }, 3000);
   test.each([false, true])('view reader filters before limit and family collapse (collapse=%s)', async (collapse) => {
     const { listApprovedRelationshipEdgesForAnchor } = require('../../src/auroraBff/productRelationshipGraph');
     const old = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;

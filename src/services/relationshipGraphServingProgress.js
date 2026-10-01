@@ -44,7 +44,7 @@ function reviewMetrics(summary = {}) {
 }
 
 function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
-  return metrics.reviewed_count >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
+  return metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
 }
 
 module.exports = { SERVING_PROGRESS_SQL: SERVING_SCAN_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded };
