@@ -238,6 +238,14 @@ export function reapAgenticLaneEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_LANE_FLAG]) || "").trim());
 }
 
+// A create-only pause. Unset preserves an already-armed lane; an explicit
+// unrecognized/off value fails closed. GET and reconciliation retain the master lane.
+export function reapAgenticCreateEnabled(env = process.env) {
+  if (!reapAgenticLaneEnabled(env)) return false;
+  const raw = env && env.REAP_AGENTIC_CREATE_ENABLED;
+  return raw === undefined || /^(1|true|yes|on|enabled)$/i.test(String(raw).trim());
+}
+
 export function reapCartLinkLaneEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[REAP_AGENTIC_CART_LINK_LANE_FLAG]) || "").trim());
 }
@@ -257,7 +265,7 @@ export function reapCartLinkEnrichmentEnabled(env = process.env) {
  * (docs/reap-agentic-lane.md §7), so tying codes to it makes "codes on" imply "a backend that reads them".
  */
 export function reapOfferCodesEnabled(env = process.env) {
-  return reapAgenticLaneEnabled(env) && reapCartLinkLaneEnabled(env);
+  return reapAgenticCreateEnabled(env) && reapCartLinkLaneEnabled(env);
 }
 
 // ---- id ----------------------------------------------------------------------------------------------------
@@ -1480,6 +1488,14 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // anything.
   if (cartLinkDirect && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
 
+  // This row is routed away from the native money lane. A deliberate pause
+  // must be a refusal, never a null that falls through to another checkout.
+  if (!reapAgenticCreateEnabled(env)) {
+    throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+      reason: "reap_create_paused", recovery: "keep polling existing Reap checkouts; new purchases are paused",
+    });
+  }
+
   // 4. THE PURCHASABILITY GATE — exactly as the escalation lane consults it: same switch, same singleton
   // client, same fail-open rule, same market source (the request's `checkout.context.address_country`, never
   // the buyer's postal address), same budget clamp.
@@ -1530,7 +1546,14 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // idempotency namespace — so a direct cart-link purchase and a retried one are one request to the backend.
   const cartLinkBody = () => ({ ...body, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) });
   if (cartLinkDirect) emit(log, "info", { op: "create_checkout_session", outcome: "cart_link_direct", code: enrichment ? "enrichment" : "external_seed" });
-  let res = await client.startPurchase(cartLinkDirect ? cartLinkBody() : body);
+  const unknownOutcome = () => new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", {
+    reason: "ucp_reap_create_outcome_unknown",
+  });
+  const dispatchCreate = async (requestBody) => {
+    try { return await client.startPurchase(requestBody); }
+    catch { throw unknownOutcome(); } // dispatch may have succeeded before a response was lost
+  };
+  let res = await dispatchCreate(cartLinkDirect ? cartLinkBody() : body);
 
   // TIER B, ONCE. Only on the one refusal that means "not on the operator allowlist" — never on a consent,
   // address or catalog refusal, which would refuse the cart-link lane for the same reason. A separate
@@ -1538,7 +1561,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // retry of this create must replay the cart-link purchase rather than conflict with the variant attempt.
   if (!cartLinkDirect && res && res.kind === "refused" && res.code === "merchant_not_eligible" && reapCartLinkLaneEnabled(env)) {
     emit(log, "info", { op: "create_checkout_session", outcome: "retry_cart_link", code: res.code });
-    res = await client.startPurchase(cartLinkBody());
+    res = await dispatchCreate(cartLinkBody());
   }
 
   if (res && res.kind === "refused" && res.http_status === 400 && res.code === "invalid_offer_code") {
@@ -1555,17 +1578,24 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   }
 
   if (!res || res.kind !== "accepted") {
-    // REFUSED for any other reason (404 not_available_on_this_rail, 409 merchant_not_eligible / row_not_found /
-    // idempotency_conflict, 401, …) or UNAVAILABLE: fall through to the next lane so
-    // the buyer still gets an answer. On a timeout the purchase MAY exist; it then sits at `resolving` with no
-    // card on it and expires on the backend's own clock, and a retry with the same idempotency-key replays it
-    // rather than opening a second one.
     emit(log, res && res.kind === "unavailable" ? "warn" : "info", {
       op: "create_checkout_session",
       outcome: res && res.kind ? res.kind : "no_answer",
       code: (res && res.code) || "none",
     });
+    // A dispatched POST with no authoritative refusal may have opened a
+    // purchase. Never offer a fresh-spend fallback while its outcome is unknown.
+    if (!res || res.kind === "unavailable" || res.code === "idempotency_conflict") {
+      throw unknownOutcome();
+    }
+    if (res.code === "reap_create_paused") {
+      throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "reap_create_paused" });
+    }
+    // Deterministic rejection before creation retains the documented fallback.
     return null;
+  }
+  if (!isPlainObject(res.purchase) || !PURCHASE_ID_RE.test(String(res.purchase.id || ""))) {
+    throw unknownOutcome();
   }
 
   const snapshot = { purchaseId: res.purchase.id, productId, productKey, quantity, currency: price.currency, unitMinor: price.amount };

@@ -40,7 +40,7 @@ import {
   assertExpectedSeller,
   DISCOUNT_CODE_PATH,
   REAP_CHECKOUT_ID_PREFIX,
-  reapAgenticLaneEnabled,
+  reapAgenticCreateEnabled,
   reapOfferCode,
   reapOfferCodesEnabled,
   tryReapAgenticCheckout,
@@ -1032,7 +1032,7 @@ const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
-  return reapAgenticLaneEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  return reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1194,6 +1194,12 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // An unknown create outcome has one safe, fixed recovery contract. Never
+  // echo its payload, key or raw upstream error in the public tool response.
+  if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
+    body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
+    body.detail = { reason: "ucp_reap_create_outcome_unknown" };
+  }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
 

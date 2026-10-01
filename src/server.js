@@ -32594,7 +32594,7 @@ function ucpVendorCapabilityDocs() {
 function ucpOptInCapabilities(lane, env = process.env) {
   return [
     ...(lane.reapOfferCodesEnabled(env) ? ['discount'] : []),
-    ...(lane.reapAgenticLaneEnabled(env) ? ['reap_seller'] : []),
+    ...(lane.reapAgenticCreateEnabled(env) ? ['reap_seller'] : []),
   ];
 }
 

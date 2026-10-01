@@ -152,7 +152,7 @@ import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
-import { reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
@@ -2105,11 +2105,11 @@ const ARMED_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE,
 
 export function ucpInputSchemasFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_INPUT_SCHEMAS;
-  return reapAgenticLaneEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
+  return reapAgenticCreateEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
 }
 export function ucpToolDescriptionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
-  return reapAgenticLaneEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
+  return reapAgenticCreateEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
 
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */

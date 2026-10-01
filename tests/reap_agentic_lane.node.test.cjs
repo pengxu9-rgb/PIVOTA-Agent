@@ -789,12 +789,8 @@ for (const [label, arrange] of [
   ['409 merchant_not_eligible', (b) => { b.state.post = { status: 409, body: houseError('merchant_not_eligible', 409) }; }],
   ['404 not_available_on_this_rail', (b) => { b.state.post = { status: 404, body: houseError('not_available_on_this_rail', 404) }; }],
   ['409 row_not_found', (b) => { b.state.post = { status: 409, body: houseError('row_not_found', 409) }; }],
-  ['409 idempotency_conflict', (b) => { b.state.post = { status: 409, body: houseError('idempotency_conflict', 409) }; }],
   ['401 agent_user_required', (b) => { b.state.post = { status: 401, body: houseError('agent_user_required', 401) }; }],
   ['400 currency_unsupported', (b) => { b.state.post = { status: 400, body: houseError('currency_unsupported', 400) }; }],
-  ['500', (b) => { b.state.post = { status: 500, body: {} }; }],
-  ['timeout', (b) => { b.state.mode = 'hang'; }],
-  ['202 without a purchase id', (b) => { b.state.post = { status: 202, body: { status: 'resolving' } }; }],
 ]) {
   test(`create_checkout: backend ${label} -> falls through to storefront escalation (on) / the kernel (off)`, { timeout: 5000 }, async () => {
     const backend = fakeBackend();
@@ -817,6 +813,47 @@ for (const [label, arrange] of [
     for (const line of laneLines) assert.deepEqual(Object.keys(line).sort(), ['code', 'event', 'level', 'msg', 'op', 'outcome'].sort(), 'codes only');
   });
 }
+
+for (const [label, arrange] of [
+  ['500', (b) => { b.state.post = { status: 500, body: {} }; }],
+  ['timeout after POST', (b) => { b.state.mode = 'hang'; }],
+  ['202 without purchase id', (b) => { b.state.post = { status: 202, body: { status: 'resolving' } }; }],
+  ['idempotency conflict', (b) => { b.state.post = { status: 409, body: houseError('idempotency_conflict', 409) }; }],
+]) {
+  test(`create_checkout: ${label} preserves uncertain attempt and never offers another checkout`, { timeout: 5000 }, async () => {
+    const backend = fakeBackend();
+    arrange(backend);
+    for (const escalation of [undefined, '1']) {
+      backend.calls.length = 0;
+      const ctx = await build({ backend, clientTimeoutMs: 60 });
+      const result = await withEnv({ ...ON, [ESCALATION_FLAG]: escalation },
+        () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs(), SESSION)));
+      assert.ok(result.err, 'an uncertain POST must be a tool error, not a fallback');
+      const wire = JSON.parse(result.err.content[0].text);
+      assert.equal(wire.error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+      assert.equal(wire.error.retriable, true);
+      assert.match(wire.error.recovery, /same idempotency_key/);
+      assert.equal(backend.calls.length, 1);
+      assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+      assert.equal(JSON.stringify(wire).includes(REAP_ROW.external_redirect_url), false);
+    }
+  });
+}
+
+test('an exact retry after an unknown POST keeps the backend payload and idempotency key unchanged', async () => {
+  const backend = fakeBackend();
+  backend.state.post = [
+    { status: 500, body: {} },
+    { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } },
+  ];
+  const ctx = await build({ backend });
+  const failed = await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs(), SESSION)));
+  assert.equal(JSON.parse(failed.err.content[0].text).error.detail.reason, 'ucp_reap_create_outcome_unknown');
+  const retried = await withEnv(ON, () => ctx.ucp.callTool('create_checkout', createArgs(), SESSION));
+  assert.match(retried.id, REAP_ID_RE);
+  assert.deepEqual(backend.calls[0].body, backend.calls[1].body);
+  assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+});
 
 test('create_checkout: the refusal code is what gets logged — and only the code', async () => {
   const backend = fakeBackend();
@@ -1692,7 +1729,7 @@ test('Tier B: a cart_link POST that ITSELF answers merchant_not_eligible is not 
   loop.state.post = [notEligible, notEligible, notEligible, notEligible];
   await createReap(CODES_ON, { backend: loop });
   assert.equal(loop.calls.length, 2, 'variant once, cart_link once, never a third POST');
-  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable', 'idempotency_conflict']) {
+  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable']) {
     const b = fakeBackend();
     b.state.post = [{ status: 409, body: houseError(code, 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
     await createReap(CODES_ON, { backend: b });
