@@ -182,6 +182,18 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
       expect(queries[0][1][3]).toBe(collapse ? 1000 : 4);
     } finally { if (old === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED; else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = old; }
   });
+  test('quarantine CAS skips human promotions and changed revisions, preserving microsecond precision', async () => {
+    const {buildQuarantinePatch,applyQuarantinePatches}=require('../../scripts/quarantine-relationship-graph-serving-unsafe');
+    for (const name of ['human','changed','unchanged']) await upsertRelationshipCandidateLabel(edge(name,'candidate','dupe','ai_approved'),{queryFn});
+    const rows=(await queryFn('SELECT *, updated_at::text AS updated_at_revision FROM relationship_candidate_labels ORDER BY id')).rows;
+    const patches=rows.map(row=>buildQuarantinePatch({row,reasons:['ai_approved_dupe_quarantined']}));
+    await queryFn("UPDATE relationship_candidate_labels SET label_state='human_approved' WHERE id LIKE 'row_human_%'");
+    await queryFn("UPDATE relationship_candidate_labels SET updated_at=updated_at+interval '1 microsecond' WHERE id LIKE 'row_changed_%'");
+    const applied=await applyQuarantinePatches({queryFn,patches});
+    expect(applied.map(row=>row.id)).toEqual(['row_unchanged_candidate_dupe']);
+    expect((await queryFn("SELECT label_state FROM relationship_candidate_labels WHERE id LIKE 'row_human_%'")).rows[0].label_state).toBe('human_approved');
+    expect((await queryFn("SELECT label_state FROM relationship_candidate_labels WHERE id LIKE 'row_changed_%'")).rows[0].label_state).toBe('ai_approved');
+  });
   test('same-brand alternatives persist, review and resolve through the alternative relation filter', async () => {
     const { buildEdgeForCandidate } = require('../../src/auroraBff/productRelationshipGraphBuilder');
     const { applyApproval, consumerCopyForKind } = require('../../scripts/review-relationship-candidate-labels');

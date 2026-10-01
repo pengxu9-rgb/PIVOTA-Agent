@@ -8,6 +8,7 @@ const {
   validateRelationshipEdge,
   __internal: relationshipInternals,
 } = require('../src/auroraBff/productRelationshipGraph');
+const { isSameFamilyVariant } = require('../src/auroraBff/relationshipPairPolicy');
 
 const {
   SOCIAL_CLAIM_PATTERN,
@@ -508,7 +509,8 @@ function auditReport(report, options = {}) {
     if (ALTERNATIVE_RELATION_TYPES.has(edge.relation_type)) {
       const anchorBrand = relationshipInternals.extractBrand(edge.anchor_snapshot);
       const candidateBrand = relationshipInternals.extractBrand(edge.candidate_snapshot);
-      if (anchorBrand && candidateBrand && anchorBrand === candidateBrand) {
+      if (anchorBrand && candidateBrand && anchorBrand === candidateBrand &&
+          (edge.relation_type === 'dupe' || isSameFamilyVariant(edge.anchor_snapshot, edge.candidate_snapshot))) {
         findings.same_brand_competitor_dupes.push({
           index,
           edge_id: edge.id || null,

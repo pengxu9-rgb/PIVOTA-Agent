@@ -62,7 +62,7 @@ Decision records should include:
 }
 ```
 
-Use `decision: rejected` when the candidate is weak, same-brand competitive, unsupported, stale, or not category-aligned.
+Use `decision: rejected` when the candidate is weak, a same-brand dupe or variant, unsupported, stale, or not category-aligned. Distinct-line same-brand alternatives remain eligible when they match the shopper job and have grounded differences.
 
 ## 4. Publish Approved Edges
 
@@ -123,4 +123,4 @@ anchor percentage, niche-specialist coverage, AI/human label mix, and expiry
 windows. By default it uses the pilot acceptance thresholds above and only exits
 nonzero when `--fail-on-readiness` is set.
 
-Keep current Aurora router hard gates active. Graph candidates must still pass same-brand, category, source, and price rules before appearing in competitor or dupe blocks.
+Keep current Aurora router hard gates active. Graph candidates must still pass variant, relation-specific brand, category, source, and price rules before appearing in competitor or dupe blocks.
