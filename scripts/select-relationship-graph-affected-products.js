@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
+const { normalizeUncoveredCooldownDays, coverageCatalogJoinSql, normalizeCoverageSiblingRefs, loadCoverageSuppressedIds } = require('../src/auroraBff/relationshipGraphCoverage');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 250;
@@ -202,8 +203,15 @@ function buildExternalSeedAffectedRow(row = {}, market = DEFAULT_MARKET) {
 async function fetchCatalogProductRows({
   queryFn = query,
   updatedSince,
+  market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
+  prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
+  coverageSiblingRefs = true,
+  coverageSuppressedIds,
 } = {}) {
+  const suppressedIds = prioritizeUncovered
+    ? (coverageSuppressedIds || await loadCoverageSuppressedIds({ queryFn, market })) : [];
   const res = await queryFn(
     `
       SELECT
@@ -222,9 +230,9 @@ async function fetchCatalogProductRows({
         cp.canonical_url,
         cp.pivota_canonical_url,
         cp.updated_at,
-        cp.created_at
-      FROM catalog_products cp
-      WHERE (
+        cp.created_at${prioritizeUncovered ? `,\n        CASE WHEN coverage.relgraph_priority > 0 THEN true ELSE false END AS relgraph_uncovered_live, coverage.relgraph_priority, coverage.relgraph_last_activity` : ''}
+      FROM catalog_products cp${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$4', suppressedIdsSql: '$5::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+      WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}(
           cp.updated_at >= $1::timestamptz
           OR cp.created_at >= $1::timestamptz
         )
@@ -241,10 +249,10 @@ async function fetchCatalogProductRows({
           )) LIKE ANY($3::text[])
           OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($3::text[])
         )
-      ORDER BY cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC
+      ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC
       LIMIT $2
     `,
-    [updatedSince, limit, BEAUTY_TEXT_PATTERNS],
+    [updatedSince, limit, BEAUTY_TEXT_PATTERNS, ...(prioritizeUncovered ? [normalizeString(market).toUpperCase() || DEFAULT_MARKET, suppressedIds] : [])],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
 }
@@ -254,8 +262,14 @@ async function fetchExternalSeedRows({
   updatedSince,
   market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
+  prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
+  coverageSiblingRefs = true,
+  coverageSuppressedIds,
 } = {}) {
   const normalizedMarket = normalizeString(market).toUpperCase() || DEFAULT_MARKET;
+  const suppressedIds = prioritizeUncovered
+    ? (coverageSuppressedIds || await loadCoverageSuppressedIds({ queryFn, market })) : [];
   const res = await queryFn(
     `
       SELECT
@@ -275,12 +289,12 @@ async function fetchExternalSeedRows({
         cp.title AS catalog_title,
         cp.brand AS catalog_brand,
         cp.canonical_url AS catalog_canonical_url,
-        cp.updated_at AS catalog_updated_at
+        cp.updated_at AS catalog_updated_at${prioritizeUncovered ? `,\n        CASE WHEN coverage.relgraph_priority > 0 THEN true ELSE false END AS relgraph_uncovered_live, coverage.relgraph_priority, coverage.relgraph_last_activity` : ''}
       FROM external_product_seeds eps
       LEFT JOIN catalog_products cp
         ON cp.source_product_id = eps.external_product_id
-        OR cp.product_key = eps.attached_product_key
-      WHERE COALESCE(eps.status, 'active') = 'active'
+        OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$2', suppressedIdsSql: '$5::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+      WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}COALESCE(eps.status, 'active') = 'active'
         AND upper(COALESCE(eps.market, $2)) = $2
         AND (
           eps.updated_at >= $1::timestamptz
@@ -301,7 +315,7 @@ async function fetchExternalSeedRows({
           OR lower(to_jsonb(eps.seed_data)::text) LIKE ANY($4::text[])
           OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($4::text[])
         )
-      ORDER BY GREATEST(
+      ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}GREATEST(
         COALESCE(eps.updated_at, '-infinity'::timestamptz),
         COALESCE(eps.created_at, '-infinity'::timestamptz),
         COALESCE(cp.updated_at, '-infinity'::timestamptz)
@@ -309,7 +323,7 @@ async function fetchExternalSeedRows({
       eps.id ASC
       LIMIT $3
     `,
-    [updatedSince, normalizedMarket, limit, BEAUTY_TEXT_PATTERNS],
+    [updatedSince, normalizedMarket, limit, BEAUTY_TEXT_PATTERNS, ...(prioritizeUncovered ? [suppressedIds] : [])],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
 }
@@ -364,6 +378,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   return {
     updatedSince,
     sources,
+    prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    coverageSiblingRefs: normalizeCoverageSiblingRefs(argValue(argv, 'coverage-sibling-refs', 'true')),
+    uncoveredCooldownDays: normalizeUncoveredCooldownDays(argValue(argv, 'uncovered-cooldown-days')),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit') || argValue(argv, 'select-limit'), DEFAULT_LIMIT, { min: 1, max: 5000 }),
     out: resolvePathMaybeRelative(argValue(argv, 'out'), cwd),
@@ -374,7 +391,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
 function usage() {
   return [
     'Usage:',
-    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path]',
+    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path] [--prioritize-uncovered]',
     '',
     'Read-only selector. Writes an affected-products manifest for relationship graph routines.',
   ].join('\n');
@@ -387,11 +404,18 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     return null;
   }
 
+  const coverageSuppressedIds = options.prioritizeUncovered
+    ? await loadCoverageSuppressedIds({ queryFn, market: options.market }) : undefined;
   const rows = [];
   if (options.sources.includes('catalog_products')) {
     const catalogRows = await fetchCatalogProductRows({
       queryFn,
       updatedSince: options.updatedSince,
+      market: options.market,
+      prioritizeUncovered: options.prioritizeUncovered,
+      uncoveredCooldownDays: options.uncoveredCooldownDays,
+      coverageSiblingRefs: options.coverageSiblingRefs,
+      coverageSuppressedIds,
       limit: options.limit,
     });
     rows.push(...catalogRows.map((row) => buildCatalogAffectedRow(row, options.market)));
@@ -400,6 +424,10 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     const seedRows = await fetchExternalSeedRows({
       queryFn,
       updatedSince: options.updatedSince,
+      prioritizeUncovered: options.prioritizeUncovered,
+      uncoveredCooldownDays: options.uncoveredCooldownDays,
+      coverageSiblingRefs: options.coverageSiblingRefs,
+      coverageSuppressedIds,
       market: options.market,
       limit: options.limit,
     });

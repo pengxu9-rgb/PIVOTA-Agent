@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const { recordAnchorAttempts, normalizeCoverageSiblingRefs, productAnchorRefs } = require('../src/auroraBff/relationshipGraphCoverage');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -873,6 +874,9 @@ async function buildInputsFromDb({
   includeApprovedLiveExternalSeedAnchors = false,
   approvedLiveExternalSeedAnchorLimit = sourceLimit,
   missingCandidateLabelsOnly = false,
+  prioritizeUncovered = false,
+  uncoveredCooldownDays = 7,
+  coverageSiblingRefs = true,
 } = {}) {
   if (scopeProvided && !(Array.isArray(affectedRefs) && affectedRefs.length)) {
     // An explicit, empty scope: this run touches no products. Nothing to anchor, no need-node
@@ -901,6 +905,9 @@ async function buildInputsFromDb({
     limit: sourceLimit,
     market,
     affectedRefs,
+    prioritizeUncovered,
+    uncoveredCooldownDays,
+    coverageSiblingRefs,
     includeApprovedLiveExternalSeedAnchors,
     approvedLiveExternalSeedAnchorLimit,
     missingCandidateLabelsOnly,
@@ -920,13 +927,19 @@ async function buildInputsFromDb({
     );
   }
   const products = sourceInputs.products || [];
-  const affectedScopedProducts = filterAffectedAnchors(products, affectedRefs);
+  const eligibleRefs = prioritizeUncovered
+    ? new Set((sourceInputs.eligibleAffectedProducts || []).flatMap((product) => productAnchorRefs(product)))
+    : null;
+  const eligibleProducts = eligibleRefs
+    ? products.filter((product) => productAnchorRefs(product).some((ref) => eligibleRefs.has(ref)))
+    : products;
+  const affectedScopedProducts = filterAffectedAnchors(eligibleProducts, affectedRefs);
   const affectedScoped = scopeProvided;
   const anchorUniverse = affectedScoped
     ? affectedScopedProducts
     : includeApprovedLiveExternalSeedAnchors && sourceInputs.approvedLiveExternalSeedAnchors?.length
-    ? sourceInputs.approvedLiveExternalSeedAnchors
-    : products;
+    ? sourceInputs.approvedLiveExternalSeedAnchors.filter((product) => !eligibleRefs || productAnchorRefs(product).some((ref) => eligibleRefs.has(ref)))
+    : eligibleProducts;
   const offset = Math.max(0, Number(anchorOffset) || 0);
   const anchors = anchorUniverse.slice(offset, offset + limit);
   // Need-node (niche_specialist) candidates come from the products this run touches. Before
@@ -1024,6 +1037,9 @@ async function main() {
     anchorOffset,
     market,
     affectedRefs,
+    prioritizeUncovered: hasFlag('prioritize-uncovered'),
+    coverageSiblingRefs: normalizeCoverageSiblingRefs(argValue('coverage-sibling-refs', 'true')),
+    uncoveredCooldownDays: numberArg('uncovered-cooldown-days', 7, { min: 1, max: 90 }),
     affectedScopeProvided: affectedScopeProvided(),
     maxPerAnchor,
     includeTransitiveRecall,
@@ -1115,6 +1131,9 @@ async function main() {
   let prefilterSkipped = 0;
   let fanInCappedAtWrite = 0;
   if (hasFlag('apply')) {
+    if (hasFlag('prioritize-uncovered')) {
+      await recordAnchorAttempts({ anchors: payload.anchors || [], market, queryFn: query });
+    }
     const classify = (edge) => {
       const classification = classifyEdgeForPrefilter({
         edge,

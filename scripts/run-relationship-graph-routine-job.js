@@ -7,6 +7,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
 
+const { query } = require('../src/db');
+const { requireAnchorAttemptsTable } = require('../src/auroraBff/relationshipGraphCoverage');
+
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
 
 const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_ROUTINE';
@@ -159,6 +162,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     cutoff,
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
+    prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
+    uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
     minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
@@ -276,6 +282,11 @@ function buildRoutineSteps(options) {
       '--out',
       artifacts.build,
     ];
+    if (options.prioritizeUncovered) {
+      args.push('--prioritize-uncovered');
+      pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+      pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
+    }
     if (options.sourceLimit) pushArg(args, 'source-limit', options.sourceLimit);
     pushArg(args, 'affected-refs', options.affectedRefs);
     pushArg(args, 'affected-refs-file', options.affectedRefsFile);
@@ -713,7 +724,7 @@ function writeSummary(outDir, summary) {
 
 async function runRoutineJob(
   options,
-  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient, progressReader = readServingSnapshot, reviewReader = readReviewMetrics } = {},
+  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient, progressReader = readServingSnapshot, reviewReader = readReviewMetrics, preflightQueryFn = query } = {},
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
@@ -755,8 +766,24 @@ async function runRoutineJob(
   };
 
   let beforeSnapshot;
-  async function executeSteps() {
+  async function executeSteps(dbLockClient) {
     let reviewGateFailed = false;
+    if (options.prioritizeUncovered) {
+      try {
+        // Direct affected-products manifests bypass selection. Check before the
+        // first child (including pba_sig_refresh), not just inside the builder.
+        // The default db.query resets its shared pool on transient errors.
+        // Use the held client here so a reset cannot wait on this callback.
+        const preflightQuery = preflightQueryFn === query && dbLockClient
+          ? dbLockClient.query.bind(dbLockClient) : preflightQueryFn;
+        await requireAnchorAttemptsTable(preflightQuery);
+      } catch (error) {
+        summary.ok = false;
+        summary.failed_step = 'uncovered_priority_preflight';
+        error.summary = summary;
+        throw error;
+      }
+    }
     try {
       beforeSnapshot = await progressReader({ market: options.market });
     } catch (error) {
@@ -876,7 +903,7 @@ async function runRoutineJob(
         started_at: now.toISOString(),
         out_dir: outDir,
       },
-      async (dbLockInfo) => {
+      async (dbLockInfo, dbLockClient) => {
         if (dbLockInfo) {
           summary.db_lock = {
             requested: true,
@@ -887,7 +914,7 @@ async function runRoutineJob(
           writeSummary(outDir, summary);
         }
         try {
-          return await executeSteps();
+          return await executeSteps(dbLockClient);
         } finally {
           if (beforeSnapshot) {
             try {

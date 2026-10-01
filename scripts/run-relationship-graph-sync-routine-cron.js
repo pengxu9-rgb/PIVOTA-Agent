@@ -137,6 +137,11 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     args.push('--cutoff', cutoff);
   }
 
+  if (parseBooleanEnv(env.RELGRAPH_SYNC_PRIORITIZE_UNCOVERED, false)) {
+    args.push('--prioritize-uncovered');
+    pushArg(args, 'uncovered-cooldown-days', env.RELGRAPH_SYNC_UNCOVERED_COOLDOWN_DAYS);
+    pushArg(args, 'coverage-sibling-refs', env.RELGRAPH_SYNC_COVERAGE_SIBLING_REFS || 'true');
+  }
   pushArg(args, 'source-limit', env.RELGRAPH_SYNC_SOURCE_LIMIT);
   pushArg(args, 'review-concurrency', env.RELGRAPH_SYNC_REVIEW_CONCURRENCY);
   pushArg(args, 'max-review-error-rate', env.RELGRAPH_SYNC_MAX_REVIEW_ERROR_RATE);
