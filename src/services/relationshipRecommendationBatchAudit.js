@@ -31,6 +31,22 @@ function batchDecisions(review) {
   }
   return selected;
 }
+function batchScope(batch) {
+  return {
+    run_id: batch.run_id,
+    snapshot_semantics: batch.snapshot_semantics,
+    applied_approval_ids: batch.applied_approval_ids,
+    batch_count: batch.batch_count,
+    exported_count: batch.exported_count,
+    complete: batch.complete,
+    missing_ids: batch.missing_ids,
+    exported_rows: batch.edges.map(edge => ({
+      id: edge.id,
+      snapshot_fingerprint: edge.snapshot_fingerprint,
+      batch_decision: edge.batch_decision,
+    })),
+  };
+}
 function storedKind(edge) {
   return ({dupe:'dupe',competitive_alternative:'alternative',related_product:'complement',niche_specialist:'specialist'})[edge.relation_type] || 'unknown';
 }
@@ -52,13 +68,17 @@ function exportRows(decisions, rows, {runId = null, exportedAt = new Date().toIS
       audit_hints:{ serving_suppression_reasons:getRelationshipEdgeServingSuppressionReasons(row),
         proposed_relation_type:inferred.relation_type, proposal_is_not_independent_assessment:true } };
   });
-  return {schema_version:'relgraph_batch_export.v1',run_id:runId,exported_at:exportedAt,
+  const batch = {schema_version:'relgraph_batch_export.v1',run_id:runId,exported_at:exportedAt,
+    applied_approval_ids:decisions.map(row=>row.id),
     snapshot_semantics:'current_rows_not_immutable_approval_time_snapshots',
     batch_count:decisions.length,exported_count:edges.length,complete:edges.length===decisions.length,
     missing_ids:decisions.filter(row=>!byId.has(row.id)).map(row=>row.id),edges};
+  batch.batch_scope_fingerprint = fingerprint(batchScope(batch));
+  return batch;
 }
 function reviewTemplate(batch) {
   return {schema_version:'relgraph_independent_quality_labels.v1',assessor:'',method:'independent_review',
+    batch_scope_fingerprint:batch.batch_scope_fingerprint,
     labels:batch.edges.map(edge=>({id:edge.id,snapshot_fingerprint:edge.snapshot_fingerprint,
       assessment:'unreviewed',expected_kind:'unknown',notes:''}))};
 }
@@ -72,6 +92,12 @@ function evaluateBatch(batch, independent = {}) {
   if (batch.schema_version!=='relgraph_batch_export.v1') throw new Error('Expected a full batch export');
   if (!Array.isArray(batch.edges) || !Array.isArray(batch.missing_ids) || batch.exported_count!==batch.edges.length ||
       batch.batch_count!==batch.edges.length+batch.missing_ids.length || batch.complete!==(batch.missing_ids.length===0)) throw new Error('Invalid batch completeness metadata');
+  if (!Array.isArray(batch.applied_approval_ids) || batch.applied_approval_ids.length !== batch.batch_count ||
+      new Set(batch.applied_approval_ids).size !== batch.batch_count ||
+      batch.applied_approval_ids.some(id => typeof id !== 'string' || !id.trim())) throw new Error('Invalid applied approval identities');
+  const memberIds = [...batch.edges.map(edge => edge.id), ...batch.missing_ids];
+  if (new Set(memberIds).size !== batch.batch_count ||
+      memberIds.some(id => !batch.applied_approval_ids.includes(id))) throw new Error('Export membership differs from the full applied batch');
   const seen=new Set();
   for (const edge of batch.edges) {
     if (!edge.id || seen.has(edge.id)) throw new Error('Duplicate or missing exported identity');
@@ -79,7 +105,9 @@ function evaluateBatch(batch, independent = {}) {
     const {snapshot_fingerprint,batch_decision,audit_hints,...row}=edge;
     if (fingerprint(row)!==snapshot_fingerprint) throw new Error(`Modified exported snapshot for ${edge.id}`);
   }
+  if (fingerprint(batchScope(batch)) !== batch.batch_scope_fingerprint) throw new Error('Modified batch scope or completeness metadata');
   const labels = independent.labels || [];
+  if (labels.length && independent.batch_scope_fingerprint !== batch.batch_scope_fingerprint) throw new Error('Independent labels belong to a different batch scope');
   if (labels.some(row=>row.assessment!=='unreviewed') && (!String(independent.assessor||'').trim() ||
       !['human_review','independent_review'].includes(independent.method))) throw new Error('Independent assessor and method required; model approval is not quality precision');
   const byId = new Map(); const edges = new Map(batch.edges.map(edge=>[edge.id,edge]));
@@ -111,6 +139,7 @@ function evaluateBatch(batch, independent = {}) {
   }
   return {schema_version:'relgraph_batch_quality.v1',run_id:batch.run_id,complete_batch:batch.complete,
     batch_count:batch.batch_count,missing_ids:batch.missing_ids,exported_count:batch.edges.length,
+    batch_scope_fingerprint:batch.batch_scope_fingerprint,
     snapshot_semantics:batch.snapshot_semantics,assessor:independent.assessor || null,method:independent.method || null,
     summary:finalize(total),...Object.fromEntries(Object.entries(groups).map(([name,rows])=>[name,Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,finalize(value)]))])),
     relation_confusion_matrix:confusion,remediation_review_queue:reviewQueue,
@@ -118,4 +147,4 @@ function evaluateBatch(batch, independent = {}) {
       'Current-row exports do not establish historical approval-time precision; independent labels are bound to the export fingerprint.',
       'Heuristic hints and model verdicts are not independent quality labels. No label writes or relation identity changes are performed.']};
 }
-module.exports={MAX_BATCH,batchDecisions,exportRows,reviewTemplate,evaluateBatch,fingerprint};
+module.exports={MAX_BATCH,batchDecisions,exportRows,reviewTemplate,evaluateBatch,fingerprint,batchScope};

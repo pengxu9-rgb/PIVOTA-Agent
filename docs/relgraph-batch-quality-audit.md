@@ -13,7 +13,7 @@ node scripts/audit-relationship-recommendation-batch.js --run-id <exact-run-id> 
   --out /tmp/batch.json --template /tmp/independent-labels.json
 ```
 
-The template deliberately marks everything unreviewed. An independent reviewer supplies `assessor`, `method` (`human_review` or `independent_review`), notes, `assessment` (`useful`, `incorrect`, `uncertain`, `unreviewed`) and `expected_kind`. Preserve each snapshot fingerprint. Model approval fields and heuristic proposed relations are review hints, not ground truth.
+The template deliberately marks everything unreviewed. An independent reviewer supplies `assessor`, `method` (`human_review` or `independent_review`), notes, `assessment` (`useful`, `incorrect`, `uncertain`, `unreviewed`) and `expected_kind`. Preserve the full batch scope fingerprint and each snapshot fingerprint. Scope binding includes all applied approval identities, missing identities, counts and exported rows; deleting a bad pair cannot silently improve the reported precision. These hashes detect mismatches, not signed authenticity. Model approval fields and heuristic proposed relations are review hints, not ground truth.
 
 ```sh
 node scripts/audit-relationship-recommendation-batch.js --batch /tmp/batch.json \

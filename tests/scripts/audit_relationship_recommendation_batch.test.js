@@ -1,4 +1,4 @@
-const {batchDecisions,exportRows,reviewTemplate,evaluateBatch}=require('../../src/services/relationshipRecommendationBatchAudit');
+const {batchDecisions,exportRows,reviewTemplate,evaluateBatch,fingerprint,batchScope}=require('../../src/services/relationshipRecommendationBatchAudit');
 const {exportBatch}=require('../../scripts/audit-relationship-recommendation-batch');
 const decisions=['a','b','c','d'].map(id=>({id,verdict:'approve',applied:true,new_label_state:'ai_approved'}));
 const row=(id,other={})=>({id,anchor_type:'product',anchor_ref:'product:anchor',candidate_product_ref:`product:${id}`,
@@ -6,7 +6,7 @@ const row=(id,other={})=>({id,anchor_type:'product',anchor_ref:'product:anchor',
   anchor_snapshot:{brand:'Luxury',title:'Hydrating Barrier Face Cream',category:'face cream'},
   candidate_snapshot:{brand:'Value',title:'Rich Recovery Face Cream',category:'face cream'},...other});
 const batch=()=>exportRows(decisions,decisions.map(d=>row(d.id)),{runId:'run_fixture'});
-function independent(exported,states) {return {assessor:'Independent reviewer',method:'human_review',labels:exported.edges.map((edge,i)=>({id:edge.id,snapshot_fingerprint:edge.snapshot_fingerprint,
+function independent(exported,states) {return {assessor:'Independent reviewer',method:'human_review',batch_scope_fingerprint:exported.batch_scope_fingerprint,labels:exported.edges.map((edge,i)=>({id:edge.id,snapshot_fingerprint:edge.snapshot_fingerprint,
   assessment:states[i],expected_kind:states[i]==='incorrect'?'variant':states[i]==='useful'?'alternative':'unknown',notes:states[i]==='unreviewed'?'':'Reviewed complete supplied product facts.'}))};}
 test('model confidence and unapplied approvals cannot count as independent useful precision',()=>{
   expect(batchDecisions({decisions:[...decisions,{id:'dry',verdict:'approve',applied:false,new_label_state:'ai_approved'}]})).toHaveLength(4);
@@ -53,4 +53,21 @@ test('guard-block writes do not masquerade as applied approvals and truncated ar
   expect(batchDecisions({summary:{reviewed_count:2,applied_count:2},decisions:[decisions[0],guard]})).toEqual([decisions[0]]);
   expect(()=>batchDecisions({summary:{reviewed_count:135},decisions:[decisions[0]]})).toThrow(/incomplete/);
   expect(()=>batchDecisions({recommendation_review_batch:{complete:false,decisions}})).toThrow(/incomplete/);
+});
+
+test('deleting an incorrect edge and its label cannot inflate complete-batch precision',()=>{
+  const exported=batch();
+  const labels=independent(exported,['useful','incorrect','uncertain','unreviewed']);
+  const truncated=JSON.parse(JSON.stringify(exported));
+  truncated.edges.splice(1,1);
+  truncated.batch_count=3;truncated.exported_count=3;
+  const truncatedLabels={...labels,labels:labels.labels.filter(label=>label.id!=='b')};
+  expect(()=>evaluateBatch(truncated,truncatedLabels)).toThrow(/identities|membership|scope/);
+  truncated.applied_approval_ids=truncated.applied_approval_ids.filter(id=>id!=='b');
+  expect(()=>evaluateBatch(truncated,truncatedLabels)).toThrow(/scope/);
+  truncated.batch_scope_fingerprint=fingerprint(batchScope(truncated));
+  expect(()=>evaluateBatch(truncated,truncatedLabels)).toThrow(/different batch scope/);
+  expect(()=>evaluateBatch(exported,{...labels,batch_scope_fingerprint:'stale'})).toThrow(/batch scope/);
+  const partial={...labels,labels:[labels.labels[0]]};
+  expect(evaluateBatch(exported,partial).summary).toMatchObject({total:4,useful:1,unreviewed:3,adjudicated_coverage:.25});
 });
