@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { Client } = require('pg');
-const { uncoveredLiveCatalogSql, recordAnchorAttempts } = require('../../src/auroraBff/relationshipGraphCoverage');
+const { uncoveredLiveCatalogSql, recordAnchorAttempts, loadCoverageSuppressedIds } = require('../../src/auroraBff/relationshipGraphCoverage');
 const { upsertRelationshipCandidateLabel } = require('../../src/auroraBff/productRelationshipGraph');
 const selector = require('../../scripts/select-relationship-graph-affected-products');
 
@@ -27,7 +27,7 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
         server.listen(0, '127.0.0.1', () => { const chosen = server.address().port; server.close(() => resolve(chosen)); });
       });
       dir = fs.mkdtempSync('/tmp/relgraph-uncovered-');
-      run('initdb', ['-D', dir, '-A', 'trust', '--no-locale']);
+      run('initdb', ['-D', dir, '-A', 'trust', '--no-locale', '--encoding=UTF8']);
       run('pg_ctl', ['-D', dir, '-l', path.join(dir, 'server.log'), '-o', `-k /tmp -c listen_addresses=127.0.0.1 -p ${port}`, '-w', 'start']);
       started = true;
       client = new Client({ host: '127.0.0.1', port, user: process.env.USER, database: 'postgres' });
@@ -82,9 +82,10 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
         now() + $5::interval,now() - $6::interval,now() - $6::interval)`, [ref, ref, market, state, expires ? '45 days' : '-1 day', recent ? '1 day' : '30 days']);
   }
   async function priority(days = 7, coverageSiblingRefs = true) {
-    const result = await client.query(`SELECT CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$1', cooldownDays: days, coverageSiblingRefs })}
+    const ids = await loadCoverageSuppressedIds({ queryFn: (sql, params) => client.query(sql, params), market: 'US' });
+    const result = await client.query(`SELECT CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$1', suppressedIdsSql: '$2::text[]', cooldownDays: days, coverageSiblingRefs })}
       THEN true ELSE false END AS priority FROM catalog_products cp
-      LEFT JOIN catalog_merchants cm ON cm.merchant_id=cp.merchant_id WHERE cp.product_key='anchor'`, ['US']);
+      LEFT JOIN catalog_merchants cm ON cm.merchant_id=cp.merchant_id WHERE cp.product_key='anchor'`, ['US', ids]);
     return result.rows[0].priority;
   }
   test('uncovered active row is promoted', async () => expect(await priority()).toBe(true));
@@ -243,6 +244,54 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
     expect(seen.size).toBe(48); // Two eligible repeats occur after nine nights; none within cooldown.
   });
 
+  test.each(['ai_dupe', 'nested_candidate', 'nested_anchor', 'shade', 'family', 'fenty'])('hidden %s approval never counts as serving coverage', async (kind) => {
+    await label('product:sig_anchor');
+    if (kind === 'ai_dupe') await client.query("UPDATE relationship_candidate_labels SET relation_type='dupe'");
+    if (kind === 'nested_candidate') await client.query("UPDATE relationship_candidate_labels SET candidate_product_ref='product:product:broken'");
+    if (kind === 'nested_anchor') {
+      await client.query("UPDATE catalog_products SET pivota_signature_id='product:broken'; UPDATE relationship_candidate_labels SET anchor_ref='product:product:broken'");
+    }
+    if (['shade','family','fenty'].includes(kind)) {
+      const titles = kind === 'shade' ? ['Daily Face Foundation - 100 Light','Daily Face Foundation - 200 Dark']
+        : kind === 'family' ? ['False Lash Clusters - Demi Edgy','False Lash Clusters - Demi Bold']
+        : ['Pro Foundation - Soft Matte','Different Concealer - Soft Glow'];
+      await client.query('UPDATE relationship_candidate_labels SET anchor_snapshot=$1,candidate_snapshot=$2',
+        [JSON.stringify({brand:kind==='fenty'?'Fenty':'Test',title:titles[0]}),JSON.stringify({brand:kind==='fenty'?'Fenty':'Test',title:titles[1]})]);
+    }
+    expect(await priority()).toBe(true);
+    if (['ai_dupe','nested_candidate','nested_anchor'].includes(kind)) {
+      const result = await client.query(`SELECT ${uncoveredLiveCatalogSql('cp',{marketSql:'$1'})} AS priority FROM catalog_products cp LEFT JOIN catalog_merchants cm ON cm.merchant_id=cp.merchant_id WHERE cp.product_key='anchor'`,['US']);
+      expect(result.rows[0].priority).toBe(true);
+    }
+  });
+  test('hidden AI approvals do not hide a serving-visible human edge on the same anchor', async () => {
+    await label('product:sig_anchor'); await client.query("UPDATE relationship_candidate_labels SET relation_type='dupe'");
+    await client.query(`INSERT INTO relationship_candidate_labels(id,anchor_type,anchor_ref,candidate_product_ref,relation_type,market,label_state,last_verified_at,expires_at,created_at,updated_at)
+      VALUES ('human','product','product:sig_anchor','product:other','dupe','US','human_approved',now(),now()+interval '45 days',now()-interval '30 days',now()-interval '30 days')`);
+    expect(await priority()).toBe(false);
+  });
+  test.each([
+    ['The Ordinary', 'Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydra', 'Saccharomyces Ferment 30% Milky Toner'],
+    ['Rare Beauty', 'Find Comfort Body & Hair Fragrance Mist Mini', 'Find Comfort Body & Hair Fragrance Mist - Awaken Confidence - Awaken C'],
+    ['The Ordinary', 'Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Ble', 'Salicylic Acid 2% Solution, Exfoliating Serum for Acne'],
+  ])('coverage follows the installed shared guard for %s sample pair %s', async (brand, anchor, candidate) => {
+    await label('product:sig_anchor');
+    const anchorSnapshot = { brand:brand.toLowerCase(),title:anchor };
+    const candidateSnapshot = { brand,title:candidate };
+    await client.query('UPDATE relationship_candidate_labels SET anchor_snapshot=$1,candidate_snapshot=$2',[JSON.stringify(anchorSnapshot),JSON.stringify(candidateSnapshot)]);
+    const { getRelationshipEdgeServingSuppressionReasons } = require('../../src/auroraBff/productRelationshipGraph');
+    const hidden = getRelationshipEdgeServingSuppressionReasons({anchor_type:'product',anchor_ref:'product:sig_anchor',candidate_product_ref:'product:candidate',relation_type:'related_product',label_state:'ai_approved',anchor_snapshot:anchorSnapshot,candidate_snapshot:candidateSnapshot}).length>0;
+    expect(await priority()).toBe(hidden);
+  });
+  test('missing migration fails for selectors and explicit affected products', async () => {
+    const sources = require('../../src/auroraBff/productRelationshipGraphSources');
+    await client.query('ALTER TABLE relationship_graph_anchor_attempts RENAME TO attempts_temporarily_absent');
+    try {
+      const queryFn = (sql, params) => client.query(sql, params);
+      await expect(selector.fetchCatalogProductRows({ queryFn, prioritizeUncovered:true, updatedSince:'2020-01-01', limit:1 })).rejects.toMatchObject({ code:'RELGRAPH_ANCHOR_ATTEMPTS_MISSING' });
+      await expect(sources.loadAffectedProductAnchorCandidates({ queryFn, prioritizeUncovered:true, refs:['sig_anchor'] })).rejects.toMatchObject({ code:'RELGRAPH_ANCHOR_ATTEMPTS_MISSING' });
+    } finally { await client.query('ALTER TABLE attempts_temporarily_absent RENAME TO relationship_graph_anchor_attempts'); }
+  });
   (process.env.RELGRAPH_TEST_EXPLAIN === '1' ? test : test.skip)('production-size indexed selector plans', async () => {
     await client.query(`TRUNCATE catalog_products;
       CREATE INDEX IF NOT EXISTS idx_catalog_products_source_product_id_lookup ON catalog_products(source_product_id);
@@ -262,6 +311,10 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
         'product:candidate_'||i,'related_product','US',CASE i%3 WHEN 0 THEN 'generated' WHEN 1 THEN 'human_rejected' ELSE 'ai_approved' END,
         now()-interval '30 days',now()-interval '15 days',now()-interval '15 days',
         CASE WHEN i%7=0 THEN now()+interval '20 days' ELSE now()-interval '1 day' END FROM generate_series(1,70000) i;
+      UPDATE relationship_candidate_labels SET
+        anchor_snapshot = jsonb_build_object('brand','Test','title',CASE WHEN substring(id from 7)::int % 5 = 0 THEN 'Daily Face Foundation - 100 Light' ELSE 'Hydrating Face Cream' END),
+        candidate_snapshot = jsonb_build_object('brand','Test','title',CASE WHEN substring(id from 7)::int % 5 = 0 THEN 'Daily Face Foundation - 200 Dark' ELSE 'Gentle Face Cleanser' END)
+      WHERE label_state = 'ai_approved' AND expires_at > now();
       INSERT INTO relationship_graph_anchor_attempts(anchor_ref,market,vertical,last_attempt_at)
       SELECT 'product:'||CASE i%3 WHEN 0 THEN 'sig_' WHEN 1 THEN 'source_' ELSE 'ext_' END||(((i-1)%29000)+1),
         'US','beauty',now()-interval '12 days' FROM generate_series(1,35000) i
@@ -269,9 +322,12 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
       ANALYZE;
     `);
     const plans = {};
+    const scanStart = performance.now();
+    const coverageSuppressedIds = await loadCoverageSuppressedIds({ queryFn: (sql, params) => client.query(sql, params), market: 'US' });
+    plans.guard_scan = { milliseconds: performance.now() - scanStart, suppressed_ids: coverageSuppressedIds.length };
     for (const [name, since] of [['24h', new Date(Date.now()-86400000).toISOString()], ['full', '2020-01-01']]) {
       for (const [source, fetch] of [['catalog',selector.fetchCatalogProductRows],['seeds',selector.fetchExternalSeedRows]]) {
-        await fetch({ updatedSince: since, prioritizeUncovered: true, limit: 200,
+        await fetch({ updatedSince: since, prioritizeUncovered: true, coverageSuppressedIds, limit: 200,
           queryFn: async (sql, params) => {
             const result = await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`,params);
             const plan = result.rows[0]['QUERY PLAN'][0]; plans[`${name}_${source}`] = plan;

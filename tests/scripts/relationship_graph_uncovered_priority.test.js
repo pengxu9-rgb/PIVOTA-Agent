@@ -5,11 +5,11 @@ const baselineCalls = require('../fixtures/relgraph_selection_default_sql.json')
 const SINCE = '2026-09-29T00:00:00.000Z';
 
 async function fetchCalls(prioritizeUncovered) {
-  const queryFn = jest.fn(async () => ({ rows: [] }));
+  const queryFn = jest.fn(async (sql) => ({ rows: sql.includes('to_regclass') ? [{ table_name: 'relationship_graph_anchor_attempts' }] : [] }));
   await selector.fetchCatalogProductRows({ queryFn, updatedSince: SINCE, limit: 250, prioritizeUncovered });
   await selector.fetchExternalSeedRows({ queryFn, updatedSince: SINCE, limit: 250, market: 'US', prioritizeUncovered });
   await sources.loadAffectedProductAnchorCandidates({ queryFn, refs: ['sig_fixture'], market: 'US', limit: 250, prioritizeUncovered });
-  return queryFn.mock.calls;
+  return queryFn.mock.calls.filter(([sql]) => sql.includes('AS relgraph_uncovered_live') || (!prioritizeUncovered && !sql.includes('to_regclass')));
 }
 
 test('default and explicit flag off preserve every selector and affected-loader SQL byte and parameter from main', async () => {
@@ -41,6 +41,8 @@ test('uncovered live catalog anchor precedes covered signatures, covered attache
     title: 'b_covered_seed beauty serum', brand: 'b_covered_seed', category: 'Serum',
     canonical_url: 'https://b_covered_seed.example/serum', relgraph_uncovered_live: false };
   const queryFn = jest.fn(async (sql) => {
+    if (sql.includes('to_regclass')) return { rows: [{ table_name: 'relationship_graph_anchor_attempts' }] };
+    if (sql.includes('FROM relationship_candidate_labels') && !sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (sql.includes('FROM external_product_seeds eps')) return { rows: [seed] };
     if (sql.includes('FROM products_cache pc')) return { rows: [] };
     return { rows };
@@ -81,6 +83,8 @@ test('cron flag defaults off and reaches selector and build child only when arme
 
 test('full source pool retains uncovered priority after its final dedupe', async () => {
   const queryFn = jest.fn(async (sql) => {
+    if (sql.includes('to_regclass')) return { rows: [{ table_name: 'relationship_graph_anchor_attempts' }] };
+    if (sql.includes('FROM relationship_candidate_labels') && !sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (!sql.includes('AS relgraph_uncovered_live')) return { rows: [] };
     if (!sql.includes('FROM catalog_products cp')) return { rows: [] };
     return { rows: [
@@ -100,9 +104,46 @@ test('normalization preserves never-attempted, oldest-pending and terminal order
     { product_key:'old',pivota_signature_id:'sig_c',relgraph_priority:2,relgraph_last_activity:'2026-01-01' },
     { product_key:'never',pivota_signature_id:'sig_z',relgraph_priority:3,relgraph_last_activity:null },
   ].map((row)=>({...row,title:'Beauty serum',brand:row.product_key,category:'Serum',relgraph_uncovered_live:true}));
-  const queryFn=async(sql)=>({ rows:sql.includes('FROM catalog_products cp') ? rows : [] });
+  const queryFn=async(sql)=>({ rows:sql.includes('to_regclass') ? [{ table_name:'relationship_graph_anchor_attempts' }] : sql.includes('FROM catalog_products cp') ? rows : [] });
   const result=await sources.loadAffectedProductAnchorCandidates({queryFn,refs:['fixture'],prioritizeUncovered:true});
   expect(result.map((product)=>product.pivota_signature_id)).toEqual(['sig_z','sig_c','sig_b','sig_a']);
   const final=prioritizeUncoveredProducts(sources.dedupeNormalizedProducts(result),result);
   expect(final.map((product)=>product.pivota_signature_id)).toEqual(['sig_z','sig_c','sig_b','sig_a']);
+});
+
+const { loadCoverageSuppressedIds, requireAnchorAttemptsTable } = require('../../src/auroraBff/relationshipGraphCoverage');
+test.each(['selector', 'affected-loader', 'source-pool'])('missing migration fails up front in %s, including empty refs', async (entry) => {
+  const queryFn = jest.fn(async () => ({ rows: [{ table_name: null }] }));
+  const operation = entry === 'selector'
+    ? selector.run(['--updated-since', SINCE, '--prioritize-uncovered', '--allow-empty-selection'], { queryFn })
+    : entry === 'affected-loader' ? sources.loadAffectedProductAnchorCandidates({ queryFn, refs: [], prioritizeUncovered: true })
+    : sources.loadProductRelationshipGraphSourceInputs({ queryFn, affectedRefs: ['fixture'], prioritizeUncovered: true });
+  await expect(operation).rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_MISSING' });
+  expect(queryFn).toHaveBeenCalledTimes(1);
+});
+test('shared serving guard determines title-based coverage exclusions once per selector run', async () => {
+  jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const hidden = { id:'hidden', label_state:'ai_approved', relation_type:'related_product', anchor_ref:'product:a',candidate_product_ref:'product:b',
+    anchor_snapshot:{ brand:'Test',title:'Hydrating Face Foundation - 100 Light' }, candidate_snapshot:{ brand:'Test',title:'Hydrating Face Foundation - 200 Dark' } };
+  const queryFn = jest.fn(async (sql) => {
+    if (sql.includes('to_regclass')) return { rows:[{ table_name:'relationship_graph_anchor_attempts' }] };
+    if (!sql.includes('AS relgraph_uncovered_live')) return { rows:[hidden] };
+    return { rows:[] };
+  });
+  await selector.run(['--updated-since', SINCE, '--prioritize-uncovered', '--allow-empty-selection'], { queryFn });
+  expect(queryFn.mock.calls.filter(([sql]) => sql.includes('to_regclass'))).toHaveLength(1);
+  expect(queryFn.mock.calls.filter(([sql]) => !sql.includes('AS relgraph_uncovered_live') && !sql.includes('to_regclass'))).toHaveLength(1);
+  const coverage = queryFn.mock.calls.filter(([sql]) => sql.includes('AS relgraph_uncovered_live'));
+  expect(coverage).toHaveLength(2);
+  coverage.forEach(([sql, params]) => { expect(params.at(-1)).toEqual(['hidden']); expect(sql).toContain('NOT (rcl.id = ANY($5::text[]))'); });
+  jest.restoreAllMocks();
+});
+
+test('coverage automatically uses a newly installed reason from the shared serving owner', async () => {
+  const graph = require('../../src/auroraBff/productRelationshipGraph');
+  const guard = jest.spyOn(graph,'getRelationshipEdgeServingSuppressionReasons')
+    .mockImplementation((row)=>row.id==='same_product'?['related_product_same_product_across_listings_or_sizes']:[]);
+  const queryFn=async(sql)=>({rows:sql.includes('to_regclass')?[{table_name:'relationship_graph_anchor_attempts'}]:[{id:'safe'},{id:'same_product'}]});
+  try {expect(await loadCoverageSuppressedIds({queryFn})).toEqual(['same_product']);expect(guard).toHaveBeenCalledTimes(2);}
+  finally {guard.mockRestore();}
 });

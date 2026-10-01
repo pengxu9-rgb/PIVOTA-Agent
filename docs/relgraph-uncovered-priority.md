@@ -9,7 +9,11 @@ clamped 1–90) are excluded before each source LIMIT and from the builder's anc
 recall stays broad. Priority is: live anchors never attempted; attempted live anchors by oldest
 activity; anchors with only rejected / needs-evidence labels; then ordinary fallback rows. Activity
 is the greatest label created/updated/reviewed timestamp or independent anchor attempt timestamp,
-scoped to market and beauty. Approved, verified, unexpired labels count as served coverage.
+scoped to market and beauty. Approved, verified, unexpired labels count as coverage only when serving's shared suppression
+guard returns no reasons. SQL excludes AI dupes and nested product refs; a single pre-selection
+scan runs the shared JS guard on all fresh approvals and passes hidden ids to each indexed
+coverage probe before ordering and LIMIT. This includes shade, family, Fenty and same-product
+rules as installed by the shared guard owner. Flag-off performs no scan or preflight.
 
 Label activity alone cannot record zero-edge attempts or writes that skip protected labels.
 Migration `061_relationship_graph_anchor_attempts.sql` creates the independent attempt table. A
@@ -17,13 +21,26 @@ priority-enabled build in write mode records all selected product-anchor refs be
 this includes zero-edge builds. Failures after that point also cool down the attempted anchor.
 Dry runs record nothing. This does not claim atomic selection between overlapping runs.
 
-Apply/verify the migration before enabling the priority flag. Gateway startup in `src/server.js`
-calls `runMigrations()` only with DATABASE_URL, outside tests, unless DB_AUTO_MIGRATE=false.
-`src/db/migrate.js` discovers numbered SQL, serializes migration runners with an advisory lock,
-and tracks each transaction in schema_migrations. `npm run db:migrate` is the explicit alternative.
-The relgraph job scripts do not bootstrap the gateway or run migrations. Production's auto-migrate
-setting was not inspected, so deployment alone is not proof that this table exists. With priority
-disabled no selector, loader, or builder query touches the new table.
+Claude must apply migration 061 **alone** before arming the flag. Production gateway has
+`DB_AUTO_MIGRATE=false`. Never run `npm run db:migrate` in production: it applies every pending
+file, including 060, which is outside this rollout. The job scripts do not bootstrap migrations.
+
+Operator procedure (Codex does not execute this in production): use psql with `ON_ERROR_STOP=1`
+and one transaction, from the repository root:
+
+```sql
+BEGIN;
+\i src/db/migrations/061_relationship_graph_anchor_attempts.sql
+INSERT INTO schema_migrations(id) VALUES ('061_relationship_graph_anchor_attempts.sql');
+COMMIT;
+SELECT to_regclass('relationship_graph_anchor_attempts');
+```
+
+Confirm the SELECT returns the table before setting `RELGRAPH_SYNC_PRIORITIZE_UNCOVERED=true`.
+Both selector and affected-product-file build paths now fail up front if it is absent, rather
+than treating a missing source table as an empty product pool. With priority disabled no query
+touches the new table. If 061 was previously applied, verify its schema and existing migration
+record instead of replaying this transaction.
 
 A priority-live anchor must pass the shared active-catalog-source predicate and suppression checks,
 plus pdp_will_render IS TRUE and a probe computed within the last 7 days. Null or stale probes fail

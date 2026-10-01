@@ -14,7 +14,7 @@ function normalizeCoverageSiblingRefs(value = true) {
 
 // The job does not inherit gateway hydration flags. Its explicit sibling option defaults to
 // true to match production serving; operators must change it with the gateway hydration flag.
-function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true } = {}) {
+function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true, suppressedIdsSql = "'{}'::text[]" } = {}) {
   const days = normalizeUncoveredCooldownDays(cooldownDays);
   const siblings = normalizeCoverageSiblingRefs(coverageSiblingRefs);
   return `WITH member_keys AS (
@@ -76,7 +76,11 @@ function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, 
       ), activity AS (
         SELECT max(GREATEST(rcl.created_at, rcl.updated_at, rcl.reviewed_at)) AS last_activity,
           bool_or(rcl.label_state IN ('ai_approved', 'human_approved')
-            AND rcl.last_verified_at IS NOT NULL AND rcl.expires_at > now()) AS covered,
+            AND rcl.last_verified_at IS NOT NULL AND rcl.expires_at > now()
+            AND NOT (rcl.label_state = 'ai_approved' AND rcl.relation_type = 'dupe')
+            AND NOT (rcl.anchor_type = 'product' AND btrim(rcl.anchor_ref) ~* '^product:.*:')
+            AND NOT (btrim(rcl.candidate_product_ref) ~* '^product:.*:')
+            AND NOT (rcl.id = ANY(${suppressedIdsSql}))) AS covered,
           bool_and(rcl.label_state IN ('human_rejected', 'prefilter_rejected', 'needs_evidence')) AS terminal_only
         FROM anchor_refs refs
         CROSS JOIN LATERAL (
@@ -111,6 +115,29 @@ function coverageCatalogJoinSql(alias, options) {
 
 function uncoveredLiveCatalogSql(alias = 'cp', options = {}) {
   return `(SELECT relgraph_priority > 0 FROM (${catalogCoverageSql(alias, options)}) coverage)`;
+}
+
+async function requireAnchorAttemptsTable(queryFn) {
+  const result = await queryFn("SELECT to_regclass('relationship_graph_anchor_attempts') AS table_name");
+  if (!result.rows || !result.rows[0] || !result.rows[0].table_name) {
+    const error = new Error('Uncovered priority requires migration 061_relationship_graph_anchor_attempts.sql before enabling the flag');
+    error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_MISSING';
+    throw error;
+  }
+}
+
+// Fetch fresh approved rows once, before source LIMITs, and let serving's one guard owner
+// decide all title rules. Passing only hidden ids retains indexed per-anchor coverage probes.
+async function loadCoverageSuppressedIds({ queryFn, market = 'US' }) {
+  await requireAnchorAttemptsTable(queryFn);
+  const { getRelationshipEdgeServingSuppressionReasons } = require('./productRelationshipGraph');
+  const result = await queryFn(`SELECT id, anchor_type, anchor_ref, candidate_product_ref,
+    anchor_snapshot, candidate_snapshot, relation_type, label_state
+    FROM relationship_candidate_labels
+    WHERE vertical = 'beauty' AND lower(market) = lower($1)
+      AND label_state IN ('ai_approved', 'human_approved')
+      AND last_verified_at IS NOT NULL AND expires_at > now()`, [market]);
+  return (result.rows || []).filter((row) => getRelationshipEdgeServingSuppressionReasons(row).length).map((row) => row.id);
 }
 
 // Record the attempt before edge writes, including zero-edge attempts and protected labels.
@@ -152,4 +179,4 @@ function prioritizeUncoveredProducts(products, uncoveredProducts) {
   });
 }
 
-module.exports = { PDP_RENDER_FRESHNESS_DAYS, normalizeCoverageSiblingRefs, coverageCatalogJoinSql, recordAnchorAttempts, normalizeUncoveredCooldownDays, uncoveredLiveCatalogSql, prioritizeUncoveredProducts, productAnchorRefs };
+module.exports = { requireAnchorAttemptsTable, loadCoverageSuppressedIds, PDP_RENDER_FRESHNESS_DAYS, normalizeCoverageSiblingRefs, coverageCatalogJoinSql, recordAnchorAttempts, normalizeUncoveredCooldownDays, uncoveredLiveCatalogSql, prioritizeUncoveredProducts, productAnchorRefs };

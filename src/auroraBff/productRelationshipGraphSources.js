@@ -1,4 +1,4 @@
-const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs } = require('./relationshipGraphCoverage');
+const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 
 const DEFAULT_MARKET = 'US';
@@ -1071,7 +1071,10 @@ async function loadAffectedProductAnchorCandidates({
   prioritizeUncovered = false,
   uncoveredCooldownDays = 7,
   coverageSiblingRefs = true,
+  coverageSuppressedIds,
 } = {}) {
+  const suppressedIds = prioritizeUncovered
+    ? (coverageSuppressedIds || await loadCoverageSuppressedIds({ queryFn, market })) : [];
   const terms = normalizeAffectedRefTerms(refs);
   if (!terms.length) return [];
   const normalizedMarket = normalizeMarket(market);
@@ -1116,7 +1119,7 @@ async function loadAffectedProductAnchorCandidates({
           ON cp.source_product_id = eps.external_product_id
           -- Path-C / retailer-lane seeds point at their catalog row only through
           -- attached_product_key (same join as the affected-products selector).
-          OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$2', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+          OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$2', suppressedIdsSql: '$4::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
         WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}COALESCE(eps.status, 'active') = 'active'
           AND upper(COALESCE(eps.market, $2)) = $2
           AND (
@@ -1133,7 +1136,7 @@ async function loadAffectedProductAnchorCandidates({
         ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
         LIMIT $3
       `,
-      [terms, normalizedMarket, rowLimit],
+      [terms, normalizedMarket, rowLimit, ...(prioritizeUncovered ? [suppressedIds] : [])],
     ),
     guardedRows(
       queryFn,
@@ -1158,7 +1161,7 @@ async function loadAffectedProductAnchorCandidates({
             NULLIF(pc.platform_product_id, ''),
             NULLIF(pc.product_data->>'product_id', ''),
             NULLIF(pc.product_data->>'id', '')
-          )${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$3', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+          )${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$3', suppressedIdsSql: '$4::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
         WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}(
           pc.platform_product_id = ANY($1::text[])
           OR pc.product_data->>'product_id' = ANY($1::text[])
@@ -1174,7 +1177,7 @@ async function loadAffectedProductAnchorCandidates({
         ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $2
       `,
-      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket] : [])],
+      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket, suppressedIds] : [])],
     ),
     guardedRows(
       queryFn,
@@ -1201,7 +1204,7 @@ async function loadAffectedProductAnchorCandidates({
             'product:' || NULLIF(cp.source_product_id, ''),
             cp.product_key
           ) AS product_ref
-        FROM catalog_products cp${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$3', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+        FROM catalog_products cp${prioritizeUncovered ? `\n        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n        ${coverageCatalogJoinSql('cp', { marketSql: '$3', suppressedIdsSql: '$4::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
         WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND (' : ''}cp.product_key = ANY($1::text[])
            OR cp.source_product_id = ANY($1::text[])
            OR cp.pivota_signature_id = ANY($1::text[])
@@ -1211,7 +1214,7 @@ async function loadAffectedProductAnchorCandidates({
         ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}cp.updated_at DESC NULLS LAST, cp.product_key ASC
         LIMIT $2
       `,
-      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket] : [])],
+      [terms, rowLimit, ...(prioritizeUncovered ? [normalizedMarket, suppressedIds] : [])],
     ),
   ]);
 
@@ -2516,6 +2519,8 @@ async function loadProductRelationshipGraphSourceInputs({
   uncoveredCooldownDays = 7,
   coverageSiblingRefs = true,
 } = {}) {
+  const coverageSuppressedIds = prioritizeUncovered
+    ? await loadCoverageSuppressedIds({ queryFn, market }) : undefined;
   const sourceLimit = normalizeLimit(limit);
   const approvedLiveExternalSeedAnchors = includeApprovedLiveExternalSeedAnchors
     ? await loadApprovedLiveExternalSeedAnchors({
@@ -2539,6 +2544,7 @@ async function loadProductRelationshipGraphSourceInputs({
     prioritizeUncovered,
     uncoveredCooldownDays,
     coverageSiblingRefs,
+    coverageSuppressedIds,
     market,
     limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
   });

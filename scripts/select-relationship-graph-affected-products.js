@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
-const { normalizeUncoveredCooldownDays, coverageCatalogJoinSql, normalizeCoverageSiblingRefs } = require('../src/auroraBff/relationshipGraphCoverage');
+const { normalizeUncoveredCooldownDays, coverageCatalogJoinSql, normalizeCoverageSiblingRefs, loadCoverageSuppressedIds } = require('../src/auroraBff/relationshipGraphCoverage');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 250;
@@ -208,7 +208,10 @@ async function fetchCatalogProductRows({
   prioritizeUncovered = false,
   uncoveredCooldownDays = 7,
   coverageSiblingRefs = true,
+  coverageSuppressedIds,
 } = {}) {
+  const suppressedIds = prioritizeUncovered
+    ? (coverageSuppressedIds || await loadCoverageSuppressedIds({ queryFn, market })) : [];
   const res = await queryFn(
     `
       SELECT
@@ -228,7 +231,7 @@ async function fetchCatalogProductRows({
         cp.pivota_canonical_url,
         cp.updated_at,
         cp.created_at${prioritizeUncovered ? `,\n        CASE WHEN coverage.relgraph_priority > 0 THEN true ELSE false END AS relgraph_uncovered_live, coverage.relgraph_priority, coverage.relgraph_last_activity` : ''}
-      FROM catalog_products cp${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$4', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+      FROM catalog_products cp${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$4', suppressedIdsSql: '$5::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
       WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}(
           cp.updated_at >= $1::timestamptz
           OR cp.created_at >= $1::timestamptz
@@ -249,7 +252,7 @@ async function fetchCatalogProductRows({
       ORDER BY ${prioritizeUncovered ? 'relgraph_uncovered_live DESC, relgraph_priority DESC, relgraph_last_activity ASC NULLS FIRST, ' : ''}cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST, cp.product_key ASC
       LIMIT $2
     `,
-    [updatedSince, limit, BEAUTY_TEXT_PATTERNS, ...(prioritizeUncovered ? [normalizeString(market).toUpperCase() || DEFAULT_MARKET] : [])],
+    [updatedSince, limit, BEAUTY_TEXT_PATTERNS, ...(prioritizeUncovered ? [normalizeString(market).toUpperCase() || DEFAULT_MARKET, suppressedIds] : [])],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
 }
@@ -262,8 +265,11 @@ async function fetchExternalSeedRows({
   prioritizeUncovered = false,
   uncoveredCooldownDays = 7,
   coverageSiblingRefs = true,
+  coverageSuppressedIds,
 } = {}) {
   const normalizedMarket = normalizeString(market).toUpperCase() || DEFAULT_MARKET;
+  const suppressedIds = prioritizeUncovered
+    ? (coverageSuppressedIds || await loadCoverageSuppressedIds({ queryFn, market })) : [];
   const res = await queryFn(
     `
       SELECT
@@ -287,7 +293,7 @@ async function fetchExternalSeedRows({
       FROM external_product_seeds eps
       LEFT JOIN catalog_products cp
         ON cp.source_product_id = eps.external_product_id
-        OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$2', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
+        OR cp.product_key = eps.attached_product_key${prioritizeUncovered ? `\n      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id\n      ${coverageCatalogJoinSql('cp', { marketSql: '$2', suppressedIdsSql: '$5::text[]', cooldownDays: uncoveredCooldownDays, coverageSiblingRefs })}` : ''}
       WHERE ${prioritizeUncovered ? 'coverage.relgraph_priority >= 0 AND ' : ''}COALESCE(eps.status, 'active') = 'active'
         AND upper(COALESCE(eps.market, $2)) = $2
         AND (
@@ -317,7 +323,7 @@ async function fetchExternalSeedRows({
       eps.id ASC
       LIMIT $3
     `,
-    [updatedSince, normalizedMarket, limit, BEAUTY_TEXT_PATTERNS],
+    [updatedSince, normalizedMarket, limit, BEAUTY_TEXT_PATTERNS, ...(prioritizeUncovered ? [suppressedIds] : [])],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
 }
@@ -398,6 +404,8 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     return null;
   }
 
+  const coverageSuppressedIds = options.prioritizeUncovered
+    ? await loadCoverageSuppressedIds({ queryFn, market: options.market }) : undefined;
   const rows = [];
   if (options.sources.includes('catalog_products')) {
     const catalogRows = await fetchCatalogProductRows({
@@ -407,6 +415,7 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
       prioritizeUncovered: options.prioritizeUncovered,
       uncoveredCooldownDays: options.uncoveredCooldownDays,
       coverageSiblingRefs: options.coverageSiblingRefs,
+      coverageSuppressedIds,
       limit: options.limit,
     });
     rows.push(...catalogRows.map((row) => buildCatalogAffectedRow(row, options.market)));
@@ -418,6 +427,7 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
       prioritizeUncovered: options.prioritizeUncovered,
       uncoveredCooldownDays: options.uncoveredCooldownDays,
       coverageSiblingRefs: options.coverageSiblingRefs,
+      coverageSuppressedIds,
       market: options.market,
       limit: options.limit,
     });
