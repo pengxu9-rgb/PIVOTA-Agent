@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const samples = require('../fixtures/relgraph_0930_titles.json');
 const { getRelationshipEdgeServingSuppressionReasons: reasons } = require('../../src/auroraBff/productRelationshipGraph');
-const { parseArgs: reviewArgs, runReview, applyApproval } = require('../../scripts/review-relationship-candidate-labels');
+const { parseArgs: reviewArgs, runReview, applyApproval, consumerCopyForKind } = require('../../scripts/review-relationship-candidate-labels');
 const { runRoutineJob, parseArgs } = require('../../scripts/run-relationship-graph-routine-job');
 const { readServingSnapshot, servingProgress, reviewErrorGateExceeded, reviewMetrics } = require('../../src/services/relationshipGraphServingProgress');
 const { buildCronArgs } = require('../../scripts/run-relationship-graph-sync-routine-cron');
@@ -16,7 +16,7 @@ function edge(anchor, candidate, state = 'ai_approved', relation = 'related_prod
     anchor_snapshot: snapshot(anchor), candidate_snapshot: snapshot(candidate), label_state: state, relation_type: relation };
 }
 let dirs = [];
-const temp = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-truth-')); dirs.push(dir); return dir; };
+const temp = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-truth-')); dirs.push(dir); const outDir = path.join(dir, 'out'); fs.mkdirSync(outDir); return outDir; };
 afterEach(() => { jest.restoreAllMocks(); dirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })); dirs = []; });
 
 const display = (row, side) => `${row[`${side}_brand`]} | ${row[`${side}_title`]}`;
@@ -37,11 +37,11 @@ test.each([
   ['Test | Barrier Support Cream Mini', 'Test | Barrier Support Cream with Retinol', false],
   ['Test | Daily Face Sunscreen SPF 30', 'Test | Daily Face Sunscreen SPF 50', false],
 ])('listing normalization %s vs %s', (a, b, suppressed) => expect(reasons(edge(a, b)).includes(REASON)).toBe(suppressed));
-test('same-product reason is AI-only, missing brands and other relations stay untouched', () => {
+test('same-product suppression preserves human/missing brands and covers AI alternative duplicates', () => {
   expect(reasons(edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'), 'human_approved'))).toEqual([]);
   const unknown = edge(display(samples[19], 'anchor'), display(samples[19], 'candidate')); unknown.anchor_snapshot.brand = ''; unknown.candidate_snapshot.brand = '';
   expect(reasons(unknown)).toEqual([]);
-  expect(reasons(edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'), 'ai_approved', 'competitive_alternative'))).toEqual([]);
+  expect(reasons(edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'), 'ai_approved', 'competitive_alternative'))).toContain('competitive_alternative_same_product_across_listings_or_sizes');
 });
 test('confidence floor clamps and defence in depth refuses without a database write', async () => {
   expect(reviewArgs(['--cutoff', cutoff]).minApprovalConfidence).toBe(0.7);
@@ -55,7 +55,7 @@ test('confidence floor clamps and defence in depth refuses without a database wr
 test.each([false, true])('LLM/replay obey confidence floor (replay=%s)', async (replay) => {
   jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
   const rows = [0.69999, 0.70].map((confidence, i) => ({ ...edge('Test | Hydrating Face Cream', 'Test | Gentle Face Cleanser', 'generated'), id: `r${i}`, confidence }));
-  const verdict = (confidence) => ({ verdict: 'approve', confidence, rationale: 'Complementary products in one facial care routine.' });
+  const verdict = (confidence) => ({ verdict: 'approve', confidence, rationale: 'Complementary products in one facial care routine.', relationship_kind: 'complement', ...consumerCopyForKind('complement'), shared_evidence: [{anchor_fact: 'Hydrating Face Cream', candidate_fact: 'Gentle Face Cleanser'}] });
   const provider = { analyzeTextToJson: jest.fn(async () => verdict(rows[provider.analyzeTextToJson.mock.calls.length - 1].confidence)) };
   const dir = temp(); const replayFile = path.join(dir, 'verdicts.json');
   fs.writeFileSync(replayFile, JSON.stringify(rows.map((r) => ({ id: r.id, ...verdict(r.confidence) }))));

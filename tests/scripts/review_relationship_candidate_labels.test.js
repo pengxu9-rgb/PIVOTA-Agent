@@ -2,6 +2,8 @@ const {
   AI_APPROVAL_FRESHNESS_INTERVAL,
   applyApproval,
   buildAiReview,
+  recommendationFields,
+  consumerCopyForKind,
   fetchCandidates,
   parseArgs,
   runReview,
@@ -63,7 +65,14 @@ function genuineRelatedRow(id) {
   });
 }
 
+const UTILITY = {
+  relationship_kind: 'complement',
+  ...consumerCopyForKind('complement'),
+  shared_evidence: [{ anchor_fact: 'False Eyelashes', candidate_fact: 'Lash Glue Remover' }],
+
+};
 const APPROVE = {
+  ...UTILITY,
   verdict: 'approve',
   confidence: 0.9,
   rationale: 'Same brand products used together in one lash routine.',
@@ -75,8 +84,9 @@ describe('review-relationship-candidate-labels', () => {
   });
 
   test('applyApproval stamps freshness for future ai approvals', async () => {
-    const row = { id: 'rcl_fixture' };
+    const row = genuineRelatedRow('rcl_fixture');
     const decision = {
+      ...APPROVE,
       confidence: 0.91,
       rationale: 'Both products have matching serum category and facial barrier support use case.',
     };
@@ -107,6 +117,7 @@ describe('review-relationship-candidate-labels', () => {
       row.id,
       JSON.stringify(buildAiReview(decision)),
       AI_APPROVAL_FRESHNESS_INTERVAL,
+      JSON.stringify(recommendationFields(decision)), JSON.stringify(decision.tradeoffs || []), JSON.stringify(decision.watchouts || []),
     ]);
   });
 
@@ -159,6 +170,7 @@ describe('review-relationship-candidate-labels', () => {
 
   test('applyApproval blocks dupe promotion unless explicitly allowed', async () => {
     const decision = {
+      ...UTILITY, ...consumerCopyForKind('dupe'), relationship_kind: 'dupe',
       confidence: 0.91,
       rationale: 'Products are close substitutes with matching category and lower price.',
     };
@@ -179,9 +191,13 @@ describe('review-relationship-candidate-labels', () => {
     });
     expect(queryFn).not.toHaveBeenCalled();
 
+    const inci = 'Water, Glycerin, Squalane, Ceramide NP, Peptide, Phenoxyethanol';
+    const dupe = { id: 'dupe_fixture', relation_type: 'dupe', score_total: 0.9, score_breakdown: {category_use_case_match: 0.9},
+      anchor_snapshot: {product_id: 'a', name: 'Barrier Peptide Face Cream', brand: 'Luxury', category: 'face cream', price: 50, price_currency: 'USD', ingredient_text: inci},
+      candidate_snapshot: {product_id: 'b', name: 'Barrier Peptide Face Cream', brand: 'Value', category: 'face cream', price: 20, price_currency: 'USD', ingredient_text: inci} };
     const applied = await applyApproval(
-      { id: 'dupe_fixture', relation_type: 'dupe' },
-      decision,
+      dupe,
+      {...decision, shared_evidence: [{anchor_fact: 'Barrier Peptide Face Cream', candidate_fact: 'Barrier Peptide Face Cream'}]},
       queryFn,
       { allowDupeAiApproval: true },
     );
@@ -241,6 +257,7 @@ describe('review-relationship-candidate-labels', () => {
       analyzeTextToJson: jest.fn()
         .mockRejectedValueOnce(schemaErr)
         .mockResolvedValueOnce({
+          ...UTILITY, ...consumerCopyForKind('alternative'), shared_evidence: [{anchor_fact: 'Anchor Serum', candidate_fact: 'Candidate Serum'}], relationship_kind: 'alternative',
           verdict: 'approve',
           confidence: 0.84,
           rationale: 'Both products have concrete category and routine evidence supporting a complementary relationship.',
@@ -268,7 +285,7 @@ describe('review-relationship-candidate-labels', () => {
                 brand: 'Brand B',
                 category: 'Serum',
               },
-              relation_type: 'related_product',
+              relation_type: 'competitive_alternative',
               display_label: 'related_product',
               market: 'US',
               vertical: 'beauty',

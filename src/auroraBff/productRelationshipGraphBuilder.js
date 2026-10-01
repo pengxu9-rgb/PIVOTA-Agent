@@ -1,3 +1,4 @@
+const { isSameFamilyVariant, optionRole } = require('./relationshipPairPolicy');
 const {
   DUPE_MIN_SCORE_TOTAL,
   coerceRelationshipEdge,
@@ -1141,7 +1142,9 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
       !isBroadCategoryValue(anchorCategory),
   );
   const overlap = specificUseCaseOverlap(anchorSnapshot, candidateSnapshot);
-  const hasStrongOverlap = overlap.strong_count >= 1;
+  const bothPressOnNails = optionRole(anchorSnapshot) === 'nails' && optionRole(candidateSnapshot) === 'nails' &&
+    /\bpress[ -]?on\b/i.test(snapshotNameText(anchorSnapshot)) && /\bpress[ -]?on\b/i.test(snapshotNameText(candidateSnapshot));
+  const hasStrongOverlap = overlap.strong_count >= 1 || bothPressOnNails;
   return {
     aligned: Boolean(
       hasStrongOverlap &&
@@ -1155,20 +1158,13 @@ function hasSpecificUseCaseAlignment(anchorSnapshot = {}, candidateSnapshot = {}
 // A dupe claims the candidate does the anchor's job for less. Category agreement cannot carry that
 // claim: it saturates the similarity score, and in the 2026-09-25 JP/AU dry run 697 of 1,299 dupes
 // shared no name word at all (a sunscreen gel "duped" by eye patches). The claim needs words both
-// products are NAMED or formulated with, beyond brand, catch-all shelf, body area, generic and size
-// words. A category word counts only when both names carry it ("Barrier Serum" / "Barrier Serum
-// Alternative"); a category label the names do not share is not evidence. Curated dupe evidence
-// (aurora_dupe_kb) stands on its own.
-//
-// Dupe rule, stated (not an accident of the score margin):
-//   1. curated evidence (aurora_dupe_kb), OR shared product name words >= 2;
-//   2. when BOTH sides carry an ingredient list, the lists must overlap by at least
-//      DUPE_MIN_INCI_OVERLAP — a contradicting INCI refutes a dupe. INCI is not required: a
-//      retailer row without an ingredient list, or with only a few "key ingredients" entries
-//      (< DUPE_MIN_INCI_ENTRIES, comma-separated), can still be a dupe on its name words (#2268);
-//   3. score_total >= DUPE_MIN_SCORE_TOTAL (productRelationshipGraph.js, re-expressed for the
-//      graded scale: the 0.72 shelf floor plus a fifth of the pair evidence), category >= 0.55,
-//      and the candidate is not dearer than the anchor.
+// products are named or formulated with. A name/category match retrieves alternatives,
+// but dupe inference requires a VERIFIED current-anchor dupe pair from curated KB,
+// or two substantial, overlapping INCI lists plus shared product evidence. Curated
+// comparables and a product appearing elsewhere in the KB do not prove this pair.
+// Conflicting INCI still refutes the inference. Matching ingredients does not
+// establish equivalent performance; human approval remains required for serving.
+// Score/category/form/job and same-currency price gates also remain mandatory.
 const DUPE_MIN_SHARED_PRODUCT_TOKENS = 2;
 const DUPE_MIN_INCI_OVERLAP = 0.35;
 // A "key ingredients" blurb of a few ENTRIES is not an INCI list; comparing it against a full list
@@ -1215,9 +1211,13 @@ function ingredientOverlap(anchorSnapshot = {}, candidateSnapshot = {}) {
   return hits / Math.max(left.size, right.size);
 }
 
-function hasCuratedDupeEvidence(candidate = {}) {
-  const refs = Array.isArray(candidate.source_refs || candidate.sourceRefs) ? (candidate.source_refs || candidate.sourceRefs) : [];
-  return refs.some((ref) => normalizeLower(isPlainObject(ref) ? ref.type : ref, 80) === 'aurora_dupe_kb');
+function hasCuratedDupeEvidence(candidate = {}, anchorSnapshot = {}, candidateSnapshot = {}) {
+  const pair = candidate.curated_pair_evidence;
+  const ref = (snapshot) => normalizeLower(snapshot.product_ref || snapshot.product_id || snapshot.id, 512).replace(/^product:/, '');
+  return Boolean(pair && pair.verified === true && pair.relation_type === 'dupe' &&
+    ref(anchorSnapshot) && ref(candidateSnapshot) &&
+    normalizeLower(pair.anchor_ref, 512).replace(/^product:/, '') === ref(anchorSnapshot) &&
+    normalizeLower(pair.candidate_ref, 512).replace(/^product:/, '') === ref(candidateSnapshot));
 }
 
 function jaccard(left, right) {
@@ -1515,7 +1515,27 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       useCaseAlignment,
     };
   }
-  if (sameBrand) return { relation_type: 'related_product', categoryScore, ingredientScore, scoreTotal, priceRatio };
+  if (sameBrand && relationshipInternals.isSameProductAcrossListingsOrSizes(
+    snapshotNameText(anchorSnapshot), snapshotNameText(candidateSnapshot), anchorBrand)) {
+    return {relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+      utilityCompatibility: {compatible: false, reason: 'same_product_listing_or_size'}};
+  }
+  if (sameBrand && isSameFamilyVariant(anchorSnapshot, candidateSnapshot)) {
+    return { relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+      utilityCompatibility: { compatible: false, reason: 'same_family_variant' } };
+  }
+  if (sameBrand) {
+    // Same-brand distinct-line substitutes must be queryable by get_alternatives.
+    // Different steps/areas may be complements; only the reviewer can approve
+    // that utility, so candidate inference does not claim they should be used together.
+    const aRole = optionRole(anchorSnapshot); const bRole = optionRole(candidateSnapshot);
+    const sameRole = !aRole || !bRole || aRole === bRole;
+    const substitutable = sameRole && setCompatibility.compatible && formCompatibility.compatible &&
+      jobCompatibility.compatible && leafCompatibility.compatible && useCaseAlignment.aligned && categoryScore >= 0.55;
+    return { relation_type: substitutable ? 'competitive_alternative' : 'related_product',
+      categoryScore, ingredientScore, scoreTotal, priceRatio, setCompatibility,
+      formCompatibility, jobCompatibility, leafCompatibility, useCaseAlignment };
+  }
   if (!setCompatibility.compatible) {
     return {
       relation_type: 'rejected',
@@ -1584,7 +1604,10 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
   const productEvidence = sharedProductEvidence(anchorSnapshot, candidateSnapshot);
   const inciOverlap = ingredientOverlap(anchorSnapshot, candidateSnapshot);
   const inciRefutes = inciOverlap != null && inciOverlap < DUPE_MIN_INCI_OVERLAP;
-  const dupeEvidence = hasCuratedDupeEvidence(candidate) || productEvidence.count >= DUPE_MIN_SHARED_PRODUCT_TOKENS;
+  // Names/category can retrieve an alternative; they cannot establish a dupe.
+  // A curated pair or two substantial INCI lists are required even for inference.
+  const dupeEvidence = hasCuratedDupeEvidence(candidate, anchorSnapshot, candidateSnapshot) ||
+    (inciOverlap != null && inciOverlap >= DUPE_MIN_INCI_OVERLAP && productEvidence.count >= DUPE_MIN_SHARED_PRODUCT_TOKENS);
   if (dupeEvidence && !inciRefutes && categoryScore >= 0.55 && scoreTotal >= DUPE_MIN_SCORE_TOTAL && priceRatio != null && priceRatio <= 1.0) {
     return {
       relation_type: 'dupe',
@@ -1675,8 +1698,8 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
   const defaultSummary = inferred.relation_type === 'dupe'
     ? 'Lower-priced alternative with similar category and function signals.'
     : inferred.relation_type === 'related_product'
-      ? 'Same-brand or adjacent product for the routine context.'
-      : 'Cross-brand alternative with matching category and use-case signals.';
+      ? 'Possible routine companion; complementary usage requires review.'
+      : 'Possible alternative with matching product job; differences require review.';
   const edge = coerceRelationshipEdge({
     anchor_type: 'product',
     anchor_ref: anchorNorm.product_ref,
@@ -1721,6 +1744,8 @@ function buildEdgeForCandidate({ anchor, candidate, market = 'US', nowIso, revie
     provenance: {
       pipeline: 'product_relationship_graph_builder.v1',
       generated_at: nowIso,
+      ...(hasCuratedDupeEvidence(candidate, anchorNorm.snapshot, candidateNorm.snapshot)
+        ? {curated_pair_evidence: candidate.curated_pair_evidence} : {}),
     },
     last_verified_at: candidate.last_verified_at || candidate.lastVerifiedAt || null,
     expires_at: candidate.expires_at || candidate.expiresAt || null,
@@ -1958,6 +1983,11 @@ function buildProductRelationshipGraphDryRun({
       edge_count: deduped.length,
       rejected_count: rejected_edges.length,
       anchors_with_alternative_count: anchorsWithApprovedAlternative.size,
+      proposed_candidate_brand_distribution: deduped.reduce((out, edge) => {
+        const brand = relationshipInternals.extractBrand(edge.candidate_snapshot) || 'unknown';
+        out[brand] = (out[brand] || 0) + 1; return out;
+      }, {}),
+      variant_rejected_count: rejected_edges.filter((row) => row.metrics?.utilityCompatibility?.reason === 'same_family_variant').length,
       niche_specialist_count: deduped.filter((edge) => edge.relation_type === 'niche_specialist').length,
       max_anchors_per_candidate_per_build: fanIn.cap,
       max_fan_in_before_cap_per_build: fanIn.max_fan_in_before_cap,

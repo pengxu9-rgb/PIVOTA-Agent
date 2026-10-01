@@ -172,7 +172,21 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     failed_step: normalizeString(summary.failed_step, 180) || null,
     out_dir: normalizeString(summary.out_dir, 2000),
     summary_path: normalizeString(summary.summary_path || summary?.artifacts?.summary, 2000),
-    summary: ensureJsonSerializable(summary) || {},
+    summary: {
+      ...(ensureJsonSerializable(summary) || {}),
+      // Preserve exact batch identity after the container's temporary artifacts disappear.
+      ...(Array.isArray(review?.decisions) ? { recommendation_review_batch: {
+        schema_version: 'relgraph_review_batch.v1',
+        complete: Number(reviewSummary.reviewed_count) === review.decisions.length,
+        applied_approval_count: Number(reviewSummary.approved_applied_count ??
+          (Number(reviewSummary.applied_count || 0) - review.decisions.filter(row => row.applied === true && row.verdict === 'guard_blocked').length)),
+        snapshot_semantics: 'identities_only_export_current_rows_for_review',
+        decisions: review.decisions.map((row) => ({
+          id: row.id, verdict: row.verdict, applied: row.applied === true,
+          new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,
+        })),
+      } } : {}),
+    },
     generated_at: generatedAt,
     completed_at: completedAt(summary),
   };

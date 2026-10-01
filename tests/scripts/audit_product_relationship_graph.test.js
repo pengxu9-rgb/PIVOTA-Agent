@@ -228,3 +228,9 @@ describe('audit-product-relationship-graph', () => {
     expect(supported).toEqual([]);
   });
 });
+
+test('offline audit allows grounded same-brand distinct-line alternatives but still rejects same-brand dupes',()=>{
+  const pair=approvedDupe({relation_type:'competitive_alternative',anchor_snapshot:{brand:'House',name:'Hydrating Barrier Face Cream',category:'face cream'},candidate_snapshot:{brand:'House',name:'Rich Recovery Face Cream',category:'face cream'}});
+  expect(auditReport({edges:[pair]},{nowMs:NOW}).metrics.same_brand_competitor_dupe_count).toBe(0);
+  expect(auditReport({edges:[{...pair,relation_type:'dupe'}]},{nowMs:NOW}).metrics.same_brand_competitor_dupe_count).toBe(1);
+});

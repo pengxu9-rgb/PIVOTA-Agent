@@ -3,6 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const {fingerprint}=require('../src/services/relationshipRecommendationBatchAudit');
 
 const { closePool, query } = require('../src/db');
 const { withPostgresAdvisoryLock } = require('./run-relationship-graph-routine-job');
@@ -76,7 +77,7 @@ function usage() {
     'Usage:',
     '  DATABASE_URL=... node scripts/quarantine-relationship-graph-serving-unsafe.js [--market US|--all-markets] [--limit N] [--reasons a,b] [--out path]',
     '',
-    'Dry-run by default. Apply requires --apply --confirm QUARANTINE_RELGRAPH_UNSAFE_APPROVED.',
+    'Dry-run by default. Apply requires --apply --confirm QUARANTINE_RELGRAPH_UNSAFE_APPROVED --manifest reviewed-plan.json.',
     'Default scope is active ai_approved labels only. Use --include-human-approved only for a manual repair run.',
     'Default mode is --mode needs-evidence. Use --mode expire to only expire matching rows.',
     'Use --db-lock to share the relationship graph Postgres advisory lock with routine jobs.',
@@ -92,6 +93,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   if (apply && confirm !== CONFIRM_TOKEN) {
     throw new Error(`apply requires --confirm ${CONFIRM_TOKEN}`);
   }
+  if (apply && !argValue(argv, 'manifest')) throw new Error('apply requires --manifest with reviewed identities and before-values');
   const mode = normalizeKey(argValue(argv, 'mode', 'needs-evidence')) || 'needs-evidence';
   if (!SUPPORTED_MODES.has(mode)) {
     throw new Error(`unsupported --mode ${mode}; expected ${Array.from(SUPPORTED_MODES).join('|')}`);
@@ -117,6 +119,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key', DEFAULT_DB_LOCK_KEY), 500) || DEFAULT_DB_LOCK_KEY,
     out: normalizeString(argValue(argv, 'out'), 2000),
     auditRunId: normalizeString(argValue(argv, 'audit-run-id'), 200),
+    manifestPath: normalizeString(argValue(argv, 'manifest'), 2000),
   };
 }
 
@@ -130,6 +133,7 @@ function buildCandidateRowsSql({
   market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
   includeHumanApproved = false,
+  ids = null,
 } = {}) {
   const params = [];
   const states = labelStatesForOptions({ includeHumanApproved });
@@ -144,6 +148,10 @@ function buildCandidateRowsSql({
   if (normalizedMarket) {
     params.push(normalizedMarket);
     where.push(`upper(market) = $${params.length}`);
+  }
+  if (ids) {
+    params.push(ids);
+    where.push(`id = ANY($${params.length}::text[])`);
   }
   const normalizedLimit = parseInteger(limit, DEFAULT_LIMIT, { min: 0, max: MAX_LIMIT });
   let limitSql = '';
@@ -160,7 +168,7 @@ function buildCandidateRowsSql({
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
           'approved'::text AS review_status, label_state,
           why_candidate, tradeoffs, watchouts, provenance, reason_flags,
-          last_verified_at, expires_at, created_at, updated_at
+          last_verified_at, expires_at, created_at, updated_at, updated_at::text AS updated_at_revision
         FROM relationship_candidate_labels
         WHERE ${where.join('\n          AND ')}
         ORDER BY score_total DESC NULLS LAST, updated_at DESC NULLS LAST${limitSql}
@@ -174,8 +182,9 @@ async function loadQuarantineCandidateRows({
   market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
   includeHumanApproved = false,
+  ids = null,
 } = {}) {
-  const { sql, params } = buildCandidateRowsSql({ market, limit, includeHumanApproved });
+  const { sql, params } = buildCandidateRowsSql({ market, limit, includeHumanApproved, ids });
   const res = await queryFn(sql, params);
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
@@ -282,6 +291,13 @@ function buildQuarantinePatch({
   return {
     id: row.id,
     previous_label_state: row.label_state,
+    expected_updated_at: row.updated_at_revision || row.updated_at,
+    expected_anchor_ref: row.anchor_ref,
+    expected_candidate_ref: row.candidate_product_ref,
+    expected_relation_type: row.relation_type,
+    expected_market: row.market,
+    before_values: {label_state:row.label_state, expires_at:row.expires_at, updated_at:row.updated_at_revision || row.updated_at,
+      reason_flags:row.reason_flags || [], provenance:row.provenance || {}},
     next_label_state: mode === 'needs-evidence' ? 'needs_evidence' : row.label_state,
     expires_now: true,
     mode,
@@ -307,6 +323,9 @@ function patchPayload(patches = []) {
   return patches.map((patch) => ({
     id: patch.id,
     next_label_state: patch.next_label_state,
+    previous_label_state:patch.previous_label_state, expected_updated_at:patch.expected_updated_at,
+    expected_anchor_ref:patch.expected_anchor_ref,expected_candidate_ref:patch.expected_candidate_ref,
+    expected_relation_type:patch.expected_relation_type,expected_market:patch.expected_market,
     reason_flags: patch.reason_flags,
     provenance_patch: patch.provenance_patch,
   }));
@@ -314,13 +333,21 @@ function patchPayload(patches = []) {
 
 async function applyQuarantinePatchChunk({ queryFn = query, patches = [] } = {}) {
   if (!Array.isArray(patches) || patches.length === 0) return [];
+  for (const patch of patches) {
+    if (!patch.expected_updated_at || !['ai_approved','human_approved'].includes(patch.previous_label_state) ||
+        !patch.expected_anchor_ref || !patch.expected_candidate_ref || !patch.expected_relation_type || !patch.expected_market ||
+        !['needs_evidence',patch.previous_label_state].includes(patch.next_label_state)) {
+      throw new Error('Quarantine patch requires expected revision and approved state');
+    }
+  }
   const res = await queryFn(
     `
       WITH patch AS (
         SELECT *
         FROM jsonb_to_recordset($1::jsonb) AS p(
           id text,
-          next_label_state text,
+          next_label_state text, previous_label_state text, expected_updated_at timestamptz,
+          expected_anchor_ref text,expected_candidate_ref text,expected_relation_type text,expected_market text,
           reason_flags jsonb,
           provenance_patch jsonb
         )
@@ -352,7 +379,12 @@ async function applyQuarantinePatchChunk({ queryFn = query, patches = [] } = {})
         )
       FROM patch
       WHERE relationship_candidate_labels.id = patch.id
-        AND relationship_candidate_labels.label_state = ANY(ARRAY['ai_approved','human_approved']::text[])
+        AND relationship_candidate_labels.label_state = patch.previous_label_state
+        AND relationship_candidate_labels.updated_at = patch.expected_updated_at
+        AND relationship_candidate_labels.anchor_ref = patch.expected_anchor_ref
+        AND relationship_candidate_labels.candidate_product_ref = patch.expected_candidate_ref
+        AND relationship_candidate_labels.relation_type = patch.expected_relation_type
+        AND relationship_candidate_labels.market = patch.expected_market
         AND relationship_candidate_labels.last_verified_at IS NOT NULL
         AND relationship_candidate_labels.expires_at > now()
       RETURNING relationship_candidate_labels.id,
@@ -392,10 +424,27 @@ async function runQuarantine({
   auditRunId = '',
   dbLockInfo = null,
   generatedAt = new Date().toISOString(),
+  manifest = null,
 } = {}) {
-  const rows = await loadQuarantineCandidateRows({ queryFn, market, limit, includeHumanApproved });
+  let reviewedPatches = null;
+  if (apply) {
+    if (!manifest || manifest.schema_version !== 'relgraph_quarantine_plan.v2' || !manifest.dry_run ||
+        !manifest.reviewed_by || !manifest.reviewed_at || !Array.isArray(manifest.reviewed_ids) || !manifest.reviewed_ids.length) {
+      throw new Error('Apply requires a reviewed dry-run manifest with explicit reviewed_ids');
+    }
+    if (manifest.mode !== mode || manifest.market !== (normalizeString(market,24).toUpperCase() || 'all') ||
+        Boolean(manifest.include_human_approved) !== Boolean(includeHumanApproved)) throw new Error('Manifest scope does not match apply options');
+    if (!Array.isArray(manifest.patches) || manifest.plan_fingerprint!==fingerprint({mode:manifest.mode,market:manifest.market,include_human_approved:manifest.include_human_approved,patches:manifest.patches})) throw new Error('Manifest before-values or scope changed after planning');
+    const byId=new Map(manifest.patches.map(patch=>[patch.id,patch]));
+    const ids=new Set(manifest.reviewed_ids);
+    if (ids.size!==manifest.reviewed_ids.length || [...ids].some(id=>!byId.has(id))) throw new Error('Reviewed identities must be unique members of the manifest');
+    reviewedPatches=[...ids].map(id=>byId.get(id));
+    if (!includeHumanApproved && reviewedPatches.some(patch=>patch.previous_label_state!=='ai_approved')) throw new Error('Human approvals require explicit manual-repair scope');
+  }
+  const rows = await loadQuarantineCandidateRows({ queryFn, market, limit, includeHumanApproved, ids: reviewedPatches?.map(patch=>patch.id) || null });
   const { selected, summary } = selectUnsafeRows(rows, { reasons, examplesPerReason });
-  const patches = selected.map(({ row, reasons: rowReasons }) => buildQuarantinePatch({
+  const selectedIds=new Set(selected.map(item=>item.row.id));
+  const patches = reviewedPatches ? reviewedPatches.filter(patch=>selectedIds.has(patch.id)) : selected.map(({ row, reasons: rowReasons }) => buildQuarantinePatch({
     row,
     reasons: rowReasons,
     mode,
@@ -408,6 +457,9 @@ async function runQuarantine({
   }
 
   const report = {
+    schema_version:'relgraph_quarantine_plan.v2',
+    reviewed_by:apply ? manifest.reviewed_by : null, reviewed_at:apply ? manifest.reviewed_at : null,
+    reviewed_ids:apply ? manifest.reviewed_ids : [], source_plan_fingerprint:apply ? manifest.plan_fingerprint : null,
     generated_at: generatedAt,
     dry_run: !apply,
     apply,
@@ -428,15 +480,9 @@ async function runQuarantine({
       ...summary,
       patch_count: patches.length,
       applied_count: applied.length,
+      skipped_changed_or_filtered_count:apply ? reviewedPatches.length-applied.length : 0,
     },
-    patches: patches.map((patch) => ({
-      id: patch.id,
-      previous_label_state: patch.previous_label_state,
-      next_label_state: patch.next_label_state,
-      mode: patch.mode,
-      reasons: patch.provenance_patch.reasons,
-      reason_flags: patch.reason_flags,
-    })),
+    patches,
     applied_rows: applied.map((row) => ({
       id: row.id,
       label_state: row.label_state,
@@ -451,6 +497,7 @@ async function runQuarantine({
       apply_chunk_size: parseInteger(applyChunkSize, DEFAULT_APPLY_CHUNK_SIZE, { min: 1, max: 2000 }),
     },
   };
+  report.plan_fingerprint=fingerprint({mode:report.mode,market:report.market,include_human_approved:report.include_human_approved,patches:report.patches});
   if (out) report.out = writeJsonFile(out, report);
   return report;
 }
@@ -472,6 +519,7 @@ async function main(argv = process.argv.slice(2)) {
     },
     (dbLockInfo, client) => runQuarantine({
       ...options,
+      manifest:options.manifestPath ? JSON.parse(fs.readFileSync(options.manifestPath,'utf8')) : null,
       dbLockInfo,
       queryFn: client ? client.query.bind(client) : query,
     }),

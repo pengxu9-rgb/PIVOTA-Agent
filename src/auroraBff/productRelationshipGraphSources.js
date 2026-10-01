@@ -1,3 +1,4 @@
+const { isSameFamilyVariant, brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 
@@ -1983,6 +1984,7 @@ function normalizeLegacyRows(legacyDupes = []) {
 function legacySignalsForAnchor(anchor, legacyRows) {
   const explicitCandidates = [];
   const candidateKeys = new Set();
+  const dupeCandidateKeys = new Set();
   for (const row of legacyRows) {
     const original = row.original || { product_ref: row.kb_key };
     const rowMatchesAnchor =
@@ -1991,10 +1993,13 @@ function legacySignalsForAnchor(anchor, legacyRows) {
     if (!rowMatchesAnchor) continue;
     for (const candidate of [...(row.dupes || []), ...(row.comparables || [])]) {
       explicitCandidates.push(candidate);
-      for (const key of productIdentityKeys(candidate)) candidateKeys.add(key);
+      for (const key of productIdentityKeys(candidate)) {
+        candidateKeys.add(key);
+        if (row.verified === true && (row.dupes || []).includes(candidate)) dupeCandidateKeys.add(key);
+      }
     }
   }
-  return { explicitCandidates, candidateKeys };
+  return { explicitCandidates, candidateKeys, dupeCandidateKeys };
 }
 
 function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intelMatch = false } = {}) {
@@ -2124,6 +2129,42 @@ function compareScoredCandidates(a, b) {
   return normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref));
 }
 
+// Reserve half the bounded pool for documented cross-brand opportunities when
+// they exist. Similarity alone ranks near-identical house variants first; brand
+// diversity is a retrieval opportunity, never evidence of recommendation utility.
+function selectCandidateOpportunities(anchor, candidates, maxPerAnchor = 24) {
+  const cap = Math.max(1, Math.trunc(Number(maxPerAnchor) || 24));
+  const ranked = candidates.filter((candidate) => !isSameFamilyVariant(anchor, candidate)).sort(compareScoredCandidates);
+  const anchorBrand = pairBrand(anchor);
+  // Resolve lazily: the builder consumes this source module; execution happens
+  // after both modules are initialized, and shares its structural admission rules.
+  const { inferRelationship } = require('./productRelationshipGraphBuilder').__internal;
+  const crossBrand = ranked.filter((candidate) => anchorBrand && pairBrand(candidate) &&
+    pairBrand(candidate) !== anchorBrand && candidate.category_use_case_match >= 0.55 &&
+    (candidate._legacy_match || sharedSpecificNameWords(anchor, candidate).length >= 2 ||
+      overlapScore(anchor.ingredient_text, candidate.ingredient_text) >= 0.1 ||
+      overlapScore(anchor.description, candidate.description) >= 0.15) &&
+    ['dupe', 'competitive_alternative'].includes(inferRelationship(anchor, candidate, candidate).relation_type));
+  const reserved = [];
+  const seenBrands = new Set();
+  const reserve = Math.min(Math.ceil(cap / 2), crossBrand.length);
+  for (const candidate of crossBrand) {
+    if (seenBrands.has(pairBrand(candidate))) continue;
+    reserved.push(candidate); seenBrands.add(pairBrand(candidate));
+    if (reserved.length >= reserve) break;
+  }
+  for (const candidate of crossBrand) {
+    if (reserved.length >= reserve) break;
+    if (!reserved.includes(candidate)) reserved.push(candidate);
+  }
+  const chosen = new Set(reserved);
+  for (const candidate of ranked) {
+    if (chosen.size >= cap) break;
+    chosen.add(candidate);
+  }
+  return [...chosen].sort(compareScoredCandidates);
+}
+
 // Fields that name one listing. They move as a block from a single record, never field by field.
 const LISTING_IDENTITY_FIELDS = [
   'product_ref',
@@ -2241,6 +2282,7 @@ function buildCandidatesByAnchorFromSources({
     for (const rawCandidate of rawPool) {
       const baseCandidate = normalizeProductCandidateSnapshot(rawCandidate);
       if (!baseCandidate) continue;
+      if (isSameFamilyVariant(anchor, baseCandidate)) continue;
       if (familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(baseCandidate))) continue;
       if (hasIntersectingIdentity(anchor, baseCandidate)) continue;
       const intelMatches = findIntelForCandidate(baseCandidate, intelIndex);
@@ -2282,6 +2324,10 @@ function buildCandidatesByAnchorFromSources({
         ...score,
         similarity_score: score.score_total,
         score_breakdown: score,
+        ...(candidateKeys.some((key) => legacy.dupeCandidateKeys.has(key)) ? {
+          curated_pair_evidence: { anchor_ref: anchor.product_ref, candidate_ref: enriched.product_ref,
+            relation_type: 'dupe', verified: true },
+        } : {}),
         source_refs: mergeSourceRefs(
           enriched.source_refs,
           legacyMatch ? { type: 'aurora_dupe_kb', name: 'legacy_match', authoritative: true } : null,
@@ -2298,9 +2344,7 @@ function buildCandidatesByAnchorFromSources({
       };
       mergeFamilyDedupeCandidate(byFamily, scoredFamilyIndex, scored);
     }
-    out[anchor.product_ref] = Array.from(byFamily.values())
-      .sort(compareScoredCandidates)
-      .slice(0, Math.max(1, Number(maxPerAnchor) || 24));
+    out[anchor.product_ref] = selectCandidateOpportunities(anchor, Array.from(byFamily.values()), maxPerAnchor);
   }
 
   const withSiblingFanout = fanOutFamilyCandidatesToSiblingAnchors
@@ -2498,9 +2542,8 @@ function augmentCandidatesWithTransitiveRecall({
     for (const row of transitiveRows) {
       mergeFamilyDedupeCandidate(combinedByFamily, combinedFamilyIndex, row);
     }
-    out[anchorRef] = Array.from(combinedByFamily.values())
-      .sort(compareScoredCandidates)
-      .slice(0, Math.max(1, Number(maxPerAnchor) || 24) + Math.max(0, Number(maxTransitivePerAnchor) || 0));
+    out[anchorRef] = selectCandidateOpportunities(anchor, Array.from(combinedByFamily.values()),
+      Math.max(1, Number(maxPerAnchor) || 24) + Math.max(0, Number(maxTransitivePerAnchor) || 0));
   }
 
   return out;
@@ -2622,6 +2665,7 @@ module.exports = {
     rememberFamilyDedupeKey,
     resolveFamilyDedupeKey,
     buildTransitiveRecallCandidate,
+    selectCandidateOpportunities,
     fanOutCandidatesToSiblingAnchors,
     inferBrandFromOfficialUrl,
     mergeSourceRefs,

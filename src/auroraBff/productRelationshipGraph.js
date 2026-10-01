@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { isSameFamilyVariant } = require('./relationshipPairPolicy');
 const { query } = require('../db');
 const logger = require('../logger');
 const {
@@ -491,7 +492,10 @@ function validateRelationshipEdge(input = {}, options = {}) {
 
   if (edge.relation_type === 'dupe' || edge.relation_type === 'competitive_alternative') {
     if (!anchorBrand || !candidateBrand) errors.push(`${edge.relation_type}_brand_missing`);
-    if (sameBrand) errors.push(`${edge.relation_type}_same_brand_blocked`);
+    if (sameBrand && edge.relation_type === 'dupe') errors.push('dupe_same_brand_blocked');
+    if (sameBrand && edge.relation_type === 'competitive_alternative' && isSameFamilyVariant(edge.anchor_snapshot, edge.candidate_snapshot)) {
+      errors.push('competitive_alternative_same_family_variant');
+    }
     if (hasOnPageSource(edge)) errors.push(`${edge.relation_type}_on_page_source_blocked`);
     if (categoryScore == null) {
       errors.push(`${edge.relation_type}_category_missing`);
@@ -556,22 +560,30 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
     reasons.push('ai_approved_dupe_quarantined');
   }
 
+  if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type) &&
+      extractBrand(edge.anchor_snapshot) && extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot) &&
+      isSameProductAcrossListingsOrSizes(extractProductTitle(edge.anchor_snapshot), extractProductTitle(edge.candidate_snapshot), extractBrand(edge.anchor_snapshot))) {
+    reasons.push(`${edge.relation_type}_same_product_across_listings_or_sizes`);
+  }
+
+  // A recommendation is not a variant picker. Preserve human decisions, but hide
+  // AI-approved same-line style/shade options on both recommendation lanes.
+  if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type) &&
+      isSameFamilyVariant(edge.anchor_snapshot, edge.candidate_snapshot)) {
+    reasons.push(`${edge.relation_type}_same_family_variant`);
+  }
+
   if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {
     const anchorTitle = extractProductTitle(edge.anchor_snapshot);
     const candidateTitle = extractProductTitle(edge.candidate_snapshot);
     const anchorMarker = extractShadeSkuMarker(anchorTitle);
     const candidateMarker = extractShadeSkuMarker(candidateTitle);
-    const anchorBase = relationshipBaseTitle(anchorTitle);
-    const candidateBase = relationshipBaseTitle(candidateTitle);
     const anchorFamily = relationshipFamilyTitle(anchorTitle);
     const candidateFamily = relationshipFamilyTitle(candidateTitle);
     const sameBrand = Boolean(
       extractBrand(edge.anchor_snapshot) &&
         extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot),
     );
-    if (sameBrand && isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, extractBrand(edge.anchor_snapshot))) {
-      reasons.push('related_product_same_product_across_listings_or_sizes');
-    }
     const bothComplexionSku = isComplexionSkuTitle(anchorTitle) && isComplexionSkuTitle(candidateTitle);
     if (
       anchorMarker &&
@@ -583,16 +595,6 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
       )
     ) {
       reasons.push('related_product_mismatched_shade_sku');
-    }
-
-    if (
-      anchorBase &&
-      candidateBase &&
-      anchorBase === candidateBase &&
-      normalizeLower(anchorTitle, 300) !== normalizeLower(candidateTitle, 300) &&
-      (hasVariantSuffix(anchorTitle) || hasVariantSuffix(candidateTitle) || anchorMarker || candidateMarker)
-    ) {
-      reasons.push('related_product_same_family_variant');
     }
 
     const brandText = `${extractBrand(edge.anchor_snapshot)} ${extractBrand(edge.candidate_snapshot)}`;
@@ -1247,7 +1249,7 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     : pickFirstString(snap.url, snap.canonical_url, snap.canonicalUrl, snap.pdp_url, snap.pdpUrl);
   const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
   const name = extractProductName(snap);
-  const reason = pickFirstString(edge.display_label, edge.relation_type);
+  const reason = pickFirstString(edge.why_candidate.summary, edge.display_label, edge.relation_type);
   const price = isCollapsedEdge
     ? getCandidatePrice(edge) ?? toNumberOrNull(snap.price ?? snap.price_amount ?? snap.priceAmount)
     : getCandidatePrice(edge);
@@ -1267,6 +1269,10 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     ...(Number.isFinite(edge.score_total) ? { x_score: edge.score_total } : {}),
     relationship_edge_id: edge.id,
     relationship_type: edge.relation_type,
+    why_candidate: edge.why_candidate,
+    tradeoffs: edge.tradeoffs,
+    watchouts: edge.watchouts,
+    evidence_refs: edge.source_refs,
     ...(edge.display_label ? { display_label: edge.display_label } : {}),
   };
 }
@@ -1914,6 +1920,7 @@ module.exports = {
   extractFailureReasonFlags,
   __internal: {
     extractBrand,
+    isSameProductAcrossListingsOrSizes,
     getPriceRatio,
     getPriceObservedAt,
     normalizeSourceRefs,

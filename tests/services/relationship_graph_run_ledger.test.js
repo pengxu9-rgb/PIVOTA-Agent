@@ -219,3 +219,17 @@ describe('relationshipGraphRunLedger', () => {
     }));
   });
 });
+
+test('durable batch identities survive ephemeral review artifacts without claiming full historical snapshots',()=>{
+  const summary=buildSummaryFixture();
+  try {
+    writeJson(path.join(summary.out_dir,'routine','review.json'),{summary:{reviewed_count:2,applied_count:2,approved_applied_count:1},decisions:[
+      {id:'written',verdict:'approve',applied:true,new_label_state:'ai_approved',relationship_kind:'alternative',rationale:'private model prose'},
+      {id:'guard',verdict:'guard_blocked',applied:true,new_label_state:'needs_evidence'}]});
+    const record=extractRelationshipGraphRunRecord(summary);
+    expect(record.summary.recommendation_review_batch).toMatchObject({complete:true,applied_approval_count:1,decisions:[
+      {id:'written',verdict:'approve',applied:true,new_label_state:'ai_approved',relationship_kind:'alternative'},
+      {id:'guard',verdict:'guard_blocked',applied:true,new_label_state:'needs_evidence',relationship_kind:null}]});
+    expect(JSON.stringify(record.summary.recommendation_review_batch)).not.toContain('private model prose');
+  } finally {fs.rmSync(summary.out_dir,{recursive:true,force:true});}
+});

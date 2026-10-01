@@ -40,6 +40,10 @@ function reviewMetrics(summary = {}) {
     review_error_count: errors,
     review_error_rate: denominator ? errors / denominator : 0,
     guard_blocked_count: guardBlocked,
+    // Additive JSON metrics; preserve old artifact shape and eligible denominator.
+    ...Object.fromEntries(['useful_approval_by_kind', 'semantic_rejected_count', 'variant_rejected_count',
+      'candidate_brand_distribution', 'approved_brand_distribution', 'approved_cross_brand_count']
+      .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }
 

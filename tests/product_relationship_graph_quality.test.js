@@ -106,7 +106,7 @@ describe('per-candidate fan-in cap (per build) for dupe / competitive_alternativ
 
   test('accepts: related_product fan-in is never capped', () => {
     const sameBrand = Object.fromEntries(
-      anchorIds.map((id) => [`product:${id}`, [candidate('house_sibling', { brand: `Brand ${id}` })]]),
+      anchorIds.map((id) => [`product:${id}`, [candidate('house_sibling', { brand: `Brand ${id}`, name: 'Excia Eye Cream', category: 'eye cream' })]]),
     );
     const out = build(anchors, sameBrand, { maxAnchorsPerCandidate: 2 });
 
@@ -269,7 +269,7 @@ describe('social-proof copy is stripped, phrase by phrase, from the snapshot tex
 
   test('why_candidate.summary and reasons_user_visible never end up empty', () => {
     const edge = edgeFor({ why_candidate: { summary: 'A viral bestseller', reasons_user_visible: ['Cheaper'] } });
-    expect(edge.why_candidate.summary).toBe('Cross-brand alternative with matching category and use-case signals.');
+    expect(edge.why_candidate.summary).toBe('Possible alternative with matching product job; differences require review.');
     expect(edge.why_candidate.reasons_user_visible).toEqual(['Cheaper']);
     const stripped = edgeFor({ why_candidate: { summary: 'Solid dupe.', reasons_user_visible: ['A viral bestseller', 'Cult favourite'] } });
     expect(stripped.why_candidate.summary).toBe('Solid dupe.');
@@ -474,15 +474,15 @@ describe('dupe: an explicit rule on the graded scale', () => {
     expect(got.relation).toBe('competitive_alternative');
   });
 
-  test('accepts: a truncated "key ingredients" list on one side does not refute a genuine dupe', () => {
+  test('a truncated key-ingredient list leaves an alternative proposal without proving a dupe', () => {
     const got = relationFor(snap({
       brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+ PA++++', category: 'sunscreen', price: 9, price_currency: 'USD',
       inci_list: 'niacinamide, hyaluronic acid',
     }));
-    expect(got.relation).toBe('dupe');
+    expect(got.relation).toBe('competitive_alternative');
   });
 
-  test('accepts: a 4-ENTRY blurb (6 words) against a full 20+-entry INCI list still emits a dupe', () => {
+  test('a 4-ENTRY blurb against full INCI is insufficient dupe evidence', () => {
     const fullInci = [
       'Water', 'Alcohol', 'Ethylhexyl Methoxycinnamate', 'Glycerin', 'Butylene Glycol', 'Diethylamino Hydroxybenzoyl Hexyl Benzoate',
       'Ethylhexyl Triazone', 'Silica', 'Dimethicone', 'Polymethylsilsesquioxane', 'Sodium Hyaluronate', 'Tocopherol', 'Niacinamide',
@@ -497,13 +497,13 @@ describe('dupe: an explicit rule on the graded scale', () => {
     });
     const score = scoreCandidateForAnchor(anchorFull, blurb);
     const out = build([anchorFull], { [anchorFull.product_ref]: [{ ...blurb, ...score, similarity_score: score.score_total, score_breakdown: score, price_observed_at: NOW }] });
-    expect(out.edges.map((edge) => edge.relation_type)).toEqual(['dupe']);
+    expect(out.edges.map((edge) => edge.relation_type)).toEqual(['competitive_alternative']);
     expect(out.edges[0].score_total).toBeGreaterThanOrEqual(DUPE_MIN_SCORE_TOTAL);
   });
 
-  test('accepts: a retailer row without an ingredient list can still be a dupe on its name words', () => {
+  test('a retailer row without INCI remains an alternative despite shared name words', () => {
     const got = relationFor(snap({ brand: 'Biore', name: 'Biore UV Aqua Rich Watery Essence Sunscreen SPF50+', category: 'sunscreen', price: 9, price_currency: 'USD' }));
-    expect(got.relation).toBe('dupe');
+    expect(got.relation).toBe('competitive_alternative');
   });
 });
 

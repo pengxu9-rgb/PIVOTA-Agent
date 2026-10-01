@@ -80,7 +80,7 @@ describe('quarantine-relationship-graph-serving-unsafe', () => {
   test('parseArgs requires explicit confirmation for apply', () => {
     expect(() => parseArgs(['--apply'])).toThrow(/apply requires --confirm/);
 
-    const args = parseArgs(['--apply', '--confirm', CONFIRM_TOKEN, '--include-human-approved']);
+    const args = parseArgs(['--apply', '--confirm', CONFIRM_TOKEN, '--manifest','reviewed-plan.json','--include-human-approved']);
     expect(args.apply).toBe(true);
     expect(args.includeHumanApproved).toBe(true);
   });
@@ -269,11 +269,10 @@ describe('quarantine-relationship-graph-serving-unsafe', () => {
       throw new Error(`unexpected SQL: ${sql}`);
     });
 
+    const plan=await runQuarantine({queryFn,market:'US',generatedAt:NOW});
     const report = await runQuarantine({
-      queryFn,
-      market: 'US',
-      apply: true,
-      generatedAt: NOW,
+      queryFn, market:'US', apply:true, generatedAt:NOW,
+      manifest:{...plan,reviewed_ids:['ai_dupe'],reviewed_by:'fixture reviewer',reviewed_at:NOW},
     });
 
     expect(report.dry_run).toBe(false);
@@ -281,6 +280,26 @@ describe('quarantine-relationship-graph-serving-unsafe', () => {
     expect(report.applied_rows).toEqual([
       expect.objectContaining({ id: 'ai_dupe', label_state: 'needs_evidence' }),
     ]);
-    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(queryFn).toHaveBeenCalledTimes(3);
   });
+});
+
+test('apply refuses an unreviewed or altered manifest before any database call',async()=>{
+  const queryFn=jest.fn(async()=>({rows:[row({id:'ai_dupe',relation_type:'dupe'})]}));
+  const plan=await runQuarantine({queryFn,generatedAt:NOW});queryFn.mockClear();
+  await expect(runQuarantine({queryFn,apply:true,manifest:plan})).rejects.toThrow(/reviewed/);
+  const reviewed={...plan,reviewed_by:'reviewer',reviewed_at:NOW,reviewed_ids:['ai_dupe']};
+  reviewed.patches[0].expected_updated_at='2027-01-01T00:00:00Z';
+  await expect(runQuarantine({queryFn,apply:true,manifest:reviewed})).rejects.toThrow(/changed/);
+  expect(queryFn).not.toHaveBeenCalled();
+});
+test('manifest scopes reviewed identities and retains durable before-values and exact revision',async()=>{
+  const queryFn=jest.fn(async()=>({rows:[row({id:'a',relation_type:'dupe',updated_at_revision:'2026-06-08 00:00:00.123456+00'}),row({id:'b',relation_type:'dupe'})]}));
+  const plan=await runQuarantine({queryFn,generatedAt:NOW});
+  expect(plan.patches[0]).toMatchObject({expected_updated_at:'2026-06-08 00:00:00.123456+00',before_values:{label_state:'ai_approved',provenance:{}}});
+  queryFn.mockImplementation(async sql=>({rows:/UPDATE/.test(sql)?[]:[row({id:'a',relation_type:'dupe'})]}));
+  const report=await runQuarantine({queryFn,apply:true,manifest:{...plan,reviewed_by:'reviewer',reviewed_at:NOW,reviewed_ids:['a']}});
+  expect(queryFn.mock.calls[1][1]).toEqual([['ai_approved'],'US',['a']]);
+  const sql=queryFn.mock.calls[2][0];expect(sql).toMatch(/label_state = patch.previous_label_state/);expect(sql).toMatch(/updated_at = patch.expected_updated_at/);
+  expect(report.summary).toMatchObject({applied_count:0,skipped_changed_or_filtered_count:1});
 });

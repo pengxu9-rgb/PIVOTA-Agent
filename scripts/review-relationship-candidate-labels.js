@@ -4,10 +4,10 @@
 /**
  * Relationship graph AI reviewer (generated -> ai_approved).
  *
- * Rubric v2, reconstructed from the existing ai_approved provenance rows
- * (reviewer=codex-gpt-5.5-xhigh, rubric=v2, primary_reason=valid_relationship)
- * plus the committed relationship graph audit/preflight rules. No standalone
- * rubric document was found in this checkout.
+ * Rubric v4: useful recommendations require quoted supplied facts, correct
+ * substitute/complement semantics, and an exact deterministic consumer-copy contract.
+ * The historical reviewer identifier is retained; provider/model configuration
+ * still comes from the existing runtime environment.
  *
  * Approve only when the evidence supports the requested relation:
  * - dupe: close lower-priced substitute with matching category/form, shopper
@@ -16,8 +16,8 @@
  *   and category/use case; a shopper could compare or substitute them.
  * - niche_specialist: candidate is a more focused or specialist answer to the
  *   anchor/need use case, with category/function evidence.
- * - related_product: products belong in the same routine, kit, regimen, or
- *   complementary use case; not merely the same brand or seller.
+ * - related_product: a useful complement at a different routine step/area,
+ *   or explicit pair-grounded usage; never merely the same brand or line.
  *
  * Reject when the pair is supported only by weak source/brand/category overlap,
  * lacks the price evidence expected for a dupe, has conflicting product jobs or
@@ -26,7 +26,8 @@
  * claims, or does not match the claimed relation_type.
  *
  * Confidence calibration:
- * - 0.90-1.00: direct title/category/use-case/function evidence.
+ * - 0.90-1.00: direct evidence for useful claimed relation and differences;
+ *   title/category identity alone cannot establish that utility.
  * - 0.75-0.89: strong but not exact evidence; minor ambiguity remains.
  * - 0.55-0.74: plausible but evidence is partial.
  * - below 0.55: reject or keep generated unless the relation is clearly valid.
@@ -39,8 +40,11 @@ const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { getRelationshipEdgeServingSuppressionReasons } = require('../src/auroraBff/productRelationshipGraph');
 
+const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
+const { optionRole } = require('../src/auroraBff/relationshipPairPolicy');
+
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
-const RUBRIC_VERSION = 'v2';
+const RUBRIC_VERSION = 'v4';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
@@ -62,6 +66,14 @@ const VerdictSchema = z.object({
   verdict: z.enum(['approve', 'reject']),
   confidence: z.number().min(0).max(1),
   rationale: z.string().trim().min(12).max(700),
+  relationship_kind: z.enum(['dupe', 'substitute', 'alternative', 'complement', 'variant', 'none']),
+  recommendation_reason: z.string().trim().max(700),
+  shared_evidence: z.array(z.object({
+    anchor_fact: z.string().trim().min(3).max(350),
+    candidate_fact: z.string().trim().min(3).max(350),
+  })).max(6),
+  tradeoffs: z.array(z.string().trim().min(3).max(350)).max(6),
+  watchouts: z.array(z.string().trim().min(3).max(350)).max(6),
 });
 
 function argValue(argv, name, fallback = '') {
@@ -236,6 +248,7 @@ function readVerdictsFile(filePath) {
     const rationale = normalizeString(row.rationale, 700);
     if (!rationale) throw new Error(`missing rationale for ${id}`);
     byId.set(id, {
+      ...row,
       verdict,
       confidence,
       rationale,
@@ -456,6 +469,8 @@ function buildEvidence(row, supplements) {
     watchouts: compactArray(row.watchouts, 6),
     source_refs: summarizeSourceRefs(row.source_refs),
     price_evidence: asObject(row.price_evidence),
+    consumer_copy_by_kind: Object.fromEntries(['dupe', 'substitute', 'alternative', 'complement'].map((kind) => [kind, consumerCopyForKind(kind)])),
+    curated_pair_evidence: asObject(row.provenance?.curated_pair_evidence || row.candidate_snapshot?.curated_pair_evidence),
     anchor: summarizeProductSnapshot(row.anchor_snapshot, anchorSupplement),
     candidate: summarizeProductSnapshot(row.candidate_snapshot, candidateSupplement),
   };
@@ -627,14 +642,22 @@ async function fetchSupplementsForRows(rows, queryFn = query) {
 function buildReviewPrompt(evidence) {
   return [
     'You are the relationship graph AI reviewer for Pivota beauty commerce.',
-    'Return strict JSON only with keys: verdict, confidence, rationale.',
+    'Return strict JSON only with keys: verdict, confidence, rationale, relationship_kind, recommendation_reason, shared_evidence, tradeoffs, watchouts.',
     '',
-    'Rubric v2:',
+    'Rubric v4: recommendation utility with a verified-fact consumer-copy contract.',
+    '- First classify the pair: dupe, substitute, alternative, complement, variant, or none. A high score/confidence is not utility evidence.',
+    '- variant means the same product/collection with another shade, size, scent, flavour or decorative style. Reject variants even when descriptions and routine match.',
+    '- substitute replaces the same shopper job; alternative is a distinct product-line option for that job with concrete differences; complement is used alongside the anchor for a different step/area.',
     '- Approve only when the evidence supports the claimed relation_type.',
     '- dupe means a close lower-priced substitute with matching category/form, shopper job, target area, and use case; it does not have to be the same listing.',
     '- competitive_alternative means same shopper job, routine step, category/use case, and target area; substitutable or directly comparable.',
     '- niche_specialist means candidate is a more focused/specialized answer to the anchor or need use case.',
-    '- related_product means same routine, kit, regimen, or complementary usage; same brand alone is not enough.',
+    '- related_product must be a complement: explain the different step or area and evidence for using them alongside one another. Same brand/line/routine alone is insufficient. Distinct-line substitutes belong to competitive_alternative, not related_product.',
+    '- competitive_alternative may be same-brand when it is a distinct line/formulation. Another colour/style of one collection is still a variant.',
+    '- A dupe requires concrete formula/ingredient or curated pair/performance evidence, plus fresh comparable price evidence. Similar names/categories alone cannot establish a dupe or equivalent performance.',
+    '- For every approval choose shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product. These attributed facts explain the choice.',
+    '- Copy recommendation_reason, tradeoffs and watchouts EXACTLY from consumer_copy_by_kind[relationship_kind]. Do not add, rewrite or omit text. Shopper copy is deterministic: source quotes carry supported differences; formula/performance/safety equivalence remains unknown. Your rationale is internal and must never be copied into shopper fields.',
+    '- Reject a claimed relation when your relationship_kind does not match it; do not silently relabel the pair.',
     '- Reject if evidence is sparse, generic, brand-only, source-only, missing the price evidence expected for a dupe, mismatched category/target area, an unhelpful shade/format cross-product, or not aligned to relation_type.',
     '- Never assume unstated ingredient, medical, social, or performance claims.',
     '',
@@ -670,6 +693,7 @@ async function reviewEvidenceWithLlm(provider, evidence, { attempts = DEFAULT_LL
       const result = await provider.analyzeTextToJson({ prompt, schema: VerdictSchema });
       const confidence = Math.max(0, Math.min(1, Number(result.confidence)));
       return {
+        ...result,
         verdict: result.verdict,
         confidence,
         rationale: normalizeString(result.rationale, 700),
@@ -683,6 +707,117 @@ async function reviewEvidenceWithLlm(provider, evidence, { attempts = DEFAULT_LL
   throw lastErr instanceof Error ? lastErr : new Error('relationship graph AI review failed');
 }
 
+function quotedEvidence(value) {
+  return asArray(value).slice(0, 6).map((item) => ({
+    anchor_fact: normalizeString(item?.anchor_fact, 350),
+    candidate_fact: normalizeString(item?.candidate_fact, 350),
+  })).filter((item) => item.anchor_fact && item.candidate_fact);
+}
+function factGrounded(product, quote) {
+  const norm = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  const needle = norm(quote);
+  if (!needle || needle === norm(product.brand) || /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|cream|serum)$/.test(needle)) return false;
+  const values = [];
+  const collect = (value) => {
+    if (typeof value === 'string') values.push(norm(value));
+    else if (Array.isArray(value)) value.forEach(collect);
+    else if (value && typeof value === 'object') Object.values(value).forEach(collect);
+  };
+  collect(product);
+  return values.some((value) => value.includes(needle));
+}
+function validateRecommendationDecision(row, decision, suppliedEvidence = null) {
+  if (decision.verdict !== 'approve') return decision;
+  const allowed = {
+    dupe: ['dupe'], competitive_alternative: ['substitute', 'alternative'],
+    related_product: ['complement'], niche_specialist: ['alternative', 'substitute'],
+  };
+  const evidence = suppliedEvidence || buildEvidence(row, new Map());
+  const quotes = quotedEvidence(decision.shared_evidence);
+  let reason = '';
+  if (!(allowed[row.relation_type] || []).includes(decision.relationship_kind)) reason = 'relation_semantics_mismatch';
+  else if (!normalizeString(decision.recommendation_reason, 700) || !quotes.length) reason = 'recommendation_utility_evidence_missing';
+  else if (!quotes.every((quote) => factGrounded(evidence.anchor, quote.anchor_fact) && factGrounded(evidence.candidate, quote.candidate_fact))) reason = 'recommendation_facts_not_supplied';
+  else if (decision.relationship_kind !== 'complement' && !compactArray(decision.tradeoffs, 6).length) reason = 'substitution_tradeoffs_missing';
+  if (!reason && ['dupe', 'competitive_alternative'].includes(row.relation_type)) {
+    const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
+      ...row.candidate_snapshot, ...row.score_breakdown, similarity_score: row.score_total,
+      curated_pair_evidence: row.provenance?.curated_pair_evidence || row.candidate_snapshot?.curated_pair_evidence,
+    });
+    if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
+        (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
+  }
+  if (!reason && row.relation_type === 'related_product') {
+    const aRole = optionRole(row.anchor_snapshot); const bRole = optionRole(row.candidate_snapshot);
+    const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
+      ...row.candidate_snapshot, ...row.score_breakdown, similarity_score: row.score_total,
+    });
+    const norm = (value) => normalizeString(value, 700).toLowerCase();
+    const pairingEvidence = (product, counterpart) => {
+      const identity = norm(counterpart?.title);
+      if (identity.length < 8) return [];
+      const escaped = identity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const identityEnd = '(?:[.!?,;:]|\\s+(?:on|as|when|for|in|at|to)\\b|$)';
+      const currentPair = new RegExp(`(?:^|\\s)${escaped}${identityEnd}`);
+      const affirmative = new RegExp(`^(?:use|apply|layer|pair|combine|pairs? well|works? well) (?:it |this(?: product)? )?(?:with|alongside|together with|before|after) ${escaped}${identityEnd}`);
+      // Both positive and negative instructions must name this exact counterpart,
+      // not a longer product title such as the same name with an SPF suffix.
+      return asArray(product?.routine_fit?.pairing_notes).map(norm).filter((note) => currentPair.test(note)).map((note) => ({
+        // Remove product identities before checking negation: a name may contain
+        // an ordinary word like 'Never'. Contradictory current-pair instructions win.
+        contradictory: /\b(?:not|never|avoid|cannot|incompatible|contraindicated|instead|replace|skip)\b|\bdon['’]t\b/.test(note.replace(identity, '').replace(norm(product?.title), '')),
+        affirmative: affirmative.test(note),
+      }));
+    };
+    const pairing = [...pairingEvidence(evidence.anchor, evidence.candidate), ...pairingEvidence(evidence.candidate, evidence.anchor)];
+    const contradicted = pairing.some((note) => note.contradictory);
+    const pairGrounded = !contradicted && pairing.some((note) => note.affirmative);
+    if (contradicted) reason = 'contradictory_pairing_evidence';
+    if (!reason && !pairGrounded) {
+      // Structural substitution evidence is independent of the role vocabulary.
+      if (['dupe', 'competitive_alternative'].includes(inferred.relation_type) || (aRole && aRole === bRole)) {
+        reason = 'same_step_substitutes_are_not_complements';
+      } else if (!aRole || !bRole) {
+        reason = 'complement_role_evidence_unresolved';
+      }
+    }
+  }
+  if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';
+  if (!reason) return decision;
+  return { ...decision, verdict: 'reject', utility_rejection: reason,
+    rationale: `${reason}: ${normalizeString(decision.rationale, 600)}` };
+}
+// Model prose cannot establish efficacy, strength, medical safety or performance.
+// Keep consumer copy deterministic; the exact verified quotes provide pair facts.
+function consumerCopyForKind(kind) {
+  const summary = {
+    dupe: 'A lower-priced option for the same shopper job; compare the supplied formula and product facts.',
+    substitute: 'A different product option for the same shopper job; compare the supplied product facts.',
+    alternative: 'A distinct product option for the same shopper job; compare the supplied product facts.',
+    complement: 'A possible companion for a different routine step or area; compare the supplied product facts.',
+  }[kind];
+  if (!summary) return null;
+  return {
+    recommendation_reason: summary,
+    tradeoffs: kind === 'complement' ? [] : ['Formula and performance equivalence is not established.'],
+    watchouts: ['Check the full ingredient list and product instructions before choosing.'],
+  };
+}
+function matchesConsumerCopy(decision) {
+  const expected = consumerCopyForKind(decision.relationship_kind);
+  return Boolean(expected && decision.recommendation_reason === expected.recommendation_reason &&
+    JSON.stringify(decision.tradeoffs) === JSON.stringify(expected.tradeoffs) &&
+    JSON.stringify(decision.watchouts) === JSON.stringify(expected.watchouts));
+}
+function recommendationFields(decision) {
+  return {
+    relationship_kind: decision.relationship_kind,
+    summary: consumerCopyForKind(decision.relationship_kind)?.recommendation_reason || '',
+    reasons_user_visible: quotedEvidence(decision.shared_evidence).map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
+    shared_evidence: quotedEvidence(decision.shared_evidence),
+  };
+}
+
 function buildAiReview(decision) {
   return {
     reviewer: REVIEWER_ID,
@@ -691,6 +826,9 @@ function buildAiReview(decision) {
     primary_reason: PRIMARY_REASON,
     confidence: decision.confidence,
     rationale: decision.rationale,
+    ...recommendationFields(decision),
+    tradeoffs: consumerCopyForKind(decision.relationship_kind)?.tradeoffs || [],
+    watchouts: consumerCopyForKind(decision.relationship_kind)?.watchouts || [],
   };
 }
 
@@ -762,7 +900,7 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
 
-async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE } = {}) {
+async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null } = {}) {
   const floor = parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 });
   if (!Number.isFinite(decision.confidence) || decision.confidence < floor) {
     const err = new Error(`AI approval confidence below ${floor}`);
@@ -781,6 +919,11 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
     err.reasons = guardReasons;
     throw err;
   }
+  if (validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence).verdict !== 'approve') {
+    const err = new Error('AI approval lacks matching recommendation utility evidence');
+    err.code = 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED';
+    throw err;
+  }
   const aiReview = buildAiReview(decision);
   const res = await queryFn(
     `
@@ -788,6 +931,9 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
       SET
         label_state = 'ai_approved',
         provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review}', $2::jsonb, true),
+        why_candidate = $4::jsonb,
+        tradeoffs = $5::jsonb,
+        watchouts = $6::jsonb,
         last_verified_at = now(),
         expires_at = now() + $3::interval,
         updated_at = now()
@@ -795,7 +941,9 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
         AND label_state = 'generated'
       RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
     `,
-    [row.id, JSON.stringify(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL],
+    [row.id, JSON.stringify(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL,
+      JSON.stringify(recommendationFields(decision)), JSON.stringify(consumerCopyForKind(decision.relationship_kind).tradeoffs),
+      JSON.stringify(consumerCopyForKind(decision.relationship_kind).watchouts)],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -914,13 +1062,14 @@ async function runReview({
     if (!decision) {
       throw new Error(`missing verdict replay row for candidate ${row.id}`);
     }
+    decision = validateRecommendationDecision(row, decision, evidence);
     if (decision.verdict === 'approve' && decision.confidence < confidenceFloor) {
       decision = { ...decision, verdict: 'low_confidence' };
     }
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor });
+      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence });
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
       // eslint-disable-next-line no-await-in-loop
@@ -936,6 +1085,14 @@ async function runReview({
       verdict: decision.verdict,
       confidence: decision.confidence,
       rationale: decision.rationale,
+      relationship_kind: decision.relationship_kind || null,
+      recommendation_reason: decision.recommendation_reason || null,
+      shared_evidence: quotedEvidence(decision.shared_evidence),
+      tradeoffs: compactArray(decision.tradeoffs, 6),
+      watchouts: compactArray(decision.watchouts, 6),
+      anchor_brand: normalizeString(row.anchor_snapshot?.brand, 120),
+      candidate_brand: normalizeString(row.candidate_snapshot?.brand, 120),
+      ...(decision.utility_rejection ? { utility_rejection: decision.utility_rejection } : {}),
       old_label_state: 'generated',
       new_label_state: targetLabelState(decision.verdict),
       applied: Boolean(appliedRow),
@@ -1010,6 +1167,11 @@ async function runReview({
       guardBlockedByReason[reason] = (guardBlockedByReason[reason] || 0) + 1;
     }
   }
+  const distribution = (rows, key) => rows.reduce((out, row) => {
+    const value = normalizeString(row[key], 120).toLowerCase() || 'unknown';
+    out[value] = (out[value] || 0) + 1; return out;
+  }, {});
+  const approvals = completed.filter((row) => row.verdict === 'approve');
   const approvalRate = completed.length ? approvedCount / completed.length : 0;
   const summary = {
     dry_run: !apply,
@@ -1033,6 +1195,14 @@ async function runReview({
     min_approval_confidence: confidenceFloor,
     low_confidence_count: lowConfidenceCount,
     approved_count: approvedCount,
+    useful_approval_by_kind: distribution(approvals, 'relationship_kind'),
+    semantic_rejected_count: completed.filter((row) => row.utility_rejection).length,
+    variant_rejected_count: completed.filter((row) => row.relationship_kind === 'variant' ||
+      (row.serving_guard_reasons || []).some((reason) => /same_family_variant|mismatched_shade/.test(reason))).length,
+    candidate_brand_distribution: distribution(completed, 'candidate_brand'),
+    approved_brand_distribution: distribution(approvals, 'candidate_brand'),
+    approved_cross_brand_count: approvals.filter((row) => row.anchor_brand && row.candidate_brand &&
+      row.anchor_brand.toLowerCase() !== row.candidate_brand.toLowerCase()).length,
     rejected_count: rejectedCount,
     review_error_count: reviewErrorCount,
     review_error_denominator: reviewErrorDenominator,
@@ -1107,6 +1277,9 @@ module.exports = {
   buildEvidence,
   buildReviewPrompt,
   buildAiReview,
+  validateRecommendationDecision,
+  recommendationFields,
+  consumerCopyForKind,
   fetchCandidates,
   fetchSupplementsForRows,
   parseArgs,
