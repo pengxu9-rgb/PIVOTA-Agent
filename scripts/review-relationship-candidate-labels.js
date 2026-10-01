@@ -757,8 +757,12 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
       const identity = norm(counterpart?.title);
       if (identity.length < 8) return [];
       const escaped = identity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const affirmative = new RegExp(`^(?:use|apply|layer|pair|combine|pairs? well|works? well) (?:it |this(?: product)? )?(?:with|alongside|together with|before|after) ${escaped}(?:[.!?,;:]|\\s+(?:on|as|when|for|in|at|to)\\b|$)`);
-      return asArray(product?.routine_fit?.pairing_notes).map(norm).filter((note) => note.includes(identity)).map((note) => ({
+      const identityEnd = '(?:[.!?,;:]|\\s+(?:on|as|when|for|in|at|to)\\b|$)';
+      const currentPair = new RegExp(`(?:^|\\s)${escaped}${identityEnd}`);
+      const affirmative = new RegExp(`^(?:use|apply|layer|pair|combine|pairs? well|works? well) (?:it |this(?: product)? )?(?:with|alongside|together with|before|after) ${escaped}${identityEnd}`);
+      // Both positive and negative instructions must name this exact counterpart,
+      // not a longer product title such as the same name with an SPF suffix.
+      return asArray(product?.routine_fit?.pairing_notes).map(norm).filter((note) => currentPair.test(note)).map((note) => ({
         // Remove product identities before checking negation: a name may contain
         // an ordinary word like 'Never'. Contradictory current-pair instructions win.
         contradictory: /\b(?:not|never|avoid|cannot|incompatible|contraindicated|instead|replace|skip)\b|\bdon['’]t\b/.test(note.replace(identity, '').replace(norm(product?.title), '')),

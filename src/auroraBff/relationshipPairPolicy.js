@@ -37,6 +37,18 @@ const COSMETIC_ROLES = [
 function optionRole(snapshot = {}) {
   const value = normalizedTitle(snapshot);
   const category = text(snapshot.category || snapshot.product_type).toLowerCase().replace(/[_-]+/g, ' ');
+  // Application tools can name the cosmetic they apply. The actual tool job
+  // precedes that target noun, while keeping foundation/blush/eye tools distinct.
+  for (const source of [value, category]) {
+    const tool = source.match(/\b(brush(?:es)?|sponge(?:s)?|applicator(?:s)?)\b/);
+    if (!tool) continue;
+    const kind = tool[1].startsWith('brush') ? 'brush' : tool[1].startsWith('sponge') ? 'sponge' : 'applicator';
+    const cosmeticTarget = COSMETIC_ROLES.find(([, pattern]) => pattern.test(value)) ||
+      COSMETIC_ROLES.find(([, pattern]) => pattern.test(category));
+    const areaTarget = value.match(/\b(eye|lip|face|body|brow|lash)\b/) || category.match(/\b(eye|lip|face|body|brow|lash)\b/);
+    const target = cosmeticTarget?.[0] || areaTarget?.[1];
+    return target ? `${target}_${kind}` : kind;
+  }
   // Product words can occur after punctuation; those tails are roles, not options.
   if (/\b(?:eyelashes|false lashes?|cluster lashes?|lash clusters|lash extensions)\b/.test(value)) return 'lashes';
   if (/\b(?:press[ -]?on nails|fake.*nails)\b/.test(value)) return 'nails';

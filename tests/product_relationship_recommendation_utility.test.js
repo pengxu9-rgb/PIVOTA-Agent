@@ -358,3 +358,36 @@ test('contradictory current-pair instruction defeats a positive pairing note', a
   const queryFn=jest.fn();await expect(applyApproval(row,approved,queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
   expect(queryFn).not.toHaveBeenCalled();
 });
+
+
+test('a negative instruction for a different SPF product cannot contradict affirmative current-pair evidence', async () => {
+  const a=snapshot('House','Hydrating Face Cream');const b=snapshot('House','Rich Recovery Face Cream');
+  a.product_intel={product_intel_core:{routine_fit:{pairing_notes:[
+    `Use alongside ${b.title} on dry patches.`,
+    `Do not use with ${b.title} SPF 50.`,
+  ]}}};
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(validateRecommendationDecision(row,approved).verdict).toBe('approve');
+  const queryFn=jest.fn(async()=>({rows:[{id:row.id,new_label_state:'ai_approved'}]}));
+  await applyApproval(row,approved,queryFn);
+  expect(queryFn).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['HD Skin, Foundation','HD Skin, Foundation Brush','foundation','brush','foundation','foundation_brush'],
+  ['Studio Collection, Blush','Studio Collection, Blush Brush','blush','brush','blush','blush_brush'],
+  ['Studio Collection, Foundation','Studio Collection, Foundation Sponge','foundation','sponge','foundation','foundation_sponge'],
+  ['Studio Collection, Lip Gloss','Studio Collection, Lip Gloss Applicator','lip gloss','applicator','lip_gloss','lip_gloss_applicator'],
+  ['Studio Collection, Foundation Brush','Studio Collection, Blush Brush','brush','brush','foundation_brush','blush_brush'],
+])('application tools preserve their actual job and target: %s/%s', (aName,bName,aCategory,bCategory,aRole,bRole) => {
+  const a=snapshot('House',aName,aCategory);const b=snapshot('House',bName,bCategory);
+  expect(optionRole(a)).toBe(aRole);expect(optionRole(b)).toBe(bRole);
+  expect(isSameFamilyVariant(a,b)).toBe(false);
+  for(const relation of ['related_product','competitive_alternative']) {
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
+  }
+  const candidate={...b,similarity_score:0.95,category_use_case_match:0.9,source_refs:[{type:'catalog_products'}]};
+  expect(inferRelationship(a,b,candidate).relation_type).toBe('related_product');
+  const built=buildEdgeForCandidate({anchor:a,candidate,nowIso:NOW});
+  expect(built.errors).toEqual([]);expect(built.edge.relation_type).toBe('related_product');
+});
