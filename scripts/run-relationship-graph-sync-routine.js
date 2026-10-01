@@ -115,6 +115,8 @@ function usage() {
 
 function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = process.cwd() } = {}) {
   if (hasFlag(argv, 'help') || hasFlag(argv, 'h')) return { help: true };
+  const reviewMode = argValue(argv, 'review-mode', process.env.RELGRAPH_AI_REVIEW_MODE || 'single');
+  if (!['single', 'consensus'].includes(reviewMode)) throw new Error('review-mode must be single or consensus');
 
   const skipReview = hasFlag(argv, 'skip-review');
   const cutoff = normalizeString(argValue(argv, 'cutoff'), 80);
@@ -217,6 +219,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
     maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
+    reviewMode,
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), 0, { min: 0, max: 1 }),
@@ -278,6 +281,7 @@ function serializableOptions(options = {}) {
     min_reviews_for_error_gate: options.minReviewsForErrorGate,
     max_review_error_rate: options.maxReviewErrorRate,
     min_approval_confidence: options.minApprovalConfidence,
+    review_mode: options.reviewMode,
     cutoff: options.cutoff || null,
     affected_products_file: options.affectedProductsFile,
     uses_existing_affected_products_file: Boolean(options.usesExistingAffectedProductsFile),
@@ -454,6 +458,7 @@ function buildSyncRoutineSteps(options = {}) {
     routineArgs.push('--cutoff', options.cutoff);
   }
   pushArg(routineArgs, 'review-concurrency', options.reviewConcurrency);
+  pushArg(routineArgs, 'review-mode', options.reviewMode);
   pushArg(routineArgs, 'min-reviews-for-error-gate', options.minReviewsForErrorGate);
   pushArg(routineArgs, 'max-review-error-rate', options.maxReviewErrorRate);
   pushArg(routineArgs, 'min-approval-confidence', options.minApprovalConfidence);

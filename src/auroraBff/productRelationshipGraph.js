@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { isSameFamilyVariant } = require('./relationshipPairPolicy');
+const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
 const {
@@ -556,7 +557,13 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
     reasons.push('candidate_ref_unresolvable_nested_product_prefix');
   }
 
-  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe') {
+  const consensusProof = edge.provenance?.ai_review?.cross_agent_review;
+  const consensusApproved = consensusProof ? hasValidConsensusApproval(edge) : false;
+  if (edge.label_state === 'ai_approved' && consensusProof && !consensusApproved) {
+    reasons.push('cross_agent_review_stale_or_invalid');
+  }
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe' &&
+      (!consensusApproved || !validateRelationshipEdge({ ...edge, review_status: 'pending' }).ok)) {
     reasons.push('ai_approved_dupe_quarantined');
   }
 
