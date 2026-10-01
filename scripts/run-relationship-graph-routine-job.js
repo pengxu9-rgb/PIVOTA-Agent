@@ -7,6 +7,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
 
+const { query } = require('../src/db');
+const { requireAnchorAttemptsTable } = require('../src/auroraBff/relationshipGraphCoverage');
+
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
 
 const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_ROUTINE';
@@ -721,7 +724,7 @@ function writeSummary(outDir, summary) {
 
 async function runRoutineJob(
   options,
-  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient, progressReader = readServingSnapshot, reviewReader = readReviewMetrics } = {},
+  { runner = runCommand, cwd = process.cwd(), now = new Date(), withDbClient, progressReader = readServingSnapshot, reviewReader = readReviewMetrics, preflightQueryFn = query } = {},
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
@@ -765,6 +768,18 @@ async function runRoutineJob(
   let beforeSnapshot;
   async function executeSteps() {
     let reviewGateFailed = false;
+    if (options.prioritizeUncovered) {
+      try {
+        // Direct affected-products manifests bypass selection. Check before the
+        // first child (including pba_sig_refresh), not just inside the builder.
+        await requireAnchorAttemptsTable(preflightQueryFn);
+      } catch (error) {
+        summary.ok = false;
+        summary.failed_step = 'uncovered_priority_preflight';
+        error.summary = summary;
+        throw error;
+      }
+    }
     try {
       beforeSnapshot = await progressReader({ market: options.market });
     } catch (error) {

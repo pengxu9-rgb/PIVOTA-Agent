@@ -14,7 +14,10 @@ function normalizeCoverageSiblingRefs(value = true) {
 
 // The job does not inherit gateway hydration flags. Its explicit sibling option defaults to
 // true to match production serving; operators must change it with the gateway hydration flag.
-function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true, suppressedIdsSql = "'{}'::text[]" } = {}) {
+function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true, suppressedIdsSql } = {}) {
+  if (typeof suppressedIdsSql !== 'string' || !suppressedIdsSql.trim()) {
+    throw new Error('Uncovered priority requires suppressedIdsSql from the shared serving scan');
+  }
   const days = normalizeUncoveredCooldownDays(cooldownDays);
   const siblings = normalizeCoverageSiblingRefs(coverageSiblingRefs);
   return `WITH member_keys AS (
@@ -118,26 +121,30 @@ function uncoveredLiveCatalogSql(alias = 'cp', options = {}) {
 }
 
 async function requireAnchorAttemptsTable(queryFn) {
-  const result = await queryFn("SELECT to_regclass('relationship_graph_anchor_attempts') AS table_name");
+  const result = await queryFn(`WITH target AS (SELECT to_regclass('relationship_graph_anchor_attempts') AS table_name)
+    SELECT table_name::text AS table_name,
+      CASE WHEN table_name IS NOT NULL THEN has_table_privilege(current_user, table_name, 'INSERT') ELSE false END AS can_insert,
+      CASE WHEN table_name IS NOT NULL THEN has_table_privilege(current_user, table_name, 'SELECT') ELSE false END AS can_select
+    FROM target`);
   if (!result.rows || !result.rows[0] || !result.rows[0].table_name) {
     const error = new Error('Uncovered priority requires migration 061_relationship_graph_anchor_attempts.sql before enabling the flag');
     error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_MISSING';
     throw error;
   }
+  if (result.rows[0].can_insert !== true || result.rows[0].can_select !== true) {
+    const error = new Error('Uncovered priority requires INSERT and SELECT on relationship_graph_anchor_attempts for the job DATABASE_URL_NOVERIFY role');
+    error.code = 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES';
+    throw error;
+  }
 }
 
-// Fetch fresh approved rows once, before source LIMITs, and let serving's one guard owner
+// Page fresh approved snapshots before source LIMITs and let serving's one guard owner
 // decide all title rules. Passing only hidden ids retains indexed per-anchor coverage probes.
 async function loadCoverageSuppressedIds({ queryFn, market = 'US' }) {
   await requireAnchorAttemptsTable(queryFn);
-  const { getRelationshipEdgeServingSuppressionReasons } = require('./productRelationshipGraph');
-  const result = await queryFn(`SELECT id, anchor_type, anchor_ref, candidate_product_ref,
-    anchor_snapshot, candidate_snapshot, relation_type, label_state
-    FROM relationship_candidate_labels
-    WHERE vertical = 'beauty' AND lower(market) = lower($1)
-      AND label_state IN ('ai_approved', 'human_approved')
-      AND last_verified_at IS NOT NULL AND expires_at > now()`, [market]);
-  return (result.rows || []).filter((row) => getRelationshipEdgeServingSuppressionReasons(row).length).map((row) => row.id);
+  const { scanServingLabels } = require('../services/relationshipGraphServingScan');
+  const { suppressedIds } = await scanServingLabels({ queryFn, market, collectSuppressedIds: true });
+  return suppressedIds;
 }
 
 // Record the attempt before edge writes, including zero-edge attempts and protected labels.

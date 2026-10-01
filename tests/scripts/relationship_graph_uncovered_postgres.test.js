@@ -81,6 +81,29 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
       VALUES ($1,'product',$2,'product:candidate','related_product',$3,$4,now(),
         now() + $5::interval,now() - $6::interval,now() - $6::interval)`, [ref, ref, market, state, expires ? '45 days' : '-1 day', recent ? '1 day' : '30 days']);
   }
+  test.each(['INSERT', 'SELECT'])('job role preflight rejects a role with only %s', async (privilege) => {
+    const { requireAnchorAttemptsTable } = require('../../src/auroraBff/relationshipGraphCoverage');
+    await client.query('CREATE ROLE relgraph_priority_round5_job');
+    try {
+      await client.query('GRANT USAGE ON SCHEMA relgraph_uncovered_test TO relgraph_priority_round5_job');
+      await client.query(`GRANT ${privilege} ON relationship_graph_anchor_attempts TO relgraph_priority_round5_job`);
+      await client.query('SET ROLE relgraph_priority_round5_job');
+      // PostgreSQL comma-separated privilege lists mean ANY, so the preflight
+      // checks INSERT and SELECT individually rather than trusting this alone.
+      expect((await client.query("SELECT has_table_privilege(current_user,'relationship_graph_anchor_attempts','INSERT,SELECT') AS any_privilege")).rows[0].any_privilege).toBe(true);
+      await expect(requireAnchorAttemptsTable((sql, params) => client.query(sql, params)))
+        .rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES' });
+      await client.query('RESET ROLE');
+      await client.query('GRANT INSERT, SELECT ON relationship_graph_anchor_attempts TO relgraph_priority_round5_job');
+      await client.query('SET ROLE relgraph_priority_round5_job');
+      await expect(requireAnchorAttemptsTable((sql, params) => client.query(sql, params))).resolves.toBeUndefined();
+    } finally {
+      await client.query('RESET ROLE');
+      await client.query('REVOKE ALL ON relationship_graph_anchor_attempts FROM relgraph_priority_round5_job');
+      await client.query('REVOKE USAGE ON SCHEMA relgraph_uncovered_test FROM relgraph_priority_round5_job');
+      await client.query('DROP ROLE relgraph_priority_round5_job');
+    }
+  });
   async function priority(days = 7, coverageSiblingRefs = true) {
     const ids = await loadCoverageSuppressedIds({ queryFn: (sql, params) => client.query(sql, params), market: 'US' });
     const result = await client.query(`SELECT CASE WHEN ${uncoveredLiveCatalogSql('cp', { marketSql: '$1', suppressedIdsSql: '$2::text[]', cooldownDays: days, coverageSiblingRefs })}
@@ -260,7 +283,7 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
     }
     expect(await priority()).toBe(true);
     if (['ai_dupe','nested_candidate','nested_anchor'].includes(kind)) {
-      const result = await client.query(`SELECT ${uncoveredLiveCatalogSql('cp',{marketSql:'$1'})} AS priority FROM catalog_products cp LEFT JOIN catalog_merchants cm ON cm.merchant_id=cp.merchant_id WHERE cp.product_key='anchor'`,['US']);
+      const result = await client.query(`SELECT ${uncoveredLiveCatalogSql('cp',{marketSql:'$1', suppressedIdsSql: "'{}'::text[]"})} AS priority FROM catalog_products cp LEFT JOIN catalog_merchants cm ON cm.merchant_id=cp.merchant_id WHERE cp.product_key='anchor'`,['US']);
       expect(result.rows[0].priority).toBe(true);
     }
   });
