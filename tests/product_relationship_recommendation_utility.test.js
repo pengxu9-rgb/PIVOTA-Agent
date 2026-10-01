@@ -310,3 +310,51 @@ test('eye moisturizer synonym preserves a different target-area complement', () 
   expect(optionRole(b)).toBe('eye_cream');
   expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement')).verdict).toBe('approve');
 });
+
+
+test.each([
+  ['HD Skin, Powder Foundation','HD Skin, Setting Powder','foundation','setting_powder'],
+  ['Studio Collection, Contour Powder','Studio Collection, Blush Powder','contour','blush'],
+])('powder form does not merge distinct makeup jobs: %s/%s', (aName,bName,aRole,bRole) => {
+  const a=snapshot('House',aName,'complexion');const b=snapshot('House',bName,'complexion');
+  expect(optionRole(a)).toBe(aRole);expect(optionRole(b)).toBe(bRole);
+  expect(isSameFamilyVariant(a,b)).toBe(false);
+  for (const relation of ['related_product','competitive_alternative']) {
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
+  }
+  const built=buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9,source_refs:[{type:'catalog_products'}]},nowIso:NOW});
+  expect(built.errors).toEqual([]);expect(built.edge.relation_type).toBe('related_product');
+});
+
+test('specific fused powder categories preserve job distinctions when names omit the form', () => {
+  expect(optionRole(snapshot('House','HD Skin - Ivory','powderfoundation'))).toBe('foundation');
+  expect(optionRole(snapshot('House','HD Skin - Ivory','settingpowder'))).toBe('setting_powder');
+});
+
+
+test.each([
+  'Do not use with Rich Recovery Face Cream.',
+  'Never combine with Rich Recovery Face Cream.',
+  'Avoid using alongside Rich Recovery Face Cream.',
+  'Apply Hydrating Face Cream daily.',
+  'Use alongside Other Recovery Face Cream.',
+  'Use alongside Rich Recovery Face Cream SPF 50.',
+])('nonaffirmative or different-pair notes cannot authorize complements: %s', async (note) => {
+  const a=snapshot('House','Hydrating Face Cream');
+  const b=snapshot('House','Rich Recovery Face Cream');
+  a.product_intel={product_intel_core:{routine_fit:{pairing_notes:[note]}}};
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(validateRecommendationDecision(row,approved).verdict).toBe('reject');
+  const queryFn=jest.fn();await expect(applyApproval(row,approved,queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
+  expect(queryFn).not.toHaveBeenCalled();
+});
+
+test('contradictory current-pair instruction defeats a positive pairing note', async () => {
+  const a=snapshot('House','Hydrating Face Cream');const b=snapshot('House','Rich Recovery Face Cream');
+  a.product_intel={product_intel_core:{routine_fit:{pairing_notes:[`Use alongside ${b.title} on dry patches.`]}}};
+  b.product_intel={product_intel_core:{routine_fit:{pairing_notes:[`Do not use with ${a.title}.`]}}};
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(validateRecommendationDecision(row,approved).utility_rejection).toBe('contradictory_pairing_evidence');
+  const queryFn=jest.fn();await expect(applyApproval(row,approved,queryFn)).rejects.toMatchObject({code:'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED'});
+  expect(queryFn).not.toHaveBeenCalled();
+});

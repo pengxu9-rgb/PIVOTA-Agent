@@ -24,12 +24,15 @@ function variantCore(snapshot = {}) {
 }
 const COSMETIC_ROLES = [
   ['bb_cream', /\bbb\s*cream\b/], ['cc_cream', /\bcc\s*cream\b/],
-  ['mascara', /\bmascara\b/], ['powder', /\b(?:face\s*)?powder\b/],
-  ['foundation', /\bfoundation\b/], ['concealer', /\bconcealer\b/],
-  ['blush', /\b(?:cream\s*)?blush(?:er)?\b/], ['bronzer', /\bbronzer\b/],
-  ['contour', /\bcontour\b/], ['lipstick', /\blipstick\b/],
+  ['mascara', /\bmascara\b/],
+  ['foundation', /\b(?:powder\s*)?foundation\b/], ['concealer', /\bconcealer\b/],
+  ['blush', /\b(?:cream\s*)?blush(?:er)?(?:\s*powder)?\b/], ['bronzer', /\bbronzer\b/],
+  ['contour', /\bcontour(?:\s*powder)?\b/], ['lipstick', /\blipstick\b/],
   ['lip_gloss', /\blip\s*gloss\b/], ['lip_balm', /\blip\s*balm\b/],
   ['perfume', /\b(?:perfume|eau de parfum|eau de toilette)\b/],
+  // Powder is a form, not a shared job: specific complexion jobs take priority.
+  ['setting_powder', /\b(?:setting|finishing)\s*powder\b/],
+  ['powder', /\b(?:face\s*)?powder\b/],
 ];
 function optionRole(snapshot = {}) {
   const value = normalizedTitle(snapshot);
@@ -61,7 +64,7 @@ function formulaMarkers(snapshot = {}) {
   const markers = value.match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || [];
   // Finish is meaningful for complexion/lip products. A lash collection's named
   // 'Glow Up' style remains an option, not a different cosmetic formulation.
-  if (['powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
+  if (['powder', 'setting_powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
     markers.push(...(value.match(/\b(?:matte|glow|dewy|satin|shimmer|luminous)\b/g) || []));
   }
   return markers.sort().join('|');

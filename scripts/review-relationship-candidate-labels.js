@@ -753,15 +753,23 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
       ...row.candidate_snapshot, ...row.score_breakdown, similarity_score: row.score_total,
     });
     const norm = (value) => normalizeString(value, 700).toLowerCase();
-    const mentionsCounterpart = (notes, counterpart) => {
+    const pairingEvidence = (product, counterpart) => {
       const identity = norm(counterpart?.title);
-      return identity.length >= 8 && asArray(notes).some((note) => norm(note).includes(identity));
+      if (identity.length < 8) return [];
+      const escaped = identity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const affirmative = new RegExp(`^(?:use|apply|layer|pair|combine|pairs? well|works? well) (?:it |this(?: product)? )?(?:with|alongside|together with|before|after) ${escaped}(?:[.!?,;:]|\\s+(?:on|as|when|for|in|at|to)\\b|$)`);
+      return asArray(product?.routine_fit?.pairing_notes).map(norm).filter((note) => note.includes(identity)).map((note) => ({
+        // Remove product identities before checking negation: a name may contain
+        // an ordinary word like 'Never'. Contradictory current-pair instructions win.
+        contradictory: /\b(?:not|never|avoid|cannot|incompatible|contraindicated|instead|replace|skip)\b|\bdon['’]t\b/.test(note.replace(identity, '').replace(norm(product?.title), '')),
+        affirmative: affirmative.test(note),
+      }));
     };
-    // A product's own usage note does not establish a pair. Preserve the note's
-    // origin and require it to identify the opposite product in this candidate.
-    const pairGrounded = mentionsCounterpart(evidence.anchor?.routine_fit?.pairing_notes, evidence.candidate) ||
-      mentionsCounterpart(evidence.candidate?.routine_fit?.pairing_notes, evidence.anchor);
-    if (!pairGrounded) {
+    const pairing = [...pairingEvidence(evidence.anchor, evidence.candidate), ...pairingEvidence(evidence.candidate, evidence.anchor)];
+    const contradicted = pairing.some((note) => note.contradictory);
+    const pairGrounded = !contradicted && pairing.some((note) => note.affirmative);
+    if (contradicted) reason = 'contradictory_pairing_evidence';
+    if (!reason && !pairGrounded) {
       // Structural substitution evidence is independent of the role vocabulary.
       if (['dupe', 'competitive_alternative'].includes(inferred.relation_type) || (aRole && aRole === bRole)) {
         reason = 'same_step_substitutes_are_not_complements';
