@@ -4,6 +4,7 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics } = require('../src/services/relationshipGraphServingProgress');
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
@@ -210,6 +211,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     renewalOut: resolvePathMaybeRelative(argValue(argv, 'renewal-out') || path.join(outDir, 'ai_renewal.json'), cwd),
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
+    minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
+    maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
+    minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), 0, { min: 0, max: 1 }),
@@ -268,6 +272,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
 function serializableOptions(options = {}) {
   return {
     market: options.market,
+    min_reviews_for_error_gate: options.minReviewsForErrorGate,
+    max_review_error_rate: options.maxReviewErrorRate,
+    min_approval_confidence: options.minApprovalConfidence,
     cutoff: options.cutoff || null,
     affected_products_file: options.affectedProductsFile,
     uses_existing_affected_products_file: Boolean(options.usesExistingAffectedProductsFile),
@@ -441,6 +448,9 @@ function buildSyncRoutineSteps(options = {}) {
     routineArgs.push('--cutoff', options.cutoff);
   }
   pushArg(routineArgs, 'review-concurrency', options.reviewConcurrency);
+  pushArg(routineArgs, 'min-reviews-for-error-gate', options.minReviewsForErrorGate);
+  pushArg(routineArgs, 'max-review-error-rate', options.maxReviewErrorRate);
+  pushArg(routineArgs, 'min-approval-confidence', options.minApprovalConfidence);
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   pushArg(routineArgs, 'review-relation-types', options.reviewRelationTypes);
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
@@ -573,6 +583,7 @@ async function runSyncRoutine(
     cwd = process.cwd(),
     now = new Date(),
     ledgerRecorder = recordRelationshipGraphRun,
+    progressReader = readServingSnapshot,
   } = {},
 ) {
   fs.mkdirSync(options.outDir, { recursive: true });
@@ -587,8 +598,42 @@ async function runSyncRoutine(
     artifacts,
     steps: [],
     ok: true,
+    ...reviewMetrics({}),
+    served_edges_before: null,
+    served_edges_after: null,
+    distinct_anchors_served_before: null,
+    distinct_anchors_served_after: null,
+    anchors_newly_covered: null,
   };
   writeSummary(options.summaryOut, summary);
+
+  let beforeSnapshot;
+  async function finishProgress() {
+    try {
+      if (beforeSnapshot) Object.assign(summary, servingProgress(beforeSnapshot, await progressReader({ market: options.market })));
+      const routinePath = artifacts.routine_summary;
+      if (routinePath && fs.existsSync(routinePath)) {
+        const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
+        Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
+      }
+    } catch (error) {
+      summary.ok = false;
+      summary.failed_step = summary.failed_step || 'serving_progress';
+      summary.serving_progress_error = error.message;
+    }
+  }
+  try {
+    // Capture before renewal as well as build/review; renewed edges alone are not new coverage.
+    beforeSnapshot = await progressReader({ market: options.market });
+  } catch (error) {
+    summary.ok = false;
+    summary.failed_step = 'serving_progress_before';
+    summary.serving_progress_error = error.message;
+    await recordRunLedgerSafe(summary, options, { ledgerRecorder });
+    writeSummary(options.summaryOut, summary);
+    error.summary = summary;
+    throw error;
+  }
 
   for (const step of steps) {
     const startedAt = new Date().toISOString();
@@ -628,6 +673,7 @@ async function runSyncRoutine(
       summary.failed_step = step.id;
       summary.summary_path = writeSummary(options.summaryOut, summary);
       const err = new Error(`relationship graph sync routine failed at step: ${step.id}`);
+      await finishProgress();
       const ledgerResult = await recordRunLedgerSafe(summary, options, { ledgerRecorder });
       summary.summary_path = writeSummary(options.summaryOut, summary);
       if (ledgerResult.error) {
@@ -640,8 +686,14 @@ async function runSyncRoutine(
   }
 
   summary.summary_path = writeSummary(options.summaryOut, summary);
+  await finishProgress();
   const ledgerResult = await recordRunLedgerSafe(summary, options, { ledgerRecorder });
   summary.summary_path = writeSummary(options.summaryOut, summary);
+  if (!summary.ok) {
+    const err = new Error('relationship graph serving progress measurement failed');
+    err.summary = summary;
+    throw err;
+  }
   if (ledgerResult.error && options.runLedgerFailClosed) {
     const err = new Error(`relationship graph sync routine ledger recording failed: ${ledgerResult.error.message}`);
     err.code = 'RELGRAPH_RUN_LEDGER_FAILED';

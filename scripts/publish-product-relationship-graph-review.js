@@ -446,7 +446,12 @@ async function publishReviewReport({
       if (row.status !== 'publishable') continue;
       try {
         // eslint-disable-next-line no-await-in-loop
-        await upsertFn(row.label);
+        const result = await upsertFn(row.label);
+        if (result && result.written === false) {
+          row.status = 'skipped';
+          row.reason = 'skipped_protected';
+          continue;
+        }
         row.status = 'published';
         row.reason = `published_${row.label.label_state}`;
         published += 1;

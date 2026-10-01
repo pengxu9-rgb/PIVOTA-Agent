@@ -1,3 +1,9 @@
+jest.mock('../../src/services/relationshipGraphServingProgress', () => ({
+  ...jest.requireActual('../../src/services/relationshipGraphServingProgress'),
+  readServingSnapshot: jest.fn(async () => ({ servedEdges: 0, anchors: new Set() })),
+  readReviewMetrics: jest.fn(() => ({ reviewed_count: 0, approved_count: 0, review_error_count: 0, review_error_rate: 0, guard_blocked_count: 0 })),
+}));
+
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -647,6 +653,8 @@ describe('run-relationship-graph-routine-job', () => {
   test('the CLI prints the failing step exit code, command, and stderr tail', () => {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-job-cli-'));
     const missingManifest = path.join(outDir, 'affected-products-does-not-exist.json');
+    const preload = path.join(outDir, 'mock-db.cjs');
+    fs.writeFileSync(preload, `require(${JSON.stringify(require.resolve('../../src/db'))}).query = async () => ({ rows: [] });`);
     const result = spawnSync(process.execPath, [
       path.join(__dirname, '..', '..', 'scripts', 'run-relationship-graph-routine-job.js'),
       '--market', 'US',
@@ -657,7 +665,7 @@ describe('run-relationship-graph-routine-job', () => {
       '--skip-review',
       '--skip-serving-audit',
       '--skip-lock',
-    ], { encoding: 'utf8' });
+    ], { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: `--require ${preload}` } });
 
     expect(result.status).toBe(1);
     const stderr = result.stderr || '';

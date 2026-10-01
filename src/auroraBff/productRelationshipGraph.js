@@ -258,6 +258,33 @@ function relationshipFamilyTitle(title) {
     .trim();
 }
 
+// Keep formulation, strength and SPF tokens: only listing sizes and explicit marketing tails
+// may collapse. A named suffix is tolerated only when the other listing declares a size.
+function sameProductListingTitle(title, brand) {
+  let text = normalizeLower(title, 600);
+  const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  text = text.replace(new RegExp(`^(?:${escapedBrand}\\s*\\|\\s*|\\[${escapedBrand}\\]\\s*)`), '');
+  return text
+    .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz|grams?|g|litres?|liters?)\b/g, ' ')
+    .replace(/\b(?:mini|travel\s+size|full\s+size)\b/g, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/\s+for\s+.*$/, '')
+    .replace(/,\s*(?:gentle|exfoliating|hydrating|moisturizing|brightening|high-strength)\b.*$/, '')
+    .replace(/\s+/g, ' ').replace(/\s*[-–—|,]\s*$/, '').trim();
+}
+
+function isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, brand) {
+  const a = sameProductListingTitle(anchorTitle, brand);
+  const b = sameProductListingTitle(candidateTitle, brand);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const sizeListing = /\b(?:mini|travel\s+size|full\s+size|\d+(?:\.\d+)?\s*(?:ml|oz|g))\b/i.test(`${anchorTitle} ${candidateTitle}`);
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  if (!sizeListing || !long.startsWith(`${short} `)) return false;
+  const tail = long.slice(short.length).trim();
+  return /^[-–—]\s+(?:awaken confidence|gentle exfoliation|hydrating care|daily hydration)\b/.test(tail);
+}
+
 function isComplexionSkuTitle(title) {
   return /\b(foundation|concealer|bright fix|match stix|skin stick|skinstick|tinted fluid|tinted moisturizer|hydra vizor)\b/i.test(
     String(title || ''),
@@ -544,6 +571,9 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
       extractBrand(edge.anchor_snapshot) &&
         extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot),
     );
+    if (sameBrand && isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, extractBrand(edge.anchor_snapshot))) {
+      reasons.push('related_product_same_product_across_listings_or_sizes');
+    }
     const bothComplexionSku = isComplexionSkuTitle(anchorTitle) && isComplexionSkuTitle(candidateTitle);
     if (
       anchorMarker &&
@@ -1751,7 +1781,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
     throw err;
   }
 
-  await queryFn(
+  const result = await queryFn(
     `
       INSERT INTO relationship_candidate_labels (
         id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
@@ -1812,6 +1842,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
           AND NOT (EXCLUDED.label_state = ANY (ARRAY['human_approved', 'human_rejected', 'needs_evidence']::text[]))
         )
       )
+      RETURNING id
     `,
     [
       id,
@@ -1846,7 +1877,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       edge.expires_at || null,
     ],
   );
-  return { id, edge_id: edgeId, label_state: labelState };
+  return { id, edge_id: edgeId, label_state: labelState, written: Boolean(result && result.rows && result.rows.length) };
 }
 
 module.exports = {

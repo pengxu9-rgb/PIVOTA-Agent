@@ -1,3 +1,9 @@
+jest.mock('../../src/services/relationshipGraphServingProgress', () => ({
+  ...jest.requireActual('../../src/services/relationshipGraphServingProgress'),
+  readServingSnapshot: jest.fn(async () => ({ servedEdges: 0, anchors: new Set() })),
+  readReviewMetrics: jest.fn(() => ({ reviewed_count: 0, approved_count: 0, review_error_count: 0, review_error_rate: 0, guard_blocked_count: 0 })),
+}));
+
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

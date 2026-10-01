@@ -1,3 +1,8 @@
+jest.mock('../../src/services/relationshipGraphServingProgress', () => ({
+  ...jest.requireActual('../../src/services/relationshipGraphServingProgress'),
+  readServingSnapshot: jest.fn(async () => ({ servedEdges: 0, anchors: new Set() })),
+}));
+
 const path = require('node:path');
 
 const { WRAPPER_CONFIRM_TOKEN } = require('../../scripts/run-relationship-graph-sync-routine');
