@@ -756,6 +756,7 @@ async function runRoutineJob(
 
   let beforeSnapshot;
   async function executeSteps() {
+    let reviewGateFailed = false;
     try {
       beforeSnapshot = await progressReader({ market: options.market });
     } catch (error) {
@@ -797,7 +798,9 @@ async function runRoutineJob(
             record.status = 'failed';
             record.exit_code = 1;
             record.threshold_status = 'failed';
-            result.exitCode = 1;
+            reviewGateFailed = true;
+            summary.ok = false;
+            summary.failed_step = 'ai_review';
             record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`;
           }
         } catch (error) {
@@ -852,6 +855,14 @@ async function runRoutineJob(
       writeSummary(outDir, summary);
     }
 
+    if (reviewGateFailed) {
+      summary.ok = false;
+      summary.failed_step = 'ai_review';
+      summary.summary_path = writeSummary(outDir, summary);
+      const error = new Error('relationship graph routine job failed at step: ai_review');
+      error.summary = summary;
+      throw error;
+    }
     summary.summary_path = writeSummary(outDir, summary);
     return summary;
   }

@@ -545,8 +545,8 @@ describe('product relationship graph store helpers', () => {
         queryFn,
       });
       const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
-      expect(rawCall[0]).not.toMatch(/\blabel_state\b/);
-      expect(rawCall[1][3]).toBe(500);
+      expect(rawCall[0]).toMatch(/\blabel_state\b/);
+      expect(rawCall[1][3]).toBe(1000);
       expect(edges).toHaveLength(2);
       expect(edges.map((edge) => edge.provenance.relationship_family_collapse.collapsed_edge_count).sort((a, b) => b - a)).toEqual([10, 1]);
       expect(edges[0].candidate_family_key).toMatch(/^family:v1:/);
@@ -677,7 +677,7 @@ describe('product relationship graph store helpers', () => {
       expect(edges[0].id).toBe('prel_served_human');
       expect(edges[0].label_state).toBe('human_approved');
       expect(edges[0].provenance.relationship_family_collapse).toMatchObject({
-        collapsed_edge_count: 2,
+        collapsed_edge_count: 1,
         representative_edge_id: 'prel_served_human',
       });
     } finally {

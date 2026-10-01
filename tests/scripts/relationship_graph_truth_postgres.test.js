@@ -106,13 +106,39 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     await recordRelationshipGraphRun({run_id:'fixture_progress',ok:true,options:{market:'US'},...metrics,approved_count:2,review_error_count:15,review_error_rate:0.06,guard_blocked_count:1},{queryFn});
     expect((await client.query("SELECT summary FROM relationship_graph_routine_runs WHERE run_id='fixture_progress'")).rows[0].summary).toMatchObject({...metrics,approved_count:2,review_error_count:15,review_error_rate:0.06,guard_blocked_count:1});
   });
+  test.each([false, true])('view reader filters before limit and family collapse (collapse=%s)', async (collapse) => {
+    const { listApprovedRelationshipEdgesForAnchor } = require('../../src/auroraBff/productRelationshipGraph');
+    const old = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = collapse ? 'true' : 'false';
+    const rows = [edge('reader', 'unsafe', 'related_product', 'ai_approved'),
+      edge('reader', 'human', 'related_product', 'human_approved'),
+      edge('reader', 'safe1', 'related_product', 'ai_approved'), edge('reader', 'safe2', 'related_product', 'ai_approved')];
+    rows[0].candidate_snapshot = rows[0].anchor_snapshot;
+    rows[1].candidate_snapshot = { ...rows[1].anchor_snapshot, title: 'Hydrating Face Cream Mini' };
+    rows[3].candidate_snapshot.title = 'Refreshing Toner';
+    for (let i = 0; i < rows.length; i++) await upsertRelationshipCandidateLabel({ ...rows[i], score_total: 0.99 - i * 0.1 }, { queryFn });
+    expect((await client.query("SELECT count(*)::int AS n FROM product_relationship_edges")).rows[0].n).toBe(4);
+    const queries = [];
+    const readQuery = async (sql, params) => {
+      if (!sql.includes('FROM product_relationship_edges')) return { rows: [] }; // No catalog resolver tables in this isolated fixture.
+      queries.push([sql, params]); return queryFn(sql, params);
+    };
+    try {
+      const result = await listApprovedRelationshipEdgesForAnchor({ anchorRefs: ['product:reader'], limit: 2, queryFn: readQuery });
+      expect(result).toHaveLength(2);
+      expect(result.map((row) => row.candidate_product_ref)).toEqual(['product:human', 'product:safe1']);
+      expect(result[0].label_state).toBe('human_approved');
+      expect(queries[0][0]).toContain('label_state');
+      expect(queries[0][1][3]).toBe(collapse ? 1000 : 4);
+    } finally { if (old === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED; else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = old; }
+  });
   (process.env.RELGRAPH_TEST_EXPLAIN === '1' ? test : test.skip)('70k-label metric query plan and JS guard timing', async () => {
     await client.query(`INSERT INTO relationship_candidate_labels(id,anchor_type,anchor_ref,candidate_product_ref,relation_type,market,label_state,last_verified_at,expires_at,anchor_snapshot,candidate_snapshot)
       SELECT 'bench_'||i, 'product','product:'||i,'product:c_'||i,'related_product','US',
         CASE WHEN i%10=0 THEN 'ai_approved' ELSE 'generated' END, now(),now()+interval '45 days',
         '{"brand":"Brand","title":"Hydrating Face Cream"}', '{"brand":"Brand","title":"Gentle Face Cleanser"}' FROM generate_series(1,70000) i;
       ANALYZE relationship_candidate_labels;`);
-    const plan = (await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${SERVING_PROGRESS_SQL}`, ['US'])).rows[0]['QUERY PLAN'][0];
+    const plan = (await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${SERVING_PROGRESS_SQL}`, ['US', null, 500])).rows[0]['QUERY PLAN'][0];
     const begin = performance.now(); const snapshot = await readServingSnapshot({ queryFn });
     const timing = performance.now() - begin;
     expect(snapshot.servedEdges).toBe(7000);

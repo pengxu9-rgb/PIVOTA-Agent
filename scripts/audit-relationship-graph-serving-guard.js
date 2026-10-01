@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
+const { isTransientDbError } = require('../src/services/relationshipGraphServingScan');
 const {
   coerceRelationshipEdge,
   getRelationshipEdgeServingSuppressionReasons,
@@ -39,26 +40,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isTransientDbError(err) {
-  const code = String(err?.code || '').trim().toUpperCase();
-  const message = String(err?.message || err || '').toLowerCase();
-  if (code.startsWith('08')) return true;
-  return [
-    'ECONNRESET',
-    'ECONNABORTED',
-    'ETIMEDOUT',
-    'EPIPE',
-    'EAI_AGAIN',
-    '57P01',
-    '57P02',
-    '57P03',
-  ].includes(code) ||
-    message.includes('connection reset') ||
-    message.includes('connection terminated unexpectedly') ||
-    message.includes('server closed the connection unexpectedly') ||
-    message.includes('client has encountered a connection error') ||
-    message.includes('connection terminated');
-}
 
 function summarizeError(err) {
   return {

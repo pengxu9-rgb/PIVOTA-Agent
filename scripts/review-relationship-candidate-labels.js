@@ -1002,6 +1002,8 @@ async function runReview({
   const rejectedCount = completed.filter((row) => row.verdict === 'reject').length;
   const reviewErrorCount = completed.filter((row) => row.verdict === 'error').length;
   const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
+  const lowConfidenceCount = completed.filter((row) => row.verdict === 'low_confidence').length;
+  const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
     for (const reason of row.serving_guard_reasons || []) {
@@ -1029,11 +1031,12 @@ async function runReview({
     verdicts_file_count: verdictReplay ? verdictReplay.count : 0,
     llm_attempts: verdictReplay ? 0 : llmAttempts,
     min_approval_confidence: confidenceFloor,
-    low_confidence_count: completed.filter((row) => row.verdict === 'low_confidence').length,
+    low_confidence_count: lowConfidenceCount,
     approved_count: approvedCount,
     rejected_count: rejectedCount,
     review_error_count: reviewErrorCount,
-    review_error_rate: completed.length ? reviewErrorCount / completed.length : 0,
+    review_error_denominator: reviewErrorDenominator,
+    review_error_rate: reviewErrorDenominator ? reviewErrorCount / reviewErrorDenominator : 0,
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,

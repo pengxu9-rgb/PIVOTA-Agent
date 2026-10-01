@@ -1,0 +1,263 @@
+[
+  {
+    "i": 1,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydration",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Saccharomyces Ferment 30% Milky Toner",
+    "suppressed": true
+  },
+  {
+    "i": 2,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Salicylic Acid 2% Anhydrous Solution",
+    "suppressed": true
+  },
+  {
+    "i": 3,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Salicylic Acid 2% Solution",
+    "suppressed": true
+  },
+  {
+    "i": 4,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Granactive Retinoid 2% Emulsion for Wrinkles and Uneven Texture",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Granactive Retinoid 2% Emulsion",
+    "suppressed": true
+  },
+  {
+    "i": 5,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydration",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Saccharomyces Ferment 30% Milky Toner",
+    "suppressed": true
+  },
+  {
+    "i": 6,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Salicylic Acid 2% Anhydrous Solution",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+    "suppressed": true
+  },
+  {
+    "i": 7,
+    "rel": "related_product",
+    "anchor_brand": "COSRX",
+    "anchor_title": "[COSRX] Hydrium Watery Toner 150ml",
+    "candidate_brand": "COSRX",
+    "candidate_title": "Hydrium Watery Toner",
+    "suppressed": true
+  },
+  {
+    "i": 8,
+    "rel": "related_product",
+    "anchor_brand": "Summer Fridays",
+    "anchor_title": "Body Butter Balm Vanilla Travel Size",
+    "candidate_brand": "Summer Fridays",
+    "candidate_title": "Body Butter Balm Vanilla",
+    "suppressed": true
+  },
+  {
+    "i": 9,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Multi-Active Delivery Essence for Hydration",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Multi-Active Delivery Essence",
+    "suppressed": true
+  },
+  {
+    "i": 10,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Multi-Active Delivery Essence",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "Multi-Active Delivery Essence for Hydration",
+    "suppressed": true
+  },
+  {
+    "i": 11,
+    "rel": "related_product",
+    "anchor_brand": "Summer Fridays",
+    "anchor_title": "Body Butter Balm Pink Guava Travel Size",
+    "candidate_brand": "Summer Fridays",
+    "candidate_title": "Body Butter Balm Pink Guava",
+    "suppressed": true
+  },
+  {
+    "i": 12,
+    "rel": "related_product",
+    "anchor_brand": "Summer Fridays",
+    "anchor_title": "Body Butter Balm Pistachio Milk Travel Size",
+    "candidate_brand": "Summer Fridays",
+    "candidate_title": "Body Butter Balm Pistachio Milk",
+    "suppressed": true
+  },
+  {
+    "i": 13,
+    "rel": "related_product",
+    "anchor_brand": "rare beauty",
+    "anchor_title": "Find Comfort Body & Hair Fragrance Mist Mini",
+    "candidate_brand": "Rare Beauty",
+    "candidate_title": "Find Comfort Body & Hair Fragrance Mist - Awaken Confidence - Awaken Confidence",
+    "suppressed": true
+  },
+  {
+    "i": 14,
+    "rel": "related_product",
+    "anchor_brand": "MAKE UP FOR EVER",
+    "anchor_title": "Rouge Artist For Ever Matte",
+    "candidate_brand": "MAKE UP FOR EVER",
+    "candidate_title": "Rouge Artist For Ever",
+    "suppressed": false
+  },
+  {
+    "i": 15,
+    "rel": "related_product",
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Niacinamide 5% Face and Body Emulsion for Dark Spots & Uneven Tone",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Niacinamide 5% Face and Body Emulsion",
+    "suppressed": true
+  },
+  {
+    "i": 16,
+    "rel": "related_product",
+    "anchor_brand": "Murad",
+    "anchor_title": "Gentle Glycolic Acid Resurfacing Serum for Sensitive Skin",
+    "candidate_brand": "Murad",
+    "candidate_title": "Gentle Glycolic Acid Resurfacing Serum for Sensitive Skin Refill",
+    "suppressed": true
+  },
+  {
+    "i": 17,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Conditioner 250ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Conditioner 1000ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 18,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Conditioner 1000ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Conditioner 250ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 19,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Mattifier 100ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Mattifier 20ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 20,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Shampoo 250ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Shampoo 1000ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 21,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Fibre 100ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Fibre 20ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 22,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Shampoo 1000ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Shampoo 250ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 23,
+    "rel": "related_product",
+    "anchor_brand": "Stila Cosmetics",
+    "anchor_title": "Mini Stay All Day® Liquid Lipstick",
+    "candidate_brand": "Stila Cosmetics",
+    "candidate_title": "Stay All Day® Liquid Lipstick",
+    "suppressed": true
+  },
+  {
+    "i": 24,
+    "rel": "related_product",
+    "anchor_brand": "Falscara",
+    "anchor_title": "Falscara X WICKED: FOR GOOD | Go On, You're Free | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "candidate_brand": "Falscara",
+    "candidate_title": "Falscara X WICKED: FOR GOOD | Love Without Limits | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "suppressed": false
+  },
+  {
+    "i": 25,
+    "rel": "related_product",
+    "anchor_brand": "Summer Fridays",
+    "anchor_title": "Mini Pink Dew™ Gel Cleanser",
+    "candidate_brand": "Summer Fridays",
+    "candidate_title": "Pink Dew™ Gel Cleanser",
+    "suppressed": true
+  },
+  {
+    "i": 26,
+    "rel": "related_product",
+    "anchor_brand": "Falscara",
+    "anchor_title": "Falscara X WICKED: FOR GOOD | Go On, You're Free | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "candidate_brand": "Falscara",
+    "candidate_title": "Falscara X WICKED: FOR GOOD | I Couldn't Be Lovelier | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "suppressed": false
+  },
+  {
+    "i": 27,
+    "rel": "related_product",
+    "anchor_brand": "Falscara",
+    "anchor_title": "Falscara X WICKED: FOR GOOD | Go On, You're Free | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "candidate_brand": "Falscara",
+    "candidate_title": "Falscara X WICKED: FOR GOOD | Wickedly Wonderful | DIY False Lash Extensions, Natural, Cluster Lash, Wispy Lashes, 10 Wisps, 8mm-10mm",
+    "suppressed": false
+  },
+  {
+    "i": 28,
+    "rel": "related_product",
+    "anchor_brand": "Dear Barber",
+    "anchor_title": "Strong Hold Pomade 100ml - Barber",
+    "candidate_brand": "Dear Barber",
+    "candidate_title": "Strong Hold Pomade 20ml - Barber",
+    "suppressed": true
+  },
+  {
+    "i": 29,
+    "rel": "related_product",
+    "anchor_brand": "Summer Fridays",
+    "anchor_title": "Cloud Dew® Gel Cream Moisturizer",
+    "candidate_brand": "Summer Fridays",
+    "candidate_title": "Mini Cloud Dew® Gel Cream Moisturizer",
+    "suppressed": true
+  }
+]

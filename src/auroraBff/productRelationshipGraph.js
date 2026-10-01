@@ -258,18 +258,16 @@ function relationshipFamilyTitle(title) {
     .trim();
 }
 
-// Keep formulation, strength and SPF tokens: only listing sizes and explicit marketing tails
-// may collapse. A named suffix is tolerated only when the other listing declares a size.
+// Preserve product-name words, formulation, strength and SPF. Only explicit listing
+// sizes are stripped on both sides. Descriptive tails require an otherwise exact
+// shorter title; two different tails (including scents/styles) never become equal.
 function sameProductListingTitle(title, brand) {
-  let text = normalizeLower(title, 600);
   const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  text = text.replace(new RegExp(`^(?:${escapedBrand}\\s*\\|\\s*|\\[${escapedBrand}\\]\\s*)`), '');
-  return text
+  return normalizeLower(title, 600)
+    .replace(new RegExp(`^\\[${escapedBrand}\\]\\s*`), '')
     .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz|grams?|g|litres?|liters?)\b/g, ' ')
-    .replace(/\b(?:mini|travel\s+size|full\s+size)\b/g, ' ')
+    .replace(/\b(?:mini|travel\s+size|full\s+size|refill)\b/g, ' ')
     .replace(/[()]/g, ' ')
-    .replace(/\s+for\s+.*$/, '')
-    .replace(/,\s*(?:gentle|exfoliating|hydrating|moisturizing|brightening|high-strength)\b.*$/, '')
     .replace(/\s+/g, ' ').replace(/\s*[-–—|,]\s*$/, '').trim();
 }
 
@@ -278,11 +276,11 @@ function isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, brand) 
   const b = sameProductListingTitle(candidateTitle, brand);
   if (!a || !b) return false;
   if (a === b) return true;
-  const sizeListing = /\b(?:mini|travel\s+size|full\s+size|\d+(?:\.\d+)?\s*(?:ml|oz|g))\b/i.test(`${anchorTitle} ${candidateTitle}`);
   const [short, long] = a.length < b.length ? [a, b] : [b, a];
-  if (!sizeListing || !long.startsWith(`${short} `)) return false;
-  const tail = long.slice(short.length).trim();
-  return /^[-–—]\s+(?:awaken confidence|gentle exfoliation|hydrating care|daily hydration)\b/.test(tail);
+  if (!long.startsWith(short)) return false;
+  // A comma or spaced dash is a listing-description separator, not a generic
+  // word prefix. Never strip these tails independently on both sides.
+  return /^(?: for\s+|,\s+| [-–—]\s+)\S/.test(long.slice(short.length));
 }
 
 function isComplexionSkuTitle(title) {
@@ -1288,11 +1286,12 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
   const rels = (Array.isArray(relationTypes) ? relationTypes : [])
     .map((item) => normalizeLower(item, 64))
     .filter((item) => RELATION_TYPES.has(item));
+  const requestedLimit = Math.max(1, Math.min(500, Math.trunc(Number(limit) || 120)));
   const params = [
     normalizeLower(anchorType, 24) || 'product',
     refs,
     normalizeLower(market || DEFAULT_MARKET, 24) || DEFAULT_MARKET.toLowerCase(),
-    Math.max(1, Math.min(500, Number(limit) || 120)),
+    Math.min(1000, requestedLimit * 2),
   ];
   let relationSql = '';
   if (rels.length) {
@@ -1306,7 +1305,7 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
           id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref, candidate_snapshot,
           relation_type, display_label, market, vertical, category_taxonomy, use_case,
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
-          review_status, why_candidate, tradeoffs, watchouts, provenance,
+          review_status, label_state, why_candidate, tradeoffs, watchouts, provenance,
           last_verified_at, expires_at, created_at, updated_at
         FROM product_relationship_edges
         WHERE anchor_type = $1
@@ -1323,7 +1322,13 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
       params,
     );
     const edges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
-    return dedupeApprovedRelationshipEdges(edges);
+    const safeEdges = edges.filter(isRelationshipEdgeServingSafe);
+    const dropped = edges.length - safeEdges.length;
+    if (dropped) {
+      logger.warn?.({ kind: 'metric', name: 'aurora_bff_relationship_graph_serving_guard_dropped', dropped_count: dropped },
+        'aurora bff: relationship graph serving guard dropped unsafe edges');
+    }
+    return dedupeApprovedRelationshipEdges(safeEdges).slice(0, requestedLimit);
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
     if (code === 'NO_DATABASE' || code === '42P01') return [];

@@ -1,22 +1,9 @@
 const fs = require('node:fs');
 const { query } = require('../db');
-const { getRelationshipEdgeServingSuppressionReasons } = require('../auroraBff/productRelationshipGraph');
-
-const SERVING_PROGRESS_SQL = `SELECT id, anchor_type, anchor_ref, anchor_snapshot,
-  candidate_product_ref, candidate_snapshot, relation_type, label_state
-  FROM relationship_candidate_labels
-  WHERE vertical = 'beauty' AND label_state IN ('ai_approved', 'human_approved')
-    AND last_verified_at IS NOT NULL AND expires_at > now() AND upper(market) = $1`;
+const { scanServingLabels, SERVING_SCAN_SQL } = require('./relationshipGraphServingScan');
 
 async function readServingSnapshot({ market = 'US', queryFn = query } = {}) {
-  const result = await queryFn(SERVING_PROGRESS_SQL, [market.toUpperCase()]);
-  const anchors = new Set();
-  let servedEdges = 0;
-  for (const row of result.rows || []) {
-    if (getRelationshipEdgeServingSuppressionReasons(row).length) continue;
-    servedEdges += 1;
-    anchors.add(`${row.anchor_type}:${row.anchor_ref.trim().toLowerCase()}`);
-  }
+  const { servedEdges, anchors } = await scanServingLabels({ market, queryFn, collectAnchors: true });
   return { servedEdges, anchors };
 }
 
@@ -42,12 +29,17 @@ function readReviewMetrics(filePath, { required = false } = {}) {
 function reviewMetrics(summary = {}) {
   const reviewed = Number(summary.reviewed_count) || 0;
   const errors = Number(summary.review_error_count) || 0;
+  const guardBlocked = Number(summary.guard_blocked_count) || 0;
+  const lowConfidence = Number(summary.low_confidence_count) || 0;
+  const denominator = Math.max(0, reviewed - guardBlocked - lowConfidence);
   return {
     reviewed_count: reviewed,
+    review_error_denominator: denominator,
+    low_confidence_count: lowConfidence,
     approved_count: Number(summary.approved_count) || 0,
     review_error_count: errors,
-    review_error_rate: reviewed ? errors / reviewed : 0,
-    guard_blocked_count: Number(summary.guard_blocked_count) || 0,
+    review_error_rate: denominator ? errors / denominator : 0,
+    guard_blocked_count: guardBlocked,
   };
 }
 
@@ -55,4 +47,4 @@ function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxRevi
   return metrics.reviewed_count >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
 }
 
-module.exports = { SERVING_PROGRESS_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded };
+module.exports = { SERVING_PROGRESS_SQL: SERVING_SCAN_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded };

@@ -11,15 +11,20 @@ The ledger's aggregate applied count still includes renewal. It is a write total
 Routine summaries and the existing ledger summary JSONB store `served_edges_before/after`,
 `distinct_anchors_served_before/after`, `anchors_newly_covered`, `approved_count`,
 `review_error_count`, `review_error_rate`, and `guard_blocked_count`. No migration is added.
-Fresh approved rows are filtered through the shared serving guard, with no sampling or limit.
+The shared scan walks all fresh approved labels by id in batches of 500 and evaluates the
+serving guard per batch. It retains only anchor identities and counts for progress, or hidden
+ids for coverage. It retries transient errors twice with the audit's pool-reset/backoff policy.
+There is no sampling or total-row limit. Id keysets avoid timestamp precision loss.
 The sync snapshot begins before renewal; the standalone routine snapshots remain inside its
 advisory lock. After is measured after serving audit, including failed thresholds; interrupted
 reviews also retain observed progress. A failed snapshot fails the run and leaves unavailable
 metrics null. These are observed window changes, not proof of causation if an independent writer
 runs concurrently. Distinct anchors are case-folded anchor type/ref identities in the run market.
 
-The review step fails when at least 20 reviews completed and its raw error fraction is above
-0.25, including schema-invalid responses. Exactly 25%, 6%, and fewer than 20 reviews pass this
+The review step fails when at least 20 reviews completed and its error fraction is above
+0.25, using reviewed_count minus guard_blocked_count minus low_confidence_count as the denominator.
+The minimum-count threshold still uses reviewed_count. On a rate-gate failure the audit runs
+before the routine reports ai_review as failed, including schema-invalid responses. Exactly 25%, 6%, and fewer than 20 reviews pass this
 gate; the separate transport breaker still fails on sustained timeout/request failures.
 `--min-reviews-for-error-gate` and `--max-review-error-rate` override the thresholds.
 Cron forwards `RELGRAPH_SYNC_MAX_REVIEW_ERROR_RATE` (and the optional
@@ -37,24 +42,35 @@ so the default floor changes none of today's live approvals.
 The shared reason `related_product_same_product_across_listings_or_sizes` applies only to
 AI-approved related_product edges, consistent with existing related-product reasons. It requires
 a same-brand match after case folding and preserves formulation, percentage and SPF tokens.
-It strips explicit sizes and marketing tails; a size listing can match the other listing's
-explicit descriptive suffix. It does not fuzzy-match arbitrary common prefixes.
+It strips explicit size tokens, Mini/Travel Size/Full Size/Refill and a bracketed brand label.
+It never strips for/comma tails from both titles. A strict-prefix match permits a one-sided
+for, comma or spaced-dash description after an otherwise exact normalized product title.
+Scent/flavour/style siblings are outside this reason; existing variant/shade reasons keep
+owning those decisions. Different tails do not become equal.
 The exact 30-row sample titles suppress #12 (Find Comfort mist Mini/full listing) and #20
 (Saccharomyces toner duplicate listing). All other 28 sample pairs remain accepted, including
-#2, #4, #6, #9, #10, #16, #22 and #26. These rules apply automatically to reviewer pre-check,
-serving reads, renewal and reason-targeted quarantine, through the existing single owner.
+#2, #4, #6, #9, #10, #16, #22 and #26. Before this PR, the guard ran only in offline audit/reviewer/renewal/quarantine tools;
+the serving reader did not enforce it. This PR adds label_state to the view projection and
+filters every unsafe edge before deduplication, family collapse and the caller limit.
+The uncollapsed reader fetches 2x the requested limit, capped at 1000 (caller limit <=500).
+A fully suppressed fetched window may still return fewer results. It logs dropped_count.
+Human approvals remain exempt from AI-only reasons; nested-ref reasons still apply to all labels.
+
+All serving integrations receive filtered edges: server.js injects the reader into intelligence
+reads; both relationshipGraphRecall.js paths call it; intelligenceReads.js calls the injected
+reader; relationshipEdgeToSignal.js projects those results and does not query the database.
+Family collapse can still drop self-family human edges independently of the serving guard.
+
+The supplied 29 production pairs yield 25 suppressions. Rouge Artist For Ever Matte/base and
+all three Falscara FOR GOOD style pairs stay available. See the exact title/probe matrix in
+[round 5 evidence](relgraph-round5-review-evidence.md). Deployment immediately enforces this
+guard on serving, so quarantine must precede gateway deployment as well as nightly re-imaging.
 
 Claude's production rollout order (Codex executes none of these steps):
 
-1. Merge/rebase both code PRs as needed, build the combined image and keep uncovered priority off.
-2. BEFORE re-imaging the nightly job, run quarantine dry-run with that image and
-   `--reasons related_product_same_product_across_listings_or_sizes`; inspect examples/counts.
-3. Quarantine the newly hidden rows in the same window, as for the 252 variant siblings on 09-30.
-   Run serving audit with the new image and confirm suppression stays within 25 rows and 1%.
-4. Re-image the nightly job and verify the new review gate/floor settings. Retain the existing
-   write approvals, limits, concurrency and timeout unless Claude deliberately changes them.
-5. Apply ONLY migration 061 in one operator transaction and register its exact filename in
-   schema_migrations, then confirm to_regclass. Do not run npm run db:migrate in production,
-   which has DB_AUTO_MIGRATE=false and would also apply pending 060. See the uncovered-priority
-   rollout document in the companion PR for the SQL. Arm uncovered priority only after verification.
-6. Inspect the next run's error rate, real write/skip counts, serving audit and newly-covered anchors.
+1. Merge #2337 first; retarget the stacked #2336 to main, merge it and build the combined image. Keep uncovered priority off.
+2. With the new image, dry-run quarantine targeting `related_product_same_product_across_listings_or_sizes`; inspect the expected 25 title pairs and any current additional reasons.
+3. Quarantine the confirmed rows BEFORE deploying the gateway or re-imaging the nightly job. Run the complete serving audit; existing thresholds remain 25 rows and 1%.
+4. Deploy the gateway and re-image the nightly job. Verify review gate/floor settings and audit/new coverage metrics. Retain existing limits, concurrency and timeouts unless deliberately changed.
+5. Apply ONLY migration 061 as the job's DATABASE_URL_NOVERIFY role (or explicitly grant INSERT/SELECT to it), register its filename in schema_migrations, and verify table existence and both privileges. Never run npm run db:migrate, which could apply pending 060. Follow the companion rollout document.
+6. Arm uncovered priority only after verification. Inspect the next run's error denominator/rate, real write/skip counts, serving audit and newly covered anchors.

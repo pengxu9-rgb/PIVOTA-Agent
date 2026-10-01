@@ -2,181 +2,241 @@
   {
     "i": 1,
     "rel": "related_product",
-    "anchor": "The Ordinary | Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Ble",
-    "cand": "The Ordinary | Lactic Acid 10% + HA 2% High-Strength Exfoliating Serum for Uneven Tex"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Ble",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "Lactic Acid 10% + HA 2% High-Strength Exfoliating Serum for Uneven Tex"
   },
   {
     "i": 2,
     "rel": "related_product",
-    "anchor": "Naturium | Multi-Peptide Rich Cream",
-    "cand": "Naturium | Multi-Peptide Moisturizer"
+    "anchor_brand": "Naturium",
+    "anchor_title": "Multi-Peptide Rich Cream",
+    "candidate_brand": "Naturium",
+    "candidate_title": "Multi-Peptide Moisturizer"
   },
   {
     "i": 3,
     "rel": "competitive_alternative",
-    "anchor": "Kiehl's Since 1851 | Creamy Eye Treatment with Avocado - 0.51 oz",
-    "cand": "Clinique | All About Eyes Eye Cream with Vitamin C - 0.5 oz"
+    "anchor_brand": "Kiehl's Since 1851",
+    "anchor_title": "Creamy Eye Treatment with Avocado - 0.51 oz",
+    "candidate_brand": "Clinique",
+    "candidate_title": "All About Eyes Eye Cream with Vitamin C - 0.5 oz"
   },
   {
     "i": 4,
     "rel": "related_product",
-    "anchor": "The Ordinary | Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Ble",
-    "cand": "The Ordinary | Salicylic Acid 2% Solution, Exfoliating Serum for Acne"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Ble",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne"
   },
   {
     "i": 5,
     "rel": "competitive_alternative",
-    "anchor": "Isntree | [ISNTREE] Hyaluronic Acid Toner 200ml | 400ml",
-    "cand": "Round Lab | [ROUND LAB] Birch Juice Moisturizing Toner 300ml"
+    "anchor_brand": "Isntree",
+    "anchor_title": "[ISNTREE] Hyaluronic Acid Toner 200ml | 400ml",
+    "candidate_brand": "Round Lab",
+    "candidate_title": "[ROUND LAB] Birch Juice Moisturizing Toner 300ml"
   },
   {
     "i": 6,
     "rel": "related_product",
-    "anchor": "La Roche-Posay | Anthelios Melt-in Milk Body & Face Sunscreen Lotion SPF 100 - 3.0 oz",
-    "cand": "La Roche-Posay | Anthelios UV Air Daily Supercharged Serum Sunscreen SPF 50"
+    "anchor_brand": "La Roche-Posay",
+    "anchor_title": "Anthelios Melt-in Milk Body & Face Sunscreen Lotion SPF 100 - 3.0 oz",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios UV Air Daily Supercharged Serum Sunscreen SPF 50"
   },
   {
     "i": 7,
     "rel": "competitive_alternative",
-    "anchor": "The Ordinary | [THE ORDINARY] Retinol 0.2% in Squalane 30ml",
-    "cand": "FINDIVE | [FINDIVE] Bakuchiol Toning Ampoule 30ml"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "[THE ORDINARY] Retinol 0.2% in Squalane 30ml",
+    "candidate_brand": "FINDIVE",
+    "candidate_title": "[FINDIVE] Bakuchiol Toning Ampoule 30ml"
   },
   {
     "i": 8,
     "rel": "competitive_alternative",
-    "anchor": "COSRX | Advanced Snail Peptide Eye Cream",
-    "cand": "Kiehl's Since 1851 | Age Defender Eye Repair Cream"
+    "anchor_brand": "COSRX",
+    "anchor_title": "Advanced Snail Peptide Eye Cream",
+    "candidate_brand": "Kiehl's Since 1851",
+    "candidate_title": "Age Defender Eye Repair Cream"
   },
   {
     "i": 9,
     "rel": "related_product",
-    "anchor": "The Ordinary | Natural Moisturizing Factors + HA",
-    "cand": "The Ordinary | Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Natural Moisturizing Factors + HA",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer"
   },
   {
     "i": 10,
     "rel": "related_product",
-    "anchor": "La Roche-Posay | Anthelios Melt-in Milk Body & Face Sunscreen Lotion SPF 100 - 3.0 oz",
-    "cand": "La Roche-Posay | Anthelios Glow Sunscreen SPF 35 - Bronze"
+    "anchor_brand": "La Roche-Posay",
+    "anchor_title": "Anthelios Melt-in Milk Body & Face Sunscreen Lotion SPF 100 - 3.0 oz",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios Glow Sunscreen SPF 35 - Bronze"
   },
   {
     "i": 11,
     "rel": "related_product",
-    "anchor": "Neutrogena | Collagen Bank Daily Face Moisturizer with SPF 30 - 2.0 oz",
-    "cand": "Neutrogena | Collagen Bank Vitamin C Face Serum Fragrance Free"
+    "anchor_brand": "Neutrogena",
+    "anchor_title": "Collagen Bank Daily Face Moisturizer with SPF 30 - 2.0 oz",
+    "candidate_brand": "Neutrogena",
+    "candidate_title": "Collagen Bank Vitamin C Face Serum Fragrance Free"
   },
   {
     "i": 12,
     "rel": "related_product",
-    "anchor": "rare beauty | Find Comfort Body & Hair Fragrance Mist Mini",
-    "cand": "Rare Beauty | Find Comfort Body & Hair Fragrance Mist - Awaken Confidence - Awaken C"
+    "anchor_brand": "rare beauty",
+    "anchor_title": "Find Comfort Body & Hair Fragrance Mist Mini",
+    "candidate_brand": "Rare Beauty",
+    "candidate_title": "Find Comfort Body & Hair Fragrance Mist - Awaken Confidence - Awaken C"
   },
   {
     "i": 13,
     "rel": "competitive_alternative",
-    "anchor": "Anua | Anua Heartleaf Succinic Moisture Cleansing Foam (150ml)",
-    "cand": "Isntree | [ISNTREE] Hyaluronic Acid Low-pH Cleansing Foam 150ml"
+    "anchor_brand": "Anua",
+    "anchor_title": "Anua Heartleaf Succinic Moisture Cleansing Foam (150ml)",
+    "candidate_brand": "Isntree",
+    "candidate_title": "[ISNTREE] Hyaluronic Acid Low-pH Cleansing Foam 150ml"
   },
   {
     "i": 14,
     "rel": "competitive_alternative",
-    "anchor": "Anua | Anua Heartleaf Succinic Moisture Cleansing Foam (150ml)",
-    "cand": "iUNIK | [iUNIK] Centella Bubble Cleansing Foam 150ml"
+    "anchor_brand": "Anua",
+    "anchor_title": "Anua Heartleaf Succinic Moisture Cleansing Foam (150ml)",
+    "candidate_brand": "iUNIK",
+    "candidate_title": "[iUNIK] Centella Bubble Cleansing Foam 150ml"
   },
   {
     "i": 15,
     "rel": "competitive_alternative",
-    "anchor": "Neutrogena | Clear Face Oil-Free Sunscreen SPF 50",
-    "cand": "Supergoop! | Every. Single. Face. Watery Lotion SPF 50 Sunscreen"
+    "anchor_brand": "Neutrogena",
+    "anchor_title": "Clear Face Oil-Free Sunscreen SPF 50",
+    "candidate_brand": "Supergoop!",
+    "candidate_title": "Every. Single. Face. Watery Lotion SPF 50 Sunscreen"
   },
   {
     "i": 16,
     "rel": "related_product",
-    "anchor": "La Roche-Posay | Anthelios Glow Sunscreen SPF 35 - Bronze",
-    "cand": "La Roche-Posay | Anthelios Mineral Tinted Ultra Light Face Sunscreen Fluid SPF 50"
+    "anchor_brand": "La Roche-Posay",
+    "anchor_title": "Anthelios Glow Sunscreen SPF 35 - Bronze",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios Mineral Tinted Ultra Light Face Sunscreen Fluid SPF 50"
   },
   {
     "i": 17,
     "rel": "related_product",
-    "anchor": "La Roche-Posay | Anthelios UV Control Sunscreen SPF 50 with Azelaic Acid",
-    "cand": "La Roche-Posay | Anthelios UV Air Daily Supercharged Serum Sunscreen SPF 50"
+    "anchor_brand": "La Roche-Posay",
+    "anchor_title": "Anthelios UV Control Sunscreen SPF 50 with Azelaic Acid",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios UV Air Daily Supercharged Serum Sunscreen SPF 50"
   },
   {
     "i": 18,
     "rel": "competitive_alternative",
-    "anchor": "Dermalogica | Awaken Peptide Eye Gel",
-    "cand": "COSRX | Advanced Snail Peptide Eye Cream"
+    "anchor_brand": "Dermalogica",
+    "anchor_title": "Awaken Peptide Eye Gel",
+    "candidate_brand": "COSRX",
+    "candidate_title": "Advanced Snail Peptide Eye Cream"
   },
   {
     "i": 19,
     "rel": "competitive_alternative",
-    "anchor": "CeraVe | Acne Control Gel Blemish Treatment",
-    "cand": "Murad | Biome-Balancing Clear & Prevent Acne Treatment Serum"
+    "anchor_brand": "CeraVe",
+    "anchor_title": "Acne Control Gel Blemish Treatment",
+    "candidate_brand": "Murad",
+    "candidate_title": "Biome-Balancing Clear & Prevent Acne Treatment Serum"
   },
   {
     "i": 20,
     "rel": "related_product",
-    "anchor": "The Ordinary | Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydra",
-    "cand": "the ordinary | Saccharomyces Ferment 30% Milky Toner"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydra",
+    "candidate_brand": "the ordinary",
+    "candidate_title": "Saccharomyces Ferment 30% Milky Toner"
   },
   {
     "i": 21,
     "rel": "related_product",
-    "anchor": "The Ordinary | Multi-Peptide + Copper Peptides 1% for Wrinkles and Skin Elasticity",
-    "cand": "The Ordinary | GF 15% Serum for Visible Skin Repair and Wrinkles"
+    "anchor_brand": "The Ordinary",
+    "anchor_title": "Multi-Peptide + Copper Peptides 1% for Wrinkles and Skin Elasticity",
+    "candidate_brand": "The Ordinary",
+    "candidate_title": "GF 15% Serum for Visible Skin Repair and Wrinkles"
   },
   {
     "i": 22,
     "rel": "related_product",
-    "anchor": "VELY VELY | [VELY VELY] Yuja C Sun Serum SPF 50+ PA++++ 30ml",
-    "cand": "VELY VELY | [VELY VELY] Bakuchiol Super Biome Lifting Ampoule 100ml"
+    "anchor_brand": "VELY VELY",
+    "anchor_title": "[VELY VELY] Yuja C Sun Serum SPF 50+ PA++++ 30ml",
+    "candidate_brand": "VELY VELY",
+    "candidate_title": "[VELY VELY] Bakuchiol Super Biome Lifting Ampoule 100ml"
   },
   {
     "i": 23,
     "rel": "related_product",
-    "anchor": "Clinique | All About Eyes Brightening Serum Concentrate with Retinoid",
-    "cand": "Clinique | All About Eyes Rich Eye Cream with Hyaluronic Acid - 0.5 oz"
+    "anchor_brand": "Clinique",
+    "anchor_title": "All About Eyes Brightening Serum Concentrate with Retinoid",
+    "candidate_brand": "Clinique",
+    "candidate_title": "All About Eyes Rich Eye Cream with Hyaluronic Acid - 0.5 oz"
   },
   {
     "i": 24,
     "rel": "related_product",
-    "anchor": "Sigma Beauty | Best-Selling Eye Brush Trio",
-    "cand": "Sigma Beauty | E55 Eye Shading Brush"
+    "anchor_brand": "Sigma Beauty",
+    "anchor_title": "Best-Selling Eye Brush Trio",
+    "candidate_brand": "Sigma Beauty",
+    "candidate_title": "E55 Eye Shading Brush"
   },
   {
     "i": 25,
     "rel": "competitive_alternative",
-    "anchor": "Tarte | BB Blur Tinted Moisturizer Broad Spectrum SPF 30 Sunscreen - Medium",
-    "cand": "La Roche-Posay | Anthelios Mineral Tinted Fluid Face Sunscreen SPF 40 - Medium/Deep"
+    "anchor_brand": "Tarte",
+    "anchor_title": "BB Blur Tinted Moisturizer Broad Spectrum SPF 30 Sunscreen - Medium",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios Mineral Tinted Fluid Face Sunscreen SPF 40 - Medium/Deep"
   },
   {
     "i": 26,
     "rel": "related_product",
-    "anchor": "Dior | Addict Lip Glow Butter - 101 Glazed Pink",
-    "cand": "Dior | Addict Lip Glow Lip Balm - 077 Candy"
+    "anchor_brand": "Dior",
+    "anchor_title": "Addict Lip Glow Butter - 101 Glazed Pink",
+    "candidate_brand": "Dior",
+    "candidate_title": "Addict Lip Glow Lip Balm - 077 Candy"
   },
   {
     "i": 27,
     "rel": "related_product",
-    "anchor": "La Roche-Posay | Anthelios Glow Sunscreen SPF 35 - Bronze",
-    "cand": "La Roche-Posay | Anthelios Mineral Ultra-Light Face Sunscreen Fluid SPF 50"
+    "anchor_brand": "La Roche-Posay",
+    "anchor_title": "Anthelios Glow Sunscreen SPF 35 - Bronze",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios Mineral Ultra-Light Face Sunscreen Fluid SPF 50"
   },
   {
     "i": 28,
     "rel": "competitive_alternative",
-    "anchor": "COSRX | Advanced Snail Peptide Eye Cream",
-    "cand": "Est\u00e9e Lauder | Advanced Night Repair Eye Lift + Sculpt Eye Cream"
+    "anchor_brand": "COSRX",
+    "anchor_title": "Advanced Snail Peptide Eye Cream",
+    "candidate_brand": "Estée Lauder",
+    "candidate_title": "Advanced Night Repair Eye Lift + Sculpt Eye Cream"
   },
   {
     "i": 29,
     "rel": "competitive_alternative",
-    "anchor": "Neutrogena | Clear Face Oil-Free Sunscreen SPF 50",
-    "cand": "La Roche-Posay | Anthelios Mineral Tinted Fluid Face Sunscreen SPF 40 - Medium/Deep"
+    "anchor_brand": "Neutrogena",
+    "anchor_title": "Clear Face Oil-Free Sunscreen SPF 50",
+    "candidate_brand": "La Roche-Posay",
+    "candidate_title": "Anthelios Mineral Tinted Fluid Face Sunscreen SPF 40 - Medium/Deep"
   },
   {
     "i": 30,
     "rel": "competitive_alternative",
-    "anchor": "Round Lab | [ROUND LAB] Birch Juice Moisturizing Toner 300ml",
-    "cand": "Isntree | [ISNTREE] Hyaluronic Acid Toner 200ml | 400ml"
+    "anchor_brand": "Round Lab",
+    "anchor_title": "[ROUND LAB] Birch Juice Moisturizing Toner 300ml",
+    "candidate_brand": "Isntree",
+    "candidate_title": "[ISNTREE] Hyaluronic Acid Toner 200ml | 400ml"
   }
 ]

@@ -11,7 +11,7 @@ const { buildSyncRoutineSteps, parseArgs: syncArgs, runSyncRoutine } = require('
 const REASON = 'related_product_same_product_across_listings_or_sizes';
 const cutoff = '2026-09-01T00:00:00Z';
 function edge(anchor, candidate, state = 'ai_approved', relation = 'related_product') {
-  const snapshot = (title) => ({ brand: title.split(' | ')[0], title });
+  const snapshot = (value) => { const [brand, ...parts] = value.split(' | '); return { brand, title: parts.join(' | ') }; };
   return { anchor_type: 'product', anchor_ref: 'product:a', candidate_product_ref: 'product:b',
     anchor_snapshot: snapshot(anchor), candidate_snapshot: snapshot(candidate), label_state: state, relation_type: relation };
 }
@@ -19,8 +19,10 @@ let dirs = [];
 const temp = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-truth-')); dirs.push(dir); return dir; };
 afterEach(() => { jest.restoreAllMocks(); dirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })); dirs = []; });
 
-test.each(samples)('sample $i retains only the two known listing defects', ({ i, rel, anchor, cand }) => {
-  const suppressed = reasons(edge(anchor, cand, 'ai_approved', rel));
+const display = (row, side) => `${row[`${side}_brand`]} | ${row[`${side}_title`]}`;
+test.each(samples)('sample $i retains only the two known listing defects', (row) => {
+  const { i, rel } = row;
+  const suppressed = reasons(edge(display(row, 'anchor'), display(row, 'candidate'), 'ai_approved', rel));
   if ([12, 20].includes(i)) expect(suppressed).toContain(REASON);
   else expect(suppressed).toEqual([]);
 });
@@ -36,10 +38,10 @@ test.each([
   ['Test | Daily Face Sunscreen SPF 30', 'Test | Daily Face Sunscreen SPF 50', false],
 ])('listing normalization %s vs %s', (a, b, suppressed) => expect(reasons(edge(a, b)).includes(REASON)).toBe(suppressed));
 test('same-product reason is AI-only, missing brands and other relations stay untouched', () => {
-  expect(reasons(edge(samples[19].anchor, samples[19].cand, 'human_approved'))).toEqual([]);
-  const unknown = edge(samples[19].anchor, samples[19].cand); unknown.anchor_snapshot.brand = ''; unknown.candidate_snapshot.brand = '';
+  expect(reasons(edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'), 'human_approved'))).toEqual([]);
+  const unknown = edge(display(samples[19], 'anchor'), display(samples[19], 'candidate')); unknown.anchor_snapshot.brand = ''; unknown.candidate_snapshot.brand = '';
   expect(reasons(unknown)).toEqual([]);
-  expect(reasons(edge(samples[19].anchor, samples[19].cand, 'ai_approved', 'competitive_alternative'))).toEqual([]);
+  expect(reasons(edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'), 'ai_approved', 'competitive_alternative'))).toEqual([]);
 });
 test('confidence floor clamps and defence in depth refuses without a database write', async () => {
   expect(reviewArgs(['--cutoff', cutoff]).minApprovalConfidence).toBe(0.7);
@@ -86,7 +88,7 @@ test('missing review artifact fails closed', async () => {
 });
 test('progress excludes hidden labels and counts new anchors, not more edges on old anchors', async () => {
   const safe = edge('Test | Hydrating Face Cream', 'Test | Gentle Face Cleanser');
-  const before = await readServingSnapshot({ queryFn: async () => ({ rows: [safe, edge(samples[19].anchor, samples[19].cand)] }) });
+  const before = await readServingSnapshot({ queryFn: async () => ({ rows: [safe, edge(display(samples[19], 'anchor'), display(samples[19], 'candidate'))] }) });
   const after = await readServingSnapshot({ queryFn: async () => ({ rows: [safe, { ...safe, candidate_product_ref: 'product:c' }, { ...safe, anchor_ref: 'product:new' }] }) });
   expect(servingProgress(before, after)).toEqual({ served_edges_before: 1, served_edges_after: 3, distinct_anchors_served_before: 1, distinct_anchors_served_after: 2, anchors_newly_covered: 1 });
 });
@@ -129,7 +131,7 @@ test('all schema-invalid LLM results fail the routine without opening the transp
 });
 test('the quarantine command can target the new reason by name', () => {
   const { selectUnsafeRows } = require('../../scripts/quarantine-relationship-graph-serving-unsafe');
-  const row = edge(samples[19].anchor,samples[19].cand);
+  const row = edge(display(samples[19], 'anchor'),display(samples[19], 'candidate'));
   const result = selectUnsafeRows([row],{reasons:[REASON]});
   expect(result.selected).toHaveLength(1);
 });
@@ -148,4 +150,70 @@ test('progress query failure after work fails the run and records the failure', 
   const ledgerRecorder=jest.fn(async(summary)=>{expect(summary).toMatchObject({ok:false,failed_step:'serving_progress',served_edges_after:null});return{};});
   await expect(runSyncRoutine(options,{runner:async()=>({exitCode:0}),ledgerRecorder,progressReader:async()=>{if(reads++)throw new Error('snapshot unavailable');return {servedEdges:1,anchors:new Set(['old'])};}})).rejects.toMatchObject({summary:{serving_progress_error:'snapshot unavailable'}});
   expect(ledgerRecorder).toHaveBeenCalledTimes(1);
+});
+
+const prodPairs = require('../fixtures/relgraph_prod_29_titles.json');
+test.each(prodPairs)('real production pair $i matches the documented decision', (row) => {
+  for (const [a, c] of [['anchor', 'candidate'], ['candidate', 'anchor']]) {
+    expect(reasons(edge(display(row, a), display(row, c))).includes(REASON)).toBe(row.suppressed);
+  }
+});
+const refusePairs = [
+  ['EDP for Women', 'EDP for Men'], ['Shampoo for Dry Hair', 'Shampoo for Oily Hair'],
+  ['Cream for Body', 'Cream for Face'], ['Cream for Dry Skin', 'Cream for Kids'],
+  ['Rouge Artist For Ever Matte', 'Rouge Artist For Ever'], ['Rouge Artist For Ever Satin', 'Rouge Artist For Ever'],
+  ['Rouge Artist For Ever Matte', 'Rouge Artist For Ever Satin'], ['Soft Pinch', 'Soft Pinch Matte'],
+  ['Sunscreen SPF 30', 'Sunscreen SPF 50'], ['Retinol 0.2%', 'Retinol 0.5%'],
+  ['Cream Night', 'Cream Day'], ['Cream Rich', 'Cream Light'],
+  ['Lip Sleeping Mask, Hydrating Berry', 'Lip Sleeping Mask, Vanilla'],
+  ['Cream, Hydrating Berry', 'Cream, Hydrating Vanilla'],
+];
+test.each(refusePairs)('refuses ambiguous product-name tails: %s / %s', (a, b) => {
+  expect(reasons(edge(`Test | ${a}`, `Test | ${b}`))).not.toContain(REASON);
+});
+test.each(['Mini', 'Travel Size', 'Refill', '30ml', '1 fl. oz', 'for Gentle Hydration', ', Hydrating Cream', ' - A Completely New Description'])('accepts an exact product plus listing tail: %s', (tail) => {
+  expect(reasons(edge('Test | Barrier Cream', `Test | Barrier Cream ${tail}`.replace(' ,', ',')))).toContain(REASON);
+});
+test('the gate excludes guard-blocked and low-confidence decisions from its denominator', () => {
+  const metrics = reviewMetrics({ reviewed_count: 40, guard_blocked_count: 10, low_confidence_count: 10, review_error_count: 6 });
+  expect(metrics).toMatchObject({ review_error_denominator: 20, review_error_rate: 0.3, low_confidence_count: 10 });
+  expect(reviewErrorGateExceeded(metrics)).toBe(true);
+  expect(reviewMetrics({ reviewed_count: 20, guard_blocked_count: 20 }).review_error_rate).toBe(0);
+});
+test('a failed review gate audits approvals before reporting the review failure', async () => {
+  const options = parseArgs(['--cutoff', cutoff, '--skip-build', '--skip-validation', '--out-dir', temp()]);
+  const called = [];
+  const runner = async (_command, args) => {
+    const review = args[0].endsWith('review-relationship-candidate-labels.js');
+    called.push(review ? 'review' : 'audit');
+    fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ summary: review
+      ? { reviewed_count: 40, guard_blocked_count: 10, low_confidence_count: 10, review_error_count: 6 }
+      : { suppressed_count: 0 } }));
+    return { exitCode: 0 };
+  };
+  await expect(runRoutineJob(options, { runner, progressReader: async () => ({ servedEdges: 1, anchors: new Set(['a']) }) }))
+    .rejects.toMatchObject({ summary: { failed_step: 'ai_review', review_error_rate: 0.3,
+      steps: [expect.objectContaining({ id: 'ai_review', status: 'failed' }), expect.objectContaining({ id: 'serving_guard_audit', status: 'passed' })] } });
+  expect(called).toEqual(['review', 'audit']);
+});
+const { scanServingLabels } = require('../../src/services/relationshipGraphServingScan');
+test('paged scan advances by id, retains only requested facts and retries the same page', async () => {
+  let failed = false;
+  const queryFn = jest.fn(async (_sql, params) => {
+    if (params[1] === 'b' && !failed) { failed = true; throw Object.assign(new Error('reset'), { code: 'ECONNRESET' }); }
+    return { rows: params[1] ? [{ ...edge('Test | Cream', 'Test | Cleanser'), id: 'c' }]
+      : [{ ...edge('Test | Cream', 'Test | Cream Mini'), id: 'a' }, { ...edge('Test | Cream', 'Test | Cleanser'), id: 'b' }] };
+  });
+  const closePoolFn = jest.fn();
+  expect(await scanServingLabels({ queryFn, batchSize: 2, collectAnchors: true, collectSuppressedIds: true, closePoolFn, queryRetryBackoffMs: 0 }))
+    .toEqual({ servedEdges: 2, suppressedCount: 1, suppressedIds: ['a'], anchors: new Set(['product:product:a']) });
+  expect(queryFn.mock.calls.map(([, params]) => params)).toEqual([['US', null, 2], ['US', 'b', 2], ['US', 'b', 2]]);
+  expect(closePoolFn).toHaveBeenCalledTimes(1);
+});
+test('paged scan fails on a repeated cursor and does not retry permanent errors', async () => {
+  await expect(scanServingLabels({ batchSize: 1, queryFn: async () => ({ rows: [{ ...edge('Test | Cream', 'Test | Cleanser'), id: 'same' }] }) }))
+    .rejects.toThrow('cursor_did_not_advance');
+  const queryFn = jest.fn(async () => { throw Object.assign(new Error('permission denied'), { code: '42501' }); });
+  await expect(scanServingLabels({ queryFn })).rejects.toThrow('permission denied');
+  expect(queryFn).toHaveBeenCalledTimes(1);
 });
