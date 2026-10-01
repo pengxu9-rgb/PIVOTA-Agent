@@ -81,7 +81,7 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
       VALUES ($1,'product',$2,'product:candidate','related_product',$3,$4,now(),
         now() + $5::interval,now() - $6::interval,now() - $6::interval)`, [ref, ref, market, state, expires ? '45 days' : '-1 day', recent ? '1 day' : '30 days']);
   }
-  test.each(['INSERT', 'SELECT'])('job role preflight rejects a role with only %s', async (privilege) => {
+  test.each(['INSERT', 'SELECT', 'INSERT, SELECT'])('job role preflight rejects a role with only %s', async (privilege) => {
     const { requireAnchorAttemptsTable } = require('../../src/auroraBff/relationshipGraphCoverage');
     await client.query('CREATE ROLE relgraph_priority_round5_job');
     try {
@@ -94,9 +94,11 @@ postgresDescribe('uncovered-anchor semantics on throwaway local Postgres', () =>
       await expect(requireAnchorAttemptsTable((sql, params) => client.query(sql, params)))
         .rejects.toMatchObject({ code: 'RELGRAPH_ANCHOR_ATTEMPTS_PRIVILEGES' });
       await client.query('RESET ROLE');
-      await client.query('GRANT INSERT, SELECT ON relationship_graph_anchor_attempts TO relgraph_priority_round5_job');
+      await client.query('GRANT INSERT, SELECT, UPDATE ON relationship_graph_anchor_attempts TO relgraph_priority_round5_job');
       await client.query('SET ROLE relgraph_priority_round5_job');
       await expect(requireAnchorAttemptsTable((sql, params) => client.query(sql, params))).resolves.toBeUndefined();
+      for (let i = 0; i < 2; i++) await recordAnchorAttempts({ anchors: [{ product_id: 'role_fixture' }], queryFn: (sql, params) => client.query(sql, params) });
+      expect((await client.query("SELECT count(*)::int AS n FROM relationship_graph_anchor_attempts WHERE anchor_ref='product:role_fixture'")).rows[0].n).toBe(1);
     } finally {
       await client.query('RESET ROLE');
       await client.query('REVOKE ALL ON relationship_graph_anchor_attempts FROM relgraph_priority_round5_job');
