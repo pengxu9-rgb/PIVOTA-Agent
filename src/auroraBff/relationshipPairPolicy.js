@@ -9,7 +9,8 @@ function brand(snapshot = {}) {
   return text(typeof raw === 'object' ? raw.name : raw).toLowerCase();
 }
 function normalizedTitle(snapshot = {}) {
-  return title(snapshot).normalize('NFKC').toLowerCase()
+  return title(snapshot).normalize('NFKC')
+    .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').toLowerCase()
     .replace(/[\u2010-\u2015]/g, '-')
     .replace(/\s+/g, ' ').trim();
 }
@@ -43,7 +44,7 @@ function optionRole(snapshot = {}) {
     return target ? `${target}_${kind}` : kind;
   }
   // Product words can occur after punctuation; those tails are roles, not options.
-  if (/\b(?:eyelashes|false lashes?|cluster lashes?|lash clusters|lash extensions)\b/.test(value)) return 'lashes';
+  if (/\b(?:eyelashes|false[ -]?lashes?|(?:strip|individual|cluster)[ -]?lashes?|lash[ -]?(?:clusters|extensions))\b/.test(value)) return 'lashes';
   if (/\b(?:press[ -]?on nails|fake.*nails)\b/.test(value)) return 'nails';
   if (/\blash(?:es)?\b/.test(value) && /\b(?:glue|adhesive)\b/.test(value) && /\bremover\b/.test(value)) return 'lash_glue_remover';
   // Cleansing is a routine job, while cream is a form: a cleansing cream is not
@@ -90,22 +91,56 @@ function variantCore(snapshot = {}) {
       !/^(?:shade|colou?r|style|scent|flavou?r)\s*:/i.test(text(snapshot.variant_title || snapshot.variant_detail_label))) return value;
   return [parts[0], ...productParts].join(' | ').replace(/\s+/g, ' ').trim();
 }
-function attachmentMarkers(snapshot = {}) {
-  if (!['lashes','nails'].includes(optionRole(snapshot))) return [];
-  const value = normalizedTitle(snapshot);
-  const modes = [];
-  if (/\bmagnetic\b/.test(value)) modes.push('attachment:magnetic');
-  const selfAdhesive = /\b(?:no[ -]?glue|glue[ -]?free|self[ -]?adhesive|pre[ -]?glued|pre[ -]?applied adhesive|adhesive tabs|stick[ -]?on)\b/.test(value);
-  if (selfAdhesive) modes.push('attachment:self_adhesive');
-  if (/\b(?:glue[ -]?(?:on|required)|requires? (?:nail |lash )?glue|with (?:nail |lash )?glue)\b/.test(value)) modes.push('attachment:glue_required');
-  if (!selfAdhesive && /\badhesive\b/.test(value)) modes.push('attachment:adhesive_unspecified');
-  return modes;
+function decorativeStructure(snapshot = {}) {
+  const role = optionRole(snapshot);
+  if (!['lashes','nails'].includes(role)) return {markers:[],unresolved:false};
+  let remaining = normalizedTitle(snapshot);
+  const markers = [];
+  const consume = (pattern, marker) => {
+    remaining = remaining.replace(pattern, (match) => {
+      const values = typeof marker === 'function' ? marker(match) : [marker];
+      markers.push(...values);
+      return ' ';
+    });
+  };
+  // Resolve negatives before positives, so 'non-magnetic' is not magnetic and
+  // 'no glue required' cannot simultaneously require glue. Synonyms share modes.
+  consume(/\b(?:non[ -]?magnetic|(?:not|no)[ -]?magnetic|without[ -]?magnets?)\b/g,'attachment:non_magnetic');
+  consume(/\b(?:magnetic|magnets?)\b/g,'attachment:magnetic');
+  consume(/\b(?:no[ -]?glue(?:[ -]?(?:is[ -]?)?(?:required|needed|necessary))?|(?:does[ -]?not|doesn['’]?t|not)[ -]?(?:require|need)[ -]?(?:(?:lash|nail)[ -]?)?glue|without[ -]?(?:(?:lash|nail)[ -]?)?glue|glue[ -]?(?:is[ -]?)?not[ -]?(?:required|needed|necessary)|glue[ -]?free|glueless|self[ -]?adhesive|pre[ -]?glued|pre[ -]?applied[ -]?adhesive|adhesive[ -]?tabs|stick[ -]?on)\b/g,'attachment:self_adhesive');
+  consume(/\b(?:glue[ -]?(?:on|required|needed)|requires?[ -]?(?:(?:nail|lash)[ -]?)?glue|with[ -]?(?:(?:nail|lash)[ -]?)?glue)\b/g,'attachment:glue_required');
+  consume(/\badhesive\b/g,'attachment:adhesive_unspecified');
+  if (role === 'lashes') {
+    consume(/\b(?:no|non|not|without)[ -]?(?:strip|individual|cluster)(?:[ -]?lashes?)?\b/g, (match) => [`construction:non_${match.match(/strip|individual|cluster/)[0]}`]);
+    consume(/\b(?:(?:no|non|not|without)[ -]?(?:human[ -]?hair|mink|silk|synthetic(?:[ -]?fib(?:er|re)s?)?)|(?:human[ -]?hair|mink|silk|synthetic(?:[ -]?fib(?:er|re)s?)?)[ -]?free)\b/g, (match) => [`material:excluded_${match.match(/human[ -]?hair|mink|silk|synthetic/)[0].replace(/[ -]/g,'_')}`]);
+    for (const [kind,pattern] of [
+      ['strip',/\bstrip(?:[ -]?lashes?)?\b/g],
+      ['individual',/\bindividual(?:[ -]?lashes?)?\b/g],
+      ['cluster',/\b(?:cluster(?:[ -]?lashes?)?|lash[ -]?clusters?)\b/g],
+      ['extension',/\bextensions?\b/g],
+    ]) consume(pattern,`construction:${kind}`);
+    consume(/\b(?:synthetic(?:[ -]?fib(?:er|re)s?)?|artificial(?:[ -]?fib(?:er|re)s?)?|faux[ -]?(?:mink|silk))\b/g,'material:synthetic');
+    consume(/\bhuman[ -]?hair\b/g,'material:human_hair');
+    consume(/\bmink\b/g,'material:mink');
+    consume(/\bsilk\b/g,'material:silk');
+  }
+  if (role === 'nails') {
+    consume(/\b(?:no[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing))(?:[ -]?(?:is[ -]?)?(?:required|needed|necessary))?|(?:does[ -]?not|doesn['’]?t|not)[ -]?(?:need|require)[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing))|(?:lamp|light)[ -]?free|air[ -]?dry(?:ing)?)\b/g,'curing:no_light');
+    consume(/\b(?:(?:(?:uv|led)[ -]?)?cur(?:e|ing)[ -]?(?:required|needed)|(?:uv|led)[ -]?(?:lamp|light)(?:[ -]?(?:required|needed))?|(?:requires?|needs?)[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing)))\b/g, (match) => {
+      const light = match.match(/uv|led/)?.[0];
+      return light ? ['curing:light_required',`curing_light:${light}`] : ['curing:required_unspecified'];
+    });
+  }
+  // Unknown functional declarations must not vanish into the ornamental tail.
+  // Fail variant identity closed until that constraint can be classified.
+  const unresolved = /\b(?:attachment|application|adhesion|adhesive|glue|magnetic|fib(?:er|re)s?|material|hair|synthetic|mink|silk|strip|individual|cluster|curing|cure|lamp|uv|led|requires?|required|needed|technology|system)\b/.test(remaining);
+  return {markers:[...new Set(markers)].sort(),unresolved};
 }
 function formulaMarkers(snapshot = {}) {
   const value = normalizedTitle(snapshot);
   const markers = value.match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || [];
   // Attachment is a shopper constraint, independently of decorative style names.
-  markers.push(...attachmentMarkers(snapshot));
+  markers.push(...decorativeStructure(snapshot).markers);
   // Finish is meaningful for complexion/lip products. A lash collection's named
   // 'Glow Up' style remains an option, not a different cosmetic formulation.
   if (['powder', 'setting_powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
@@ -126,11 +161,13 @@ function isSameFamilyVariant(anchor = {}, candidate = {}) {
   if (!aBrand || aBrand !== brand(candidate)) return false;
   const aTitle = normalizedTitle(anchor);
   const bTitle = normalizedTitle(candidate);
-  if (!aTitle || !bTitle || aTitle === bTitle) return false;
+  if (!aTitle || !bTitle || title(anchor) === title(candidate)) return false;
   const aRole = optionRole(anchor); const bRole = optionRole(candidate);
   // An option marker or shared line cannot establish variant identity when the
   // actual product jobs are unresolved. Unknown/unknown is not a matching job.
-  if (!aRole || !bRole || aRole !== bRole || formulaMarkers(anchor) !== formulaMarkers(candidate)) return false;
+  if (!aRole || !bRole || aRole !== bRole) return false;
+  if (decorativeStructure(anchor).unresolved || decorativeStructure(candidate).unresolved) return false;
+  if (formulaMarkers(anchor) !== formulaMarkers(candidate)) return false;
   const aCore = variantCore(anchor);
   const bCore = variantCore(candidate);
   // An explicit shared variant parent is useful only with the same product core;
@@ -145,4 +182,4 @@ function sharedSpecificNameWords(anchor = {}, candidate = {}) {
   return [...a].filter((word) => b.has(word));
 }
 
-module.exports = { isSameFamilyVariant, variantCore, brand, title, sharedSpecificNameWords, optionRole };
+module.exports = { isSameFamilyVariant, variantCore, brand, title, sharedSpecificNameWords, optionRole, decorativeStructure };

@@ -498,3 +498,65 @@ test.each([
   expect(assertRetainedPair(a,b).relation_type).toBe('competitive_alternative');
   expect(validateRecommendationDecision(edge(a,b,'competitive_alternative'),decision(a,b)).verdict).toBe('approve');
 });
+
+
+const structuralLashDifferences = [
+  ['Strip','Individual'], ['Strip Lashes','Individual Lashes'], ['StripLashes','IndividualLashes'],
+  ['Strip','Cluster'], ['Human Hair','Synthetic Fibers'], ['HumanHair','SyntheticFibers'],
+  ['Magnetic','Non-Magnetic'], ['Magnetic','Not Magnetic'],
+  ['Glue Required','Does Not Require Glue'], ['GlueRequired','DoesNotRequireGlue'],
+];
+const structuralNailDifferences = [
+  ['UV Cure Required','No Lamp Needed'], ['UVCureRequired','NoLampNeeded'],
+  ['LED Lamp Required','No LED Lamp Required'], ['Glue Required','No Glue Required'],
+];
+const structurePairs = [
+  ...structuralLashDifferences.map(([a,b])=>['Salon Collection False Eyelashes','false eyelashes',a,b]),
+  ...structuralNailDifferences.map(([a,b])=>['Salon Collection Press On Nails','press-on-nails',a,b]),
+];
+test.each(structurePairs)('decorative tails retain structure and negative requirements: %s %s %s/%s', (name,category,aMode,bMode) => {
+  const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
+  assertRetainedPair(a,b);
+});
+
+test.each(['false eyelashes','press-on-nails'].flatMap(category=>[
+  [category,'No Glue','No Glue Required'], [category,'No Glue','Does Not Require Glue'],
+  [category,'No Glue Required','DoesNotRequireGlue'], [category,'Magnetic','Magnetic, Rose'],
+]))('equivalent resolved requirements still reject same-product options: %s %s/%s', (category,aMode,bMode) => {
+  const name=category==='false eyelashes'?'Studio False Eyelashes':'Studio Press On Nails';
+  const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
+  expect(isSameFamilyVariant(a,b)).toBe(true);
+  for(const relation of ['related_product','competitive_alternative']) expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toContain(`${relation}_same_family_variant`);
+  expect(buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9},nowIso:NOW}).edge).toBeNull();
+});
+
+test.each([
+  ['False Eyelashes','false eyelashes','New Bonding System','Midnight'],
+  ['False Eyelashes','false eyelashes','Bamboo Fiber','Synthetic Fibers'],
+  ['Press On Nails','press-on-nails','Heat Curing Technology','Rose'],
+])('unresolved functional tail evidence never disappears as an ornamental style: %s %s/%s', (role,category,aMode,bMode) => {
+  assertRetainedPair(snapshot('House',`Studio ${role} - ${aMode}`,category),snapshot('House',`Studio ${role} - ${bMode}`,category));
+});
+
+
+test.each([
+  ['false eyelashes','No Glue','Glue Not Required'],
+  ['false eyelashes','Non-Magnetic','Without Magnets'],
+  ['press-on-nails','UV Cure Required','UVCureRequired'],
+  ['press-on-nails','No Lamp Needed','DoesNotRequireUVLamp'],
+])('structural synonyms and negations normalize consistently: %s %s/%s', (category,aMode,bMode) => {
+  const name=category==='false eyelashes'?'Studio False Eyelashes':'Studio Press On Nails';
+  const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
+  expect(isSameFamilyVariant(a,b)).toBe(true);
+  for(const relation of ['related_product','competitive_alternative']) expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toContain(`${relation}_same_family_variant`);
+  expect(buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9},nowIso:NOW}).edge).toBeNull();
+});
+
+test.each([
+  ['False Eyelashes','false eyelashes','Human Hair','Human Hair Free'],
+  ['False Eyelashes','false eyelashes','Strip','Not Strip'],
+  ['False Eyelashes','false eyelashes','BambooFiber','SyntheticFibers'],
+  ['Press On Nails','press-on-nails','HeatCuringTechnology','Rose'],
+])('negative and unresolved structural declarations remain separate: %s %s/%s', (role,category,aMode,bMode) => {
+  assertRetainedPair(snapshot('House',`Studio ${role} - ${aMode}`,category),snapshot('House',`Studio ${role} - ${bMode}`,category));
+});
