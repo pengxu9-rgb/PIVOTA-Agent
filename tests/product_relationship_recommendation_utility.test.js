@@ -391,3 +391,78 @@ test.each([
   const built=buildEdgeForCandidate({anchor:a,candidate,nowIso:NOW});
   expect(built.errors).toEqual([]);expect(built.edge.relation_type).toBe('related_product');
 });
+
+
+const assertRetainedPair = (a,b) => {
+  expect(isSameFamilyVariant(a,b)).toBe(false);
+  for(const relation of ['related_product','competitive_alternative']) {
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
+  }
+  const candidate={...b,similarity_score:0.95,category_use_case_match:0.9,source_refs:[{type:'catalog_products'}]};
+  const built=buildEdgeForCandidate({anchor:a,candidate,nowIso:NOW});
+  expect(built.errors).toEqual([]);expect(built.edge).not.toBeNull();
+  expect(inferRelationship(a,b,candidate).relation_type).not.toBe('rejected');
+  return built.edge;
+};
+
+test('powder puff is an application tool, not the face powder it applies', () => {
+  const a=snapshot('House','HD Skin, Face Powder','face powder');
+  const b=snapshot('House','HD Skin, Face Powder Puff','powder puff');
+  expect(optionRole(a)).toBe('powder');expect(optionRole(b)).toBe('powder_puff');
+  expect(assertRetainedPair(a,b).relation_type).toBe('related_product');
+});
+
+const distinctCosmeticJobs = [
+  ['Highlighter','highlighter'], ['Eyeliner','eyeliner'], ['Primer','primer'],
+  ['Eyeshadow','eyeshadow'], ['Lip Tint','lip_tint'], ['Lip Oil','lip_oil'],
+];
+const cosmeticJobPairs = distinctCosmeticJobs.flatMap((a,index)=>distinctCosmeticJobs.slice(index+1).map(b=>[a,b]));
+test.each(cosmeticJobPairs)('shared collection and option numbers do not merge distinct jobs: %j/%j', ([aName,aRole],[bName,bRole]) => {
+  const a=snapshot('House',`Studio Collection, ${aName} #01`,'makeup');
+  const b=snapshot('House',`Studio Collection, ${bName} #01`,'makeup');
+  expect(optionRole(a)).toBe(aRole);expect(optionRole(b)).toBe(bRole);
+  expect(assertRetainedPair(a,b).relation_type).toBe('related_product');
+});
+
+test('unknown product roles cannot establish variants from matching option markers', () => {
+  const a=snapshot('House','Studio Collection, Unresolved Job A #01','beauty');
+  const b=snapshot('House','Studio Collection, Unresolved Job B #01','beauty');
+  expect(optionRole(a)).toBe('');expect(optionRole(b)).toBe('');
+  assertRetainedPair(a,b);
+});
+
+const substantiveFormulaNames = [
+  ['Cream Blush','Powder Blush','blush'],
+  ['Liquid Foundation','Powder Foundation','foundation'],
+  ['Hydrating Foundation','Longwear Foundation','foundation'],
+];
+const formulaTailPairs = substantiveFormulaNames.flatMap(([a,b,category]) => [', ',' - ',' | '].map(separator=>[a,b,category,separator]));
+test.each(formulaTailPairs)('collection punctuation preserves substantive format/formula names: %s/%s (%s,%s)', (aName,bName,category,separator) => {
+  const a=snapshot('House',`Studio Collection${separator}${aName}`,category);
+  const b=snapshot('House',`Studio Collection${separator}${bName}`,category);
+  expect(optionRole(a)).toBe(optionRole(b));
+  assertRetainedPair(a,b);
+});
+
+test.each(['Studio Collection, Cream Blush','Studio Collection - Liquid Foundation','Studio Collection | Hydrating Foundation'])('same actual product with different explicit shades still rejects: %s', (name) => {
+  const category=name.includes('Blush')?'blush':'foundation';
+  const a=snapshot('House',`${name} #01`,category);const b=snapshot('House',`${name} #02`,category);
+  expect(isSameFamilyVariant(a,b)).toBe(true);
+  expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b))).toContain('related_product_same_family_variant');
+  expect(buildEdgeForCandidate({anchor:a,candidate:{...b,similarity_score:0.95,category_use_case_match:0.9},nowIso:NOW}).edge).toBeNull();
+});
+
+test('cleansing cream and moisturizer retain distinct routine jobs through approval', async () => {
+  const a=snapshot('House','Herbal Cleansing Cream','cleanser');const b=snapshot('House','Herbal Face Cream','moisturizer');
+  expect(optionRole(a)).toBe('cleanser');expect(optionRole(b)).toBe('cream');
+  expect(assertRetainedPair(a,b).relation_type).toBe('related_product');
+  const row=edge(a,b);const approved=decision(a,b,'complement');
+  expect(validateRecommendationDecision(row,approved).verdict).toBe('approve');
+  const queryFn=jest.fn(async()=>({rows:[{id:row.id,new_label_state:'ai_approved'}]}));
+  await applyApproval(row,approved,queryFn);expect(queryFn).toHaveBeenCalledTimes(1);
+});
+
+
+test.each([['Foundation Brushes','foundation_brush'],['Blush Sponges','blush_sponge'],['Lip Gloss Applicators','lip_gloss_applicator'],['Face Powder Puffs','powder_puff']])('plural application tools preserve their job: %s', (name,role) => {
+  expect(optionRole(snapshot('House',name,'tools'))).toBe(role);
+});
