@@ -20,8 +20,9 @@ and cached fallback are never freshness proof. The stale tier is 48 hours, match
 existing backend origin-refresh queue. Market partition and native currency are checked
 separately because an SGD seed can be stored in US. Currency is never relabelled or converted.
 An explicit seed attachment must match the exact catalog product; a conflicting attachment
-cannot lend its freshness to another listing. Unattached seeds can bind only the legacy
-`external_seed` identity namespace or a globally external `ext_` ID. Reused native IDs such as
+cannot lend its freshness to another listing. Unattached seeds can bind only the stable
+`platform='external_seed'` source lane or a globally external `ext_` ID. This survives observed
+seller rekeying; a seller's name alone cannot establish the lane. Reused native IDs such as
 store-local numeric IDs are insufficient origin proof or refresh ownership.
 An origin-less/native offer is unknown by this audit; its refresh remains owned by its native
 merchant pipeline and this external refresh does not pretend to check it.

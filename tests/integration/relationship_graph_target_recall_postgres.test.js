@@ -118,16 +118,19 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
     expect((await load()).products).toHaveLength(0);
   });
   test.each([
-    ['conflicting_attachment', 'real', 'ext_shared', 'other_listing', 'active', false],
-    ['unattached_native_shared_id', 'real', '123', null, 'active', false],
-    ['unknown_seed_status', 'external_seed', 'legacy_external', null, null, false],
-    ['legacy_external_namespace', 'external_seed', 'legacy_external', null, 'active', true],
-    ['global_external_id', 'real', 'ext_shared', null, 'active', true],
-    ['exact_native_attachment', 'real', '123', 'seed_bound', 'active', true],
-  ])('seed market evidence respects exact listing ownership (%s)', async (_name, merchant, sourceId, attachment, status, allowed) => {
+    ['conflicting_attachment', 'real', 'shopify', 'ext_shared', 'other_listing', 'active', false],
+    ['external_lane_conflicting_attachment', 'observed_source', 'external_seed', '123', 'other_listing', 'active', false],
+    ['unattached_native_shared_id', 'observed_source', 'shopify', '123', null, 'active', false],
+    ['unknown_seed_status', 'observed_source', 'external_seed', 'legacy_external', null, null, false],
+    ['external_lane_after_seller_rekey', 'observed_source', 'external_seed', '123', null, 'active', true],
+    ['legacy_seller_does_not_make_native_lane_external', 'external_seed', 'shopify', '123', null, 'active', false],
+    ['global_external_id', 'real', 'shopify', 'ext_shared', null, 'active', true],
+    ['exact_native_attachment', 'real', 'shopify', '123', 'seed_bound', 'active', true],
+  ])('seed market evidence respects exact listing ownership (%s)', async (_name, merchant, platform, sourceId, attachment, status, allowed) => {
     await product('seed_bound');
-    await client.query("UPDATE catalog_products SET recall_market=NULL,merchant_id=$1,source_product_id=$2 WHERE product_key='seed_bound'",
-      [merchant, sourceId]);
+    await client.query("INSERT INTO catalog_merchants VALUES ('observed_source','observed') ON CONFLICT (merchant_id) DO UPDATE SET status='observed'");
+    await client.query("UPDATE catalog_products SET recall_market=NULL,merchant_id=$1,platform=$2,source_product_id=$3 WHERE product_key='seed_bound'",
+      [merchant, platform, sourceId]);
     await client.query("INSERT INTO external_product_seeds VALUES ('seed',$1,$2,$3,'US')", [sourceId, attachment, status]);
     const loaded = await load();
     expect(loaded.products.map((item) => item.product_key)).toEqual(allowed ? ['seed_bound'] : []);

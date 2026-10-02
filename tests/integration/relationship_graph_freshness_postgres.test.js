@@ -112,19 +112,20 @@ suite('recommendation freshness planner on PostgreSQL', () => {
   });
 
   test.each([
-    ['native conflicting attachment', 'store_a', '123', 'other_key', false],
-    ['external conflicting attachment', 'external_seed', 'ext_shared', 'other_key', false],
-    ['unattached recycled native ID', 'store_a', '123', null, false],
-    ['exact attached native ID', 'store_a', '123', 'chosen', true],
-    ['legacy external namespace', 'external_seed', '123', null, true],
-    ['unattached globally external ID', 'store_a', 'ext_shared', null, true],
-  ])('%s uses exact seed ownership for cohort, freshness and repairability', async (_case, merchant, source, attachment, bound) => {
+    ['native conflicting attachment', 'store_a', 'shopify', '123', 'other_key', false],
+    ['external conflicting attachment', 'store_a', 'external_seed', '123', 'other_key', false],
+    ['unattached recycled native ID', 'store_a', 'shopify', '123', null, false],
+    ['exact attached native ID', 'store_a', 'shopify', '123', 'chosen', true],
+    ['external lane after observed seller rekey', 'store_a', 'external_seed', '123', null, true],
+    ['legacy seller on native lane is not origin identity', 'external_seed', 'shopify', '123', null, false],
+    ['unattached globally external ID', 'store_a', 'shopify', 'ext_shared', null, true],
+  ])('%s uses exact seed ownership for cohort, freshness and repairability', async (_case, merchant, platform, source, attachment, bound) => {
     await product('chosen', { fresh: true, source });
     await product('other_key', { fresh: true, source });
-    await db.query(`UPDATE catalog_products SET merchant_id=$1,platform='shopify' WHERE product_key='chosen'`, [merchant]);
+    await db.query(`UPDATE catalog_products SET merchant_id=$1,platform=$2 WHERE product_key='chosen'`, [merchant, platform]);
     await db.query(`UPDATE catalog_products SET merchant_id='store_b',platform='shopify' WHERE product_key='other_key'`);
-    await db.query(`INSERT INTO catalog_merchants VALUES ('store_a','active'),('store_b','active')`);
-    await db.query(`INSERT INTO merchant_stores VALUES ('store_a','active','a.example','shopify'),('store_b','active','b.example','shopify')`);
+    await db.query(`INSERT INTO catalog_merchants VALUES ('store_a','observed'),('store_b','active')`);
+    await db.query(`INSERT INTO merchant_stores VALUES ('store_a','active','a.example',$1),('store_b','active','b.example','shopify')`, [platform]);
     await db.query(`DELETE FROM external_product_seeds WHERE id='seed_other_key'`);
     await db.query(`UPDATE external_product_seeds SET attached_product_key=$1 WHERE id='seed_chosen'`, [attachment]);
     await db.query(`DELETE FROM catalog_offers WHERE product_key='other_key'`);
