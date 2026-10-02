@@ -139,6 +139,7 @@ import {
   PRINTABLE_ASCII_RE,
   SELF_HOST_RE,
   canonicalReapMerchantDomain,
+  isSameReapMerchant,
   judgeRowSeller,
   pivotaHopDestination,
   reapExpectedMerchantDomain,
@@ -1343,7 +1344,12 @@ export async function tryReapAgenticCheckout({
   shouldOfferPurchase,
   clock,
   hints,
+  recoverOnly = false,
+  recoveryIdentityReader,
 }) {
+  if (recoverOnly) {
+    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs });
+  }
   if (!reapAgenticLaneEnabled(env)) return null;
   if (!client || typeof client.startPurchase !== "function" || typeof client.getPurchase !== "function") return null;
   const opId = op && op.id;
@@ -1406,6 +1412,77 @@ export async function tryReapAgenticCheckout({
   }
 
   return null;
+}
+
+// Read-only recovery deliberately bypasses purchase/proof/freshness/price gates.
+// Only a catalog IDENTITY read reconstructs the exact backend body; loss/change
+// of that identity remains unknown. The ledger hash/owner decides authoritatively.
+async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs }) {
+  const unknown = () => new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", {
+    reason: "ucp_reap_create_outcome_unknown",
+  });
+  if (!client || typeof client.recoverPurchase !== "function"
+    || (typeof client.hasCallerCredentials === "function" && !client.hasCallerCredentials())) throw unknown();
+  const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
+  const items = Array.isArray(quote.items) ? quote.items : [];
+  if (items.length !== 1 || !isPlainObject(items[0])) throw unknown();
+  const productId = str(items[0].product_id), quantity = items[0].quantity;
+  if (!productId || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > REAP_MAX_QUANTITY) throw unknown();
+  let rows;
+  // NEVER call the normal catalog/PDP executor here: it can enrich variants
+  // from a storefront. Only the server-injected SQL identity reader is allowed.
+  if (typeof recoveryIdentityReader !== "function") throw unknown();
+  const identityExecutor = { execute: async (_op, args, readCtx) => ({
+    product: await recoveryIdentityReader(args.payload.product.product_id, readCtx),
+  }) };
+  try { rows = await readCheckoutRows([{ product_id: productId, quantity }], identityExecutor, ctx, { timeoutMs }); }
+  catch { throw unknown(); }
+  const row = rows.get(productId), productKey = productKeyOf(row);
+  if (!productKey) throw unknown();
+  const target = escalationTargetOf(row);
+  const email = attestedOrBodyEmail(attested, quote.customer_email);
+  const buyer = {};
+  if (email) buyer.email = email;
+  const consentVersion = reapConsentVersion(ucpArgs);
+  if (consentVersion !== undefined) buyer.consent_version = consentVersion;
+  const shippingAddress = reapShippingAddress(ucpArgs);
+  if (shippingAddress !== undefined) buyer.shipping_address = shippingAddress;
+  const base = { product_key: productKey, quantity, buyer };
+  const offerCode = reapOfferCode(ucpArgs); // ORIGINAL requested code, even when new offers are paused
+  if (offerCode !== undefined) base.offer_code = offerCode;
+  const variantDomain = reapMerchantDomain(row, target);
+  // Recovery probes original key namespaces; current source-system/proof
+  // classification cannot decide which attempt existed. The owner hash decides.
+  const cartDomain = cartLinkMerchantDomain(row, target);
+  const candidates = [
+    variantDomain && { ...base, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) },
+    cartDomain && { ...base, merchant_domain: cartDomain, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) },
+  ].filter(Boolean);
+  if (!candidates.length || candidates.some((b) => !b.idempotency_key)) throw unknown();
+  const matches = [];
+  for (const body of candidates) {
+    let result;
+    try { result = await client.recoverPurchase(body); }
+    catch { throw unknown(); }
+    if (result && result.kind === "not_found") continue;
+    if (!result || result.kind !== "accepted" || !isPlainObject(result.purchase)) throw unknown();
+    matches.push(result.purchase);
+  }
+  // Zero matches never means 'safe to start another'; two matches need support.
+  if (matches.length !== 1) throw unknown();
+  const view = matches[0];
+  const expectedSeller = reapExpectedMerchantDomain(ucpArgs);
+  if (expectedSeller !== undefined && !isSameReapMerchant(expectedSeller, view.merchant_domain)) throw unknown();
+  const totals = own(view, "totals");
+  if (!isPlainObject(totals) || view.product_key !== productKey || view.quantity !== quantity
+    || !PURCHASE_ID_RE.test(String(view.id || "")) || !CURRENCY_RE.test(String(totals.currency || ""))
+    || safeMinor(totals.our_price_minor) === null) throw unknown();
+  const snapshot = { purchaseId: view.id, productId, productKey, quantity,
+    currency: totals.currency, unitMinor: totals.our_price_minor };
+  const id = encodeReapCheckoutId(snapshot);
+  const out = mapReapPurchaseToCheckout({ id, snapshot, view, now, env });
+  if (!out) throw unknown();
+  return out;
 }
 
 async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock, hints }) {

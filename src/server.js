@@ -31436,7 +31436,12 @@ async function getCommerceRemoteMcpAdapter() {
         // is live rather than frozen at surface-construction time.
         sourceMerchantVariants: buildMerchantVariantSource(logger),
         // THE REAP AGENTIC LANE (UCP dialect only; default OFF via REAP_AGENTIC_LANE_ENABLED, read per call).
-        reapAgentic: { client: buildReapAgenticPurchaseClient(logger) },
+        reapAgentic: {
+          client: buildReapAgenticPurchaseClient(logger),
+          // Recovery must not use get_product/get_pdp_v2: those can enrich from
+          // merchants. This injected reader has only a parameterized SQL SELECT.
+          recoveryIdentityReader: require('./services/reapRecoveryIdentity').createReapRecoveryIdentityReader({ query }),
+        },
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;

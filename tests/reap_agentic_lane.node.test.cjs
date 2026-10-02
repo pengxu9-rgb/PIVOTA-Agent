@@ -19,6 +19,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createReapAgenticPurchaseClient, MAX_TIMEOUT_MS } = require('../src/services/reapAgenticPurchaseClient');
+const { createReapRecoveryIdentityReader } = require('../src/services/reapRecoveryIdentity');
 const {
   GATE_FLAG_ENV,
   OPS_TOKEN_ENV,
@@ -171,6 +172,7 @@ function fakeBackend() {
   const state = {
     post: { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } },
     get: new Map([[PID, { status: 200, body: view('resolving') }]]),
+    recover: new Map(),
     mode: null, // null | 'throw' | 'hang'
   };
   async function fetchImpl(url, init = {}) {
@@ -193,7 +195,11 @@ function fakeBackend() {
     }
     let r;
     // `post` may be a LIST, consumed one per POST (the last one repeating) — for the lane's Tier B retry.
-    if (init.method === 'POST') r = Array.isArray(state.post) ? (state.post.length > 1 ? state.post.shift() : state.post[0]) : state.post;
+    if (init.method === 'POST' && u.pathname.endsWith('/recover')) {
+      const body = JSON.parse(init.body);
+      r = state.recover.get(body.idempotency_key) || { status: 404, body: houseError('purchase_not_found', 404) };
+      if (typeof r === 'function') r = r(body);
+    } else if (init.method === 'POST') r = Array.isArray(state.post) ? (state.post.length > 1 ? state.post.shift() : state.post[0]) : state.post;
     else r = state.get.get(u.pathname.split('/').pop()) || { status: 404, body: houseError('purchase_not_found', 404) };
     const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
     return { status: r.status, text: async () => text };
@@ -247,13 +253,18 @@ async function build({ lane = true, logger = fakeLogger(), backend = fakeBackend
     logger,
     ...(clientTimeoutMs ? { timeoutMs: clientTimeoutMs } : {}),
   });
+  const identityQueries = [];
+  const recoveryIdentityReader = createReapRecoveryIdentityReader({ query: async (sql, values) => {
+    identityQueries.push({ sql, values });
+    return { rows: rows[values[0]] ? [rows[values[0]]] : [] };
+  } });
   const native = m.surface.createCommerceToolSurface(executor, {
     cache: false,
     log: logger,
-    ...(lane ? { reapAgentic: { client } } : {}),
+    ...(lane ? { reapAgentic: { client, recoveryIdentityReader } } : {}),
   });
   const ucp = m.surface.ucpDialectSurface(native);
-  return { ucp, executor, backend, logger, client, m };
+  return { ucp, executor, backend, logger, client, m, identityQueries };
 }
 
 /** Run with env vars set, restoring exactly what was there. */
@@ -2550,4 +2561,154 @@ test('enrichment ON does not touch SHOPIFY rows: a Shopify-platform row is the v
   assert.equal(backend.calls.length, 1);
   assert.equal(backend.calls[0].body.item_source, undefined, 'the variant lane');
   assert.equal(backend.calls[0].body.merchant_domain, 'www.brand.example');
+});
+
+
+// Explicit read-only vendor tool: older gateways reject this name rather than
+// silently ignoring an optional create flag and minting after key expiry.
+test('recover_checkout cart-link parity: same body/key beyond 24h despite changed price/proof/variants and paused create flags', async (t) => {
+  let clock = NOW;
+  t.mock.method(Date, 'now', () => clock);
+  const row = { ...JUDY_ROW };
+  const args = createArgs({ productId: row.product_id, key: 'recovery-cart-original-01',
+    discounts: { codes: ['SAVE10'] }, reap: { expected_merchant_domain: 'judydoll.com' } });
+  const ctx = await build({ rows: { [row.product_id]: row } });
+  await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', args, SESSION));
+  const original = ctx.backend.calls[0];
+  assert.equal(original.body.item_source, 'cart_link');
+  assert.equal(original.body.buyer.consent_version, 'reap-agentic-v1');
+  assert.equal(original.body.buyer.shipping_address.country, 'US');
+  assert.equal(original.body.offer_code, 'SAVE10');
+  assert.equal(Object.hasOwn(original.body, 'variant_key'), false);
+  assert.equal(original.body.idempotency_key, ctx.m.lane.reapCartLinkIdempotencyKey('recovery-cart-original-01'));
+  const storedView = view('awaiting_approval', { product_key: row.product_key, merchant_domain: 'judydoll.com',
+    totals: { currency: 'USD', our_price_minor: 2398, quoted_total_minor: 2498 },
+    hosted_url: APPROVE_URL, hosted_url_expires_at: SOON, approval_deadline: SOON });
+  ctx.backend.state.recover.set(original.body.idempotency_key, (body) => {
+    assert.deepEqual(body, original.body, 'original normalized create and recover backend bodies are identical');
+    return { status: 200, body: storedView };
+  });
+  row.price = 999;
+  row.variants = [{ variant_id: 'new1' }, { variant_id: 'new2' }];
+  row.source_variant_id = undefined;
+  row.cart_link_eligible = false;
+  row.cart_link_proof = { expires_at: EARLIER };
+  clock += 26 * 60 * 60 * 1000;
+  const paused = { ...CODES_ON, REAP_AGENTIC_CREATE_ENABLED: '0', REAP_AGENTIC_CART_LINK_LANE_ENABLED: '0' };
+  const executorCallsBeforeRecovery = ctx.executor.seen.length;
+  const result = await withEnv(paused, () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.match(result.id, REAP_ID_RE);
+  assert.equal(result.status, 'incomplete', 'expired hosted action remains closed, no fresh checkout');
+  assert.equal(result.continue_url, undefined);
+  assert.equal(result.line_items[0].item.price, 2398, 'receipt uses stored price, never current catalog price');
+  const recovered = ctx.backend.calls.filter((c) => c.path.endsWith('/recover') && c.body.item_source === 'cart_link');
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(recovered[0].headers, original.headers, 'same calling agent and buyer headers');
+  clock += 48 * 60 * 60 * 1000;
+  await withEnv(paused, () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.deepEqual(ctx.backend.calls.filter((c) => c.path.endsWith('/recover')).map((c) => c.body.idempotency_key),
+    [original.body.idempotency_key, original.body.idempotency_key]);
+  assert.equal(ctx.backend.calls.filter((c) => !c.path.endsWith('/recover')).length, 1, 'only the original create was dispatched');
+  assert.equal(ctx.executor.seen.length, executorCallsBeforeRecovery, 'recovery bypasses PDP/catalog executor entirely');
+  assert.equal(ctx.identityQueries.length, 2);
+  assert.deepEqual(ctx.identityQueries.map((q) => q.values), [[row.product_id], [row.product_id]]);
+});
+
+for (const [label, response] of [
+  ['not found/tombstone', { status: 404, body: houseError('purchase_not_found', 404) }],
+  ['changed request hash', { status: 409, body: houseError('idempotency_conflict', 409) }],
+  ['backend failure', { status: 500, body: {} }],
+  ['malformed view', { status: 200, body: { id: PID } }],
+]) {
+  test(`recover_checkout ${label}: stays unknown with no create or alternate checkout`, async () => {
+    const ctx = await build();
+    ctx.backend.state.recover.set(ctx.m.lane.reapIdempotencyKey('idem-reap-0001'), response);
+    const outcomeValue = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+      () => outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION)));
+    const error = JSON.parse(outcomeValue.err.content[0].text).error;
+    assert.equal(error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+    assert.equal(error.detail.reason, 'ucp_reap_create_outcome_unknown');
+    assert.equal(ctx.backend.calls.every((c) => c.path.endsWith('/recover')), true);
+    assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+    assert.equal(JSON.stringify(error).includes(REAP_ROW.external_redirect_url), false);
+  });
+}
+
+test('recover_checkout requires the existing verified buyer/session and rejects payment/invalid keys before backend access', async () => {
+  const ctx = await build();
+  const badKey = createArgs({ key: '' });
+  const payment = createArgs(); payment.checkout.payment = { token: 'do-not-charge' };
+  for (const args of [badKey, payment]) {
+    const result = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', args, SESSION));
+    assert.ok(result.err);
+  }
+  const anonymous = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), {}));
+  assert.ok(anonymous.err);
+  assert.equal(ctx.backend.calls.length, 0);
+});
+
+test('recover_checkout unknown catalog identity or absent backend recover support never falls through', async () => {
+  const ctx = await build({ rows: {} });
+  const r = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION));
+  assert.equal(JSON.parse(r.err.content[0].text).error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+});
+
+test('recover_checkout transport deadline is bounded and never becomes a fresh create', { timeout: 5000 }, async () => {
+  const ctx = await build({ clientTimeoutMs: 60 });
+  ctx.backend.state.mode = 'hang';
+  const r = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+    () => outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION)));
+  assert.equal(JSON.parse(r.err.content[0].text).error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  assert.equal(ctx.backend.calls.length, 1);
+  assert.equal(ctx.backend.calls[0].path.endsWith('/recover'), true);
+});
+
+
+test('actual backend flat purchase_not_found404 advances variant-to-cart recovery without create', async () => {
+  const row = { ...JUDY_ROW, source_domain: 'judydoll.com' };
+  const ctx = await build({ rows: { [row.product_id]: row } });
+  const args = createArgs({ productId: row.product_id, key: 'actual-flat-recover-namespace',
+    reap: { expected_merchant_domain: 'judydoll.com' } });
+  const variantKey = ctx.m.lane.reapIdempotencyKey('actual-flat-recover-namespace');
+  const cartKey = ctx.m.lane.reapCartLinkIdempotencyKey('actual-flat-recover-namespace');
+  ctx.backend.state.recover.set(variantKey, { status: 404, body: { error: 'purchase_not_found' } });
+  ctx.backend.state.recover.set(cartKey, { status: 200, body: view('resolving', {
+    merchant_domain: 'judydoll.com', product_key: row.product_key,
+    totals: { currency: 'USD', our_price_minor: 1399 },
+  }) });
+  const result = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+    () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.match(result.id, REAP_ID_RE);
+  assert.equal(result.status, 'incomplete');
+  assert.equal(result.continue_url, undefined);
+  assert.deepEqual(ctx.backend.calls.map(c => c.body.idempotency_key), [variantKey, cartKey]);
+  assert.equal(ctx.backend.calls.every(c => c.path.endsWith('/recover')), true);
+  assert.equal(ctx.executor.seen.length, 0, 'no normal PDP or native checkout executor');
+});
+
+for (const [label, body, expectedKind] of [
+  ['authoritative flat miss', { error: 'purchase_not_found' }, 'not_found'],
+  ['existing detailed miss', houseError('purchase_not_found', 404), 'not_found'],
+  ['unrelated flat404', { error: 'not_available_on_this_rail' }, 'refused'],
+  ['unrecognized object404', { error: { code: 'purchase_not_found' } }, 'refused'],
+  ['conflicting detailed404', { error: 'purchase_not_found', detail: { error: 'rail_disabled' } }, 'refused'],
+  ['malformed detailed404', { error: 'purchase_not_found', detail: { error: 7 } }, 'refused'],
+  ['null detailed404', { error: 'purchase_not_found', detail: null }, 'refused'],
+  ['string detailed404', { error: 'purchase_not_found', detail: 'rail_disabled' }, 'refused'],
+  ['empty404', {}, 'refused'],
+]) {
+  test(`recover client actual envelope ${label} preserves specific404 classification`, async () => {
+    const b = fakeBackend(); const ctx = await build({ backend: b });
+    b.state.recover.set('client-envelope-test', { status: 404, body });
+    assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, expectedKind);
+  });
+}
+test('GET recognizes actual owner-route flat404; the same body on403 is never a namespace miss', async () => {
+  const b = fakeBackend(); const ctx = await build({ backend: b });
+  b.state.get.set(PID, { status: 404, body: { error: 'purchase_not_found' } });
+  assert.equal((await ctx.client.getPurchase(PID)).kind, 'not_found');
+  b.state.recover.set('client-envelope-test', { status: 403, body: { error: 'purchase_not_found' } });
+  assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, 'refused');
 });

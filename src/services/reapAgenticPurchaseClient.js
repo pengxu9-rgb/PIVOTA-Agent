@@ -5,10 +5,11 @@
  * rail (`/agent/v2/commerce/reap/purchases`, backend WP4 #2215/#2219/#2251).
  *
  * The contract is the backend's `docs/reap_agentic_routes.md` (byte-exact JSON captured from the real
- * app); `docs/reap-agentic-lane.md` in THIS repo is the door-side half. Two routes are used:
+ * app); `docs/reap-agentic-lane.md` in THIS repo is the door-side half. Three routes are used:
  *
  *   POST /agent/v2/commerce/reap/purchases        -> 202 {purchase_id, status, poll_after_seconds}
  *   GET  /agent/v2/commerce/reap/purchases/{id}   -> the public purchase view (state, totals, hosted_url…)
+ *   POST /agent/v2/commerce/reap/purchases/recover -> read-only original-body/key owner lookup
  *
  * WHAT THIS MODULE IS NOT. It decides nothing about eligibility, prices nothing and builds no checkout.
  * It performs exactly ONE request per call, bounded, and CLASSIFIES the answer into four kinds the lane
@@ -17,7 +18,7 @@
  *   accepted        a 2xx whose body carries what the contract says it carries
  *   refused         a 4xx the backend wrote (`detail.error` — the reason code the contract documents),
  *                   including 404 `not_available_on_this_rail` while the backend dial is off
- *   not_found       GET only, and ONLY a 404 whose `detail.error` is `purchase_not_found`: the purchase does not
+ *   not_found       GET or read-only recover, and ONLY a 404 whose `detail.error` is `purchase_not_found`: the purchase does not
  *                   exist or is not this buyer's (the backend answers both alike ON PURPOSE, so an id cannot be
  *                   probed). The door answers it the way it answers any unknown checkout id
  *   unavailable     transport error, timeout, 5xx, a 2xx body that is not the documented shape, and on GET every
@@ -91,7 +92,16 @@ function headerValue(headers, name) {
 function reasonCodeOf(body) {
   const detail = isPlainObject(body) ? body.detail : null;
   const code = isPlainObject(detail) ? detail.error : null;
-  return typeof code === 'string' && REASON_CODE_RE.test(code) ? code : null;
+  if (typeof code === 'string' && REASON_CODE_RE.test(code)) return code;
+  // The actual owner GET/recover route's _not_found helper returns a flat
+  // {error: 'purchase_not_found'} envelope. Only that exact authoritative
+  // miss may advance recovery to its other key namespace; arbitrary or
+  // conflicting/malformed 404s must remain unavailable/refused.
+  if (isPlainObject(body) && body.error === 'purchase_not_found'
+    && !Object.prototype.hasOwnProperty.call(body, 'detail')) {
+    return 'purchase_not_found';
+  }
+  return null;
 }
 
 function parseJson(text) {
@@ -223,6 +233,26 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code };
   }
 
+  /** Read-only exact original-body/key lookup, even while new creates are paused. */
+  async function recoverPurchase(body) {
+    const headers = requestHeaders();
+    if (!headers) return { kind: KIND.unauthenticated };
+    const out = await send('recover', `${baseUrl}${PURCHASES_PATH}/recover`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (out.error) return { kind: KIND.unavailable, code: out.error };
+    if (out.status >= 200 && out.status < 300) {
+      return isPlainObject(out.body) && PURCHASE_ID_RE.test(String(out.body.id || ''))
+        ? { kind: KIND.accepted, purchase: out.body }
+        : { kind: KIND.unavailable, code: 'malformed' };
+    }
+    const code = reasonCodeOf(out.body) || `http_${out.status}`;
+    if (out.status === 404 && code === 'purchase_not_found') return { kind: KIND.notFound, code };
+    if (out.status >= 400 && out.status < 500) return { kind: KIND.refused, code, http_status: out.status };
+    return { kind: KIND.unavailable, code: 'http_5xx' };
+  }
+
   /** Read one purchase the calling agent + buyer own. */
   async function getPurchase(purchaseId) {
     // Validated HERE as well as in the lane: this string becomes a URL path segment, and a value that is not
@@ -262,7 +292,7 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code };
   }
 
-  return { startPurchase, getPurchase, hasCallerCredentials, timeoutMs };
+  return { startPurchase, recoverPurchase, getPurchase, hasCallerCredentials, timeoutMs };
 }
 
 module.exports = {

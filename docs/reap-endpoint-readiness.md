@@ -88,8 +88,37 @@ Deterministic pre-create merchant/catalog refusals retain the existing fallback.
 A paused backend returns a refusal rather than a new spending alternative.
 
 An unknown create without a recovered checkout ID must remain unresolved during
-rollout rollback. The gateway pause also stops replay POSTs; the operator must
-use authenticated backend recovery/support lookup for the original owner/key
-or briefly permit the unchanged replay once the cause is understood. Do not
-unlock the buyer attempt or manufacture a new key just because a create pause
-is enabled. Stage and test this joint UI/gateway/backend contract before launch.
+rollout rollback. The Pivota vendor UCP tool `recover_checkout` accepts the same
+original create arguments and idempotency key, with a verified buyer/session and
+the same agent credentials. It is advertised while the master lane is enabled,
+including when new creates are paused. Native MCP tool names are unchanged.
+Older gateways reject this distinct tool name; recovery is never an optional
+create flag that an older deployment could ignore.
+
+Recovery reconstructs the normalized create body through a dedicated,
+parameterized `catalog_products` SELECT of stored key/host identity. It does
+not use `get_product`, PDP enrichment, storefront variants, provider calls,
+current prices, catalog serving gates or purchase proofs. Missing, changed or
+ambiguous identity stays unknown; unsupported catalog aliases or missing stored
+host payloads require an authenticated support lookup. Before staging, verify the
+gateway SQL service points at the same intended catalog and the current schema
+contains all selected identity columns. It probes only the original derived variant and/or
+cart-link key namespaces with backend `POST /agent/v2/commerce/reap/purchases/recover`.
+That endpoint must perform owner-scoped SELECT and the existing request-hash
+comparison only, including beyond the old 24-hour key lifetime. No lookup result
+permits a fresh create, key rollover or alternate checkout. Missing records,
+tombstones, conflicts, outages and malformed views all remain unresolved.
+
+A unique exact match becomes an owner checkout using stored totals and the
+existing status/deadline mapping. An expired hosted URL never becomes a new
+checkout or a fresh payment link. The buyer attempt unlocks only when the UI's
+explicit recovered-state contract allows it; a pause or 404 is insufficient.
+
+Stage backend lifetime-key/recovery support first, then the gateway tool, then
+the UI's explicit recovery routing. Keep the master lane enabled for existing
+checkout GET/status while new creation is paused. Rehearse an uncertain create,
+paused recovery with its original key/body, changed-payload conflict, missing
+record, old-key recovery and expired hosted action with the same real caller
+context. The local transport/parity tests are code evidence; they do not prove
+this authenticated deployed route. Do not briefly reopen creates to recover an
+unknown attempt. Do not unlock it or manufacture a new key because of a pause.
