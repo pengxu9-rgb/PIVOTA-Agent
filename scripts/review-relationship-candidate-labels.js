@@ -699,6 +699,10 @@ function buildReviewPrompt(evidence) {
   return [
     'You are the relationship graph AI reviewer for Pivota beauty commerce.',
     'Return strict JSON only with keys: verdict, confidence, rationale, relationship_kind, recommendation_reason, shared_evidence, tradeoffs, watchouts.',
+    'Output JSON schema: ' + JSON.stringify(z.toJSONSchema(VerdictSchema)),
+    'All eight keys are required for every verdict, including reject and uncertain. Use JSON numbers, strings and arrays, never null or Markdown. String length bounds apply after trimming; keep rationale concise (12 to 700 characters).',
+    'The supplied relation_type is the claimed graph relation, not an output relationship_kind. Never output competitive_alternative, niche_specialist or related_product as relationship_kind; use only the literal enum in the schema. Classify the actual pair, then apply the claimed-relation rules below.',
+    'For reject or uncertain, still provide a valid rationale and confidence. Use none when no relationship kind is established, or the classified kind (including variant) when established. recommendation_reason may be an empty string; shared_evidence, tradeoffs and watchouts may be empty arrays. Do not invent shopper copy or quoted facts to fill required fields.',
     '',
     'Rubric v4: recommendation utility with a verified-fact consumer-copy contract.',
     '- First classify the pair: dupe, substitute, alternative, complement, variant, or none. A high score/confidence is not utility evidence.',
