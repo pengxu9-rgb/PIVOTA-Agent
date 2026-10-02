@@ -39,8 +39,17 @@ function createPrivateBackendHop({ env = process.env, metadataFetch, now = Date.
       throw hopError('backend_iam_configuration_invalid');
     }
   }
+  const sourceFetch = metadataFetch || globalThis.fetch;
   const provider = enabled ? createRefreshingCloudRunIdTokenProvider({
-    audience, fetchImpl: metadataFetch || globalThis.fetch, now,
+    audience, now,
+    // Validate before the shared helper caches: an unexpected metadata response
+    // must not pin the serving process to a wrong-audience token for55 minutes.
+    fetchImpl: async (url, init) => {
+      const response = await sourceFetch(url, init);
+      if (!response?.ok) return { ok: false };
+      const token = String(await response.text()).trim();
+      return { ok: true, text: async () => tokenIsUsable(token, audience, now) ? token : '' };
+    },
   }) : null;
   function accepts(url) {
     try {

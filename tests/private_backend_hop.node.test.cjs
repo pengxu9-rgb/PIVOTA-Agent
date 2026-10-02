@@ -86,8 +86,8 @@ test('actual Axios interceptor preserves internal/agent auth, disables redirects
   const meta = []; const seen = [];
   const hop = createPrivateBackendHop({ env, metadataFetch: metadata(meta) });
   const client = axios.create({ adapter: async (config) => { seen.push(config); return { status: 200, data: {}, headers: {}, config }; } });
-  hop.installAxios(client, { backendBaseUrl: TARGET, introspectUrl: `${TARGET}/agent/internal/api-key/introspect` });
-  await client.post(`${TARGET}/agent/internal/api-key/introspect`, {}, { headers: { 'X-Internal-Key': 'synthetic-internal', ...appHeaders } });
+  hop.installAxios(client, { backendBaseUrl: TARGET, introspectUrl: `${TARGET}/agent/internal/auth/introspect` });
+  await client.post(`${TARGET}/agent/internal/auth/introspect`, {}, { headers: { 'X-Internal-Key': 'synthetic-internal', ...appHeaders } });
   assert.equal(seen[0].headers.get('X-Internal-Key'), 'synthetic-internal');
   assert.equal(seen[0].headers.get('Authorization'), appHeaders.Authorization);
   assert.equal(seen[0].headers.get('X-Serverless-Authorization'), `Bearer ${jwt()}`);
@@ -101,7 +101,7 @@ test('actual Axios interceptor preserves internal/agent auth, disables redirects
 test('actual server wiring: caller-context Reap start/recover/GET and introspection use the same private hop', async () => {
   Object.assign(process.env, env, {
     PIVOTA_API_BASE: TARGET,
-    AGENT_AUTH_INTROSPECT_URL: `${TARGET}/agent/internal/api-key/introspect`,
+    AGENT_AUTH_INTROSPECT_URL: `${TARGET}/agent/internal/auth/introspect`,
     AGENT_AUTH_INTROSPECT_INTERNAL_KEY: 'synthetic-internal',
     PIVOTA_API_KEY: 'synthetic-unused-internal',
   });
@@ -245,4 +245,13 @@ test('stored catalog suppression callback refuses remote catalog before metadata
   assert.equal(meta.length,0);assert.equal(sent,0);assert.deepEqual(order,['suppression']);
   await instance.post(`${TARGET}/agent/internal/auth/introspect`,{}, {headers:{'X-Internal-Key':'synthetic-internal'}});
   assert.equal(meta.length,1);assert.equal(sent,1);assert.deepEqual(order,['suppression','suppression','earlier-interceptor']);
+});
+
+
+test('wrong-audience metadata is not cached and a corrected next response can authenticate', async () => {
+  let calls=0,healthy=false;
+  const hop=createPrivateBackendHop({env,metadataFetch:async()=>{calls++;return{ok:true,text:async()=>jwt(healthy?AUD:'https://wrong.run.app')};}});
+  await assert.rejects(hop.headers(`${TARGET}/agent/read`),/backend_iam_token_unavailable/);
+  healthy=true;assert.equal((await hop.headers(`${TARGET}/agent/read`))['X-Serverless-Authorization'],`Bearer ${jwt()}`);
+  assert.equal(calls,2);
 });
