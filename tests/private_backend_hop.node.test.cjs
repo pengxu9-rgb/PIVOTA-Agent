@@ -232,3 +232,17 @@ test('private create rejects unknown/mismatched/conflicting and explicit gate en
     assert.equal(result.kind, 'refused'); assert.equal(result.code, code);
   }
 });
+
+
+test('stored catalog suppression callback refuses remote catalog before metadata in real Axios ordering', async () => {
+  const meta=[];let sent=0;const order=[];
+  const hop=createPrivateBackendHop({env,metadataFetch:metadata(meta)});
+  const instance=axios.create({adapter:async(config)=>{sent++;return {status:200,data:{},headers:{},config};}});
+  instance.interceptors.request.use(config=>{order.push('earlier-interceptor');return config;});
+  hop.installAxios(instance,{backendBaseUrl:TARGET,introspectUrl:`${TARGET}/agent/internal/auth/introspect`,
+    requestGuard:(config)=> {order.push('suppression');if(!config.url.endsWith('/agent/internal/auth/introspect'))throw Error('stored-only-refused');return config;}});
+  await assert.rejects(instance.get(`${TARGET}/agent/v1/products/search`),/stored-only-refused/);
+  assert.equal(meta.length,0);assert.equal(sent,0);assert.deepEqual(order,['suppression']);
+  await instance.post(`${TARGET}/agent/internal/auth/introspect`,{}, {headers:{'X-Internal-Key':'synthetic-internal'}});
+  assert.equal(meta.length,1);assert.equal(sent,1);assert.deepEqual(order,['suppression','suppression','earlier-interceptor']);
+});

@@ -74,10 +74,13 @@ function createPrivateBackendHop({ env = process.env, metadataFetch, now = Date.
       return response;
     };
   }
-  function installAxios(instance, { backendBaseUrl, introspectUrl } = {}) {
+  function installAxios(instance, { backendBaseUrl, introspectUrl, requestGuard } = {}) {
     if (!enabled) return null;
     assertDestination(backendBaseUrl);
     if (introspectUrl) assertDestination(introspectUrl);
+    const guard = requestGuard || (env.GATEWAY_STORED_CATALOG_REHEARSAL === '1'
+      ? (config) => require('../config/storedCatalogTransport').assertStoredCatalogHttp(config, env, { enabled, audience, targetOrigin, accepts })
+      : null);
     // Axios is also used for public merchant reads. Those never receive our platform token.
     instance.interceptors.response.use((response) => {
       if (accepts(new URL(response.config.url, response.config.baseURL || backendBaseUrl).href)
@@ -90,6 +93,7 @@ function createPrivateBackendHop({ env = process.env, metadataFetch, now = Date.
       throw error;
     });
     return instance.interceptors.request.use(async (config) => {
+      if (guard) config = guard(config); // BEFORE metadata, regardless of Axios interceptor LIFO order.
       const url = new URL(config.url, config.baseURL || backendBaseUrl).href;
       if (new URL(url).origin !== targetOrigin) return config;
       assertDestination(url);
