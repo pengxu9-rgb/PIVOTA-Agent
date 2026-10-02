@@ -1,6 +1,7 @@
 const { isSameFamilyVariant, brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+const { withoutRelationshipPairContext } = require('./relationshipCandidatePairContext');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
@@ -2779,7 +2780,7 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   // The second-hop row's similarity_score / score_total describe it against the BRIDGE. They must
   // not reach scoreCandidateForAnchor, which would read them as an explicit score against the
   // anchor and make every two-hop candidate as strong as its bridge's own best match.
-  const { similarity_score: _bridgeSim, score_total: _bridgeTotal, vector_score: _bridgeVector, score_breakdown: _bridgeBreakdown, ...directCandidate } = candidate;
+  const { vector_score: _bridgeVector, ...directCandidate } = withoutRelationshipPairContext(candidate);
   const baseScore = scoreCandidateForAnchor(anchor, directCandidate, {
     intelMatch: sourceHasProductIntel(candidate),
   });
@@ -2818,13 +2819,12 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   };
 
   return {
-    ...candidate,
+    ...directCandidate,
     ...transitiveScore,
     similarity_score: transitiveScore.score_total,
     score_breakdown: transitiveScore,
     source_refs: mergeSourceRefs(
-      candidate.source_refs,
-      bridge.source_refs,
+      directCandidate.source_refs,
       {
         type: 'relationship_graph_transitive_recall',
         name: 'two_hop_candidate',

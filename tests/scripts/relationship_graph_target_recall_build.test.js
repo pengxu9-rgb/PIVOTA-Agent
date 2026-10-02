@@ -12,9 +12,9 @@ jest.mock('../../src/auroraBff/productRelationshipGraphTargetRecall', () => ({
 const sources = require('../../src/auroraBff/productRelationshipGraphSources');
 const recall = require('../../src/auroraBff/productRelationshipGraphTargetRecall');
 const { buildInputsFromDb } = require('../../scripts/build-product-relationship-graph');
-const a = { product_ref: 'product:anchor', product_key: 'a', name: 'Hydrating serum', brand: 'House', category: 'Serum' };
-const base = { product_ref: 'product:base', product_key: 'b', name: 'Hydrating serum', brand: 'Other', category: 'Serum' };
-const target = { product_ref: 'product:older', product_key: 'old', name: 'Hydrating serum', brand: 'Older', category: 'Serum' };
+const a = { product_ref: 'product:anchor', product_key: 'a', name: 'Hydrating serum', brand: 'House', category: 'Serum', price:18, price_currency:'CAD' };
+const base = { product_ref: 'product:base', product_key: 'b', name: 'Hydrating serum', brand: 'Other', category: 'Serum', price:18, price_currency:'CAD' };
+const target = { product_ref: 'product:older', product_key: 'old', name: 'Hydrating serum', brand: 'Older', category: 'Serum', price:18, price_currency:'CAD' };
 beforeEach(() => {
   jest.clearAllMocks();
   sources.loadProductRelationshipGraphSourceInputs.mockResolvedValue({ products: [a, base], intelRows: [] });
@@ -22,7 +22,7 @@ beforeEach(() => {
     options.productsByAnchor || { [a.product_ref]: [base] });
   sources.enrichProductRelationshipGraphProducts.mockImplementation(async ({ products }) => ({
     products: products.map((product) => ({ ...product, ingredient_text: 'Verified selected-listing ingredients',
-      price: 18, price_currency: 'CAD', product_intel: { source: 'exact-target' } })),
+      price: 999, price_currency: 'GBP', product_intel: { source: 'exact-target' } })),
     ingredientRows: [], intelRows: [], diagnostics: { exact_target_count: products.length },
   }));
   recall.loadProductRelationshipGraphTargetRecall.mockResolvedValue({ products: [target],
@@ -49,7 +49,7 @@ test('hydration cap preserves every selected anchor first and explicitly reports
   const payload = await buildInputsFromDb({ limit: 1, affectedRefs: ['anchor'], includeNeedNodes: false });
   const request = sources.enrichProductRelationshipGraphProducts.mock.calls[0][0];
   expect(request.products).toHaveLength(5000);
-  expect(request.products[0]).toBe(a);
+  expect(request.products[0]).toMatchObject(a);
   expect(payload.sourceDiagnostics.targeted_evidence).toMatchObject({ requested_product_count: 5011,
     hydration_product_count: 5000, selection_complete: false, omitted_product_count: 11 });
 });
@@ -64,7 +64,10 @@ test('first-pass pair scores cannot compound during evidence rescore', async () 
   expect(targetFacts).not.toHaveProperty('similarity_score');
   expect(targetFacts).not.toHaveProperty('score_total');
   expect(targetFacts).not.toHaveProperty('score_breakdown');
-  expect(targetFacts).toMatchObject({ vector_score: 0.72, ingredient_confidence: 0.91, curated_pair_evidence: { verified: true } });
+  expect(targetFacts).toMatchObject({ vector_score: 0.72, ingredient_confidence: 0.91 });
+  expect(targetFacts).not.toHaveProperty('curated_pair_evidence');
+  const ownPair = sources.buildCandidatesByAnchorFromSources.mock.calls[1][0].productsByAnchor[a.product_ref][0];
+  expect(ownPair.curated_pair_evidence).toEqual({ verified:true });
 });
 
 test('canonical group aliases hydrate both exact listings independently', async () => {
@@ -98,7 +101,7 @@ test.each([
     ingredientRows: [], intelRows: [], diagnostics: {},
   }));
   const payload = await buildInputsFromDb({ limit: 2, includeNeedNodes: false });
-  expect(sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products).toEqual([first, second]);
+  expect(sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products).toMatchObject([first, second]);
   expect(payload.anchors.map((product) => product.product_ref)).toEqual([first.product_ref, second.product_ref]);
   expect(payload.anchors.map((product) => product.ingredient_text)).toEqual(['First formula verified', 'Second formula verified']);
   expect(payload.anchors.map((product) => product.merchant_id)).toEqual([first.merchant_id, second.merchant_id]);
@@ -110,7 +113,7 @@ test('one exact listing hydrates once while retaining each original graph alias'
   sources.loadProductRelationshipGraphSourceInputs.mockResolvedValue({ products: [first, second], intelRows: [] });
   sources.buildCandidatesByAnchorFromSources.mockReturnValue({});
   const payload = await buildInputsFromDb({ limit: 2, includeNeedNodes: false });
-  expect(sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products).toEqual([first]);
+  expect(sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products).toMatchObject([first]);
   expect(payload.anchors.map((product) => product.product_ref)).toEqual([first.product_ref, second.product_ref]);
   expect(payload.anchors.every((product) => product.ingredient_text === 'Verified selected-listing ingredients')).toBe(true);
 });

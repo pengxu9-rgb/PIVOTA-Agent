@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions } = require('./lib/relationship-graph-target-recall-options');
 const { loadProductRelationshipGraphTargetRecall, normalizeTargetRecallOptions } = require('../src/auroraBff/productRelationshipGraphTargetRecall');
+const { withoutRelationshipPairContext } = require('../src/auroraBff/relationshipCandidatePairContext');
 
 const { closePool, query, withClient } = require('../src/db');
 const {
@@ -859,6 +860,19 @@ function resolveNeedInputs(payload = {}, includeNeedNodes = true) {
   };
 }
 
+// The exact-listing owner adds these fields. Prices, route identity, source grade,
+// clocks and relationship proof belong to each original record, never this cache.
+const HYDRATED_LISTING_FIELDS = ['ingredient_text', 'ingredient_evidence', 'ingredient_evidence_conflict',
+  'ingredient_evidence_incomplete', 'product_intel', 'product_intel_evidence_incomplete', 'intel_text',
+  'description', 'category', 'category_taxonomy'];
+function listingHydrationInput(product) {
+  const result = withoutRelationshipPairContext(product);
+  for (const field of ['source_refs', 'sourceRefs', '_source_type', 'source_type', 'sourceType', 'source',
+    'source_meta', 'sourceMeta', 'provenance', 'evidence_grade', 'evidenceGrade']) delete result[field];
+  result.source_refs = [];
+  return result;
+}
+
 async function buildInputsFromDb({
   limit,
   sourceLimit = limit,
@@ -1000,7 +1014,7 @@ async function buildInputsFromDb({
     for (const product of [...anchors, ...(targetRecall?.products || []), ...Object.values(baselineCandidateFacts).flat(),
       ...Object.values(initialNeedCandidates).flat()]) {
       const identity = listingIdentity(product);
-      if (!uniqueEvidenceProducts.has(identity)) uniqueEvidenceProducts.set(identity, product);
+      if (!uniqueEvidenceProducts.has(identity)) uniqueEvidenceProducts.set(identity, listingHydrationInput(product));
     }
     const evidenceUniverse = [...uniqueEvidenceProducts.values()];
     const evidenceTargets = evidenceUniverse.slice(0, 5000);
@@ -1016,9 +1030,18 @@ async function buildInputsFromDb({
     // must never fall back to another member's group-ref evidence.
     hydrationFor = (product) => {
       const facts = hydrated.get(listingIdentity(product));
-      // The same exact listing can appear through several graph aliases. Keep
-      // each original route ref when attaching its shared listing evidence.
-      return facts ? { ...product, ...facts, product_ref: product.product_ref } : product;
+      if (!facts) return product;
+      const input = uniqueEvidenceProducts.get(listingIdentity(product));
+      const result = { ...product };
+      // Attach only owner-added listing evidence. Original pair fields retain their
+      // own value or absence; the cache cannot lend another pair's proof, grade,
+      // refs, price clock or route alias. Explicit removal of conflicting/incomplete
+      // INCI also removes the original ingredient text.
+      for (const field of HYDRATED_LISTING_FIELDS) {
+        if (JSON.stringify(facts[field]) !== JSON.stringify(input[field])) result[field] = facts[field];
+      }
+      result.source_refs = sourceInternals.mergeSourceRefs(product.source_refs, facts.source_refs);
+      return result;
     };
     anchors = anchors.map(hydrationFor);
     productsByAnchor = Object.fromEntries(anchors.map((anchor) => [anchor.product_ref,
