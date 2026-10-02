@@ -229,6 +229,29 @@ function extractOpenAiTextContent(message) {
   return '';
 }
 
+function extractNativeReviewText(envelope) {
+  // HTTP 200 does not imply a completed Responses generation. Never turn a
+  // partial result, refusal, or failed generation into a review verdict merely
+  // because its text happens to pass the local JSON/schema parser.
+  if (envelope?.status !== 'completed' || envelope.error != null || envelope.incomplete_details != null ||
+      !Array.isArray(envelope.output)) {
+    throw new LlmError('LLM_PARSE_FAILED', 'Native review response was not completed');
+  }
+  const messages = envelope.output.filter(item => item?.type === 'message');
+  if (!messages.length || messages.some(message => message.status !== 'completed' || !Array.isArray(message.content))) {
+    throw new LlmError('LLM_PARSE_FAILED', 'Native review response had no completed message');
+  }
+  const parts = messages.flatMap(message => message.content);
+  if (parts.some(part => part?.type === 'refusal')) {
+    throw new LlmError('LLM_PARSE_FAILED', 'Native review response was refused');
+  }
+  const texts = parts.filter(part => part?.type === 'output_text');
+  if (!texts.length || texts.some(part => typeof part.text !== 'string')) {
+    throw new LlmError('LLM_PARSE_FAILED', 'Native review response had no text output');
+  }
+  return texts.map(part => part.text).join('\n');
+}
+
 function extractJsonObject(text) {
   const raw = String(text || '').trim();
   if (!raw) throw new LlmError('LLM_PARSE_FAILED', 'Empty model output');
@@ -408,6 +431,7 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
         timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         ...getAxiosKeepAliveConfig(),
+        ...(nativeJsonSchema ? { family: 4 } : {}),
       });
 
       const disableResponseFormat =
@@ -428,7 +452,9 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
           try {
             const response = await client.post(options.useResponses ? '/v1/responses' : '/v1/chat/completions', body);
             const content = options.useResponses
-              ? (response.data?.output || []).flatMap((item) => item.content || []).filter((part) => part.type === 'output_text').map((part) => part.text).join('\n')
+              ? nativeJsonSchema
+                ? extractNativeReviewText(response.data)
+                : (response.data?.output || []).flatMap((item) => item.content || []).filter((part) => part.type === 'output_text').map((part) => part.text).join('\n')
               : extractOpenAiTextContent(response.data?.choices?.[0]?.message);
             const json = extractJsonObject(String(content));
             const parsed = schema.safeParse(json);

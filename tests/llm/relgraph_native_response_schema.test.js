@@ -1,13 +1,15 @@
 'use strict';
 
 const nock = require('nock');
+const axios = require('axios');
 const {createProviderFromEnv,z} = require('../../src/llm/provider');
 const {VerdictSchema,createConsensusProviders,buildReviewPrompt} = require('../../scripts/review-relationship-candidate-labels');
 const {relationshipReviewNativeSchema} = require('../../src/llm/relationshipReviewNativeSchema');
 const response = {verdict:'uncertain',confidence:0.5,rationale:'Supplied facts do not establish this claimed relationship.',
   relationship_kind:'none',recommendation_reason:'',shared_evidence:[],tradeoffs:[],watchouts:[]};
 const nativeOptions = {provider:'openai',model:'gpt-4.1',disableFallback:true,pinModel:true,useResponses:true,nativeJsonSchema:true};
-const openaiReply = value => ({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(value)}]}]});
+const openaiReply = value => ({status:'completed',error:null,incomplete_details:null,
+  output:[{type:'message',status:'completed',role:'assistant',content:[{type:'output_text',text:JSON.stringify(value)}]}]});
 
 describe('opt-in native relgraph response schema',()=>{
   const savedEnv={...process.env};
@@ -40,30 +42,35 @@ describe('opt-in native relgraph response schema',()=>{
     expect(sent).not.toHaveProperty('messages'); expect(sent).not.toHaveProperty('temperature');
     const schema=sent.text.format.schema;
     expect(schema).toEqual(relationshipReviewNativeSchema(VerdictSchema));
+    const exactLocalSchema=z.toJSONSchema(VerdictSchema);
+    delete exactLocalSchema.$schema;
+    expect(schema).toEqual(exactLocalSchema);
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toEqual(Object.keys(VerdictSchema.shape));
-    expect(schema.properties.rationale).toEqual({type:'string',pattern:'^[\\s\\S]{12,700}(?![\\s\\S])'});
+    expect(schema.properties.rationale).toEqual({type:'string',minLength:12,maxLength:700});
     expect(schema.properties.relationship_kind.enum).toEqual(['dupe','substitute','alternative','complement','variant','none']);
     expect(schema.properties.confidence).toEqual({type:'number',minimum:0,maximum:1});
     expect(schema.properties.shared_evidence.maxItems).toBe(6);
     expect(schema.properties.shared_evidence.items.additionalProperties).toBe(false);
-    expect(schema.properties.shared_evidence.items.properties.anchor_fact.pattern).toBe('^[\\s\\S]{3,350}(?![\\s\\S])');
+    expect(schema.properties.shared_evidence.items.properties.anchor_fact).toEqual({type:'string',minLength:3,maxLength:350});
+    expect(schema.properties.recommendation_reason).toEqual({type:'string',maxLength:700});
     expect(schema).not.toHaveProperty('$schema');
     expect(geminiBody.generationConfig).toEqual({temperature:0,responseMimeType:'application/json'});
     expect(first.isDone()).toBe(true);expect(second.isDone()).toBe(true);
   });
 
-  test('converted patterns preserve multiline and final-newline bounds for untrimmed auditor fields',()=>{
+  test('native length keywords preserve the local multiline and final-newline limits without generated patterns',()=>{
     const schema=z.object({rationale:z.string().min(1).max(1000),quote:z.string().min(1).max(350)}).strict();
     const native=relationshipReviewNativeSchema(schema);
     for(const [key,max]of [['rationale',1000],['quote',350]]) {
-      const regex=new RegExp(native.properties[key].pattern);
-      expect(regex.test('x'.repeat(max))).toBe(true);
-      expect(regex.test('x'.repeat(max-1)+'\n')).toBe(true);
-      expect(regex.test('x'.repeat(max)+'\n')).toBe(false);
-      expect(regex.test('x'.repeat(max+1))).toBe(false);
-      expect(regex.test('')).toBe(false);
-      expect(regex.test('short\nmultiline text')).toBe(true);
+      expect(native.properties[key]).toEqual({type:'string',minLength:1,maxLength:max});
+      const local=schema.shape[key];
+      expect(local.safeParse('x'.repeat(max)).success).toBe(true);
+      expect(local.safeParse('x'.repeat(max-1)+'\n').success).toBe(true);
+      expect(local.safeParse('x'.repeat(max)+'\n').success).toBe(false);
+      expect(local.safeParse('x'.repeat(max+1)).success).toBe(false);
+      expect(local.safeParse('').success).toBe(false);
+      expect(local.safeParse('short\nmultiline text').success).toBe(true);
     }
   });
 
@@ -77,18 +84,25 @@ describe('opt-in native relgraph response schema',()=>{
         product_b_fact:z.string().min(1).max(350)})).max(6)}).strict();
     const fixture={assessment:'uncertain',expected_kind:'unknown',confidence:0.5,
       rationale:'Evidence is incomplete.',shared_evidence:[]};
+    let sentSchema;
     const scope=nock('http://relgraph-openai.local').post('/v1/responses',body=>{
       const native=body.text.format.schema;
+      sentSchema=native;
       return body.model==='gpt-5.4' && body.text.format.strict===true && native.required.length===5 && native.additionalProperties===false &&
         native.properties.assessment.enum.join(',')==='useful,incorrect,uncertain' &&
         native.properties.expected_kind.enum.join(',')==='dupe,alternative,substitute,complement,variant,none,unknown' &&
-        native.properties.rationale.pattern==='^[\\s\\S]{1,1000}(?![\\s\\S])' &&
+        native.properties.rationale.minLength===1 && native.properties.rationale.maxLength===1000 &&
+        !Object.hasOwn(native.properties.rationale,'pattern') &&
         native.properties.shared_evidence.items.required.length===2 &&
-        native.properties.shared_evidence.items.properties.product_a_fact.pattern==='^[\\s\\S]{1,350}(?![\\s\\S])';
+        native.properties.shared_evidence.items.properties.product_a_fact.minLength===1 &&
+        native.properties.shared_evidence.items.properties.product_a_fact.maxLength===350;
     }).reply(200,openaiReply(fixture));
     const p=createProviderFromEnv('relationship_graph_blinded_audit',{...nativeOptions,model:'gpt-5.4'});
     expect(p.__meta.nativeJsonSchema).toBe(true);
     expect(await p.analyzeTextToJson({prompt:'Synthetic independent audit JSON',schema})).toEqual(fixture);
+    const exactLocalSchema=z.toJSONSchema(schema);
+    delete exactLocalSchema.$schema;
+    expect(sentSchema).toEqual(exactLocalSchema);
     expect(scope.isDone()).toBe(true);
   });
 
@@ -116,6 +130,10 @@ describe('opt-in native relgraph response schema',()=>{
     ['passthrough object',z.object({value:z.string().max(350)}).passthrough()],
     ['unbounded string',z.object({value:z.string()})],
     ['minimum-only string',z.object({value:z.string().min(1)})],
+    ['contradictory string bounds',z.object({value:z.string().max(2).meta({minLength:3,maxLength:2})})],
+    ['negative string limit',z.object({value:z.string().max(-1)})],
+    ['infinite string limit',z.object({value:z.string().max(Infinity)})],
+    ['fractional string limit',z.object({value:z.string().max(1.5)})],
     ['infinite numeric bound',z.object({value:z.number().max(Infinity)})],
     ['NaN numeric bound',z.object({value:z.number().min(NaN)})],
     ['negative array limit',z.object({value:z.array(z.string().max(10)).max(-1)})],
@@ -135,6 +153,77 @@ describe('opt-in native relgraph response schema',()=>{
     const p=createProviderFromEnv('relationship_graph_consensus',nativeOptions);
     await expect(p.analyzeTextToJson({prompt:'Return JSON',schema:VerdictSchema})).rejects.toMatchObject({code:'LLM_REQUEST_FAILED'});
     expect(scope.isDone()).toBe(true);expect(peer.isDone()).toBe(false);
+  });
+
+  test.each([
+    ['failed generation',{...openaiReply(response),status:'failed',error:{code:'server_error',message:'private-response-sentinel'}}],
+    ['incomplete generation',{...openaiReply(response),status:'incomplete',incomplete_details:{reason:'max_output_tokens'}}],
+    ['missing response status',((reply)=>{delete reply.status;return reply;})(openaiReply(response))],
+    ['error on completed generation',{...openaiReply(response),error:{code:'server_error',message:'private-response-sentinel'}}],
+    ['incomplete details on completed generation',{...openaiReply(response),incomplete_details:{reason:'content_filter'}}],
+    ['incomplete message',{...openaiReply(response),output:[{...openaiReply(response).output[0],status:'incomplete'}]}],
+    ['missing message status',{...openaiReply(response),output:[{type:'message',content:openaiReply(response).output[0].content}]}],
+    ['refusal alongside valid JSON',{...openaiReply(response),output:[{...openaiReply(response).output[0],
+      content:[{type:'refusal',refusal:'private-response-sentinel'},...openaiReply(response).output[0].content]}]}],
+  ])('native review rejects %s even when its output contains a locally valid verdict',async(_,envelope)=>{
+    const scope=nock('http://relgraph-openai.local').post('/v1/responses',body=>body.text.format.type==='json_schema')
+      .reply(200,envelope);
+    const peer=nock('http://relgraph-gemini.local').post(/generateContent/).reply(200,{});
+    const p=createProviderFromEnv('relationship_graph_consensus',nativeOptions);
+    let error;
+    try {await p.analyzeTextToJson({prompt:'Return synthetic JSON',schema:VerdictSchema});}
+    catch(err) {error=err;}
+    expect(error).toMatchObject({code:'LLM_PARSE_FAILED'});
+    expect(error.message).not.toContain('private-response-sentinel');
+    expect(error.cause).toBeUndefined();
+    expect(scope.isDone()).toBe(true);expect(peer.isDone()).toBe(false);
+  });
+
+  test('completed reasoning plus completed output text is still a valid native response',async()=>{
+    const envelope=openaiReply(response);
+    envelope.output.unshift({type:'reasoning',summary:[]});
+    const scope=nock('http://relgraph-openai.local').post('/v1/responses').reply(200,envelope);
+    const p=createProviderFromEnv('relationship_graph_consensus',nativeOptions);
+    expect(await p.analyzeTextToJson({prompt:'Return synthetic JSON',schema:VerdictSchema})).toEqual(response);
+    expect(scope.isDone()).toBe(true);
+  });
+
+  test('native OpenAI requests force IPv4 while generic clients retain their transport configuration',async()=>{
+    process.env.LLM_TIMEOUT_MS='45000';
+    const create=jest.spyOn(axios,'create');
+    try {
+      const nativeScope=nock('http://relgraph-openai.local').post('/v1/responses',body=>body.text.format.type==='json_schema')
+        .reply(200,openaiReply(response));
+      const genericScope=nock('http://relgraph-openai.local').post('/v1/responses',body=>body.text.format.type==='json_object')
+        .reply(200,openaiReply(response));
+      const native=createProviderFromEnv('relationship_graph_consensus',nativeOptions);
+      const nativeConfig=create.mock.calls[0][0];
+      const generic=createProviderFromEnv('generic',{provider:'openai',model:'gpt-4.1',disableFallback:true,useResponses:true});
+      const genericConfig=create.mock.calls[1][0];
+      expect(nativeConfig.family).toBe(4);
+      expect(genericConfig).not.toHaveProperty('family');
+      expect(nativeConfig.timeout).toBe(45000);
+      expect(genericConfig.timeout).toBe(45000);
+      expect(nativeConfig.httpAgent).toBe(genericConfig.httpAgent);
+      expect(nativeConfig.httpsAgent).toBe(genericConfig.httpsAgent);
+      const {family,...otherwiseUnchanged}=nativeConfig;
+      expect(otherwiseUnchanged).toEqual(genericConfig);
+      for(const provider of [native,generic]) {
+        expect(await provider.analyzeTextToJson({prompt:'Return synthetic JSON',schema:VerdictSchema})).toEqual(response);
+      }
+      expect(nativeScope.isDone()).toBe(true);expect(genericScope.isDone()).toBe(true);
+    } finally {create.mockRestore();}
+  });
+
+  test.each(['failed','incomplete',undefined])('non-opt-in Responses retains existing extraction for response status %s',async(status)=>{
+    const envelope=openaiReply(response);
+    envelope.status=status;
+    delete envelope.output[0].status;
+    const scope=nock('http://relgraph-openai.local').post('/v1/responses',body=>body.text.format.type==='json_object')
+      .reply(200,envelope);
+    const p=createProviderFromEnv('generic',{provider:'openai',model:'gpt-4.1',disableFallback:true,useResponses:true});
+    expect(await p.analyzeTextToJson({prompt:'Return synthetic JSON',schema:VerdictSchema})).toEqual(response);
+    expect(scope.isDone()).toBe(true);
   });
 
   test('non-opt-in Responses and Chat callers retain their existing JSON request format',async()=>{

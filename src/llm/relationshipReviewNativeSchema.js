@@ -75,11 +75,10 @@ function convert(node, path = '$') {
     if (!Number.isSafeInteger(min) || min < 0 || !Number.isSafeInteger(max) || max < min) {
       throw new Error(`Native review schema requires finite string bounds at ${path}`);
     }
-    // OpenAI documents pattern support but omits minLength/maxLength from its
-    // supported string list. The end assertion avoids '$' accepting a final
-    // newline beyond maxLength. Do not replace another pattern or weaken it.
-    result.pattern = `^[\\s\\S]{${min},${max}}(?![\\s\\S])`;
-    delete result.minLength; delete result.maxLength;
+    // Preserve Zod's exact native length keywords. The full reviewer/auditor
+    // schemas pass compatibility preflight on both pinned OpenAI models with
+    // these bounds; replacing them with lookahead patterns exhausted output
+    // tokens without producing text. Local parsing remains authoritative.
   }
   return result;
 }
