@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
 
 const { query } = require('../src/db');
@@ -166,6 +167,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    ...parseTargetRecallOptions({ hasFlag: (name) => hasFlag(argv, name), argValue: (name) => argValue(argv, name) }),
     coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
@@ -291,6 +293,7 @@ function buildRoutineSteps(options) {
       pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
     }
     if (options.sourceLimit) pushArg(args, 'source-limit', options.sourceLimit);
+    appendTargetRecallArgs(args, options);
     pushArg(args, 'affected-refs', options.affectedRefs);
     pushArg(args, 'affected-refs-file', options.affectedRefsFile);
     pushArg(args, 'affected-products-file', options.affectedProductsFile);
