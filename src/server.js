@@ -1,3 +1,9 @@
+// An explicitly exported rehearsal flag is checked before loading app dependencies.
+// Ordinary startup retains its historical import/dotenv order below.
+if (process.env.GATEWAY_STORED_CATALOG_REHEARSAL != null) {
+  require('dotenv').config();
+  require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
+}
 const { buildSeedSearchOfferScope, seedHasPriceCurrencySql } = require('./services/seedSearchOfferScope');
 const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
@@ -6,6 +12,7 @@ const vertexGemini = require('./llm/vertexGemini');
  * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
  */
 require('dotenv').config();
+require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
