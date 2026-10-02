@@ -820,6 +820,7 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
+    selected_variant_id: { type: "string", minLength: 1, maxLength: 200, description: "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL." },
     expected_merchant_domain: {
       type: "string",
       minLength: 1,
@@ -915,7 +916,7 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
  * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
  */
 export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain"]),
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.selected_variant_id"]),
 });
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
@@ -1116,7 +1117,11 @@ function requireExpectedSellerShape(checkout, code) {
     ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
   };
   if (!isPlainObject(reap)) refuse();
-  rejectUnknown(reap, ["expected_merchant_domain"], "checkout.reap", code);
+  rejectUnknown(reap, ["expected_merchant_domain", "selected_variant_id"], "checkout.reap", code);
+  const variant = own(reap, "selected_variant_id");
+  if (variant !== undefined && (typeof variant !== "string" || !variant.trim() || variant.length > 200 || /[\x00-\x1f\x7f]/.test(variant))) {
+    throw ucpRefusal(code, "ucp_reap_variant_not_created", "Invalid selected variant id.");
+  }
   const domain = own(reap, "expected_merchant_domain");
   if (domain === undefined) return;
   if (typeof domain !== "string" || domain.length === 0 || domain.length > EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH) refuse();
