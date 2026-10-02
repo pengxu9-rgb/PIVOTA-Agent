@@ -92,7 +92,16 @@ function headerValue(headers, name) {
 function reasonCodeOf(body) {
   const detail = isPlainObject(body) ? body.detail : null;
   const code = isPlainObject(detail) ? detail.error : null;
-  return typeof code === 'string' && REASON_CODE_RE.test(code) ? code : null;
+  if (typeof code === 'string' && REASON_CODE_RE.test(code)) return code;
+  // The actual owner GET/recover route's _not_found helper returns a flat
+  // {error: 'purchase_not_found'} envelope. Only that exact authoritative
+  // miss may advance recovery to its other key namespace; arbitrary or
+  // conflicting/malformed 404s must remain unavailable/refused.
+  if (isPlainObject(body) && body.error === 'purchase_not_found'
+    && !Object.prototype.hasOwnProperty.call(body, 'detail')) {
+    return 'purchase_not_found';
+  }
+  return null;
 }
 
 function parseJson(text) {

@@ -2664,3 +2664,51 @@ test('recover_checkout transport deadline is bounded and never becomes a fresh c
   assert.equal(ctx.backend.calls.length, 1);
   assert.equal(ctx.backend.calls[0].path.endsWith('/recover'), true);
 });
+
+
+test('actual backend flat purchase_not_found404 advances variant-to-cart recovery without create', async () => {
+  const row = { ...JUDY_ROW, source_domain: 'judydoll.com' };
+  const ctx = await build({ rows: { [row.product_id]: row } });
+  const args = createArgs({ productId: row.product_id, key: 'actual-flat-recover-namespace',
+    reap: { expected_merchant_domain: 'judydoll.com' } });
+  const variantKey = ctx.m.lane.reapIdempotencyKey('actual-flat-recover-namespace');
+  const cartKey = ctx.m.lane.reapCartLinkIdempotencyKey('actual-flat-recover-namespace');
+  ctx.backend.state.recover.set(variantKey, { status: 404, body: { error: 'purchase_not_found' } });
+  ctx.backend.state.recover.set(cartKey, { status: 200, body: view('resolving', {
+    merchant_domain: 'judydoll.com', product_key: row.product_key,
+    totals: { currency: 'USD', our_price_minor: 1399 },
+  }) });
+  const result = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+    () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.match(result.id, REAP_ID_RE);
+  assert.equal(result.status, 'incomplete');
+  assert.equal(result.continue_url, undefined);
+  assert.deepEqual(ctx.backend.calls.map(c => c.body.idempotency_key), [variantKey, cartKey]);
+  assert.equal(ctx.backend.calls.every(c => c.path.endsWith('/recover')), true);
+  assert.equal(ctx.executor.seen.length, 0, 'no normal PDP or native checkout executor');
+});
+
+for (const [label, body, expectedKind] of [
+  ['authoritative flat miss', { error: 'purchase_not_found' }, 'not_found'],
+  ['existing detailed miss', houseError('purchase_not_found', 404), 'not_found'],
+  ['unrelated flat404', { error: 'not_available_on_this_rail' }, 'refused'],
+  ['unrecognized object404', { error: { code: 'purchase_not_found' } }, 'refused'],
+  ['conflicting detailed404', { error: 'purchase_not_found', detail: { error: 'rail_disabled' } }, 'refused'],
+  ['malformed detailed404', { error: 'purchase_not_found', detail: { error: 7 } }, 'refused'],
+  ['null detailed404', { error: 'purchase_not_found', detail: null }, 'refused'],
+  ['string detailed404', { error: 'purchase_not_found', detail: 'rail_disabled' }, 'refused'],
+  ['empty404', {}, 'refused'],
+]) {
+  test(`recover client actual envelope ${label} preserves specific404 classification`, async () => {
+    const b = fakeBackend(); const ctx = await build({ backend: b });
+    b.state.recover.set('client-envelope-test', { status: 404, body });
+    assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, expectedKind);
+  });
+}
+test('GET recognizes actual owner-route flat404; the same body on403 is never a namespace miss', async () => {
+  const b = fakeBackend(); const ctx = await build({ backend: b });
+  b.state.get.set(PID, { status: 404, body: { error: 'purchase_not_found' } });
+  assert.equal((await ctx.client.getPurchase(PID)).kind, 'not_found');
+  b.state.recover.set('client-envelope-test', { status: 403, body: { error: 'purchase_not_found' } });
+  assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, 'refused');
+});
