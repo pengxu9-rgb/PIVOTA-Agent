@@ -1567,9 +1567,13 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   }
   const chosenVariant = selectedKey === undefined ? null : row.variants.find(v => String(v.variant_id ?? v.id) === String(ucpArgs.checkout.reap.selected_variant_id));
   const variantPrice = own(chosenVariant, "price");
+  // Canonical PDP variants use price.current; native detail rows may use a
+  // flat money object or a scalar. Never borrow the product's default price.
+  const selectedPrice = isPlainObject(variantPrice) && own(variantPrice, "current") !== undefined
+    ? own(variantPrice, "current") : variantPrice;
   const price = selectedKey === undefined ? rowPrice(row) : rowPrice({
-    price: isPlainObject(variantPrice) ? own(variantPrice, "amount") : variantPrice,
-    currency: isPlainObject(variantPrice) ? own(variantPrice, "currency") : own(chosenVariant, "currency"),
+    price: isPlainObject(selectedPrice) ? own(selectedPrice, "amount") : selectedPrice,
+    currency: isPlainObject(selectedPrice) ? own(selectedPrice, "currency") : own(chosenVariant, "currency"),
   });
   if (!price) {
     if (selectedKey !== undefined) throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });

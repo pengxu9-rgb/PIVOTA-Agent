@@ -1210,6 +1210,12 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // These two lane refusals prove no create was dispatched. Publish only the
+  // fixed classification, never arbitrary detail or upstream/caller values.
+  if (error instanceof PivotaCommerceError && (
+    (code === "QUOTE_REQUIRED" && error.detail?.reason === "ucp_reap_variant_not_created") ||
+    (code === "OPERATION_NOT_ALLOWED" && error.detail?.reason === "reap_create_paused")
+  )) body.detail = { reason: error.detail.reason };
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {

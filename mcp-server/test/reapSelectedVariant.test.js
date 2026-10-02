@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { selectedReapVariantKey, tryReapAgenticCheckout, decodeReapCheckoutId } from '../src/ucpReapAgenticLane.js';
+import { toToolError } from '../src/commerceToolSurface.js';
+import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
+import { readFileSync } from 'node:fs';
+const capturedRow = JSON.parse(readFileSync(new URL('./fixtures/krave-canonical-detail.json', import.meta.url), 'utf8'));
 const key = 'prod::external_seed::external_seed::ext_3e6db6ab9ff14b9fb21f45a8';
 const productId = 'sig_436641888f6a84f14c02ed293d9596a7';
 const row = { product_id: productId, product_key: key, source_system: 'external_product_seeds_mirror_v1', platform: 'external_seed', price: 16, currency: 'USD', external_redirect_url: 'https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser', purchase_grain: 'product', variants: [
@@ -41,4 +45,41 @@ test('the UCP adapter accepts the variant extension only on an enabled Reap crea
  const wire={meta:{'idempotency-key':'selected-variant-key'},checkout:{line_items:[{item:{id:productId},quantity:1}],reap:{expected_merchant_domain:'kravebeauty.com',selected_variant_id:'677289689108'}}};
  assert.doesNotThrow(()=>ucpToNativeToolArgs({id:'create_checkout_session'},wire,env));
  assert.throws(()=>ucpToNativeToolArgs({id:'create_checkout_session'},wire,{}));
+});
+
+for (const [id,minor] of [['677289689108',1600],['42199434526795',2700]]) {
+ test(`captured canonical price.current for ${id} preserves its exact amount`,async()=>{
+  let body;
+  const client={hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async b=>{body=b;return {kind:'accepted',purchase:{id:'rp_'+'b'.repeat(24),state:'resolving',product_key:key,quantity:1,totals:{currency:'USD',our_price_minor:minor}}};}};
+  const view=await call(id,client,{executor:{execute:async()=>({product:capturedRow})}});
+  assert.equal(body.variant_key,`${key}::v::${id}`);
+  assert.equal(decodeReapCheckoutId(view.id).unitMinor,minor);
+ });
+ test(`captured ${id} reaches pause and publishes a definitive wire refusal`,async()=>{
+  let dispatches=0;
+  const client={hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async()=>{dispatches++;}};
+  await assert.rejects(call(id,client,{executor:{execute:async()=>({product:capturedRow})},env:{...env,REAP_AGENTIC_CREATE_ENABLED:'0'}}),error=>{
+   const wire=JSON.parse(toToolError(error).content[0].text);
+   assert.equal(wire.error.code,'OPERATION_NOT_ALLOWED');
+   assert.deepEqual(wire.error.detail,{reason:'reap_create_paused'});
+   return true;
+  });
+  assert.equal(dispatches,0);
+ });
+}
+test('unpriced captured variant publishes not-created without falling back to product price',async()=>{
+ const product=structuredClone(capturedRow);delete product.variants[0].price.current.currency;
+ let dispatches=0;
+ await assert.rejects(call('677289689108',{hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async()=>{dispatches++;}},{executor:{execute:async()=>({product})}}),error=>{
+  assert.deepEqual(JSON.parse(toToolError(error).content[0].text).error.detail,{reason:'ucp_reap_variant_not_created'});return true;
+ });
+ assert.equal(dispatches,0);
+});
+test('lane wire reasons are allowlisted and never publish arbitrary detail',()=>{
+ const err=new PivotaCommerceError('QUOTE_REQUIRED',{reason:'ucp_reap_variant_not_created',secret:'must_not_leak',cause:'private'});
+ const wire=JSON.parse(toToolError(err).content[0].text);
+ assert.deepEqual(wire.error.detail,{reason:'ucp_reap_variant_not_created'});
+ assert.ok(!JSON.stringify(wire).includes('must_not_leak'));
+ assert.equal(JSON.parse(toToolError(new PivotaCommerceError('QUOTE_REQUIRED',{reason:'other_private_value'})).content[0].text).error.detail,undefined);
+ assert.deepEqual(JSON.parse(toToolError(new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN',{reason:'reap_create_paused'})).content[0].text).error.detail,{reason:'ucp_reap_create_outcome_unknown'});
 });
