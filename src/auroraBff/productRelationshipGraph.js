@@ -182,7 +182,12 @@ function normalizeSourceRefs(value) {
       ...(type ? { type } : {}),
       ...(name ? { name } : {}),
       ...(url ? { url } : {}),
-      ...(src.authoritative === true || src.authority === true ? { authoritative: true } : {}),
+      ...(typeof src.authoritative === 'boolean' ? { authoritative: src.authoritative }
+        : src.authority === true ? { authoritative: true } : {}),
+      ...(src.evidence_kind ? { evidence_kind: normalizeString(src.evidence_kind, 80) } : {}),
+      ...(src.evidence_profile ? { evidence_profile: normalizeString(src.evidence_profile, 120) } : {}),
+      ...(src.confidence != null ? { confidence: typeof src.confidence === 'number' ? clamp01(src.confidence) : normalizeString(src.confidence, 80) } : {}),
+      ...(src.review_status ? { review_status: normalizeString(src.review_status, 80) } : {}),
       ...(src.observed_at ? { observed_at: toIsoOrNull(src.observed_at) || normalizeString(src.observed_at, 80) } : {}),
     });
     if (refs.length >= 16) break;

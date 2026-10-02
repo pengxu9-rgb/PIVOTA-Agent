@@ -401,12 +401,12 @@ describe('product relationship graph source loaders', () => {
         product_ref: 'product:ext_barrier_serum',
         name: 'Barrier serum',
         category: 'serum',
-        evidence_grade: 'B',
+        evidence_grade: 'C',
         observed_at: NOW,
       }),
     );
     expect(intelCandidate.source_refs).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: 'product_intel_kb', authoritative: true })]),
+      expect.arrayContaining([expect.objectContaining({ type: 'product_intel_kb', authoritative: false, evidence_profile: 'unknown' })]),
     );
     expect(directSeed.product_ref).toBe(seedCandidate.product_ref);
     expect(directIntel.product_ref).toBe(intelCandidate.product_ref);
@@ -690,6 +690,7 @@ describe('product relationship graph candidate map enrichment', () => {
       },
       {
         product_id: 'value_serum_b',
+        product_key: 'cp_value_serum_b',
         product_family_id: 'fam_value_serum',
         brand: 'Value Lab',
         name: 'Barrier Peptide Serum Set',
@@ -721,7 +722,7 @@ describe('product relationship graph candidate map enrichment', () => {
         last_success_at: NOW,
         analysis: {
           product_intel_v1: {
-            canonical_product_ref: { product_id: 'value_serum_b' },
+            canonical_product_ref: { product_id: 'value_serum_b', product_key: 'cp_value_serum_b' },
             product_intel_core: {
               what_it_is: {
                 headline: 'Barrier serum set',

@@ -366,7 +366,12 @@ function summarizeSourceRefs(value) {
       return {
         type: normalizeString(obj.type || obj.source_type || obj.source, 80),
         name: normalizeString(obj.name || obj.label || obj.title, 160),
-        authoritative: obj.authoritative === true ? true : undefined,
+        authoritative: typeof obj.authoritative === 'boolean' ? obj.authoritative : undefined,
+        evidence_kind: normalizeString(obj.evidence_kind, 80),
+        evidence_profile: normalizeString(obj.evidence_profile, 120),
+        confidence: obj.confidence == null ? undefined : obj.confidence,
+        review_status: normalizeString(obj.review_status, 80),
+        observed_at: normalizeString(obj.observed_at, 80),
         url: normalizeString(obj.url || obj.href, 240),
       };
     })
@@ -439,6 +444,21 @@ function summarizeProductSnapshot(snapshot, supplement) {
     price: src.price == null ? null : Number(src.price),
     description: truncateText(src.description || src.intel_text || whatItIs.body, TEXT_LIMIT),
     ingredient_text: truncateText(src.ingredient_text, 700),
+    ingredient_text_truncated: normalizeString(src.ingredient_text, 10000).length > 700,
+    ingredient_evidence_conflict: src.ingredient_evidence_conflict === true,
+    ingredient_evidence_incomplete: src.ingredient_evidence_incomplete === true,
+    product_intel_evidence_incomplete: src.product_intel_evidence_incomplete === true,
+    ingredient_evidence: asArray(src.ingredient_evidence).slice(0, 4).map((row) => ({
+      table: normalizeString(row.table, 120),
+      ingredient_text: truncateText(row.ingredient_text, 700),
+      ingredient_text_truncated: normalizeString(row.ingredient_text, 10000).length > 700,
+      observed_at: normalizeString(row.observed_at, 80),
+      review_status: normalizeString(row.review_status, 80),
+      audit_status: normalizeString(row.audit_status, 80),
+      source_refs: summarizeSourceRefs(row.source_refs),
+    })),
+    source_refs: summarizeSourceRefs(src.source_refs),
+    price_currency: normalizeString(src.price_currency, 16),
     routine_fit: {
       step: normalizeString(routineFit.step, 80),
       am_pm: compactArray(routineFit.am_pm, 4),
@@ -451,10 +471,38 @@ function summarizeProductSnapshot(snapshot, supplement) {
     confidence_tier: normalizeString(confidence.tier, 80),
     source_signals: compactArray(provenance.source_signals, 12),
     source_coverage: sourceCoverage,
+    intel_review: {
+      status: normalizeString(provenance.review_status, 80),
+      decision: normalizeString(provenance.review_decision, 80),
+      tier: normalizeString(provenance.review_tier, 80),
+    },
+    freshness: asObject(productIntel.freshness || core.freshness),
+    market_signal_badges: summarizeIntelSignals(productIntel.market_signal_badges),
+    external_highlight_signals: summarizeIntelSignals(productIntel.external_highlight_signals),
     beauty_attrs: summarizeBeautyAttrs(supplement && supplement.beauty_attrs),
     catalog: summarizeCatalog(supplement && supplement.catalog),
     external_seed: summarizeExternalSeed(supplement && supplement.external_seed),
   };
+}
+
+function summarizeIntelSignals(signals) {
+  return asArray(signals).slice(0, 5).map((raw) => {
+    const signal = asObject(raw);
+    return {
+      type: normalizeString(signal.type || signal.kind || signal.badge_type || signal.source_type, 80),
+      claim_text: truncateText(signal.claim_text || signal.surface_text || signal.badge_label || signal.label || (typeof raw === 'string' ? raw : ''), 240),
+      source_type: normalizeString(signal.source_type, 80),
+      claim_type: normalizeString(signal.claim_type, 80),
+      evidence_strength: normalizeString(signal.evidence_strength, 80),
+      sponsorship_status: normalizeString(signal.sponsorship_status, 80),
+      independence_count: signal.independence_count != null && signal.independence_count !== '' && Number.isFinite(Number(signal.independence_count)) ? Number(signal.independence_count) : null,
+      confidence: signal.confidence,
+      review_status: normalizeString(signal.review_status || signal.review_decision, 80),
+      sponsored: typeof signal.sponsored === 'boolean' ? signal.sponsored : null,
+      source_refs: summarizeSourceRefs(signal.source_refs || signal.supporting_sources),
+      freshness: signal.freshness,
+    };
+  });
 }
 
 function buildEvidence(row, supplements) {
@@ -668,6 +716,9 @@ function buildReviewPrompt(evidence) {
     '- Reject a claimed relation when your relationship_kind does not match it; do not silently relabel the pair.',
     '- Reject if evidence is sparse, generic, brand-only, source-only, missing the price evidence expected for a dupe, mismatched category/target area, an unhelpful shade/format cross-product, or not aligned to relation_type.',
     '- Never assume unstated ingredient, medical, social, or performance claims.',
+    '- Ingredient evidence conflicts or incomplete ingredient loads cannot establish formula similarity. Ingredient overlap never establishes clinical, safety or performance equivalence.',
+    '- An ingredient summary marked ingredient_text_truncated is partial; it cannot establish the absence of an ingredient in the complete formula.',
+    '- Pivota Insights seller/entity facts, external highlights and verified market proof are separate layers. Seller-only or unknown profiles and source membership do not establish market consensus; sponsored signals and unreviewed highlights cannot establish proof.',
     '',
     'Decision rules:',
     '- Use approve, reject, or uncertain. Use uncertain when evidence is insufficient to make a reliable decision.',
@@ -1417,6 +1468,7 @@ module.exports = {
   buildReviewPrompt,
   buildAiReview,
   validateRecommendationDecision,
+  validateConsensusDecision,
   recommendationFields,
   consumerCopyForKind,
   createConsensusProviders,

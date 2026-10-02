@@ -2,6 +2,7 @@
 'use strict';
 
 const path = require('node:path');
+const { appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
 
 const {
   WRAPPER_CONFIRM_TOKEN,
@@ -143,6 +144,14 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     pushArg(args, 'coverage-sibling-refs', env.RELGRAPH_SYNC_COVERAGE_SIBLING_REFS || 'true');
   }
   pushArg(args, 'source-limit', env.RELGRAPH_SYNC_SOURCE_LIMIT);
+  appendTargetRecallArgs(args, { expandTargetRecall: parseBooleanEnv(env.RELGRAPH_SYNC_EXPAND_TARGET_RECALL, false),
+    targetRecallOptions: {
+      maxAnchors: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_ANCHORS,
+      batchSize: env.RELGRAPH_SYNC_TARGET_RECALL_BATCH_SIZE,
+      perAnchor: env.RELGRAPH_SYNC_TARGET_RECALL_PER_ANCHOR,
+      maxCandidates: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_CANDIDATES,
+      maxPages: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_PAGES,
+    } });
   pushArg(args, 'review-concurrency', env.RELGRAPH_SYNC_REVIEW_CONCURRENCY);
   pushArg(args, 'review-mode', env.RELGRAPH_AI_REVIEW_MODE);
   pushArg(args, 'max-review-error-rate', env.RELGRAPH_SYNC_MAX_REVIEW_ERROR_RATE);
