@@ -204,6 +204,10 @@ jobs:
             sleep $((attempt * 15))
           done
           exit 1
+      - name: Check cross-agent relgraph review races and serving
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/scripts/relationship_cross_agent_review_postgres.test.js
       - name: Execute canonical primary SQL through HTTP without rescue
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test

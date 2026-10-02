@@ -153,12 +153,15 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     throw new Error(`write-mode routine jobs require --confirm ${APPLY_CONFIRM_TOKEN}`);
   }
 
-  const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval');
+  const reviewMode = argValue(argv, 'review-mode', process.env.RELGRAPH_AI_REVIEW_MODE || 'single');
+  if (!['single', 'consensus'].includes(reviewMode)) throw new Error('review-mode must be single or consensus');
+  const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval') || reviewMode === 'consensus';
   const reviewExcludeRelationTypes = normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000)
     || (allowDupeAiApproval ? '' : 'dupe');
   const stepTimeoutMs = parseStepTimeoutMs(argv);
 
   return {
+    reviewMode,
     cutoff,
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
@@ -323,6 +326,7 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);

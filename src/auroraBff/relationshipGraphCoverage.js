@@ -80,7 +80,9 @@ function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, 
         SELECT max(GREATEST(rcl.created_at, rcl.updated_at, rcl.reviewed_at)) AS last_activity,
           bool_or(rcl.label_state IN ('ai_approved', 'human_approved')
             AND rcl.last_verified_at IS NOT NULL AND rcl.expires_at > now()
-            AND NOT (rcl.label_state = 'ai_approved' AND rcl.relation_type = 'dupe')
+            AND NOT (rcl.label_state = 'ai_approved' AND rcl.relation_type = 'dupe'
+              AND NOT COALESCE(rcl.provenance #>> '{ai_review,cross_agent_review,schema}' = 'relgraph.cross_agent_review.v1'
+                AND rcl.provenance #>> '{ai_review,cross_agent_review,verdict}' = 'approve', false))
             AND NOT (rcl.anchor_type = 'product' AND btrim(rcl.anchor_ref) ~* '^product:.*:')
             AND NOT (btrim(rcl.candidate_product_ref) ~* '^product:.*:')
             AND NOT (rcl.id = ANY(${suppressedIdsSql}))) AS covered,
