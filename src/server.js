@@ -23,6 +23,8 @@ const {
 
 const express = require('express');
 const axios = require('axios');
+const { assertStoredCatalogHttp, installStoredCatalogHttpGuard } = require('./config/storedCatalogTransport');
+installStoredCatalogHttpGuard(axios);
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -21344,6 +21346,9 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
   if (prefix.startsWith('beauty/makeup/lip')) {
     return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text)
+      || /\blip\s+inks?\b/i.test([
+        product.title, product.name, product.product_type,
+      ].filter(Boolean).join(' '))
       || /\bmetal\s+serum\s+gloss\b/i.test([
         product.title, product.name, product.product_type,
       ].filter(Boolean).join(' '));
@@ -25881,6 +25886,7 @@ function getUiChatLlmClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
+  axiosConfig = assertStoredCatalogHttp(axiosConfig);
   const disableTimeoutRetry = options?.disableTimeoutRetry === true;
   // Absolute epoch-ms at which the CALLER stops waiting for this whole chain (0/absent = no deadline, and
   // then nothing below changes). Only the TIMEOUT retry consults it — the busy/503 retry below is not

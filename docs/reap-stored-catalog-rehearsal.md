@@ -45,3 +45,17 @@ private Cloud Run gateway, preserving the application's caller key and buyer JWT
 The platform token belongs in `X-Serverless-Authorization`; changing buyer identity
 to fix a private service hop would break recovery ownership. Hosting that demo UI
 on Cloud Run requires a separately reviewed deployment/guard design.
+
+The ordinary shared Axios path also refuses remote catalog HTTP in rehearsal
+mode before its adapter dispatches, including upstream search fallback and
+product-detail/group/review hydration. Only the server's exact loopback invoke
+path is allowed and redirects are disabled. This is an extra source defense;
+transports outside that shared client still require the independent runtime
+allowlist. Reap's explicitly configured backend transport remains governed by
+that separate target/auth policy.
+
+Lip-ink queries use their own named product-form evidence at query understanding,
+canonical SQL admission and the serving hard gate. Generic root-only beauty rows
+must name lip ink in their own title/name/type; descriptions and cross-sell copy
+cannot admit them. This does not reinterpret lip ink as a strict lipstick claim
+or change stored categories or proof clocks.
