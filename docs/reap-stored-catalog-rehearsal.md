@@ -48,8 +48,12 @@ on Cloud Run requires a separately reviewed deployment/guard design.
 
 The ordinary shared Axios path also refuses remote catalog HTTP in rehearsal
 mode before its adapter dispatches, including upstream search fallback and
-product-detail/group/review hydration. Only the server's exact loopback invoke
-path is allowed and redirects are disabled. This is an extra source defense;
+product-detail/group/review hydration. The server's exact loopback invoke path
+is allowed. Private auth may also POST to only the exact configured backend
+`/agent/internal/auth/introspect` path after the private-hop contract validates
+the stable audience and receiving origin. Query/hash/userinfo, other backend
+paths and redirects are refused. The private-hop interceptor must run this
+check before metadata/token work. This is an extra source defense;
 transports outside that shared client still require the independent runtime
 allowlist. Reap's explicitly configured backend transport remains governed by
 that separate target/auth policy.
