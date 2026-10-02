@@ -156,6 +156,12 @@ test('actual server wiring: caller-context Reap start/recover/GET and introspect
     assert.equal(registryCalls[0].init.headers['X-Internal-Key'], 'synthetic-internal');
     assert.equal(registryCalls[0].init.headers['X-Serverless-Authorization'], `Bearer ${jwt()}`);
     assert.equal(registryCalls[0].init.redirect, 'error');
+    const platformMissing = strict.buildReapAgenticPurchaseClient(null, { fetchImpl: async () => ({ status: 404, text: async () => '<html>service missing</html>' }) });
+    await strict.runInInvokeAuthContextForTest({ api_key: 'synthetic-agent', agent_user_jwt: 'synthetic-buyer' }, async () => {
+      assert.equal((await platformMissing.startPurchase({})).kind, 'unavailable');
+      assert.equal((await platformMissing.recoverPurchase({})).kind, 'refused');
+      assert.notEqual((await platformMissing.recoverPurchase({})).kind, 'not_found');
+    });
     const unsafe = strict.buildReapAgenticPurchaseClient(null, { baseUrl: 'https://evil.example', fetchImpl: async () => { throw Error('must not send'); } });
     const result = await strict.runInInvokeAuthContextForTest({ api_key: 'synthetic-agent', agent_user_jwt: 'synthetic-buyer' }, () => unsafe.recoverPurchase({}));
     assert.equal(result.kind, 'unavailable');
@@ -190,4 +196,39 @@ test('issuer registry cannot reuse stale trust after an explicit private IAM fai
   assert.equal((await registry.verifyForAgent(buyerToken, 'agent')).user_ref, 'buyer');
   now += 61_000; deny = true;
   await assert.rejects(registry.verifyForAgent(buyerToken, 'agent'), { code: 'REGISTRY_UNAVAILABLE' });
+});
+
+
+test('private create requires exact house refusal; recover accepts only authoritative owner404 as namespace miss', async () => {
+  const { createReapAgenticPurchaseClient } = require('../src/services/reapAgenticPurchaseClient');
+  for (const body of [{}, { error: 'service_not_found' }, { error: 'purchase_not_found' }, { detail: { error: { code: 'merchant_not_eligible' } } }]) {
+    const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
+      fetchImpl: async () => ({ status: 404, text: async () => JSON.stringify(body) }) });
+    assert.equal((await client.startPurchase({})).kind, 'unavailable');
+    assert.equal((await client.recoverPurchase({})).kind, body.error === 'purchase_not_found' ? 'not_found' : 'refused');
+  }
+  const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
+    fetchImpl: async () => ({ status: 409, text: async () => JSON.stringify({ detail: { error: 'merchant_not_eligible' } }) }) });
+  assert.equal((await client.startPurchase({})).kind, 'refused');
+});
+
+
+test('private create rejects unknown/mismatched/conflicting and explicit gate envelopes; exact canonical flat backend refusals remain readable', async () => {
+  const { createReapAgenticPurchaseClient } = require('../src/services/reapAgenticPurchaseClient');
+  for (const [status, body] of [
+    [409,{detail:{error:'invented_refusal'}}], [400,{error:'merchant_not_eligible'}],
+    [409,{error:'merchant_disabled',detail:{error:'merchant_not_eligible'}}],
+    [404,{error:'create_disabled'}], [404,{error:'not_available_on_this_rail'}],
+    [404,{error:'pilot_scope_refused'}], [400,{error:'invalid_request',detail:null}],
+  ]) {
+    const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
+      fetchImpl: async () => ({ status, text: async () => JSON.stringify(body) }) });
+    assert.equal((await client.startPurchase({})).kind, 'unavailable');
+  }
+  for (const [status, code] of [[400,'consent_required'],[409,'merchant_not_eligible'],[409,'idempotency_conflict']]) {
+    const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
+      fetchImpl: async () => ({ status, text: async () => JSON.stringify({ error: code }) }) });
+    const result = await client.startPurchase({});
+    assert.equal(result.kind, 'refused'); assert.equal(result.code, code);
+  }
 });

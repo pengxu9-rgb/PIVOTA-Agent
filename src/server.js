@@ -29957,6 +29957,7 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
   return createReapAgenticPurchaseClient({
     baseUrl: deps.baseUrl || PIVOTA_API_BASE,
     fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    requireAuthoritativeRefusal: (deps.privateBackendHop || privateBackendHop).enabled,
     authHeaders: () => buildInvokeUpstreamAuthHeaders({ allowInternalFallback: false, forwardBuyerRef: false }),
     logger: log,
   });

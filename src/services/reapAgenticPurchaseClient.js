@@ -104,6 +104,27 @@ function reasonCodeOf(body) {
   return null;
 }
 
+// Exact create refusal vocabulary/statuses from backend routes/agent_commerce_reap.py
+// _REFUSAL_STATUS at ffae022. Gate/auth refusals deliberately stay unavailable on
+// the private hop: they must never arm a different spending lane.
+const PRIVATE_CREATE_REFUSALS = Object.freeze({
+  invalid_request: 400, invalid_address: 400, invalid_return_url: 400,
+  currency_unsupported: 400, invalid_offer_code: 400, consent_required: 400,
+  merchant_not_eligible: 409, merchant_disabled: 409, merchant_not_purchasable: 409,
+  buyer_unlinked: 409, row_not_found: 409, row_unpriced: 409,
+  row_price_ambiguous: 409, row_not_shopify: 409, row_variant_unverified: 409,
+  seller_identity_unverified: 409, row_currency_mismatch: 409, row_price_stale: 409,
+  row_variant_ambiguous: 409, idempotency_conflict: 409,
+});
+function privateCreateRefusalCode(status, body) {
+  if (!isPlainObject(body)) return null;
+  const hasDetail = Object.prototype.hasOwnProperty.call(body, 'detail');
+  const code = hasDetail ? (isPlainObject(body.detail) ? body.detail.error : null) : body.error;
+  if (typeof code !== 'string' || PRIVATE_CREATE_REFUSALS[code] !== status) return null;
+  if (hasDetail && Object.prototype.hasOwnProperty.call(body, 'error') && body.error !== code) return null;
+  return code;
+}
+
 function parseJson(text) {
   if (typeof text !== 'string' || text.length === 0 || text.length > MAX_BODY_CHARS) return undefined;
   try {
@@ -119,6 +140,7 @@ function parseJson(text) {
  *   authHeaders: () => object,
  *   fetchImpl?: Function,
  *   timeoutMs?: number,
+ *   requireAuthoritativeRefusal?: boolean, // private Cloud Run platform errors are not backend refusals
  *   logger?: { info?: Function, warn?: Function },
  * }} deps
  */
@@ -224,7 +246,13 @@ function createReapAgenticPurchaseClient(deps = {}) {
       return { kind: KIND.unavailable, code: 'malformed' };
     }
     if (out.status >= 400 && out.status < 500) {
-      const code = reasonCodeOf(out.body) || `http_${out.status}`;
+      const code = deps.requireAuthoritativeRefusal === true
+        ? privateCreateRefusalCode(out.status, out.body)
+        : reasonCodeOf(out.body) || `http_${out.status}`;
+      if (!code) {
+        log('warn', { route: 'start', outcome: KIND.unavailable, code: 'http_4xx_unknown', http_status: out.status });
+        return { kind: KIND.unavailable, code: 'http_4xx_unknown' };
+      }
       log('info', { route: 'start', outcome: KIND.refused, code, http_status: out.status });
       return { kind: KIND.refused, code, http_status: out.status };
     }
