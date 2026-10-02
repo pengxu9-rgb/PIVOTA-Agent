@@ -46,8 +46,8 @@ async function validateConnection(client, target = TARGET) {
   // The shared instance currently fails this check because PUBLIC can CONNECT
   // to other databases. No existing ACL is changed by this guard.
   if (Number((await client.query("SELECT count(*) AS n FROM pg_database WHERE datallowconn AND datname<>current_database() AND has_database_privilege(current_user,oid,'CONNECT')")).rows[0].n)) reject('gateway_guard_other_database_access');
-  if (Number((await client.query("SELECT count(*) AS n FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname NOT IN ('public','information_schema')")).rows[0].n)) reject('gateway_guard_extra_schema');
-  if (Number((await client.query("SELECT count(*) AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND p.prosecdef AND has_function_privilege(current_user,p.oid,'EXECUTE')")).rows[0].n)) reject('gateway_guard_security_definer');
+  if (Number((await client.query("SELECT count(*) AS n FROM pg_namespace WHERE left(nspname,3)<>'pg_' AND nspname NOT IN ('public','information_schema')")).rows[0].n)) reject('gateway_guard_extra_schema');
+  if (Number((await client.query("SELECT count(*) AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema' AND p.prosecdef AND has_function_privilege(current_user,p.oid,'EXECUTE')")).rows[0].n)) reject('gateway_guard_security_definer');
   const relations = (await client.query(`SELECT n.nspname AS schema,c.relname AS name,c.relkind::text AS kind,
     pg_get_userbyid(c.relowner) AS owner,c.relrowsecurity AS rls,c.relforcerowsecurity AS force_rls,
     has_table_privilege(current_user,c.oid,'SELECT') AS readable,
@@ -56,7 +56,7 @@ async function validateConnection(client, target = TARGET) {
       WHERE acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname=current_user))
       AND (acl.privilege_type<>'SELECT' OR acl.is_grantable)) AS unsafe_acl
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','f')`)).rows;
+    WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','f')`)).rows;
   const allowed = new Set([...TABLES, 'reap_rehearsal_guard_manifest']);
   if (relations.some((r) => r.writable || r.unsafe_acl || (r.readable && (r.schema !== 'public' || !allowed.has(r.name)))
     || (allowed.has(r.name) && (r.owner !== target.owner || r.kind !== 'r' || r.rls || r.force_rls || !r.readable)))
@@ -66,7 +66,7 @@ async function validateConnection(client, target = TARGET) {
   const columnAcls = (await client.query(`SELECT n.nspname AS schema,c.relname AS name,
     acl.privilege_type,acl.is_grantable FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
     JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(a.attacl) acl
-    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'
+    WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
     AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname=current_user))`)).rows;
   if (columnAcls.some((acl) => acl.schema !== 'public' || !allowed.has(acl.name)
     || acl.privilege_type !== 'SELECT' || acl.is_grantable)) reject('gateway_guard_column_acl');
@@ -74,7 +74,7 @@ async function validateConnection(client, target = TARGET) {
     EXISTS(SELECT 1 FROM aclexplode(COALESCE(c.relacl,acldefault('s',c.relowner))) acl
       WHERE acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname=current_user))) AS accessible
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind='S'`)).rows;
+    WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema' AND c.relkind='S'`)).rows;
   if (sequences.some((s) => s.owner !== target.owner || s.accessible)) reject('gateway_guard_sequence_acl');
   const columns = (await client.query(`SELECT c.relname AS table_name,a.attname AS column_name,
     format_type(a.atttypid,a.atttypmod) AS formatted_type,

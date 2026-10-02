@@ -52,6 +52,7 @@ const cases = [
  ['PUBLIC cross database CONNECT','GRANT CONNECT ON DATABASE postgres TO PUBLIC','REVOKE CONNECT ON DATABASE postgres FROM PUBLIC','other_database_access'],
  ['role readonly off',`ALTER ROLE ${target.actor} SET default_transaction_read_only=off`,`ALTER ROLE ${target.actor} SET default_transaction_read_only=on`,'identity_privileges'],
  ['foreign readable relation',`CREATE TABLE foreign_fixture(x INT); GRANT SELECT ON foreign_fixture TO ${target.actor}`,'DROP TABLE foreign_fixture','relation_privileges'],
+ ['wildcard lookalike pgx schema','CREATE SCHEMA pgx','DROP SCHEMA pgx','extra_schema'],
  ['extra schema','CREATE SCHEMA foreign_fixture','DROP SCHEMA foreign_fixture','extra_schema'],
  ['wrong fixture marker',"UPDATE reap_rehearsal_guard_manifest SET fixture_id='foreign'","UPDATE reap_rehearsal_guard_manifest SET fixture_id='20261002_01a0f'",'marker'],
  ['changed numeric typmod','ALTER TABLE catalog_offers ALTER COLUMN estimated_best_price TYPE numeric(13,2)','ALTER TABLE catalog_offers ALTER COLUMN estimated_best_price TYPE numeric(12,2)','catalog_schema'],
