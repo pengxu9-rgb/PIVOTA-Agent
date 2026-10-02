@@ -85,6 +85,11 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
       /\b(perfume|perfumes|fragrance|fragrances|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|scents)\b|香水|香氛|古龙|古龍|香體|香体/i,
   },
   {
+    category: 'lip_ink',
+    categoryPathPrefix: 'beauty/makeup/lip/',
+    pattern: /\blip\s+inks?\b/i,
+  },
+  {
     category: 'lipstick',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern: /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|liquid\s*lips?|rouge)\b|口红|口紅/i,

@@ -17,6 +17,11 @@ reads, and the listed Aurora/LLM enrichment paths. The assertion never changes
 configuration on the operator's behalf. Several existing cache switches compare
 against the literal string `false`, so alternative spellings are unsafe.
 
+Also explicitly set `SEARCH_BUDGET_REQUIRE_MARKER=true`: an unmarked shade
+number such as07 must never silently become aUSD7 price ceiling. Explicit
+`underUSD7` still applies its real budget. The opt-in assertion refuses a missing
+or disabled marker flag; ordinary deployments retain their existing default.
+
 Both remote catalog-serving index base URL variables must be empty. A local
 read should not quietly become a remote index read. Keep source identity and
 stored eligibility/proof timestamps unchanged; a missing or suppressed record
@@ -33,7 +38,7 @@ the rehearsal. Unit tests for this assertion alone do not prove full PDP serving
 Generate the non-secret suppression portion of a task-local environment file:
 
 ```sh
-node -e 'const {DISABLED_FLAGS}=require("./src/config/storedCatalogRehearsal"); console.log("GATEWAY_STORED_CATALOG_REHEARSAL=1"); for(const name of DISABLED_FLAGS) console.log(`${name}=false`);'
+node -e 'const {DISABLED_FLAGS,REQUIRED_TRUE_FLAGS}=require("./src/config/storedCatalogRehearsal"); console.log("GATEWAY_STORED_CATALOG_REHEARSAL=1"); for(const name of DISABLED_FLAGS) console.log(`${name}=false`); for(const name of REQUIRED_TRUE_FLAGS) console.log(`${name}=true`);'
 ```
 
 Normal deployments with the opt-in flag absent retain their existing behavior.
@@ -45,3 +50,21 @@ private Cloud Run gateway, preserving the application's caller key and buyer JWT
 The platform token belongs in `X-Serverless-Authorization`; changing buyer identity
 to fix a private service hop would break recovery ownership. Hosting that demo UI
 on Cloud Run requires a separately reviewed deployment/guard design.
+
+The ordinary shared Axios path also refuses remote catalog HTTP in rehearsal
+mode before its adapter dispatches, including upstream search fallback and
+product-detail/group/review hydration. The server's exact loopback invoke path
+is allowed. Private auth may also POST to only the exact configured backend
+`/agent/internal/auth/introspect` path after the private-hop contract validates
+the stable audience and receiving origin. Query/hash/userinfo, other backend
+paths and redirects are refused. The private-hop interceptor must run this
+check before metadata/token work. This is an extra source defense;
+transports outside that shared client still require the independent runtime
+allowlist. Reap's explicitly configured backend transport remains governed by
+that separate target/auth policy.
+
+Lip-ink queries use their own named product-form evidence at query understanding,
+canonical SQL admission and the serving hard gate. Generic root-only beauty rows
+must name lip ink in their own title/name/type; descriptions and cross-sell copy
+cannot admit them. This does not reinterpret lip ink as a strict lipstick claim
+or change stored categories or proof clocks.
