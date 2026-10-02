@@ -50,7 +50,8 @@ test('a misspelled opt-in cannot silently turn off rehearsal safety', () => {
 });
 
 test('actual server entry exits before app/listener/DB startup with an unsafe rehearsal config', () => {
-  const env = { PATH: process.env.PATH, NODE_OPTIONS: '--no-experimental-strip-types',
+  // This guard runs before app imports; no version-specific Node flag is needed.
+  const env = { PATH: process.env.PATH,
     ...safeConfig(), MERCHANT_VARIANT_SOURCING_ENABLED: 'true',
     DATABASE_URL: 'postgres://private-user:must-not-log@127.0.0.1:9/private-db', PORT: '0' };
   const child = spawnSync(process.execPath, [path.join(__dirname, '../src/server.js')], { env,
