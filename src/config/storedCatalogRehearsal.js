@@ -38,6 +38,8 @@ const DISABLED_FLAGS = Object.freeze([
   'FIND_PRODUCTS_MULTI_VECTOR_ENABLED',
 ]);
 
+const REQUIRED_TRUE_FLAGS = Object.freeze(['SEARCH_BUDGET_REQUIRE_MARKER']);
+
 const REMOTE_INDEX_CONFIG = Object.freeze([
   'CATALOG_SERVING_INDEX_BASE_URL', 'CATALOG_SERVING_BASE_URL',
 ]);
@@ -49,12 +51,13 @@ function assertStoredCatalogRehearsal(env = process.env) {
   // Several cache flags deliberately use !== 'false', so synonyms such as 0,
   // FALSE or off would leave them armed. Require the exact common safe spelling.
   const unsafe = DISABLED_FLAGS.filter((name) => env[name] !== 'false');
+  unsafe.push(...REQUIRED_TRUE_FLAGS.filter((name) => env[name] !== 'true'));
   unsafe.push(...REMOTE_INDEX_CONFIG.filter((name) => String(env[name] || '').trim() !== ''));
   if (unsafe.length) {
     // Only names, never configuration values (which may contain credentials).
     throw new Error(`STORED_CATALOG_REHEARSAL_UNSAFE_CONFIG:${unsafe.join(',')}`);
   }
-  return { enabled: true, disabled_flags: [...DISABLED_FLAGS] };
+  return { enabled: true, disabled_flags: [...DISABLED_FLAGS], required_true_flags: [...REQUIRED_TRUE_FLAGS] };
 }
 
-module.exports = { assertStoredCatalogRehearsal, DISABLED_FLAGS, REMOTE_INDEX_CONFIG };
+module.exports = { assertStoredCatalogRehearsal, DISABLED_FLAGS, REQUIRED_TRUE_FLAGS, REMOTE_INDEX_CONFIG };

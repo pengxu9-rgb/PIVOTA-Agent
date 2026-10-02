@@ -24,3 +24,21 @@ test('actual serving hard gate matches SQL lip-ink admission but rejects cross-s
   assert.equal(getSearchQualityContractHardConstraintResult(product,c,query).eligible,false);
  }
 });
+
+test('shade07 is not a budget in the protected profile while an explicitUSD7 budget still is',()=>{
+ const resolve=require('../src/server')._debug.resolveBeautyMainlineBudgetConstraint;
+ const previous=process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+ try {
+  process.env.SEARCH_BUDGET_REQUIRE_MARKER='true';
+  assert.equal(resolve({queryText:'Judydoll Silky Matte Lip Ink 07 Burgundy Ink'}),null);
+  assert.equal(resolve({queryText:'Judydoll Silky Matte Lip Ink under USD7'}).max,7);
+ } finally { if(previous==null)delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;else process.env.SEARCH_BUDGET_REQUIRE_MARKER=previous; }
+});
+test('ordinary parser default remains unchanged when marked-budget protection is not selected',()=>{
+ const resolve=require('../src/server')._debug.resolveBeautyMainlineBudgetConstraint;
+ const previous=process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+ try {
+  delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+  assert.equal(resolve({queryText:'Judydoll Silky Matte Lip Ink 07 Burgundy Ink'}).max,7);
+ } finally { if(previous==null)delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;else process.env.SEARCH_BUDGET_REQUIRE_MARKER=previous; }
+});

@@ -17,6 +17,11 @@ reads, and the listed Aurora/LLM enrichment paths. The assertion never changes
 configuration on the operator's behalf. Several existing cache switches compare
 against the literal string `false`, so alternative spellings are unsafe.
 
+Also explicitly set `SEARCH_BUDGET_REQUIRE_MARKER=true`: an unmarked shade
+number such as07 must never silently become aUSD7 price ceiling. Explicit
+`underUSD7` still applies its real budget. The opt-in assertion refuses a missing
+or disabled marker flag; ordinary deployments retain their existing default.
+
 Both remote catalog-serving index base URL variables must be empty. A local
 read should not quietly become a remote index read. Keep source identity and
 stored eligibility/proof timestamps unchanged; a missing or suppressed record
@@ -33,7 +38,7 @@ the rehearsal. Unit tests for this assertion alone do not prove full PDP serving
 Generate the non-secret suppression portion of a task-local environment file:
 
 ```sh
-node -e 'const {DISABLED_FLAGS}=require("./src/config/storedCatalogRehearsal"); console.log("GATEWAY_STORED_CATALOG_REHEARSAL=1"); for(const name of DISABLED_FLAGS) console.log(`${name}=false`);'
+node -e 'const {DISABLED_FLAGS,REQUIRED_TRUE_FLAGS}=require("./src/config/storedCatalogRehearsal"); console.log("GATEWAY_STORED_CATALOG_REHEARSAL=1"); for(const name of DISABLED_FLAGS) console.log(`${name}=false`); for(const name of REQUIRED_TRUE_FLAGS) console.log(`${name}=true`);'
 ```
 
 Normal deployments with the opt-in flag absent retain their existing behavior.

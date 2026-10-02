@@ -3,12 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
-const { assertStoredCatalogRehearsal, DISABLED_FLAGS, REMOTE_INDEX_CONFIG } =
+const { assertStoredCatalogRehearsal, DISABLED_FLAGS, REQUIRED_TRUE_FLAGS, REMOTE_INDEX_CONFIG } =
   require('../src/config/storedCatalogRehearsal');
 
 function safeConfig() {
   return { GATEWAY_STORED_CATALOG_REHEARSAL: '1',
-    ...Object.fromEntries(DISABLED_FLAGS.map((name) => [name, 'false'])) };
+    ...Object.fromEntries(DISABLED_FLAGS.map((name) => [name, 'false'])),
+    ...Object.fromEntries(REQUIRED_TRUE_FLAGS.map((name) => [name, 'true'])) };
 }
 
 test('ordinary startup remains unchanged and the rehearsal config is not mutated', () => {
@@ -59,3 +60,11 @@ test('actual server entry exits before app/listener/DB startup with an unsafe re
   assert.equal(child.stdout, '');
   assert.doesNotMatch(child.stderr, /must-not-log|Gateway.*listen|DB migrations/);
 });
+
+for (const flag of REQUIRED_TRUE_FLAGS) {
+  test(`rehearsal refuses absent/disabled marked-budget protection ${flag}`, () => {
+    for (const value of [undefined, 'false', '', '0']) {
+      assert.throws(() => assertStoredCatalogRehearsal({ ...safeConfig(), [flag]: value }), new RegExp(flag));
+    }
+  });
+}
