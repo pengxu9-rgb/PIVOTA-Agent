@@ -1709,7 +1709,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     if (!res || res.kind === "unavailable" || res.code === "idempotency_conflict") {
       throw unknownOutcome();
     }
-    if (res.code === "reap_create_paused") {
+    if (["reap_create_paused", "create_disabled", "pilot_scope_invalid"].includes(res.code)) {
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "reap_create_paused" });
     }
     // Deterministic rejection before creation retains the documented fallback.

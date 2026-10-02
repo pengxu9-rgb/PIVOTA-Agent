@@ -1402,12 +1402,17 @@ test('seller IN: EVERY destination of the row must be the expected seller -- pro
   }
 });
 
-test('seller IN: a matching explicit domain AND a matching storefront link pass -- the storefront answer links to that seller', async (t) => {
+test('seller IN: matching seller cannot bypass required variant selection on an explicit Reap request', async (t) => {
   t.mock.method(Date, 'now', () => NOW);
   const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_ok', merchant_domain: 'Brand.example', external_redirect_url: 'https://www.brand.example/products/x' };
-  const { out } = await createReap(ESC_ON, { rows: { sig_ok: row }, args: { productId: 'sig_ok', ...EXPECT_BRAND } });
-  assert.match(out.id, /^esc_/, 'multi-variant: the storefront route answers');
-  assert.equal(out.continue_url, 'https://www.brand.example/products/x');
+  const m = await mods();
+  const ctx = await build({ rows: { sig_ok: row } });
+  const result = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: 'sig_ok', ...EXPECT_BRAND }), SESSION)));
+  const error = errorOf(result);
+  assert.equal(error.code, 'QUOTE_REQUIRED');
+  assert.equal(error.detail.reason, 'ucp_reap_variant_not_created');
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.equal(JSON.stringify(result).includes('continue_url'), false);
 });
 
 test('storefront lane, belt and braces: handed an expected seller the link does not match, it REFUSES instead of linking', async () => {

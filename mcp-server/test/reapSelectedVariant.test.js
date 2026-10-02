@@ -40,6 +40,21 @@ test('recovery derives the same selector without present-day variant reads',()=>
  assert.equal(selectedReapVariantKey(args(),{},key,{recovery:true}),undefined);
 });
 
+for (const code of ['create_disabled', 'pilot_scope_invalid', 'reap_create_paused']) {
+ test(`backend-only ${code} cannot fall through to another checkout route`,async()=>{
+  let dispatches=0;
+  const client={hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async()=>{
+   dispatches++;return {kind:'refused',http_status:404,code};
+  }};
+  await assert.rejects(call('677289689108',client),error=>{
+   assert.equal(error.code,'OPERATION_NOT_ALLOWED');
+   assert.deepEqual(JSON.parse(toToolError(error).content[0].text).error.detail,{reason:'reap_create_paused'});
+   return true;
+  });
+  assert.equal(dispatches,1);
+ });
+}
+
 test('the UCP adapter accepts the variant extension only on an enabled Reap create',async()=>{
  const { ucpToNativeToolArgs } = await import('../src/ucpArgumentAdapter.js');
  const wire={meta:{'idempotency-key':'selected-variant-key'},checkout:{line_items:[{item:{id:productId},quantity:1}],reap:{expected_merchant_domain:'kravebeauty.com',selected_variant_id:'677289689108'}}};
