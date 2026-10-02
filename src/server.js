@@ -549,6 +549,8 @@ const DEFAULT_MERCHANT_ID = String(
     '',
 ).trim();
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const { createPrivateBackendHop } = require('./services/privateBackendHop');
+const privateBackendHop = createPrivateBackendHop();
 const PROXY_SEARCH_AURORA_API_BASE = String(
   process.env.PROXY_SEARCH_AURORA_API_BASE ||
     process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL ||
@@ -792,6 +794,7 @@ const AGENT_AUTH_INTROSPECT_URL = String(
 const AGENT_AUTH_INTROSPECT_INTERNAL_KEY = String(
   process.env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY || '',
 ).trim();
+privateBackendHop.installAxios(axios, { backendBaseUrl: PIVOTA_API_BASE, introspectUrl: AGENT_AUTH_INTROSPECT_URL });
 const AGENT_AUTH_INTROSPECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
   2_500,
@@ -29332,6 +29335,11 @@ async function introspectInvokeApiKeyOverNetwork(apiKey, signal) {
       },
     );
   } catch (err) {
+    if (String(err?.code || '').startsWith('backend_iam_')) {
+      const failure = new Error('backend service authentication failed');
+      failure.code = 'AUTH_INTROSPECT_IAM_FAILED';
+      throw failure;
+    }
     openInvokeAuthIntrospectCooldown(apiKey);
     throw buildInvokeAuthIntrospectUnavailableError(err?.message || 'introspect request failed');
   }
@@ -29683,7 +29691,7 @@ async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken 
       }
     }
     if (!introspection) {
-      const fallback = adoptInvokeEmergencyAuthFallback({
+      const fallback = err?.code === 'AUTH_INTROSPECT_IAM_FAILED' ? null : adoptInvokeEmergencyAuthFallback({
         req,
         provided,
         keyFingerprint,
@@ -29948,7 +29956,7 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
   const { createReapAgenticPurchaseClient } = require('./services/reapAgenticPurchaseClient');
   return createReapAgenticPurchaseClient({
     baseUrl: deps.baseUrl || PIVOTA_API_BASE,
-    fetchImpl: deps.fetchImpl,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
     authHeaders: () => buildInvokeUpstreamAuthHeaders({ allowInternalFallback: false, forwardBuyerRef: false }),
     logger: log,
   });
@@ -31039,7 +31047,7 @@ let agentIdentityIssuerRegistry = null;
 function getAgentIdentityIssuerRegistry() {
   if (!agentIdentityIssuerRegistry) {
     const { createAgentIdentityIssuerRegistry } = require('./services/agentIdentityIssuerRegistry');
-    agentIdentityIssuerRegistry = createAgentIdentityIssuerRegistry({ logger });
+    agentIdentityIssuerRegistry = createAgentIdentityIssuerRegistry({ logger, fetchImpl: privateBackendHop.wrapFetch() });
   }
   return agentIdentityIssuerRegistry;
 }
@@ -51763,6 +51771,8 @@ module.exports._debug = {
     // Tests only: the Reap lane's client as production builds it, and a way to run it inside the per-request
     // auth context the UCP door's tools/call runs in (tests/reap_agentic_lane.node.test.cjs).
     buildReapAgenticPurchaseClient,
+    privateBackendHop,
+    getAgentIdentityIssuerRegistry,
     runInInvokeAuthContextForTest: (store, fn) => INVOKE_AUTH_CONTEXT.run(store, fn),
   },
 };

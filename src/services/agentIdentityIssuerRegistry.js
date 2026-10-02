@@ -196,6 +196,9 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
     if (!inflight) {
       inflight = fetchOnce()
         .catch((err) => {
+          if (String(err?.code || '').startsWith('backend_iam_')) {
+            throw makeError('backend service authentication failed', 'REGISTRY_UNAVAILABLE');
+          }
           logger.warn({ err: err?.message || String(err) }, 'agent identity issuer registry refresh failed');
           return fetchedAt > 0; // stale cache is still a cache
         })
