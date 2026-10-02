@@ -13,6 +13,7 @@ jest.mock('../../src/auroraBff/productRelationshipGraphSources', () => {
 const sources = require('../../src/auroraBff/productRelationshipGraphSources');
 const { buildInputsFromDb } = require('../../scripts/build-product-relationship-graph');
 const { buildEdgeForCandidate } = require('../../src/auroraBff/productRelationshipGraphBuilder');
+const { buildEvidence } = require('../../scripts/review-relationship-candidate-labels');
 const { withoutRelationshipPairContext } = require('../../src/auroraBff/relationshipCandidatePairContext');
 const NOW = '2026-10-02T00:00:00.000Z';
 function listing(key, brand, price = 50) {
@@ -95,6 +96,38 @@ test('exact INCI and Insights hydrate both pair records while original price clo
   expect(candidateFor(payload.candidatesByAnchor,b).source_refs.some(ref => ref.type==='aurora_dupe_kb')).toBe(false);
 });
 
+test.each(['source_refs', 'sourceRefs'])('shared formula evidence cannot borrow nested pair citations in %s', async (field) => {
+  const formula = 'Water, Glycerin, Squalane, Ceramide NP';
+  const withFormula = { ...target, ingredient_text:formula };
+  const ownCitation = { type:'products_cache', authoritative:true, url:'https://synthetic.example/target-formula' };
+  const pairCitation = { type:'aurora_dupe_kb', authoritative:true, name:'A-only reviewed pair' };
+  const formulaLegacy = [{ ...legacy[0], dupes:[{ ...withFormula, evidence_grade:'A',
+    source_refs:[pairCitation], ingredient_evidence:[{ table:'product_snapshot', product_key:target.product_key,
+      ingredient_text:formula, observed_at:NOW, [field]:[ownCitation,pairCitation] }] }] }];
+  const ingredients = [{ table:'public.beauty_sku_ingredients', product_key:target.product_key,
+    sku_key:target.product_id, raw_inci:formula, updated_at:NOW }];
+  sources.enrichProductRelationshipGraphProducts.mockImplementationOnce(async ({ products }) => ({
+    products:sources.enrichProductsWithEvidence(products,{ ingredientRows:ingredients }),
+    ingredientRows:ingredients, intelRows:[], diagnostics:{},
+  }));
+  sources.loadProductRelationshipGraphSourceInputs.mockResolvedValue({ products:[a,b,withFormula], legacyDupes:formulaLegacy, intelRows:[] });
+  const payload = await buildInputsFromDb({ limit:2, includeNeedNodes:false, includeTransitiveRecall:false });
+  const resultA = candidateFor(payload.candidatesByAnchor,a);
+  const resultB = candidateFor(payload.candidatesByAnchor,b);
+  expect(resultA.curated_pair_evidence).toMatchObject({ anchor_ref:a.product_ref, verified:true });
+  expect(resultB).not.toHaveProperty('curated_pair_evidence');
+  expect(resultB.ingredient_text).toBe(formula);
+  const nestedRefs = resultB.ingredient_evidence.flatMap(row => [...(row.source_refs || []), ...(row.sourceRefs || [])]);
+  expect(nestedRefs.some(ref => ref.type==='aurora_dupe_kb')).toBe(false);
+  expect(nestedRefs).toContainEqual(ownCitation);
+  expect(nestedRefs.some(ref => ref.type==='ingredient_kb')).toBe(true);
+  const pending = buildEdgeForCandidate({ anchor:b, candidate:resultB, nowIso:NOW });
+  expect(pending.errors).toEqual([]);
+  const reviewerFacts = buildEvidence(pending.edge, new Map());
+  expect(reviewerFacts.candidate.ingredient_evidence.flatMap(row => row.source_refs)
+    .some(ref => ref.type==='aurora_dupe_kb')).toBe(false);
+});
+
 test('a new transitive pair cannot inherit its bridge pair proof, grade or source authority', () => {
   const bridge = { ...b, similarity_score:0.94, category_use_case_match:0.9,
     source_refs:[{type:'product_intel_kb',authoritative:true,url:'https://synthetic.example/bridge-only'}] };
@@ -102,12 +135,15 @@ test('a new transitive pair cannot inherit its bridge pair proof, grade or sourc
     _legacy_match:true, relation_hint:'dupe', legacy_dupe_kb_key:b.product_ref,
     curated_pair_evidence:{anchor_ref:b.product_ref,candidate_ref:target.product_ref,relation_type:'dupe',verified:true},
     source_refs:[...target.source_refs,{type:'aurora_dupe_kb',authoritative:true}],
+    ingredient_evidence:[{table:'product_snapshot', ingredient_text:'Water, Glycerin',
+      source_refs:[...target.source_refs,{type:'aurora_dupe_kb',authoritative:true}]}],
     transitive_bridge_ref:'product:previous', transitive_path_confidence:0.99 };
   const row = sources.__internal.buildTransitiveRecallCandidate({ anchor:a, bridge, candidate:secondHop });
   expect(row).not.toBeNull();
   for (const field of ['curated_pair_evidence','_legacy_match','legacy_dupe_kb_key','relation_hint']) expect(row).not.toHaveProperty(field);
   expect(row.evidence_grade).not.toBe('A');
   expect(row.source_refs.some(ref => ref.type==='aurora_dupe_kb' || ref.url==='https://synthetic.example/bridge-only')).toBe(false);
+  expect(row.ingredient_evidence[0].source_refs).toEqual(target.source_refs);
   expect(row.source_refs).toContainEqual(expect.objectContaining({type:'relationship_graph_transitive_recall',authoritative:false}));
   expect(row.transitive_bridge_ref).toBe(b.product_ref);
   expect(row.transitive_path_confidence).toBeLessThan(0.99);
