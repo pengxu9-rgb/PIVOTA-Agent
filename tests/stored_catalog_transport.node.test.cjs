@@ -18,3 +18,14 @@ test('exact self invoke preserves app headers/body and disables redirect dispatc
  const result=await instance.post('http://127.0.0.1:8795/agent/shop/v1/invoke',{operation:'get_pdp_v2'},{headers:{Authorization:'Bearer synthetic','X-Agent-User-JWT':'synthetic-owner'},maxRedirects:8});
  assert.equal(result.status,200);assert.equal(seen.maxRedirects,0);assert.equal(seen.headers.Authorization,'Bearer synthetic');assert.equal(seen.headers['X-Agent-User-JWT'],'synthetic-owner');assert.equal(JSON.parse(seen.data).operation,'get_pdp_v2');
 });
+test('only exact POST introspection may use an explicitly validated private hop',()=>{
+ const origin='https://reap-test---backend-a-b.a.run.app';
+ const hop={enabled:true,accepts:url=>new URL(url).origin===origin};
+ const config={method:'post',url:origin+'/agent/internal/auth/introspect',headers:{Authorization:'Bearer caller','X-Serverless-Authorization':'Bearer platform'},data:{api_key:'synthetic'},maxRedirects:9};
+ const allowed=assertStoredCatalogHttp(config,env,hop);assert.equal(allowed.maxRedirects,0);assert.equal(allowed.headers,config.headers);assert.equal(allowed.data,config.data);
+ for(const change of [{method:'GET'},{url:origin+'/agent/internal/auth/introspect?x=1'},{url:origin+'/agent/internal/auth/introspect#x'},{url:origin+'/agent/v2/products/search'},{url:'https://other-a-b.a.run.app/agent/internal/auth/introspect'}]){
+  assert.throws(()=>assertStoredCatalogHttp({...config,...change},env,hop),e=>e.code==='STORED_CATALOG_REMOTE_READ_DISABLED');
+ }
+ assert.throws(()=>assertStoredCatalogHttp(config,env,{...hop,enabled:false}),e=>e.code==='STORED_CATALOG_REMOTE_READ_DISABLED');
+ assert.throws(()=>assertStoredCatalogHttp(config,env),e=>e.code==='STORED_CATALOG_REMOTE_READ_DISABLED');
+});
