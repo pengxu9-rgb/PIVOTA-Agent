@@ -778,7 +778,7 @@ function createConsensusProviders() {
     throw new LlmError('LLM_CONFIG_MISSING', 'Consensus requires explicit RELGRAPH_REVIEW_OPENAI_MODEL and RELGRAPH_REVIEW_GEMINI_MODEL');
   }
   return [
-    createProviderFromEnv('relationship_graph_consensus', { provider: 'openai', model: openaiModel, disableFallback: true, pinModel: true, useResponses: true }),
+    createProviderFromEnv('relationship_graph_consensus', { provider: 'openai', model: openaiModel, disableFallback: true, pinModel: true, useResponses: true, nativeJsonSchema: true }),
     createProviderFromEnv('relationship_graph_consensus', { provider: 'gemini', model: geminiModel, disableFallback: true, pinModel: true }),
   ];
 }

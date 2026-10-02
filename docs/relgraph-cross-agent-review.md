@@ -64,8 +64,17 @@ OPENAI_API_KEY=<existing approved secret binding>
 ```
 
 Gemini retains the existing Vertex/ADC or Gemini API-key authentication seam.
-The OpenAI provider uses Responses JSON mode with `store=false` and validates the
-returned schema. Provider fallback is disabled for both reviewers. A Gemini model
+The consensus OpenAI provider explicitly opts into Responses `text.format`
+`json_schema` with `strict=true` and `store=false`. Its native schema is generated
+from the unchanged local validator, with finite string bounds expressed as
+bounded patterns; unsupported checks, optional fields and conversions fail
+before HTTP. Other provider callers retain their existing format. Gemini remains
+in JSON mode: its documented native schema subset does not support the required
+string bounds or patterns. Both responses still pass the full local Zod parser
+and existing semantic checks; nothing truncates or repairs invalid output.
+See [OpenAI's supported schemas](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas)
+and [Google's response JSON schema subset](https://docs.cloud.google.com/php/docs/reference/cloud-ai-platform/latest/V1.GenerationConfig#getresponsejsonschema).
+Provider fallback is disabled for both reviewers. A Gemini model
 that the runtime policy would substitute is a configuration error; a missing
 model/credential fails the step rather than reverting to a single reviewer.
 The two providers are explicitly selected independently of the shopping agent's
