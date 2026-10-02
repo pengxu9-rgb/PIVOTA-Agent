@@ -1071,7 +1071,7 @@ function rejectUnknown(obj, allowed, where, code) {
  * that attached a payment instrument to create/update believes it has authorized a charge, and deserves to be
  * told where authorization actually goes rather than a shrug about an unknown field.
  */
-function requireCheckoutObject(args, tool, env = process.env) {
+function requireCheckoutObject(args, tool, env = process.env, { recovery = false } = {}) {
   const code = CHECKOUT_REFUSAL_CODE;
   const checkout = own(args, "checkout");
   if (!isPlainObject(checkout)) {
@@ -1089,9 +1089,9 @@ function requireCheckoutObject(args, tool, env = process.env) {
   // ACCEPTED on create AND update while armed (review of #2323, S2): the discount capability is advertised,
   // so a platform may send `discounts` on either. It is only ever APPLIED at creation -- an update answers a
   // `discount_code_invalid` warning (not a Reap checkout) or the Reap update refusal naming the create-only rule.
-  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && reapOfferCodesEnabled(env);
+  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && (recovery || reapOfferCodesEnabled(env));
   // The expected seller: create only, and only while the Reap lane is on (the one reader).
-  const expectedSeller = tool === "create_checkout" && reapAgenticLaneEnabled(env);
+  const expectedSeller = tool === "create_checkout" && (recovery || reapAgenticLaneEnabled(env));
   const allowed = [...CHECKOUT_FIELDS, ...(offerCodes ? ["discounts"] : []), ...(expectedSeller ? ["reap"] : [])];
   rejectUnknown(checkout, allowed, "checkout", code);
   if (offerCodes) requireDiscountsShape(checkout, code);
@@ -2136,4 +2136,18 @@ export function ucpToNativeToolArgs(op, ucpArgs, env = process.env) {
     throw new Error(`ucpArgumentAdapter: no UCP argument mapping for canonical operation "${op?.id}"`);
   }
   return spec.map(ucpArgs, env);
+}
+
+
+// Pivota vendor recovery tool: accepts the ORIGINAL create fields while their
+// purchase features are paused. This validator never changes any live flag.
+export const UCP_REAP_RECOVER_INPUT_SCHEMA = ARMED_INPUT_SCHEMAS.create_checkout_session;
+export function ucpRecoverToNativeToolArgs(args, env = process.env) {
+  const code = CHECKOUT_REFUSAL_CODE;
+  requireArgsObject(args, code);
+  rejectUnknown(args, ["meta", "checkout"], "arguments", code);
+  const meta = requireMeta(args, code);
+  const idempotency_key = requireIdempotencyKey(meta, code);
+  const checkout = requireCheckoutObject(args, "create_checkout", env, { recovery: true });
+  return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
 }

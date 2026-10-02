@@ -531,6 +531,37 @@ test('/.well-known/ucp advertises dev.ucp.shopping.discount only with BOTH Reap 
 
 // ---- the expected seller (cc.pivota.reap_seller) follows the Reap LANE dial on the SERVED door ------------
 
+test('paused Reap tools/list retains explicit read-only recover_checkout with the original schema', async () => {
+  await withEnv({ ...DOOR_LIT, ...CHARGE_ON, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+    REAP_AGENTIC_LANE_ENABLED: '1', REAP_AGENTIC_CREATE_ENABLED: '0',
+    REAP_AGENTIC_CART_LINK_LANE_ENABLED: '0',
+  }, async () => {
+    const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 91)).expect(200);
+    const tools = Object.fromEntries(listed.body.result.tools.map((t) => [t.name, t]));
+    assert.deepEqual(tools.recover_checkout.annotations,
+      { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    const recover = tools.recover_checkout.inputSchema;
+    assert.deepEqual(recover.required, ['meta', 'checkout']);
+    assert.ok(recover.properties.meta.required.includes('idempotency-key'));
+    assert.ok(recover.properties.checkout.properties.discounts);
+    assert.ok(recover.properties.checkout.properties.reap);
+    assert.equal(recover.properties.checkout.properties.payment, undefined);
+    assert.equal(tools.create_checkout.inputSchema.properties.checkout.properties.discounts, undefined);
+    const profile = await supertest(app).get('/.well-known/ucp').expect(200);
+    assert.equal(profile.body.ucp.capabilities['dev.ucp.shopping.discount'], undefined);
+    assert.equal(profile.body.ucp.capabilities['cc.pivota.reap_seller'], undefined);
+    const native = await supertest(app).post('/mcp').send(rpc('tools/list', undefined, 92)).expect(200);
+    assert.equal(native.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+  });
+});
+
+test('a dark Reap profile does not advertise new recovery or purchase features', async () => {
+  await withEnv({ ...DOOR_LIT, ...CHARGE_ON, REAP_AGENTIC_LANE_ENABLED: undefined }, async () => {
+    const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 93)).expect(200);
+    assert.equal(listed.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+  });
+});
+
 test('/ucp/mcp tools/list advertises checkout.reap only with the Reap lane on; /.well-known/ucp advertises cc.pivota.reap_seller only with the lane on AND its hosted documents', async () => {
   const LANE = 'REAP_AGENTIC_LANE_ENABLED';
   const CART = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
