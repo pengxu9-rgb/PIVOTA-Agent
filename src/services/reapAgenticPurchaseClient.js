@@ -294,11 +294,20 @@ function createReapAgenticPurchaseClient(deps = {}) {
     });
     if (out.error) return { kind: KIND.unavailable, code: out.error };
     if (out.status >= 200 && out.status < 300) {
+      const b = out.body;
+      if (isPlainObject(b) && Object.keys(b).length === 2 && b.recovery_status === 'retired'
+        && typeof b.reconciliation_id === 'string' && /^[a-f0-9]{32}$/.test(b.reconciliation_id)) {
+        log('info', {route:'recover',outcome:'retired',http_status:out.status});
+        return {kind:'retired',reconciliation_id:b.reconciliation_id};
+      }
+      if (isPlainObject(b) && (Object.hasOwn(b,'recovery_status') || Object.hasOwn(b,'reconciliation_id'))) return {kind:KIND.unavailable,code:'malformed'};
+      log('info', {route:'recover',outcome:isPlainObject(b) && PURCHASE_ID_RE.test(String(b.id || '')) ? KIND.accepted : KIND.unavailable,http_status:out.status});
       return isPlainObject(out.body) && PURCHASE_ID_RE.test(String(out.body.id || ''))
         ? { kind: KIND.accepted, purchase: out.body }
         : { kind: KIND.unavailable, code: 'malformed' };
     }
     const code = canonicalBackendReasonCode(out.status, out.body) || `http_${out.status}`;
+    log('info', {route:'recover',outcome:isCanonicalOwnerMiss(out.status,out.body) ? KIND.notFound : KIND.unavailable,http_status:out.status});
     if (isCanonicalOwnerMiss(out.status, out.body)) return { kind: KIND.notFound, code: 'purchase_not_found' };
     if (out.status >= 400 && out.status < 500) return { kind: KIND.unavailable, code, http_status: out.status };
     return { kind: KIND.unavailable, code: 'http_5xx' };

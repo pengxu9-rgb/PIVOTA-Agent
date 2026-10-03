@@ -2598,3 +2598,37 @@ test('explicit cart_link with its dial off or an unresolved variant never dispat
   assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);assert.equal(JSON.stringify(result).includes('continue_url'),false);
  }
 });
+
+for (const [label,first,second,terminal] of [
+  ['paired receipt','a'.repeat(32),'a'.repeat(32),true],
+  ['different receipts','a'.repeat(32),'b'.repeat(32),false],
+  ['missing companion','a'.repeat(32),null,false],
+  ['malformed receipt','bad','a'.repeat(32),false],
+  ['ambiguous view','a'.repeat(32),'live',false],
+]) test(`recover original legacy retirement: ${label}`,async()=>{
+  const row={...JUDY_ROW,source_domain:'judydoll.com'};
+  const ctx=await build({rows:{[row.product_id]:row}});
+  const key='retirement-original-key';
+  const args=createArgs({productId:row.product_id,key,reap:{expected_merchant_domain:'judydoll.com'}});
+  delete args.checkout.reap.expected_unit_price_minor;delete args.checkout.reap.expected_currency;
+  const response=(id)=>id===null?{status:404,body:{error:'purchase_not_found'}}:id==='live'?{status:200,body:view('resolving',{merchant_domain:'judydoll.com',product_key:row.product_key,totals:{currency:'USD',our_price_minor:1399}})}:{status:200,body:{recovery_status:'retired',reconciliation_id:id}};
+  ctx.backend.state.recover.set(ctx.m.lane.reapIdempotencyKey(key),response(first));
+  ctx.backend.state.recover.set(ctx.m.lane.reapCartLinkIdempotencyKey(key),response(second));
+  const result=await withEnv({...ON,REAP_AGENTIC_CREATE_ENABLED:'0'},()=>outcome(ctx.m,ctx.ucp.callTool('recover_checkout',args,SESSION)));
+  const error=JSON.parse(result.err.content[0].text).error;
+  assert.equal(error.code,terminal?'CHECKOUT_ATTEMPT_RETIRED':'CHECKOUT_OUTCOME_UNKNOWN');
+  if(terminal)assert.deepEqual(error.detail,{reason:'ucp_reap_attempt_retired',reconciliation_id:first});
+  assert.ok(ctx.backend.calls.every(c=>c.path.endsWith('/recover')));
+  assert.equal(ctx.executor.seen.length,0);
+});
+
+for (const [label,body,expected] of [
+  ['valid',{recovery_status:'retired',reconciliation_id:'a'.repeat(32)},'retired'],
+  ['missing id',{recovery_status:'retired'},'unavailable'],
+  ['wrong id',{recovery_status:'retired',reconciliation_id:'bad'},'unavailable'],
+  ['extra purchase',{recovery_status:'retired',reconciliation_id:'a'.repeat(32),id:PID},'unavailable'],
+  ['extra field',{recovery_status:'retired',reconciliation_id:'a'.repeat(32),extra:true},'unavailable'],
+])test(`recovery client typed receipt ${label}`,async()=>{
+  const client=createReapAgenticPurchaseClient({baseUrl:'https://backend.example',authHeaders:()=>({'X-API-Key':API_KEY,'X-Agent-User-JWT':USER_JWT}),fetchImpl:async()=>({status:200,text:async()=>JSON.stringify(body)})});
+  assert.equal((await client.recoverPurchase({idempotency_key:'original-key'})).kind,expected);
+});
