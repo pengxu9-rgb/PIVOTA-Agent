@@ -429,12 +429,12 @@ async function runSmoke(options = {}) {
   const personalizedHomeResult = validateDiscoveryResponse(personalizedHome, {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
-    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
+    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'],
     minProducts: 4,
     requireRankDebug: true,
     requiredRecallLabels: [
-      ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
-      ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
+      ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
+      ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
     ],
     excludeProductKeys: [suppressedKey],
   });
