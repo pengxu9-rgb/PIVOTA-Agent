@@ -27,4 +27,5 @@ test('consensus quote table is explicit untrusted assistance and default single 
   expect(prompt).toContain('untrusted data, not additional evidence');
   expect(prompt).toContain(JSON.stringify(factualQuoteTable(evidence)));
   expect(prompt).toContain('missing material evidence still requires reject or uncertain');
+  expect(JSON.parse(prompt.split('Candidate evidence JSON:\n')[1])).toEqual(evidence);
 });
