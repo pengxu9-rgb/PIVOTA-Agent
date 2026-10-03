@@ -388,6 +388,29 @@ test('the UCP profile advertises the UCP-DIALECT endpoint when the door is lit',
   });
 });
 
+test('staging discovery uses its configured origin instead of the production OAuth resource', async () => {
+  await withEnv({ ...DOOR_LIT, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+    PIVOTA_ENV: 'staging', UCP_BASE_URL: 'https://gateway-staging.example',
+    MCP_OAUTH_RESOURCE: 'https://commerce.mcp.pivota.cc/mcp',
+  }, async () => {
+    const resp = await supertest(app).get('/.well-known/ucp').expect(200);
+    assert.equal(resp.body.ucp.services['dev.ucp.shopping'][0].endpoint,
+      'https://gateway-staging.example/ucp/mcp');
+  });
+});
+
+test('discovery never derives its authoritative endpoint from Host or forwarded headers', async () => {
+  await withEnv({ ...DOOR_LIT, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+    UCP_BASE_URL: 'https://configured.example',
+  }, async () => {
+    const resp = await supertest(app).get('/.well-known/ucp')
+      .set('Host', 'attacker.example').set('X-Forwarded-Host', 'attacker.example')
+      .set('X-Forwarded-Proto', 'http').expect(200);
+    assert.equal(resp.body.ucp.services['dev.ucp.shopping'][0].endpoint,
+      'https://configured.example/ucp/mcp');
+  });
+});
+
 test('a DARK door is not advertised at all, rather than advertised as the native endpoint', async () => {
   await withEnv({ ...DOOR_DARK, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1' }, async () => {
     const resp = await supertest(app).get('/.well-known/ucp').expect(200);
@@ -484,6 +507,7 @@ test('/.well-known/ucp advertises dev.ucp.shopping.discount only with BOTH Reap 
   const CART = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
   const cases = [
     [{ [LANE]: '1', [CART]: '1' }, true],
+    [{ [LANE]: '1', [CART]: '1', REAP_AGENTIC_CREATE_ENABLED: '0' }, false],
     [{ [LANE]: '1', [CART]: undefined }, false],
     [{ [LANE]: undefined, [CART]: '1' }, false],
     [{ [LANE]: undefined, [CART]: undefined }, false],
@@ -507,6 +531,37 @@ test('/.well-known/ucp advertises dev.ucp.shopping.discount only with BOTH Reap 
 
 // ---- the expected seller (cc.pivota.reap_seller) follows the Reap LANE dial on the SERVED door ------------
 
+test('paused Reap tools/list retains explicit read-only recover_checkout with the original schema', async () => {
+  await withEnv({ ...DOOR_LIT, ...CHARGE_ON, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+    REAP_AGENTIC_LANE_ENABLED: '1', REAP_AGENTIC_CREATE_ENABLED: '0',
+    REAP_AGENTIC_CART_LINK_LANE_ENABLED: '0',
+  }, async () => {
+    const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 91)).expect(200);
+    const tools = Object.fromEntries(listed.body.result.tools.map((t) => [t.name, t]));
+    assert.deepEqual(tools.recover_checkout.annotations,
+      { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    const recover = tools.recover_checkout.inputSchema;
+    assert.deepEqual(recover.required, ['meta', 'checkout']);
+    assert.ok(recover.properties.meta.required.includes('idempotency-key'));
+    assert.ok(recover.properties.checkout.properties.discounts);
+    assert.ok(recover.properties.checkout.properties.reap);
+    assert.equal(recover.properties.checkout.properties.payment, undefined);
+    assert.equal(tools.create_checkout.inputSchema.properties.checkout.properties.discounts, undefined);
+    const profile = await supertest(app).get('/.well-known/ucp').expect(200);
+    assert.equal(profile.body.ucp.capabilities['dev.ucp.shopping.discount'], undefined);
+    assert.equal(profile.body.ucp.capabilities['cc.pivota.reap_seller'], undefined);
+    const native = await supertest(app).post('/mcp').send(rpc('tools/list', undefined, 92)).expect(200);
+    assert.equal(native.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+  });
+});
+
+test('a dark Reap profile does not advertise new recovery or purchase features', async () => {
+  await withEnv({ ...DOOR_LIT, ...CHARGE_ON, REAP_AGENTIC_LANE_ENABLED: undefined }, async () => {
+    const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 93)).expect(200);
+    assert.equal(listed.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+  });
+});
+
 test('/ucp/mcp tools/list advertises checkout.reap only with the Reap lane on; /.well-known/ucp advertises cc.pivota.reap_seller only with the lane on AND its hosted documents', async () => {
   const LANE = 'REAP_AGENTIC_LANE_ENABLED';
   const CART = 'REAP_AGENTIC_CART_LINK_LANE_ENABLED';
@@ -515,6 +570,7 @@ test('/ucp/mcp tools/list advertises checkout.reap only with the Reap lane on; /
   const profiles = {};
   for (const [label, dials, docs, listed, advertised] of [
     ['lane on + docs', { [LANE]: '1', [CART]: undefined }, DOCS, true, true],
+    ['create paused + docs', { [LANE]: '1', [CART]: '1', REAP_AGENTIC_CREATE_ENABLED: '0' }, DOCS, false, false],
     ['armed + docs', { [LANE]: '1', [CART]: '1' }, DOCS, true, true],
     ['lane on, no docs', { [LANE]: '1', [CART]: undefined }, NO_DOCS, true, false],
     ['lane off + docs', { [LANE]: undefined, [CART]: undefined }, DOCS, false, false],
@@ -526,7 +582,7 @@ test('/ucp/mcp tools/list advertises checkout.reap only with the Reap lane on; /
       const byName = Object.fromEntries(list.body.result.tools.map((t) => [t.name, t]));
       const reap = byName.create_checkout.inputSchema.properties.checkout.properties.reap;
       assert.equal(Boolean(reap), listed, `${label}: tools/list`);
-      if (listed) assert.deepEqual(Object.keys(reap.properties), ['expected_merchant_domain']);
+      if (listed) assert.deepEqual(Object.keys(reap.properties), ['selected_variant_id', 'expected_merchant_domain']);
       assert.equal(Object.hasOwn(byName.update_checkout.inputSchema.properties.checkout.properties, 'reap'), false, 'create only');
       const resp = await supertest(app).get('/.well-known/ucp').expect(200);
       const caps = resp.body.ucp.capabilities || {};

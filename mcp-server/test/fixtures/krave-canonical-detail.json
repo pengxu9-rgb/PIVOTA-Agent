@@ -1,0 +1,155 @@
+{
+  "product_id": "sig_436641888f6a84f14c02ed293d9596a7",
+  "merchant_id": "merch_obs_a6747fa7eb42a31c",
+  "title": "Matcha Hemp Hydrating Cleanser",
+  "pdp_schema_profile": "beauty_formula",
+  "subtitle": "",
+  "brand": "KraveBeauty",
+  "category_path": [
+    "beauty",
+    "skincare",
+    "cleanse",
+    "cleanser"
+  ],
+  "category_kind": "beauty",
+  "image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+  "image_urls": [
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_02_e820af12-3575-4dc5-9358-19ca80f3775c.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_05.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_03.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_04.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_06.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_07.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_08.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/NEW_MHHC_12.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_10.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_11.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549"
+  ],
+  "images": [
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_02_e820af12-3575-4dc5-9358-19ca80f3775c.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_05.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_03.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_04.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_06.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_07.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_08.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/NEW_MHHC_12.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_10.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_11.png",
+    "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549"
+  ],
+  "source": "external_seed",
+  "readiness_tier": null,
+  "serving_eligible": true,
+  "purchase_route": null,
+  "commerce_mode": null,
+  "checkout_handoff": null,
+  "external_redirect_url": "https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser",
+  "url": "https://agent.pivota.cc/products/sig_436641888f6a84f14c02ed293d9596a7",
+  "canonical_url": "https://agent.pivota.cc/products/sig_436641888f6a84f14c02ed293d9596a7",
+  "destination_url": "https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser",
+  "source_url": "https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser",
+  "default_variant_id": "677289689108",
+  "variants": [
+    {
+      "variant_id": "677289689108",
+      "sku_id": "K001-01-0000-U2",
+      "title": "120 mL",
+      "options": [
+        {
+          "name": "Size",
+          "value": "120 mL",
+          "axis_kind": "volume"
+        }
+      ],
+      "price": {
+        "current": {
+          "amount": 16,
+          "currency": "USD"
+        }
+      },
+      "availability": {
+        "in_stock": true
+      },
+      "image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+      "label_image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+      "swatch_image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592",
+      "images": [
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592"
+      ],
+      "image_urls": [
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHC_01.png?v=1762525592"
+      ],
+      "axis_kind": "volume",
+      "display_label": "Size: 120 mL",
+      "source_quality_status": "captured"
+    },
+    {
+      "variant_id": "42199434526795",
+      "sku_id": "K231-00-0000",
+      "title": "2 Pack - 2x120 mL",
+      "options": [
+        {
+          "name": "Size",
+          "value": "2 Pack - 2x120 mL",
+          "axis_kind": "size"
+        }
+      ],
+      "price": {
+        "current": {
+          "amount": 27,
+          "currency": "USD"
+        }
+      },
+      "availability": {
+        "in_stock": true
+      },
+      "image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549",
+      "label_image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549",
+      "swatch_image_url": "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549",
+      "images": [
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549"
+      ],
+      "image_urls": [
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/MHHCDuo01_bfb5fc0b-419e-4da9-bafc-64698f1f6898.png?v=1773241549"
+      ],
+      "axis_kind": "size",
+      "display_label": "Size: 2 Pack - 2x120 mL",
+      "source_quality_status": "captured"
+    }
+  ],
+  "purchase_grain": "variant",
+  "price": 16,
+  "availability": {
+    "in_stock": true
+  },
+  "description": "An antioxidant-rich cleanser that doesn\u2019t mess up your skin barrier, lifting everything your skin doesn't want while leaving what it needs.",
+  "source_product_id": "ext_3e6db6ab9ff14b9fb21f45a8",
+  "product_key": "prod::external_seed::external_seed::ext_3e6db6ab9ff14b9fb21f45a8",
+  "catalog_category_path": "beauty/skincare/cleanse/cleanser",
+  "category_label_source": "regex_backfill",
+  "category_confidence": 0.85,
+  "product_line_id": "pl_3e94cc31a5f38c268bb22f38",
+  "review_family_id": "rf_3e94cc31a5f38c268bb22f38",
+  "sellable_item_group_id": "sig_f84314c98fc8b6759f8d2075",
+  "product_group_id": "sig_f84314c98fc8b6759f8d2075",
+  "pivota_signature_id": "sig_436641888f6a84f14c02ed293d9596a7",
+  "signature_id": "sig_436641888f6a84f14c02ed293d9596a7",
+  "pivota_canonical_url": "https://agent.pivota.cc/products/sig_436641888f6a84f14c02ed293d9596a7",
+  "canonical_scope": "synthetic",
+  "offers_count": 1,
+  "offer_count": 1,
+  "has_multiple_offers": false,
+  "default_offer_id": "of:v1:merch_obs_a6747fa7eb42a31c:sig_f84314c98fc8b6759f8d2075:merchant:default",
+  "best_price_offer_id": "of:v1:merch_obs_a6747fa7eb42a31c:sig_f84314c98fc8b6759f8d2075:merchant:default",
+  "price_amount": 16,
+  "currency": "USD",
+  "price_source": "default_offer"
+}
