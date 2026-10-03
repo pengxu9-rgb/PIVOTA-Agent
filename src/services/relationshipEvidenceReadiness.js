@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeProductIntelCanonicalRef, __internal: { evidenceIdentityKeys } } = require('../auroraBff/productRelationshipGraphSources');
+
 // Planning diagnostics only: none of these statuses grants graph approval or changes inference.
 const DAY = 86400000;
 const MAX_PRODUCTS = 500;
@@ -15,8 +17,9 @@ function boundedInteger(value, fallback, max) {
 }
 function exactIdentity(product = {}) {
   const idText = (value) => { const result = text(value); if (result.length > 512 || /[\x00-\x1f]/.test(result)) throw new Error('invalid_evidence_identity'); return result; };
+  const normalized = normalizeProductIntelCanonicalRef(product);
   const identity = Object.fromEntries(['product_key', 'pivota_signature_id', 'product_id', 'source_product_id',
-    'merchant_id', 'platform', 'market', 'variant_title', 'variant_detail_label'].map((field) => [field, idText(product[field])]));
+    'merchant_id', 'platform', 'market', 'variant_title', 'variant_detail_label'].map((field) => [field, idText((normalized || product)[field])]));
   identity.market = identity.market.toUpperCase();
   const externalId = [identity.product_id, identity.source_product_id].find((id) => /^ext_/i.test(id));
   const key = identity.product_key ? `key:${identity.product_key}` : identity.pivota_signature_id
@@ -24,13 +27,16 @@ function exactIdentity(product = {}) {
       : identity.merchant_id && identity.platform && identity.product_id
         ? `merchant:${identity.merchant_id}:${identity.platform}:${identity.product_id}` : '';
   // Market/variant/merchant scope remains part of dedupe. Shared titles or display refs never bind tasks.
-  return { ...identity, product_ref: idText(product.product_ref), exact_key: key
+  return { ...identity, identity_conflict: !normalized, product_ref: idText(product.product_ref), exact_key: key
     ? JSON.stringify([key, identity.market, identity.merchant_id, identity.platform, identity.variant_title, identity.variant_detail_label]) : '' };
 }
 function identitiesContradict(product, source = {}) {
   const owner = exactIdentity(product); const evidence = exactIdentity(source);
-  return ['product_key', 'pivota_signature_id', 'market', 'merchant_id', 'platform', 'variant_title', 'variant_detail_label']
-    .some((field) => owner[field] && evidence[field] && owner[field] !== evidence[field]);
+  return owner.identity_conflict || evidence.identity_conflict ||
+    Boolean(text(product.brand) && text(source.brand) && lower(product.brand) !== lower(source.brand)) ||
+    ['product_key', 'pivota_signature_id', 'market', 'merchant_id', 'platform', 'variant_title', 'variant_detail_label']
+      .some((field) => owner[field] && evidence[field] && (['merchant_id', 'platform', 'variant_title', 'variant_detail_label'].includes(field)
+        ? lower(owner[field]) !== lower(evidence[field]) : owner[field] !== evidence[field]));
 }
 function owns(product, source = {}) {
   const owner = exactIdentity(product); const evidence = exactIdentity(source);
@@ -65,6 +71,27 @@ function boundSourceUrl(product) {
       ['external_product_seed', 'approved_live_external_seed'].includes(ref.type) && /^ext_/i.test(text(ref.name)) &&
       [text(product.product_id), text(product.source_product_id)].includes(text(ref.name)))) ? url : '';
 }
+function ownsInsights(product, intel) {
+  const canonical = intel.canonical_product_ref || {};
+  if (identitiesContradict(product, canonical)) return false;
+  const binding = product.product_intel_binding;
+  if (binding && (binding.schema !== 'relgraph.product_intel_binding.v1' || !text(binding.source_record_ref) ||
+    !binding.identity || !Array.isArray(binding.matched_identity_keys) || !binding.matched_identity_keys.length ||
+    identitiesContradict(product, binding.identity) || identitiesContradict(canonical, binding.identity))) return false;
+  if (owns(product, canonical)) return true;
+  if (!binding) return false;
+  const currentKeys = new Set(evidenceIdentityKeys(normalizeProductIntelCanonicalRef(product) || {}));
+  const sourceKeys = evidenceIdentityKeys(normalizeProductIntelCanonicalRef(binding.identity) || {});
+  if (!sourceKeys.some((key) => currentKeys.has(key) && binding.matched_identity_keys.includes(key))) return false;
+  if (owns(product, binding.identity)) return true;
+  // An arbitrary URL in a bundle is not ownership. The current listing URL
+  // must independently belong to an authoritative catalog/seed source, and the
+  // source record must have matched that exact URL during hydration.
+  const url = boundSourceUrl(product);
+  return Boolean(url && safeUrl(binding.identity.url) === url &&
+    binding.matched_identity_keys.includes(`url:${product.url}`));
+}
+
 function productReadiness(product = {}, { nowMs = Date.now(), evidenceMaxAgeDays = 45 } = {}) {
   const records = Array.isArray(product.ingredient_evidence) ? product.ingredient_evidence : [];
   let ingredients = 'missing';
@@ -88,7 +115,7 @@ function productReadiness(product = {}, { nowMs = Date.now(), evidenceMaxAgeDays
       ['approved', 'approve', 'approve_external'].includes(lower(intel.provenance?.review_decision));
     const denied = DENIED.has(lower(intel.quality_state)) || DENIED.has(lower(intel.provenance?.review_decision));
     const core = intel.product_intel_core || intel.core;
-    insights = denied ? 'rejected' : !owns(product, intel.canonical_product_ref || {}) ? 'unbound'
+    insights = denied ? 'rejected' : !ownsInsights(product, intel) ? 'unbound'
       : !core || typeof core !== 'object' || Array.isArray(core) || !Object.keys(core).length ? 'empty' : !approved ? 'unreviewed'
         : !current(intel.freshness?.generated_at, nowMs, evidenceMaxAgeDays) ? 'stale' : 'approved_current_owned';
   }
@@ -117,13 +144,13 @@ function prepare({ products = [], pairs = [], nowMs = Date.now(), evidenceMaxAge
   // Never select the best evidence alias: disagreement forces a reconciliation task.
   const records = [...byKey].sort(([a], [b]) => a.localeCompare(b)).map(([key, aliases]) => {
     aliases.sort((a, b) => JSON.stringify(exactIdentity(a)).localeCompare(JSON.stringify(exactIdentity(b))) || JSON.stringify(a).localeCompare(JSON.stringify(b)));
-    const identityConflict = ['product_key', 'pivota_signature_id', 'product_id', 'source_product_id', 'merchant_id', 'platform', 'market', 'variant_title', 'variant_detail_label']
+    const identityConflict = aliases.some((product) => exactIdentity(product).identity_conflict) || ['product_key', 'pivota_signature_id', 'product_id', 'source_product_id', 'merchant_id', 'platform', 'market', 'variant_title', 'variant_detail_label']
       .some((field) => new Set(aliases.map((product) => text(product[field])).filter(Boolean)).size > 1);
     const states = aliases.map((product) => productReadiness(product, { nowMs, evidenceMaxAgeDays }));
     const readiness = { ...states[0] };
     for (const field of ['ingredients', 'insights', 'offer']) if (new Set(states.map((state) => state[field])).size > 1) readiness[field] = 'alias_conflict';
     if (new Set(aliases.map((product) => text(product.ingredient_text))).size > 1 && aliases.some((product) => product.ingredient_text)) readiness.ingredients = 'alias_conflict';
-    if (new Set(aliases.map((product) => JSON.stringify(product.product_intel || null))).size > 1) readiness.insights = 'alias_conflict';
+    if (new Set(aliases.map((product) => JSON.stringify([product.product_intel || null, product.product_intel_binding || null]))).size > 1) readiness.insights = 'alias_conflict';
     if (new Set(aliases.map((product) => JSON.stringify([product.price, product.price_currency, product.price_observed_at]))).size > 1) readiness.offer = 'alias_conflict';
     const urls = [...new Set(aliases.map(boundSourceUrl))];
     if (identityConflict) for (const field of ['ingredients', 'insights', 'offer']) readiness[field] = 'alias_conflict';

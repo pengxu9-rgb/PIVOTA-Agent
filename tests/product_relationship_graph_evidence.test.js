@@ -276,3 +276,80 @@ describe('canonical relationship evidence enrichment', () => {
     expect(hydrated.diagnostics.ingredient_loads_incomplete).toBe(0);
   });
 });
+
+describe('Insights identity and source metadata retention', () => {
+  const { productReadiness } = require('../src/services/relationshipEvidenceReadiness');
+  const nowMs = Date.parse(NOW);
+  const approved = (canonical, extra = {}) => intel('a', { canonical_product_ref: canonical,
+    quality_state:'reviewed', evidence_profile:'official_pdp_reviewed', ...extra });
+  test.each([{ pivotaSignatureId:'sig_a' },{ product_id:'sig_a' },{ product_id:'product:sig_a' },{ product_ref:'product:sig_a' },
+    { product_key:'cp_a' },{ productKey:'cp_a' }])('explicit immutable identity representations retain ownership: %j', (canonical) => {
+    const [result] = enrichProductsWithEvidence([product('a')], {intelRows:[approved(canonical)]});
+    expect(result.product_intel).toBeDefined();
+    expect(productReadiness(result, {nowMs}).insights).toBe('approved_current_owned');
+    expect(result.product_intel_binding).toMatchObject({schema:'relgraph.product_intel_binding.v1',source_record_ref:'product:source_a'});
+    expect(normalizeProductCandidateSnapshot(normalizeProductCandidateSnapshot(result)).product_intel_binding).toEqual(result.product_intel_binding);
+  });
+  test.each([{pivota_signature_id:'sig_a',pivotaSignatureId:'sig_other'},
+    {pivota_signature_id:'sig_a',product_id:'product:sig_other'},
+    {product_key:'cp_a',productKey:'cp_other'}])('contradictory aliases never choose one identity: %j', (canonical) => {
+    expect(normalizeProductIntelKbRow(approved(canonical))).toBeNull();
+  });
+  test.each([{platform:'wix'},{variant_title:'Shade23'},{variant_detail_label:'Warm shade'},
+    {market:'JP'},{merchant_id:'other_seller'},{brand:'Other Lab'}])('explicit scope conflict blocks hydration: %j', (conflict) => {
+    const target=product('a',{platform:'shopify',merchant_id:'fixture_shop',variant_title:'Shade27',variant_detail_label:'Cool shade'});
+    const [result]=enrichProductsWithEvidence([target],{intelRows:[approved({pivota_signature_id:'sig_a',...conflict})]});
+    expect(result.product_intel).toBeUndefined();
+    expect(result.product_intel_binding).toBeUndefined();
+  });
+  test('source metadata quality/confidence/freshness survives, without inventing approval or generated date', () => {
+    const row=intel('a'); delete row.analysis.product_intel_v1.quality_state;
+    delete row.analysis.product_intel_v1.confidence; delete row.analysis.product_intel_v1.freshness;
+    row.source_meta={quality_state:'reviewed',confidence:{tier:'limited'},freshness:{generated_at:'2026-01-01T00:00:00Z'}};
+    const normalized=normalizeProductIntelKbRow(row);
+    expect(normalized.product_intel).toMatchObject(row.source_meta);
+    expect(productReadiness(enrichProductsWithEvidence([product('a')],{intelRows:[row]})[0],{nowMs}).insights).toBe('stale');
+    delete row.source_meta.quality_state; delete row.source_meta.freshness;
+    const empty=normalizeProductIntelKbRow(row).product_intel;
+    expect(empty).not.toHaveProperty('quality_state'); expect(empty).not.toHaveProperty('freshness');
+  });
+  test.each(['quality_state','review_decision'])('source metadata denial overrides approved bundle (%s)', (field) => {
+    const row=approved({pivota_signature_id:'sig_a'}); row.source_meta={[field]:'rejected'};
+    expect(normalizeProductIntelKbRow(row)).toBeNull();
+  });
+  test('validated KB-key binding survives even if the original canonical bundle has only context', () => {
+    const row=approved({}); row.kb_key='product:sig_a';
+    const [result]=enrichProductsWithEvidence([product('a')],{intelRows:[row]});
+    expect(result.product_intel.canonical_product_ref).toEqual({});
+    expect(result.product_intel_binding.identity).toMatchObject({pivota_signature_id:'sig_a'});
+    expect(productReadiness(result,{nowMs}).insights).toBe('approved_current_owned');
+  });
+  test('validated URL binding needs a separately owned listing URL, and never copies target key into bundle', () => {
+    const url='https://synthetic.example/products/a';
+    const target=product('a',{url,source_refs:[{type:'catalog_products',name:'cp_a',url,authoritative:true}]});
+    const row=approved({canonical_url:url}); row.kb_key='legacy_context_record';
+    const [result]=enrichProductsWithEvidence([target],{intelRows:[row]});
+    expect(result.product_intel.canonical_product_ref).not.toHaveProperty('product_key');
+    expect(result.product_intel_binding.identity.product_key).toBe('');
+    expect(productReadiness(result,{nowMs}).insights).toBe('approved_current_owned');
+    expect(productReadiness({...result,source_refs:[]},{nowMs}).insights).toBe('unbound');
+    expect(productReadiness({...result,url:'https://synthetic.example/products/other'},{nowMs}).insights).toBe('unbound');
+    expect(productReadiness({...result,product_intel_binding:undefined},{nowMs}).insights).toBe('unbound');
+  });
+  test('ingredient evidence keeps actual source signatures and scoped ownership, without copying target keys', () => {
+    const target=product('a',{merchant_id:'fixture_shop',platform:'shopify',variant_title:'Shade27'});
+    const row={table:'public.beauty_sku_ingredients',sku_key:'opaque_sku',pivota_signature_id:'sig_a',
+      merchant_id:'fixture_shop',platform:'shopify',market:'US',variant_title:'Shade27',raw_inci:FORMULA,updated_at:NOW};
+    const [result]=enrichProductsWithEvidence([target],{ingredientRows:[row]});
+    expect(result.ingredient_evidence[0]).toMatchObject({product_key:'',pivota_signature_id:'sig_a',merchant_id:'fixture_shop',
+      platform:'shopify',market:'US',variant_title:'Shade27'});
+    expect(productReadiness(result,{nowMs}).ingredients).toBe('substantial_current_owned');
+    const [wrong]=enrichProductsWithEvidence([target],{ingredientRows:[{...row,variant_title:'Shade23'}]});
+    expect(wrong.ingredient_text).toBeUndefined();
+  });
+  test('truncated formulas retain incompleteness through repeated source normalization', () => {
+    const result=normalizeProductCandidateSnapshot(normalizeProductCandidateSnapshot(product('a',{ingredient_text:FORMULA,ingredient_text_truncated:true})));
+    expect(result.ingredient_text_truncated).toBe(true);
+    expect(productReadiness(result,{nowMs}).ingredients).toBe('incomplete');
+  });
+});

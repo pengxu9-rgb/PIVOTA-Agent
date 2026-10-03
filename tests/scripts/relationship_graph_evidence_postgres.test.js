@@ -198,6 +198,32 @@ postgresDescribe('targeted evidence on disposable PostgreSQL', () => {
     expect(hydrated.diagnostics).toMatchObject({ ingredient_conflicts: 0, ingredient_loads_incomplete: 0 });
   });
 
+  test('denied, platform and variant-conflicting newer bundles cannot hide older exact reviewed metadata', async () => {
+    const target={...product('a'),platform:'shopify',merchant_id:'fixture_shop',variant_title:'Shade27',variant_detail_label:'Cool'};
+    const canonical={productKey:'cp_a',platform:'shopify',variant_title:'Shade27',variant_detail_label:'Cool'};
+    const core={what_it_is:{body:'Hydrating facial serum.'}};
+    await client.query(`INSERT INTO aurora_product_intel_kb(kb_key,analysis,source_meta,last_success_at,updated_at)
+      VALUES('good_old',$1::jsonb,$2::jsonb,'2020-01-01','2020-01-01')`,
+      [JSON.stringify({product_intel_v1:{canonical_product_ref:canonical,product_intel_core:core,evidence_profile:'seller_only'}}),
+        JSON.stringify({quality_state:'reviewed',confidence:{tier:'limited'},freshness:{generated_at:'2020-01-01'}})]);
+    for(const [index, conflict] of [{platform:'wix'},{variant_title:'Shade23'},{variantTitle:'Shade23'},
+      {variant_detail_label:'Warm'},{variantDetailLabel:'Warm'},{pivotaSignatureId:'sig_other'},
+      {product_id:'sig_a',productId:'sig_other'},{merchant_id:'fixture_shop',merchantId:'wrong_shop'},
+      {source_product_id:'source_a',sourceProductId:'source_other'}].entries()) {
+      await client.query(`INSERT INTO aurora_product_intel_kb(kb_key,analysis,last_success_at,updated_at)
+        VALUES($1,$2::jsonb,now(),now())`, [`conflict_${index}`,JSON.stringify({product_intel_v1:{
+          canonical_product_ref:{...canonical,...conflict},quality_state:'reviewed',product_intel_core:core}})]);
+    }
+    for(let i=0;i<6;i++) await client.query(`INSERT INTO aurora_product_intel_kb(kb_key,analysis,source_meta,last_success_at,updated_at)
+      VALUES($1,$2::jsonb,'{"review_decision":"rejected"}'::jsonb,now(),now())`,
+      [`denied_${i}`,JSON.stringify({product_intel_v1:{canonical_product_ref:canonical,quality_state:'reviewed',product_intel_core:core}})]);
+    const hydrated=await enrichProductRelationshipGraphProducts({queryFn,products:[target]});
+    expect(hydrated.intelRows).toHaveLength(1);
+    expect(hydrated.products[0].product_intel).toMatchObject({quality_state:'reviewed',confidence:{tier:'limited'},freshness:{generated_at:'2020-01-01'}});
+    expect(hydrated.products[0].product_intel_binding.source_record_ref).toBe('good_old');
+    expect(hydrated.diagnostics.intel_loads_incomplete).toBe(0);
+  });
+
   test('200 targets scan compact identity once and project matches once across 10,000 substantial bundles', async () => {
     await client.query(`INSERT INTO aurora_product_intel_kb(kb_key,analysis,last_success_at,updated_at)
       SELECT 'opaque_' || g, jsonb_build_object('product_intel_v1',jsonb_build_object(
