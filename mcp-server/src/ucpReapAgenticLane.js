@@ -1,3 +1,5 @@
+import moneyContract from '../../src/services/reapExpectedMoney.js';
+const { readExpectedMoney } = moneyContract;
 import selectionContract from '../../src/services/reapSelectionWitness.js';
 const { readSelectionWitness, sameSelection } = selectionContract;
 // The REAP AGENTIC lane of the UCP checkout door — the third lane, beside the kernel path and the storefront
@@ -1442,7 +1444,9 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   if (consentVersion !== undefined) buyer.consent_version = consentVersion;
   const shippingAddress = reapShippingAddress(ucpArgs);
   if (shippingAddress !== undefined) buyer.shipping_address = shippingAddress;
-  const base = { product_key: productKey, quantity, buyer };
+  const originalMoney = readExpectedMoney(ucpArgs.checkout?.reap || {});
+  if (originalMoney === null) throw unknown();
+  const base = { product_key: productKey, quantity, buyer, ...originalMoney };
   // Reconstruct the ORIGINAL selector without current variant/proof/price reads.
   const selectedKey = selectedReapVariantKey(ucpArgs, row, productKey, { recovery: true });
   if (selectedKey !== undefined) base.variant_key = selectedKey;
@@ -1481,6 +1485,7 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   if (!isPlainObject(totals) || view.product_key !== productKey || view.quantity !== quantity
     || !PURCHASE_ID_RE.test(String(view.id || "")) || !CURRENCY_RE.test(String(totals.currency || ""))
     || safeMinor(totals.our_price_minor) === null) throw unknown();
+  if (originalMoney && (totals.our_price_minor !== originalMoney.expected_unit_price_minor || totals.currency !== originalMoney.expected_currency)) throw unknown();
   const snapshot = { purchaseId: view.id, productId, productKey, quantity,
     currency: totals.currency, unitMinor: totals.our_price_minor };
   const id = encodeReapCheckoutId(snapshot);
@@ -1652,6 +1657,13 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     });
   }
 
+  // Require the original displayed unit money before any create dispatch.
+  const expectedMoney = readExpectedMoney(ucpArgs.checkout?.reap || {});
+  if (!expectedMoney || expectedMoney.expected_unit_price_minor !== price.amount
+    || expectedMoney.expected_currency !== price.currency) {
+    throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_price_not_created" });
+  }
+
   // A chosen numeric selector resolves to the backend's actual canonical SKU before ANY create POST.
   // Fresh authoritative preparation must agree with the original selection and the selected PDP price.
   if (selectedKey !== undefined && !cartLinkDirect) {
@@ -1718,6 +1730,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     quantity,
     buyer,
     idempotency_key: idempotencyKey,
+    ...expectedMoney,
   };
   if (selectedKey !== undefined) body.variant_key = selectedKey;
   const offerCode = reapOfferCodesEnabled(env) ? reapOfferCode(ucpArgs) : undefined;
@@ -1735,6 +1748,9 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   };
   const res = await dispatchCreate(cartLinkDirect ? cartLinkBody() : body);
 
+  if (res?.kind === "refused" && res.http_status === 409 && res.code === "price_changed") {
+    throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_price_not_created" });
+  }
   if (selectedKey !== undefined && res && res.kind === "refused" && [400, 409].includes(res.http_status)
     && ["row_not_found", "row_variant_unverified", "row_variant_ambiguous", "row_unpriced", "row_price_ambiguous"].includes(res.code)) {
     throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });

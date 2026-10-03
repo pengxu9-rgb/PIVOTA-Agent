@@ -12,7 +12,7 @@ const row = { product_id: productId, product_key: key, source_system: 'external_
 ] };
 const minorFor=id=>id==='42199434526795'?2700:1600;
 const selection=id=>({product_key:key,variant_id:id,variant_key:`${key}::sku_selected_${id}`,merchant_domain:'kravebeauty.com',market:'US',currency:'USD',unit_price_minor:minorFor(id),quantity:1,item_source:'cart_link'});
-const args = id => ({ checkout: {context:{address_country:'US'},fulfillment:{methods:[{type:'shipping',destinations:[{address_country:'US',street_address:'900 Brannan St',address_locality:'San Francisco',postal_code:'94103'}]}]},reap: { expected_merchant_domain:'kravebeauty.com',item_source:'cart_link', ...(id ? {selected_variant_id:id,selection:selection(id)}: {}) } } });
+const args = id => ({ checkout: {context:{address_country:'US'},fulfillment:{methods:[{type:'shipping',destinations:[{address_country:'US',street_address:'900 Brannan St',address_locality:'San Francisco',postal_code:'94103'}]}]},reap: { expected_unit_price_minor:minorFor(id),expected_currency:'USD', expected_merchant_domain:'kravebeauty.com',item_source:'cart_link', ...(id ? {selected_variant_id:id,selection:selection(id)}: {}) } } });
 const preparePurchase=async request=>({kind:'accepted',selection:selection(request.variant_id)});
 const env={REAP_AGENTIC_LANE_ENABLED:'1',REAP_AGENTIC_CREATE_ENABLED:'1',REAP_AGENTIC_CART_LINK_LANE_ENABLED:'1'};
 const call = (id,client, extra={}) => tryReapAgenticCheckout({op:{id:'create_checkout_session'},params:{idempotency_key:'same-attempt-123', quote:{items:[{product_id:productId,quantity:1}]}},ctx:{},executor:{execute:async()=>({product:row})},ucpArgs:args(id),client,env,...extra});
@@ -101,4 +101,8 @@ test('lane wire reasons are allowlisted and never publish arbitrary detail',()=>
  assert.ok(!JSON.stringify(wire).includes('must_not_leak'));
  assert.equal(JSON.parse(toToolError(new PivotaCommerceError('QUOTE_REQUIRED',{reason:'other_private_value'})).content[0].text).error.detail,undefined);
  assert.deepEqual(JSON.parse(toToolError(new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN',{reason:'reap_create_paused'})).content[0].text).error.detail,{reason:'ucp_reap_create_outcome_unknown'});
+});
+
+test('price refusal is explicitly no-create on the public MCP wire without leaking constraints or selection',()=>{
+ const err=new PivotaCommerceError('QUOTE_REQUIRED',{reason:'ucp_reap_price_not_created',expected_unit_price_minor:1399,secret:'must_not_leak'});const wire=JSON.parse(toToolError(err).content[0].text);assert.deepEqual(wire.error.detail,{reason:'ucp_reap_price_not_created'});assert.equal(JSON.stringify(wire).includes('1399'),false);assert.equal(JSON.stringify(wire).includes('secret'),false);
 });

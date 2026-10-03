@@ -680,3 +680,9 @@ Each step is runnable; do them in order. The same order is appended to
 escalation / kernel answers at once. Purchases already open keep progressing on the backend; with the
 gateway switch off, `get_checkout` on a `reap_` id answers as an unknown id, so tell the partner
 before switching off mid-purchase.
+
+### Original displayed money and immutable recovery
+
+New Reap first creates require paired `checkout.reap.expected_unit_price_minor` (positive safe integer) and `checkout.reap.expected_currency` (uppercase ISO-shaped currency). The UI captures the own-offer unit amount before asynchronous preparation for both sole and explicitly selected variants. These values constrain the buyer's original displayed money; they do not authorize pricing. The gateway requires current PDP/selected preparation agreement and forwards the unchanged pair to the backend, which compares it with its authoritative stored item before creating buyer, consent, key, purchase, click or provider state. A coherent `409 price_changed` returns `ucp_reap_price_not_created` on create only, with no alternate checkout.
+
+The pair belongs in the original persisted body and immutable owner hash. Recovery replays the pair exactly without preparation or current price/proof reads. An original legacy request without the pair retains its absence even when its nine-field selection includes a price; adding or removing a pair changes the request identity. A recovery refusal remains unknown and never permits a new purchase or source switch. Native checkout operations outside the selected Reap route keep their existing route.

@@ -65,7 +65,7 @@ describe("switch", () => {
     };
     await assert.rejects(tryReapAgenticCheckout({ op: { id: "create_checkout_session" },
       params: { quote: { items: [{ product_id: SNAP.productId, quantity: 1 }] } },
-      ctx: {}, executor, client, env, ucpArgs: {},
+      ctx: {}, executor, client, env, ucpArgs: {checkout:{reap:{expected_unit_price_minor:4250,expected_currency:"USD"}}},
     }), (err) => err.detail?.reason === "reap_create_paused");
     assert.equal(starts, 0);
     const out = await tryReapAgenticCheckout({ op: { id: "get_checkout_session" },
@@ -632,7 +632,7 @@ describe("the seller contract (cc.pivota.reap_seller)", async () => {
     const executor = { async execute(op, params) { calls.reads += 1; return { product: params.payload.product.product_id === row.product_id ? { ...row } : null }; } };
     const logs = [];
     const log = { info: (d) => logs.push(d), warn: (d) => logs.push(d) };
-    const ucpArgs = (expected) => ({ checkout: { line_items: [{ item: { id: row.product_id }, quantity: 1 }], context: { address_country: "US" }, ...(expected === undefined ? {} : { reap: { expected_merchant_domain: expected } }) } });
+    const ucpArgs = (expected) => ({ checkout: { line_items: [{ item: { id: row.product_id }, quantity: 1 }], context: { address_country: "US" }, reap: {expected_unit_price_minor:Math.round(row.price*100),expected_currency:row.currency,...(expected===undefined?{}:{expected_merchant_domain:expected})} } });
     const params = { idempotency_key: "idem-seller-1", quote: { items: [{ product_id: row.product_id, quantity: 1 }], customer_email: "a@b.example" } };
     const run = (expected, hints = []) => lane.tryReapAgenticCheckout({
       op: { id: "create_checkout_session" }, params, ctx: {}, executor, client, log, now: NOW, hints,
@@ -1211,7 +1211,7 @@ describe("enrichment cart-link rows: key shape, source system, merchant host", a
         client: { hasCallerCredentials: () => true, startPurchase: async () => { starts += 1; return { kind: "accepted", purchase: { id: PID, state: "resolving", poll_after_seconds: 60 } }; }, getPurchase: async () => ({ kind: "unavailable" }) },
         log: { info: (x) => logs.push(x), warn: (x) => logs.push(x) },
         shouldOfferPurchase: async () => true,
-        ucpArgs: { checkout: { context: { address_country: "US" }, ...(expected ? { reap: { expected_merchant_domain: expected } } : {}) } },
+        ucpArgs: { checkout: { context: { address_country: "US" }, reap:{expected_unit_price_minor:2000,expected_currency:"USD",...(expected?{expected_merchant_domain:expected}:{})} } },
       });
       return { out, starts, codes: logs.filter((l) => l.outcome === "skipped").map((l) => l.code) };
     };

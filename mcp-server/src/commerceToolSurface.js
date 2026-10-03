@@ -1233,7 +1233,7 @@ export function toToolError(error) {
     body.recovery = "correct this selected Reap request; no alternate checkout route will be opened";
   }
 
-  if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && error.detail?.reason === "ucp_reap_variant_not_created") body.detail = { reason: error.detail.reason };
+  if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
