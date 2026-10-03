@@ -5,10 +5,10 @@ const {createReapAgenticPurchaseClient}=require('../src/services/reapAgenticPurc
 const authHeaders=()=>({'X-API-Key':'synthetic-agent','X-Agent-User-JWT':'synthetic-buyer'});
 const mainEnvelope=(status,code)=>({status:'error',error:{code:status===400?'INVALID_REQUEST':'CONFLICT',message:code,details:{error:code}},detail:{error:code}});
 const shapes={flat:(s,c)=>({error:c}),nested:(s,c)=>({detail:{error:c}}),main:mainEnvelope};
-for(const strict of [false,true])for(const [shape,envelope]of Object.entries(shapes))for(const [status,code]of [[400,'invalid_request'],[409,'merchant_not_eligible'],[409,'idempotency_conflict']]){
- test(`Canonical create refusal: ${strict?'private':'ordinary'} recognizes ${shape} ${status} ${code}`,async()=>{
+for(const method of ['startPurchase','preparePurchase'])for(const strict of [false,true])for(const [shape,envelope]of Object.entries(shapes))for(const [status,code]of [[400,'invalid_request'],[409,'merchant_not_eligible'],[409,'idempotency_conflict']]){
+ test(`Canonical ${method} refusal: ${strict?'private':'ordinary'} recognizes ${shape} ${status} ${code}`,async()=>{
   const c=createReapAgenticPurchaseClient({baseUrl:'https://backend.invalid',authHeaders,requireAuthoritativeRefusal:strict,fetchImpl:async()=>({status,text:async()=>JSON.stringify(envelope(status,code))})});
-  const result=await c.startPurchase({});assert.equal(result.kind,'refused');assert.equal(result.code,code);
+  const result=await c[method]({});assert.equal(result.kind,'refused');assert.equal(result.code,code);
  });
 }
 const bad=[
@@ -24,10 +24,10 @@ const bad=[
  ['wrong main status marker',409,{...mainEnvelope(409,'merchant_not_eligible'),status:'success'}],
  ['wrong main class',409,{...mainEnvelope(409,'merchant_not_eligible'),error:{code:'INVALID_REQUEST',message:'merchant_not_eligible',details:{error:'merchant_not_eligible'}}}],
 ];
-for(const strict of [false,true])for(const[label,status,body]of bad){
- test(`Canonical create refusal: ${strict?'private':'ordinary'} dispatched ${label} stays unavailable`,async()=>{
+for(const method of ['startPurchase','preparePurchase'])for(const strict of [false,true])for(const[label,status,body]of bad){
+ test(`Canonical ${method} refusal: ${strict?'private':'ordinary'} dispatched ${label} stays unavailable`,async()=>{
   const c=createReapAgenticPurchaseClient({baseUrl:'https://backend.invalid',authHeaders,requireAuthoritativeRefusal:strict,fetchImpl:async()=>({status,text:async()=>JSON.stringify(body)})});
-  assert.equal((await c.startPurchase({})).kind,'unavailable');
+  assert.equal((await c[method]({})).kind,'unavailable');
  });
 }
 

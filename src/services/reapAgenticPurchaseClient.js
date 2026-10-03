@@ -47,6 +47,7 @@
  * response body. Logs carry an event name, a route label, an HTTP status and a reason code.
  */
 
+const { readSelectionWitness } = require('./reapSelectionWitness');
 const PURCHASES_PATH = '/agent/v2/commerce/reap/purchases';
 const DEFAULT_TIMEOUT_MS = 2000;
 const MAX_TIMEOUT_MS = 2000;
@@ -266,6 +267,23 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code };
   }
 
+  /** Read-only authoritative catalog selection; never opens a purchase or invokes a provider. */
+  async function preparePurchase(body) {
+    const headers = requestHeaders();
+    if (!headers) return { kind: KIND.unauthenticated };
+    const out = await send('prepare', `${baseUrl}${PURCHASES_PATH}/prepare`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (out.error) return { kind: KIND.unavailable, code: out.error };
+    if (out.status === 200) {
+      const selection = isPlainObject(out.body) && Object.keys(out.body).length === 1 ? readSelectionWitness(out.body.selection) : null;
+      return selection ? { kind: KIND.accepted, selection } : { kind: KIND.unavailable, code: 'malformed' };
+    }
+    const code = canonicalCreateRefusalCode(out.status, out.body);
+    return code ? { kind: KIND.refused, code, http_status: out.status }
+      : { kind: KIND.unavailable, code: 'prepare_unavailable', http_status: out.status };
+  }
+
   /** Read-only exact original-body/key lookup, even while new creates are paused. */
   async function recoverPurchase(body) {
     const headers = requestHeaders();
@@ -325,7 +343,7 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code };
   }
 
-  return { startPurchase, recoverPurchase, getPurchase, hasCallerCredentials, timeoutMs };
+  return { startPurchase, preparePurchase, recoverPurchase, getPurchase, hasCallerCredentials, timeoutMs };
 }
 
 module.exports = {
