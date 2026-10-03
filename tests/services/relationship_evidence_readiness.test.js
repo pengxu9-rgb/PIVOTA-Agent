@@ -150,3 +150,28 @@ test('private operator creates0600 manifest and refuses overwriting existing fil
     expect(fs.readFileSync(manifestOut, 'utf8')).toBe(original);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+test('explicit contradictory binding overrides otherwise owned canonical Insights', () => {
+  const a=product('a');
+  a.product_intel_binding={schema:'relgraph.product_intel_binding.v1',source_record_ref:'fixture_record',
+    identity:{product_key:'cp_other'},matched_identity_keys:['product_key:cp_other']};
+  expect(productReadiness(a,{nowMs:NOW}).insights).toBe('unbound');
+});
+test.each([{pivotaSignatureId:'sig_a'},{product_id:'product:sig_a'},{product_ref:'product:sig_a'}])(
+  'readiness understands encoded exact signatures but does not bind bare display refs: %j', (canonical) => {
+    const a=product('a'); a.product_intel.canonical_product_ref=canonical;
+    expect(productReadiness(a,{nowMs:NOW}).insights).toBe('approved_current_owned');
+    a.product_intel.canonical_product_ref={product_ref:'product:123'};
+    expect(productReadiness(a,{nowMs:NOW}).insights).toBe('unbound');
+  });
+test('contradictory single-record aliases produce reconciliation rather than disappearing from the plan', () => {
+  const a=product('a',{pivotaSignatureId:'sig_other'});
+  const result=plan(opts([a]));
+  expect(result.tasks).toHaveLength(3);
+  expect(result.tasks.every(task=>task.action==='reconcile_exact_listing_evidence'&&!task.execution_ready)).toBe(true);
+});
+test('strong binding identity with a forged unrelated match key cannot count as owned Insights', () => {
+  const a=product('a'); a.product_intel.canonical_product_ref={};
+  a.product_intel_binding={schema:'relgraph.product_intel_binding.v1',source_record_ref:'fixture_record',
+    identity:{product_key:'cp_a'},matched_identity_keys:['product_key:cp_other']};
+  expect(productReadiness(a,{nowMs:NOW}).insights).toBe('unbound');
+});

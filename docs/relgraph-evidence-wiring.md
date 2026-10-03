@@ -18,6 +18,27 @@ text with `ingredient_text_truncated`; a partial summary cannot establish that
 an ingredient is absent. Enrichment preserves each selected listing's identity, amount/currency,
 price observation and caller metadata. It does not write labels or source data.
 
+Insights identity normalization also retains explicit camel-case canonical keys
+and signature IDs encoded in `product_id` or `product_ref`. Conflicting aliases
+are rejected rather than resolved by precedence. Canonical brand, platform,
+market and structured variant constraints remain attached to the source record;
+known disagreements reject enrichment. Targeted SQL rejects known alias/scope
+conflicts and denial metadata before ranking, so newer invalid rows cannot crowd
+an older exact match out of the per-listing evidence cap.
+
+A hydrated Insights bundle has separate `product_intel_binding` metadata with
+its original source record reference, normalized source identity and the actual
+matching identity keys. It never inserts the target's catalog key/signature into
+a previously unbound source bundle. Family deduplication moves the binding with
+the same listing-owned bundle, and repeated normalization retains it. This is
+listing provenance, not review approval or external proof.
+
+When a bundle omits quality state, confidence or freshness, normalization retains
+those fields from actual source metadata if present. Explicit rejection in any
+review/quality layer overrides an approval elsewhere. Missing approval stays
+missing, and catalog/KB update times never become content generation times.
+Truncated ingredient summaries retain their incompleteness marker.
+
 Ingredient records come from the reviewed public beauty authority or PCI rows
 that allow ingest or have a successful parse. Explicit ingest denial, rejected,
 blocked, failed and review-pending statuses cannot be admitted. Conflicting lists

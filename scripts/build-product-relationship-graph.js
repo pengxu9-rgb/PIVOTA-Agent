@@ -865,7 +865,7 @@ function resolveNeedInputs(payload = {}, includeNeedNodes = true) {
 // The exact-listing owner adds these fields. Prices, route identity, source grade,
 // clocks and relationship proof belong to each original record, never this cache.
 const HYDRATED_LISTING_FIELDS = ['ingredient_text', 'ingredient_evidence', 'ingredient_evidence_conflict',
-  'ingredient_evidence_incomplete', 'product_intel', 'product_intel_evidence_incomplete', 'intel_text',
+  'ingredient_evidence_incomplete', 'product_intel', 'product_intel_binding', 'product_intel_evidence_incomplete', 'intel_text',
   'description', 'category', 'category_taxonomy'];
 function listingHydrationInput(product) {
   const result = withoutRelationshipPairContext(product);
