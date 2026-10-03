@@ -27,6 +27,8 @@ const {
 } = require('../src/auroraBff/productRelationshipGraph');
 const {
   buildCandidatesByAnchorFromSources,
+  normalizeCandidateHydrationShortlistLimit,
+  interleaveCandidateHydrationTargets,
   loadProductRelationshipGraphSourceInputs,
   normalizeProductCandidateSnapshot,
   __internal: sourceInternals,
@@ -895,6 +897,7 @@ async function buildInputsFromDb({
   coverageSiblingRefs = true,
   expandTargetRecall = false,
   targetRecallOptions = {},
+  candidateShortlistLimit,
 } = {}) {
   if (scopeProvided && !(Array.isArray(affectedRefs) && affectedRefs.length)) {
     // An explicit, empty scope: this run touches no products. Nothing to anchor, no need-node
@@ -975,9 +978,18 @@ async function buildInputsFromDb({
   }
   const candidateOptions = { maxPerAnchor, includeTransitiveRecall, maxBridgePerAnchor,
     maxBridgeCandidates, maxTransitivePerAnchor, fanOutFamilyCandidatesToSiblingAnchors };
-  const initialCandidates = buildCandidatesByAnchorFromSources({ anchors, products,
+  const prehydrationCap = expandTargetRecall
+    ? normalizeCandidateHydrationShortlistLimit(maxPerAnchor, candidateShortlistLimit) : maxPerAnchor;
+  const firstPass = buildCandidatesByAnchorFromSources({ anchors, products,
     legacyDupes: sourceInputs.legacyDupes, intelRows: sourceInputs.intelRows,
-    ...candidateOptions });
+    ...candidateOptions, maxPerAnchor: prehydrationCap,
+    ...(expandTargetRecall ? { enforceTotalCandidateLimit: true } : {}) });
+  // Transitive recall can append candidates beyond its direct cap. Its safety
+  // gates still run, but the expanded hydration lane has one fixed total budget.
+  const initialCandidates = expandTargetRecall
+    ? Object.fromEntries(Object.entries(firstPass).map(([ref, rows]) => [ref,
+      sourceInternals.selectCandidateOpportunities(anchors.find((anchor) => anchor.product_ref === ref) || {}, rows, prehydrationCap)]))
+    : firstPass;
   const baselineCandidateFacts = Object.fromEntries(Object.entries(initialCandidates).map(([ref, candidates]) =>
     [ref, candidates.map((candidate) => {
       const facts = { ...candidate };
@@ -1007,11 +1019,14 @@ async function buildInputsFromDb({
   let hydrationFor = (product) => product;
   if (anchors.length || Object.values(initialNeedCandidates).some((candidates) => candidates.length)) {
     const { enrichProductRelationshipGraphProducts } = require('../src/auroraBff/productRelationshipGraphSources');
-    // Anchors lead the bounded exact-evidence request. Expanded raw targets get
-    // evidence before opportunity selection; baseline runs hydrate their chosen
-    // candidates and then rescore. Never use family/name joins to borrow INCI.
+    // Expanded runs hydrate a wider shortlist before the final opportunity cap.
+    // Anchors lead; candidate slots are shared round-robin across anchors and
+    // retrieval lanes. Flag-off retains its original evidence request order.
+    const candidateEvidenceOrder = expandTargetRecall
+      ? interleaveCandidateHydrationTargets(anchors, [baselineCandidateFacts, targetRecall?.candidatesByAnchor || {}])
+      : [...(targetRecall?.products || []), ...Object.values(baselineCandidateFacts).flat()];
     const uniqueEvidenceProducts = new Map();
-    for (const product of [...anchors, ...(targetRecall?.products || []), ...Object.values(baselineCandidateFacts).flat(),
+    for (const product of [...anchors, ...candidateEvidenceOrder,
       ...Object.values(initialNeedCandidates).flat()]) {
       const identity = listingIdentity(product);
       if (!uniqueEvidenceProducts.has(identity)) uniqueEvidenceProducts.set(identity, listingHydrationInput(product));
@@ -1046,15 +1061,16 @@ async function buildInputsFromDb({
     anchors = anchors.map(hydrationFor);
     productsByAnchor = Object.fromEntries(anchors.map((anchor) => [anchor.product_ref,
       [...(baselineCandidateFacts[anchor.product_ref] || []), ...(targetRecall?.candidatesByAnchor[anchor.product_ref] || [])]
+        // Expanded final ranking only consumes exact listings in this run's
+        // bounded evidence request, never an omitted alias or stale fallback.
+        .filter((product) => !expandTargetRecall || hydrated.has(listingIdentity(product)))
         .map(hydrationFor)]));
   }
   // Need-node (niche_specialist) candidates come from the products this run touches. Before
   // 2026-09-27 they came from the whole source pool regardless of --affected-*, so every shard
   // re-emitted the same ~86 global niche edges (0 of them in its own scope) and per-shard counts
   // could not be summed. A run with no affected refs keeps the whole pool.
-  return {
-    anchors,
-    candidatesByAnchor: buildCandidatesByAnchorFromSources({
+  const candidatesByAnchor = buildCandidatesByAnchorFromSources({
       anchors,
       // Keep the second pass scoped to the admitted baseline candidates and
       // bounded catalog opportunities. Evidence rows enrich; they do not expand
@@ -1062,9 +1078,38 @@ async function buildInputsFromDb({
       products: [],
       ...(productsByAnchor ? { productsByAnchor, ingredientRows: targetedEvidence.ingredientRows } : {}),
       legacyDupes: sourceInputs.legacyDupes,
+      ...(expandTargetRecall ? { includeLegacyExplicitCandidates: false, enforceTotalCandidateLimit: true } : {}),
       intelRows: [],
       ...candidateOptions,
-    }),
+    });
+  let evidenceReadiness;
+  if (expandTargetRecall) {
+    const { summarizeRelationshipEvidenceReadiness } = require('../src/services/relationshipEvidenceReadiness');
+    // Diagnostic samples never widen inference or export a product worklist.
+    // Explicit sample counts prevent a bounded view being mistaken for a census.
+    const diagnosticAnchors = anchors.slice(0, 100);
+    const diagnosticProducts = new Map();
+    for (const product of [...diagnosticAnchors, ...interleaveCandidateHydrationTargets(diagnosticAnchors, [candidatesByAnchor])]) {
+      const key = listingIdentity(product);
+      if (!diagnosticProducts.has(key) && diagnosticProducts.size < 500) diagnosticProducts.set(key, product);
+    }
+    const diagnosticPairs = diagnosticAnchors.flatMap((anchor) => (candidatesByAnchor[anchor.product_ref] || [])
+      .filter((candidate) => diagnosticProducts.has(listingIdentity(candidate)))
+      .map((candidate) => ({ anchor, candidate, score: candidate.score_total }))).slice(0, 1000);
+    evidenceReadiness = {
+      ...summarizeRelationshipEvidenceReadiness({ products: [...diagnosticProducts.values()], pairs: diagnosticPairs }),
+      diagnostic_sample: true,
+      requested_anchor_count: anchors.length,
+      sampled_anchor_count: diagnosticAnchors.length,
+      requested_candidate_memberships: Object.values(candidatesByAnchor).reduce((sum, rows) => sum + rows.length, 0),
+      sampled_pair_count: diagnosticPairs.length,
+      product_limit: 500, pair_limit: 1000,
+      selection_complete: diagnosticAnchors.length === anchors.length && diagnosticPairs.length === Object.values(candidatesByAnchor).reduce((sum, rows) => sum + rows.length, 0),
+    };
+  }
+  return {
+    anchors,
+    candidatesByAnchor,
     needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(needCandidatePool.map(hydrationFor)) : {},
     needs: includeNeedNodes ? CURATED_NEED_NODES : [],
     sourceCounts: sourceInputs.source_counts,
@@ -1077,6 +1122,7 @@ async function buildInputsFromDb({
       need_candidate_pool_size: needCandidatePool.length,
       source_counts: sourceInputs.source_counts,
       targeted_evidence: targetedEvidence?.diagnostics || null,
+      ...(expandTargetRecall ? { evidence_readiness: evidenceReadiness || null } : {}),
       ...(expandTargetRecall ? { target_recall: targetRecall?.diagnostics || { enabled: true, selected_anchor_count: 0 } } : {}),
       builder_options: {
         source_limit: sourceLimit,
@@ -1092,7 +1138,8 @@ async function buildInputsFromDb({
         max_transitive_per_anchor: maxTransitivePerAnchor,
         fan_out_family_candidates_to_sibling_anchors: fanOutFamilyCandidatesToSiblingAnchors,
         include_need_nodes: includeNeedNodes,
-        ...(expandTargetRecall ? { expand_target_recall: true } : {}),
+        ...(expandTargetRecall ? { expand_target_recall: true,
+          prehydration_candidate_limit: prehydrationCap, candidate_hydration_order: 'anchor_and_lane_round_robin' } : {}),
       },
     },
   };

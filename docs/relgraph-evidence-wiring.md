@@ -50,6 +50,32 @@ The caller separately bounds its selected candidate set and
 prioritizes anchors when that bound is reached. Selected older evidence is
 queried by identity and is independent of global latest-record discovery limits.
 
+With `--expand-target-recall`, the builder now admits a wider source shortlist
+before exact hydration: three times `maxPerAnchor`, capped at 100 and never
+below the supported final cap. `candidateShortlistLimit` is an optional
+programmatic override, normalized by the exported
+`normalizeCandidateHydrationShortlistLimit` helper. For example, a final cap of
+two now hydrates up to six existing-pool opportunities, plus the independently
+bounded catalog recall lane, before final ranking. A formula-rich third candidate
+can therefore compete after its exact ingredients are loaded. All relationship
+inference, scoring, review and serving requirements remain unchanged.
+
+The expanded lane prioritizes anchors, then alternates candidates across anchors
+and source/catalog lanes within the 5,000 exact-listing global hydration bound.
+Final expanded ranking excludes listings omitted by that bound, cannot add
+unadmitted legacy-dupe records, and applies the final cap to direct and transitive
+candidates together. Admitted legacy pair evidence remains scoped to its original
+anchor. Canonical aliases never substitute for omitted exact listing identities.
+Flag-off admission, hydration order and historical transitive append behavior are
+unchanged. These budgets bound retrieval work; they do not imply formula
+similarity, review approval or production quality gains.
+
+The source builder exposes `enforceTotalCandidateLimit` (default false) and
+`includeLegacyExplicitCandidates` (default true) so bounded evaluation can use
+the same post-hydration selector as production rather than a separate ranking
+algorithm. The expanded builder opts into the first and disables the second only
+for its final, already admitted per-anchor pool.
+
 Targeted Insights retrieval materializes compact identity fields once, ranks
 matching keys per target, then projects only selected bundles. It avoids a full
 JSON scan for every target. The disposable PostgreSQL regression uses 10,000
