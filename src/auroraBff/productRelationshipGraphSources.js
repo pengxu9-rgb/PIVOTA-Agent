@@ -730,6 +730,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ...(intelBundle ? { product_intel: intelBundle } : {}),
     ...(row.product_intel_binding ? { product_intel_binding: row.product_intel_binding } : {}),
     ...(row._product_intel_record_ref ? { _product_intel_record_ref: row._product_intel_record_ref } : {}),
+    ...(row._graph_seller_identity_key ? { _graph_seller_identity_key: row._graph_seller_identity_key, _graph_seller_record: row._graph_seller_record } : {}),
     ...(intelText ? { intel_text: intelText } : {}),
     _source_type: sourceType || '',
   };
@@ -969,7 +970,10 @@ function normalizeProductIntelKbRow(row = {}) {
 function normalizeIngredientKbRow(row = {}, options = {}) {
   const table = normalizeString(options.table || row.table || 'ingredient_kb', 120);
   if (!ingredientRowAllowed(row, table)) return null;
-  if (Array.isArray(row.ingredient_evidence) && row.ingredient_evidence.length) return normalizeProductCandidateSnapshot(row);
+  if (Array.isArray(row.ingredient_evidence) && row.ingredient_evidence.length) return {
+    ...normalizeProductCandidateSnapshot(row),
+    ...(row.reviewed_ingredient_identity_key ? { reviewed_ingredient_identity_key: row.reviewed_ingredient_identity_key } : {}),
+  };
   const normalized = normalizeProductCandidateSnapshot(
     {
       ...row,
@@ -982,7 +986,7 @@ function normalizeIngredientKbRow(row = {}, options = {}) {
     {
       sourceType: 'ingredient_kb',
       sourceName: table,
-      observedAt: row.updated_at || row.created_at,
+      observedAt: table === 'public.relgraph_reviewed_ingredient_evidence' ? row.source_observed_at : row.updated_at || row.created_at,
       authoritative: true,
       evidenceGrade: 'B',
       sourceEvidence: { evidence_kind: 'ingredient_list', review_status: row.review_status || row.audit_status || 'kb_reviewed' },
@@ -1471,10 +1475,10 @@ function evidenceTargetKey(product) {
 
 // Targeted loads cap records PER listing. A selected product must not lose its older evidence
 // because unrelated products have more recent rows in the global discovery window.
-function targetedEvidenceSql(sql, targets, predicate) {
+function targetedEvidenceSql(sql, targets, predicate, reviewedLane = false) {
   if (!targets.length) return sql;
   return `WITH evidence_targets AS (
-    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text)
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text${reviewedLane ? ', reviewed_identity_keys text[]' : ''})
   ) SELECT matched.*, target.target_key AS _evidence_target_key FROM evidence_targets target CROSS JOIN LATERAL (
     ${sql.replace(/WHERE /, `WHERE (${predicate}) AND `)}
   ) matched`;
@@ -1642,16 +1646,104 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, t
     `, targets),
     targets.length ? [5, JSON.stringify(targets)] : [normalizeLimit(limit)],
   );
-  return boundedEvidenceRows(rows, targets.length).map((row) => {
+  const publicRows = boundedEvidenceRows(rows, targets.length).map((row) => {
     const intel = normalizeProductIntelKbRow(row);
     return intel ? { ...intel, ...(row._evidence_load_incomplete ? { product_intel_evidence_incomplete: true } : {}) } : null;
   }).filter(Boolean);
+  if (!await tableExists(queryFn, 'public.relgraph_reviewed_seller_evidence')) return publicRows;
+  const { validateGraphSellerEvidence, graphSellerBundle, __internal: {publicSellerCollisionSql,publicSellerProtectedSql} } = require('../services/relationshipReviewedInsightsRefresh');
+  const hasPublicSellerProtection = await tableExists(queryFn, 'public.aurora_product_intel_kb');
+  const { identityKey: sellerIdentityKey } = require('../services/relationshipReviewedIngredientEvidence');
+  const keyMap = new Map();
+  for (const product of targetProducts) {
+    const normalized = normalizeProductCandidateSnapshot(product); if (!normalized) continue;
+    try { const bucket = evidenceTargetKey(normalized); if (!keyMap.has(bucket)) keyMap.set(bucket, new Set());
+      keyMap.get(bucket).add(sellerIdentityKey({ ...product, market: product.market || market })); } catch (_) {}
+  }
+  const sellerTargets = targets.map(target => ({ ...target, reviewed_identity_keys: [...(keyMap.get(target.target_key) || [])] }));
+  const sellerRows = await guardedRows(queryFn, targetedEvidenceSql(`
+    SELECT evidence_id,identity_key,source_observed_at,source_url,proof
+    FROM public.relgraph_reviewed_seller_evidence
+    WHERE ${hasPublicSellerProtection ? `NOT EXISTS(SELECT 1 FROM public.aurora_product_intel_kb public_kb WHERE ${publicSellerCollisionSql("proof#>'{source,identity}'","proof#>>'{source,source_url}'")} AND ${publicSellerProtectedSql()}) AND` : ''} proof @> '{"schema":"relgraph.reviewed_seller_evidence.v1","graph_only":true,"public_insights_eligible":false}'::jsonb
+    ORDER BY source_observed_at DESC,evidence_id ASC LIMIT $1
+  `, sellerTargets, 'identity_key = ANY(target.reviewed_identity_keys)', true),
+  targets.length ? [5, JSON.stringify(sellerTargets)] : [normalizeLimit(limit)]);
+  const normalizedSellerRows = boundedEvidenceRows(sellerRows, targets.length).map(row => {
+    let proof;try { proof=validateGraphSellerEvidence(coerceJson(row.proof),{requireCurrent:false});
+      if(proof.evidence_id!==row.evidence_id||proof.identity_key!==row.identity_key||proof.source.source_url!==row.source_url||
+        toIsoOrNull(proof.source.source_observed_at)!==toIsoOrNull(row.source_observed_at)) return null;
+    } catch (_) {return null;}
+    const intel=normalizeProductIntelKbRow({kb_key:`graph-seller:${row.evidence_id}`,analysis:{product_intel_v1:graphSellerBundle(proof)},
+      source:'relgraph_graph_only_seller_consensus',last_success_at:row.source_observed_at});
+    return intel?{...intel,_graph_seller_identity_key:row.identity_key,_graph_seller_record:row.evidence_id,
+      ...(row._evidence_load_incomplete?{product_intel_evidence_incomplete:true}:{})}:null;
+  }).filter(Boolean);
+  return [...publicRows,...normalizedSellerRows];
 }
 
 async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMIT, targetProducts = [], market = DEFAULT_MARKET } = {}) {
   const targets = evidenceTargets(targetProducts, market);
   const perTableLimit = normalizeLimit(limit);
   const out = [];
+  // An optional append-only lane carries actual capture time and exact source/review
+  // proof. Absence leaves the established ingredient stores unchanged.
+  if (await tableExists(queryFn, 'public.relgraph_reviewed_ingredient_evidence')) {
+    const { validateReviewedIngredientEvidence, identityKey } = require('../services/relationshipReviewedIngredientEvidence');
+    const keyMap = new Map();
+    for (const product of targetProducts) {
+      const normalized = normalizeProductCandidateSnapshot(product);
+      if (!normalized) continue;
+      try {
+        const bucket = evidenceTargetKey(normalized);
+        if (!keyMap.has(bucket)) keyMap.set(bucket, new Set());
+        keyMap.get(bucket).add(identityKey({ ...product, market: product.market || market }));
+      } catch (_) { /* Sparse/conflicting identity cannot bind the exact lane. */ }
+    }
+    const reviewedTargets = targets.map(target => ({ ...target, reviewed_identity_keys: [...(keyMap.get(target.target_key) || [])] }));
+    const rows = await guardedRows(queryFn, targetedEvidenceSql(`
+      SELECT evidence_id, identity_key, product_key, pivota_signature_id, product_id, source_product_id,
+        merchant_id, platform, market, variant_title, variant_detail_label, ingredient_text,
+        formula_sha256, raw_source_sha256, source_url, source_observed_at, proof
+      FROM public.relgraph_reviewed_ingredient_evidence
+      WHERE proof->>'schema' = 'relgraph.reviewed_ingredient_evidence.v1'
+        AND proof->>'parse_status' = 'OK' AND proof->>'review_status' = 'APPROVED'
+        AND proof->>'audit_status' = 'PASS' AND proof->>'ingest_allowed' = 'true'
+      ORDER BY source_observed_at DESC, evidence_id ASC LIMIT $1
+    `, reviewedTargets, `identity_key = ANY(target.reviewed_identity_keys) AND ((target.product_key <> '' AND product_key = target.product_key)
+        OR (target.signature <> '' AND pivota_signature_id = target.signature)
+        OR (product_id ~* '^ext_' AND product_id = ANY(target.ids))
+        OR (source_product_id ~* '^ext_' AND source_product_id = ANY(target.ids)))
+      AND (target.product_key = '' OR product_key = '' OR product_key = target.product_key)
+      AND (target.signature = '' OR pivota_signature_id = '' OR pivota_signature_id = target.signature)
+      AND upper(market) = target.market
+      AND (target.merchant_id IN ('', 'external_seed') OR merchant_id IN ('', 'external_seed') OR lower(merchant_id) = lower(target.merchant_id))
+      AND (target.platform = '' OR platform = '' OR lower(platform) = lower(target.platform))
+      AND (COALESCE(target.variant_title, '') = '' OR variant_title = '' OR lower(variant_title) = target.variant_title)
+      AND (COALESCE(target.variant_detail_label, '') = '' OR variant_detail_label = '' OR lower(variant_detail_label) = target.variant_detail_label)
+      AND (product_id !~* '^ext_' OR cardinality(target.ids) = 0 OR product_id = ANY(target.ids))
+      AND (source_product_id !~* '^ext_' OR cardinality(target.ids) = 0 OR source_product_id = ANY(target.ids))`, true),
+    targets.length ? [5, JSON.stringify(reviewedTargets)] : [perTableLimit]);
+    out.push(...boundedEvidenceRows(rows, targets.length).map(row => {
+      let proof;
+      try {
+        proof = validateReviewedIngredientEvidence(coerceJson(row.proof), { requireCurrent: false });
+        if (proof.evidence_id !== row.evidence_id || proof.identity_key !== row.identity_key || proof.ingredient_text !== row.ingredient_text ||
+          proof.formula_sha256 !== row.formula_sha256 || proof.raw_source_sha256 !== row.raw_source_sha256 || proof.source_url !== row.source_url ||
+          proof.source_observed_at !== toIsoOrNull(row.source_observed_at) || Object.entries(proof.identity).some(([field, value]) => value !== row[field])) return null;
+      } catch (_) { return null; }
+      const ingredient = normalizeIngredientKbRow({ ...row, raw_inci: row.ingredient_text, source_ref: row.source_url,
+        parse_status: proof.parse_status, review_status: proof.review_status, audit_status: proof.audit_status, ingest_allowed: proof.ingest_allowed,
+        evidence_refs_json: [{ type: 'reviewed_ingredient_source', name: row.evidence_id, url: row.source_url, authoritative: true,
+          observed_at: row.source_observed_at, ...proof.identity }], source_system: 'relgraph_reviewed_ingredient_evidence_v1' },
+      { table: 'public.relgraph_reviewed_ingredient_evidence' });
+      if (ingredient) ingredient.ingredient_evidence = ingredient.ingredient_evidence.map(evidence => ({ ...evidence,
+        evidence_id: row.evidence_id, identity_key: row.identity_key, formula_sha256: row.formula_sha256,
+        raw_source_sha256: row.raw_source_sha256, source_capture_ref: proof.source_capture.capture_id,
+        review_refs: proof.reviews.map(review => ({ provider: review.provider, review_id: review.review_id, reviewed_at: review.reviewed_at })) }));
+      return ingredient ? { ...ingredient, reviewed_ingredient_identity_key: row.identity_key,
+        ...(row._evidence_load_incomplete ? { ingredient_evidence_incomplete: true } : {}) } : null;
+    }).filter(Boolean));
+  }
   if (await tableExists(queryFn, 'public.beauty_sku_ingredients')) {
     const rows = await guardedRows(
       queryFn,
@@ -2258,7 +2350,7 @@ function findIntelForCandidate(candidate, intelIndex) {
   const seen = new Set();
   for (const key of evidenceIdentityKeys(candidate)) {
     for (const row of intelIndex.get(key) || []) {
-      const ref = row.product_ref || key;
+      const ref = row._graph_seller_identity_key ? row._product_intel_record_ref : row.product_ref || key;
       if (seen.has(ref)) continue;
       if (!compatibleEvidenceIdentity(candidate, row)) continue;
       seen.add(ref);
@@ -2269,8 +2361,19 @@ function findIntelForCandidate(candidate, intelIndex) {
 }
 
 function mergeCandidateWithIntel(candidate, intelRows) {
-  const intel = [...intelRows].filter((row) => row.product_intel && compatibleEvidenceIdentity(candidate, row))
-    .sort((a, b) => String(b.observed_at || '').localeCompare(String(a.observed_at || '')))[0];
+  const graphLane=intelRows.some(row=>row._graph_seller_identity_key);
+  const protectedIntel = bundle => {
+    const {isProtectedPivotaInsight}=require('../services/pivotaInsightsQuality');const meta=bundle?.provenance||{};
+    return bundle && (isProtectedPivotaInsight({analysis:{product_intel_v1:bundle},source_meta:meta})||/human/i.test(meta.reviewer_kind||meta.review_tier||'')||
+      [bundle.quality_state,bundle.product_intel_core?.quality_state,meta.quality_state,meta.review_decision].some(value=>/^(reject|reject_external|rejected|blocked|needs_review|suppressed|fail|failed)$/i.test(String(value||''))));
+  };
+  if(graphLane&&protectedIntel(candidate.product_intel)) return candidate;
+  const intel = [...intelRows].filter((row) => {
+    if(!row.product_intel||!compatibleEvidenceIdentity(candidate,row))return false;
+    if(!row._graph_seller_identity_key)return true;
+    try {return require('../services/relationshipReviewedIngredientEvidence').identityKey(candidate)===row._graph_seller_identity_key;}catch(_){return false;}
+  }).sort((a, b) => (graphLane ? Number(Boolean(protectedIntel(b.product_intel)))-Number(Boolean(protectedIntel(a.product_intel))) : 0)||
+    String(b.observed_at || '').localeCompare(String(a.observed_at || '')))[0];
   if (!intel) return candidate;
   return {
     ...candidate,
@@ -2361,7 +2464,12 @@ function buildIngredientIndex(rows) {
 
 function mergeCandidateWithIngredients(candidate, index) {
   const matches = new Set(evidenceIdentityKeys(candidate).flatMap((key) => index.get(key) || []));
-  const rows = [...matches].filter((row) => compatibleEvidenceIdentity(candidate, row));
+  const rows = [...matches].filter((row) => {
+    if (!compatibleEvidenceIdentity(candidate, row)) return false;
+    if (!row.reviewed_ingredient_identity_key) return true;
+    try { return require('../services/relationshipReviewedIngredientEvidence').identityKey(candidate) === row.reviewed_ingredient_identity_key; }
+    catch (_) { return false; }
+  });
   if (!rows.length) return candidate;
   const evidence = [...(candidate.ingredient_evidence || []), ...rows.flatMap((row) => row.ingredient_evidence || [])];
   const unique = [...new Map(evidence.map((row) => [JSON.stringify(row), row])).values()].slice(0, 8);
@@ -3190,6 +3298,11 @@ module.exports = {
     fanOutCandidatesToSiblingAnchors,
     inferBrandFromOfficialUrl,
     mergeSourceRefs,
+    buildIngredientIndex,
+    mergeCandidateWithIngredients,
+    buildIntelIndex,
+    findIntelForCandidate,
+    mergeCandidateWithIntel,
     evidenceIdentityKeys,
     compatibleEvidenceIdentity,
     overlapScore,

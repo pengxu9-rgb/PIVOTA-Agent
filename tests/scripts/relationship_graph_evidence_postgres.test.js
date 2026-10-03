@@ -236,7 +236,10 @@ postgresDescribe('targeted evidence on disposable PostgreSQL', () => {
     const targets = Array.from({ length: 200 }, (_, i) => product(String(i + 1)));
     let plan;
     const explainQueryFn = async (sql, params) => {
-      plan = (await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`, params)).rows[0]['QUERY PLAN'][0];
+      // Record the public KB projection, not a later optional-store existence check.
+      if (/\bFROM aurora_product_intel_kb\b/i.test(sql)) {
+        plan = (await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`, params)).rows[0]['QUERY PLAN'][0];
+      }
       return client.query(sql, params);
     };
     const rows = await loadProductIntelKbRows({ queryFn: explainQueryFn, targetProducts: targets, limit: 1 });
@@ -246,6 +249,7 @@ postgresDescribe('targeted evidence on disposable PostgreSQL', () => {
       for (const child of node.Plans || []) visit(child); };
     visit(plan.Plan);
     const identity = scans.find((node) => node['Actual Rows'] === 10000);
+    expect(identity).toBeDefined();
     expect(identity['Actual Loops']).toBe(1);
     // Key lookups project only selected evidence, rather than copying 200 full KB pools.
     const totalScanRows = scans.reduce((sum, node) => sum + node['Actual Rows'] * node['Actual Loops'], 0);

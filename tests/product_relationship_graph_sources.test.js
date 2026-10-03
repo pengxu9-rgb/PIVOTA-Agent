@@ -325,7 +325,8 @@ describe('product relationship graph source loaders', () => {
 
     await loadProductIntelKbRows({ queryFn, limit: 5 });
 
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual({sql: expect.stringContaining('to_regclass'), params:['public.relgraph_reviewed_seller_evidence']});
     expect(calls[0].sql).toContain('jsonb_build_object');
     expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,canonical_product_ref}'");
     expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,product_intel_core}'");
