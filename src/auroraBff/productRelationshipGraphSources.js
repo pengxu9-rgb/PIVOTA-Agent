@@ -2512,6 +2512,38 @@ function selectCandidateOpportunities(anchor, candidates, maxPerAnchor = 24) {
   return [...chosen].sort(compareScoredCandidates);
 }
 
+// A retrieval budget, not a recommendation threshold. The existing final cap
+// remains the only post-evidence opportunity cap. Callers can use the same
+// bounded budget for offline A/B evaluation without changing semantic guards.
+const MAX_CANDIDATE_HYDRATION_SHORTLIST = 100;
+function normalizeCandidateHydrationShortlistLimit(maxPerAnchor = 24, requestedLimit) {
+  const finalCap = Math.max(1, Math.min(MAX_CANDIDATE_HYDRATION_SHORTLIST,
+    Math.trunc(Number(maxPerAnchor) || 24)));
+  const requested = Number(requestedLimit);
+  const budget = Number.isFinite(requested) && requested > 0 ? Math.trunc(requested) : finalCap * 3;
+  return Math.min(MAX_CANDIDATE_HYDRATION_SHORTLIST, Math.max(finalCap, budget));
+}
+
+// Once anchors are admitted, one anchor must not consume every exact-evidence
+// slot before another receives its first candidate. Source lanes are interleaved
+// as well; catalog recall cannot displace all candidates from the existing pool.
+// Identity deduplication is performed by the caller using exact listing keys.
+function interleaveCandidateHydrationTargets(anchors = [], candidateMaps = []) {
+  const pools = anchors.map((anchor) => {
+    const lanes = candidateMaps.map((map) => map?.[anchor.product_ref] || []);
+    const items = [];
+    for (let index = 0; index < Math.max(0, ...lanes.map((lane) => lane.length)); index += 1) {
+      for (const lane of lanes) if (lane[index]) items.push(lane[index]);
+    }
+    return items;
+  });
+  const targets = [];
+  for (let index = 0; index < Math.max(0, ...pools.map((pool) => pool.length)); index += 1) {
+    for (const pool of pools) if (pool[index]) targets.push(pool[index]);
+  }
+  return targets;
+}
+
 // Fields that name one listing. They move as a block from a single record, never field by field.
 const LISTING_IDENTITY_FIELDS = [
   'product_ref',
@@ -2628,6 +2660,8 @@ function buildCandidatesByAnchorFromSources({
   maxBridgeCandidates = 8,
   maxTransitivePerAnchor = 8,
   fanOutFamilyCandidatesToSiblingAnchors = false,
+  includeLegacyExplicitCandidates = true,
+  enforceTotalCandidateLimit = false,
 } = {}) {
   const normalizedAnchors = enrichProductsWithEvidence(anchors, { intelRows, ingredientRows });
   const familyDedupedAnchors = dedupeNormalizedProducts(normalizedAnchors);
@@ -2645,7 +2679,7 @@ function buildCandidatesByAnchorFromSources({
   for (const anchor of familyDedupedAnchors) {
     const anchorFamilyKey = familyIdentityKey(anchor);
     const legacy = legacySignalsForAnchor(anchor, legacyRows);
-    const rawPool = [...normalizedProducts, ...(productsByAnchor[anchor.product_ref] || []), ...normalizedIntelRows, ...legacy.explicitCandidates];
+    const rawPool = [...normalizedProducts, ...(productsByAnchor[anchor.product_ref] || []), ...normalizedIntelRows, ...(includeLegacyExplicitCandidates ? legacy.explicitCandidates : [])];
     const rawByFamily = new Map();
     const rawFamilyIndex = createFamilyDedupeIndex();
     const identityToFamilyKey = new Map();
@@ -2722,8 +2756,7 @@ function buildCandidatesByAnchorFromSources({
     ? fanOutCandidatesToSiblingAnchors(out, normalizedAnchors, familyDedupedAnchors)
     : out;
 
-  if (!includeTransitiveRecall) return withSiblingFanout;
-  return augmentCandidatesWithTransitiveRecall({
+  const result = !includeTransitiveRecall ? withSiblingFanout : augmentCandidatesWithTransitiveRecall({
     anchors: familyDedupedAnchors,
     candidatesByAnchor: withSiblingFanout,
     maxPerAnchor,
@@ -2731,6 +2764,10 @@ function buildCandidatesByAnchorFromSources({
     maxBridgeCandidates,
     maxTransitivePerAnchor,
   });
+  if (!enforceTotalCandidateLimit) return result;
+  const anchorsByRef = new Map(normalizedAnchors.map((anchor) => [anchor.product_ref, anchor]));
+  return Object.fromEntries(Object.entries(result).map(([ref, rows]) => [ref,
+    selectCandidateOpportunities(anchorsByRef.get(ref) || {}, rows, maxPerAnchor)]));
 }
 
 function candidateMapList(candidatesByAnchor, productRef) {
@@ -3013,6 +3050,8 @@ module.exports = {
   familyIdentityKey,
   familyIdentityKeysCompatible,
   buildCandidatesByAnchorFromSources,
+  normalizeCandidateHydrationShortlistLimit,
+  interleaveCandidateHydrationTargets,
   loadApprovedLiveExternalSeedAnchors,
   loadProductsCacheCandidates,
   loadAffectedProductAnchorCandidates,

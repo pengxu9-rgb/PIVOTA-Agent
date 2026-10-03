@@ -33,7 +33,7 @@ test.each([false, true])('only final selected anchors and candidates are hydrate
   const payload = await buildInputsFromDb({ limit: 1, affectedRefs: ['anchor'], includeNeedNodes: false, expandTargetRecall });
   expect(recall.loadProductRelationshipGraphTargetRecall).toHaveBeenCalledTimes(Number(expandTargetRecall));
   const requested = sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products.map((product) => product.product_ref);
-  expect(requested).toEqual(expandTargetRecall ? [a.product_ref, target.product_ref, base.product_ref] : [a.product_ref, base.product_ref]);
+  expect(requested).toEqual(expandTargetRecall ? [a.product_ref, base.product_ref, target.product_ref] : [a.product_ref, base.product_ref]);
   const rescore = sources.buildCandidatesByAnchorFromSources.mock.calls[1][0];
   expect(rescore.products).toEqual([]);
   expect(rescore.intelRows).toEqual([]);
