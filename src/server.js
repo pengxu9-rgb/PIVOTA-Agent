@@ -1868,17 +1868,28 @@ const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
   'similar',
 ]);
 
+const PRIVATE_PDP_PRODUCT_KEYS = new Set([
+  'raw', 'raw_detail', 'raw_payload', '_raw', 'product_intel', 'productIntel',
+  'product_intel_v1', 'product_intel_bundle', 'agent_context', 'agentContext',
+  'provenance', 'quality_improvement',
+]);
+
+function stripPrivatePdpProductFields(value) {
+  if (Array.isArray(value)) return value.map(stripPrivatePdpProductFields);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !PRIVATE_PDP_PRODUCT_KEYS.has(key))
+    .map(([key, item]) => [key, key === 'x_content_module_states' && item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item)
+          .map(([moduleName, state]) => [moduleName, stripPrivatePdpProductFields(state)]))
+      : stripPrivatePdpProductFields(item)]));
+}
+
 function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
-  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
-    ? { ...pdpPayload.product } : pdpPayload.product;
-  if (product && typeof product === 'object') {
-    // Raw backend blobs can contain operator dossiers even when Insights was
-    // not requested. Public PDP consumers receive the typed product/variants.
-    for (const key of ['raw', 'raw_detail', 'raw_payload', '_raw', 'product_intel', 'productIntel', 'product_intel_v1', 'agent_context', 'provenance']) {
-      delete product[key];
-    }
-  }
+  // Raw backend blobs can contain operator dossiers even when Insights was not
+  // requested. Public consumers receive typed product/variant commerce fields.
+  const product = stripPrivatePdpProductFields(pdpPayload.product);
   return {
     ...pdpPayload,
     product,
@@ -1886,7 +1897,8 @@ function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
       ? pdpPayload.modules.filter((module) => {
           const type = String(module?.type || '').trim();
           return !RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES.has(type);
-        })
+        }).map((module) => module?.type === 'variant_selector'
+          ? { ...module, data: stripPrivatePdpProductFields(module.data) } : module)
       : [],
   };
 }
@@ -45577,7 +45589,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
       const responseModules = sanitizePdpSimilarResponseModules(modules, {
         servingCurrency: pdpServingCurrency,
-      });
+      }).map((module) => module?.type === 'variant_selector'
+        ? { ...module, data: stripPrivatePdpProductFields(module.data) } : module);
       const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
       markPdpV2Checkpoint('before_response_assembly');

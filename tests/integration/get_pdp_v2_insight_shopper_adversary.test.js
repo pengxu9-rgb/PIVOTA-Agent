@@ -23,8 +23,68 @@ describe('real public PDP Insights transport boundary', () => {
   afterEach(() => nock.cleanAll());
   afterAll(() => { process.env = previousEnv; });
 
+  test('canonical helper strips nested variant dossiers without mutating typed product, selector or state fields', () => {
+    const states = { product_intel: 'ready', media_gallery: 'ready', variant_selector: 'ready' };
+    const variant = {
+      variant_id: 'v07', sku_id: 'JUDY07', title: '07 Burgundy',
+      options: [{ name: 'Shade', value: '07 Burgundy', raw: { standard: sentinel } }],
+      price: { current: { amount: 12, currency: 'USD', provenance: { standard: sentinel } } },
+      availability: { in_stock: true, available_quantity: 3, agentContext: { standard: sentinel } },
+      raw: { product_intel: legacy },
+      nested: [{ raw_detail: { standard: sentinel }, safe_label: 'Burgundy' }],
+    };
+    const input = {
+      schema_version: '1.0.0', x_content_module_states: states,
+      product: { product_id: 'p07', default_variant_id: 'v07', variants: [variant],
+        x_content_module_states: states, provenance: { standard: sentinel } },
+      modules: [
+        { type: 'variant_selector', data: { selected_variant_id: 'v07', variants: [variant],
+          options: [{ name: 'Shade', values: ['07 Burgundy'] }], x_content_module_states: states } },
+        { type: 'product_intel', data: legacy },
+        { type: 'media_gallery', data: { items: [{ url: 'https://cdn.example.test/lip.png' }] } },
+      ],
+    };
+    const before = JSON.stringify(input);
+    const result = app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload(input);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(result.product.variants[0]).toEqual({
+      variant_id: 'v07', sku_id: 'JUDY07', title: '07 Burgundy',
+      options: [{ name: 'Shade', value: '07 Burgundy' }],
+      price: { current: { amount: 12, currency: 'USD' } },
+      availability: { in_stock: true, available_quantity: 3 },
+      nested: [{ safe_label: 'Burgundy' }],
+    });
+    expect(result.product.default_variant_id).toBe('v07');
+    expect(result.x_content_module_states).toEqual(states);
+    expect(result.product.x_content_module_states).toEqual(states);
+    expect(result.modules[0].data).toEqual({ selected_variant_id: 'v07',
+      variants: [result.product.variants[0]], options: [{ name: 'Shade', values: ['07 Burgundy'] }],
+      x_content_module_states: states });
+    expect(result.modules.map((m) => m.type)).toEqual(['variant_selector', 'media_gallery']);
+  });
+
+  test('state dictionary module names survive but nested private values do not bypass wire redaction', () => {
+    const input = {
+      product: { product_id: 'p07', variants: [{ variant_id: 'v07', x_content_module_states: {
+        product_intel: { state: 'ready', raw: { review_standard: sentinel }, provenance: { generator: sentinel } },
+        media_gallery: 'ready',
+      } }] },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v07', x_content_module_states: {
+        product_intel: { state: 'ready', agent_context: { review_standard: sentinel } },
+        media_gallery: 'ready',
+      } } }],
+    };
+    const before = JSON.stringify(input);
+    const projected = app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload(input);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(JSON.stringify(projected)).not.toContain(sentinel);
+    expect(projected.product.variants[0].x_content_module_states).toEqual({ product_intel: { state: 'ready' }, media_gallery: 'ready' });
+    expect(projected.modules[0].data.x_content_module_states).toEqual({ product_intel: { state: 'ready' }, media_gallery: 'ready' });
+  });
+
   test.each([
-    ['raw', []], ['raw_detail', ['product_intel']], ['raw_payload', ['product_intel', 'product_overview']],
+    ['raw', []], ['raw_detail', ['product_intel', 'variant_selector']], ['raw_payload', ['product_intel', 'product_overview', 'variant_selector']],
   ])('public request excludes internal Insights in canonical %s with include=%j', async (alias, include) => {
     const intel = JSON.parse(JSON.stringify(legacy));
     intel.provenance.generator = sentinel;
@@ -37,6 +97,16 @@ describe('real public PDP Insights transport boundary', () => {
       image_url: 'https://cdn.example.test/lip.png',
       product_intel: intel,
       [alias]: { product_intel: intel, productIntel: intel, nested: { agent_context: { review_standard: sentinel } } },
+      variants: [
+        { variant_id: `v_${alias}_07`, sku_id: 'JUDY07', title: '07 Burgundy',
+          options: [{ name: 'Shade', value: '07 Burgundy', raw: { standard: sentinel } }],
+          price: 12, available_quantity: 3, in_stock: true, swatch_color: '#772233',
+          image_url: 'https://cdn.example.test/lip07.png', raw: { product_intel: intel } },
+        { variant_id: `v_${alias}_08`, sku_id: 'JUDY08', title: '08 Peach',
+          options: [{ name: 'Shade', value: '08 Peach', agent_context: { standard: sentinel } }],
+          price: 14, available_quantity: 5, in_stock: true, swatch_color: '#bb7755',
+          image_url: 'https://cdn.example.test/lip08.png', raw_detail: { product_intel: intel } },
+      ],
     };
     nock(base).persist().post('/agent/shop/v1/invoke', (b) => b.operation === 'get_product_detail')
       .reply(200, { status: 'success', success: true, product });
@@ -54,6 +124,12 @@ describe('real public PDP Insights transport boundary', () => {
     expect(response.status).toBe(200);
     const canonical = response.body.modules.find((m) => m.type === 'canonical');
     expect(canonical.data.pdp_payload.product.title).toContain('Judydoll');
+    const publicProduct = canonical.data.pdp_payload.product;
+    expect(publicProduct.variants.map((v) => v.variant_id)).toEqual([`v_${alias}_07`, `v_${alias}_08`]);
+    expect(publicProduct.default_variant_id).toBe(`v_${alias}_07`);
+    expect(publicProduct.variants[0].options).toEqual([{ name: 'Shade', value: '07 Burgundy' }]);
+    expect(publicProduct.variants[0].price.current).toEqual({ amount: 12, currency: 'USD' });
+    expect(publicProduct.variants[0].availability).toEqual({ in_stock: true, available_quantity: 3 });
     expect(JSON.stringify(response.body)).not.toContain(sentinel);
     expect(JSON.stringify(response.body)).not.toContain('Reviewed lip cues');
     expect(JSON.stringify(response.body)).not.toContain('reducing ambiguity');
@@ -62,6 +138,13 @@ describe('real public PDP Insights transport boundary', () => {
       expect(module.data.public_display_eligible).toBe(true);
       expect(module.data).not.toHaveProperty('provenance');
       expect(module.data).not.toHaveProperty('agent_context');
+    }
+    if (include.includes('variant_selector')) {
+      const selector = response.body.modules.find((m) => m.type === 'variant_selector');
+      expect(selector.data.selected_variant_id).toBe(publicProduct.default_variant_id);
+      expect(selector.data.variants.map((v) => v.variant_id)).toEqual(publicProduct.variants.map((v) => v.variant_id));
+      expect(selector.data.variants[0].price.current).toEqual({ amount: 12, currency: 'USD' });
+      expect(selector.data.variants[0].availability).toEqual({ in_stock: true, available_quantity: 3 });
     }
   });
 });

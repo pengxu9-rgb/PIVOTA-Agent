@@ -64,3 +64,14 @@ test.each(['human_standard', 'strict_human_manual_rewrite', 'gemini_quality_gate
 test('legacy internal metadata remains available to internal normalizer, outside public projection', () => {
   expect(normalizePublishedProductIntelBundle(legacy).provenance).toEqual(legacy.provenance);
 });
+
+test('legacy lip-set clarity reviews are suppressed without removing actual components or finish', () => {
+  const cleaned = sanitizeProductIntelShopperCopy({ product_intel_core: { why_it_stands_out: [
+    { headline: 'Component pairing is clear', body: 'The PDP identifies the paired components as liner and gloss, so a shopper can tell the format before leaving the page.' },
+    { headline: 'Finish role is easy to compare', body: 'The stored product facts call out matte finish, which helps shoppers decide whether the set is better for a layered look.' },
+    { headline: 'Liner and gloss set', body: 'Includes a lip liner and gloss for a glossy finish.' },
+  ] } });
+  expect(cleaned.product_intel_core.why_it_stands_out).toEqual([
+    { headline: 'Liner and gloss set', body: 'Includes a lip liner and gloss for a glossy finish.' },
+  ]);
+});

@@ -3,9 +3,12 @@
 const INTERNAL_EVALUATION_COPY = [
   /\b(?:human_standard|strict_human|official_pdp_manual_review|field_sources|quality_improvement|gemini_quality_gate)(?:_[a-z0-9]+)*\b/i,
   /\b(?:review criteria|evaluation criteria|internal standards?|quality gate|reviewer kind|selection strategy)\b/i,
+  /\b(?:component pairing is clear|finish role is easy to compare|the stored product facts call out)\b/i,
+  /\bthe pdp identifies the paired components\b.*\bso a shopper can tell\b/i,
   /\breviewed (?:pdp|sku|lip|color|scent|nail(?:-polish|-care)?|set|mist|complexion|primer|skincare|shimmer|spf|tool|oral-care) (?:cues|fields)\b/i,
   /\breviewed (?:usage context|key-ingredient fields|directions)\b/i,
-  /\b(?:reviewed and normalized by pivota|pivota-reviewed|source-backed cues around)\b/i,
+  /\b(?:reviewed and normalized by pivota|pivota-reviewed|source-backed (?:scent |ingredient )?cues (?:around|including))\b/i,
+  /\b(?:available variants clarify|an ingredient list is available for formula review)\b/i,
   /\b(?:cues|shade and size|configuration|accessory format|sample format|application sequence|shade selection) (?:are|is) (?:specific|explicit|clear|unambiguous|source-backed)\b/i,
   /\bvariant labels such as\b.*\breducing ambiguity\b/i,
   /\b(?:before (?:the shopper|a shopper|leaving).*pivota|before a shopper clicks through)\b/i,

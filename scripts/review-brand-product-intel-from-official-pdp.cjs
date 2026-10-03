@@ -1635,7 +1635,7 @@ function buildWhatItIs(facts, role) {
   if (description) pieces.push(description.replace(/\.$/, ''));
   if (!description && detail) pieces.push(compactText(detail, 160).replace(/\.$/, ''));
   if (!description && !detail && facts.variants.labels.length) {
-    pieces.push(`available variants clarify ${facts.variants.labels.slice(0, 3).join(', ')}`);
+    pieces.push(`Variant options: ${facts.variants.labels.slice(0, 3).join(', ')}`);
   }
   if (!description && !detail && facts.rawIngredients.length) {
     pieces.push('listed ingredients include ' + facts.rawIngredients.slice(0, 2).join(', '));
@@ -1953,7 +1953,7 @@ function manualCandidateQualityIssue(facts, role, bundle) {
   if (
     role.label === 'Beauty accessory' &&
     /\bis a beauty accessory from\b/.test(whatItIs) &&
-    (!facts.description || /\bavailable variants clarify\b/.test(whatItIs))
+    (!facts.description || /\b(?:available variants clarify\b|variant options:)/.test(whatItIs))
   ) {
     return 'generic_accessory_copy';
   }
@@ -1961,7 +1961,7 @@ function manualCandidateQualityIssue(facts, role, bundle) {
     return 'insufficient_accessory_source_evidence';
   }
 
-  if (/\bavailable variants clarify\b/.test(whatItIs)) {
+  if (/\b(?:available variants clarify\b|variant options:)/.test(whatItIs)) {
     return 'variant_only_intro_without_product_copy';
   }
   if (

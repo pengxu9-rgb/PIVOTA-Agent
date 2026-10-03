@@ -76,3 +76,16 @@ test('shopper descriptions containing reviewed and standards vocabulary are reta
   const projected = buildPublicProductIntelProjection(bundle);
   expect(projected.product_intel_core.why_it_stands_out).toEqual(bundle.product_intel_core.why_it_stands_out);
 });
+
+test.each([
+  'Judydoll Lip Ink is a lip color from Judydoll. Available variants clarify Shade: 07 Burgundy.',
+  'Judydoll Lip Ink is a lip color from Judydoll. An ingredient list is available for formula review.',
+  'A fragrance from Example, with source-backed scent cues including rose and vanilla.',
+  'A serum from Example, with source-backed ingredient cues around vitamin C.',
+])('legacy fallback what-it-is evaluation criteria are withheld: %s', (body) => {
+  const bundle = clone(legacy);
+  bundle.product_intel_core.what_it_is.body = body;
+  const projected = buildPublicProductIntelProjection(bundle);
+  expect(projected.product_intel_core.what_it_is).not.toHaveProperty('body');
+  expect(projected.product_intel_core.watchouts).toEqual(bundle.product_intel_core.watchouts);
+});
