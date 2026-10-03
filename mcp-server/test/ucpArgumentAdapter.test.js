@@ -1310,10 +1310,11 @@ describe('schema and mapper cannot drift', () => {
         const body = maximalFor(schema);
         const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), body, env));
         const leaves = sentinelLeaves(schema);
-        const surviving = leaves.filter((leaf) => mapped.includes(markerFor(leaf))).map((leaf) => leaf.path);
+        const selectionLeaf=leaf=>leaf.path.startsWith('checkout.reap.selection.');
+        const surviving = leaves.filter((leaf) => !selectionLeaf(leaf) && mapped.includes(markerFor(leaf))).map((leaf) => leaf.path);
         assert.deepEqual(surviving.sort(), [...EXPECTED_SURVIVING[def.name]].sort(), `${def.name} (${label}): surviving set`);
         const unread = leaves
-          .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(markerFor(leaf)))
+          .filter((leaf) => !leaf.path.startsWith('meta.') && (selectionLeaf(leaf) || !mapped.includes(markerFor(leaf))))
           .map((leaf) => leaf.path);
         const declared = [...UCP_ACCEPTED_BUT_UNMAPPED[opId], ...extraUnmapped.flatMap((t) => t[opId] || [])];
         // Enum values carry no unique sentinel. Verify this raw-lane field explicitly,
@@ -1322,8 +1323,13 @@ describe('schema and mapper cannot drift', () => {
           assert.deepEqual(schema.properties.checkout.properties.reap.properties.item_source.enum, ['reap_variant', 'cart_link']);
           assert.ok(declared.includes('checkout.reap.item_source'));
           assert.equal(mapped.includes('item_source'), false);
+          const selection=schema.properties.checkout.properties.reap.properties.selection;
+          assert.deepEqual(selection.properties.item_source.enum,['cart_link']);
+          assert.deepEqual(selection.required.slice().sort(),Object.keys(selection.properties).sort());
+          assert.deepEqual(Object.keys(selection.properties).map(f=>'checkout.reap.selection.'+f).sort(),declared.filter(p=>p.startsWith('checkout.reap.selection.')).sort());
+          assert.equal(mapped.includes('variant_key'),false,'original selector remains raw-lane data, never a canonical quote override');
         }
-        const expected = declared.filter((path) => path !== 'checkout.reap.item_source');
+        const expected = declared.filter((path) => path !== 'checkout.reap.item_source' && path !== 'checkout.reap.selection.item_source');
         assert.deepEqual([...unread].sort(), expected.sort(), `${def.name} (${label}): the unread leaves must be classified EXACTLY`);
       }
     }

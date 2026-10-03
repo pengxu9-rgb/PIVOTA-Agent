@@ -58,8 +58,10 @@ for(const [name,edit]of Object.entries({foreign_product:s=>({...s,product_key:'f
  }));
 }
 for(const [name,options]of Object.entries({price_drift:{selection:{...SELECTION,unit_price_minor:1599}},sku_drift:{selection:{...SELECTION,variant_key:KEY+'::sku_new'}},timeout:{throwPrepare:true},malformed:{prepareBody:{selection:{...SELECTION,unit_price_minor:'1399'}}},gate:{prepareStatus:503,prepareBody:{error:'not_available_on_this_rail'}}})) {
- test('prepare-to-create '+name+' refuses without a checkout POST or alternate route',()=>armed(async()=>{const x=await setup(options);await assert.rejects(x.surface.callTool('create_checkout',args(),SESSION));assert.equal(posts(x).length,0);assert.ok(x.executorCalls.every(op=>op==='get_product'));}));
+ test('prepare-to-create '+name+' refuses without a checkout POST or alternate route',()=>armed(async()=>{const x=await setup(options);await assert.rejects(x.surface.callTool('create_checkout',args(),SESSION),error=>error.detail?.reason==='ucp_reap_variant_not_created');assert.equal(posts(x).length,0);assert.ok(x.executorCalls.every(op=>op==='get_product'));}));
 }
 test('preparation and witness schema never accept defaults, false money, numeric-string money or extra proof',()=>{
  for(const value of [{...SELECTION,variant_key:''},{...SELECTION,variant_id:'Default'},{...SELECTION,unit_price_minor:false},{...SELECTION,unit_price_minor:'1399'},{...SELECTION,proof:{}},[]])assert.equal(readSelectionWitness(value),null);
 });
+
+test('structurally valid long original selector cannot authorize fresh preparation or a checkout POST',()=>armed(async()=>{const x=await setup();const long='123456789012345678901';const original={...SELECTION,variant_id:long};assert.ok(readSelectionWitness(original));const a=args(original);a.checkout.reap.selected_variant_id=long;await assert.rejects(x.surface.callTool('create_checkout',a,SESSION));assert.equal(posts(x).length,0);assert.equal(x.calls.filter(c=>c.path.endsWith('/prepare')).length,0);}));

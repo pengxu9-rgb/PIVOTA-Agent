@@ -21,11 +21,91 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "item_source": {
+          "type": "string",
+          "enum": [
+            "reap_variant",
+            "cart_link"
+          ],
+          "description": "Optional explicit primary source. Selected before create and preserved for recovery; a refusal never retries another source."
+        },
         "selected_variant_id": {
           "type": "string",
           "minLength": 1,
           "maxLength": 200,
           "description": "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL."
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "product_key",
+            "variant_id",
+            "variant_key",
+            "merchant_domain",
+            "market",
+            "currency",
+            "unit_price_minor",
+            "quantity",
+            "item_source"
+          ],
+          "properties": {
+            "product_key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "variant_id": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,24}$",
+              "examples": [
+                "49819267301653"
+              ]
+            },
+            "variant_key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "merchant_domain": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "examples": [
+                "judydoll.com"
+              ]
+            },
+            "market": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$",
+              "examples": [
+                "US"
+              ]
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "examples": [
+                "USD"
+              ]
+            },
+            "unit_price_minor": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "item_source": {
+              "type": "string",
+              "enum": [
+                "cart_link"
+              ]
+            }
+          },
+          "description": "Original authoritative catalog selection, obtained read-only before first create. Revalidated before dispatch; recovery preserves it exactly."
         },
         "expected_merchant_domain": {
           "type": "string",
@@ -35,14 +115,6 @@
             "brand.com"
           ],
           "description": "Optional. The seller the buyer was shown, as a bare ASCII host name (`brand.com`; `www.` and case do not matter). If ANY item resolves to a different seller, or to one Pivota cannot confirm, the create is REFUSED (`QUOTE_REQUIRED`, reason `ucp_seller_mismatch`, the served seller in `merchant_domain` / `merchant_id` of the error detail): nothing is opened and no other route is offered. A Reap checkout names its seller in the info messages `reap.merchant_domain` and `reap.merchant_id`."
-        },
-        "item_source": {
-          "type": "string",
-          "enum": [
-            "reap_variant",
-            "cart_link"
-          ],
-          "description": "Optional explicit primary source. Selected before create and preserved for recovery; a refusal never retries another source."
         }
       }
     },

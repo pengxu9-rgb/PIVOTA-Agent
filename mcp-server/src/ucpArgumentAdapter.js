@@ -828,7 +828,7 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
     selected_variant_id: { type: "string", minLength: 1, maxLength: 200, description: "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL." },
     selection: { type: "object", additionalProperties: false,
       required: ["product_key", "variant_id", "variant_key", "merchant_domain", "market", "currency", "unit_price_minor", "quantity", "item_source"],
-      properties: { product_key:{type:"string",minLength:1,maxLength:1024}, variant_id:{type:"string",pattern:"^[1-9][0-9]{0,24}$"}, variant_key:{type:"string",minLength:1,maxLength:1024}, merchant_domain:{type:"string",minLength:1,maxLength:255}, market:{type:"string",pattern:"^[A-Z]{2}$"},currency:{type:"string",pattern:"^[A-Z]{3}$"},unit_price_minor:{type:"integer",minimum:1},quantity:{type:"integer",minimum:1,maximum:10},item_source:{const:"cart_link"} },
+      properties: { product_key:{type:"string",minLength:1,maxLength:1024}, variant_id:{type:"string",pattern:"^[1-9][0-9]{0,24}$",examples:["49819267301653"]}, variant_key:{type:"string",minLength:1,maxLength:1024}, merchant_domain:{type:"string",minLength:1,maxLength:255,examples:["judydoll.com"]}, market:{type:"string",pattern:"^[A-Z]{2}$",examples:["US"]},currency:{type:"string",pattern:"^[A-Z]{3}$",examples:["USD"]},unit_price_minor:{type:"integer",minimum:1},quantity:{type:"integer",minimum:1,maximum:10},item_source:{type:"string",enum:["cart_link"]} },
       description:"Original authoritative catalog selection, obtained read-only before first create. Revalidated before dispatch; recovery preserves it exactly." },
     expected_merchant_domain: {
       type: "string",
@@ -925,7 +925,7 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
  * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
  */
 export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.item_source", "checkout.reap.selected_variant_id", "checkout.reap.selection"]),
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.item_source", "checkout.reap.selected_variant_id", ...selectionContract.FIELDS.map(field => `checkout.reap.selection.${field}`)]),
 });
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the

@@ -31,3 +31,5 @@ The new witness protocol supports selected `cart_link` only. Unsupported selecte
 sources refuse before a checkout POST. Existing unselected native checkouts and
 the proof-based sole-variant Reap path retain their original behavior. No runtime
 pilot or merchant scope is enabled by this source change.
+
+The read-only prepare endpoint accepts positive decimal selectors of at most 20 digits. The recorded witness structural validator permits up to 25 digits for the existing selector shape; this is data, never create authority. A newly selected create always runs the strict 20-digit authoritative preparation and refuses longer selectors before any purchase POST. Recovery does not run preparation or derive a different key.

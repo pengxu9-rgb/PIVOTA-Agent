@@ -1524,7 +1524,7 @@ export async function prepareReapCheckout({ params, ctx, executor, ucpArgs, clie
   if (!Array.isArray(items) || items.length!==1 || !str(items[0]?.product_id)
     || !Number.isSafeInteger(items[0].quantity) || items[0].quantity<1 || items[0].quantity>REAP_MAX_QUANTITY) refuse();
   const reap=ucpArgs.checkout?.reap;
-  if (reap?.item_source!=="cart_link" || typeof reap.selected_variant_id!=="string" || !/^[1-9][0-9]{0,24}$/.test(reap.selected_variant_id)) refuse();
+  if (reap?.item_source!=="cart_link" || typeof reap.selected_variant_id!=="string" || !/^[1-9][0-9]{0,19}$/.test(reap.selected_variant_id)) refuse();
   let rows;
   try { rows=await readCheckoutRows(items,executor,ctx,{timeoutMs}); } catch { refuse(); }
   const row=rows.get(items[0].product_id), productKey=productKeyOf(row), target=escalationTargetOf(row);
@@ -1658,7 +1658,14 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     throw new PivotaCommerceError("QUOTE_REQUIRED", {reason:"ucp_reap_variant_not_created"});
   }
   if (selectedKey !== undefined && cartLinkDirect) {
-    const prepared = await prepareReapCheckout({params,ctx,executor,ucpArgs,client,env,timeoutMs});
+    let prepared;
+    try { prepared = await prepareReapCheckout({params,ctx,executor,ucpArgs,client,env,timeoutMs}); }
+    catch {
+      // This mandatory preparation is read-only and occurs before startPurchase.
+      // Tell the caller no purchase was dispatched so the original attempt cannot be stranded.
+      // Recovery never enters this branch and must retain its conservative unknown outcome.
+      throw new PivotaCommerceError("QUOTE_REQUIRED", {reason:"ucp_reap_variant_not_created"});
+    }
     const witness=readSelectionWitness(ucpArgs.checkout?.reap?.selection);
     const actual=prepared.selection;
     if ((witness && !sameSelection(witness,actual)) || actual.variant_key!==selectedKey
