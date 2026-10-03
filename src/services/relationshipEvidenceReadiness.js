@@ -10,6 +10,9 @@ const MAX_TASKS = 200;
 const DENIED = new Set(['reject', 'reject_external', 'rejected', 'blocked', 'failed', 'fail', 'needs_review', 'suppressed']);
 const text = (value) => typeof value === 'string' ? value.trim() : '';
 const lower = (value) => text(value).toLowerCase();
+// Match the exact evidence join: external_seed is a routing placeholder, not
+// a merchant identity. Keep the original value in provenance and task output.
+const isMerchantIdentityKnown = (value) => Boolean(text(value)) && lower(value) !== 'external_seed';
 function boundedInteger(value, fallback, max) {
   const n = value === undefined ? fallback : Number(value);
   if (!Number.isInteger(n) || n < 1 || n > max) throw new Error('invalid_evidence_plan_bound');
@@ -24,7 +27,7 @@ function exactIdentity(product = {}) {
   const externalId = [identity.product_id, identity.source_product_id].find((id) => /^ext_/i.test(id));
   const key = identity.product_key ? `key:${identity.product_key}` : identity.pivota_signature_id
     ? `sig:${identity.pivota_signature_id}` : externalId ? `external:${externalId}`
-      : identity.merchant_id && identity.platform && identity.product_id
+      : isMerchantIdentityKnown(identity.merchant_id) && identity.platform && identity.product_id
         ? `merchant:${identity.merchant_id}:${identity.platform}:${identity.product_id}` : '';
   // Market/variant/merchant scope remains part of dedupe. Shared titles or display refs never bind tasks.
   return { ...identity, identity_conflict: !normalized, product_ref: idText(product.product_ref), exact_key: key
@@ -35,7 +38,9 @@ function identitiesContradict(product, source = {}) {
   return owner.identity_conflict || evidence.identity_conflict ||
     Boolean(text(product.brand) && text(source.brand) && lower(product.brand) !== lower(source.brand)) ||
     ['product_key', 'pivota_signature_id', 'market', 'merchant_id', 'platform', 'variant_title', 'variant_detail_label']
-      .some((field) => owner[field] && evidence[field] && (['merchant_id', 'platform', 'variant_title', 'variant_detail_label'].includes(field)
+      .some((field) => owner[field] && evidence[field] &&
+        (field !== 'merchant_id' || isMerchantIdentityKnown(owner[field]) && isMerchantIdentityKnown(evidence[field])) &&
+        (['merchant_id', 'platform', 'variant_title', 'variant_detail_label'].includes(field)
         ? lower(owner[field]) !== lower(evidence[field]) : owner[field] !== evidence[field]));
 }
 function owns(product, source = {}) {
@@ -45,7 +50,8 @@ function owns(product, source = {}) {
   if (owner.pivota_signature_id && owner.pivota_signature_id === evidence.pivota_signature_id) return true;
   const ids = [owner.product_id, owner.source_product_id].filter(Boolean);
   return [evidence.product_id, evidence.source_product_id, text(source.sku_key)].some((id) => ids.includes(id) &&
-    (/^ext_/i.test(id) || owner.merchant_id && owner.platform && owner.merchant_id === evidence.merchant_id && owner.platform === evidence.platform));
+    (/^ext_/i.test(id) || isMerchantIdentityKnown(owner.merchant_id) && isMerchantIdentityKnown(evidence.merchant_id) &&
+      owner.platform && owner.merchant_id === evidence.merchant_id && owner.platform === evidence.platform));
 }
 function current(at, nowMs, days) {
   if (!at) return false;

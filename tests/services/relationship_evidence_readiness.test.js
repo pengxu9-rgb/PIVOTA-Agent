@@ -1,5 +1,6 @@
 const { productReadiness, summarizeRelationshipEvidenceReadiness: summarize, buildRelationshipEvidenceAcquisitionPlan: plan } = require('../../src/services/relationshipEvidenceReadiness');
 const { parseArgs, run } = require('../../scripts/plan-relationship-evidence-acquisition');
+const { normalizeProductIntelKbRow, enrichProductsWithEvidence } = require('../../src/auroraBff/productRelationshipGraphSources');
 const NOW = Date.parse('2026-10-03T00:00:00Z');
 const AT = '2026-10-02T00:00:00Z';
 const INCI = 'Water, Glycerin, Squalane, Ceramide NP, Panthenol, Phenoxyethanol';
@@ -174,4 +175,80 @@ test('strong binding identity with a forged unrelated match key cannot count as 
   a.product_intel_binding={schema:'relgraph.product_intel_binding.v1',source_record_ref:'fixture_record',
     identity:{product_key:'cp_a'},matched_identity_keys:['product_key:cp_other']};
   expect(productReadiness(a,{nowMs:NOW}).insights).toBe('unbound');
+});
+
+test.each([
+  ['product_key', 'store_a', 'external_seed'], ['pivota_signature_id', 'store_a', 'external_seed'],
+  ['product_key', 'external_seed', 'store_a'], ['pivota_signature_id', 'external_seed', 'store_a'],
+])('hydrated %s binding survives merchant provenance %s → %s', (field, ownerMerchant, sourceMerchant) => {
+  const a = product('a', { merchant_id: ownerMerchant, platform: 'shopify' });
+  const intel = normalizeProductIntelKbRow({ kb_key: 'opaque_fixture_record', product_intel: {
+    canonical_product_ref: { [field]: a[field], merchant_id: sourceMerchant, platform: 'shopify', market: 'US' },
+    quality_state: 'reviewed', freshness: { generated_at: AT }, product_intel_core: { what_it_is: 'Serum' },
+  } });
+  const hydrated = enrichProductsWithEvidence([{ ...a, product_intel: undefined }], { intelRows: [intel] })[0];
+  expect(hydrated.merchant_id).toBe(ownerMerchant);
+  expect(hydrated.product_intel_binding.identity.merchant_id).toBe(sourceMerchant);
+  expect(hydrated.product_intel.canonical_product_ref.merchant_id).toBe(sourceMerchant);
+  expect(productReadiness(hydrated, { nowMs: NOW }).insights).toBe('approved_current_owned');
+  expect(hydrated.product_intel.freshness.generated_at).toBe(AT);
+});
+
+test.each([
+  { merchant_id: 'other_store' }, { market: 'KR' }, { platform: 'other_platform' },
+  { variant_title: 'Shade 27' }, { variant_detail_label: 'Large' },
+])('placeholder normalization retains explicit conflicting canonical constraint %j', (conflict) => {
+  const a = product('a', { merchant_id: 'store_a', platform: 'shopify', variant_title: 'Shade 23', variant_detail_label: 'Small' });
+  a.product_intel.canonical_product_ref = { product_key: a.product_key, merchant_id: 'external_seed', ...conflict };
+  a.product_intel_binding = { schema: 'relgraph.product_intel_binding.v1', source_record_ref: 'fixture_record',
+    identity: { product_key: a.product_key, merchant_id: 'external_seed' }, matched_identity_keys: [`product_key:${a.product_key}`] };
+  expect(productReadiness(a, { nowMs: NOW }).insights).toBe('unbound');
+});
+
+test.each(['owner', 'canonical', 'binding'])('genuine merchant mismatch on %s remains an Insights conflict', (location) => {
+  const a = product('a', { merchant_id: 'store_a', platform: 'shopify' });
+  a.product_intel.canonical_product_ref = { product_key: a.product_key, merchant_id: 'store_a' };
+  a.product_intel_binding = { schema: 'relgraph.product_intel_binding.v1', source_record_ref: 'fixture_record',
+    identity: { product_key: a.product_key, merchant_id: 'store_a' }, matched_identity_keys: [`product_key:${a.product_key}`] };
+  if (location === 'owner') a.merchant_id = 'other_store';
+  else if (location === 'canonical') a.product_intel.canonical_product_ref.merchant_id = 'other_store';
+  else a.product_intel_binding.identity.merchant_id = 'other_store';
+  expect(productReadiness(a, { nowMs: NOW }).insights).toBe('unbound');
+});
+
+test.each([{ market: 'KR' }, { platform: 'other_platform' }, { variant_title: 'Shade 27' }, { variant_detail_label: 'Large' }])(
+  'placeholder binding does not override its conflicting durable constraint %j', (conflict) => {
+    const a = product('a', { merchant_id: 'store_a', platform: 'shopify', variant_title: 'Shade 23', variant_detail_label: 'Small' });
+    a.product_intel_binding = { schema: 'relgraph.product_intel_binding.v1', source_record_ref: 'fixture_record',
+      identity: { product_key: a.product_key, merchant_id: 'external_seed', ...conflict },
+      matched_identity_keys: [`product_key:${a.product_key}`] };
+    expect(productReadiness(a, { nowMs: NOW }).insights).toBe('unbound');
+  });
+
+test.each(['external_seed', ' EXTERNAL_SEED '])('placeholder-scoped raw IDs cannot own Insights or ingredients: %s', (merchant) => {
+  const a = product('a', { product_key: '', pivota_signature_id: '', product_ref: 'product:123', product_id: '123',
+    merchant_id: merchant, platform: 'shopify' });
+  const identity = { product_id: '123', merchant_id: merchant, platform: 'shopify', market: 'US' };
+  a.product_intel.canonical_product_ref = identity;
+  a.product_intel_binding = { schema: 'relgraph.product_intel_binding.v1', source_record_ref: 'fixture_record',
+    identity, matched_identity_keys: [`merchant_id:${merchant}:platform:shopify:123`] };
+  a.ingredient_evidence = [{ ...identity, ingredient_text: INCI, observed_at: AT }];
+  expect(productReadiness(a, { nowMs: NOW })).toMatchObject({ insights: 'unbound', ingredients: 'unbound' });
+  expect(plan(opts([a])).tasks).toEqual([]);
+});
+
+test.each(['rejected', 'needs_review', 'blocked'])('placeholder fix preserves explicit Insights denial: %s', (state) => {
+  const a = product('a', { merchant_id: 'store_a' });
+  a.product_intel.canonical_product_ref.merchant_id = 'external_seed';
+  a.product_intel.quality_state = state;
+  expect(productReadiness(a, { nowMs: NOW }).insights).toBe('rejected');
+});
+
+test('known merchant-scoped raw IDs still bind without a global identity', () => {
+  const a = product('a', { product_key: '', pivota_signature_id: '', product_ref: 'product:123', product_id: '123',
+    merchant_id: 'store_a', platform: 'shopify' });
+  const identity = { product_id: '123', merchant_id: 'store_a', platform: 'shopify', market: 'US' };
+  a.product_intel.canonical_product_ref = identity;
+  a.ingredient_evidence = [{ ...identity, ingredient_text: INCI, observed_at: AT }];
+  expect(productReadiness(a, { nowMs: NOW })).toMatchObject({ insights: 'approved_current_owned', ingredients: 'substantial_current_owned' });
 });
