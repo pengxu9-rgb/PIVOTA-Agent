@@ -7286,6 +7286,8 @@ function buildProviderBreakdown(results = []) {
     const failureReason = successfulSteps.length > 0
       ? skipReasonAsFailure
       : (stepFailureReason || skipReasonAsFailure);
+    const eligibilityReason = recallSummary.find((step) =>
+      step?.eligibility_reason === 'canonical_history_item_unavailable')?.eligibility_reason || null;
     let zeroRecallReason = null;
     if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
       if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
@@ -7295,7 +7297,7 @@ function buildProviderBreakdown(results = []) {
       } else if (recallSummary.some((step) => step?.error)) {
         zeroRecallReason = 'provider_error';
       } else if (successfulSteps.length > 0) {
-        zeroRecallReason = 'zero_products';
+        zeroRecallReason = eligibilityReason || 'zero_products';
       } else {
         zeroRecallReason = 'unavailable';
       }
@@ -7311,6 +7313,7 @@ function buildProviderBreakdown(results = []) {
       ...(skipReason ? { skip_reason: skipReason } : {}),
       ...(failureReason ? { failure_reason: failureReason } : {}),
       ...(zeroRecallReason ? { zero_recall_reason: zeroRecallReason } : {}),
+      ...(eligibilityReason ? { eligibility_reason: eligibilityReason } : {}),
     };
   });
 }
@@ -7716,6 +7719,23 @@ async function loadCatalogCandidates({
       catalogUnavailableError: null,
     };
   };
+
+  const canonicalBrandQuery = await loadCanonicalBrandQueryPrimary({ request, profile });
+  if (canonicalBrandQuery) {
+    candidateSource = 'canonical_sig_explicit_brand';
+    primaryPathUsed = 'canonical_sig_explicit_brand';
+    providerResults.push(canonicalBrandQuery);
+    mergeProducts(canonicalBrandQuery.products, 400);
+    for (const provider of ['products_search', 'internal_catalog', 'external_seeds']) {
+      providerResults.push(buildSkippedProviderResult(provider, {
+        label: getProviderLabel(provider),
+        query: providerQueries.join(' | '),
+        limit: safeLimit,
+        skipReason: 'canonical_sig_explicit_brand_primary_selected',
+      }));
+    }
+    return finalizeProviderResult();
+  }
 
   const canonicalHistory = await loadCanonicalHistoryPrimary({ request, profile, limit: safeLimit });
   if (canonicalHistory) {
@@ -9490,6 +9510,49 @@ function buildDiscoveryCatalogServingGateJoinSql(catalogAlias = 'cp') {
        AND crt.serving_decision = 'public'`;
 }
 
+// A producer-owned official listing keeps its offer seller namespace when apply
+// adopts the CP/SKU seller of record. Admit that exact persisted listing, not an
+// arbitrary merchant sharing a product key or a source-system label alone.
+function buildCanonicalOwnOfferSellerSql() {
+  return `(
+    co.merchant_id = own_cp.merchant_id
+    OR (
+      own_cp.platform = 'external_seed'
+      AND own_cp.source_system = 'catalog_enrichment_agent_v1'
+      AND co.source_system = 'catalog_enrichment_agent_v1'
+      AND co.offer_type = 'brand_direct' AND co.is_first_party IS TRUE
+      AND co.offer_mode = 'external_referral' AND co.catalog_track = 'external_referral'
+      AND co.truth_tier = 'primary' AND co.readiness_tier = 'referral_only'
+      AND lower(own_cp.brand) ~ '[a-z0-9]'
+      AND own_cp.source_domain IS NOT NULL
+      AND own_cp.canonical_url ~ '^https://[a-z0-9.-]+/[^[:space:]?#]+$'
+      AND substring(own_cp.canonical_url from '^https://([^/]+)') = own_cp.source_domain
+      AND co.source_domain = own_cp.source_domain
+      AND co.source_ref = own_cp.canonical_url
+      AND co.offer_payload->>'destination_url' = own_cp.canonical_url
+      AND co.offer_payload->>'canonical_url' = own_cp.canonical_url
+      AND EXISTS (
+        SELECT 1 FROM catalog_merchants listing_merchant
+        WHERE listing_merchant.merchant_id = co.merchant_id
+          AND listing_merchant.source_system = 'catalog_enrichment_agent_v1'
+          AND listing_merchant.status = 'active' AND listing_merchant.indexable IS TRUE
+          AND listing_merchant.source_ref = own_cp.source_domain
+          AND listing_merchant.metadata_json->>'domain' = own_cp.source_domain
+          AND co.merchant_id = 'agent_seed::' || left(trim(both '-' from
+            regexp_replace(lower(own_cp.brand), '[^a-z0-9]+', '-', 'g')), 80)
+      )
+      AND EXISTS (
+        SELECT 1 FROM catalog_skus listing_sku
+        WHERE listing_sku.sku_key = co.sku_key
+          AND listing_sku.product_key = own_cp.product_key
+          AND listing_sku.merchant_id = own_cp.merchant_id
+          AND listing_sku.currency = 'USD'
+          AND listing_sku.suppressed_at IS NULL AND listing_sku.suppression_reason IS NULL
+      )
+    )
+  )`;
+}
+
 function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_product_seeds') {
   const alias = String(seedAlias || 'external_product_seeds').trim() || 'external_product_seeds';
   // A seed with no currency is not servable (Peng 2026-09-26): the card formatter stamps 'USD' on
@@ -9606,10 +9669,18 @@ function mapCanonicalIndexRowToProduct(row) {
   };
 }
 
-async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120, failures = null, strictPublicSource = false } = {}) {
+async function fetchBrandScopedCanonicalCandidates({
+  brandAliases = [],
+  limit = 120,
+  failures = null,
+  strictPublicSource = false,
+  exactBrandQuery = false,
+} = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
-    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    brandAliases.map((alias) => exactBrandQuery
+      ? String(alias || '').trim().toLowerCase()
+      : normalizeBrandText(alias)).filter(Boolean),
     16,
   );
   if (!normalizedAliases.length) return [];
@@ -9626,6 +9697,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
               ON crt.subject_type = 'product' AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
+              ${exactBrandQuery ? 'AND lower(cp_trust.brand) = ANY($1::text[])' : ''}
               ${strictPublicSource ? "AND cp_trust.sync_status = 'live' AND cp_trust.suppression_reason IS NULL" : ''}
           )`;
   try {
@@ -9644,6 +9716,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           ${gateJoinSql}
           WHERE apv.pivota_signature_id IS NOT NULL
             ${gateWhereSql}
+            ${exactBrandQuery ? 'AND lower(apv.brand) = ANY($1::text[])' : ''}
           ORDER BY apv.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
           LIMIT $3
         )
@@ -9665,10 +9738,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           apv.description,
           apv.image_url,
           apv.image_urls,
-          apv.currency,
-          apv.price_min,
-          apv.price_max,
-          apv.offer_count,
+          ${strictPublicSource ? "'USD'" : 'apv.currency'} AS currency,
+          ${strictPublicSource ? 'own_offers.price_min' : 'apv.price_min'} AS price_min,
+          ${strictPublicSource ? 'own_offers.price_max' : 'apv.price_max'} AS price_max,
+          ${strictPublicSource ? 'own_offers.offer_count' : 'apv.offer_count'} AS offer_count,
           ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,
           apv.category_path
         FROM picked
@@ -9683,6 +9756,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             -- merchant_id check mis-claimed as first-party (then dropped their
             -- external identity in the ext_seed lateral below).
             AND cp.platform <> 'external_seed'
+            ${exactBrandQuery ? 'AND lower(cp.brand) = ANY($1::text[])' : ''}
             ${strictPublicSource ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
             AND cp.suppression_reason IS NULL
@@ -9768,6 +9842,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND cp.platform = 'external_seed'
             AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
+            ${exactBrandQuery ? 'AND lower(cp.brand) = ANY($1::text[])' : ''}
             ${strictPublicSource ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
           -- 185 content_keys have more than one servable external_seed row, and
@@ -9791,13 +9866,17 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           SELECT jsonb_agg(jsonb_build_object('offer_id', co.offer_id, 'product_key', co.product_key,
             'merchant_id', co.merchant_id, 'market', co.market, 'currency', co.currency,
             'price', coalesce(co.merchant_effective_price, co.list_price), 'availability', co.availability)
-            ORDER BY co.offer_id) AS offers
+            ORDER BY co.offer_id) AS offers,
+            min(coalesce(co.merchant_effective_price, co.list_price)) AS price_min,
+            max(coalesce(co.merchant_effective_price, co.list_price)) AS price_max,
+            count(*) AS offer_count
           FROM catalog_offers co
-          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key AND own_cp.merchant_id = co.merchant_id
+          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key
           JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+            AND ${buildCanonicalOwnOfferSellerSql()}
             AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
@@ -9896,11 +9975,11 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           apv.description,
           apv.image_url,
           apv.image_urls,
-          apv.currency,
-          apv.price_min,
-          apv.price_max,
-          apv.offer_count,
-          ${signatureIds ? 'own_offers.offers' : 'apv.offers'} AS offers,
+          'USD' AS currency,
+          own_offers.price_min,
+          own_offers.price_max,
+          own_offers.offer_count,
+          own_offers.offers,
           apv.category_path
         FROM agent_pdp_view apv
         LEFT JOIN LATERAL (
@@ -9908,7 +9987,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
             AND cp.platform <> 'external_seed'
-            ${signatureIds ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
+            AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')
             AND cp.sync_status = 'live'
             AND cp.suppression_reason IS NULL
           ORDER BY cp.updated_at DESC NULLS LAST
@@ -9996,7 +10075,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
             -- every ext: row. Dropped entirely rather than re-spelled.
             AND cp.platform = 'external_seed'
             AND cp.suppression_reason IS NULL
-            ${signatureIds ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
+            AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')
             AND cp.sync_status = 'live'
           -- 185 content_keys have more than one servable external_seed row, and
           -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
@@ -10015,21 +10094,25 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
                    cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
-        ${signatureIds ? `LEFT JOIN LATERAL (
+        LEFT JOIN LATERAL (
           SELECT jsonb_agg(jsonb_build_object('offer_id', co.offer_id, 'product_key', co.product_key,
             'merchant_id', co.merchant_id, 'market', co.market, 'currency', co.currency,
             'price', coalesce(co.merchant_effective_price, co.list_price), 'availability', co.availability)
-            ORDER BY co.offer_id) AS offers
+            ORDER BY co.offer_id) AS offers,
+            min(coalesce(co.merchant_effective_price, co.list_price)) AS price_min,
+            max(coalesce(co.merchant_effective_price, co.list_price)) AS price_max,
+            count(*) AS offer_count
           FROM catalog_offers co
-          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key AND own_cp.merchant_id = co.merchant_id
+          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key
           JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+            AND ${buildCanonicalOwnOfferSellerSql()}
             AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
-        ) own_offers ON TRUE` : ''}
+         ) own_offers ON TRUE
 
         WHERE apv.pivota_signature_id IS NOT NULL
           ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}
@@ -10041,7 +10124,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
              AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
-              ${signatureIds ? "AND cp_trust.sync_status = 'live' AND cp_trust.suppression_reason IS NULL" : ''}
+              AND cp_trust.sync_status = 'live' AND cp_trust.suppression_reason IS NULL
           )
         -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
         -- make paging stable: browse re-runs this query with a larger LIMIT and
@@ -10052,7 +10135,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
       `,
       params,
     );
-    return (res.rows || []).filter((row) => !signatureIds || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
+    return (res.rows || []).filter((row) => (row.first_party_product_key || row.external_product_key) && (signatureIds || (Array.isArray(row.offers) && row.offers.length)))
       .map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
@@ -10066,6 +10149,82 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
     }
     // Everything else is a real failure and must stay one.
     throw err;
+  }
+}
+
+// A cold explicit query can select the same owned canonical brand index only
+// after exact server-owned public brand admission. No substring/lexicon/client
+// claim grants authority, and admission errors never dispatch another reader.
+function isPotentialCanonicalBrandQueryPrimary(request) {
+  const text = String(request?.query?.text || '').trim();
+  return browseUsesCanonicalSig() && Boolean(process.env.DATABASE_URL) &&
+    request?.surface === 'browse_products' && text.length > 0 && text.length <= 255 &&
+    !hasBrandScope(request) && !hasDiscoveryCategoryScope(request) &&
+    !request?.source_product_ref?.product_id &&
+    !(request?.context?.recent_views || []).length &&
+    !(request?.context?.recent_queries || []).length &&
+    String(request?.context?.locale || 'en-US') === 'en-US' &&
+    resolveDiscoveryExternalSeedMarketConfig().market === 'US';
+}
+
+async function loadCanonicalBrandQueryPrimary({ request, profile } = {}) {
+  if (!isPotentialCanonicalBrandQueryPrimary(request)) return null;
+  const text = String(request.query.text).trim();
+  const startedAt = Date.now();
+  const summary = (products, status, error = null) => ({
+    provider: 'canonical_sig',
+    products,
+    recallSummary: [buildDiscoveryProviderStepSummary({
+      provider: 'canonical_sig',
+      label: 'canonical_sig_explicit_brand',
+      query: text,
+      limit: 400,
+      returned: products.length,
+      status,
+      latencyMs: Date.now() - startedAt,
+      ...(error ? { failureReason: error, error } : {}),
+    })],
+  });
+  try {
+    const admission = await query(`/* canonical_exact_brand_admission */
+      SELECT min(cp.brand) AS brand
+      FROM catalog_products cp
+      JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+        AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public'
+      JOIN agent_pdp_view apv ON apv.content_key = cp.content_key
+      WHERE cp.content_key IS NOT NULL AND cp.brand IS NOT NULL
+        AND lower(cp.brand) = $1 AND lower(apv.brand) = $1
+        AND cp.sync_status = 'live' AND cp.suppression_reason IS NULL
+        AND apv.pivota_signature_id IS NOT NULL
+      GROUP BY lower(cp.brand) LIMIT 2`, [text.toLowerCase()]);
+    if (!Array.isArray(admission.rows)) return summary([], null, 'canonical_brand_query_ambiguous');
+    // Unknown/free-text chooses its existing route before any reader dispatch.
+    // Known public brands stay selected even when all own offers are unavailable.
+    if (!admission.rows.length) return null;
+    if (admission.rows.length !== 1 ||
+        String(admission.rows[0].brand || '').trim().toLowerCase() !== text.toLowerCase()) {
+      return summary([], null, 'canonical_brand_query_ambiguous');
+    }
+    const failures = [];
+    const products = await fetchBrandScopedCanonicalCandidates({
+      brandAliases: [text],
+      limit: 400,
+      failures,
+      strictPublicSource: true,
+      exactBrandQuery: true,
+    });
+    if (failures.length) return summary([], null, 'canonical_brand_query_failed');
+    const scoped = products
+      .filter((product) => String(product.brand || '').trim().toLowerCase() === text.toLowerCase())
+      .filter((product) => {
+        const path = canonicalCategoryPath(product.category_path);
+        const domain = path[0] === 'fashion' ? 'apparel' : path[0];
+        return !profile?.dominantDomain || domain === profile.dominantDomain;
+      })
+      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+    return summary(scoped, 200);
+  } catch (err) {
+    return summary([], null, classifyDiscoveryQueryError(err));
   }
 }
 
@@ -10125,7 +10284,12 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       const domain = path[0] === 'fashion' ? 'apparel' : path[0];
       if (profile?.dominantDomain && profile.dominantDomain !== domain)
         return summary([], null, 'canonical_history_domain_conflict');
-      if (anchor.currency !== 'USD' || !scopeCanonicalHistoryProduct(anchor)) return summary([], null, 'canonical_history_currency_mismatch');
+      if (anchor.currency !== 'USD') return summary([], null, 'canonical_history_currency_mismatch');
+      if (!scopeCanonicalHistoryProduct(anchor)) {
+        const unavailable = summary([], 200);
+        unavailable.recallSummary[0].eligibility_reason = 'canonical_history_item_unavailable';
+        return unavailable;
+      }
       if (domain) domains.add(domain);
       brands.push(anchor.brand);
       [anchor.brand, ...path].forEach((value) => allowedHistoryTerms.add(normalizeBrandText(value)));
@@ -12100,6 +12264,8 @@ function buildRankDebug({
       ...(step?.skipped ? { skipped: true } : {}),
       ...(step?.skip_reason ? { skip_reason: String(step.skip_reason) } : {}),
       ...(step?.failure_reason ? { failure_reason: String(step.failure_reason) } : {}),
+      ...(step?.eligibility_reason === 'canonical_history_item_unavailable'
+        ? { eligibility_reason: step.eligibility_reason } : {}),
       ...(step?.config_source ? { config_source: String(step.config_source) } : {}),
       ...(step?.legacy_config_fallback ? { legacy_config_fallback: true } : {}),
       ...(step?.market ? { market: String(step.market) } : {}),
@@ -12315,7 +12481,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         : null;
     phaseTimer.mark('recall_catalog');
     const relationshipGraphDiscovery =
-      (Array.isArray(options.candidateProducts) || candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized')
+      (Array.isArray(options.candidateProducts) || ['canonical_sig_personalized', 'canonical_sig_explicit_brand'].includes(candidateLoadResult?.primaryPathUsed))
         ? {
             products: [],
             recallSummary: [],
@@ -12577,7 +12743,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       // both sides of the await and accumulates.
       phaseTimer.mark('select');
       const canonicalHistorySelected = candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized';
-      const stableBrowseCatalogCount = canonicalHistorySelected ? null : await (
+      const canonicalBrandQuerySelected = candidateLoadResult?.primaryPathUsed === 'canonical_sig_explicit_brand';
+      const stableBrowseCatalogCount = (canonicalHistorySelected || canonicalBrandQuerySelected) ? null : await (
         useStableBrowseCatalogCount && deferStableBrowseCatalogCount
           ? countStableBrowseCatalogTotal(request)
           : stableBrowseCatalogCountPromise
@@ -12586,6 +12753,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource = canonicalHistorySelected ? 'runtime_canonical_history_pool' :
+        canonicalBrandQuerySelected ? 'runtime_canonical_brand_query_pool' :
         stableBrowseCatalogCount?.source ||
         (!useStableBrowseCatalogCount && isExplicitQueryScopedBrowseRequest(request)
           ? 'runtime_corpus_query_scoped'
@@ -12975,6 +13143,8 @@ module.exports = {
     browseUsesCanonicalSig,
     fetchCanonicalSigBrowseCandidates,
     loadCanonicalHistoryPrimary,
+    loadCanonicalBrandQueryPrimary,
+    isPotentialCanonicalBrandQueryPrimary,
     canonicalCategoryPath,
     scopeCanonicalHistoryProduct,
     mapCanonicalIndexRowToProduct,
