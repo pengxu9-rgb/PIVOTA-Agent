@@ -99,7 +99,7 @@ const CREATE_REFUSALS = Object.freeze({
   buyer_unlinked: 409, row_not_found: 409, row_unpriced: 409,
   row_price_ambiguous: 409, row_not_shopify: 409, row_variant_unverified: 409,
   seller_identity_unverified: 409, row_currency_mismatch: 409, row_price_stale: 409,
-  row_variant_ambiguous: 409, idempotency_conflict: 409,
+  row_variant_ambiguous: 409, idempotency_conflict: 409, price_changed: 409,
 });
 // One conservative refusal contract for public and private backend transports.
 // A proxy/platform/auth/gate response cannot authorize another spending path.

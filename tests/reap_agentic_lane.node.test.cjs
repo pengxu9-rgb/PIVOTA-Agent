@@ -106,7 +106,16 @@ const DESTINATION = Object.freeze({
 });
 
 const ABSENT = Symbol('absent');
-function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem-reap-0001', consent = 'reap-agentic-v1', destination = DESTINATION, buyerExtra = {}, discounts = ABSENT, reap = ABSENT } = {}) {
+function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem-reap-0001', consent = 'reap-agentic-v1', destination = DESTINATION, buyerExtra = {}, discounts = ABSENT, reap = ABSENT, expectedMoney = undefined, legacy = false } = {}) {
+  // Original displayed fixture prices, independent of later drifted/read rows.
+  const originalPrices = {
+    sig_reap_a:[4250,'USD'],sig_6433c8107859a484fb72d14861e84690:[999,'USD'],
+    sig_jsm_skin_nuder_cushion:[3800,'SGD'],sig_bb8acf5d9319c377ce7710dd06fd3395:[2600,'USD'],
+    sig_07176ee6bdd7c39f60dd4f9fc121df0d:[2000,'USD'],sig_016e4c1188aad178f54edf96f9d486fc:[3400,'USD'],
+    sig_1d54c9e3b5d3969ea4327b5de4f5d101:[3200,'USD'],sig_f5da0819600319955648dc6b9da64125:[2400,'USD'],
+  };
+  const original = originalPrices[productId] || [4250,'USD'];
+  const money = expectedMoney || {expected_unit_price_minor:original[0],expected_currency:original[1]};
   const buyer = { email: EMAIL, ...buyerExtra };
   if (consent !== ABSENT) buyer.consent_version = consent;
   return {
@@ -117,7 +126,7 @@ function createArgs({ productId = REAP_ROW.product_id, quantity = 1, key = 'idem
       context: { address_country: 'US' },
       ...(destination ? { fulfillment: { methods: [{ type: 'shipping', destinations: [{ ...destination }] }] } } : {}),
       ...(discounts !== ABSENT ? { discounts } : {}),
-      ...(reap !== ABSENT ? { reap } : {}),
+      ...(!legacy && (expectedMoney || reap !== ABSENT || process.env.REAP_AGENTIC_LANE_ENABLED === "1") ? { reap: {...money,...(reap===ABSENT?{}:reap)} } : {}),
     },
   };
 }
@@ -434,6 +443,7 @@ test('on + eligible: ONE backend POST -> 202 -> checkout {id: reap_…, status: 
         city: 'San Francisco', region: 'CA', postalCode: POSTAL, country: 'US',
       },
     },
+    expected_unit_price_minor:4250,expected_currency:'USD',
     idempotency_key: call.body.idempotency_key,
   });
   assert.equal(Object.hasOwn(call.body, 'variant_key'), false, 'no variant key is ever guessed');
@@ -899,7 +909,7 @@ test('a VALUE-BEARING 400 body (backend message, fields, validation errors, 2 KB
     backend.state.post = { status: 400, body: valueBearing };
     const logger = fakeLogger();
     const ctx = await build({ backend, logger });
-    const r = await withEnv({ ...ON, [ESCALATION_FLAG]: escalation }, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
+    const r = await withEnv({ ...ON, [ESCALATION_FLAG]: escalation }, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT,legacy:true }), SESSION)));
     keep(r);
     const text = JSON.stringify(r);
     // The storefront answer echoes the buyer's own email in `buyer.email` today (unchanged); nothing ELSE of
@@ -952,7 +962,7 @@ test('a caller the rail cannot serve (no X-Agent-User-JWT, or no API key — e.g
     const logger = fakeLogger();
     const ctx = await build({ backend, logger, authHeaders });
     for (let i = 0; i < 3; i += 1) {
-      const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
+      const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT,legacy:true }), SESSION)));
       assert.equal(out.status, 'requires_escalation', 'today\'s answer, not a consent refusal');
     }
     assert.equal(backend.calls.length, 0);
@@ -965,7 +975,7 @@ test('a caller the rail cannot serve (no X-Agent-User-JWT, or no API key — e.g
 
 test('native-completable merchant NEVER enters the lane — even a Shopify row with a key and a domain', async () => {
   const ctx = await build();
-  const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ productId: NATIVE_ROW.product_id, consent: ABSENT }), SESSION)));
+  const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ productId: NATIVE_ROW.product_id, consent: ABSENT,legacy:true }), SESSION)));
   assert.deepEqual(out, { session_id: 'q_kernel' });
   assert.equal(ctx.backend.calls.length, 0);
   assert.ok(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), 'the kernel path ran');
@@ -1021,7 +1031,7 @@ test('the purchasability gate: declined -> skipped (no POST); asked with the dom
     const res = await m.lane.tryReapAgenticCheckout({
       op: { id: 'create_checkout_session' },
       params: { idempotency_key: 'idem-reap-0001', quote: { items: [{ product_id: REAP_ROW.product_id, quantity: 1 }], customer_email: EMAIL } },
-      ctx: SESSION, executor, ucpArgs: createArgs(), client: ctx.client, env, shouldOfferPurchase,
+      ctx: SESSION, executor, ucpArgs: createArgs({reap:{}}), client: ctx.client, env, shouldOfferPurchase,
     });
     return { res, backend, asked };
   };
@@ -1061,7 +1071,7 @@ test('the purchasability gate, UNKEYABLE: no market + ENFORCED takes the SAME de
     const backend = fakeBackend();
     const ctx = await build({ backend });
     const executor = recordingExecutor(ROWS, m.errors);
-    const args = createArgs();
+    const args = createArgs({reap:{}});
     delete args.checkout.context; // the request names NO market
     const res = await m.lane.tryReapAgenticCheckout({
       op: { id: 'create_checkout_session' },
@@ -1751,6 +1761,7 @@ test('Tier B DIRECT: the judydoll mirror row is POSTed ONCE as item_source cart_
         city: 'San Francisco', region: 'CA', postalCode: POSTAL, country: 'US',
       },
     },
+    expected_unit_price_minor:999,expected_currency:'USD',
     idempotency_key: m.lane.reapCartLinkIdempotencyKey('idem-reap-0001'),
     item_source: 'cart_link',
   });
@@ -1784,7 +1795,7 @@ test('Tier B DIRECT: the jsmbeauty.sg mirror row in the SG market -- SGD, the ex
 test('Tier B DIRECT needs BOTH dials: lane on + cart-link off skips an external-seed row exactly as before (0 POSTs)', async () => {
   for (const env of [ON, { ...ON, [CART_LINK_FLAG]: '0' }]) {
     const logger = fakeLogger();
-    const { out, backend } = await createReap(env, { logger, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id } });
+    const { out, backend } = await createReap(env, { logger, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id,legacy:true } });
     assert.deepEqual(out, { session_id: 'q_kernel' }, 'the kernel path answers, as before');
     assert.equal(backend.calls.length, 0);
     assert.ok(logger.lines.some((l) => l.event === 'reap_agentic_lane' && l.code === 'not_shopify'), 'the same skip code as before');
@@ -1843,7 +1854,7 @@ test('Tier B DIRECT is for EXTERNAL-SEED rows only: another non-Shopify row (Woo
     const row = { ...JUDY_ROW, product_id: pid, ...patch };
     if (row.platform === undefined) delete row.platform;
     const logger = fakeLogger();
-    const { backend } = await createReap(CODES_ON, { logger, rows: { [pid]: row }, args: { productId: pid } });
+    const { backend } = await createReap(CODES_ON, { logger, rows: { [pid]: row }, args: { productId: pid,legacy:true } });
     assert.equal(backend.calls.length, 0, pid);
     assert.ok(logger.lines.some((l) => l.code === 'not_shopify'), pid);
   }
@@ -1881,7 +1892,7 @@ test('Tier B DIRECT sends ONLY a key the backend resolves: ext: / affiliate / no
   for (const [label, row, argsFn, posts] of cases) {
     const logger = fakeLogger();
     const ctx = await build({ logger, rows: { [row.product_id]: row } });
-    const args = argsFn ? { ...argsFn(), checkout: { ...argsFn().checkout, line_items: [{ item: { id: row.product_id }, quantity: 1 }] } } : createArgs({ productId: row.product_id });
+    const args = argsFn ? { ...argsFn(), checkout: { ...argsFn().checkout, line_items: [{ item: { id: row.product_id }, quantity: 1 }] } } : createArgs({ productId: row.product_id, expectedMoney:{expected_unit_price_minor:Math.round(row.price*100),expected_currency:row.currency} });
     await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', args, SESSION).catch(() => null));
     assert.equal(ctx.backend.calls.length, posts, label);
     if (posts) assert.equal(ctx.backend.calls[0].body.product_key, row.product_key, label);
@@ -1933,7 +1944,7 @@ const KRAVE_ROW = Object.freeze({
 const kraveCreate = async (row, env = CODES_ON, extra = {}) => {
   const logger = fakeLogger();
   const ctx = await build({ logger, rows: { [row.product_id]: row } });
-  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, ...extra }), SESSION)));
+  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, expectedMoney:{expected_unit_price_minor:Math.round(row.price*100),expected_currency:row.currency}, ...extra }), SESSION)));
   return { ...ctx, logger, r };
 };
 
@@ -2124,7 +2135,7 @@ const placeholderOf = (row) => ({ variant_id: row.product_key, sku_id: `${row.pr
 const enrichCreate = async (row, env = ENRICH_ON, extra = {}) => {
   const logger = fakeLogger();
   const ctx = await build({ logger, rows: { [row.product_id]: row } });
-  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, ...extra }), SESSION)));
+  const r = await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: row.product_id, expectedMoney:{expected_unit_price_minor:Math.round(row.price*100),expected_currency:row.currency}, ...extra }), SESSION)));
   return { ...ctx, logger, r };
 };
 const skipCodes = (logger) => logger.lines.filter((l) => l.event === 'reap_agentic_lane' && l.outcome === 'skipped').map((l) => l.code);
@@ -2178,7 +2189,7 @@ test('enrichment ON: the LIVE multi-variant reads (bluemercury, tarte, MAC) are 
 test('enrichment dial OFF (unset, "0", "off"): the live ext: rows are skipped row_key_unsupported exactly as before, 0 POSTs', async () => {
   for (const flag of [undefined, '0', 'off']) {
     for (const row of [STILA_LIVE, withRow(BLUEMERCURY_LIVE, { variants: BLUEMERCURY_LIVE.variants.slice(0, 1) })]) {
-      const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag });
+      const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag },{legacy:true});
       assert.equal(backend.calls.length, 0, `${row.product_id} flag ${flag}`);
       assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], `${row.product_id} flag ${flag}`);
       assert.deepEqual(r, { ok: { session_id: 'q_kernel' } }, 'the kernel path answers, as before');
@@ -2405,7 +2416,7 @@ test('recover_checkout cart-link parity: same body/key beyond 24h despite change
   assert.equal(Object.hasOwn(original.body, 'variant_key'), false);
   assert.equal(original.body.idempotency_key, ctx.m.lane.reapCartLinkIdempotencyKey('recovery-cart-original-01'));
   const storedView = view('awaiting_approval', { product_key: row.product_key, merchant_domain: 'judydoll.com',
-    totals: { currency: 'USD', our_price_minor: 2398, quoted_total_minor: 2498 },
+    totals: { currency: 'USD', our_price_minor: 999, quoted_total_minor: 1099 },
     hosted_url: APPROVE_URL, hosted_url_expires_at: SOON, approval_deadline: SOON });
   ctx.backend.state.recover.set(original.body.idempotency_key, (body) => {
     assert.deepEqual(body, original.body, 'original normalized create and recover backend bodies are identical');
@@ -2423,7 +2434,7 @@ test('recover_checkout cart-link parity: same body/key beyond 24h despite change
   assert.match(result.id, REAP_ID_RE);
   assert.equal(result.status, 'incomplete', 'expired hosted action remains closed, no fresh checkout');
   assert.equal(result.continue_url, undefined);
-  assert.equal(result.line_items[0].item.price, 2398, 'receipt uses stored price, never current catalog price');
+  assert.equal(result.line_items[0].item.price, 999, 'receipt uses stored price, never current catalog price');
   const recovered = ctx.backend.calls.filter((c) => c.path.endsWith('/recover') && c.body.item_source === 'cart_link');
   assert.equal(recovered.length, 1);
   assert.deepEqual(recovered[0].headers, original.headers, 'same calling agent and buyer headers');
@@ -2494,6 +2505,8 @@ test('actual backend flat purchase_not_found404 advances variant-to-cart recover
   const ctx = await build({ rows: { [row.product_id]: row } });
   const args = createArgs({ productId: row.product_id, key: 'actual-flat-recover-namespace',
     reap: { expected_merchant_domain: 'judydoll.com' } });
+  // Actual pre-money-contract owned attempt: absence remains exact.
+  delete args.checkout.reap.expected_unit_price_minor;delete args.checkout.reap.expected_currency;
   const variantKey = ctx.m.lane.reapIdempotencyKey('actual-flat-recover-namespace');
   const cartKey = ctx.m.lane.reapCartLinkIdempotencyKey('actual-flat-recover-namespace');
   ctx.backend.state.recover.set(variantKey, { status: 404, body: { error: 'purchase_not_found' } });

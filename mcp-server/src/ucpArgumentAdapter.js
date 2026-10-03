@@ -1,3 +1,4 @@
+import moneyContract from '../../src/services/reapExpectedMoney.js';
 import selectionContract from '../../src/services/reapSelectionWitness.js';
 // The UCP↔canonical ARGUMENT adapter — step 3 of UCP transact.
 //
@@ -825,6 +826,8 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
       type: "string", enum: ["reap_variant", "cart_link"],
       description: "Optional explicit primary source. Selected before create and preserved for recovery; a refusal never retries another source.",
     },
+    expected_unit_price_minor: {type:"integer",minimum:1,maximum:9007199254740991,description:"Original displayed unit price constraint, paired with expected_currency. Required for new Reap creates; preserved or absent exactly for original recovery."},
+    expected_currency: {type:"string",pattern:"^[A-Z]{3}$",examples:["USD"],description:"Original displayed currency, paired with expected_unit_price_minor. Never authorizes catalog pricing."},
     selected_variant_id: { type: "string", minLength: 1, maxLength: 200, description: "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL." },
     selection: { type: "object", additionalProperties: false,
       required: ["product_key", "variant_id", "variant_key", "merchant_domain", "market", "currency", "unit_price_minor", "quantity", "item_source"],
@@ -925,7 +928,7 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
  * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
  */
 export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.item_source", "checkout.reap.selected_variant_id", ...selectionContract.FIELDS.map(field => `checkout.reap.selection.${field}`)]),
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.item_source", "checkout.reap.selected_variant_id", "checkout.reap.expected_unit_price_minor", "checkout.reap.expected_currency", ...selectionContract.FIELDS.map(field => `checkout.reap.selection.${field}`)]),
 });
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
@@ -1126,9 +1129,12 @@ function requireExpectedSellerShape(checkout, code) {
     ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
   };
   if (!isPlainObject(reap)) refuse();
-  rejectUnknown(reap, ["expected_merchant_domain", "item_source", "selected_variant_id", "selection"], "checkout.reap", code);
+  rejectUnknown(reap, ["expected_merchant_domain", "item_source", "selected_variant_id", "selection", "expected_unit_price_minor", "expected_currency"], "checkout.reap", code);
   if (own(reap, "item_source") !== undefined && !["reap_variant", "cart_link"].includes(own(reap, "item_source"))) {
     throw ucpRefusal(code, "ucp_reap_item_source_invalid", "item_source must select reap_variant or cart_link before creating a checkout.", { rejected_field: "checkout.reap.item_source" });
+  }
+  if (moneyContract.readExpectedMoney(reap) === null) {
+    throw ucpRefusal(code, "ucp_reap_price_not_created", "Expected unit price and currency must be supplied together in their original strict types.");
   }
   const variant = own(reap, "selected_variant_id");
   if (variant !== undefined && (typeof variant !== "string" || !variant.trim() || variant.length > 200 || /[\x00-\x1f\x7f]/.test(variant))) {

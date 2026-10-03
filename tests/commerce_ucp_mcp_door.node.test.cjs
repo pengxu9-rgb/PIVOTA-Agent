@@ -582,7 +582,7 @@ test('/ucp/mcp tools/list advertises checkout.reap only with the Reap lane on; /
       const byName = Object.fromEntries(list.body.result.tools.map((t) => [t.name, t]));
       const reap = byName.create_checkout.inputSchema.properties.checkout.properties.reap;
       assert.equal(Boolean(reap), listed, `${label}: tools/list`);
-      if (listed) assert.deepEqual(Object.keys(reap.properties).sort(), ['expected_merchant_domain', 'item_source', 'selected_variant_id', 'selection']);
+      if (listed) assert.deepEqual(Object.keys(reap.properties).sort(), ['expected_currency', 'expected_merchant_domain', 'expected_unit_price_minor', 'item_source', 'selected_variant_id', 'selection']);
       assert.equal(Object.hasOwn(byName.update_checkout.inputSchema.properties.checkout.properties, 'reap'), false, 'create only');
       const resp = await supertest(app).get('/.well-known/ucp').expect(200);
       const caps = resp.body.ucp.capabilities || {};

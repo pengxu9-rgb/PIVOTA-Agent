@@ -29,6 +29,20 @@
           ],
           "description": "Optional explicit primary source. Selected before create and preserved for recovery; a refusal never retries another source."
         },
+        "expected_unit_price_minor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Original displayed unit price constraint, paired with expected_currency. Required for new Reap creates; preserved or absent exactly for original recovery."
+        },
+        "expected_currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "examples": [
+            "USD"
+          ],
+          "description": "Original displayed currency, paired with expected_unit_price_minor. Never authorizes catalog pricing."
+        },
         "selected_variant_id": {
           "type": "string",
           "minLength": 1,

@@ -1310,7 +1310,7 @@ describe('schema and mapper cannot drift', () => {
         const body = maximalFor(schema);
         const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), body, env));
         const leaves = sentinelLeaves(schema);
-        const selectionLeaf=leaf=>leaf.path.startsWith('checkout.reap.selection.');
+        const selectionLeaf=leaf=>leaf.path.startsWith('checkout.reap.selection.') || ['checkout.reap.expected_unit_price_minor','checkout.reap.expected_currency'].includes(leaf.path);
         const surviving = leaves.filter((leaf) => !selectionLeaf(leaf) && mapped.includes(markerFor(leaf))).map((leaf) => leaf.path);
         assert.deepEqual(surviving.sort(), [...EXPECTED_SURVIVING[def.name]].sort(), `${def.name} (${label}): surviving set`);
         const unread = leaves
