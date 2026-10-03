@@ -13,3 +13,13 @@ No checkout selection, money binding, owner/session recovery, alternate checkout
 Canonical history browse excludes the original recent views from the entire paging universe on every page and never fills an underfull page with those suppressed items. Signature ordering makes equal refresh times deterministic. Legacy initial routes retain their existing paging behavior.
 
 Canonical personalized browse uses one page-independent, at-most-400-row stored public universe (the existing canonical reader maximum) before sorting and suppression. Page/limit/cursor changes cannot expand this universe. Viewed subjects stay excluded from both every page and its bounded total; the reported count source is `runtime_canonical_history_pool`. It does not launch the unrelated global catalog count. If stored history instead leaves the existing initial query route selected, that route keeps its original count behavior. Static-universe paging is tested with real PostgreSQL and a cheaper/more expensive item beyond the previous 30/36-row boundary; this does not promise stable offsets when the underlying catalog changes between requests.
+
+## Cold exact-brand queries
+
+A browse query with no recent views/queries, explicit brand/category scope or source product may choose the stored canonical reader before any transport request. This applies only to the existing canonical feature profile, US offers and en-US locale. The query must equal the brand on a live, unsuppressed catalog product with its own public trust row and the same canonical view brand; case and outer spaces are ignored, but aliases, substrings and additional query terms cannot grant admission.
+
+A known brand uses the same bounded 400-candidate universe, strict own-merchant US/USD in-stock offers, existing relevance/domain/money filters and stable signature ordering. Its total is the filtered runtime pool count. Unknown brands and free text retain their intentionally selected initial query route. Other explicit scopes and history retain their existing routes.
+
+Malformed or failed admission is an honest primary error. Once a known brand is selected, empty offers or a failed canonical pool remain empty/error: no SDK search, graph recall or alternate provider is dispatched. Budgets are unchanged; no retry or cache warming is required to select this route.
+
+The PostgreSQL CI job executes `discovery_canonical_brand_query_postgres.test.js`, including a first published `/agent/shop/v1/invoke` query over real admission/pool SQL. Its catalog rows are synthetic, authentication uses the local test bypass, and ancillary hydration/count projections are stubbed empty; it proves route/projection behavior rather than production latency.
