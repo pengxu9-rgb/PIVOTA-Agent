@@ -1468,13 +1468,26 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   ].filter(Boolean);
   if (!candidates.length || candidates.some((b) => !b.idempotency_key)) throw unknown();
   const matches = [];
+  const retirements = [];
   for (const body of candidates) {
     let result;
     try { result = await client.recoverPurchase(body); }
     catch { throw unknown(); }
     if (result && result.kind === "not_found") continue;
+    if (result?.kind === "retired" && typeof result.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(result.reconciliation_id)) {
+      retirements.push(result.reconciliation_id);
+      continue;
+    }
     if (!result || result.kind !== "accepted" || !isPlainObject(result.purchase)) throw unknown();
     matches.push(result.purchase);
+  }
+  // Only two matching immutable namespace fences can close an unopened legacy
+  // attempt. A single receipt, absent companion or live purchase stays unknown.
+  if (retirements.length) {
+    if (!matches.length && candidates.length === 2 && retirements.length === 2 && retirements[0] === retirements[1]) {
+      throw new PivotaCommerceError("CHECKOUT_ATTEMPT_RETIRED", {reason:"ucp_reap_attempt_retired",reconciliation_id:retirements[0]});
+    }
+    throw unknown();
   }
   // Zero matches never means 'safe to start another'; two matches need support.
   if (matches.length !== 1) throw unknown();

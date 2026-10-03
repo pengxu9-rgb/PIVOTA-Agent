@@ -3,7 +3,7 @@
 // so the codes/recovery are identical across Claude/ChatGPT/Gemini surfaces.
 // Mirrors §5 of docs/agent-checkout/safety-kernel-contract.md.
 
-/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'} PivotaErrorCode */
+/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'} PivotaErrorCode */
 
 /**
  * code -> { retriable, userMessage, recovery }
@@ -26,6 +26,7 @@ export const ERROR_CATALOG = Object.freeze({
   IDEMPOTENCY_CONFLICT:   { retriable: false, recovery: 'use a new idempotency_key for a new request', userMessage: 'This looks like a different request reusing an old reference. Starting fresh.' },
   IDEMPOTENT_REPLAY:      { retriable: false, recovery: 'return original result',                   userMessage: 'This order was already placed — here are the details.' },
   PAYMENT_REQUIRES_ACTION:{ retriable: false, recovery: 'surface redirect/qr/instructions verbatim', userMessage: 'One more step is needed to complete payment.' },
+  CHECKOUT_ATTEMPT_RETIRED: { retriable: false, recovery: 'the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key', userMessage: 'The earlier attempt was closed without creating a purchase. You can start a new checkout.' },
   CHECKOUT_OUTCOME_UNKNOWN: { retriable: true, recovery: 'retry only the exact request with the same idempotency_key; do not open another checkout', userMessage: 'The checkout request may have been accepted. Its outcome is unknown. Keep the same request and reference when checking again; do not start another purchase.' },
   MERCHANT_UNAVAILABLE:   { retriable: true,  recovery: 'no silent fallback (rail rule); inform user', userMessage: 'The merchant is temporarily unreachable. Please try again shortly.' },
   // A PERSISTENT data condition, deliberately distinct from MERCHANT_UNAVAILABLE. The product identity is
