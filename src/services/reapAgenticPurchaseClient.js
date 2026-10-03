@@ -88,11 +88,48 @@ function headerValue(headers, name) {
   return '';
 }
 
-/** The reason code the backend wrote, from its house error envelope (`detail.error`), or null. */
-function reasonCodeOf(body) {
-  const detail = isPlainObject(body) ? body.detail : null;
-  const code = isPlainObject(detail) ? detail.error : null;
-  return typeof code === 'string' && REASON_CODE_RE.test(code) ? code : null;
+// Exact create refusal vocabulary/statuses from backend routes/agent_commerce_reap.py
+// _REFUSAL_STATUS. Gate/auth responses stay unavailable in every transport;
+// they never authorize a different spending lane.
+const CREATE_REFUSALS = Object.freeze({
+  invalid_request: 400, invalid_address: 400, invalid_return_url: 400,
+  currency_unsupported: 400, invalid_offer_code: 400, consent_required: 400,
+  merchant_not_eligible: 409, merchant_disabled: 409, merchant_not_purchasable: 409,
+  buyer_unlinked: 409, row_not_found: 409, row_unpriced: 409,
+  row_price_ambiguous: 409, row_not_shopify: 409, row_variant_unverified: 409,
+  seller_identity_unverified: 409, row_currency_mismatch: 409, row_price_stale: 409,
+  row_variant_ambiguous: 409, idempotency_conflict: 409,
+});
+// One conservative refusal contract for public and private backend transports.
+// A proxy/platform/auth/gate response cannot authorize another spending path.
+function canonicalBackendReasonCode(status, body) {
+  if (!isPlainObject(body)) return null;
+  const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+  const reasons = [];
+  if (has(body, 'detail')) {
+    if (!isPlainObject(body.detail) || typeof body.detail.error !== 'string') return null;
+    reasons.push(body.detail.error);
+  }
+  if (has(body, 'error')) {
+    if (typeof body.error === 'string') reasons.push(body.error);
+    else if (isPlainObject(body.error)) {
+      const e = body.error;
+      const expectedClass = { 400: 'INVALID_REQUEST', 404: 'PRODUCT_NOT_FOUND', 409: 'CONFLICT' }[status];
+      if (!expectedClass || body.status !== 'error' || e.code !== expectedClass
+        || typeof e.message !== 'string' || !isPlainObject(e.details) || typeof e.details.error !== 'string') return null;
+      reasons.push(e.message, e.details.error);
+    } else return null;
+  }
+  if (has(body, 'status') && body.status !== 'error') return null;
+  const code = reasons[0];
+  return typeof code === 'string' && REASON_CODE_RE.test(code) && reasons.every((reason) => reason === code) ? code : null;
+}
+function canonicalCreateRefusalCode(status, body) {
+  const code = canonicalBackendReasonCode(status, body);
+  return code && CREATE_REFUSALS[code] === status ? code : null;
+}
+function isCanonicalOwnerMiss(status, body) {
+  return status === 404 && canonicalBackendReasonCode(status, body) === 'purchase_not_found';
 }
 
 function parseJson(text) {
@@ -110,6 +147,7 @@ function parseJson(text) {
  *   authHeaders: () => object,
  *   fetchImpl?: Function,
  *   timeoutMs?: number,
+ *   requireAuthoritativeRefusal?: boolean, // private Cloud Run platform errors are not backend refusals
  *   logger?: { info?: Function, warn?: Function },
  * }} deps
  */
@@ -215,7 +253,11 @@ function createReapAgenticPurchaseClient(deps = {}) {
       return { kind: KIND.unavailable, code: 'malformed' };
     }
     if (out.status >= 400 && out.status < 500) {
-      const code = reasonCodeOf(out.body) || `http_${out.status}`;
+      const code = canonicalCreateRefusalCode(out.status, out.body);
+      if (!code) {
+        log('warn', { route: 'start', outcome: KIND.unavailable, code: 'http_4xx_unknown', http_status: out.status });
+        return { kind: KIND.unavailable, code: 'http_4xx_unknown' };
+      }
       log('info', { route: 'start', outcome: KIND.refused, code, http_status: out.status });
       return { kind: KIND.refused, code, http_status: out.status };
     }
@@ -238,9 +280,9 @@ function createReapAgenticPurchaseClient(deps = {}) {
         ? { kind: KIND.accepted, purchase: out.body }
         : { kind: KIND.unavailable, code: 'malformed' };
     }
-    const code = reasonCodeOf(out.body) || `http_${out.status}`;
-    if (out.status === 404 && code === 'purchase_not_found') return { kind: KIND.notFound, code };
-    if (out.status >= 400 && out.status < 500) return { kind: KIND.refused, code, http_status: out.status };
+    const code = canonicalBackendReasonCode(out.status, out.body) || `http_${out.status}`;
+    if (isCanonicalOwnerMiss(out.status, out.body)) return { kind: KIND.notFound, code: 'purchase_not_found' };
+    if (out.status >= 400 && out.status < 500) return { kind: KIND.unavailable, code, http_status: out.status };
     return { kind: KIND.unavailable, code: 'http_5xx' };
   }
 
@@ -269,12 +311,12 @@ function createReapAgenticPurchaseClient(deps = {}) {
       log('warn', { route: 'get', outcome: KIND.unavailable, code: 'malformed', http_status: out.status });
       return { kind: KIND.unavailable, code: 'malformed' };
     }
-    if (out.status === 404 && reasonCodeOf(out.body) === 'purchase_not_found') {
+    if (isCanonicalOwnerMiss(out.status, out.body)) {
       log('info', { route: 'get', outcome: KIND.notFound, code: 'purchase_not_found', http_status: 404 });
       return { kind: KIND.notFound, code: 'purchase_not_found', http_status: 404 };
     }
     if (out.status >= 400 && out.status < 500) {
-      const code = reasonCodeOf(out.body) || `http_${out.status}`;
+      const code = canonicalBackendReasonCode(out.status, out.body) || `http_${out.status}`;
       log('warn', { route: 'get', outcome: KIND.unavailable, code, http_status: out.status });
       return { kind: KIND.unavailable, code, http_status: out.status };
     }

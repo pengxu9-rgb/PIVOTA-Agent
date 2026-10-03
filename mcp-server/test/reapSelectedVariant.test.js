@@ -47,8 +47,8 @@ for (const code of ['create_disabled', 'pilot_scope_invalid', 'reap_create_pause
    dispatches++;return {kind:'refused',http_status:404,code};
   }};
   await assert.rejects(call('677289689108',client),error=>{
-   assert.equal(error.code,'OPERATION_NOT_ALLOWED');
-   assert.deepEqual(JSON.parse(toToolError(error).content[0].text).error.detail,{reason:'reap_create_paused'});
+   assert.equal(error.code,'CHECKOUT_OUTCOME_UNKNOWN');
+   assert.deepEqual(JSON.parse(toToolError(error).content[0].text).error.detail,{reason:'ucp_reap_create_outcome_unknown'});
    return true;
   });
   assert.equal(dispatches,1);
