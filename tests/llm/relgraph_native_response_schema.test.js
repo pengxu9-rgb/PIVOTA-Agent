@@ -23,7 +23,7 @@ describe('opt-in native relgraph response schema',()=>{
   });
   afterEach(()=>{process.env={...savedEnv};nock.cleanAll();nock.enableNetConnect();});
 
-  test('actual consensus factory sends strict Responses schema while pinned Gemini stays in JSON mode',async()=>{
+  test('actual consensus factory sends native schemas and bounds pinned Gemini thinking',async()=>{
     let sent;
     const first=nock('http://relgraph-openai.local').post('/v1/responses',body=>{
       sent=body;return true;
@@ -31,11 +31,11 @@ describe('opt-in native relgraph response schema',()=>{
     let geminiBody;
     const second=nock('http://relgraph-gemini.local').post('/v1beta/models/gemini-3-flash-preview:generateContent',body=>{
       geminiBody=body;return true;
-    }).query(true).reply(200,{candidates:[{content:{parts:[{text:JSON.stringify(response)}]}}]});
+    }).query(true).reply(200,{candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(response)}]}}]});
     const ps=createConsensusProviders();
     const prompt=buildReviewPrompt({relation_type:'competitive_alternative'});
     expect(ps[0].__meta).toMatchObject({provider:'openai',model:'gpt-4.1',nativeJsonSchema:true});
-    expect(ps[1].__meta).not.toHaveProperty('nativeJsonSchema');
+    expect(ps[1].__meta).toMatchObject({nativeJsonSchema:true,geminiThinkingLevel:'low'});
     for(const p of ps) expect(await p.analyzeTextToJson({prompt,schema:VerdictSchema})).toEqual(response);
     expect(sent).toMatchObject({model:'gpt-4.1',store:false,max_output_tokens:6000,
       text:{format:{type:'json_schema',name:'relgraph_review',strict:true}},input:prompt});
@@ -55,7 +55,8 @@ describe('opt-in native relgraph response schema',()=>{
     expect(schema.properties.shared_evidence.items.properties.anchor_fact).toEqual({type:'string',minLength:3,maxLength:350});
     expect(schema.properties.recommendation_reason).toEqual({type:'string',maxLength:700});
     expect(schema).not.toHaveProperty('$schema');
-    expect(geminiBody.generationConfig).toEqual({temperature:0,responseMimeType:'application/json'});
+    expect(geminiBody.generationConfig).toMatchObject({temperature:0,responseMimeType:'application/json',
+      thinkingConfig:{thinkingLevel:'LOW'},responseSchema:{type:'OBJECT',required:Object.keys(VerdictSchema.shape)}});
     expect(first.isDone()).toBe(true);expect(second.isDone()).toBe(true);
   });
 
@@ -242,7 +243,7 @@ describe('opt-in native relgraph response schema',()=>{
 
   test('native mode is scoped to pinned text relgraph callers, including auditor acknowledgement',async()=>{
     expect(()=>createProviderFromEnv('generic',nativeOptions)).toThrow('pinned OpenAI');
-    for(const extra of [{useResponses:false},{pinModel:false},{disableFallback:false},{provider:'gemini'}]) {
+    for(const extra of [{useResponses:false},{pinModel:false},{disableFallback:false}]) {
       expect(()=>createProviderFromEnv('relationship_graph_consensus',{...nativeOptions,...extra})).toThrow('pinned OpenAI');
     }
     const p=createProviderFromEnv('relationship_graph_blinded_audit',nativeOptions);

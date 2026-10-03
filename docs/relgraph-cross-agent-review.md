@@ -68,11 +68,32 @@ The consensus OpenAI provider explicitly opts into Responses `text.format`
 `json_schema` with `strict=true` and `store=false`. Its native schema is generated
 from the unchanged local validator, retaining native `minLength`/`maxLength`
 string bounds; unsupported checks, optional fields and conversions fail
-before HTTP. Other provider callers retain their existing format. Gemini remains
-in JSON mode: its documented native schema subset does not support the required
-string bounds or patterns. Both responses still pass the full local Zod parser
-and existing semantic checks; schema limits are unchanged and fields are never
-truncated to fit them.
+before HTTP. The pinned consensus Gemini provider now opts into Vertex
+`responseSchema`, projected from the same unchanged required-only local schema.
+The supported subset includes object/array types, required properties, enums,
+numeric bounds and array bounds, with explicit property ordering. Gemini does not
+receive unsupported string-length or additional-property keywords; the unchanged
+full local Zod parser still enforces those constraints and trimming. Unsupported
+source checks fail before HTTP rather than being silently dropped. Native Gemini
+reviews also require a single completed (`STOP`) nonblocked candidate; thought
+parts cannot enter the parsed verdict. Both providers retain every existing
+semantic, quote, dupe and consumer-copy check. Fields are never truncated to fit
+schema limits. Other provider callers retain their existing request format.
+
+Only the explicitly pinned `gemini-3-flash-preview` consensus provider selects
+`thinkingLevel: LOW` to bound latency from the model's default high reasoning
+level. No thinking level is sent to Gemini 2.5 auditors or other models. This is
+a transport/reliability setting, not evidence of improved recommendation quality.
+The blinded Gemini 2.5 Pro auditor may explicitly opt into the native schema
+subset while retaining its full local validator and independent model pin.
+
+Consensus prompts include a side-owned table of unchanged factual string values
+already in each exact product snapshot. Only descriptions, ingredients and
+routine/use-case/watchout/differentiation facts appear, never identity, prices,
+review statuses, scores or metadata. The table is untrusted prompt assistance,
+not new evidence or an admission gate. Reviewers still select contiguous verbatim
+quotes and may reject or remain uncertain when material evidence is absent. The
+single-review prompt remains unchanged.
 Native OpenAI reviews also require a completed response and completed messages;
 errors, incomplete generations and refusals fail before parsing, including when
 the envelope contains otherwise valid verdict JSON.
@@ -82,8 +103,9 @@ Before production evaluation, a synthetic preflight checks each full schema on
 the pinned reviewer and auditor models. Native length keywords passed that
 compatibility check; generated lookahead patterns exhausted the output budget
 without returning text.
-See [OpenAI's supported schemas](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas)
-and [Google's response JSON schema subset](https://docs.cloud.google.com/php/docs/reference/cloud-ai-platform/latest/V1.GenerationConfig#getresponsejsonschema).
+See [OpenAI's supported schemas](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas),
+[Google's supported response schema subset](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output)
+and [Google's thinking configuration](https://cloud.google.com/vertex-ai/generative-ai/docs/thinking).
 Provider fallback is disabled for both reviewers. A Gemini model
 that the runtime policy would substitute is a configuration error; a missing
 model/credential fails the step rather than reverting to a single reviewer.

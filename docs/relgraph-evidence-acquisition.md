@@ -6,6 +6,21 @@ The default `summarizeRelationshipEvidenceReadiness({products, pairs, nowMs})` r
 
 Readiness distinguishes absent, partial, conflicting, incomplete, unbound, stale and current attributed formulas. Insights require non-rejected approved/reviewed status, populated core, an exact current canonical listing binding, and the content generation timestamp. A later catalog update does not renew old Insights. Current offer observations require an exact listing source URL, known price/currency, and a non-future timestamp within 48 hours; stock and offer verification still need the existing serving/evaluation checks. The pair summary requires the same market and currency. A verified curated dupe record also needs exact anchor/candidate listing bindings and a current verification date; matching display refs alone are insufficient.
 
+Insights readiness accepts explicit immutable canonical ID representations, or
+the separate source binding emitted by exact enrichment. A binding must preserve
+the source record identity, agree with all known canonical/listing constraints,
+and contain a matching identity key. A URL-only match additionally requires the
+current URL to be independently bound to an authoritative catalog/seed listing;
+a URL in an arbitrary bundle cannot establish ownership. Canonical and binding
+contradictions remain unbound, while conflicting input aliases require
+reconciliation. These are provenance checks, not permission to approve edges.
+
+An `unbound` count may reflect lost source identity metadata as well as truly
+missing ownership. Hydration now preserves real review/confidence/freshness
+metadata and source bindings, so operators should remeasure those counts before
+requesting new Insights generation. The change does not refresh stale content,
+renew curated claims, or manufacture reviewed status.
+
 Alias disagreements produce reconciliation work. Bare refs, titles and product families cannot bind acquisition tasks. Scoped merchant/platform identities, signature IDs, catalog product keys and explicit external IDs can. Different markets, stores and variants stay separate. A source URL must match the listing's authoritative catalog/seed source reference, use HTTPS and have no credentials, fragment or apparent credential parameter. This diagnostic is not a general network access allowlist.
 
 ## Private offline operator

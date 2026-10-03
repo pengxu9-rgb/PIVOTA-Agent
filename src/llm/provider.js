@@ -4,6 +4,7 @@ const { AxiosError } = require('axios');
 const { z } = require('zod');
 const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
 const { relationshipReviewNativeSchema } = require('./relationshipReviewNativeSchema');
+const { relationshipReviewGeminiSchema } = require('./relationshipReviewGeminiSchema');
 const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   resolveGeminiRuntimeModelCandidates,
@@ -377,9 +378,15 @@ async function resolveImageForGemini(image) {
 
 function createProviderFromEnv(purpose = 'generic', options = {}) {
   const nativeJsonSchema = options.nativeJsonSchema === true;
-  if (nativeJsonSchema && (!['relationship_graph_consensus', 'relationship_graph_blinded_audit'].includes(purpose) ||
-      options.provider !== 'openai' || !options.useResponses || !options.pinModel || !options.disableFallback)) {
+  const relgraphPurpose = ['relationship_graph_consensus', 'relationship_graph_blinded_audit'].includes(purpose);
+  const nativeGemini = nativeJsonSchema && options.provider === 'gemini';
+  if (nativeJsonSchema && (!relgraphPurpose || !options.pinModel || !options.disableFallback ||
+      !(nativeGemini || (options.provider === 'openai' && options.useResponses)))) {
     throw new LlmError('LLM_CONFIG_MISSING', 'Native relgraph schema requires a pinned OpenAI Responses provider with fallback disabled');
+  }
+  if (options.geminiThinkingLevel !== undefined && !(purpose === 'relationship_graph_consensus' && nativeGemini &&
+      options.model === 'gemini-3-flash-preview' && options.geminiThinkingLevel === 'low')) {
+    throw new LlmError('LLM_CONFIG_MISSING', 'Low thinking requires the pinned relgraph Gemini 3 Flash consensus provider');
   }
   const explicitPrimary =
     getEnv(purpose === 'layer2_lookspec' ? 'PIVOTA_LAYER2_LLM_PROVIDER' : '') || getEnv('PIVOTA_INTENT_LLM_PROVIDER');
@@ -636,8 +643,13 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
                     headers: target.headers,
                     timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
                   });
+                  if (nativeGemini && (res?.data?.candidates?.length !== 1 ||
+                      res.data.candidates[0].finishReason !== 'STOP' || res.data.promptFeedback?.blockReason)) {
+                    throw new LlmError('LLM_PARSE_FAILED', 'Native Gemini review did not complete');
+                  }
                   const text =
-                    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
+                    res?.data?.candidates?.[0]?.content?.parts?.filter(p => !nativeGemini || p.thought !== true)
+                      .map((p) => p.text).filter(Boolean).join('\n') || '';
                   const json = extractJsonObject(String(text));
                   const parsed = schema.safeParse(json);
                   if (!parsed.success) {
@@ -699,9 +711,12 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
       }
 
       return {
-        __meta: { provider: 'gemini', model: candidateModels[0] || requestedModel || 'unknown', baseUrl: baseURL },
+        __meta: { provider: 'gemini', model: candidateModels[0] || requestedModel || 'unknown', baseUrl: baseURL,
+          ...(nativeGemini ? { nativeJsonSchema: true } : {}),
+          ...(options.geminiThinkingLevel ? { geminiThinkingLevel: options.geminiThinkingLevel } : {}) },
 
         async analyzeImageToJson({ prompt, image, schema }) {
+          if (nativeGemini) throw new LlmError('LLM_CONFIG_MISSING', 'Native relgraph schema supports text review only');
           const { mimeType, dataB64 } = await resolveImageForGemini(image);
           return postGeminiWithRetry(
             {
@@ -725,6 +740,11 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
         },
 
         async analyzeTextToJson({ prompt, schema }) {
+          let responseSchema;
+          if (nativeGemini) {
+            try { responseSchema = relationshipReviewGeminiSchema(schema); }
+            catch (err) { throw new LlmError('LLM_CONFIG_MISSING', 'Unsupported native relgraph response schema', err); }
+          }
           return postGeminiWithRetry(
             {
               systemInstruction: {
@@ -735,7 +755,9 @@ function createProviderFromEnv(purpose = 'generic', options = {}) {
                 ],
               },
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+              generationConfig: { temperature: 0, responseMimeType: 'application/json',
+                ...(nativeGemini ? { responseSchema } : {}),
+                ...(options.geminiThinkingLevel ? { thinkingConfig: { thinkingLevel: 'LOW' } } : {}) },
             },
             schema
           );

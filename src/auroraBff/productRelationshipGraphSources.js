@@ -482,6 +482,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     product.vendor_name,
     seedData.brand,
     sourceMeta.brand,
+    canonicalProductRef.brand,
     inferBrandFromOfficialUrl(officialSourceUrl),
   );
   const name = pickFirstString(
@@ -648,6 +649,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     seedData.variantTitle,
     snapshot.variant_title,
     snapshot.variantTitle,
+    canonicalProductRef.variant_title, canonicalProductRef.variantTitle,
   );
   const variantDetailLabel = pickFirstString(
     row.variant_detail_label,
@@ -660,6 +662,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     seedData.variantDetailLabel,
     snapshot.variant_detail_label,
     snapshot.variantDetailLabel,
+    canonicalProductRef.variant_detail_label, canonicalProductRef.variantDetailLabel,
   );
   const ref = normalizeProductRef(rawRef || (brand && name ? `text:${brand}:${name}` : name ? `text:${name}` : ''));
   if (!ref) return null;
@@ -699,6 +702,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ...(Array.isArray(row.ingredient_evidence) ? { ingredient_evidence: row.ingredient_evidence.slice(0, 8) } : {}),
     ...(row.ingredient_evidence_conflict === true ? { ingredient_evidence_conflict: true } : {}),
     ...(row.ingredient_evidence_incomplete === true ? { ingredient_evidence_incomplete: true } : {}),
+    ...(row.ingredient_text_truncated === true ? { ingredient_text_truncated: true } : {}),
     ...(row.product_intel_evidence_incomplete === true ? { product_intel_evidence_incomplete: true } : {}),
     ...(tags.length ? { tags } : {}),
     ...(variantTitle ? { variant_title: variantTitle } : {}),
@@ -724,6 +728,8 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
       product.variantOf,
     ),
     ...(intelBundle ? { product_intel: intelBundle } : {}),
+    ...(row.product_intel_binding ? { product_intel_binding: row.product_intel_binding } : {}),
+    ...(row._product_intel_record_ref ? { _product_intel_record_ref: row._product_intel_record_ref } : {}),
     ...(intelText ? { intel_text: intelText } : {}),
     _source_type: sourceType || '',
   };
@@ -874,25 +880,57 @@ function normalizeApprovedLiveExternalSeedRow(row = {}) {
   );
 }
 
+// Normalize representations of immutable identifiers, never infer them from
+// titles/family names or from the target being hydrated. Conflicting aliases
+// are evidence contradictions, not a precedence choice.
+function normalizeProductIntelCanonicalRef(input = {}) {
+  const canonical = firstObject(input);
+  const result = { ...canonical };
+  const aliases = { product_key: ['product_key', 'productKey'], pivota_signature_id: ['pivota_signature_id', 'pivotaSignatureId'],
+    product_id: ['product_id', 'productId'], source_product_id: ['source_product_id', 'sourceProductId'],
+    product_ref: ['product_ref', 'productRef'], merchant_id: ['merchant_id', 'merchantId'],
+    variant_title: ['variant_title', 'variantTitle'], variant_detail_label: ['variant_detail_label', 'variantDetailLabel'] };
+  for (const [field, names] of Object.entries(aliases)) {
+    const rawValues = names.map((name) => canonical[name]).filter((value) => value != null && value !== '');
+    if (rawValues.some((value) => String(value).length > 512 || /[\x00-\x1f]/.test(String(value)))) return null;
+    const values = rawValues.map((value) => normalizeString(value, 512)).filter(Boolean);
+    const compare = field.startsWith('variant_') ? (value) => value.toLowerCase()
+      : field === 'product_id' ? (value) => value.replace(/^product:(?=(?:sig_|ext_))/i, '') : (value) => value;
+    if (new Set(values.map(compare)).size > 1) return null;
+    if (values.length) result[field] = field === 'product_id' ? compare(values[0]) : values[0];
+  }
+  const signatures = [result.pivota_signature_id, ...[result.product_ref, result.product_id]
+    .map((value) => normalizeString(value).replace(/^product:/i, '')).filter((value) => /^sig_/i.test(value))].filter(Boolean);
+  if (new Set(signatures).size > 1) return null;
+  if (signatures.length) result.pivota_signature_id = signatures[0];
+  return result;
+}
+
 function normalizeProductIntelKbRow(row = {}) {
   const analysis = firstObject(row.analysis);
   const bundle = extractProductIntelBundle(row.product_intel) || extractProductIntelBundle(analysis);
   if (!bundle) return null;
-  const canonical = firstObject(bundle?.canonical_product_ref);
+  const canonical = normalizeProductIntelCanonicalRef(bundle?.canonical_product_ref);
+  if (!canonical) return null;
   const core = extractProductIntelCore(bundle) || {};
   const sourceMeta = firstObject(row.source_meta);
   const evidenceProfile = pickFirstString(bundle.evidence_profile, core.evidence_profile, sourceMeta.evidence_profile) || 'unknown';
   const qualityState = normalizeLower(bundle.quality_state || core.quality_state || sourceMeta.quality_state);
   const reviewDecision = normalizeLower(bundle.provenance?.review_decision || sourceMeta.review_decision);
-  if (['reject', 'rejected', 'blocked', 'failed', 'suppressed'].includes(qualityState) ||
-    ['reject', 'reject_external', 'rejected', 'blocked', 'suppressed'].includes(reviewDecision)) return null;
+  const denied = ['reject', 'reject_external', 'rejected', 'blocked', 'failed', 'fail', 'suppressed', 'needs_review'];
+  if ([bundle.quality_state, core.quality_state, sourceMeta.quality_state,
+    bundle.provenance?.review_decision, sourceMeta.review_decision].some((state) => denied.includes(normalizeLower(state)))) return null;
   // KB membership documents a product; it does not verify market consensus. Preserve the
   // source's actual profile and confidence so reviewers can distinguish seller facts from proof.
   const authoritative = /official_pdp_reviewed/.test(evidenceProfile) && qualityState === 'reviewed';
   const confidence = firstObject(bundle.confidence, sourceMeta.confidence);
   const projectedBundle = {
     ...bundle,
+    canonical_product_ref: canonical,
     evidence_profile: evidenceProfile,
+    ...(bundle.quality_state === undefined && qualityState ? { quality_state: qualityState } : {}),
+    ...(bundle.confidence === undefined && Object.keys(confidence).length ? { confidence } : {}),
+    ...(bundle.freshness === undefined && sourceMeta.freshness ? { freshness: sourceMeta.freshness } : {}),
     ...(Object.keys(sourceMeta).length ? { provenance: { ...sourceMeta, ...firstObject(bundle.provenance) } } : {}),
   };
   const productRef = pickFirstString(
@@ -906,7 +944,7 @@ function normalizeProductIntelKbRow(row = {}) {
     row.kb_key && /^product:/i.test(String(row.kb_key)) ? row.kb_key : '',
     row.kb_key,
   );
-  return normalizeProductCandidateSnapshot(
+  const normalized = normalizeProductCandidateSnapshot(
     {
       ...row,
       product_ref: productRef,
@@ -924,6 +962,8 @@ function normalizeProductIntelKbRow(row = {}) {
         ...(confidence.tier ? { confidence: confidence.tier } : {}) },
     },
   );
+  if (!normalized || evidenceIdentityConflicts(normalized, canonical)) return null;
+  return { ...normalized, _product_intel_record_ref: normalizeString(row.kb_key || row._product_intel_record_ref || productRef, 512) };
 }
 
 function normalizeIngredientKbRow(row = {}, options = {}) {
@@ -951,6 +991,8 @@ function normalizeIngredientKbRow(row = {}, options = {}) {
   if (!normalized || !normalized.ingredient_text) return null;
   return { ...normalized, ingredient_evidence: [{
     table, sku_key: normalizeString(row.sku_key), product_key: normalizeString(row.product_key),
+    ...Object.fromEntries(['product_ref', 'product_id', 'source_product_id', 'pivota_signature_id', 'merchant_id',
+      'platform', 'market', 'variant_title', 'variant_detail_label', 'url'].map((field) => [field, normalized[field] || ''])),
     ingredient_text: normalized.ingredient_text, observed_at: normalized.observed_at,
     source_refs: normalized.source_refs, source_system: normalizeString(row.source_system),
     parse_status: normalizeString(row.parse_status), review_status: normalizeString(row.review_status),
@@ -1403,7 +1445,8 @@ function evidenceTargets(products = [], market = DEFAULT_MARKET) {
     return { target_key: evidenceTargetKey(item), product_key: item.product_key || '', signature: evidenceSignature(item), ids: [...new Set(ids)],
       refs: [...new Set([item.product_ref, ...ids.map((id) => normalizeProductRef(id))])],
       urls: item.url ? [item.url] : [], merchant_id: item.merchant_id || '', platform: item.platform || '',
-      brand: pairBrand(item), market: normalizeMarket(item.market || market) };
+      brand: pairBrand(item), market: normalizeMarket(item.market || market),
+      variant_title: normalizeLower(item.variant_title), variant_detail_label: normalizeLower(item.variant_detail_label) };
   }).filter(Boolean);
   const byListing = new Map();
   for (const target of targets) {
@@ -1431,7 +1474,7 @@ function evidenceTargetKey(product) {
 function targetedEvidenceSql(sql, targets, predicate) {
   if (!targets.length) return sql;
   return `WITH evidence_targets AS (
-    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text)
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text)
   ) SELECT matched.*, target.target_key AS _evidence_target_key FROM evidence_targets target CROSS JOIN LATERAL (
     ${sql.replace(/WHERE /, `WHERE (${predicate}) AND `)}
   ) matched`;
@@ -1450,13 +1493,28 @@ function boundedEvidenceRows(rows, targeted) {
   })));
 }
 
+function intelCanonicalAliasGuardSql() {
+  const aliases = { product_key:'productKey', pivota_signature_id:'pivotaSignatureId', product_id:'productId',
+    source_product_id:'sourceProductId', product_ref:'productRef', merchant_id:'merchantId',
+    variant_title:'variantTitle', variant_detail_label:'variantDetailLabel' };
+  return Object.entries(aliases).map(([field, alias]) => {
+    const value = (name) => {
+      const raw = `btrim(doc.canonical->>'${name}')`;
+      if (field.startsWith('variant_')) return `lower(${raw})`;
+      if (field === 'product_id') return `(CASE WHEN ${raw} ~* '^product:(sig_|ext_)' THEN substring(${raw} FROM 9) ELSE ${raw} END)`;
+      return raw;
+    };
+    return `AND (NULLIF(btrim(doc.canonical->>'${field}'), '') IS NULL OR NULLIF(btrim(doc.canonical->>'${alias}'), '') IS NULL OR ${value(field)} = ${value(alias)})`;
+  }).join('\n      ');
+}
+
 function targetedIntelSql(sql, targets) {
   if (!targets.length) return sql;
   const projection = sql.replace(/WHERE analysis IS NOT NULL[\s\S]*$/, 'WHERE kb_key IN (SELECT kb_key FROM selected_evidence)');
   // Materialize only compact identity fields once, then rank exact matches per target. A
   // LATERAL OR over analysis would repeatedly scan/deTOAST every bundle for every product.
   return `WITH evidence_targets AS (
-    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text)
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text)
   ), document_identity AS MATERIALIZED (
     SELECT kb_key, last_success_at, updated_at, lower(btrim(COALESCE(source_meta->>'brand', ''))) AS brand,
       COALESCE(analysis#>'{product_intel_v1,canonical_product_ref}', analysis#>'{product_intel,canonical_product_ref}', analysis->'canonical_product_ref') AS canonical,
@@ -1464,19 +1522,23 @@ function targetedIntelSql(sql, targets) {
         analysis#>>'{product_intel_v1,canonical_product_ref,canonical_url}', analysis#>>'{product_intel,canonical_product_ref,canonical_url}', analysis#>>'{canonical_product_ref,canonical_url}',
         analysis#>>'{product_intel_v1,provenance,official_source_url}', analysis#>>'{product_intel,provenance,official_source_url}', analysis#>>'{provenance,official_source_url}', source_meta->>'official_source_url') AS source_url
     FROM aurora_product_intel_kb WHERE analysis IS NOT NULL
-      AND lower(COALESCE(analysis#>>'{product_intel_v1,provenance,review_decision}', analysis#>>'{product_intel,provenance,review_decision}', analysis#>>'{provenance,review_decision}', source_meta->>'review_decision', ''))
-        NOT IN ('reject', 'reject_external', 'rejected', 'blocked', 'suppressed')
-      AND lower(COALESCE(analysis#>>'{product_intel_v1,quality_state}', analysis#>>'{product_intel,quality_state}', analysis->>'quality_state', source_meta->>'quality_state', ''))
-        NOT IN ('reject', 'rejected', 'blocked', 'failed', 'suppressed')
+      AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY[
+        analysis#>>'{product_intel_v1,provenance,review_decision}', analysis#>>'{product_intel,provenance,review_decision}',
+        analysis#>>'{provenance,review_decision}', source_meta->>'review_decision',
+        analysis#>>'{product_intel_v1,quality_state}', analysis#>>'{product_intel,quality_state}',
+        analysis->>'quality_state', source_meta->>'quality_state']) state(value)
+        WHERE lower(btrim(state.value)) IN ('reject', 'reject_external', 'rejected', 'blocked', 'failed', 'fail', 'suppressed', 'needs_review'))
   ), evidence_matches AS (
     SELECT doc.kb_key, target.target_key,
       row_number() OVER (PARTITION BY target.target_key ORDER BY doc.last_success_at DESC NULLS LAST, doc.updated_at DESC NULLS LAST, doc.kb_key ASC) AS evidence_rank
     FROM document_identity doc JOIN evidence_targets target ON (
-      (target.product_key <> '' AND doc.canonical->>'product_key' = target.product_key)
+      (target.product_key <> '' AND (doc.canonical->>'product_key' = target.product_key OR doc.canonical->>'productKey' = target.product_key))
       OR (target.signature <> '' AND (doc.canonical->>'pivota_signature_id' = target.signature
         OR doc.canonical->>'pivotaSignatureId' = target.signature
         OR doc.canonical->>'product_id' IN (target.signature, 'product:' || target.signature)
-        OR doc.canonical->>'product_ref' = 'product:' || target.signature OR doc.kb_key = 'product:' || target.signature))
+        OR doc.canonical->>'productId' IN (target.signature, 'product:' || target.signature)
+        OR doc.canonical->>'product_ref' = 'product:' || target.signature
+        OR doc.canonical->>'productRef' = 'product:' || target.signature OR doc.kb_key = 'product:' || target.signature))
       OR doc.source_url = ANY(target.urls)
       OR (doc.canonical->>'product_id' ~* '^(product:)?ext_'
         AND (doc.canonical->>'product_id' = ANY(target.ids) OR doc.canonical->>'product_id' = ANY(target.refs)))
@@ -1487,7 +1549,10 @@ function targetedIntelSql(sql, targets) {
     )
       -- Reject explicit listing conflicts BEFORE ranking. An unrelated store's newer
       -- recycled ids must not consume the cap and hide older exact listing evidence.
-      AND (target.product_key = '' OR COALESCE(btrim(doc.canonical->>'product_key'), '') IN ('', target.product_key))
+      AND (target.product_key = '' OR (COALESCE(btrim(doc.canonical->>'product_key'), '') IN ('', target.product_key)
+        AND COALESCE(btrim(doc.canonical->>'productKey'), '') IN ('', target.product_key)))
+      AND (target.signature = '' OR (COALESCE(btrim(doc.canonical->>'pivota_signature_id'), '') IN ('', target.signature)
+        AND COALESCE(btrim(doc.canonical->>'pivotaSignatureId'), '') IN ('', target.signature)))
       AND (target.signature = '' OR COALESCE(NULLIF(btrim(doc.canonical->>'pivota_signature_id'), ''),
         NULLIF(btrim(doc.canonical->>'pivotaSignatureId'), ''),
         CASE WHEN COALESCE(doc.canonical->>'product_ref', doc.canonical->>'productRef') ~* '^product:sig_'
@@ -1497,10 +1562,31 @@ function targetedIntelSql(sql, targets) {
           WHEN COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId') ~* '^product:sig_'
             THEN substring(COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId') FROM 9)
           WHEN doc.kb_key ~* '^product:sig_' THEN substring(doc.kb_key FROM 9) END, '') IN ('', target.signature))
+      AND (target.signature = '' OR NOT EXISTS (SELECT 1 FROM unnest(ARRAY[
+        NULLIF(btrim(doc.canonical->>'pivota_signature_id'), ''), NULLIF(btrim(doc.canonical->>'pivotaSignatureId'), ''),
+        CASE WHEN btrim(doc.canonical->>'product_id') ~* '^(product:)?sig_' THEN regexp_replace(btrim(doc.canonical->>'product_id'), '^product:', '', 'i') END,
+        CASE WHEN btrim(doc.canonical->>'productId') ~* '^(product:)?sig_' THEN regexp_replace(btrim(doc.canonical->>'productId'), '^product:', '', 'i') END,
+        CASE WHEN btrim(doc.canonical->>'product_ref') ~* '^(product:)?sig_' THEN regexp_replace(btrim(doc.canonical->>'product_ref'), '^product:', '', 'i') END,
+        CASE WHEN btrim(doc.canonical->>'productRef') ~* '^(product:)?sig_' THEN regexp_replace(btrim(doc.canonical->>'productRef'), '^product:', '', 'i') END
+      ]) signature(value) WHERE signature.value IS NOT NULL AND signature.value <> target.signature))
+      ${intelCanonicalAliasGuardSql()}
       AND (lower(target.merchant_id) IN ('', 'external_seed')
-        OR lower(btrim(COALESCE(doc.canonical->>'merchant_id', ''))) IN ('', 'external_seed', lower(target.merchant_id)))
+        OR (lower(btrim(COALESCE(doc.canonical->>'merchant_id', ''))) IN ('', 'external_seed', lower(target.merchant_id))
+          AND lower(btrim(COALESCE(doc.canonical->>'merchantId', ''))) IN ('', 'external_seed', lower(target.merchant_id))))
+      AND (lower(target.merchant_id) IN ('', 'external_seed') OR target.platform = ''
+        OR lower(btrim(COALESCE(doc.canonical->>'merchant_id', doc.canonical->>'merchantId', ''))) <> lower(target.merchant_id)
+        OR lower(btrim(COALESCE(doc.canonical->>'platform', ''))) <> lower(target.platform)
+        OR NOT EXISTS (SELECT 1 FROM unnest(ARRAY[doc.canonical->>'product_id', doc.canonical->>'productId',
+          doc.canonical->>'source_product_id', doc.canonical->>'sourceProductId']) scoped_id(value)
+          WHERE NULLIF(btrim(scoped_id.value), '') IS NOT NULL AND NOT (btrim(scoped_id.value) = ANY(target.ids) OR btrim(scoped_id.value) = ANY(target.refs))))
       AND upper(btrim(COALESCE(doc.canonical->>'market', ''))) IN ('', target.market)
-      AND (target.brand = '' OR doc.brand IN ('', target.brand))
+      AND (target.platform = '' OR lower(btrim(COALESCE(doc.canonical->>'platform', ''))) IN ('', lower(target.platform)))
+      AND (COALESCE(target.variant_title, '') = '' OR (lower(btrim(COALESCE(doc.canonical->>'variant_title', ''))) IN ('', target.variant_title)
+        AND lower(btrim(COALESCE(doc.canonical->>'variantTitle', ''))) IN ('', target.variant_title)))
+      AND (COALESCE(target.variant_detail_label, '') = '' OR (lower(btrim(COALESCE(doc.canonical->>'variant_detail_label', ''))) IN ('', target.variant_detail_label)
+        AND lower(btrim(COALESCE(doc.canonical->>'variantDetailLabel', ''))) IN ('', target.variant_detail_label)))
+      AND (target.brand = '' OR (doc.brand IN ('', target.brand)
+        AND lower(btrim(COALESCE(doc.canonical->>'brand', ''))) IN ('', target.brand)))
   ), selected_evidence AS (SELECT DISTINCT kb_key FROM evidence_matches WHERE evidence_rank <= $1),
   projected_evidence AS MATERIALIZED (${projection})
   SELECT projected.*, matched.target_key AS _evidence_target_key
@@ -2190,6 +2276,14 @@ function mergeCandidateWithIntel(candidate, intelRows) {
     ...candidate,
     source_refs: mergeSourceRefs(candidate.source_refs, intel.source_refs),
     product_intel: intel.product_intel,
+    product_intel_binding: {
+      schema: 'relgraph.product_intel_binding.v1',
+      source_record_ref: intel._product_intel_record_ref || intel.product_ref,
+      identity: Object.fromEntries(['product_key', 'pivota_signature_id', 'product_id', 'source_product_id',
+        'merchant_id', 'platform', 'market', 'variant_title', 'variant_detail_label', 'brand', 'url']
+        .map((field) => [field, field === 'pivota_signature_id' ? evidenceSignature(intel) : intel[field] || ''])),
+      matched_identity_keys: evidenceIdentityKeys(intel).filter((key) => evidenceIdentityKeys(candidate).includes(key)),
+    },
     ...(intel.product_intel_evidence_incomplete ? { product_intel_evidence_incomplete: true } : {}),
     intel_text: intel.intel_text,
     description: candidate.description || intel.description,
@@ -2221,19 +2315,33 @@ function evidenceSignature(product = {}) {
   return product.pivota_signature_id || (/^product:sig_/i.test(product.product_ref || '') ? stripRefPrefix(product.product_ref) : '');
 }
 
-function compatibleEvidenceIdentity(product, evidence) {
+function evidenceIdentityConflicts(product, evidence) {
   const merchant = (item) => normalizeLower(item.merchant_id) === 'external_seed' ? '' : normalizeLower(item.merchant_id);
   for (const field of ['pivota_signature_id', 'product_key', 'market']) {
     if (product[field] && evidence[field] && (field === 'market'
       ? normalizeMarket(product[field]) !== normalizeMarket(evidence[field])
-      : product[field] !== evidence[field])) return false;
+      : product[field] !== evidence[field])) return true;
   }
-  if (evidenceSignature(product) && evidenceSignature(evidence) && evidenceSignature(product) !== evidenceSignature(evidence)) return false;
-  if (merchant(product) && merchant(evidence) && merchant(product) !== merchant(evidence)) return false;
-  if (product.brand && evidence.brand && pairBrand(product) !== pairBrand(evidence)) return false;
+  if (evidenceSignature(product) && evidenceSignature(evidence) && evidenceSignature(product) !== evidenceSignature(evidence)) return true;
+  if (merchant(product) && merchant(evidence) && merchant(product) !== merchant(evidence)) return true;
+  if (product.brand && evidence.brand && pairBrand(product) !== pairBrand(evidence)) return true;
   for (const field of ['variant_title', 'variant_detail_label']) {
-    if (product[field] && evidence[field] && normalizeLower(product[field]) !== normalizeLower(evidence[field])) return false;
+    if (product[field] && evidence[field] && normalizeLower(product[field]) !== normalizeLower(evidence[field])) return true;
   }
+  if (product.platform && evidence.platform && normalizeLower(product.platform) !== normalizeLower(evidence.platform)) return true;
+  const canonical = evidence.product_intel?.canonical_product_ref;
+  if (canonical && merchant(product) && merchant(product) === merchant(evidence) && product.platform &&
+    normalizeLower(product.platform) === normalizeLower(evidence.platform)) {
+    const ownerIds = new Set([product.product_id, product.source_product_id, product.sku_key, product.product_key,
+      evidenceSignature(product), product.product_ref, stripRefPrefix(product.product_ref)].filter(Boolean));
+    if ([canonical.product_id, canonical.productId, canonical.source_product_id, canonical.sourceProductId]
+      .filter(Boolean).some((id) => !ownerIds.has(id) && !ownerIds.has(stripRefPrefix(id)))) return true;
+  }
+  return false;
+}
+
+function compatibleEvidenceIdentity(product, evidence) {
+  if (evidenceIdentityConflicts(product, evidence)) return false;
   const keys = new Set(evidenceIdentityKeys(product));
   return evidenceIdentityKeys(evidence).some((key) => keys.has(key));
 }
@@ -2599,6 +2707,8 @@ function mergeDuplicateCandidate(existing, candidate) {
     ingredient_evidence_conflict: Boolean(formulaConflict),
     ingredient_evidence_incomplete: Boolean(formulaIncomplete),
     product_intel: evidenceOwner.product_intel || (shareEvidence ? otherEvidence.product_intel : undefined),
+    product_intel_binding: evidenceOwner.product_intel ? evidenceOwner.product_intel_binding
+      : shareEvidence ? otherEvidence.product_intel_binding : undefined,
     product_intel_evidence_incomplete: Boolean(evidenceOwner.product_intel_evidence_incomplete || (shareEvidence && otherEvidence.product_intel_evidence_incomplete)),
     intel_text: evidenceOwner.intel_text || (shareEvidence ? otherEvidence.intel_text : undefined),
   };
@@ -3041,6 +3151,7 @@ module.exports = {
   normalizeCatalogProductRow,
   normalizeApprovedLiveExternalSeedRow,
   normalizeProductIntelKbRow,
+  normalizeProductIntelCanonicalRef,
   normalizeIngredientKbRow,
   enrichProductsWithEvidence,
   enrichProductRelationshipGraphProducts,
