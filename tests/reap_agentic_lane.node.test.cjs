@@ -19,6 +19,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createReapAgenticPurchaseClient, MAX_TIMEOUT_MS } = require('../src/services/reapAgenticPurchaseClient');
+const { createReapRecoveryIdentityReader } = require('../src/services/reapRecoveryIdentity');
 const {
   GATE_FLAG_ENV,
   OPS_TOKEN_ENV,
@@ -171,6 +172,7 @@ function fakeBackend() {
   const state = {
     post: { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } },
     get: new Map([[PID, { status: 200, body: view('resolving') }]]),
+    recover: new Map(),
     mode: null, // null | 'throw' | 'hang'
   };
   async function fetchImpl(url, init = {}) {
@@ -193,7 +195,11 @@ function fakeBackend() {
     }
     let r;
     // `post` may be a LIST, consumed one per POST (the last one repeating) — for the lane's Tier B retry.
-    if (init.method === 'POST') r = Array.isArray(state.post) ? (state.post.length > 1 ? state.post.shift() : state.post[0]) : state.post;
+    if (init.method === 'POST' && u.pathname.endsWith('/recover')) {
+      const body = JSON.parse(init.body);
+      r = state.recover.get(body.idempotency_key) || { status: 404, body: houseError('purchase_not_found', 404) };
+      if (typeof r === 'function') r = r(body);
+    } else if (init.method === 'POST') r = Array.isArray(state.post) ? (state.post.length > 1 ? state.post.shift() : state.post[0]) : state.post;
     else r = state.get.get(u.pathname.split('/').pop()) || { status: 404, body: houseError('purchase_not_found', 404) };
     const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
     return { status: r.status, text: async () => text };
@@ -247,13 +253,18 @@ async function build({ lane = true, logger = fakeLogger(), backend = fakeBackend
     logger,
     ...(clientTimeoutMs ? { timeoutMs: clientTimeoutMs } : {}),
   });
+  const identityQueries = [];
+  const recoveryIdentityReader = createReapRecoveryIdentityReader({ query: async (sql, values) => {
+    identityQueries.push({ sql, values });
+    return { rows: rows[values[0]] ? [rows[values[0]]] : [] };
+  } });
   const native = m.surface.createCommerceToolSurface(executor, {
     cache: false,
     log: logger,
-    ...(lane ? { reapAgentic: { client } } : {}),
+    ...(lane ? { reapAgentic: { client, recoveryIdentityReader } } : {}),
   });
   const ucp = m.surface.ucpDialectSurface(native);
-  return { ucp, executor, backend, logger, client, m };
+  return { ucp, executor, backend, logger, client, m, identityQueries };
 }
 
 /** Run with env vars set, restoring exactly what was there. */
@@ -789,12 +800,8 @@ for (const [label, arrange] of [
   ['409 merchant_not_eligible', (b) => { b.state.post = { status: 409, body: houseError('merchant_not_eligible', 409) }; }],
   ['404 not_available_on_this_rail', (b) => { b.state.post = { status: 404, body: houseError('not_available_on_this_rail', 404) }; }],
   ['409 row_not_found', (b) => { b.state.post = { status: 409, body: houseError('row_not_found', 409) }; }],
-  ['409 idempotency_conflict', (b) => { b.state.post = { status: 409, body: houseError('idempotency_conflict', 409) }; }],
   ['401 agent_user_required', (b) => { b.state.post = { status: 401, body: houseError('agent_user_required', 401) }; }],
   ['400 currency_unsupported', (b) => { b.state.post = { status: 400, body: houseError('currency_unsupported', 400) }; }],
-  ['500', (b) => { b.state.post = { status: 500, body: {} }; }],
-  ['timeout', (b) => { b.state.mode = 'hang'; }],
-  ['202 without a purchase id', (b) => { b.state.post = { status: 202, body: { status: 'resolving' } }; }],
 ]) {
   test(`create_checkout: backend ${label} -> falls through to storefront escalation (on) / the kernel (off)`, { timeout: 5000 }, async () => {
     const backend = fakeBackend();
@@ -817,6 +824,47 @@ for (const [label, arrange] of [
     for (const line of laneLines) assert.deepEqual(Object.keys(line).sort(), ['code', 'event', 'level', 'msg', 'op', 'outcome'].sort(), 'codes only');
   });
 }
+
+for (const [label, arrange] of [
+  ['500', (b) => { b.state.post = { status: 500, body: {} }; }],
+  ['timeout after POST', (b) => { b.state.mode = 'hang'; }],
+  ['202 without purchase id', (b) => { b.state.post = { status: 202, body: { status: 'resolving' } }; }],
+  ['idempotency conflict', (b) => { b.state.post = { status: 409, body: houseError('idempotency_conflict', 409) }; }],
+]) {
+  test(`create_checkout: ${label} preserves uncertain attempt and never offers another checkout`, { timeout: 5000 }, async () => {
+    const backend = fakeBackend();
+    arrange(backend);
+    for (const escalation of [undefined, '1']) {
+      backend.calls.length = 0;
+      const ctx = await build({ backend, clientTimeoutMs: 60 });
+      const result = await withEnv({ ...ON, [ESCALATION_FLAG]: escalation },
+        () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs(), SESSION)));
+      assert.ok(result.err, 'an uncertain POST must be a tool error, not a fallback');
+      const wire = JSON.parse(result.err.content[0].text);
+      assert.equal(wire.error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+      assert.equal(wire.error.retriable, true);
+      assert.match(wire.error.recovery, /same idempotency_key/);
+      assert.equal(backend.calls.length, 1);
+      assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+      assert.equal(JSON.stringify(wire).includes(REAP_ROW.external_redirect_url), false);
+    }
+  });
+}
+
+test('an exact retry after an unknown POST keeps the backend payload and idempotency key unchanged', async () => {
+  const backend = fakeBackend();
+  backend.state.post = [
+    { status: 500, body: {} },
+    { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } },
+  ];
+  const ctx = await build({ backend });
+  const failed = await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs(), SESSION)));
+  assert.equal(JSON.parse(failed.err.content[0].text).error.detail.reason, 'ucp_reap_create_outcome_unknown');
+  const retried = await withEnv(ON, () => ctx.ucp.callTool('create_checkout', createArgs(), SESSION));
+  assert.match(retried.id, REAP_ID_RE);
+  assert.deepEqual(backend.calls[0].body, backend.calls[1].body);
+  assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+});
 
 test('create_checkout: the refusal code is what gets logged — and only the code', async () => {
   const backend = fakeBackend();
@@ -1354,12 +1402,17 @@ test('seller IN: EVERY destination of the row must be the expected seller -- pro
   }
 });
 
-test('seller IN: a matching explicit domain AND a matching storefront link pass -- the storefront answer links to that seller', async (t) => {
+test('seller IN: matching seller cannot bypass required variant selection on an explicit Reap request', async (t) => {
   t.mock.method(Date, 'now', () => NOW);
   const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_ok', merchant_domain: 'Brand.example', external_redirect_url: 'https://www.brand.example/products/x' };
-  const { out } = await createReap(ESC_ON, { rows: { sig_ok: row }, args: { productId: 'sig_ok', ...EXPECT_BRAND } });
-  assert.match(out.id, /^esc_/, 'multi-variant: the storefront route answers');
-  assert.equal(out.continue_url, 'https://www.brand.example/products/x');
+  const m = await mods();
+  const ctx = await build({ rows: { sig_ok: row } });
+  const result = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: 'sig_ok', ...EXPECT_BRAND }), SESSION)));
+  const error = errorOf(result);
+  assert.equal(error.code, 'QUOTE_REQUIRED');
+  assert.equal(error.detail.reason, 'ucp_reap_variant_not_created');
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.equal(JSON.stringify(result).includes('continue_url'), false);
 });
 
 test('storefront lane, belt and braces: handed an expected seller the link does not match, it REFUSES instead of linking', async () => {
@@ -1692,7 +1745,7 @@ test('Tier B: a cart_link POST that ITSELF answers merchant_not_eligible is not 
   loop.state.post = [notEligible, notEligible, notEligible, notEligible];
   await createReap(CODES_ON, { backend: loop });
   assert.equal(loop.calls.length, 2, 'variant once, cart_link once, never a third POST');
-  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable', 'idempotency_conflict']) {
+  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable']) {
     const b = fakeBackend();
     b.state.post = [{ status: 409, body: houseError(code, 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
     await createReap(CODES_ON, { backend: b });
@@ -2513,4 +2566,106 @@ test('enrichment ON does not touch SHOPIFY rows: a Shopify-platform row is the v
   assert.equal(backend.calls.length, 1);
   assert.equal(backend.calls[0].body.item_source, undefined, 'the variant lane');
   assert.equal(backend.calls[0].body.merchant_domain, 'www.brand.example');
+});
+
+
+// Explicit read-only vendor tool: older gateways reject this name rather than
+// silently ignoring an optional create flag and minting after key expiry.
+test('recover_checkout cart-link parity: same body/key beyond 24h despite changed price/proof/variants and paused create flags', async (t) => {
+  let clock = NOW;
+  t.mock.method(Date, 'now', () => clock);
+  const row = { ...JUDY_ROW };
+  const args = createArgs({ productId: row.product_id, key: 'recovery-cart-original-01',
+    discounts: { codes: ['SAVE10'] }, reap: { expected_merchant_domain: 'judydoll.com' } });
+  const ctx = await build({ rows: { [row.product_id]: row } });
+  await withEnv(CODES_ON, () => ctx.ucp.callTool('create_checkout', args, SESSION));
+  const original = ctx.backend.calls[0];
+  assert.equal(original.body.item_source, 'cart_link');
+  assert.equal(original.body.buyer.consent_version, 'reap-agentic-v1');
+  assert.equal(original.body.buyer.shipping_address.country, 'US');
+  assert.equal(original.body.offer_code, 'SAVE10');
+  assert.equal(Object.hasOwn(original.body, 'variant_key'), false);
+  assert.equal(original.body.idempotency_key, ctx.m.lane.reapCartLinkIdempotencyKey('recovery-cart-original-01'));
+  const storedView = view('awaiting_approval', { product_key: row.product_key, merchant_domain: 'judydoll.com',
+    totals: { currency: 'USD', our_price_minor: 2398, quoted_total_minor: 2498 },
+    hosted_url: APPROVE_URL, hosted_url_expires_at: SOON, approval_deadline: SOON });
+  ctx.backend.state.recover.set(original.body.idempotency_key, (body) => {
+    assert.deepEqual(body, original.body, 'original normalized create and recover backend bodies are identical');
+    return { status: 200, body: storedView };
+  });
+  row.price = 999;
+  row.variants = [{ variant_id: 'new1' }, { variant_id: 'new2' }];
+  row.source_variant_id = undefined;
+  row.cart_link_eligible = false;
+  row.cart_link_proof = { expires_at: EARLIER };
+  clock += 26 * 60 * 60 * 1000;
+  const paused = { ...CODES_ON, REAP_AGENTIC_CREATE_ENABLED: '0', REAP_AGENTIC_CART_LINK_LANE_ENABLED: '0' };
+  const executorCallsBeforeRecovery = ctx.executor.seen.length;
+  const result = await withEnv(paused, () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.match(result.id, REAP_ID_RE);
+  assert.equal(result.status, 'incomplete', 'expired hosted action remains closed, no fresh checkout');
+  assert.equal(result.continue_url, undefined);
+  assert.equal(result.line_items[0].item.price, 2398, 'receipt uses stored price, never current catalog price');
+  const recovered = ctx.backend.calls.filter((c) => c.path.endsWith('/recover') && c.body.item_source === 'cart_link');
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(recovered[0].headers, original.headers, 'same calling agent and buyer headers');
+  clock += 48 * 60 * 60 * 1000;
+  await withEnv(paused, () => ctx.ucp.callTool('recover_checkout', args, SESSION));
+  assert.deepEqual(ctx.backend.calls.filter((c) => c.path.endsWith('/recover')).map((c) => c.body.idempotency_key),
+    [original.body.idempotency_key, original.body.idempotency_key]);
+  assert.equal(ctx.backend.calls.filter((c) => !c.path.endsWith('/recover')).length, 1, 'only the original create was dispatched');
+  assert.equal(ctx.executor.seen.length, executorCallsBeforeRecovery, 'recovery bypasses PDP/catalog executor entirely');
+  assert.equal(ctx.identityQueries.length, 2);
+  assert.deepEqual(ctx.identityQueries.map((q) => q.values), [[row.product_id], [row.product_id]]);
+});
+
+for (const [label, response] of [
+  ['not found/tombstone', { status: 404, body: houseError('purchase_not_found', 404) }],
+  ['changed request hash', { status: 409, body: houseError('idempotency_conflict', 409) }],
+  ['backend failure', { status: 500, body: {} }],
+  ['malformed view', { status: 200, body: { id: PID } }],
+]) {
+  test(`recover_checkout ${label}: stays unknown with no create or alternate checkout`, async () => {
+    const ctx = await build();
+    ctx.backend.state.recover.set(ctx.m.lane.reapIdempotencyKey('idem-reap-0001'), response);
+    const outcomeValue = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+      () => outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION)));
+    const error = JSON.parse(outcomeValue.err.content[0].text).error;
+    assert.equal(error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+    assert.equal(error.detail.reason, 'ucp_reap_create_outcome_unknown');
+    assert.equal(ctx.backend.calls.every((c) => c.path.endsWith('/recover')), true);
+    assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+    assert.equal(JSON.stringify(error).includes(REAP_ROW.external_redirect_url), false);
+  });
+}
+
+test('recover_checkout requires the existing verified buyer/session and rejects payment/invalid keys before backend access', async () => {
+  const ctx = await build();
+  const badKey = createArgs({ key: '' });
+  const payment = createArgs(); payment.checkout.payment = { token: 'do-not-charge' };
+  for (const args of [badKey, payment]) {
+    const result = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', args, SESSION));
+    assert.ok(result.err);
+  }
+  const anonymous = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), {}));
+  assert.ok(anonymous.err);
+  assert.equal(ctx.backend.calls.length, 0);
+});
+
+test('recover_checkout unknown catalog identity or absent backend recover support never falls through', async () => {
+  const ctx = await build({ rows: {} });
+  const r = await outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION));
+  assert.equal(JSON.parse(r.err.content[0].text).error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+});
+
+test('recover_checkout transport deadline is bounded and never becomes a fresh create', { timeout: 5000 }, async () => {
+  const ctx = await build({ clientTimeoutMs: 60 });
+  ctx.backend.state.mode = 'hang';
+  const r = await withEnv({ ...ON, REAP_AGENTIC_CREATE_ENABLED: '0' },
+    () => outcome(ctx.m, ctx.ucp.callTool('recover_checkout', createArgs(), SESSION)));
+  assert.equal(JSON.parse(r.err.content[0].text).error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  assert.equal(ctx.backend.calls.length, 1);
+  assert.equal(ctx.backend.calls[0].path.endsWith('/recover'), true);
 });

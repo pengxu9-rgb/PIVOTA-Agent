@@ -13,6 +13,7 @@ import {
   REAP_AGENTIC_LANE_FLAG,
   REAP_STATE_TO_UCP_STATUS,
   reapAgenticLaneEnabled,
+  reapAgenticCreateEnabled,
   encodeReapCheckoutId,
   decodeReapCheckoutId,
   isReapCheckoutId,
@@ -39,6 +40,46 @@ const STATUS_ENUM = ["incomplete", "requires_escalation", "ready_for_complete", 
 const BACKEND_STATES = ["resolving", "needs_enrollment", "quoting", "awaiting_approval", "processing", "completed", "refused", "failed", "expired"];
 
 describe("switch", () => {
+  test("create-only pause defaults to the master lane and fails closed for explicit invalid/off values", () => {
+    assert.equal(reapAgenticCreateEnabled({}), false);
+    assert.equal(reapAgenticCreateEnabled({ REAP_AGENTIC_LANE_ENABLED: "1" }), true);
+    for (const value of ["0", "false", "off", "", "typo"]) {
+      assert.equal(reapAgenticCreateEnabled({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CREATE_ENABLED: value }), false);
+    }
+    assert.equal(reapAgenticCreateEnabled({ REAP_AGENTIC_CREATE_ENABLED: "1" }), false);
+  });
+
+  test("paused Reap create refuses without fallback or purchase while owned GET keeps advancing", async () => {
+    const env = { REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1", REAP_AGENTIC_CREATE_ENABLED: "0" };
+    let starts = 0, reads = 0;
+    const row = { product_id: SNAP.productId, title: "T", price: 42.5, currency: "USD",
+      external_redirect_url: "https://brand.example/products/x", product_key: SNAP.productKey,
+      purchase_grain: "product", variants: [{ variant_id: SNAP.productId }] };
+    const executor = { execute: async () => ({ product: row }) };
+    const client = { hasCallerCredentials: () => true,
+      startPurchase: async () => { starts += 1; throw new Error("must not create"); },
+      getPurchase: async () => { reads += 1; return { kind: "accepted", purchase: {
+        id: PID, state: "processing", product_key: SNAP.productKey, product_name: "T", quantity: 1,
+        totals: { currency: "USD", our_price_minor: 4250 },
+      } }; },
+    };
+    await assert.rejects(tryReapAgenticCheckout({ op: { id: "create_checkout_session" },
+      params: { quote: { items: [{ product_id: SNAP.productId, quantity: 1 }] } },
+      ctx: {}, executor, client, env, ucpArgs: {},
+    }), (err) => err.detail?.reason === "reap_create_paused");
+    assert.equal(starts, 0);
+    const out = await tryReapAgenticCheckout({ op: { id: "get_checkout_session" },
+      params: { session_id: encodeReapCheckoutId(SNAP) }, ctx: {}, executor, client, env, now: NOW,
+    });
+    assert.equal(out.status, "complete_in_progress");
+    assert.equal(reads, 1);
+    row.external_redirect_url = undefined;
+    assert.equal(await tryReapAgenticCheckout({ op: { id: "create_checkout_session" },
+      params: { quote: { items: [{ product_id: SNAP.productId, quantity: 1 }] } },
+      ctx: {}, executor, client, env, ucpArgs: {},
+    }), null, "native rows retain their native lane");
+  });
+
   test("OFF by default; truthy spellings turn it on; nothing else does", () => {
     assert.equal(reapAgenticLaneEnabled({}), false);
     for (const v of ["0", "no", "off", "false", ""]) assert.equal(reapAgenticLaneEnabled({ [REAP_AGENTIC_LANE_FLAG]: v }), false, v);

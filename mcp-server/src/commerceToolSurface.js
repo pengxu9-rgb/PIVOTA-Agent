@@ -40,6 +40,7 @@ import {
   assertExpectedSeller,
   DISCOUNT_CODE_PATH,
   REAP_CHECKOUT_ID_PREFIX,
+  reapAgenticCreateEnabled,
   reapAgenticLaneEnabled,
   reapOfferCode,
   reapOfferCodesEnabled,
@@ -51,6 +52,8 @@ import {
   ucpInputSchemasFor,
   ucpToolDescriptionsFor,
   ucpToNativeToolArgs,
+  ucpRecoverToNativeToolArgs,
+  UCP_REAP_RECOVER_INPUT_SCHEMA,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
@@ -311,7 +314,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     downstream (allowlist, buyer intake, executor, kernel) is the SAME code the MCP door runs; the
     //     dialect difference ends at this line. See ucpArgumentAdapter.js for what maps and what deliberately
     //     does not.
-    const nativeArgs = dialect === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, toolArgs) : toolArgs;
+    const recoverOnly = dialect === TOOL_DIALECTS.ucp && options.reapRecoverOnly === true;
+    if (recoverOnly && (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id))) throw new IdentityRequiredError();
+    const nativeArgs = recoverOnly ? ucpRecoverToNativeToolArgs(toolArgs)
+      : dialect === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, toolArgs) : toolArgs;
 
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
@@ -341,7 +347,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     of them would sell from, or send the buyer to, the SERVED row's seller. Fails closed on a row it
       //     cannot read or whose merchant it cannot read. A no-op without the member (and the adapter accepts the
       //     member only while the Reap lane is on), so every other create is untouched.
-      if (op.id === "create_checkout_session") {
+      if (op.id === "create_checkout_session" && !recoverOnly) {
         await assertExpectedSeller({ ucpArgs: toolArgs, params, executor: reads, ctx });
       }
       // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
@@ -354,10 +360,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     as a kernel result — instead of the executor.
       const reapHints = [];
       const reap = await tryReapAgenticCheckout({
-        op, params, ctx, executor: reads, ucpArgs: toolArgs, attested,
-        client: reapAgentic && reapAgentic.client, log: logger, hints: reapHints,
+        op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, recoverOnly,
+        client: reapAgentic && reapAgentic.client,
+        recoveryIdentityReader: reapAgentic && reapAgentic.recoveryIdentityReader, log: logger, hints: reapHints,
       });
       if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
+      if (recoverOnly) throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN");
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -1032,7 +1040,7 @@ const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
-  return reapAgenticLaneEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  return reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1085,14 +1093,22 @@ export function ucpDialectSurface(surface) {
     // Read per `tools/list`, so the advertised create_checkout follows the Reap lane and offer-code dials (see
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
-      return ucpCommerceToolDefinitionsFor(process.env);
+      const tools = ucpCommerceToolDefinitionsFor(process.env);
+      return reapAgenticLaneEnabled(process.env) ? [...tools, {
+        name: "recover_checkout",
+        description: "Pivota vendor read-only recovery of an unresolved Reap checkout. Send the identical original create payload and idempotency key. Never creates a purchase or alternative checkout; unknown outcomes remain unresolved.",
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        inputSchema: UCP_REAP_RECOVER_INPUT_SCHEMA,
+      }] : tools;
     },
     callTool: async (name, args, sessionContext) =>
-      withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
-    isCommerceTool: (name) =>
+      name === "recover_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
+        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
+    isCommerceTool: (name) => name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
-        : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name),
+        : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name)),
   });
 }
 
@@ -1194,6 +1210,18 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // These two lane refusals prove no create was dispatched. Publish only the
+  // fixed classification, never arbitrary detail or upstream/caller values.
+  if (error instanceof PivotaCommerceError && (
+    (code === "QUOTE_REQUIRED" && error.detail?.reason === "ucp_reap_variant_not_created") ||
+    (code === "OPERATION_NOT_ALLOWED" && error.detail?.reason === "reap_create_paused")
+  )) body.detail = { reason: error.detail.reason };
+  // An unknown create outcome has one safe, fixed recovery contract. Never
+  // echo its payload, key or raw upstream error in the public tool response.
+  if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
+    body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
+    body.detail = { reason: "ucp_reap_create_outcome_unknown" };
+  }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
 

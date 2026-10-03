@@ -152,7 +152,7 @@ import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
-import { reapAgenticLaneEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
@@ -820,6 +820,7 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
+    selected_variant_id: { type: "string", minLength: 1, maxLength: 200, description: "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL." },
     expected_merchant_domain: {
       type: "string",
       minLength: 1,
@@ -915,7 +916,7 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
  * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
  */
 export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain"]),
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.selected_variant_id"]),
 });
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
@@ -1071,7 +1072,7 @@ function rejectUnknown(obj, allowed, where, code) {
  * that attached a payment instrument to create/update believes it has authorized a charge, and deserves to be
  * told where authorization actually goes rather than a shrug about an unknown field.
  */
-function requireCheckoutObject(args, tool, env = process.env) {
+function requireCheckoutObject(args, tool, env = process.env, { recovery = false } = {}) {
   const code = CHECKOUT_REFUSAL_CODE;
   const checkout = own(args, "checkout");
   if (!isPlainObject(checkout)) {
@@ -1089,9 +1090,9 @@ function requireCheckoutObject(args, tool, env = process.env) {
   // ACCEPTED on create AND update while armed (review of #2323, S2): the discount capability is advertised,
   // so a platform may send `discounts` on either. It is only ever APPLIED at creation -- an update answers a
   // `discount_code_invalid` warning (not a Reap checkout) or the Reap update refusal naming the create-only rule.
-  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && reapOfferCodesEnabled(env);
+  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && (recovery || reapOfferCodesEnabled(env));
   // The expected seller: create only, and only while the Reap lane is on (the one reader).
-  const expectedSeller = tool === "create_checkout" && reapAgenticLaneEnabled(env);
+  const expectedSeller = tool === "create_checkout" && (recovery || reapAgenticLaneEnabled(env));
   const allowed = [...CHECKOUT_FIELDS, ...(offerCodes ? ["discounts"] : []), ...(expectedSeller ? ["reap"] : [])];
   rejectUnknown(checkout, allowed, "checkout", code);
   if (offerCodes) requireDiscountsShape(checkout, code);
@@ -1116,7 +1117,11 @@ function requireExpectedSellerShape(checkout, code) {
     ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
   };
   if (!isPlainObject(reap)) refuse();
-  rejectUnknown(reap, ["expected_merchant_domain"], "checkout.reap", code);
+  rejectUnknown(reap, ["expected_merchant_domain", "selected_variant_id"], "checkout.reap", code);
+  const variant = own(reap, "selected_variant_id");
+  if (variant !== undefined && (typeof variant !== "string" || !variant.trim() || variant.length > 200 || /[\x00-\x1f\x7f]/.test(variant))) {
+    throw ucpRefusal(code, "ucp_reap_variant_not_created", "Invalid selected variant id.");
+  }
   const domain = own(reap, "expected_merchant_domain");
   if (domain === undefined) return;
   if (typeof domain !== "string" || domain.length === 0 || domain.length > EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH) refuse();
@@ -2105,11 +2110,11 @@ const ARMED_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE,
 
 export function ucpInputSchemasFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_INPUT_SCHEMAS;
-  return reapAgenticLaneEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
+  return reapAgenticCreateEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
 }
 export function ucpToolDescriptionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
-  return reapAgenticLaneEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
+  return reapAgenticCreateEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
 
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */
@@ -2136,4 +2141,18 @@ export function ucpToNativeToolArgs(op, ucpArgs, env = process.env) {
     throw new Error(`ucpArgumentAdapter: no UCP argument mapping for canonical operation "${op?.id}"`);
   }
   return spec.map(ucpArgs, env);
+}
+
+
+// Pivota vendor recovery tool: accepts the ORIGINAL create fields while their
+// purchase features are paused. This validator never changes any live flag.
+export const UCP_REAP_RECOVER_INPUT_SCHEMA = ARMED_INPUT_SCHEMAS.create_checkout_session;
+export function ucpRecoverToNativeToolArgs(args, env = process.env) {
+  const code = CHECKOUT_REFUSAL_CODE;
+  requireArgsObject(args, code);
+  rejectUnknown(args, ["meta", "checkout"], "arguments", code);
+  const meta = requireMeta(args, code);
+  const idempotency_key = requireIdempotencyKey(meta, code);
+  const checkout = requireCheckoutObject(args, "create_checkout", env, { recovery: true });
+  return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
 }
