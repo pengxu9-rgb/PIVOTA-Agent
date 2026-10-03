@@ -1,0 +1,187 @@
+jest.mock('../../src/db', () => ({ query: jest.fn() }));
+const axios = require('axios');
+const db = require('../../src/db');
+const { getDiscoveryFeed, buildDiscoveryProfile, _internals: i } = require('../../src/services/discoveryFeed');
+const { buildRecentView, deriveRecentQuery } = require('../../scripts/run_discovery_feed_smoke.cjs');
+const SIG = 'sig_3d1b5a5627cbb101f388e5a90c80b4e5';
+// Exact public first-card text, not an invented beauty category. SQL rows below
+// are explicitly synthetic local stored-source projections, not provider proof.
+const card = { merchant_id: 'external_seed', product_id: SIG, title: 'Iconic Starter Ritual', brand: 'Jurlique',
+  description: 'Indulge in this iconic discovery set for a complete ritual that transforms your skincare experience. Perfect for gifting or self-pampering. $64 value* *Valued by Jurlique based on RRP of full-sized products.' };
+const row = (sig = SIG, override = {}) => ({ pivota_signature_id: sig, content_key: 'ck_synthetic_' + sig,
+  title: sig === SIG ? card.title : 'Jurlique Daily Skincare Ritual ' + sig, description: card.description,
+  brand: 'Jurlique', external_brand: 'Jurlique', external_product_key: 'synthetic-own-' + sig, category_path: 'beauty/sets/gift-set', currency: 'USD', price_min: 45,
+  image_url: 'https://synthetic.example/product.png', external_product_id: 'local-' + sig,
+  external_canonical_url: 'https://jurlique.com/products/local-synthetic-' + sig, external_seed_id: 'synthetic-' + sig,
+  offers: [{ market: 'US', currency: 'USD', price: 45, availability: 'in_stock' }], offer_count: 1, ...override });
+const candidates = Array.from({ length: 10 }, (_, n) => row('sig_' + String(n + 1).padStart(32, '0')));
+let env;
+beforeEach(() => {
+  env = { ...process.env };
+  process.env.DATABASE_URL = 'postgres://synthetic-unused';
+  process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+  process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';
+  process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'https://synthetic-primary.invalid';
+  process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'synthetic-local-only';
+  db.query.mockReset();
+  db.query.mockImplementation(async (sql) => ({ rows: sql.includes('WITH brand_match') ? candidates : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()] : [] }));
+  jest.spyOn(axios, 'get').mockRejectedValue(new Error('no HTTP transport should be dispatched'));
+  i.resetProductsSearchBreaker();
+});
+afterEach(() => { jest.restoreAllMocks(); process.env = env; });
+function request(override = {}) {
+  return i.normalizeDiscoveryRequest({ surface: 'home_hot_deals', page: 1, limit: 6, debug: true,
+    context: { auth_state: 'authenticated', locale: 'en-US', recent_views: [buildRecentView(card)], recent_queries: [deriveRecentQuery(card)] }, ...override });
+}
+async function primary(req = request()) { return i.loadCanonicalHistoryPrimary({ request: req, profile: buildDiscoveryProfile(req.context), limit: 48 }); }
+
+test('actual category-less Iconic Starter Ritual history selects stored canonical primary with zero SDK HTTP', async () => {
+  const req = request(); expect(buildDiscoveryProfile(req.context).dominantDomain).toBeNull();
+  const response = await getDiscoveryFeed(req, { identityGraphRowsResolverFn: async () => [], relationshipGraphRecallFn: () => { throw Error('alternate graph must not run'); } });
+  expect(response.products.length).toBeGreaterThanOrEqual(4);
+  expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');
+  expect(response.metadata.provider_breakdown.find(x => x.provider === 'canonical_sig')).toMatchObject({ successful: true, returned: 10 });
+  expect(response.metadata.provider_breakdown.find(x => x.provider === 'products_search')).toMatchObject({ skipped: true, skip_reason: 'canonical_sig_personalized_primary_selected' });
+  expect(axios.get).not.toHaveBeenCalled();
+  expect(db.query.mock.calls[0][1][1]).toEqual([SIG]);
+});
+
+test.each(['beauty/sets/gift-set', ['beauty', 'sets', 'gift-set']])('canonical category path preserves physical TEXT and compatible arrays %p', (path) => {
+  expect(i.mapCanonicalIndexRowToProduct(row(SIG, { category_path: path }))).toMatchObject({ category_path: ['beauty', 'sets', 'gift-set'], category: 'gift-set' });
+});
+
+test.each([
+ ['missing anchor', () => db.query.mockResolvedValue({ rows: [] }), 'canonical_history_subject_not_public'],
+ ['foreign merchant', () => db.query.mockResolvedValue({ rows: [row(SIG, { first_party_merchant_id: 'foreign' })] }), 'canonical_history_subject_conflict'],
+ ['wrong currency', () => db.query.mockResolvedValue({ rows: [row(SIG, { currency: 'GBP' })] }), 'canonical_history_currency_mismatch'],
+ ['database error', () => db.query.mockRejectedValue(Error('database timed out')), null],
+])('%s is an explicit canonical primary refusal, zero alternate HTTP', async (name, set, reason) => {
+  set(); const result = await primary(); expect(result.products).toEqual([]); expect(result.recallSummary[0].status).toBeNull();
+  if (reason) expect(result.recallSummary[0].failure_reason).toBe(reason);
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+test('empty canonical pool stays honestly empty without alternate providers or graph recall', async () => {
+  db.query.mockImplementation(async sql => ({ rows: sql.includes('WITH brand_match') ? [] : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()] : [] }));
+  const response = await getDiscoveryFeed(request(), { relationshipGraphRecallFn: () => { throw Error('alternate graph'); } });
+  expect(response.products).toEqual([]); expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+test('stored brand is authority and caller brand conflict refuses before candidate query', async () => {
+  const req = request(); req.context.recent_views[0].brand = 'Foreign Brand';
+  const result = await primary(req); expect(result.recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');
+  expect(db.query).toHaveBeenCalledTimes(1);
+});
+
+test('brand candidates cannot broaden to another brand/currency', async () => {
+  db.query.mockImplementation(async sql => ({ rows: sql.includes('WITH brand_match') ? [...candidates, row('sig_' + 'f'.repeat(32), { brand: 'Foreign' }), row('sig_' + 'e'.repeat(32), { currency: 'GBP' })] : [row()] }));
+  expect((await primary()).products).toHaveLength(10);
+});
+
+test('an explicit conflicting beauty/fashion domain is not inferred from brand', async () => {
+  const req = request(); const profile = buildDiscoveryProfile(req.context); profile.dominantDomain = 'apparel';
+  const result = await i.loadCanonicalHistoryPrimary({ request: req, profile, limit: 48 });
+  expect(result.recallSummary[0].failure_reason).toBe('canonical_history_domain_conflict');
+});
+
+test.each(['fashion/dresses', null])('stored nonbeauty/unknown domain is not turned into beauty %p', async (path) => {
+  db.query.mockImplementation(async sql => ({ rows: sql.includes('WITH brand_match') ? candidates.map(x => ({ ...x, category_path: path })) : [row(SIG, { category_path: path })] }));
+  const result = await primary(); expect(result.products).toHaveLength(10); expect(result.provider).toBe('canonical_sig');
+});
+
+test.each([
+ { scope: { brand_names: ['Foreign'] } }, { scope: { categories: ['serum'] } }, { query: { text: 'serum' } },
+ { context: { auth_state: 'authenticated', locale: 'en-SG', recent_views: [buildRecentView(card)], recent_queries: ['Jurlique'] } },
+])('explicit request scope/locale keeps its original initial route %p', async override => {
+  expect(await primary(request(override))).toBeNull(); expect(db.query).not.toHaveBeenCalled();
+});
+
+test('different history query cannot be silently replaced by stored brand', async () => {
+  const req = request(); req.context.recent_queries = ['vitamin c serum']; expect(await primary(req)).toBeNull();
+  expect(db.query).toHaveBeenCalledTimes(1); expect(axios.get).not.toHaveBeenCalled();
+});
+
+ test('stored primary domain refuses unknown anchors under an explicit domain', async () => {
+  db.query.mockResolvedValue({rows:[row(SIG,{category_path:null})]});
+  const req=request();const profile=buildDiscoveryProfile(req.context);profile.dominantDomain='beauty';
+  const result=await i.loadCanonicalHistoryPrimary({request:req,profile,limit:48});
+  expect(result.recallSummary[0].failure_reason).toBe('canonical_history_domain_conflict');
+  expect(db.query).toHaveBeenCalledTimes(1);expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('stored category domain excludes foreign or unknown candidate domains',async()=>{
+  db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[...candidates,row('sig_'+'f'.repeat(32),{category_path:'fashion/dress'}),row('sig_'+'e'.repeat(32),{category_path:null})]:[row()]}));
+  expect((await primary()).products).toHaveLength(10);
+ });
+ test('new mapped first-card taxonomy remains a valid exact stored history query',async()=>{
+  const mapped=i.mapCanonicalIndexRowToProduct(row());
+  const req=request({context:{auth_state:'authenticated',locale:'en-US',recent_views:[buildRecentView(mapped)],recent_queries:[deriveRecentQuery(mapped)]}});
+  expect(req.context.recent_queries).toEqual(['gift-set']);
+  expect((await primary(req)).products).toHaveLength(10);expect(axios.get).not.toHaveBeenCalled();
+ });
+
+ test('same native Iconic history uses direct canonical primary on declared browse surface',async()=>{
+   const req=request({surface:'browse_products'});
+   const response=await getDiscoveryFeed(req,{relationshipGraphRecallFn:()=>{throw Error('alternate graph')},identityGraphRowsResolverFn:async()=>[]});
+   expect(response.products.length).toBeGreaterThanOrEqual(6);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
+ });
+ test.each(['home_hot_deals','browse_products'])('canonical failure stays failed on %s with zero HTTP alternate',async surface=>{
+   db.query.mockRejectedValue(Error('synthetic DB timeout'));
+   await expect(getDiscoveryFeed(request({surface}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}})).rejects.toThrow();
+   expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('empty canonical browse stays empty without graph or SDK substitution',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[]:[row()]}));
+   const response=await getDiscoveryFeed(request({surface:'browse_products'}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}});
+   expect(response.products).toEqual([]);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
+ });
+
+ test('canonical history keeps the same suppressed universe across consecutive browse pages',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[row(),...candidates]:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]}));
+   const opts={relationshipGraphRecallFn:()=>{throw Error('alternate graph')},identityGraphRowsResolverFn:async()=>[]};
+   const one=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:3}),opts);
+   const two=await getDiscoveryFeed(request({surface:'browse_products',page:2,limit:3}),opts);
+   expect(one.products).toHaveLength(3);expect(two.products).toHaveLength(3);
+   expect(one.metadata.candidate_counts.eligible_pool).toBe(two.metadata.candidate_counts.eligible_pool);
+   expect(new Set([...one.products,...two.products].map(p=>p.product_id)).size).toBe(6);
+   expect([...one.products,...two.products].some(p=>p.product_id===SIG)).toBe(false);expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('canonical first-page underfill cannot backfill the suppressed original view',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[row(),candidates[0]]:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]}));
+   const response=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:6}));
+   expect(response.products).toHaveLength(1);expect(response.products[0].product_id).not.toBe(SIG);expect(axios.get).not.toHaveBeenCalled();
+ });
+
+ test.each(['price_asc','price_desc','popular'])('canonical %s pages share a fixed universe and its own suppressed count',async sort=>{
+   const pool=Array.from({length:42},(_,n)=>row('sig_'+String(n+1).padStart(32,'0'),{
+     offers:[{market:'US',currency:'USD',availability:'in_stock',price:n===30?1:n===31?100:45}],price_min:n===30?1:n===31?100:45}));
+   const limits=[];
+   db.query.mockImplementation(async(sql,params)=>{
+     if(sql.includes('COUNT(DISTINCT'))throw Error('unscoped global count forbidden');
+     if(sql.includes('WITH brand_match')){limits.push(params[2]);return {rows:[row(),...pool].slice(0,params[2])};}
+     return {rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]};
+   });
+   const opts={identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate graph')}};
+   const one=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:6,sort}),opts);
+   const two=await getDiscoveryFeed(request({surface:'browse_products',page:2,limit:6,sort}),opts);
+   const third=await getDiscoveryFeed(request({surface:'browse_products',page:3,limit:6,sort}),opts);
+   expect(limits).toEqual([400,400,400]);
+   expect(new Set([...one.products,...two.products,...third.products].map(p=>p.product_id)).size).toBe(18);
+   for(const result of [one,two,third]){
+     expect(result.total).toBe(42);expect(result.metadata.count_source).toBe('runtime_canonical_history_pool');
+     expect(result.metadata.runtime_corpus_count).toBe(42);expect(result.metadata.candidate_counts.eligible_pool).toBe(42);
+     expect(result.products.some(p=>p.product_id===SIG)).toBe(false);
+   }
+   expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('a different history query retains the initial legacy route and its original global count',async()=>{
+   let counts=0;
+   db.query.mockImplementation(async sql=>{
+     if(sql.includes('COUNT(DISTINCT')){counts++;return {rows:[{total:123}]};}
+     return {rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]};
+   });
+   axios.get.mockResolvedValue({status:200,data:{products:[]}});
+   const response=await getDiscoveryFeed(request({surface:'browse_products',context:{auth_state:'authenticated',locale:'en-US',recent_views:[buildRecentView(card)],recent_queries:['Dior']}}),{identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:async()=>({products:[]})});
+   expect(response.metadata.candidate_source).not.toBe('canonical_sig_personalized');
+   expect(counts).toBe(1);expect(response.total).toBe(123);
+ });

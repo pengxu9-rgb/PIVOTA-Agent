@@ -4686,21 +4686,26 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         ],
       };
     }
-    const stepResults = await Promise.all(
-      recallPlan.map((step) =>
-        fetchDiscoveryRecallStep({
-          baseUrl,
-          request,
-          step,
-          requestHeaders,
-          timeoutMs: parallelTimeoutMs,
-        }),
-      ),
-    );
+    const plannedRequests = new Map();
+    const stepResults = await Promise.all(recallPlan.map((step) => {
+      const key = JSON.stringify({ baseUrl, headers: requestHeaders, requestId: request?.request_id || null,
+        surface: request?.surface, context: request?.context, scope: request?.scope, query: step.query || null, offset: step.offset, limit: step.limit,
+        in_stock_only: false, timeoutMs: parallelTimeoutMs });
+      if (plannedRequests.has(key)) {
+        return plannedRequests.get(key).then(() => ({ success: false, products: [], summary: {
+          provider, label: step.label, query: step.query || null, offset: step.offset, limit: step.limit,
+          status: null, returned: 0, latency_ms: 0, cache_hit: false, skipped: true,
+          skip_reason: 'identical_primary_request_coalesced',
+        } }));
+      }
+      const promise = fetchDiscoveryRecallStep({ baseUrl, request, step, requestHeaders, timeoutMs: parallelTimeoutMs });
+      plannedRequests.set(key, promise);
+      return promise;
+    }));
 
     for (const result of stepResults) {
       recallSummary.push(result.summary);
-      recordProductsSearchResult(result);
+      if (!result.summary.skipped) recordProductsSearchResult(result);
       if (!result.success) continue;
       successCount += 1;
       mergeProducts(result.products);
@@ -7545,7 +7550,7 @@ async function loadCatalogCandidates({
     }),
   );
 
-  const mergeProducts = (products = []) => {
+  const mergeProducts = (products = [], mergeLimit = safeLimit) => {
     for (const product of Array.isArray(products) ? products : []) {
       if (compoundIntent) {
         const normalized = normalizeCandidateProduct(product, mergedProducts.length);
@@ -7555,7 +7560,7 @@ async function loadCatalogCandidates({
       if (!key || seenKeys.has(key)) continue;
       seenKeys.add(key);
       mergedProducts.push(product);
-      if (mergedProducts.length >= safeLimit) break;
+      if (mergedProducts.length >= mergeLimit) break;
     }
   };
 
@@ -7711,6 +7716,21 @@ async function loadCatalogCandidates({
       catalogUnavailableError: null,
     };
   };
+
+  const canonicalHistory = await loadCanonicalHistoryPrimary({ request, profile, limit: safeLimit });
+  if (canonicalHistory) {
+    candidateSource = 'canonical_sig_personalized';
+    primaryPathUsed = 'canonical_sig_personalized';
+    providerResults.push(canonicalHistory);
+    mergeProducts(canonicalHistory.products, request.surface === 'browse_products' ? 400 : safeLimit);
+    for (const provider of ['products_search', 'internal_catalog', 'external_seeds']) {
+      providerResults.push(buildSkippedProviderResult(provider, {
+        label: getProviderLabel(provider), query: providerQueries.join(' | '), limit: safeLimit,
+        skipReason: 'canonical_sig_personalized_primary_selected',
+      }));
+    }
+    return finalizeProviderResult();
+  }
 
   const exactTitlePrimaryResult = await fetchExternalSeedExactTitleCandidates({
     request,
@@ -9493,7 +9513,13 @@ function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_produc
 // merchant is resolved off it: a connected first-party catalog row when one
 // exists, otherwise the external-seed mirror. Shared by the brand-page reader
 // and the generic browse reader so both spell identity the same way.
+function canonicalCategoryPath(value) {
+  const parts = Array.isArray(value) ? value : typeof value === 'string' ? value.split('/') : [];
+  return parts.filter((part) => typeof part === 'string' && part.trim()).map((part) => part.trim());
+}
+
 function mapCanonicalIndexRowToProduct(row) {
+  const categoryPath = canonicalCategoryPath(row.category_path);
   const productId = String(row.pivota_signature_id || '').trim();
   if (!productId) return null;
   const offers = Array.isArray(row.offers) ? row.offers : null;
@@ -9573,14 +9599,14 @@ function mapCanonicalIndexRowToProduct(row) {
     price: Number.isFinite(priceMin) ? priceMin : null,
     currency: String(row.currency || 'USD').trim() || 'USD',
     ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
-    ...(Array.isArray(row.category_path) && row.category_path.length
-      ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
+    ...(categoryPath.length
+      ? { category_path: categoryPath, category: categoryPath[categoryPath.length - 1] }
       : {}),
     source: 'commerce_index',
   };
 }
 
-async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120, failures = null } = {}) {
+async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120, failures = null, strictPublicSource = false } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -9600,6 +9626,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
               ON crt.subject_type = 'product' AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
+              ${strictPublicSource ? "AND cp_trust.sync_status = 'live' AND cp_trust.suppression_reason IS NULL" : ''}
           )`;
   try {
     const res = await query(
@@ -9617,7 +9644,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           ${gateJoinSql}
           WHERE apv.pivota_signature_id IS NOT NULL
             ${gateWhereSql}
-          ORDER BY apv.refreshed_at DESC NULLS LAST
+          ORDER BY apv.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
           LIMIT $3
         )
         SELECT
@@ -9642,7 +9669,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           apv.price_min,
           apv.price_max,
           apv.offer_count,
-          apv.offers,
+          ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,
           apv.category_path
         FROM picked
         JOIN agent_pdp_view apv ON apv.content_key = picked.content_key
@@ -9656,6 +9683,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             -- merchant_id check mis-claimed as first-party (then dropped their
             -- external identity in the ext_seed lateral below).
             AND cp.platform <> 'external_seed'
+            ${strictPublicSource ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
             AND cp.suppression_reason IS NULL
           ORDER BY cp.updated_at DESC NULLS LAST
@@ -9740,6 +9768,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND cp.platform = 'external_seed'
             AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
+            ${strictPublicSource ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
           -- 185 content_keys have more than one servable external_seed row, and
           -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
@@ -9758,11 +9787,28 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
                    cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
-        ORDER BY picked.refreshed_at DESC NULLS LAST
+        ${strictPublicSource ? `LEFT JOIN LATERAL (
+          SELECT jsonb_agg(jsonb_build_object('offer_id', co.offer_id, 'product_key', co.product_key,
+            'merchant_id', co.merchant_id, 'market', co.market, 'currency', co.currency,
+            'price', coalesce(co.merchant_effective_price, co.list_price), 'availability', co.availability)
+            ORDER BY co.offer_id) AS offers
+          FROM catalog_offers co
+          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key AND own_cp.merchant_id = co.merchant_id
+          JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+            AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
+          WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
+            AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
+            AND coalesce(co.merchant_effective_price, co.list_price) > 0
+        ) own_offers ON TRUE` : ''}
+
+        ORDER BY picked.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
-    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
+    return (res.rows || []).filter((row) => !strictPublicSource || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
+      .map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -9823,10 +9869,11 @@ function browseUsesCanonicalSig() {
 // The request carries no category scope in practice: the only call site is
 // gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
 // scope is set. No category branch is built here for that reason.
-async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
+async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = null } = {}) {
   if (!process.env.DATABASE_URL) return null;
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
-  const params = [safeLimit];
+  const params = signatureIds ? [safeLimit, signatureIds] : [safeLimit];
+  if (signatureIds && (!Array.isArray(signatureIds) || !signatureIds.length || signatureIds.some((id) => !/^sig_[a-f0-9]{32}$/.test(id)))) throw new DiscoveryValidationError('Invalid canonical history signature');
 
   try {
     const res = await query(
@@ -9853,7 +9900,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           apv.price_min,
           apv.price_max,
           apv.offer_count,
-          apv.offers,
+          ${signatureIds ? 'own_offers.offers' : 'apv.offers'} AS offers,
           apv.category_path
         FROM agent_pdp_view apv
         LEFT JOIN LATERAL (
@@ -9861,6 +9908,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
             AND cp.platform <> 'external_seed'
+            ${signatureIds ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
             AND cp.suppression_reason IS NULL
           ORDER BY cp.updated_at DESC NULLS LAST
@@ -9948,6 +9996,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             -- every ext: row. Dropped entirely rather than re-spelled.
             AND cp.platform = 'external_seed'
             AND cp.suppression_reason IS NULL
+            ${signatureIds ? "AND EXISTS (SELECT 1 FROM catalog_row_trust own_trust WHERE own_trust.subject_type = 'product' AND own_trust.subject_key = cp.product_key AND own_trust.serving_decision = 'public')" : ''}
             AND cp.sync_status = 'live'
           -- 185 content_keys have more than one servable external_seed row, and
           -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
@@ -9966,7 +10015,24 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
                    cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
+        ${signatureIds ? `LEFT JOIN LATERAL (
+          SELECT jsonb_agg(jsonb_build_object('offer_id', co.offer_id, 'product_key', co.product_key,
+            'merchant_id', co.merchant_id, 'market', co.market, 'currency', co.currency,
+            'price', coalesce(co.merchant_effective_price, co.list_price), 'availability', co.availability)
+            ORDER BY co.offer_id) AS offers
+          FROM catalog_offers co
+          JOIN catalog_products own_cp ON own_cp.product_key = co.product_key AND own_cp.merchant_id = co.merchant_id
+          JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+            AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
+          WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
+            AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
+            AND coalesce(co.merchant_effective_price, co.list_price) > 0
+        ) own_offers ON TRUE` : ''}
+
         WHERE apv.pivota_signature_id IS NOT NULL
+          ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}
           AND EXISTS (
             SELECT 1
             FROM catalog_products cp_trust
@@ -9975,6 +10041,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
              AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
+              ${signatureIds ? "AND cp_trust.sync_status = 'live' AND cp_trust.suppression_reason IS NULL" : ''}
           )
         -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
         -- make paging stable: browse re-runs this query with a larger LIMIT and
@@ -9985,7 +10052,8 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
       `,
       params,
     );
-    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
+    return (res.rows || []).filter((row) => !signatureIds || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
+      .map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -9998,6 +10066,87 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
     }
     // Everything else is a real failure and must stay one.
     throw err;
+  }
+}
+
+function scopeCanonicalHistoryProduct(product) {
+  if (product?.currency !== 'USD') return null;
+  const offers = (Array.isArray(product?.offers) ? product.offers : []).filter((offer) =>
+    offer?.market === 'US' && offer.currency === 'USD' && offer.availability === 'in_stock' &&
+    Number.isFinite(Number(offer.price)) && Number(offer.price) > 0);
+  if (!offers.length) return null;
+  return { ...product, offers, offers_count: offers.length,
+    price: Math.min(...offers.map((offer) => Number(offer.price))), currency: 'USD' };
+}
+
+// Canonical history is a stored subject, not permission to trust a caller's brand
+// or to infer that an unknown product is beauty. Resolve it before selecting a
+// primary reader; a selected canonical reader never dispatches the legacy SDK.
+function isPotentialCanonicalHistoryPrimary(request) {
+  const views = request?.context?.recent_views || [];
+  if (!browseUsesCanonicalSig() || !['home_hot_deals', 'browse_products'].includes(request?.surface) || !views.length ||
+      views.length > MAX_ANCHORS || hasBrandScope(request) || hasDiscoveryQueryText(request) ||
+      hasDiscoveryCategoryScope(request) || request?.source_product_ref?.product_id ||
+      String(request?.context?.locale || 'en-US') !== 'en-US' ||
+      resolveDiscoveryExternalSeedMarketConfig().market !== 'US' ||
+      views.some((view) => !/^sig_[a-f0-9]{32}$/.test(view.product_id || '') || !view.merchant_id)) return false;
+  return true;
+}
+
+async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
+  if (!isPotentialCanonicalHistoryPrimary(request)) return null;
+  const views = request.context.recent_views;
+  // A page-independent bounded universe prevents price sorting from moving
+  // offsets as page/limit/cursor change. This is the reader's existing maximum.
+  const poolLimit = request.surface === 'browse_products' ? 400 : limit;
+  const startedAt = Date.now();
+  const summary = (products, status, error = null) => ({
+    provider: 'canonical_sig', products,
+    recallSummary: [buildDiscoveryProviderStepSummary({ provider: 'canonical_sig',
+      label: 'canonical_sig_personalized', query: views.map((view) => view.product_id).join(' | '),
+      limit: poolLimit, returned: products.length, status, latencyMs: Date.now() - startedAt,
+      ...(error ? { failureReason: error, error } : {}) })],
+  });
+  try {
+    const anchors = await fetchCanonicalSigBrowseCandidates({ limit: views.length, signatureIds: views.map((view) => view.product_id) });
+    if (!Array.isArray(anchors)) return summary([], null, 'canonical_history_unavailable');
+    if (anchors.length !== views.length) return summary([], null, 'canonical_history_subject_not_public');
+    const byId = new Map(anchors.map((anchor) => [anchor.product_id, anchor]));
+    if (byId.size !== views.length) return summary([], null, 'canonical_history_ambiguous_subject');
+    const brands = [];
+    const domains = new Set();
+    const allowedHistoryTerms = new Set();
+    for (const view of views) {
+      const anchor = byId.get(view.product_id);
+      if (!anchor || anchor.merchant_id !== view.merchant_id || !anchor.brand ||
+          (view.brand && normalizeBrandText(view.brand) !== normalizeBrandText(anchor.brand)))
+        return summary([], null, 'canonical_history_subject_conflict');
+      const path = canonicalCategoryPath(anchor.category_path);
+      const domain = path[0] === 'fashion' ? 'apparel' : path[0];
+      if (profile?.dominantDomain && profile.dominantDomain !== domain)
+        return summary([], null, 'canonical_history_domain_conflict');
+      if (anchor.currency !== 'USD' || !scopeCanonicalHistoryProduct(anchor)) return summary([], null, 'canonical_history_currency_mismatch');
+      if (domain) domains.add(domain);
+      brands.push(anchor.brand);
+      [anchor.brand, ...path].forEach((value) => allowedHistoryTerms.add(normalizeBrandText(value)));
+    }
+    // A different explicit history query keeps its existing query route. It may
+    // not widen this stored-brand request or be silently replaced by it.
+    if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
+    const failures = [];
+    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true });
+    if (failures.length) return summary([], null, 'canonical_history_query_failed');
+    const allowedBrands = new Set(brands.map(normalizeBrandText));
+    const scoped = products.filter((product) => {
+      const path = canonicalCategoryPath(product.category_path);
+      const domain = path[0] === 'fashion' ? 'apparel' : path[0];
+      return allowedBrands.has(normalizeBrandText(product.brand)) &&
+        (!domains.size || domains.has(domain)) && (!profile?.dominantDomain || domain === profile.dominantDomain);
+    })
+      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+    return summary(scoped, 200);
+  } catch (err) {
+    return summary([], null, classifyDiscoveryQueryError(err));
   }
 }
 
@@ -10662,6 +10811,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
 
 function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
+  const suppressRecentViewsOnAllPages = options.suppressRecentViewsOnAllPages === true;
   const profile = options.profile || null;
   const sort = normalizeDiscoverySort(options.sort);
   const brandScoped = options.brandScoped === true;
@@ -10686,8 +10836,8 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, rejectReason);
       continue;
     }
-    if (page <= 1 && viewedKeys.has(entry.candidate.key) && !brandScoped) {
-      recentViewDeferred.push(entry);
+    if ((page <= 1 || suppressRecentViewsOnAllPages) && viewedKeys.has(entry.candidate.key) && !brandScoped) {
+      if (!suppressRecentViewsOnAllPages) recentViewDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
@@ -10795,7 +10945,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   const start = (page - 1) * limit;
   const pageItems = rankedOrderedPool.slice(start, start + limit);
-  if (page <= 1 && pageItems.length < limit) {
+  if (!suppressRecentViewsOnAllPages && page <= 1 && pageItems.length < limit) {
     for (const entry of recentViewDeferred) {
       if (pageItems.length >= limit) break;
       if (pageItems.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
@@ -12070,8 +12220,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
     const useStableBrowseCatalogCount = shouldUseStableBrowseCatalogTotal(request);
+    const deferStableBrowseCatalogCount = !Array.isArray(options.candidateProducts) &&
+      isPotentialCanonicalHistoryPrimary(request);
     const stableBrowseCatalogCountPromise =
-      useStableBrowseCatalogCount
+      useStableBrowseCatalogCount && !deferStableBrowseCatalogCount
         ? countStableBrowseCatalogTotal(request)
         : Promise.resolve(null);
     const shouldUseBrandDirectPrimary =
@@ -12163,7 +12315,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         : null;
     phaseTimer.mark('recall_catalog');
     const relationshipGraphDiscovery =
-      Array.isArray(options.candidateProducts)
+      (Array.isArray(options.candidateProducts) || candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized')
         ? {
             products: [],
             recallSummary: [],
@@ -12389,6 +12541,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request.limit,
         {
           collectDebug: true,
+          suppressRecentViewsOnAllPages: candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized',
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
@@ -12423,11 +12576,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       // ranker instead of to the count query, so it gets its own phase. `select` is marked on
       // both sides of the await and accumulates.
       phaseTimer.mark('select');
-      const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
+      const canonicalHistorySelected = candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized';
+      const stableBrowseCatalogCount = canonicalHistorySelected ? null : await (
+        useStableBrowseCatalogCount && deferStableBrowseCatalogCount
+          ? countStableBrowseCatalogTotal(request)
+          : stableBrowseCatalogCountPromise
+      );
       phaseTimer.mark('stable_count_wait');
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
-      countSource =
+      countSource = canonicalHistorySelected ? 'runtime_canonical_history_pool' :
         stableBrowseCatalogCount?.source ||
         (!useStableBrowseCatalogCount && isExplicitQueryScopedBrowseRequest(request)
           ? 'runtime_corpus_query_scoped'
@@ -12816,6 +12974,9 @@ module.exports = {
     buildStableBrowseCatalogCountQuery,
     browseUsesCanonicalSig,
     fetchCanonicalSigBrowseCandidates,
+    loadCanonicalHistoryPrimary,
+    canonicalCategoryPath,
+    scopeCanonicalHistoryProduct,
     mapCanonicalIndexRowToProduct,
     getRecallEnoughThreshold,
     getPrimaryPathEnoughThreshold,
