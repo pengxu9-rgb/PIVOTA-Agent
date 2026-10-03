@@ -9644,7 +9644,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           ${gateJoinSql}
           WHERE apv.pivota_signature_id IS NOT NULL
             ${gateWhereSql}
-          ORDER BY apv.refreshed_at DESC NULLS LAST
+          ORDER BY apv.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
           LIMIT $3
         )
         SELECT
@@ -9803,7 +9803,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
         ) own_offers ON TRUE` : ''}
 
-        ORDER BY picked.refreshed_at DESC NULLS LAST
+        ORDER BY picked.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
@@ -10802,6 +10802,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
 
 function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
+  const suppressRecentViewsOnAllPages = options.suppressRecentViewsOnAllPages === true;
   const profile = options.profile || null;
   const sort = normalizeDiscoverySort(options.sort);
   const brandScoped = options.brandScoped === true;
@@ -10826,7 +10827,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, rejectReason);
       continue;
     }
-    if (page <= 1 && viewedKeys.has(entry.candidate.key) && !brandScoped) {
+    if ((page <= 1 || suppressRecentViewsOnAllPages) && viewedKeys.has(entry.candidate.key) && !brandScoped) {
       recentViewDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
@@ -10935,7 +10936,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   const start = (page - 1) * limit;
   const pageItems = rankedOrderedPool.slice(start, start + limit);
-  if (page <= 1 && pageItems.length < limit) {
+  if (!suppressRecentViewsOnAllPages && page <= 1 && pageItems.length < limit) {
     for (const entry of recentViewDeferred) {
       if (pageItems.length >= limit) break;
       if (pageItems.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
@@ -12529,6 +12530,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request.limit,
         {
           collectDebug: true,
+          suppressRecentViewsOnAllPages: candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized',
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,

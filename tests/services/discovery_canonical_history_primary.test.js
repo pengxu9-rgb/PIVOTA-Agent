@@ -135,3 +135,19 @@ test('different history query cannot be silently replaced by stored brand', asyn
    const response=await getDiscoveryFeed(request({surface:'browse_products'}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}});
    expect(response.products).toEqual([]);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
  });
+
+ test('canonical history keeps the same suppressed universe across consecutive browse pages',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[row(),...candidates]:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]}));
+   const opts={relationshipGraphRecallFn:()=>{throw Error('alternate graph')},identityGraphRowsResolverFn:async()=>[]};
+   const one=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:3}),opts);
+   const two=await getDiscoveryFeed(request({surface:'browse_products',page:2,limit:3}),opts);
+   expect(one.products).toHaveLength(3);expect(two.products).toHaveLength(3);
+   expect(one.metadata.candidate_counts.eligible_pool).toBe(two.metadata.candidate_counts.eligible_pool);
+   expect(new Set([...one.products,...two.products].map(p=>p.product_id)).size).toBe(6);
+   expect([...one.products,...two.products].some(p=>p.product_id===SIG)).toBe(false);expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('canonical first-page underfill cannot backfill the suppressed original view',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[row(),candidates[0]]:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]}));
+   const response=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:6}));
+   expect(response.products).toHaveLength(1);expect(response.products[0].product_id).not.toBe(SIG);expect(axios.get).not.toHaveBeenCalled();
+ });

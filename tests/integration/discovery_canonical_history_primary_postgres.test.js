@@ -31,7 +31,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     await client.query('TRUNCATE agent_pdp_view,catalog_products,catalog_row_trust,external_product_seeds,catalog_offers'); db.query.mockClear();
     for (let n = 0; n < 9; n++) {
       const id = n ? 'sig_' + String(n).padStart(32, '0') : sig, key = `local_${n}`;
-      await client.query(`INSERT INTO agent_pdp_view VALUES($1,$2,'Jurlique',$3,'Skincare ritual','https://synthetic.invalid/image.png','[]','USD',45,45,1,$4,'beauty/sets/gift-set',NOW())`, [key,id,n ? `Jurlique Ritual ${n}` : 'Iconic Starter Ritual',JSON.stringify([{market:'US',currency:'USD',price:45,availability:'in_stock'}])]);
+      await client.query(`INSERT INTO agent_pdp_view VALUES($1,$2,'Jurlique',$3,'Skincare ritual','https://synthetic.invalid/image.png','[]','USD',45,45,1,$4,'beauty/sets/gift-set','2026-10-03T00:00:00Z')`, [key,id,n ? `Jurlique Ritual ${n}` : 'Iconic Starter Ritual',JSON.stringify([{market:'US',currency:'USD',price:45,availability:'in_stock'}])]);
       await client.query(`INSERT INTO catalog_products VALUES($1,$1,$2,'merch_obs_local','external_seed',$3,'Jurlique','https://jurlique.com/products/local-synthetic','live',NULL,NOW())`,[key,id,'ext_local_'+n]);
       await client.query("INSERT INTO catalog_row_trust VALUES('product',$1,'public')",[key]);
       await client.query("INSERT INTO catalog_offers VALUES($1,$2,'merch_obs_local','US','USD','in_stock',45,NULL,NULL,NULL)",['offer_'+n,key]);
@@ -44,6 +44,10 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     expect(result.products.every(p => p.currency === 'USD' && p.price === 45)).toBe(true);
     expect(result.products[0].category_path).toEqual(['beauty','sets','gift-set']);
     expect(result.recallSummary[0].status).toBe(200); expect(db.query).toHaveBeenCalledTimes(2); expect(axios.get).not.toHaveBeenCalled();
+  });
+  test('equal-refresh canonical rows have deterministic signature order at both SQL selection and projection',async()=>{
+    const result=await load();expect(result.products.map(p=>p.product_id)).toEqual(result.products.map(p=>p.product_id).sort());
+    const sql=db.query.mock.calls[1][0];expect(sql).toContain('ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC');expect(sql).toContain('ORDER BY picked.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC');
   });
   test('same exact stored subject on browse resolves own public offers directly',async()=>{
     const req=i.normalizeDiscoveryRequest({...payload,surface:'browse_products'});expect((await load(req)).products).toHaveLength(9);expect(axios.get).not.toHaveBeenCalled();
