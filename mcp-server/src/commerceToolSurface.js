@@ -1234,6 +1234,11 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"
+      && typeof error.detail.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(error.detail.reconciliation_id)) {
+    body.detail = {reason:"ucp_reap_attempt_retired",reconciliation_id:error.detail.reconciliation_id};
+    body.recovery = "the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key";
+  }
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
