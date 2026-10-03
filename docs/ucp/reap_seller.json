@@ -21,6 +21,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "selected_variant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Buyer-selected variant id from this product read. Resolved to a catalog SKU by the server; never a caller price or URL."
+        },
         "expected_merchant_domain": {
           "type": "string",
           "minLength": 1,

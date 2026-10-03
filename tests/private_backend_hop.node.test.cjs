@@ -159,7 +159,8 @@ test('actual server wiring: caller-context Reap start/recover/GET and introspect
     const platformMissing = strict.buildReapAgenticPurchaseClient(null, { fetchImpl: async () => ({ status: 404, text: async () => '<html>service missing</html>' }) });
     await strict.runInInvokeAuthContextForTest({ api_key: 'synthetic-agent', agent_user_jwt: 'synthetic-buyer' }, async () => {
       assert.equal((await platformMissing.startPurchase({})).kind, 'unavailable');
-      assert.equal((await platformMissing.recoverPurchase({})).kind, 'refused');
+      assert.equal((await platformMissing.recoverPurchase({})).kind, 'unavailable');
+      assert.equal((await platformMissing.getPurchase(id)).kind, 'unavailable');
       assert.notEqual((await platformMissing.recoverPurchase({})).kind, 'not_found');
     });
     const unsafe = strict.buildReapAgenticPurchaseClient(null, { baseUrl: 'https://evil.example', fetchImpl: async () => { throw Error('must not send'); } });
@@ -205,7 +206,8 @@ test('private create requires exact house refusal; recover accepts only authorit
     const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
       fetchImpl: async () => ({ status: 404, text: async () => JSON.stringify(body) }) });
     assert.equal((await client.startPurchase({})).kind, 'unavailable');
-    assert.equal((await client.recoverPurchase({})).kind, body.error === 'purchase_not_found' ? 'not_found' : 'refused');
+    assert.equal((await client.recoverPurchase({})).kind, body.error === 'purchase_not_found' ? 'not_found' : 'unavailable');
+    assert.equal((await client.getPurchase('rp_0123456789abcdef01234567')).kind, body.error === 'purchase_not_found' ? 'not_found' : 'unavailable');
   }
   const client = createReapAgenticPurchaseClient({ baseUrl: TARGET, authHeaders: () => appHeaders, requireAuthoritativeRefusal: true,
     fetchImpl: async () => ({ status: 409, text: async () => JSON.stringify({ detail: { error: 'merchant_not_eligible' } }) }) });

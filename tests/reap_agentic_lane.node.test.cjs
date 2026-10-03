@@ -1317,8 +1317,18 @@ test('seller IN: EVERY destination of the row must be the expected seller -- pro
   }
 });
 
-test('seller IN: matching seller on an ambiguous row is blocked before any checkout',async()=>{
- const row={...MULTI_VARIANT_ROW,product_id:'sig_ok',merchant_domain:'Brand.example',external_redirect_url:'https://www.brand.example/products/x'};const ctx=await build({rows:{sig_ok:row}});const result=await withEnv(ESC_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({productId:'sig_ok',...EXPECT_BRAND}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
+test('seller IN: matching seller cannot bypass required variant selection on an explicit Reap request', async (t) => {
+  t.mock.method(Date, 'now', () => NOW);
+  const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_ok', merchant_domain: 'Brand.example', external_redirect_url: 'https://www.brand.example/products/x' };
+  const m = await mods();
+  const ctx = await build({ rows: { sig_ok: row } });
+  const result = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: 'sig_ok', ...EXPECT_BRAND }), SESSION)));
+  const error = errorOf(result);
+  assert.equal(error.code, 'QUOTE_REQUIRED');
+  assert.equal(error.detail.reason, 'ucp_reap_variant_not_created');
+  assert.equal(ctx.backend.calls.length, 0);
+  assert.equal(JSON.stringify(result).includes('continue_url'), false);
+  assert.equal(ctx.executor.seen.some(c => c.op === 'create_checkout_session'), false);
 });
 
 test('storefront lane, belt and braces: handed an expected seller the link does not match, it REFUSES instead of linking', async () => {

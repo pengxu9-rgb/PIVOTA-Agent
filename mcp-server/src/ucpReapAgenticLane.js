@@ -1436,6 +1436,9 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   const shippingAddress = reapShippingAddress(ucpArgs);
   if (shippingAddress !== undefined) buyer.shipping_address = shippingAddress;
   const base = { product_key: productKey, quantity, buyer };
+  // Reconstruct the ORIGINAL selector without current variant/proof/price reads.
+  const selectedKey = selectedReapVariantKey(ucpArgs, row, productKey, { recovery: true });
+  if (selectedKey !== undefined) base.variant_key = selectedKey;
   const offerCode = reapOfferCode(ucpArgs); // ORIGINAL requested code, even when new offers are paused
   if (offerCode !== undefined) base.offer_code = offerCode;
   const variantDomain = reapMerchantDomain(row, target);
@@ -1472,6 +1475,24 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   const out = mapReapPurchaseToCheckout({ id, snapshot, view, now, env });
   if (!out) throw unknown();
   return out;
+}
+
+// The selected id is a catalog selector, never provider authority. The backend must
+// find this exact product SKU and validate its storefront proof and price.
+export function selectedReapVariantKey(ucpArgs, row, productKey, { recovery = false } = {}) {
+  const selected = own(own(own(ucpArgs, "checkout"), "reap"), "selected_variant_id");
+  if (selected === undefined) return undefined;
+  const refuse = () => { throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" }); };
+  if (typeof selected !== "string" || !/^[1-9][0-9]{0,24}$/.test(selected)) refuse();
+  if (!recovery) {
+    const variants = own(row, "variants");
+    if (!Array.isArray(variants) || variants.filter(v => String(own(v, "variant_id") ?? own(v, "id")) === selected).length !== 1) refuse();
+  }
+  // Mirror promoter and enrichment ingestion use distinct catalog key formats.
+  // Both are server-owned product namespaces; the backend still requires an
+  // existing SKU and never substitutes another key when this one is absent.
+  const infix = productKey.startsWith(MIRROR_KEY_PREFIX) ? "::v::" : "::v:";
+  return `${productKey}${infix}${selected}`;
 }
 
 async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock, hints }) {
@@ -1529,12 +1550,30 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // with the enrichment dial on too, an ENRICHMENT key (see ENRICHMENT_BRAND_KEY_RE). Dial off: skipped as before.
   const enrichment = cartLinkDirect && reapCartLinkEnrichmentEnabled(env) && isEnrichmentCartLinkRow(row, productKey);
   if (cartLinkDirect && !isShopifyRow(row, productKey) && !enrichment && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
-  // The UCP line item has no variant carrier and the backend matches `variant_key` exactly (it has three live
-  // spellings, never re-derived), so this lane omits it — which the backend accepts only for a product with
-  // exactly one variant. A multi-variant row is not sent to be refused.
-  if (enrichment ? !enrichmentAtMostOneVariant(row) : realVariantCount(row) > 1) return skip("multi_variant");
-  const price = rowPrice(row);
-  if (!price) return skip("row_unpriced");
+  // The vendor extension carries the buyer's choice. A selected catalog SKU
+  // still has to exist and pass backend proof/price checks. Without a selector,
+  // preserve the sole-variant rule; an explicit Reap request gets a pre-create refusal.
+  const selectedKey = selectedReapVariantKey(ucpArgs, row, productKey);
+  if (selectedKey === undefined && (enrichment ? !enrichmentAtMostOneVariant(row) : realVariantCount(row) > 1)) {
+    if (reapExpectedMerchantDomain(ucpArgs) !== undefined) {
+      throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });
+    }
+    return skip("multi_variant");
+  }
+  const chosenVariant = selectedKey === undefined ? null : row.variants.find(v => String(v.variant_id ?? v.id) === String(ucpArgs.checkout.reap.selected_variant_id));
+  const variantPrice = own(chosenVariant, "price");
+  // Canonical PDP variants use price.current; native detail rows may use a
+  // flat money object or a scalar. Never borrow the product's default price.
+  const selectedPrice = isPlainObject(variantPrice) && own(variantPrice, "current") !== undefined
+    ? own(variantPrice, "current") : variantPrice;
+  const price = selectedKey === undefined ? rowPrice(row) : rowPrice({
+    price: isPlainObject(selectedPrice) ? own(selectedPrice, "amount") : selectedPrice,
+    currency: isPlainObject(selectedPrice) ? own(selectedPrice, "currency") : own(chosenVariant, "currency"),
+  });
+  if (!price) {
+    if (selectedKey !== undefined) throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });
+    return skip("row_unpriced");
+  }
   let merchantDomain;
   if (enrichment) {
     // An enrichment row's host is its storefront page, every other merchant field agreeing (see
@@ -1558,7 +1597,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // Mirror rows must NAME one variant. An enrichment row need not: at most one variant was checked above, and the
   // backend proves the variant itself (the store's sole live variant, or one its proof names) before it opens
   // anything.
-  if (cartLinkDirect && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
+  if (selectedKey === undefined && cartLinkDirect && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
 
   // This row is routed away from the native money lane. A deliberate pause
   // must be a refusal, never a null that falls through to another checkout.
@@ -1612,6 +1651,7 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     buyer,
     idempotency_key: idempotencyKey,
   };
+  if (selectedKey !== undefined) body.variant_key = selectedKey;
   const offerCode = reapOfferCodesEnabled(env) ? reapOfferCode(ucpArgs) : undefined;
   if (offerCode !== undefined) body.offer_code = offerCode;
   // The selected cart-link source has one stable body and key namespace. A refusal
@@ -1627,11 +1667,18 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   };
   const res = await dispatchCreate(cartLinkDirect ? cartLinkBody() : body);
 
+  if (selectedKey !== undefined && res && res.kind === "refused" && [400, 409].includes(res.http_status)
+    && ["row_not_found", "row_variant_unverified", "row_variant_ambiguous", "row_unpriced", "row_price_ambiguous"].includes(res.code)) {
+    throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });
+  }
+
   if (!res || res.kind !== "accepted") {
     emit(log, res && res.kind === "unavailable" ? "warn" : "info", {
       op: "create_checkout_session", outcome: res?.kind || "no_answer", code: res?.code || "none",
     });
-    if (!res || res.kind !== "refused" || res.code === "idempotency_conflict") throw unknownOutcome();
+    if (!res || res.kind !== "refused" || res.code === "idempotency_conflict"
+      || ![400, 409].includes(res.http_status)
+      || ["reap_create_paused", "create_disabled", "pilot_scope_invalid"].includes(res.code)) throw unknownOutcome();
     // The backend authoritatively refused this selected source. Stop here: no
     // alternate body, key namespace, checkout rail, kernel or storefront offer.
     throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
