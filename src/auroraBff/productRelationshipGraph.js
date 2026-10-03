@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { isSameFamilyVariant } = require('./relationshipPairPolicy');
+const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
 const {
@@ -181,7 +182,12 @@ function normalizeSourceRefs(value) {
       ...(type ? { type } : {}),
       ...(name ? { name } : {}),
       ...(url ? { url } : {}),
-      ...(src.authoritative === true || src.authority === true ? { authoritative: true } : {}),
+      ...(typeof src.authoritative === 'boolean' ? { authoritative: src.authoritative }
+        : src.authority === true ? { authoritative: true } : {}),
+      ...(src.evidence_kind ? { evidence_kind: normalizeString(src.evidence_kind, 80) } : {}),
+      ...(src.evidence_profile ? { evidence_profile: normalizeString(src.evidence_profile, 120) } : {}),
+      ...(src.confidence != null ? { confidence: typeof src.confidence === 'number' ? clamp01(src.confidence) : normalizeString(src.confidence, 80) } : {}),
+      ...(src.review_status ? { review_status: normalizeString(src.review_status, 80) } : {}),
       ...(src.observed_at ? { observed_at: toIsoOrNull(src.observed_at) || normalizeString(src.observed_at, 80) } : {}),
     });
     if (refs.length >= 16) break;
@@ -556,7 +562,13 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
     reasons.push('candidate_ref_unresolvable_nested_product_prefix');
   }
 
-  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe') {
+  const consensusProof = edge.provenance?.ai_review?.cross_agent_review;
+  const consensusApproved = consensusProof ? hasValidConsensusApproval(edge) : false;
+  if (edge.label_state === 'ai_approved' && consensusProof && !consensusApproved) {
+    reasons.push('cross_agent_review_stale_or_invalid');
+  }
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe' &&
+      (!consensusApproved || !validateRelationshipEdge({ ...edge, review_status: 'pending' }).ok)) {
     reasons.push('ai_approved_dupe_quarantined');
   }
 

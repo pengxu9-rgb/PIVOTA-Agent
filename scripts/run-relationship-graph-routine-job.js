@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
 
 const { query } = require('../src/db');
@@ -153,16 +154,20 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     throw new Error(`write-mode routine jobs require --confirm ${APPLY_CONFIRM_TOKEN}`);
   }
 
-  const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval');
+  const reviewMode = argValue(argv, 'review-mode', process.env.RELGRAPH_AI_REVIEW_MODE || 'single');
+  if (!['single', 'consensus'].includes(reviewMode)) throw new Error('review-mode must be single or consensus');
+  const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval') || reviewMode === 'consensus';
   const reviewExcludeRelationTypes = normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000)
     || (allowDupeAiApproval ? '' : 'dupe');
   const stepTimeoutMs = parseStepTimeoutMs(argv);
 
   return {
+    reviewMode,
     cutoff,
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     prioritizeUncovered: hasFlag(argv, 'prioritize-uncovered'),
+    ...parseTargetRecallOptions({ hasFlag: (name) => hasFlag(argv, name), argValue: (name) => argValue(argv, name) }),
     coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
@@ -288,6 +293,7 @@ function buildRoutineSteps(options) {
       pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
     }
     if (options.sourceLimit) pushArg(args, 'source-limit', options.sourceLimit);
+    appendTargetRecallArgs(args, options);
     pushArg(args, 'affected-refs', options.affectedRefs);
     pushArg(args, 'affected-refs-file', options.affectedRefsFile);
     pushArg(args, 'affected-products-file', options.affectedProductsFile);
@@ -323,6 +329,7 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);

@@ -20,6 +20,23 @@ function argValue(args, name) {
 }
 
 describe('run-relationship-graph-sync-routine-cron', () => {
+  test('scheduled consensus selection reaches the reviewer and includes eligible dupes', () => {
+    const sync = require('../../scripts/run-relationship-graph-sync-routine');
+    const routine = require('../../scripts/run-relationship-graph-routine-job');
+    const reviewer = require('../../scripts/review-relationship-candidate-labels');
+    const cron = buildCronArgs({ RELGRAPH_AI_REVIEW_MODE: 'consensus' }, { now: NOW });
+    const syncOptions = sync.parseArgs(cron.args);
+    const syncSteps = sync.buildSyncRoutineSteps(syncOptions);
+    const inner = syncSteps.steps.find((step) => step.id === 'relationship_graph_routine');
+    const options = routine.parseArgs(inner.args.slice(1));
+    const review = routine.buildRoutineSteps(options).steps.find((step) => step.id === 'ai_review');
+    const final = reviewer.parseArgs(review.args.slice(1));
+    expect(final).toMatchObject({ reviewMode: 'consensus', excludeRelationTypes: [], allowDupeAiApproval: true });
+    expect(() => sync.parseArgs(['--cutoff', '2026-01-01', '--review-mode', 'invalid'])).toThrow('review-mode');
+    const excludedOptions = routine.parseArgs([...inner.args.slice(1), '--review-exclude-relation-types', 'dupe']);
+    const excludedReview = routine.buildRoutineSteps(excludedOptions).steps.find((step) => step.id === 'ai_review');
+    expect(reviewer.parseArgs(excludedReview.args.slice(1)).excludeRelationTypes).toEqual(['dupe']);
+  });
   test('parseBooleanEnv handles common enabled and disabled values', () => {
     expect(parseBooleanEnv('true')).toBe(true);
     expect(parseBooleanEnv('1')).toBe(true);

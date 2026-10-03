@@ -1,6 +1,7 @@
 const { isSameFamilyVariant, brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+const { withoutRelationshipPairContext } = require('./relationshipCandidatePairContext');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
@@ -237,6 +238,8 @@ function normalizeTokenText(value) {
       value.body,
       value.step,
       value.category,
+      value.inci_name,
+      value.inci,
     ].map((item) => normalizeTokenText(item)).filter(Boolean).join(' ');
   }
   return normalizeString(value, 2000);
@@ -295,6 +298,8 @@ function collectTextFragments(value, maxFragments = 32, depth = 0) {
   }
   if (isPlainObject(value)) {
     const preferredKeys = [
+      'what_it_is', 'whatItIs', 'routine_fit', 'routineFit', 'best_for',
+      'why_it_stands_out', 'watchouts', 'pairing_notes', 'am_pm',
       'headline',
       'body',
       'label',
@@ -324,7 +329,7 @@ function extractProductIntelBundle(value) {
   return (
     asPlainObject(obj.product_intel_v1) ||
     asPlainObject(obj.product_intel) ||
-    (asPlainObject(obj.product_intel_core) ? obj : null)
+    (asPlainObject(obj.product_intel_core) || asPlainObject(obj.core) ? obj : null)
   );
 }
 
@@ -351,7 +356,12 @@ function normalizeSourceRefs(value, fallbackRef = null) {
       ...(type ? { type } : {}),
       ...(name ? { name } : {}),
       ...(url ? { url } : {}),
-      ...(src.authoritative === true || src.authority === true ? { authoritative: true } : {}),
+      ...(typeof src.authoritative === 'boolean' ? { authoritative: src.authoritative }
+        : src.authority === true ? { authoritative: true } : {}),
+      ...(src.evidence_kind ? { evidence_kind: normalizeString(src.evidence_kind, 80) } : {}),
+      ...(src.evidence_profile ? { evidence_profile: normalizeString(src.evidence_profile, 120) } : {}),
+      ...(src.confidence != null ? { confidence: typeof src.confidence === 'number' ? clamp01(src.confidence) : normalizeString(src.confidence, 80) } : {}),
+      ...(src.review_status ? { review_status: normalizeString(src.review_status, 80) } : {}),
       ...(observedAt ? { observed_at: observedAt } : {}),
     });
   };
@@ -389,8 +399,8 @@ function sourceTypesFromRefs(sourceRefs) {
 
 function sourceStrength(sourceRefs) {
   let strength = 0;
-  for (const type of sourceTypesFromRefs(sourceRefs)) {
-    strength = Math.max(strength, SOURCE_PRIORITY[type] || 0);
+  for (const ref of normalizeSourceRefs(sourceRefs)) {
+    strength = Math.max(strength, (SOURCE_PRIORITY[ref.type] || 0) * (ref.authoritative === false ? 0.35 : 1));
   }
   return strength;
 }
@@ -549,6 +559,10 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     row.canonical_url,
     row.destination_url,
     row.url,
+    canonicalProductRef.canonical_url,
+    canonicalProductRef.url,
+    intelBundle?.source_coverage?.canonical_url,
+    intelCore?.source_coverage?.canonical_url,
     product.canonical_url,
     product.canonicalUrl,
     product.destination_url,
@@ -561,6 +575,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
   );
   const observedAt =
     toIsoOrNull(options.observedAt) ||
+    toIsoOrNull(row.observed_at || row.observedAt) ||
     toIsoOrNull(row.last_success_at) ||
     toIsoOrNull(row.verified_at) ||
     toIsoOrNull(row.updated_at) ||
@@ -568,14 +583,15 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     toIsoOrNull(row.created_at) ||
     toIsoOrNull(intelCore?.freshness?.generated_at) ||
     null;
-  const sourceType = normalizeLower(options.sourceType || row.source_type || row.sourceType || row.source, 80);
+  const sourceType = normalizeLower(options.sourceType || row._source_type || row.source_type || row.sourceType || row.source, 80);
   const sourceName = normalizeString(options.sourceName || options.table || row.source || row.kb_key || row.id, 180);
-  const fallbackSourceRef = sourceType
+  const fallbackSourceRef = sourceType && (!row._source_type || options.sourceType)
     ? {
       type: sourceType,
       name: sourceName || sourceType,
       url,
       authoritative: options.authoritative !== false,
+      ...firstObject(options.sourceEvidence),
       observed_at: observedAt,
     }
     : null;
@@ -594,7 +610,9 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     intelCore?.whatItIs?.body,
     intelText,
   );
-  const ingredientText = [
+  const ingredientText = row.ingredient_evidence_conflict === true || row.ingredient_evidence_incomplete === true ? '' : [
+    row.ingredient_text,
+    product.ingredient_text,
     row.raw_ingredient_text_clean,
     row.inci_list,
     row.raw_inci,
@@ -603,9 +621,9 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     product.raw_inci,
     normalizeTokenText(product.ingredients),
     normalizeTokenText(product.ingredient_ids),
-    normalizeTokenText(row.normalized_ingredients_json),
-    normalizeTokenText(row.active_ingredients_json),
-  ].map((item) => normalizeString(item, 2000)).filter(Boolean).join(' ');
+    normalizeTokenText(coerceJson(row.normalized_ingredients_json) || row.normalized_ingredients_json),
+    normalizeTokenText(coerceJson(row.active_ingredients_json) || row.active_ingredients_json),
+  ].map((item) => normalizeString(item, 6000)).find(Boolean) || '';
   const tags = normalizeTextList(
     [
       row.tags,
@@ -661,7 +679,11 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
       canonicalProductRef.pivotaSignatureId,
     ),
     content_key: pickFirstString(row.content_key, row.contentKey, product.content_key, product.contentKey),
-    product_key: pickFirstString(row.product_key, row.productKey, product.product_key, product.productKey),
+    product_key: pickFirstString(row.product_key, row.productKey, product.product_key, product.productKey, canonicalProductRef.product_key),
+    merchant_id: pickFirstString(row.merchant_id, row.merchantId, product.merchant_id, canonicalProductRef.merchant_id),
+    platform: pickFirstString(row.platform, product.platform, canonicalProductRef.platform),
+    market: pickFirstString(row.market, product.market, canonicalProductRef.market),
+    sku_key: pickFirstString(row.sku_key, product.sku_key),
     brand,
     name,
     category,
@@ -674,6 +696,10 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ...(url ? { url } : {}),
     ...(description ? { description } : {}),
     ...(ingredientText ? { ingredient_text: ingredientText } : {}),
+    ...(Array.isArray(row.ingredient_evidence) ? { ingredient_evidence: row.ingredient_evidence.slice(0, 8) } : {}),
+    ...(row.ingredient_evidence_conflict === true ? { ingredient_evidence_conflict: true } : {}),
+    ...(row.ingredient_evidence_incomplete === true ? { ingredient_evidence_incomplete: true } : {}),
+    ...(row.product_intel_evidence_incomplete === true ? { product_intel_evidence_incomplete: true } : {}),
     ...(tags.length ? { tags } : {}),
     ...(variantTitle ? { variant_title: variantTitle } : {}),
     ...(variantDetailLabel ? { variant_detail_label: variantDetailLabel } : {}),
@@ -686,7 +712,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
       'B',
     ),
     observed_at: observedAt,
-    price_observed_at: observedAt,
+    price_observed_at: toIsoOrNull(row.price_observed_at || row.priceObservedAt) || observedAt,
     product_family_id: pickFirstString(
       row.product_family_id,
       row.productFamilyId,
@@ -850,11 +876,29 @@ function normalizeApprovedLiveExternalSeedRow(row = {}) {
 
 function normalizeProductIntelKbRow(row = {}) {
   const analysis = firstObject(row.analysis);
-  const bundle = extractProductIntelBundle(analysis);
+  const bundle = extractProductIntelBundle(row.product_intel) || extractProductIntelBundle(analysis);
+  if (!bundle) return null;
   const canonical = firstObject(bundle?.canonical_product_ref);
+  const core = extractProductIntelCore(bundle) || {};
+  const sourceMeta = firstObject(row.source_meta);
+  const evidenceProfile = pickFirstString(bundle.evidence_profile, core.evidence_profile, sourceMeta.evidence_profile) || 'unknown';
+  const qualityState = normalizeLower(bundle.quality_state || core.quality_state || sourceMeta.quality_state);
+  const reviewDecision = normalizeLower(bundle.provenance?.review_decision || sourceMeta.review_decision);
+  if (['reject', 'rejected', 'blocked', 'failed', 'suppressed'].includes(qualityState) ||
+    ['reject', 'reject_external', 'rejected', 'blocked', 'suppressed'].includes(reviewDecision)) return null;
+  // KB membership documents a product; it does not verify market consensus. Preserve the
+  // source's actual profile and confidence so reviewers can distinguish seller facts from proof.
+  const authoritative = /official_pdp_reviewed/.test(evidenceProfile) && qualityState === 'reviewed';
+  const confidence = firstObject(bundle.confidence, sourceMeta.confidence);
+  const projectedBundle = {
+    ...bundle,
+    evidence_profile: evidenceProfile,
+    ...(Object.keys(sourceMeta).length ? { provenance: { ...sourceMeta, ...firstObject(bundle.provenance) } } : {}),
+  };
   const productRef = pickFirstString(
     row.product_ref,
     row.productRef,
+    canonical.pivota_signature_id ? `product:${canonical.pivota_signature_id}` : '',
     canonical.product_ref,
     canonical.productRef,
     canonical.product_id,
@@ -866,7 +910,7 @@ function normalizeProductIntelKbRow(row = {}) {
     {
       ...row,
       product_ref: productRef,
-      product_intel: bundle || analysis,
+      product_intel: projectedBundle,
       source_refs: row.source_refs,
     },
     {
@@ -874,30 +918,55 @@ function normalizeProductIntelKbRow(row = {}) {
       sourceType: 'product_intel_kb',
       sourceName: row.source || row.kb_key || 'aurora_product_intel_kb',
       observedAt: row.last_success_at || row.updated_at || row.created_at,
-      authoritative: true,
-      evidenceGrade: 'B',
+      authoritative,
+      evidenceGrade: authoritative ? 'B' : 'C',
+      sourceEvidence: { evidence_kind: 'product_context', evidence_profile: evidenceProfile,
+        ...(confidence.tier ? { confidence: confidence.tier } : {}) },
     },
   );
 }
 
 function normalizeIngredientKbRow(row = {}, options = {}) {
   const table = normalizeString(options.table || row.table || 'ingredient_kb', 120);
-  return normalizeProductCandidateSnapshot(
+  if (!ingredientRowAllowed(row, table)) return null;
+  if (Array.isArray(row.ingredient_evidence) && row.ingredient_evidence.length) return normalizeProductCandidateSnapshot(row);
+  const normalized = normalizeProductCandidateSnapshot(
     {
       ...row,
-      product_ref: pickFirstString(row.product_ref, row.sku_key, row.product_key, row.source_ref),
+      product_ref: pickFirstString(row.product_ref, row.pivota_signature_id ? `product:${row.pivota_signature_id}` : '', row.product_key, row.sku_key, row.source_ref),
       name: pickFirstString(row.product_name, row.name, row.product_key, row.sku_key),
       description: [row.raw_ingredient_text_clean, row.inci_list, row.raw_inci].filter(Boolean).join(' '),
-      source_refs: row.source_refs,
+      url: /^https?:\/\//i.test(row.source_ref || '') ? row.source_ref : row.url,
+      source_refs: mergeSourceRefs(row.source_refs, coerceJson(row.evidence_refs_json)),
     },
     {
       sourceType: 'ingredient_kb',
       sourceName: table,
       observedAt: row.updated_at || row.created_at,
       authoritative: true,
-      evidenceGrade: row.ingest_allowed === true || normalizeLower(row.parse_status) === 'ok' ? 'B' : 'C',
+      evidenceGrade: 'B',
+      sourceEvidence: { evidence_kind: 'ingredient_list', review_status: row.review_status || row.audit_status || 'kb_reviewed' },
     },
   );
+  if (!normalized || !normalized.ingredient_text) return null;
+  return { ...normalized, ingredient_evidence: [{
+    table, sku_key: normalizeString(row.sku_key), product_key: normalizeString(row.product_key),
+    ingredient_text: normalized.ingredient_text, observed_at: normalized.observed_at,
+    source_refs: normalized.source_refs, source_system: normalizeString(row.source_system),
+    parse_status: normalizeString(row.parse_status), review_status: normalizeString(row.review_status),
+    audit_status: normalizeString(row.audit_status), ingest_allowed: row.ingest_allowed ?? null,
+  }] };
+}
+
+function ingredientRowAllowed(row, table) {
+  const denied = new Set(['reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review']);
+  if (row.ingest_allowed === false || row.ingest_allowed === 'false') return false;
+  if ([row.review_status, row.audit_status, row.parse_status].some((value) => denied.has(normalizeLower(value)))) return false;
+  if (table === 'public.beauty_sku_ingredients') return true; // Reviewed, trusted authority store.
+  if (Array.isArray(row.ingredient_evidence) && row.ingredient_evidence.length) {
+    return row.ingredient_evidence.every((evidence) => ingredientRowAllowed(evidence, evidence.table));
+  }
+  return row.ingest_allowed === true || normalizeLower(row.parse_status) === 'ok';
 }
 
 function normalizeLegacyDupeCandidate(item, row, relationHint) {
@@ -1325,31 +1394,154 @@ async function loadApprovedLiveExternalSeedAnchors({
   return rows.map(normalizeApprovedLiveExternalSeedRow).filter(Boolean);
 }
 
-async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT } = {}) {
+function evidenceTargets(products = [], market = DEFAULT_MARKET) {
+  const targets = (Array.isArray(products) ? products : []).map((product) => {
+    const item = normalizeProductCandidateSnapshot(product);
+    if (!item) return null;
+    const ids = [item.product_id, item.source_product_id, item.pivota_signature_id, item.sku_key,
+      /^product:/i.test(item.product_ref) ? stripRefPrefix(item.product_ref) : ''].filter(Boolean);
+    return { target_key: evidenceTargetKey(item), product_key: item.product_key || '', signature: evidenceSignature(item), ids: [...new Set(ids)],
+      refs: [...new Set([item.product_ref, ...ids.map((id) => normalizeProductRef(id))])],
+      urls: item.url ? [item.url] : [], merchant_id: item.merchant_id || '', platform: item.platform || '',
+      brand: pairBrand(item), market: normalizeMarket(item.market || market) };
+  }).filter(Boolean);
+  const byListing = new Map();
+  for (const target of targets) {
+    const existing = byListing.get(target.target_key);
+    if (!existing) { byListing.set(target.target_key, target); continue; }
+    for (const field of ['ids', 'refs', 'urls']) existing[field] = [...new Set([...existing[field], ...target[field]])];
+  }
+  return [...byListing.values()];
+}
+
+function evidenceTargetKey(product) {
+  if (product.product_key) return `product_key:${product.product_key}`;
+  if (evidenceSignature(product)) return `signature:${evidenceSignature(product)}`;
+  if (product.url) return `url:${product.url}`;
+  const id = product.source_product_id || product.product_id || product.sku_key;
+  if (product.merchant_id && id) return `merchant:${product.merchant_id}:platform:${product.platform || ''}:id:${id}`;
+  if (/^ext_/i.test(id || '')) return `external_id:${id}`;
+  // Sparse products still get a deterministic request bucket, but exact-identity matching
+  // below will abstain rather than borrow a formula using this unscoped identifier.
+  return `unbound:${product.product_ref || ''}:id:${id || ''}`;
+}
+
+// Targeted loads cap records PER listing. A selected product must not lose its older evidence
+// because unrelated products have more recent rows in the global discovery window.
+function targetedEvidenceSql(sql, targets, predicate) {
+  if (!targets.length) return sql;
+  return `WITH evidence_targets AS (
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text)
+  ) SELECT matched.*, target.target_key AS _evidence_target_key FROM evidence_targets target CROSS JOIN LATERAL (
+    ${sql.replace(/WHERE /, `WHERE (${predicate}) AND `)}
+  ) matched`;
+}
+
+function boundedEvidenceRows(rows, targeted) {
+  if (!targeted) return rows;
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = row._evidence_target_key || '';
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+  return [...grouped.values()].flatMap((matches) => matches.slice(0, 4).map((row) => ({
+    ...row, _evidence_load_incomplete: matches.length > 4,
+  })));
+}
+
+function targetedIntelSql(sql, targets) {
+  if (!targets.length) return sql;
+  const projection = sql.replace(/WHERE analysis IS NOT NULL[\s\S]*$/, 'WHERE kb_key IN (SELECT kb_key FROM selected_evidence)');
+  // Materialize only compact identity fields once, then rank exact matches per target. A
+  // LATERAL OR over analysis would repeatedly scan/deTOAST every bundle for every product.
+  return `WITH evidence_targets AS (
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text)
+  ), document_identity AS MATERIALIZED (
+    SELECT kb_key, last_success_at, updated_at, lower(btrim(COALESCE(source_meta->>'brand', ''))) AS brand,
+      COALESCE(analysis#>'{product_intel_v1,canonical_product_ref}', analysis#>'{product_intel,canonical_product_ref}', analysis->'canonical_product_ref') AS canonical,
+      COALESCE(analysis#>>'{product_intel_v1,source_coverage,canonical_url}', analysis#>>'{product_intel,source_coverage,canonical_url}', analysis#>>'{source_coverage,canonical_url}',
+        analysis#>>'{product_intel_v1,canonical_product_ref,canonical_url}', analysis#>>'{product_intel,canonical_product_ref,canonical_url}', analysis#>>'{canonical_product_ref,canonical_url}',
+        analysis#>>'{product_intel_v1,provenance,official_source_url}', analysis#>>'{product_intel,provenance,official_source_url}', analysis#>>'{provenance,official_source_url}', source_meta->>'official_source_url') AS source_url
+    FROM aurora_product_intel_kb WHERE analysis IS NOT NULL
+      AND lower(COALESCE(analysis#>>'{product_intel_v1,provenance,review_decision}', analysis#>>'{product_intel,provenance,review_decision}', analysis#>>'{provenance,review_decision}', source_meta->>'review_decision', ''))
+        NOT IN ('reject', 'reject_external', 'rejected', 'blocked', 'suppressed')
+      AND lower(COALESCE(analysis#>>'{product_intel_v1,quality_state}', analysis#>>'{product_intel,quality_state}', analysis->>'quality_state', source_meta->>'quality_state', ''))
+        NOT IN ('reject', 'rejected', 'blocked', 'failed', 'suppressed')
+  ), evidence_matches AS (
+    SELECT doc.kb_key, target.target_key,
+      row_number() OVER (PARTITION BY target.target_key ORDER BY doc.last_success_at DESC NULLS LAST, doc.updated_at DESC NULLS LAST, doc.kb_key ASC) AS evidence_rank
+    FROM document_identity doc JOIN evidence_targets target ON (
+      (target.product_key <> '' AND doc.canonical->>'product_key' = target.product_key)
+      OR (target.signature <> '' AND (doc.canonical->>'pivota_signature_id' = target.signature
+        OR doc.canonical->>'pivotaSignatureId' = target.signature
+        OR doc.canonical->>'product_id' IN (target.signature, 'product:' || target.signature)
+        OR doc.canonical->>'product_ref' = 'product:' || target.signature OR doc.kb_key = 'product:' || target.signature))
+      OR doc.source_url = ANY(target.urls)
+      OR (doc.canonical->>'product_id' ~* '^(product:)?ext_'
+        AND (doc.canonical->>'product_id' = ANY(target.ids) OR doc.canonical->>'product_id' = ANY(target.refs)))
+      OR (doc.kb_key ~* '^product:ext_' AND doc.kb_key = ANY(target.refs))
+      OR (target.merchant_id <> '' AND doc.canonical->>'merchant_id' = target.merchant_id
+        AND COALESCE(doc.canonical->>'platform', '') = target.platform
+        AND (doc.canonical->>'product_id' = ANY(target.ids) OR doc.kb_key = ANY(target.refs)))
+    )
+      -- Reject explicit listing conflicts BEFORE ranking. An unrelated store's newer
+      -- recycled ids must not consume the cap and hide older exact listing evidence.
+      AND (target.product_key = '' OR COALESCE(btrim(doc.canonical->>'product_key'), '') IN ('', target.product_key))
+      AND (target.signature = '' OR COALESCE(NULLIF(btrim(doc.canonical->>'pivota_signature_id'), ''),
+        NULLIF(btrim(doc.canonical->>'pivotaSignatureId'), ''),
+        CASE WHEN COALESCE(doc.canonical->>'product_ref', doc.canonical->>'productRef') ~* '^product:sig_'
+            THEN substring(COALESCE(doc.canonical->>'product_ref', doc.canonical->>'productRef') FROM 9)
+          WHEN COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId') ~* '^sig_'
+            THEN COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId')
+          WHEN COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId') ~* '^product:sig_'
+            THEN substring(COALESCE(doc.canonical->>'product_id', doc.canonical->>'productId') FROM 9)
+          WHEN doc.kb_key ~* '^product:sig_' THEN substring(doc.kb_key FROM 9) END, '') IN ('', target.signature))
+      AND (lower(target.merchant_id) IN ('', 'external_seed')
+        OR lower(btrim(COALESCE(doc.canonical->>'merchant_id', ''))) IN ('', 'external_seed', lower(target.merchant_id)))
+      AND upper(btrim(COALESCE(doc.canonical->>'market', ''))) IN ('', target.market)
+      AND (target.brand = '' OR doc.brand IN ('', target.brand))
+  ), selected_evidence AS (SELECT DISTINCT kb_key FROM evidence_matches WHERE evidence_rank <= $1),
+  projected_evidence AS MATERIALIZED (${projection})
+  SELECT projected.*, matched.target_key AS _evidence_target_key
+  FROM projected_evidence projected JOIN evidence_matches matched USING(kb_key)
+  WHERE matched.evidence_rank <= $1 ORDER BY matched.target_key, matched.evidence_rank`;
+}
+
+async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, targetProducts = [], market = DEFAULT_MARKET } = {}) {
+  const targets = evidenceTargets(targetProducts, market);
   const rows = await guardedRows(
     queryFn,
-    `
+    targetedIntelSql(`
       SELECT
         kb_key,
         jsonb_strip_nulls(jsonb_build_object(
           'product_intel_v1', jsonb_strip_nulls(jsonb_build_object(
             'canonical_product_ref', COALESCE(
-              analysis#>'{product_intel_v1,canonical_product_ref}',
+              analysis#>'{product_intel_v1,canonical_product_ref}', analysis#>'{product_intel,canonical_product_ref}',
               analysis#>'{canonical_product_ref}'
             ),
             'product_intel_core', COALESCE(
-              analysis#>'{product_intel_v1,product_intel_core}',
+              analysis#>'{product_intel_v1,product_intel_core}', analysis#>'{product_intel,product_intel_core}',
               analysis#>'{product_intel_core}',
               analysis#>'{core}'
             ),
             'search_card', COALESCE(
-              analysis#>'{product_intel_v1,search_card}',
+              analysis#>'{product_intel_v1,search_card}', analysis#>'{product_intel,search_card}',
               analysis#>'{search_card}'
             ),
             'shopping_card', COALESCE(
-              analysis#>'{product_intel_v1,shopping_card}',
+              analysis#>'{product_intel_v1,shopping_card}', analysis#>'{product_intel,shopping_card}',
               analysis#>'{shopping_card}'
-            )
+            ),
+            'provenance', COALESCE(analysis#>'{product_intel_v1,provenance}', analysis#>'{product_intel,provenance}', analysis->'provenance'),
+            'confidence', COALESCE(analysis#>'{product_intel_v1,confidence}', analysis#>'{product_intel,confidence}', analysis->'confidence'),
+            'evidence_profile', COALESCE(analysis#>'{product_intel_v1,evidence_profile}', analysis#>'{product_intel,evidence_profile}', analysis->'evidence_profile'),
+            'freshness', COALESCE(analysis#>'{product_intel_v1,freshness}', analysis#>'{product_intel,freshness}', analysis->'freshness'),
+            'source_coverage', COALESCE(analysis#>'{product_intel_v1,source_coverage}', analysis#>'{product_intel,source_coverage}', analysis->'source_coverage'),
+            'quality_state', COALESCE(analysis#>'{product_intel_v1,quality_state}', analysis#>'{product_intel,quality_state}', analysis->'quality_state'),
+            'market_signal_badges', COALESCE(analysis#>'{product_intel_v1,market_signal_badges}', analysis#>'{product_intel,market_signal_badges}', analysis->'market_signal_badges'),
+            'external_highlight_signals', COALESCE(analysis#>'{product_intel_v1,external_highlight_signals}', analysis#>'{product_intel,external_highlight_signals}', analysis->'external_highlight_signals')
           ))
         )) AS analysis,
         source,
@@ -1361,19 +1553,23 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT } 
       WHERE analysis IS NOT NULL
       ORDER BY last_success_at DESC NULLS LAST, updated_at DESC NULLS LAST, kb_key ASC
       LIMIT $1
-    `,
-    [normalizeLimit(limit)],
+    `, targets),
+    targets.length ? [5, JSON.stringify(targets)] : [normalizeLimit(limit)],
   );
-  return rows.map(normalizeProductIntelKbRow).filter(Boolean);
+  return boundedEvidenceRows(rows, targets.length).map((row) => {
+    const intel = normalizeProductIntelKbRow(row);
+    return intel ? { ...intel, ...(row._evidence_load_incomplete ? { product_intel_evidence_incomplete: true } : {}) } : null;
+  }).filter(Boolean);
 }
 
-async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMIT } = {}) {
+async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMIT, targetProducts = [], market = DEFAULT_MARKET } = {}) {
+  const targets = evidenceTargets(targetProducts, market);
   const perTableLimit = normalizeLimit(limit);
   const out = [];
   if (await tableExists(queryFn, 'public.beauty_sku_ingredients')) {
     const rows = await guardedRows(
       queryFn,
-      `
+      targetedEvidenceSql(`
         SELECT
           sku_key,
           product_key,
@@ -1383,20 +1579,37 @@ async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMI
           active_ingredients_json,
           evidence_refs_json,
           source_system,
+          to_jsonb(beauty_sku_ingredients)->>'parse_status' AS parse_status,
+          to_jsonb(beauty_sku_ingredients)->>'review_status' AS review_status,
+          to_jsonb(beauty_sku_ingredients)->>'audit_status' AS audit_status,
+          to_jsonb(beauty_sku_ingredients)->>'ingest_allowed' AS ingest_allowed,
           created_at,
           updated_at
         FROM public.beauty_sku_ingredients
+        WHERE lower(COALESCE(to_jsonb(beauty_sku_ingredients)->>'review_status', '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
+          AND lower(COALESCE(to_jsonb(beauty_sku_ingredients)->>'audit_status', '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
+          AND lower(COALESCE(to_jsonb(beauty_sku_ingredients)->>'parse_status', '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
+          AND lower(COALESCE(to_jsonb(beauty_sku_ingredients)->>'ingest_allowed', '')) <> 'false'
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, sku_key ASC
         LIMIT $1
-      `,
-      [perTableLimit],
+      `, targets, `((target.product_key <> '' AND product_key = target.product_key)
+          OR (target.signature <> '' AND sku_key IN (target.signature, 'product:' || target.signature))
+          OR (sku_key ~* '^(product:)?ext_' AND (sku_key = ANY(target.ids) OR sku_key = ANY(target.refs)))
+          OR (target.merchant_id <> '' AND target.platform = '' AND merchant_id = target.merchant_id
+            AND (sku_key = ANY(target.ids) OR sku_key = ANY(target.refs))))
+        AND (target.product_key = '' OR COALESCE(product_key, '') IN ('', target.product_key))
+        AND (target.merchant_id = '' OR COALESCE(merchant_id, '') IN ('', target.merchant_id))`),
+      targets.length ? [5, JSON.stringify(targets)] : [perTableLimit],
     );
-    out.push(...rows.map((row) => normalizeIngredientKbRow(row, { table: 'public.beauty_sku_ingredients' })).filter(Boolean));
+    out.push(...boundedEvidenceRows(rows, targets.length).map((row) => {
+      const ingredient = normalizeIngredientKbRow(row, { table: 'public.beauty_sku_ingredients' });
+      return ingredient ? { ...ingredient, ...(row._evidence_load_incomplete ? { ingredient_evidence_incomplete: true } : {}) } : null;
+    }).filter(Boolean));
   }
   if (await tableExists(queryFn, 'pci_kb.sku_ingredients')) {
     const rows = await guardedRows(
       queryFn,
-      `
+      targetedEvidenceSql(`
         SELECT
           sku_key,
           market,
@@ -1415,16 +1628,31 @@ async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMI
           ingest_allowed = TRUE
           OR upper(COALESCE(parse_status, '')) = 'OK'
         )
-          AND lower(COALESCE(review_status, '')) NOT IN ('reject', 'rejected', 'blocked', 'failed')
-          AND lower(COALESCE(audit_status, '')) NOT IN ('reject', 'rejected', 'blocked', 'failed')
+          AND ingest_allowed IS DISTINCT FROM FALSE
+          AND lower(COALESCE(review_status, '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
+          AND lower(COALESCE(audit_status, '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
+          AND lower(COALESCE(parse_status, '')) NOT IN ('reject', 'rejected', 'blocked', 'failed', 'fail', 'needs_review')
         ORDER BY created_at DESC NULLS LAST, sku_key ASC
         LIMIT $1
-      `,
-      [perTableLimit],
+      `, targets, `((target.signature <> '' AND sku_key IN (target.signature, 'product:' || target.signature))
+          OR (sku_key ~* '^(product:)?ext_' AND (sku_key = ANY(target.ids) OR sku_key = ANY(target.refs))) OR source_ref = ANY(target.urls))
+        AND (target.signature = '' OR sku_key !~* '^(product:)?sig_'
+          OR regexp_replace(sku_key, '^product:', '', 'i') = target.signature)
+        AND (target.brand = '' OR lower(btrim(COALESCE(brand, ''))) IN ('', target.brand))
+        AND upper(COALESCE(market, '')) IN ('', target.market)`),
+      targets.length ? [5, JSON.stringify(targets)] : [perTableLimit],
     );
-    out.push(...rows.map((row) => normalizeIngredientKbRow(row, { table: 'pci_kb.sku_ingredients' })).filter(Boolean));
+    out.push(...boundedEvidenceRows(rows, targets.length).map((row) => {
+      const ingredient = normalizeIngredientKbRow(row, { table: 'pci_kb.sku_ingredients' });
+      return ingredient ? { ...ingredient, ...(row._evidence_load_incomplete ? { ingredient_evidence_incomplete: true } : {}) } : null;
+    }).filter(Boolean));
   }
-  return dedupeNormalizedProducts(out);
+  const seen = new Set();
+  return out.filter((row) => {
+    const key = JSON.stringify([row.product_ref, row.ingredient_evidence]);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
 }
 
 async function loadLegacyDupeKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT } = {}) {
@@ -1928,9 +2156,9 @@ function hasIntersectingIdentity(left, right) {
 function buildIntelIndex(intelRows = []) {
   const index = new Map();
   for (const raw of Array.isArray(intelRows) ? intelRows : []) {
-    const intel = normalizeProductIntelKbRow(raw) || normalizeProductCandidateSnapshot(raw);
+    const intel = normalizeProductIntelKbRow(raw) || (!raw.analysis && !raw.product_intel ? normalizeProductCandidateSnapshot(raw) : null);
     if (!intel) continue;
-    for (const key of productIdentityKeys(intel)) {
+    for (const key of evidenceIdentityKeys(intel)) {
       if (!index.has(key)) index.set(key, []);
       index.get(key).push(intel);
     }
@@ -1942,10 +2170,11 @@ function findIntelForCandidate(candidate, intelIndex) {
   if (!intelIndex || typeof intelIndex.get !== 'function') return [];
   const matches = [];
   const seen = new Set();
-  for (const key of productIdentityKeys(candidate)) {
+  for (const key of evidenceIdentityKeys(candidate)) {
     for (const row of intelIndex.get(key) || []) {
       const ref = row.product_ref || key;
       if (seen.has(ref)) continue;
+      if (!compatibleEvidenceIdentity(candidate, row)) continue;
       seen.add(ref);
       matches.push(row);
     }
@@ -1954,20 +2183,137 @@ function findIntelForCandidate(candidate, intelIndex) {
 }
 
 function mergeCandidateWithIntel(candidate, intelRows) {
-  let out = { ...candidate };
-  for (const intel of intelRows) {
-    out = {
-      ...out,
-      source_refs: mergeSourceRefs(out.source_refs, intel.source_refs),
-      evidence_grade: betterEvidenceGrade(out.evidence_grade, intel.evidence_grade),
-      product_intel: out.product_intel || intel.product_intel,
-      intel_text: [out.intel_text, intel.intel_text, intel.description].map((item) => normalizeString(item, 2000)).filter(Boolean).join(' '),
-      description: [out.description, intel.description, intel.intel_text].map((item) => normalizeString(item, 2000)).filter(Boolean).join(' '),
-      category: out.category || intel.category,
-      category_taxonomy: normalizeCategoryTaxonomy(out.category_taxonomy, intel.category_taxonomy),
-    };
+  const intel = [...intelRows].filter((row) => row.product_intel && compatibleEvidenceIdentity(candidate, row))
+    .sort((a, b) => String(b.observed_at || '').localeCompare(String(a.observed_at || '')))[0];
+  if (!intel) return candidate;
+  return {
+    ...candidate,
+    source_refs: mergeSourceRefs(candidate.source_refs, intel.source_refs),
+    product_intel: intel.product_intel,
+    ...(intel.product_intel_evidence_incomplete ? { product_intel_evidence_incomplete: true } : {}),
+    intel_text: intel.intel_text,
+    description: candidate.description || intel.description,
+    category: candidate.category || intel.category,
+    category_taxonomy: candidate.category_taxonomy?.length ? candidate.category_taxonomy : intel.category_taxonomy,
+  };
+}
+
+// Evidence joins use exact listing identifiers only. Names and family ids remain useful for
+// recall/deduplication, but cannot bind a formula or source confidence to another variant.
+function evidenceIdentityKeys(product = {}) {
+  const keys = new Set();
+  const add = (kind, value) => { const text = normalizeString(value, 512); if (text) keys.add(`${kind}:${text}`); };
+  add('product_key', product.product_key);
+  add('signature', evidenceSignature(product));
+  const ids = [product.product_id, product.source_product_id, product.sku_key,
+    /^product:/i.test(product.product_ref || '') ? stripRefPrefix(product.product_ref) : ''];
+  // Catalog source ids are often recycled between stores. A raw id/ref without an exact key,
+  // signature, URL, or merchant scope cannot bind another listing's ingredients.
+  for (const value of ids.filter(Boolean)) {
+    if (/^ext_/i.test(value)) add('external_id', value);
+    if (product.merchant_id) add(`merchant_id:${product.merchant_id}:platform:${product.platform || ''}`, value);
   }
-  return out;
+  add('url', product.url);
+  return [...keys];
+}
+
+function evidenceSignature(product = {}) {
+  return product.pivota_signature_id || (/^product:sig_/i.test(product.product_ref || '') ? stripRefPrefix(product.product_ref) : '');
+}
+
+function compatibleEvidenceIdentity(product, evidence) {
+  const merchant = (item) => normalizeLower(item.merchant_id) === 'external_seed' ? '' : normalizeLower(item.merchant_id);
+  for (const field of ['pivota_signature_id', 'product_key', 'market']) {
+    if (product[field] && evidence[field] && (field === 'market'
+      ? normalizeMarket(product[field]) !== normalizeMarket(evidence[field])
+      : product[field] !== evidence[field])) return false;
+  }
+  if (evidenceSignature(product) && evidenceSignature(evidence) && evidenceSignature(product) !== evidenceSignature(evidence)) return false;
+  if (merchant(product) && merchant(evidence) && merchant(product) !== merchant(evidence)) return false;
+  if (product.brand && evidence.brand && pairBrand(product) !== pairBrand(evidence)) return false;
+  for (const field of ['variant_title', 'variant_detail_label']) {
+    if (product[field] && evidence[field] && normalizeLower(product[field]) !== normalizeLower(evidence[field])) return false;
+  }
+  const keys = new Set(evidenceIdentityKeys(product));
+  return evidenceIdentityKeys(evidence).some((key) => keys.has(key));
+}
+
+function buildIngredientIndex(rows) {
+  const index = new Map();
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    const row = normalizeIngredientKbRow(raw);
+    if (!row) continue;
+    for (const key of evidenceIdentityKeys(row)) {
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(row);
+    }
+  }
+  return index;
+}
+
+function mergeCandidateWithIngredients(candidate, index) {
+  const matches = new Set(evidenceIdentityKeys(candidate).flatMap((key) => index.get(key) || []));
+  const rows = [...matches].filter((row) => compatibleEvidenceIdentity(candidate, row));
+  if (!rows.length) return candidate;
+  const evidence = [...(candidate.ingredient_evidence || []), ...rows.flatMap((row) => row.ingredient_evidence || [])];
+  const unique = [...new Map(evidence.map((row) => [JSON.stringify(row), row])).values()].slice(0, 8);
+  const texts = [candidate.ingredient_text, ...rows.map((row) => row.ingredient_text)].filter(Boolean);
+  const conflicting = candidate.ingredient_evidence_conflict === true || new Set(texts.map(ingredientFormulaKey)).size > 1;
+  const incomplete = candidate.ingredient_evidence_incomplete === true || rows.some((row) => row.ingredient_evidence_incomplete);
+  const { ingredient_text: _previous, ...rest } = candidate;
+  return { ...rest,
+    ...(conflicting ? { ingredient_evidence_conflict: true } : {}),
+    ...(incomplete ? { ingredient_evidence_incomplete: true } : {}),
+    ...(!conflicting && !incomplete ? { ingredient_text: texts[0] } : {}),
+    ingredient_evidence: unique,
+    source_refs: mergeSourceRefs(candidate.source_refs, ...rows.map((row) => row.source_refs)),
+  };
+}
+
+function ingredientFormulaKey(value) {
+  return normalizeLower(value, 6000).replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function ingredientEvidenceForSnapshot(snapshot) {
+  if (snapshot.ingredient_evidence?.length) return snapshot.ingredient_evidence;
+  return snapshot.ingredient_text ? [{ table: 'product_snapshot', product_ref: snapshot.product_ref,
+    product_key: snapshot.product_key, ingredient_text: snapshot.ingredient_text,
+    observed_at: snapshot.observed_at, source_refs: snapshot.source_refs || [] }] : [];
+}
+
+function enrichProductsWithEvidence(products = [], { intelRows = [], ingredientRows = [] } = {}) {
+  const intelIndex = buildIntelIndex(intelRows);
+  const ingredientIndex = buildIngredientIndex(ingredientRows);
+  return (Array.isArray(products) ? products : []).map((raw) => {
+    const normalized = normalizeProductCandidateSnapshot(raw);
+    if (!normalized) return null;
+    const product = { ...raw, ...normalized }; // Retain caller metadata and protected label fields.
+    return mergeCandidateWithIngredients(mergeCandidateWithIntel(product, findIntelForCandidate(product, intelIndex)), ingredientIndex);
+  }).filter(Boolean);
+}
+
+async function enrichProductRelationshipGraphProducts({ queryFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET } = {}) {
+  const batchSize = Math.min(200, normalizeLimit(limit));
+  const intelRows = [];
+  const ingredientRows = [];
+  for (let offset = 0; offset < products.length; offset += batchSize) {
+    const targetProducts = products.slice(offset, offset + batchSize);
+    const [intel, ingredients] = await Promise.all([
+      loadProductIntelKbRows({ queryFn, targetProducts, market }),
+      loadIngredientKbCandidates({ queryFn, targetProducts, market }),
+    ]);
+    intelRows.push(...intel); ingredientRows.push(...ingredients);
+  }
+  const enriched = enrichProductsWithEvidence(products, { intelRows, ingredientRows });
+  return { products: enriched, intelRows, ingredientRows, diagnostics: {
+    targeted_products: products.length, products_with_ingredients: enriched.filter((row) => row.ingredient_text).length,
+    ingredient_conflicts: enriched.filter((row) => row.ingredient_evidence_conflict).length,
+    products_with_intel: enriched.filter((row) => row.product_intel).length,
+    requested_products: products.length, targeted_products_complete: enriched.length === products.length,
+    evidence_records_per_product_per_source_limit: 4,
+    ingredient_loads_incomplete: enriched.filter((row) => row.ingredient_evidence_incomplete).length,
+    intel_loads_incomplete: enriched.filter((row) => row.product_intel_evidence_incomplete).length,
+  } };
 }
 
 function normalizeLegacyRows(legacyDupes = []) {
@@ -2093,11 +2439,12 @@ function scoreCandidateForAnchor(anchor, candidate, { legacyMatch = false, intel
 
   return {
     category_use_case_match: Number(categoryUseCase.toFixed(4)),
-    ingredient_functional_similarity: Number(clamp01(ingredientScore + (sourceTypesFromRefs(candidate.source_refs).includes('ingredient_kb') ? 0.05 : 0), 0).toFixed(4)),
+    ingredient_functional_similarity: Number(clamp01(ingredientScore, 0).toFixed(4)),
     price_advantage: Number(priceAdvantage.toFixed(4)),
     evidence_quality: Number(clamp01(0.62 + sourceBonus + (legacyMatch ? 0.08 : 0) + (intelMatch ? 0.05 : 0), 0).toFixed(4)),
     availability_confidence: Number(clamp01(0.66 + (candidatePrice != null ? 0.08 : 0) + sourceBonus / 2, 0).toFixed(4)),
-    social_reference_strength: sourceTypesFromRefs(candidate.source_refs).includes('product_intel_kb') ? 0.2 : 0,
+    social_reference_strength: normalizeSourceRefs(candidate.source_refs).some((ref) =>
+      ['verified_review', 'verified_reviews', 'review_aggregate'].includes(ref.type) && ref.authoritative === true) ? 0.2 : 0,
     score_total: Number(similarityScore.toFixed(4)),
   };
 }
@@ -2185,21 +2532,43 @@ function listingIdentityOwner(preferred, secondary) {
 
 function mergeDuplicateCandidate(existing, candidate) {
   if (!existing) return candidate;
-  const preferred = compareScoredCandidates(existing, candidate) <= 0 ? existing : candidate;
+  const evidenceOnly = (item) => ['ingredient_kb', 'product_intel_kb'].includes(item._source_type);
+  const preferred = evidenceOnly(existing) !== evidenceOnly(candidate)
+    ? evidenceOnly(existing) ? candidate : existing
+    : compareScoredCandidates(existing, candidate) <= 0 ? existing : candidate;
   const secondary = preferred === existing ? candidate : existing;
   const identityOwner = listingIdentityOwner(preferred, secondary);
   const identity = Object.fromEntries(LISTING_IDENTITY_FIELDS.map((field) => [field, identityOwner[field]]));
+  const sameListing = compatibleEvidenceIdentity(preferred, secondary);
+  const evidenceOwner = identityOwner !== preferred && !sameListing ? identityOwner : preferred;
+  const otherEvidence = evidenceOwner === preferred ? secondary : preferred;
+  const shareEvidence = compatibleEvidenceIdentity(evidenceOwner, otherEvidence);
+  const formulaConflict = evidenceOwner.ingredient_evidence_conflict || (shareEvidence && (
+    otherEvidence.ingredient_evidence_conflict || (evidenceOwner.ingredient_text && otherEvidence.ingredient_text &&
+      ingredientFormulaKey(evidenceOwner.ingredient_text) !== ingredientFormulaKey(otherEvidence.ingredient_text))));
+  const formulaIncomplete = evidenceOwner.ingredient_evidence_incomplete || (shareEvidence && otherEvidence.ingredient_evidence_incomplete);
+  const attributedIngredients = shareEvidence
+    ? [...ingredientEvidenceForSnapshot(evidenceOwner), ...ingredientEvidenceForSnapshot(otherEvidence)]
+    : evidenceOwner.ingredient_evidence || [];
+  const ingredientEvidence = [...new Map(attributedIngredients.map((row) => [JSON.stringify(row), row])).values()].slice(0, 8);
   return {
     ...secondary,
     ...preferred,
     ...identity,
-    source_refs: mergeSourceRefs(existing.source_refs, candidate.source_refs),
+    source_refs: mergeSourceRefs(evidenceOwner.source_refs, shareEvidence ? otherEvidence.source_refs
+      : normalizeSourceRefs(otherEvidence.source_refs).filter((ref) => !['ingredient_kb', 'product_intel_kb'].includes(ref.type))),
     evidence_grade: betterEvidenceGrade(existing.evidence_grade, candidate.evidence_grade),
     category_taxonomy: normalizeCategoryTaxonomy(existing.category_taxonomy, candidate.category_taxonomy),
     tags: normalizeTextList([existing.tags, candidate.tags].flat(), 32),
     description: pickFirstString(preferred.description, secondary.description),
-    ingredient_text: pickFirstString(preferred.ingredient_text, secondary.ingredient_text),
-    intel_text: [existing.intel_text, candidate.intel_text].map((item) => normalizeString(item, 2000)).filter(Boolean).join(' '),
+    ingredient_text: formulaConflict || formulaIncomplete ? undefined
+      : normalizeString(evidenceOwner.ingredient_text || (shareEvidence ? otherEvidence.ingredient_text : ''), 6000),
+    ingredient_evidence: ingredientEvidence.length ? ingredientEvidence : undefined,
+    ingredient_evidence_conflict: Boolean(formulaConflict),
+    ingredient_evidence_incomplete: Boolean(formulaIncomplete),
+    product_intel: evidenceOwner.product_intel || (shareEvidence ? otherEvidence.product_intel : undefined),
+    product_intel_evidence_incomplete: Boolean(evidenceOwner.product_intel_evidence_incomplete || (shareEvidence && otherEvidence.product_intel_evidence_incomplete)),
+    intel_text: evidenceOwner.intel_text || (shareEvidence ? otherEvidence.intel_text : undefined),
   };
 }
 
@@ -2249,8 +2618,10 @@ function fanOutCandidatesToSiblingAnchors(candidatesByAnchor, allAnchors = [], r
 function buildCandidatesByAnchorFromSources({
   anchors = [],
   products = [],
+  productsByAnchor = {},
   legacyDupes = [],
   intelRows = [],
+  ingredientRows = [],
   maxPerAnchor = 24,
   includeTransitiveRecall = true,
   maxBridgePerAnchor = 8,
@@ -2258,29 +2629,29 @@ function buildCandidatesByAnchorFromSources({
   maxTransitivePerAnchor = 8,
   fanOutFamilyCandidatesToSiblingAnchors = false,
 } = {}) {
-  const normalizedAnchors = (Array.isArray(anchors) ? anchors : [])
-    .map((anchor) => normalizeProductCandidateSnapshot(anchor))
-    .filter(Boolean);
+  const normalizedAnchors = enrichProductsWithEvidence(anchors, { intelRows, ingredientRows });
   const familyDedupedAnchors = dedupeNormalizedProducts(normalizedAnchors);
   const normalizedProducts = (Array.isArray(products) ? products : [])
     .map((product) => normalizeProductCandidateSnapshot(product))
     .filter(Boolean);
   const normalizedIntelRows = (Array.isArray(intelRows) ? intelRows : [])
-    .map((row) => normalizeProductIntelKbRow(row) || normalizeProductCandidateSnapshot(row))
+    .map((row) => normalizeProductIntelKbRow(row) || (!row.analysis && !row.product_intel ? normalizeProductCandidateSnapshot(row) : null))
     .filter(Boolean);
   const intelIndex = buildIntelIndex(normalizedIntelRows);
+  const ingredientIndex = buildIngredientIndex(ingredientRows);
   const legacyRows = normalizeLegacyRows(legacyDupes);
   const out = {};
 
   for (const anchor of familyDedupedAnchors) {
     const anchorFamilyKey = familyIdentityKey(anchor);
     const legacy = legacySignalsForAnchor(anchor, legacyRows);
-    const rawPool = [...normalizedProducts, ...normalizedIntelRows, ...legacy.explicitCandidates];
+    const rawPool = [...normalizedProducts, ...(productsByAnchor[anchor.product_ref] || []), ...normalizedIntelRows, ...legacy.explicitCandidates];
     const rawByFamily = new Map();
     const rawFamilyIndex = createFamilyDedupeIndex();
     const identityToFamilyKey = new Map();
     for (const rawCandidate of rawPool) {
-      const baseCandidate = normalizeProductCandidateSnapshot(rawCandidate);
+      const normalized = normalizeProductCandidateSnapshot(rawCandidate);
+      const baseCandidate = normalized ? mergeCandidateWithIngredients({ ...rawCandidate, ...normalized }, ingredientIndex) : null;
       if (!baseCandidate) continue;
       if (isSameFamilyVariant(anchor, baseCandidate)) continue;
       if (familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(baseCandidate))) continue;
@@ -2409,7 +2780,7 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   // The second-hop row's similarity_score / score_total describe it against the BRIDGE. They must
   // not reach scoreCandidateForAnchor, which would read them as an explicit score against the
   // anchor and make every two-hop candidate as strong as its bridge's own best match.
-  const { similarity_score: _bridgeSim, score_total: _bridgeTotal, vector_score: _bridgeVector, score_breakdown: _bridgeBreakdown, ...directCandidate } = candidate;
+  const { vector_score: _bridgeVector, ...directCandidate } = withoutRelationshipPairContext(candidate);
   const baseScore = scoreCandidateForAnchor(anchor, directCandidate, {
     intelMatch: sourceHasProductIntel(candidate),
   });
@@ -2448,13 +2819,12 @@ function buildTransitiveRecallCandidate({ anchor, bridge, candidate } = {}) {
   };
 
   return {
-    ...candidate,
+    ...directCandidate,
     ...transitiveScore,
     similarity_score: transitiveScore.score_total,
     score_breakdown: transitiveScore,
     source_refs: mergeSourceRefs(
-      candidate.source_refs,
-      bridge.source_refs,
+      directCandidate.source_refs,
       {
         type: 'relationship_graph_transitive_recall',
         name: 'two_hop_candidate',
@@ -2591,15 +2961,14 @@ async function loadProductRelationshipGraphSourceInputs({
     market,
     limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
   });
-  const products = dedupeNormalizedProducts([
+  const products = dedupeNormalizedProducts(enrichProductsWithEvidence([
     ...affectedProducts,
     ...productsCache,
     ...externalSeeds,
-    ...ingredientRows,
     ...vectorRows,
     ...intelRows,
     ...approvedLiveExternalSeedAnchors,
-  ]);
+  ], { intelRows, ingredientRows }));
   return {
     products: prioritizeUncovered
       ? prioritizeUncoveredProducts(products, affectedProducts.filter((product) => product._relgraph_uncovered_live))
@@ -2636,6 +3005,8 @@ module.exports = {
   normalizeApprovedLiveExternalSeedRow,
   normalizeProductIntelKbRow,
   normalizeIngredientKbRow,
+  enrichProductsWithEvidence,
+  enrichProductRelationshipGraphProducts,
   normalizeLegacyDupeKbRow,
   augmentCandidatesWithTransitiveRecall,
   dedupeNormalizedProducts,
@@ -2669,6 +3040,8 @@ module.exports = {
     fanOutCandidatesToSiblingAnchors,
     inferBrandFromOfficialUrl,
     mergeSourceRefs,
+    evidenceIdentityKeys,
+    compatibleEvidenceIdentity,
     overlapScore,
     productIdentityKeys,
     normalizeAffectedRefTerms,

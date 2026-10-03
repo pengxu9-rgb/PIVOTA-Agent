@@ -184,6 +184,10 @@ function extractRelationshipGraphRunRecord(summary = {}, {
         decisions: review.decisions.map((row) => ({
           id: row.id, verdict: row.verdict, applied: row.applied === true,
           new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,
+          ...(row.cross_agent_review ? { review_basis: 'independent_cross_provider_agreement',
+            review_fingerprint: row.cross_agent_review.review_fingerprint,
+            escalation_reason: row.cross_agent_review.escalation_reason,
+          } : {}),
         })),
       } } : {}),
     },
