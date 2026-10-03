@@ -1,6 +1,8 @@
 // Review criteria belong in operator evidence, never in product narratives.
 // Omit contaminated copy rather than turning a review observation into a claim.
 const INTERNAL_EVALUATION_COPY = [
+  /\b(?:human_standard|strict_human|official_pdp_manual_review|field_sources|quality_improvement|gemini_quality_gate)(?:_[a-z0-9]+)*\b/i,
+  /\b(?:review criteria|evaluation criteria|internal standards?|quality gate|reviewer kind|selection strategy)\b/i,
   /\breviewed (?:pdp|sku|lip|color|scent|nail(?:-polish|-care)?|set|mist|complexion|primer|skincare|shimmer|spf|tool|oral-care) (?:cues|fields)\b/i,
   /\breviewed (?:usage context|key-ingredient fields|directions)\b/i,
   /\b(?:reviewed and normalized by pivota|pivota-reviewed|source-backed cues around)\b/i,

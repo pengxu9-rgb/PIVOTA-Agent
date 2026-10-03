@@ -52,6 +52,15 @@ test('serving guard checks complete text and alternate narrative slots without b
   expect(cleaned.shopping_card).toEqual({ subtitle: 'Lip ink' });
 });
 
+test.each(['human_standard', 'strict_human_manual_rewrite', 'gemini_quality_gate', 'internal standards', 'review criteria'])(
+  'internal audit marker %s cannot appear in a shopper narrative', (marker) => {
+    const result = sanitizeProductIntelShopperCopy({ product_intel_core: {
+      watchouts: [{ label: `Product passed ${marker}.` }, { label: 'Shade appearance varies with lip tone.' }],
+    } });
+    expect(result.product_intel_core.watchouts).toEqual([{ label: 'Shade appearance varies with lip tone.' }]);
+  },
+);
+
 test('legacy internal metadata remains available to internal normalizer, outside public projection', () => {
   expect(normalizePublishedProductIntelBundle(legacy).provenance).toEqual(legacy.provenance);
 });
