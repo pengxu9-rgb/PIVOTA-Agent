@@ -10084,7 +10084,7 @@ function scopeCanonicalHistoryProduct(product) {
 // primary reader; a selected canonical reader never dispatches the legacy SDK.
 async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
   const views = request?.context?.recent_views || [];
-  if (!browseUsesCanonicalSig() || request?.surface !== 'home_hot_deals' || !views.length ||
+  if (!browseUsesCanonicalSig() || !['home_hot_deals', 'browse_products'].includes(request?.surface) || !views.length ||
       views.length > MAX_ANCHORS || hasBrandScope(request) || hasDiscoveryQueryText(request) ||
       hasDiscoveryCategoryScope(request) || request?.source_product_ref?.product_id ||
       String(request?.context?.locale || 'en-US') !== 'en-US' ||

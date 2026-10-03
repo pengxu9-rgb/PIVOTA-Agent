@@ -467,10 +467,10 @@ async function runSmoke(options = {}) {
   const browsePageOneResult = validateDiscoveryResponse(browsePageOne, {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
-    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
+    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'],
     minProducts: 6,
     requireRankDebug: true,
-    requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline']],
+    requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline', 'canonical_sig_personalized']],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS browse_page_one ${JSON.stringify(browsePageOneResult)}`);

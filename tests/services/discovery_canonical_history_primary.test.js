@@ -119,3 +119,19 @@ test('different history query cannot be silently replaced by stored brand', asyn
   expect(req.context.recent_queries).toEqual(['gift-set']);
   expect((await primary(req)).products).toHaveLength(10);expect(axios.get).not.toHaveBeenCalled();
  });
+
+ test('same native Iconic history uses direct canonical primary on declared browse surface',async()=>{
+   const req=request({surface:'browse_products'});
+   const response=await getDiscoveryFeed(req,{relationshipGraphRecallFn:()=>{throw Error('alternate graph')},identityGraphRowsResolverFn:async()=>[]});
+   expect(response.products.length).toBeGreaterThanOrEqual(6);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
+ });
+ test.each(['home_hot_deals','browse_products'])('canonical failure stays failed on %s with zero HTTP alternate',async surface=>{
+   db.query.mockRejectedValue(Error('synthetic DB timeout'));
+   await expect(getDiscoveryFeed(request({surface}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}})).rejects.toThrow();
+   expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('empty canonical browse stays empty without graph or SDK substitution',async()=>{
+   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[]:[row()]}));
+   const response=await getDiscoveryFeed(request({surface:'browse_products'}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}});
+   expect(response.products).toEqual([]);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
+ });

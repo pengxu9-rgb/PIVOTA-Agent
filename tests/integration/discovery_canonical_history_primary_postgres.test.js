@@ -45,6 +45,9 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     expect(result.products[0].category_path).toEqual(['beauty','sets','gift-set']);
     expect(result.recallSummary[0].status).toBe(200); expect(db.query).toHaveBeenCalledTimes(2); expect(axios.get).not.toHaveBeenCalled();
   });
+  test('same exact stored subject on browse resolves own public offers directly',async()=>{
+    const req=i.normalizeDiscoveryRequest({...payload,surface:'browse_products'});expect((await load(req)).products).toHaveLength(9);expect(axios.get).not.toHaveBeenCalled();
+  });
   test.each([['suppressed',"UPDATE catalog_products SET suppression_reason='hidden' WHERE product_key='local_0'"],['not live',"UPDATE catalog_products SET sync_status='expired' WHERE product_key='local_0'"],['private',"UPDATE catalog_row_trust SET serving_decision='private' WHERE subject_key='local_0'"]])('%s anchor is refused by the exact primary SQL, no alternate provider',async (_,sql) => {
     await client.query(sql);const result=await load();expect(result.products).toEqual([]);expect(result.recallSummary[0].failure_reason).toBe('canonical_history_subject_not_public');expect(db.query).toHaveBeenCalledTimes(1);expect(axios.get).not.toHaveBeenCalled();
   });
