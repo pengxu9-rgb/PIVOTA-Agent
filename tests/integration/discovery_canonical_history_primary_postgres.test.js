@@ -2,7 +2,7 @@ jest.mock('../../src/db', () => ({ query: jest.fn() }));
 const { Client } = require('pg');
 const db = require('../../src/db');
 const axios = require('axios');
-const { buildDiscoveryProfile, _internals: i } = require('../../src/services/discoveryFeed');
+const { getDiscoveryFeed, buildDiscoveryProfile, _internals: i } = require('../../src/services/discoveryFeed');
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 (url ? describe : describe.skip)('canonical personalized history on explicitly selected owned loopback PostgreSQL', () => {
   let client, originalEnv;
@@ -75,4 +75,36 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     await client.query("INSERT INTO catalog_offers VALUES('foreign-cheap','local_1','foreign','US','USD','in_stock',1,NULL,NULL,NULL)");
     expect((await load()).products.find(p=>p.product_id==='sig_'+String(1).padStart(32,'0')).price).toBe(45);expect(axios.get).not.toHaveBeenCalled();
   });
+  test.each(['price_asc','price_desc','popular'])('real primary SQL %s fixed pool preserves page windows and scoped total beyond old30/36 boundary',async sort=>{
+    for(let n=9;n<43;n++){
+      const id='sig_'+String(n).padStart(32,'0'),key='local_'+n;
+      await client.query(`INSERT INTO agent_pdp_view SELECT $1,$2,brand,title,description,image_url,image_urls,currency,price_min,price_max,offer_count,offers,category_path,refreshed_at FROM agent_pdp_view WHERE content_key='local_0'`,[key,id]);
+      await client.query(`INSERT INTO catalog_products SELECT $1,$1,$2,merchant_id,platform,$3,brand,canonical_url,sync_status,suppression_reason,updated_at FROM catalog_products WHERE product_key='local_0'`,[key,id,'ext_local_'+n]);
+      await client.query("INSERT INTO catalog_row_trust VALUES('product',$1,'public')",[key]);
+      await client.query("INSERT INTO catalog_offers VALUES($1,$2,'merch_obs_local','US','USD','in_stock',$3,NULL,NULL,NULL)",['offer_'+n,key,n===31?1:n===32?100:45]);
+      await client.query(`INSERT INTO external_product_seeds VALUES($1,$2,'https://jurlique.com/products/local-synthetic','active',NOW())`,['synthetic_seed_'+n,key]);
+    }
+    await client.query("UPDATE catalog_products SET canonical_url='https://jurlique.com/products/'||product_key; UPDATE external_product_seeds SET destination_url='https://jurlique.com/products/'||attached_product_key; UPDATE agent_pdp_view SET title='Jurlique Daily Ritual '||content_key WHERE content_key<>'local_0'");
+    // Primary anchor/pool SQL is actual PG. Ancillary hydration/identity/shadow
+    // reads are explicitly empty synthetic projections, not production claims.
+    const limits=[];
+    db.query.mockImplementation((sql,params)=>{
+      if(sql.includes('COUNT(DISTINCT'))throw Error('global count must not run on this primary');
+      if(sql.includes('WITH brand_match')){limits.push(params[2]);return client.query(sql,params);}
+      if(sql.includes('AND apv.pivota_signature_id = ANY($2::text[])'))return client.query(sql,params);
+      return Promise.resolve({rows:[]});
+    });
+    const opts={identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate provider')}};
+    const pages=[];
+    for(let page=1;page<=3;page++)pages.push(await getDiscoveryFeed({...payload,surface:'browse_products',page,limit:6,sort,debug:true},opts));
+    expect(limits).toEqual([400,400,400]);
+    expect(new Set(pages.flatMap(p=>p.products.map(x=>x.product_id))).size).toBe(18);
+    for(const result of pages){
+      expect(result.total).toBe(42);expect(result.metadata.runtime_corpus_count).toBe(42);
+      expect(result.metadata.count_source).toBe('runtime_canonical_history_pool');
+      expect(result.products.some(p=>p.product_id===sig)).toBe(false);
+    }
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
 });

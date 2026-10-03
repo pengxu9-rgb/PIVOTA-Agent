@@ -151,3 +151,37 @@ test('different history query cannot be silently replaced by stored brand', asyn
    const response=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:6}));
    expect(response.products).toHaveLength(1);expect(response.products[0].product_id).not.toBe(SIG);expect(axios.get).not.toHaveBeenCalled();
  });
+
+ test.each(['price_asc','price_desc','popular'])('canonical %s pages share a fixed universe and its own suppressed count',async sort=>{
+   const pool=Array.from({length:42},(_,n)=>row('sig_'+String(n+1).padStart(32,'0'),{
+     offers:[{market:'US',currency:'USD',availability:'in_stock',price:n===30?1:n===31?100:45}],price_min:n===30?1:n===31?100:45}));
+   const limits=[];
+   db.query.mockImplementation(async(sql,params)=>{
+     if(sql.includes('COUNT(DISTINCT'))throw Error('unscoped global count forbidden');
+     if(sql.includes('WITH brand_match')){limits.push(params[2]);return {rows:[row(),...pool].slice(0,params[2])};}
+     return {rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]};
+   });
+   const opts={identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate graph')}};
+   const one=await getDiscoveryFeed(request({surface:'browse_products',page:1,limit:6,sort}),opts);
+   const two=await getDiscoveryFeed(request({surface:'browse_products',page:2,limit:6,sort}),opts);
+   const third=await getDiscoveryFeed(request({surface:'browse_products',page:3,limit:6,sort}),opts);
+   expect(limits).toEqual([400,400,400]);
+   expect(new Set([...one.products,...two.products,...third.products].map(p=>p.product_id)).size).toBe(18);
+   for(const result of [one,two,third]){
+     expect(result.total).toBe(42);expect(result.metadata.count_source).toBe('runtime_canonical_history_pool');
+     expect(result.metadata.runtime_corpus_count).toBe(42);expect(result.metadata.candidate_counts.eligible_pool).toBe(42);
+     expect(result.products.some(p=>p.product_id===SIG)).toBe(false);
+   }
+   expect(axios.get).not.toHaveBeenCalled();
+ });
+ test('a different history query retains the initial legacy route and its original global count',async()=>{
+   let counts=0;
+   db.query.mockImplementation(async sql=>{
+     if(sql.includes('COUNT(DISTINCT')){counts++;return {rows:[{total:123}]};}
+     return {rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row()]:[]};
+   });
+   axios.get.mockResolvedValue({status:200,data:{products:[]}});
+   const response=await getDiscoveryFeed(request({surface:'browse_products',context:{auth_state:'authenticated',locale:'en-US',recent_views:[buildRecentView(card)],recent_queries:['Dior']}}),{identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:async()=>({products:[]})});
+   expect(response.metadata.candidate_source).not.toBe('canonical_sig_personalized');
+   expect(counts).toBe(1);expect(response.total).toBe(123);
+ });

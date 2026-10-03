@@ -7550,7 +7550,7 @@ async function loadCatalogCandidates({
     }),
   );
 
-  const mergeProducts = (products = []) => {
+  const mergeProducts = (products = [], mergeLimit = safeLimit) => {
     for (const product of Array.isArray(products) ? products : []) {
       if (compoundIntent) {
         const normalized = normalizeCandidateProduct(product, mergedProducts.length);
@@ -7560,7 +7560,7 @@ async function loadCatalogCandidates({
       if (!key || seenKeys.has(key)) continue;
       seenKeys.add(key);
       mergedProducts.push(product);
-      if (mergedProducts.length >= safeLimit) break;
+      if (mergedProducts.length >= mergeLimit) break;
     }
   };
 
@@ -7722,7 +7722,7 @@ async function loadCatalogCandidates({
     candidateSource = 'canonical_sig_personalized';
     primaryPathUsed = 'canonical_sig_personalized';
     providerResults.push(canonicalHistory);
-    mergeProducts(canonicalHistory.products);
+    mergeProducts(canonicalHistory.products, request.surface === 'browse_products' ? 400 : safeLimit);
     for (const provider of ['products_search', 'internal_catalog', 'external_seeds']) {
       providerResults.push(buildSkippedProviderResult(provider, {
         label: getProviderLabel(provider), query: providerQueries.join(' | '), limit: safeLimit,
@@ -10082,20 +10082,29 @@ function scopeCanonicalHistoryProduct(product) {
 // Canonical history is a stored subject, not permission to trust a caller's brand
 // or to infer that an unknown product is beauty. Resolve it before selecting a
 // primary reader; a selected canonical reader never dispatches the legacy SDK.
-async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
+function isPotentialCanonicalHistoryPrimary(request) {
   const views = request?.context?.recent_views || [];
   if (!browseUsesCanonicalSig() || !['home_hot_deals', 'browse_products'].includes(request?.surface) || !views.length ||
       views.length > MAX_ANCHORS || hasBrandScope(request) || hasDiscoveryQueryText(request) ||
       hasDiscoveryCategoryScope(request) || request?.source_product_ref?.product_id ||
       String(request?.context?.locale || 'en-US') !== 'en-US' ||
       resolveDiscoveryExternalSeedMarketConfig().market !== 'US' ||
-      views.some((view) => !/^sig_[a-f0-9]{32}$/.test(view.product_id || '') || !view.merchant_id)) return null;
+      views.some((view) => !/^sig_[a-f0-9]{32}$/.test(view.product_id || '') || !view.merchant_id)) return false;
+  return true;
+}
+
+async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
+  if (!isPotentialCanonicalHistoryPrimary(request)) return null;
+  const views = request.context.recent_views;
+  // A page-independent bounded universe prevents price sorting from moving
+  // offsets as page/limit/cursor change. This is the reader's existing maximum.
+  const poolLimit = request.surface === 'browse_products' ? 400 : limit;
   const startedAt = Date.now();
   const summary = (products, status, error = null) => ({
     provider: 'canonical_sig', products,
     recallSummary: [buildDiscoveryProviderStepSummary({ provider: 'canonical_sig',
       label: 'canonical_sig_personalized', query: views.map((view) => view.product_id).join(' | '),
-      limit, returned: products.length, status, latencyMs: Date.now() - startedAt,
+      limit: poolLimit, returned: products.length, status, latencyMs: Date.now() - startedAt,
       ...(error ? { failureReason: error, error } : {}) })],
   });
   try {
@@ -10125,7 +10134,7 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     // not widen this stored-brand request or be silently replaced by it.
     if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
     const failures = [];
-    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit, failures, strictPublicSource: true });
+    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true });
     if (failures.length) return summary([], null, 'canonical_history_query_failed');
     const allowedBrands = new Set(brands.map(normalizeBrandText));
     const scoped = products.filter((product) => {
@@ -10828,7 +10837,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       continue;
     }
     if ((page <= 1 || suppressRecentViewsOnAllPages) && viewedKeys.has(entry.candidate.key) && !brandScoped) {
-      recentViewDeferred.push(entry);
+      if (!suppressRecentViewsOnAllPages) recentViewDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
@@ -12211,8 +12220,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
     const useStableBrowseCatalogCount = shouldUseStableBrowseCatalogTotal(request);
+    const deferStableBrowseCatalogCount = !Array.isArray(options.candidateProducts) &&
+      isPotentialCanonicalHistoryPrimary(request);
     const stableBrowseCatalogCountPromise =
-      useStableBrowseCatalogCount
+      useStableBrowseCatalogCount && !deferStableBrowseCatalogCount
         ? countStableBrowseCatalogTotal(request)
         : Promise.resolve(null);
     const shouldUseBrandDirectPrimary =
@@ -12565,11 +12576,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       // ranker instead of to the count query, so it gets its own phase. `select` is marked on
       // both sides of the await and accumulates.
       phaseTimer.mark('select');
-      const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
+      const canonicalHistorySelected = candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized';
+      const stableBrowseCatalogCount = canonicalHistorySelected ? null : await (
+        useStableBrowseCatalogCount && deferStableBrowseCatalogCount
+          ? countStableBrowseCatalogTotal(request)
+          : stableBrowseCatalogCountPromise
+      );
       phaseTimer.mark('stable_count_wait');
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
-      countSource =
+      countSource = canonicalHistorySelected ? 'runtime_canonical_history_pool' :
         stableBrowseCatalogCount?.source ||
         (!useStableBrowseCatalogCount && isExplicitQueryScopedBrowseRequest(request)
           ? 'runtime_corpus_query_scoped'
