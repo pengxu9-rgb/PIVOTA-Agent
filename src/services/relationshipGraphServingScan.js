@@ -3,7 +3,9 @@ const { query, getPool } = require('../db');
 // Id-only keyset avoids renewal's timestamp microsecond cursor trap. Full snapshots
 // live for one batch, avoiding the unbounded materialization that caused a 4GB OOM.
 const SERVING_SCAN_SQL = `SELECT id, anchor_type, anchor_ref, anchor_snapshot,
-  candidate_product_ref, candidate_snapshot, relation_type, label_state
+  candidate_product_ref, candidate_snapshot, relation_type, label_state,
+  market, vertical, category_taxonomy, use_case, score_total, score_breakdown,
+  price_evidence, source_refs, evidence_grade, provenance
   FROM relationship_candidate_labels
   WHERE vertical = 'beauty' AND label_state IN ('ai_approved', 'human_approved')
     AND last_verified_at IS NOT NULL AND expires_at > now() AND upper(market) = $1

@@ -3,6 +3,9 @@
 const { recordAnchorAttempts, normalizeCoverageSiblingRefs, productAnchorRefs } = require('../src/auroraBff/relationshipGraphCoverage');
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseTargetRecallOptions } = require('./lib/relationship-graph-target-recall-options');
+const { loadProductRelationshipGraphTargetRecall, normalizeTargetRecallOptions } = require('../src/auroraBff/productRelationshipGraphTargetRecall');
+const { withoutRelationshipPairContext } = require('../src/auroraBff/relationshipCandidatePairContext');
 
 const { closePool, query, withClient } = require('../src/db');
 const {
@@ -857,6 +860,19 @@ function resolveNeedInputs(payload = {}, includeNeedNodes = true) {
   };
 }
 
+// The exact-listing owner adds these fields. Prices, route identity, source grade,
+// clocks and relationship proof belong to each original record, never this cache.
+const HYDRATED_LISTING_FIELDS = ['ingredient_text', 'ingredient_evidence', 'ingredient_evidence_conflict',
+  'ingredient_evidence_incomplete', 'product_intel', 'product_intel_evidence_incomplete', 'intel_text',
+  'description', 'category', 'category_taxonomy'];
+function listingHydrationInput(product) {
+  const result = withoutRelationshipPairContext(product);
+  for (const field of ['source_refs', 'sourceRefs', '_source_type', 'source_type', 'sourceType', 'source',
+    'source_meta', 'sourceMeta', 'provenance', 'evidence_grade', 'evidenceGrade']) delete result[field];
+  result.source_refs = [];
+  return result;
+}
+
 async function buildInputsFromDb({
   limit,
   sourceLimit = limit,
@@ -877,6 +893,8 @@ async function buildInputsFromDb({
   prioritizeUncovered = false,
   uncoveredCooldownDays = 7,
   coverageSiblingRefs = true,
+  expandTargetRecall = false,
+  targetRecallOptions = {},
 } = {}) {
   if (scopeProvided && !(Array.isArray(affectedRefs) && affectedRefs.length)) {
     // An explicit, empty scope: this run touches no products. Nothing to anchor, no need-node
@@ -941,27 +959,113 @@ async function buildInputsFromDb({
     ? sourceInputs.approvedLiveExternalSeedAnchors.filter((product) => !eligibleRefs || productAnchorRefs(product).some((ref) => eligibleRefs.has(ref)))
     : eligibleProducts;
   const offset = Math.max(0, Number(anchorOffset) || 0);
-  const anchors = anchorUniverse.slice(offset, offset + limit);
+  let anchors = anchorUniverse.slice(offset, offset + limit);
+  let targetRecall;
+  let productsByAnchor;
+  let targetedEvidence;
+  if (expandTargetRecall && anchors.length) {
+    const recallCaps = normalizeTargetRecallOptions(targetRecallOptions);
+    targetRecall = await loadProductRelationshipGraphTargetRecall({
+      queryFn: query, anchors, existingProducts: products, market, ...recallCaps,
+      maxCandidates: Math.min(recallCaps.maxCandidates, Math.max(1, 5000 - anchors.length)),
+    });
+    if (isRelationshipGraphCanonicalAnchorEnabled() && targetRecall.products.length) {
+      await applyCanonicalAnchorRefs(targetRecall.products, { queryFn: query });
+    }
+  }
+  const candidateOptions = { maxPerAnchor, includeTransitiveRecall, maxBridgePerAnchor,
+    maxBridgeCandidates, maxTransitivePerAnchor, fanOutFamilyCandidatesToSiblingAnchors };
+  const initialCandidates = buildCandidatesByAnchorFromSources({ anchors, products,
+    legacyDupes: sourceInputs.legacyDupes, intelRows: sourceInputs.intelRows,
+    ...candidateOptions });
+  const baselineCandidateFacts = Object.fromEntries(Object.entries(initialCandidates).map(([ref, candidates]) =>
+    [ref, candidates.map((candidate) => {
+      const facts = { ...candidate };
+      // These values were calculated for the first-pass pair. Feeding them back
+      // as explicit similarity would add pair evidence twice. Keep source facts,
+      // curated pair provenance, currency, and source/vector evidence intact.
+      for (const key of ['score_total', 'similarity_score', 'score_breakdown', 'category_use_case_match',
+        'ingredient_functional_similarity', 'price_advantage', 'evidence_quality', 'availability_confidence',
+        'social_reference_strength', 'why_candidate']) delete facts[key];
+      return facts;
+    })]));
+  // Need targets follow the existing affected-products scope and bounded selector.
+  const needCandidatePool = affectedScoped ? affectedScopedProducts : products;
+  const initialNeedCandidates = includeNeedNodes ? buildNeedCandidateMap(needCandidatePool) : {};
+  const listingIdentity = (product) => {
+    for (const field of ['product_key', 'pivota_signature_id']) {
+      if (product[field]) return `${field}:${product[field]}`;
+    }
+    if (/^product:sig_/i.test(product.product_ref || '')) return `pivota_signature_id:${product.product_ref.slice('product:'.length)}`;
+    const id = product.source_product_id || product.product_id || product.sku_key;
+    // Platform IDs are unique within a store, not across the catalog. A shared
+    // raw ID must never replace another merchant's identity or hydrated facts.
+    if (product.merchant_id && id) return `merchant:${product.merchant_id}:platform:${product.platform || ''}:id:${id}`;
+    if (/^ext_/i.test(id || '')) return `external_id:${id}`;
+    return `product_ref:${product.product_ref}`;
+  };
+  let hydrationFor = (product) => product;
+  if (anchors.length || Object.values(initialNeedCandidates).some((candidates) => candidates.length)) {
+    const { enrichProductRelationshipGraphProducts } = require('../src/auroraBff/productRelationshipGraphSources');
+    // Anchors lead the bounded exact-evidence request. Expanded raw targets get
+    // evidence before opportunity selection; baseline runs hydrate their chosen
+    // candidates and then rescore. Never use family/name joins to borrow INCI.
+    const uniqueEvidenceProducts = new Map();
+    for (const product of [...anchors, ...(targetRecall?.products || []), ...Object.values(baselineCandidateFacts).flat(),
+      ...Object.values(initialNeedCandidates).flat()]) {
+      const identity = listingIdentity(product);
+      if (!uniqueEvidenceProducts.has(identity)) uniqueEvidenceProducts.set(identity, listingHydrationInput(product));
+    }
+    const evidenceUniverse = [...uniqueEvidenceProducts.values()];
+    const evidenceTargets = evidenceUniverse.slice(0, 5000);
+    targetedEvidence = await enrichProductRelationshipGraphProducts({ queryFn: query,
+      products: evidenceTargets, market, limit: evidenceTargets.length });
+    targetedEvidence.diagnostics = { ...targetedEvidence.diagnostics,
+      requested_product_count: evidenceUniverse.length, hydration_product_count: evidenceTargets.length,
+      hydration_cap: 5000, selection_complete: evidenceUniverse.length <= 5000,
+      omitted_product_count: Math.max(0, evidenceUniverse.length - 5000) };
+    // Hydration retains listing identity; catalog keys also survive canonical re-keying.
+    const hydrated = new Map(targetedEvidence.products.map((product) => [listingIdentity(product), product]));
+    // Canonical/group refs can name several listings. An omitted exact listing
+    // must never fall back to another member's group-ref evidence.
+    hydrationFor = (product) => {
+      const facts = hydrated.get(listingIdentity(product));
+      if (!facts) return product;
+      const input = uniqueEvidenceProducts.get(listingIdentity(product));
+      const result = { ...product };
+      // Attach only owner-added listing evidence. Original pair fields retain their
+      // own value or absence; the cache cannot lend another pair's proof, grade,
+      // refs, price clock or route alias. Explicit removal of conflicting/incomplete
+      // INCI also removes the original ingredient text.
+      for (const field of HYDRATED_LISTING_FIELDS) {
+        if (JSON.stringify(facts[field]) !== JSON.stringify(input[field])) result[field] = facts[field];
+      }
+      result.source_refs = sourceInternals.mergeSourceRefs(product.source_refs, facts.source_refs);
+      return result;
+    };
+    anchors = anchors.map(hydrationFor);
+    productsByAnchor = Object.fromEntries(anchors.map((anchor) => [anchor.product_ref,
+      [...(baselineCandidateFacts[anchor.product_ref] || []), ...(targetRecall?.candidatesByAnchor[anchor.product_ref] || [])]
+        .map(hydrationFor)]));
+  }
   // Need-node (niche_specialist) candidates come from the products this run touches. Before
   // 2026-09-27 they came from the whole source pool regardless of --affected-*, so every shard
   // re-emitted the same ~86 global niche edges (0 of them in its own scope) and per-shard counts
   // could not be summed. A run with no affected refs keeps the whole pool.
-  const needCandidatePool = affectedScoped ? affectedScopedProducts : products;
   return {
     anchors,
     candidatesByAnchor: buildCandidatesByAnchorFromSources({
       anchors,
-      products,
+      // Keep the second pass scoped to the admitted baseline candidates and
+      // bounded catalog opportunities. Evidence rows enrich; they do not expand
+      // the global candidate universe after per-anchor admission.
+      products: [],
+      ...(productsByAnchor ? { productsByAnchor, ingredientRows: targetedEvidence.ingredientRows } : {}),
       legacyDupes: sourceInputs.legacyDupes,
-      intelRows: sourceInputs.intelRows,
-      maxPerAnchor,
-      includeTransitiveRecall,
-      maxBridgePerAnchor,
-      maxBridgeCandidates,
-      maxTransitivePerAnchor,
-      fanOutFamilyCandidatesToSiblingAnchors,
+      intelRows: [],
+      ...candidateOptions,
     }),
-    needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(needCandidatePool) : {},
+    needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(needCandidatePool.map(hydrationFor)) : {},
     needs: includeNeedNodes ? CURATED_NEED_NODES : [],
     sourceCounts: sourceInputs.source_counts,
     sourceDiagnostics: {
@@ -972,6 +1076,8 @@ async function buildInputsFromDb({
       need_candidate_pool: affectedScoped ? 'affected' : 'all',
       need_candidate_pool_size: needCandidatePool.length,
       source_counts: sourceInputs.source_counts,
+      targeted_evidence: targetedEvidence?.diagnostics || null,
+      ...(expandTargetRecall ? { target_recall: targetRecall?.diagnostics || { enabled: true, selected_anchor_count: 0 } } : {}),
       builder_options: {
         source_limit: sourceLimit,
         anchor_offset: offset,
@@ -986,6 +1092,7 @@ async function buildInputsFromDb({
         max_transitive_per_anchor: maxTransitivePerAnchor,
         fan_out_family_candidates_to_sibling_anchors: fanOutFamilyCandidatesToSiblingAnchors,
         include_need_nodes: includeNeedNodes,
+        ...(expandTargetRecall ? { expand_target_recall: true } : {}),
       },
     },
   };
@@ -1040,6 +1147,7 @@ async function main() {
     prioritizeUncovered: hasFlag('prioritize-uncovered'),
     coverageSiblingRefs: normalizeCoverageSiblingRefs(argValue('coverage-sibling-refs', 'true')),
     uncoveredCooldownDays: numberArg('uncovered-cooldown-days', 7, { min: 1, max: 90 }),
+    ...parseTargetRecallOptions({ hasFlag, argValue }),
     affectedScopeProvided: affectedScopeProvided(),
     maxPerAnchor,
     includeTransitiveRecall,

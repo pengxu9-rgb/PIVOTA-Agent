@@ -14,7 +14,7 @@ function normalizeCoverageSiblingRefs(value = true) {
 
 // The job does not inherit gateway hydration flags. Its explicit sibling option defaults to
 // true to match production serving; operators must change it with the gateway hydration flag.
-function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true, suppressedIdsSql } = {}) {
+function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, coverageSiblingRefs = true, suppressedIdsSql, requireFreshPdp = true } = {}) {
   if (typeof suppressedIdsSql !== 'string' || !suppressedIdsSql.trim()) {
     throw new Error('Uncovered priority requires suppressedIdsSql from the shared serving scan');
   }
@@ -80,7 +80,9 @@ function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, 
         SELECT max(GREATEST(rcl.created_at, rcl.updated_at, rcl.reviewed_at)) AS last_activity,
           bool_or(rcl.label_state IN ('ai_approved', 'human_approved')
             AND rcl.last_verified_at IS NOT NULL AND rcl.expires_at > now()
-            AND NOT (rcl.label_state = 'ai_approved' AND rcl.relation_type = 'dupe')
+            AND NOT (rcl.label_state = 'ai_approved' AND rcl.relation_type = 'dupe'
+              AND NOT COALESCE(rcl.provenance #>> '{ai_review,cross_agent_review,schema}' = 'relgraph.cross_agent_review.v1'
+                AND rcl.provenance #>> '{ai_review,cross_agent_review,verdict}' = 'approve', false))
             AND NOT (rcl.anchor_type = 'product' AND btrim(rcl.anchor_ref) ~* '^product:.*:')
             AND NOT (btrim(rcl.candidate_product_ref) ~* '^product:.*:')
             AND NOT (rcl.id = ANY(${suppressedIdsSql}))) AS covered,
@@ -104,8 +106,8 @@ function catalogCoverageSql(alias = 'cp', { marketSql = '$2', cooldownDays = 7, 
         CASE WHEN status.relgraph_last_activity >= now() - interval '${days} days' THEN -1
           WHEN ${alias}.product_key IS NOT NULL AND ${activeCatalogProductSourceWhere(alias, 'cm')}
             AND ${alias}.suppressed_at IS NULL AND ${alias}.suppression_reason IS NULL
-            AND ${alias}.pdp_will_render IS TRUE
-            AND ${alias}.pdp_will_render_computed_at >= now() - interval '${PDP_RENDER_FRESHNESS_DAYS} days'
+            ${requireFreshPdp ? `AND ${alias}.pdp_will_render IS TRUE
+            AND ${alias}.pdp_will_render_computed_at >= now() - interval '${PDP_RENDER_FRESHNESS_DAYS} days'` : '-- Offline freshness worklist: the validator, not an old stamp, decides renderability.'}
             AND NOT COALESCE(status.covered, false)
           THEN CASE WHEN status.relgraph_last_activity IS NULL THEN 3
             WHEN COALESCE(status.terminal_only, false) THEN 1 ELSE 2 END
@@ -198,4 +200,4 @@ function prioritizeUncoveredProducts(products, uncoveredProducts) {
   });
 }
 
-module.exports = { requireAnchorAttemptsTable, loadCoverageSuppressedIds, PDP_RENDER_FRESHNESS_DAYS, normalizeCoverageSiblingRefs, coverageCatalogJoinSql, recordAnchorAttempts, normalizeUncoveredCooldownDays, uncoveredLiveCatalogSql, prioritizeUncoveredProducts, productAnchorRefs };
+module.exports = { catalogCoverageSql, requireAnchorAttemptsTable, loadCoverageSuppressedIds, PDP_RENDER_FRESHNESS_DAYS, normalizeCoverageSiblingRefs, coverageCatalogJoinSql, recordAnchorAttempts, normalizeUncoveredCooldownDays, uncoveredLiveCatalogSql, prioritizeUncoveredProducts, productAnchorRefs };
