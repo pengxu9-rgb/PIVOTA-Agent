@@ -15,6 +15,7 @@ function identitySql(expression) {
 }
 const identityValue = (value) => normalizeBrandText(String(value || '').replace(/[·•]/g, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 const FORM_RULES = [
+  [/\blip\s+inks?\b/, 'lip[ ]+inks?'],
   [/\blip\s*tints?\b/, '(lip[ ]*)?tints?'],
   [/\blip\s*oils?\b/, 'lip[ ]*oils?'],
   [/\blip\s*gloss(?:es)?\b/, 'lip[ ]*gloss(?:es)?|gloss'],
