@@ -365,7 +365,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         recoveryIdentityReader: reapAgentic && reapAgentic.recoveryIdentityReader, log: logger, hints: reapHints,
       });
       if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
-      if (recoverOnly) throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN");
+      if (recoverOnly || String(params.session_id || "").startsWith("reap_")) {
+        throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_primary_route_unavailable" });
+      }
+      // checkout.reap selects this primary route. A preflight exclusion is a refusal,
+      // never permission to create a kernel checkout or offer a storefront handoff.
+      if (op.id === "create_checkout_session" && toolArgs.checkout?.reap !== undefined) {
+        throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
+      }
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -1210,6 +1217,11 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
+    body.detail = { reason: error.detail.reason };
+    body.recovery = "correct this selected Reap request; no alternate checkout route will be opened";
+  }
+
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {

@@ -1,3 +1,5 @@
+> Current policy: [Reap primary checkout](reap-primary-route-policy.md). The 2026-10-03 policy supersedes historical automatic cart retries and storefront/kernel fall-through descriptions below.
+
 # The Reap agentic lane of the UCP checkout door
 
 `mcp-server/src/ucpReapAgenticLane.js` (the lane), `src/services/reapAgenticPurchaseClient.js` (the

@@ -1315,7 +1315,15 @@ describe('schema and mapper cannot drift', () => {
         const unread = leaves
           .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(markerFor(leaf)))
           .map((leaf) => leaf.path);
-        const expected = [...UCP_ACCEPTED_BUT_UNMAPPED[opId], ...extraUnmapped.flatMap((t) => t[opId] || [])];
+        const declared = [...UCP_ACCEPTED_BUT_UNMAPPED[opId], ...extraUnmapped.flatMap((t) => t[opId] || [])];
+        // Enum values carry no unique sentinel. Verify this raw-lane field explicitly,
+        // then retain the existing exact sentinel walk for every other leaf.
+        if (opId === 'create_checkout_session') {
+          assert.deepEqual(schema.properties.checkout.properties.reap.properties.item_source.enum, ['reap_variant', 'cart_link']);
+          assert.ok(declared.includes('checkout.reap.item_source'));
+          assert.equal(mapped.includes('item_source'), false);
+        }
+        const expected = declared.filter((path) => path !== 'checkout.reap.item_source');
         assert.deepEqual([...unread].sort(), expected.sort(), `${def.name} (${label}): the unread leaves must be classified EXACTLY`);
       }
     }

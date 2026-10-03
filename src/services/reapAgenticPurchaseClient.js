@@ -105,9 +105,9 @@ function reasonCodeOf(body) {
 }
 
 // Exact create refusal vocabulary/statuses from backend routes/agent_commerce_reap.py
-// _REFUSAL_STATUS at ffae022. Gate/auth refusals deliberately stay unavailable on
-// the private hop: they must never arm a different spending lane.
-const PRIVATE_CREATE_REFUSALS = Object.freeze({
+// _REFUSAL_STATUS. Gate/auth responses stay unavailable in every transport;
+// they never authorize a different spending lane.
+const CREATE_REFUSALS = Object.freeze({
   invalid_request: 400, invalid_address: 400, invalid_return_url: 400,
   currency_unsupported: 400, invalid_offer_code: 400, consent_required: 400,
   merchant_not_eligible: 409, merchant_disabled: 409, merchant_not_purchasable: 409,
@@ -116,13 +116,28 @@ const PRIVATE_CREATE_REFUSALS = Object.freeze({
   seller_identity_unverified: 409, row_currency_mismatch: 409, row_price_stale: 409,
   row_variant_ambiguous: 409, idempotency_conflict: 409,
 });
-function privateCreateRefusalCode(status, body) {
+// One conservative refusal contract for public and private backend transports.
+// A proxy/platform/auth/gate response cannot authorize another spending path.
+function canonicalCreateRefusalCode(status, body) {
   if (!isPlainObject(body)) return null;
-  const hasDetail = Object.prototype.hasOwnProperty.call(body, 'detail');
-  const code = hasDetail ? (isPlainObject(body.detail) ? body.detail.error : null) : body.error;
-  if (typeof code !== 'string' || PRIVATE_CREATE_REFUSALS[code] !== status) return null;
-  if (hasDetail && Object.prototype.hasOwnProperty.call(body, 'error') && body.error !== code) return null;
-  return code;
+  const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+  const reasons = [];
+  if (has(body, 'detail')) {
+    if (!isPlainObject(body.detail) || typeof body.detail.error !== 'string') return null;
+    reasons.push(body.detail.error);
+  }
+  if (has(body, 'error')) {
+    if (typeof body.error === 'string') reasons.push(body.error);
+    else if (isPlainObject(body.error)) {
+      const e = body.error;
+      if (body.status !== 'error' || e.code !== (status === 400 ? 'INVALID_REQUEST' : 'CONFLICT')
+        || typeof e.message !== 'string' || !isPlainObject(e.details) || typeof e.details.error !== 'string') return null;
+      reasons.push(e.message, e.details.error);
+    } else return null;
+  }
+  if (has(body, 'status') && body.status !== 'error') return null;
+  const code = reasons[0];
+  return code && CREATE_REFUSALS[code] === status && reasons.every((reason) => reason === code) ? code : null;
 }
 
 function parseJson(text) {
@@ -246,9 +261,7 @@ function createReapAgenticPurchaseClient(deps = {}) {
       return { kind: KIND.unavailable, code: 'malformed' };
     }
     if (out.status >= 400 && out.status < 500) {
-      const code = deps.requireAuthoritativeRefusal === true
-        ? privateCreateRefusalCode(out.status, out.body)
-        : reasonCodeOf(out.body) || `http_${out.status}`;
+      const code = canonicalCreateRefusalCode(out.status, out.body);
       if (!code) {
         log('warn', { route: 'start', outcome: KIND.unavailable, code: 'http_4xx_unknown', http_status: out.status });
         return { kind: KIND.unavailable, code: 'http_4xx_unknown' };

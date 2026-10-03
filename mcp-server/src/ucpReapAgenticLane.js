@@ -169,11 +169,9 @@ import {
 export const REAP_AGENTIC_LANE_FLAG = "REAP_AGENTIC_LANE_ENABLED";
 /**
  * The Tier B (cart-link) half of this lane. Default OFF, read per call, and only consulted when the lane itself
- * is on. When on, a row the backend refuses on its VARIANT lane with `409 merchant_not_eligible` — the merchant
- * is not on the operator allowlist — is offered ONCE more as `item_source: "cart_link"`, which the backend
- * checks against its own daily Tier B verdict. The backend's `REAP_AGENTIC_CART_LINK_ENABLED` still has to be
- * on too; until it is, the second POST is a `404 not_available_on_this_rail` and the storefront answers as
- * before.
+ * is on. The cart source must be selected explicitly or derived from an external-seed row before create.
+ * Its backend must also enable cart links and validate current stored proof, eligibility and pilot scope.
+ * A variant refusal never selects this source or dispatches another POST.
  */
 export const REAP_AGENTIC_CART_LINK_LANE_FLAG = "REAP_AGENTIC_CART_LINK_LANE_ENABLED";
 /**
@@ -329,11 +327,10 @@ export function reapIdempotencyKey(toolIdempotencyKey) {
 }
 
 /**
- * The backend key for the ONE Tier B (cart-link) retry of a create, derived from the SAME tool key under its own
+ * The backend key for an initially selected cart-link create, derived from the tool key under its own
  * namespace. NOT `reapIdempotencyKey(\`${key}:cart_link\`)`: that collides with the variant key of a caller whose
- * key is literally `K:cart_link` (review of #2323, G3). Deterministic, so a client retry of the create replays
- * the cart-link purchase the first attempt opened (the backend also remembers the variant refusal against the
- * variant key -- pivota-backend "remember a merchant_not_eligible refusal against the idempotency key").
+ * key is literally `K:cart_link` (review of #2323, G3). Deterministic, so exact recovery retains the original
+ * source and key. This namespace is never selected automatically after a variant refusal.
  */
 export function reapCartLinkIdempotencyKey(toolIdempotencyKey) {
   const key = str(toolIdempotencyKey);
@@ -1255,14 +1252,8 @@ function attestedOrBodyEmail(attested, bodyValue) {
   return normalizeEmail(bodyValue) || null;
 }
 
-// A 400 on POST proves NOTHING about eligibility: the backend checks consent and the address BEFORE it checks
-// the merchant, so a non-eligible row answers `consent_required` too. The door therefore never refuses on these.
-// It falls through to the storefront answer exactly as it would have, and — only for the two answers that mean
-// "the buyer block is short" — attaches ONE informational message so the buyer agent can learn what the Reap route
-// would need. The message is CONSTANT (fixed text, fixed field paths): no backend text and no request value can
-// reach it.
-const CONSENT_HINT_CODES = new Set(["consent_required"]);
-const BUYER_DETAIL_HINT_CODES = new Set(["invalid_request", "invalid_address"]);
+// Legacy informational constant retained for consumers. Selected Reap create refusals
+// now stop at the primary route and never attach this hint to a storefront handoff.
 export const REAP_AVAILABLE_WITH_CONSENT_MESSAGE = Object.freeze({
   type: "info",
   code: "reap.available_with_consent",
@@ -1324,10 +1315,9 @@ export async function assertExpectedSeller({ ucpArgs, params, executor, ctx, tim
  * translation + the allowlist + the identity check, and BEFORE the storefront escalation lane. Returns a UCP
  * checkout to answer with, or null to fall through to the next lane untouched.
  *
- * Never refuses a create: every create either opens a purchase or returns null. When the backend's 400 says the
- * buyer block was short (`consent_required`, or `invalid_request`/`invalid_address` with a buyer field actually
- * missing), the lane pushes `REAP_AVAILABLE_WITH_CONSENT_MESSAGE` onto `hints` and returns null; the door
- * attaches it to the storefront escalation answer. Throws only the update/complete refusals on a `reap_` id.
+ * A dispatched create either opens its selected source, refuses, or remains unknown. It
+ * never retries another source or returns null after dispatch. The commerce surface
+ * also stops every preflight null for an explicit checkout.reap selection.
  */
 export async function tryReapAgenticCheckout({
   op,
@@ -1386,11 +1376,9 @@ export async function tryReapAgenticCheckout({
     }
     if (res && res.kind === "not_found") {
       // 404 `purchase_not_found` — unknown, or ANOTHER buyer's (the backend answers both alike, on purpose):
-      // the kernel path gives the unknown-id answer. It is handed only what it needs to give it — the purchase
-      // id, not the line snapshot the full id carries.
+      // answer the primary route's miss directly; never hand this id or its snapshot to the kernel.
       emit(log, "info", { op: opId, outcome: "unknown_id", code: res.code || "not_found" });
-      params.session_id = `${REAP_CHECKOUT_ID_PREFIX}${decoded.purchaseId}`;
-      return null;
+      throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "unknown_session" });
     }
     // Anything else — unavailable, 401/403/429/400, 404 `not_available_on_this_rail` (the dial turned off
     // mid-purchase), no credentials on this call — is NOT evidence the purchase does not exist. An "unknown id"
@@ -1454,9 +1442,10 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   // Recovery probes original key namespaces; current source-system/proof
   // classification cannot decide which attempt existed. The owner hash decides.
   const cartDomain = cartLinkMerchantDomain(row, target);
+  const selectedSource = own(own(own(ucpArgs, "checkout"), "reap"), "item_source");
   const candidates = [
-    variantDomain && { ...base, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) },
-    cartDomain && { ...base, merchant_domain: cartDomain, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) },
+    selectedSource !== "cart_link" && variantDomain && { ...base, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) },
+    selectedSource !== "reap_variant" && cartDomain && { ...base, merchant_domain: cartDomain, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) },
   ].filter(Boolean);
   if (!candidates.length || candidates.some((b) => !b.idempotency_key)) throw unknown();
   const matches = [];
@@ -1528,12 +1517,18 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   if (!productKey) return skip("no_product_key");
   // A Shopify row takes the VARIANT lane (unchanged). An external-seed row takes the CART-LINK lane DIRECTLY while
   // both dials are on; with the cart-link dial off it is skipped exactly as before.
-  const cartLinkDirect = !isShopifyRow(row, productKey) && reapCartLinkLaneEnabled(env) && isExternalSeedRow(row, productKey);
+  const selectedSource = own(own(own(ucpArgs, "checkout"), "reap"), "item_source");
+  if (selectedSource === "cart_link" && !reapCartLinkLaneEnabled(env)) return skip("cart_link_disabled");
+  if (selectedSource === "reap_variant" && !isShopifyRow(row, productKey)) return skip("selected_source_unavailable");
+  // An explicit source is selected before any create. Catalog-derived external-seed
+  // cart links are also an initial route, never a retry after a variant refusal.
+  const cartLinkDirect = selectedSource === "cart_link" || (selectedSource === undefined
+    && !isShopifyRow(row, productKey) && reapCartLinkLaneEnabled(env) && isExternalSeedRow(row, productKey));
   if (!isShopifyRow(row, productKey) && !cartLinkDirect) return skip("not_shopify");
   // Only a key the backend's cart-link lane resolves is ever sent: a seed MIRROR key (see MIRROR_KEY_PREFIX), or,
   // with the enrichment dial on too, an ENRICHMENT key (see ENRICHMENT_BRAND_KEY_RE). Dial off: skipped as before.
   const enrichment = cartLinkDirect && reapCartLinkEnrichmentEnabled(env) && isEnrichmentCartLinkRow(row, productKey);
-  if (cartLinkDirect && !enrichment && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
+  if (cartLinkDirect && !isShopifyRow(row, productKey) && !enrichment && !isSeedMirrorRow(row, productKey)) return skip("row_key_unsupported");
   // The UCP line item has no variant carrier and the backend matches `variant_key` exactly (it has three live
   // spellings, never re-derived), so this lane omits it — which the backend accepts only for a product with
   // exactly one variant. A multi-variant row is not sent to be refused.
@@ -1619,8 +1614,8 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   };
   const offerCode = reapOfferCodesEnabled(env) ? reapOfferCode(ucpArgs) : undefined;
   if (offerCode !== undefined) body.offer_code = offerCode;
-  // The cart-link body is the SAME shape the Tier B retry below sends — `item_source` and the cart-link
-  // idempotency namespace — so a direct cart-link purchase and a retried one are one request to the backend.
+  // The selected cart-link source has one stable body and key namespace. A refusal
+  // never changes this source or dispatches another checkout.
   const cartLinkBody = () => ({ ...body, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) });
   if (cartLinkDirect) emit(log, "info", { op: "create_checkout_session", outcome: "cart_link_direct", code: enrichment ? "enrichment" : "external_seed" });
   const unknownOutcome = () => new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", {
@@ -1630,46 +1625,18 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     try { return await client.startPurchase(requestBody); }
     catch { throw unknownOutcome(); } // dispatch may have succeeded before a response was lost
   };
-  let res = await dispatchCreate(cartLinkDirect ? cartLinkBody() : body);
-
-  // TIER B, ONCE. Only on the one refusal that means "not on the operator allowlist" — never on a consent,
-  // address or catalog refusal, which would refuse the cart-link lane for the same reason. A separate
-  // idempotency key, because the two bodies differ (the backend hashes `item_source` into the request) and a
-  // retry of this create must replay the cart-link purchase rather than conflict with the variant attempt.
-  if (!cartLinkDirect && res && res.kind === "refused" && res.code === "merchant_not_eligible" && reapCartLinkLaneEnabled(env)) {
-    emit(log, "info", { op: "create_checkout_session", outcome: "retry_cart_link", code: res.code });
-    res = await dispatchCreate(cartLinkBody());
-  }
-
-  if (res && res.kind === "refused" && res.http_status === 400 && res.code === "invalid_offer_code") {
-    if (Array.isArray(hints)) hints.push(REAP_OFFER_CODE_REFUSED_MESSAGE);
-    emit(log, "info", { op: "create_checkout_session", outcome: "refused_hinted", code: res.code });
-    return null;
-  }
-  if (res && res.kind === "refused" && res.http_status === 400) {
-    const short = CONSENT_HINT_CODES.has(res.code)
-      || (BUYER_DETAIL_HINT_CODES.has(res.code) && reapMissingBuyerFields(ucpArgs, email).length > 0);
-    if (short && Array.isArray(hints)) hints.push(REAP_AVAILABLE_WITH_CONSENT_MESSAGE);
-    emit(log, "info", { op: "create_checkout_session", outcome: short ? "refused_hinted" : "refused", code: res.code });
-    return null;
-  }
+  const res = await dispatchCreate(cartLinkDirect ? cartLinkBody() : body);
 
   if (!res || res.kind !== "accepted") {
     emit(log, res && res.kind === "unavailable" ? "warn" : "info", {
-      op: "create_checkout_session",
-      outcome: res && res.kind ? res.kind : "no_answer",
-      code: (res && res.code) || "none",
+      op: "create_checkout_session", outcome: res?.kind || "no_answer", code: res?.code || "none",
     });
-    // A dispatched POST with no authoritative refusal may have opened a
-    // purchase. Never offer a fresh-spend fallback while its outcome is unknown.
-    if (!res || res.kind === "unavailable" || res.code === "idempotency_conflict") {
-      throw unknownOutcome();
-    }
-    if (res.code === "reap_create_paused") {
-      throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "reap_create_paused" });
-    }
-    // Deterministic rejection before creation retains the documented fallback.
-    return null;
+    if (!res || res.kind !== "refused" || res.code === "idempotency_conflict") throw unknownOutcome();
+    // The backend authoritatively refused this selected source. Stop here: no
+    // alternate body, key namespace, checkout rail, kernel or storefront offer.
+    throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+      reason: "ucp_reap_create_refused", refusal_code: res.code,
+    });
   }
   if (!isPlainObject(res.purchase) || !PURCHASE_ID_RE.test(String(res.purchase.id || ""))) {
     throw unknownOutcome();

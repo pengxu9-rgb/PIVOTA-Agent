@@ -160,7 +160,7 @@ const FINAL = { ...QUOTED, final_total_minor: 4500 };
 function houseError(code, status) {
   return {
     status: 'error',
-    error: { code: status === 404 ? 'PRODUCT_NOT_FOUND' : 'CONFLICT', message: code, details: { error: code } },
+    error: { code: status === 404 ? 'PRODUCT_NOT_FOUND' : status === 400 ? 'INVALID_REQUEST' : 'CONFLICT', message: code, details: { error: code } },
     metadata: { timestamp: '2026-09-23T12:00:00.000000Z', request_id: 'req-fixture' },
     detail: { error: code },
   };
@@ -242,12 +242,13 @@ const ROWS = Object.freeze({
 
 const FULL_AUTH = () => ({ 'X-API-Key': API_KEY, Authorization: `Bearer ${API_KEY}`, 'X-Agent-User-JWT': USER_JWT });
 
-async function build({ lane = true, logger = fakeLogger(), backend = fakeBackend(), clientTimeoutMs, authHeaders = FULL_AUTH, rows = ROWS } = {}) {
+async function build({ requireAuthoritativeRefusal = false, lane = true, logger = fakeLogger(), backend = fakeBackend(), clientTimeoutMs, authHeaders = FULL_AUTH, rows = ROWS } = {}) {
   const m = await mods();
   m.lane.resetReapLaneLogOnceForTest();
   const executor = recordingExecutor(rows, m.errors);
   const client = createReapAgenticPurchaseClient({
     baseUrl: 'https://backend.example',
+    requireAuthoritativeRefusal,
     fetchImpl: backend.fetchImpl,
     authHeaders,
     logger,
@@ -393,7 +394,8 @@ test('switch OFF snapshot: the pinned answers for the fixture offer', async (t) 
   // …and a `reap_` id with the switch off is just an unknown id to the kernel.
   const reapId = m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
   const got = await withEnv({ [LANE_FLAG]: undefined }, () => outcome(m, ucp.callTool('get_checkout', { meta: META, id: reapId }, SESSION)));
-  assert.equal(JSON.parse(got.err.content[0].text).error.code, 'QUOTE_NOT_FOUND');
+  assert.equal(JSON.parse(got.err.content[0].text).error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  assert.equal(ucp === undefined, false);
   assert.equal(backend.calls.length, 0);
 });
 
@@ -735,7 +737,7 @@ test('get_checkout: backend 404 -> exactly the body ANY unknown checkout id gets
   assert.equal(JSON.parse(reap404.err.content[0].text).error.code, 'QUOTE_NOT_FOUND');
   // …and the kernel is handed only what it needs: the purchase id, not the line snapshot the full id carries.
   const kernelGets = ctx.executor.seen.filter((c) => c.op === 'get_checkout_session').map((c) => c.params.session_id);
-  assert.deepEqual(kernelGets, [`reap_${PID}`, 'q_never_minted']);
+  assert.deepEqual(kernelGets, ['q_never_minted'], 'a Reap miss is answered directly, never through the kernel');
 });
 
 for (const [label, status, code] of [
@@ -796,33 +798,14 @@ test('the client clamps its budget to <= 2 s and never unrefs an awaited timer',
 // 5. create: a backend refusal FALLS THROUGH to the next lane
 // =========================================================================================================
 
-for (const [label, arrange] of [
-  ['409 merchant_not_eligible', (b) => { b.state.post = { status: 409, body: houseError('merchant_not_eligible', 409) }; }],
-  ['404 not_available_on_this_rail', (b) => { b.state.post = { status: 404, body: houseError('not_available_on_this_rail', 404) }; }],
-  ['409 row_not_found', (b) => { b.state.post = { status: 409, body: houseError('row_not_found', 409) }; }],
-  ['401 agent_user_required', (b) => { b.state.post = { status: 401, body: houseError('agent_user_required', 401) }; }],
-  ['400 currency_unsupported', (b) => { b.state.post = { status: 400, body: houseError('currency_unsupported', 400) }; }],
-]) {
-  test(`create_checkout: backend ${label} -> falls through to storefront escalation (on) / the kernel (off)`, { timeout: 5000 }, async () => {
-    const backend = fakeBackend();
-    arrange(backend);
-    const logger = fakeLogger();
-    const esc = await createReap({ ...ON, [ESCALATION_FLAG]: '1' }, { backend, logger, clientTimeoutMs: 60 });
-    assert.equal(esc.out.status, 'requires_escalation');
-    assert.match(esc.out.id, /^esc_/);
-    assert.equal(esc.out.continue_url, REAP_ROW.external_redirect_url);
-    assert.equal(backend.calls.length, 1, 'one POST, no retry');
-    assert.equal(esc.executor.seen.filter((c) => c.op === 'get_product').length, 1, 'both lanes judged ONE read');
-
-    backend.calls.length = 0;
-    const kernel = await createReap(ON, { backend, logger, clientTimeoutMs: 60 });
-    assert.deepEqual(kernel.out, { session_id: 'q_kernel' });
-    assert.ok(kernel.executor.seen.some((c) => c.op === 'create_checkout_session'));
-    ALL_LOGS.push(...logger.lines);
-    const laneLines = logger.lines.filter((l) => l.event === 'reap_agentic_lane' && l.op === 'create_checkout_session');
-    assert.ok(laneLines.length >= 1, 'the fall-through is logged');
-    for (const line of laneLines) assert.deepEqual(Object.keys(line).sort(), ['code', 'event', 'level', 'msg', 'op', 'outcome'].sort(), 'codes only');
-  });
+for (const [status, code, expected] of [[409,'merchant_not_eligible','OPERATION_NOT_ALLOWED'],[404,'not_available_on_this_rail','CHECKOUT_OUTCOME_UNKNOWN'],[409,'row_not_found','OPERATION_NOT_ALLOWED'],[401,'agent_user_required','CHECKOUT_OUTCOME_UNKNOWN'],[400,'currency_unsupported','OPERATION_NOT_ALLOWED']]) {
+ test(`create_checkout: backend ${status} ${code} stops the selected route without another checkout`,async()=>{
+  const backend=fakeBackend();backend.state.post={status,body:houseError(code,status)};
+  for(const escalation of [undefined,'1']){
+   backend.calls.length=0;const ctx=await build({backend});const result=await withEnv({...ON,[ESCALATION_FLAG]:escalation},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(),SESSION)));
+   assert.equal(errorOf(result).code,expected);assert.equal(backend.calls.length,1);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);assert.equal(JSON.stringify(result).includes('continue_url'),false);
+  }
+ });
 }
 
 for (const [label, arrange] of [
@@ -870,7 +853,8 @@ test('create_checkout: the refusal code is what gets logged — and only the cod
   const backend = fakeBackend();
   backend.state.post = { status: 409, body: houseError('row_not_found', 409) };
   const logger = fakeLogger();
-  await createReap(ON, { backend, logger });
+  const ctx = await build({backend,logger});
+  await withEnv(ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(),SESSION)));
   ALL_LOGS.push(...logger.lines);
   const line = logger.lines.find((l) => l.event === 'reap_agentic_lane' && l.outcome === 'refused');
   assert.equal(line.code, 'row_not_found');
@@ -887,59 +871,15 @@ async function storefrontBaseline(args) {
 }
 const HINT = 'reap.available_with_consent';
 
-for (const [label, post, args] of [
-  ['non-eligible merchant, no consent (backend checks consent BEFORE eligibility -> 400 consent_required)', { status: 400, body: houseError('consent_required', 400) }, { consent: ABSENT }],
-  ['eligible merchant, no consent (400 consent_required)', { status: 400, body: houseError('consent_required', 400) }, { consent: ABSENT }],
-  ['no last name (400 invalid_address)', { status: 400, body: houseError('invalid_address', 400) }, { destination: { ...DESTINATION, last_name: undefined } }],
-  ['no phone anywhere (400 invalid_address)', { status: 400, body: houseError('invalid_address', 400) }, { destination: { ...DESTINATION, phone_number: undefined } }],
-  ['no destination at all (400 invalid_request)', { status: 400, body: houseError('invalid_request', 400) }, { destination: null }],
-]) {
-  test(`create_checkout: ${label} -> NEVER a refusal: today's storefront answer, byte for byte, PLUS one constant ${HINT} message`, async (t) => {
-    t.mock.method(Date, 'now', () => NOW);
-    const backend = fakeBackend();
-    backend.state.post = post;
-    const ctx = await build({ backend });
-    const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs(args), SESSION)));
-    const baseline = await storefrontBaseline(createArgs(args));
-    assert.equal(backend.calls.length, 1, 'the rail was asked');
-    assert.equal(out.status, 'requires_escalation');
-    const hinted = out.messages.filter((msg) => msg.code === HINT);
-    assert.equal(hinted.length, 1, 'exactly one hint');
-    assert.deepEqual(hinted[0], ctx.m.lane.REAP_AVAILABLE_WITH_CONSENT_MESSAGE, 'the CONSTANT message, nothing request- or backend-derived');
-    for (const path of ['checkout.buyer.consent_version', 'checkout.fulfillment.methods[0].destinations[0].last_name', 'checkout.fulfillment.methods[0].destinations[0].phone_number']) {
-      assert.ok(hinted[0].content.includes(path), path);
-    }
-    const withoutHint = { ...out, messages: out.messages.filter((msg) => msg.code !== HINT) };
-    assert.equal(JSON.stringify(withoutHint), JSON.stringify(baseline), "everything else is today's answer, byte for byte");
-  });
+for(const [code,args] of [['consent_required',{consent:ABSENT}],['invalid_address',{destination:{...DESTINATION,last_name:undefined}}],['invalid_address',{destination:{...DESTINATION,phone_number:undefined}}],['invalid_request',{destination:null}],['invalid_return_url',{}],['invalid_request',{}],['invalid_address',{}],['currency_unsupported',{}]]){
+ test(`create_checkout: ${code} buyer/catalog refusal never becomes a store offer`,async()=>{
+  const backend=fakeBackend();backend.state.post={status:400,body:houseError(code,400)};const ctx=await build({backend});
+  const result=await withEnv({...ON,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(args),SESSION)));
+  assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(errorOf(result).detail.reason,'ucp_reap_create_refused');assert.equal(backend.calls.length,1);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);assert.equal(JSON.stringify(result).includes('continue_url'),false);
+ });
 }
-
-for (const [label, post, args] of [
-  ['400 invalid_return_url', { status: 400, body: houseError('invalid_return_url', 400) }, {}],
-  ['400 invalid_request with COMPLETE buyer details (a malformed id / a catalog defect, not the buyer)', { status: 400, body: houseError('invalid_request', 400) }, {}],
-  ['400 invalid_address with a complete destination', { status: 400, body: houseError('invalid_address', 400) }, {}],
-  ['400 currency_unsupported', { status: 400, body: houseError('currency_unsupported', 400) }, {}],
-]) {
-  test(`create_checkout: ${label} -> falls through with NO message, logged by code only`, async (t) => {
-    t.mock.method(Date, 'now', () => NOW);
-    const backend = fakeBackend();
-    backend.state.post = post;
-    const logger = fakeLogger();
-    const ctx = await build({ backend, logger });
-    const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs(args), SESSION)));
-    assert.equal(JSON.stringify(out), JSON.stringify(await storefrontBaseline(createArgs(args))), "exactly today's answer");
-    const line = logger.lines.find((l) => l.event === 'reap_agentic_lane' && l.outcome === 'refused');
-    assert.equal(line.code, post.body.detail.error);
-    ALL_LOGS.push(...logger.lines);
-  });
-}
-
-test('escalation OFF: a short buyer block still never refuses — the kernel path answers as today (the hint has nowhere to ride)', async () => {
-  const backend = fakeBackend();
-  backend.state.post = { status: 400, body: houseError('consent_required', 400) };
-  const ctx = await build({ backend });
-  const out = keep(await withEnv(ON, () => ctx.ucp.callTool('create_checkout', createArgs({ consent: ABSENT }), SESSION)));
-  assert.deepEqual(out, { session_id: 'q_kernel' });
+test('escalation OFF: a consent refusal cannot enter the kernel',async()=>{
+ const backend=fakeBackend();backend.state.post={status:400,body:houseError('consent_required',400)};const ctx=await build({backend});const result=await withEnv(ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({consent:ABSENT}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 test('a VALUE-BEARING 400 body (backend message, fields, validation errors, 2 KB) -> no buyer string in any response or log line', async () => {
@@ -994,18 +934,8 @@ test('the argument adapter ENFORCES the advertised consent schema (string, <= 32
   assert.equal(backend.calls.length, 1);
 });
 
-test('get_checkout from a caller the rail cannot serve SKIPS the lane: today\'s answer, no backend call, the id handed on untouched', async () => {
-  for (const authHeaders of [() => ({ 'X-API-Key': API_KEY }), () => ({ 'X-API-Key': API_KEY, 'X-Agent-User-JWT': '  ' }), () => ({})]) {
-    const backend = fakeBackend();
-    const ctx = await build({ backend, authHeaders });
-    const id = ctx.m.lane.encodeReapCheckoutId({ purchaseId: PID, productId: REAP_ROW.product_id, productKey: REAP_ROW.product_key, quantity: 1, currency: 'USD', unitMinor: 4250 });
-    const withLane = keep(await withEnv(ON, () => outcome(ctx.m, ctx.ucp.callTool('get_checkout', { meta: META, id }, SESSION))));
-    const noLane = await build({ lane: false });
-    const today = await withEnv(ON, () => outcome(noLane.m, noLane.ucp.callTool('get_checkout', { meta: META, id }, SESSION)));
-    assert.equal(JSON.stringify(withLane), JSON.stringify(today));
-    assert.equal(backend.calls.length, 0);
-    assert.deepEqual(ctx.executor.seen.filter((c) => c.op === 'get_checkout_session').map((c) => c.params.session_id), [id], 'not rewritten — the lane did not act');
-  }
+test('get_checkout without rail credentials stays on the primary uncertainty boundary, never kernel',async()=>{
+ const backend=fakeBackend();const ctx=await build({backend,authHeaders:()=>({})});const id=ctx.m.lane.encodeReapCheckoutId({purchaseId:PID,productId:REAP_ROW.product_id,productKey:REAP_ROW.product_key,quantity:1,currency:'USD',unitMinor:4250});const result=await withEnv(ON,()=>outcome(ctx.m,ctx.ucp.callTool('get_checkout',{meta:META,id},SESSION)));assert.equal(errorOf(result).code,'CHECKOUT_OUTCOME_UNKNOWN');assert.equal(backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='get_checkout_session'),false);
 });
 
 test('a caller the rail cannot serve (no X-Agent-User-JWT, or no API key — e.g. MCP-OAuth) skips the lane silently: 0 backend calls, logged ONCE', async () => {
@@ -1194,7 +1124,7 @@ test('id tampering: malformed reap_ ids never reach the backend and get the unkn
   ];
   for (const id of bad) {
     const r = await unknownIdBody(ctx, id);
-    assert.equal(JSON.stringify(r), JSON.stringify(plainUnknown), `malformed id ${id.slice(0, 60)}`);
+    assert.equal(errorOf(r).code,id.startsWith('reap_')?'CHECKOUT_OUTCOME_UNKNOWN':'QUOTE_NOT_FOUND', `malformed id ${id.slice(0, 60)}`);
   }
   assert.equal(backend.calls.length, 0, 'no malformed id was ever sent anywhere');
   // update / complete on a malformed id are the kernel's answer too, not the lane's refusal
@@ -1349,27 +1279,12 @@ test('seller IN, a MULTI-LINE cart: every line must be the expected seller; one 
   }
 });
 
-test('seller IN, MATCH: every route proceeds exactly as without it (Reap: same POST + answer; native: the kernel)', async (t) => {
-  t.mock.method(Date, 'now', () => NOW);
-  const { backend: plain, out: plainOut } = await createReap(ON);
-  for (const expected of ['brand.example', 'www.brand.example', 'BRAND.EXAMPLE', 'Www.Brand.Example']) {
-    const { out, backend } = await createReap(ON, { args: { reap: { expected_merchant_domain: expected } } });
-    assert.equal(backend.calls.length, 1, expected);
-    assert.deepEqual(backend.calls[0].body, plain.calls[0].body, `${expected}: the expected seller never reaches the backend`);
-    assert.equal(JSON.stringify(out), JSON.stringify(plainOut), `${expected}: the answer is the one without it`);
-  }
-  // A native row whose REGISTERED store matches reaches the kernel, as without the member.
-  const { out: kernel, executor } = await createReap(ON, { rows: { ...ROWS, p_native_reg: NATIVE_REGISTERED_ROW }, args: { productId: 'p_native_reg', reap: { expected_merchant_domain: 'native.example' } } });
-  assert.deepEqual(kernel, { session_id: 'q_kernel' });
-  assert.ok(executor.seen.some((c) => c.op === 'create_checkout_session'));
-  // The storefront answer for a matching non-Reap row is unchanged too (escalation on, lane refuses).
-  const b = fakeBackend();
-  b.state.post = { status: 409, body: houseError('row_not_found', 409) };
-  const { out: esc } = await createReap(ESC_ON, { backend: b, args: { reap: { expected_merchant_domain: 'brand.example' } } });
-  const b2 = fakeBackend();
-  b2.state.post = { status: 409, body: houseError('row_not_found', 409) };
-  const { out: escPlain } = await createReap(ESC_ON, { backend: b2 });
-  assert.equal(JSON.stringify(esc), JSON.stringify(escPlain));
+test('seller IN, MATCH: selected Reap succeeds; an incompatible native or refused row never changes route',async()=>{
+ const {backend:plain,out:plainOut}=await createReap(ON);
+ for(const expected of ['brand.example','www.brand.example','BRAND.EXAMPLE','Www.Brand.Example']){
+  const {out,backend}=await createReap(ON,{args:{reap:{expected_merchant_domain:expected}}});assert.deepEqual(backend.calls[0].body,plain.calls[0].body);assert.equal(out.id,plainOut.id);
+ }
+ const ctx=await build({rows:{...ROWS,p_native_reg:NATIVE_REGISTERED_ROW}});const result=await withEnv(ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({productId:'p_native_reg',reap:{expected_merchant_domain:'native.example'}}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 // EVERY destination a row can send the buyer to must be the expected seller -- not just the one the Reap lane buys
@@ -1402,12 +1317,8 @@ test('seller IN: EVERY destination of the row must be the expected seller -- pro
   }
 });
 
-test('seller IN: a matching explicit domain AND a matching storefront link pass -- the storefront answer links to that seller', async (t) => {
-  t.mock.method(Date, 'now', () => NOW);
-  const row = { ...MULTI_VARIANT_ROW, product_id: 'sig_ok', merchant_domain: 'Brand.example', external_redirect_url: 'https://www.brand.example/products/x' };
-  const { out } = await createReap(ESC_ON, { rows: { sig_ok: row }, args: { productId: 'sig_ok', ...EXPECT_BRAND } });
-  assert.match(out.id, /^esc_/, 'multi-variant: the storefront route answers');
-  assert.equal(out.continue_url, 'https://www.brand.example/products/x');
+test('seller IN: matching seller on an ambiguous row is blocked before any checkout',async()=>{
+ const row={...MULTI_VARIANT_ROW,product_id:'sig_ok',merchant_domain:'Brand.example',external_redirect_url:'https://www.brand.example/products/x'};const ctx=await build({rows:{sig_ok:row}});const result=await withEnv(ESC_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({productId:'sig_ok',...EXPECT_BRAND}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 test('storefront lane, belt and braces: handed an expected seller the link does not match, it REFUSES instead of linking', async () => {
@@ -1441,22 +1352,9 @@ test('storefront lane, belt and braces: handed an expected seller the link does 
   assert.equal(plain.continue_url, 'https://other-seller.example/p');
 });
 
-test('seller IN, MATCH reads each product ONCE: the door and every route share the one memoized read', async () => {
-  const reads = (ctx, pid) => ctx.executor.seen.filter((c) => c.op === 'get_product' && c.params.payload.product.product_id === pid).length;
-  // Reap route.
-  const reap = await createReap(ON, { args: EXPECT_BRAND });
-  assert.match(reap.out.id, REAP_ID_RE);
-  assert.equal(reads(reap, REAP_ROW.product_id), 1, 'Reap: one read');
-  // Kernel route (a native row with its registered store).
-  const kernel = await createReap(ON, { rows: { p_native_reg: NATIVE_REGISTERED_ROW }, args: { productId: 'p_native_reg', reap: { expected_merchant_domain: 'native.example' } } });
-  assert.deepEqual(kernel.out, { session_id: 'q_kernel' });
-  assert.equal(reads(kernel, 'p_native_reg'), 1, 'kernel: one read');
-  // Storefront route (the backend refuses the Reap purchase; escalation answers).
-  const b = fakeBackend();
-  b.state.post = { status: 409, body: houseError('row_not_found', 409) };
-  const store = await createReap(ESC_ON, { backend: b, args: EXPECT_BRAND });
-  assert.match(store.out.id, /^esc_/);
-  assert.equal(reads(store, REAP_ROW.product_id), 1, 'storefront: one read');
+test('seller IN, MATCH reads the selected row once on success and refusal',async()=>{
+ const reap=await createReap(ON,{args:EXPECT_BRAND});assert.equal(reap.executor.seen.filter(c=>c.op==='get_product').length,1);
+ const backend=fakeBackend();backend.state.post={status:409,body:houseError('row_not_found',409)};const ctx=await build({backend});const result=await withEnv(ESC_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(EXPECT_BRAND),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.executor.seen.filter(c=>c.op==='get_product').length,1);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 // THE LIVE DEMO ROW (round 3): judydoll's "Silky Matte Lip Ink", an external-seed row whose external_redirect_url is a
@@ -1487,9 +1385,9 @@ test('the live demo row (a Pivota /r hop): its own seller passes and keeps the a
   t.mock.method(Date, 'now', () => NOW);
   const m = await mods();
   const rows = { [JUDY_ROW.product_id]: JUDY_ROW };
-  const ok = await createReap(ESC_ON, { rows, args: { productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: 'judydoll.com' } } });
-  assert.match(ok.out.id, /^esc_/, 'not Shopify: the storefront route answers');
-  assert.equal(ok.out.continue_url, JUDY_HOP, 'the attributed hop is handed out, unchanged');
+  const selected = await build({rows});
+  const blocked = await withEnv(ESC_ON,()=>outcome(m,selected.ucp.callTool('create_checkout',createArgs({productId:JUDY_ROW.product_id,reap:{expected_merchant_domain:'judydoll.com'}}),SESSION)));
+  assert.equal(errorOf(blocked).code,'OPERATION_NOT_ALLOWED');assert.equal(selected.backend.calls.length,0);assert.equal(JSON.stringify(blocked).includes(JUDY_HOP),false);
   for (const expected of ['other-seller.example', 'judydoll.co']) {
     const ctx = await build({ rows });
     const r = await withEnv(ESC_ON, () => outcome(m, ctx.ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, reap: { expected_merchant_domain: expected } }), SESSION)));
@@ -1621,35 +1519,11 @@ test('offer code: the adapter enforces the advertised shape (one string of 1..12
   }
 });
 
-test('a code sent on a create whose answer is NOT a Reap checkout gets a discount_code_invalid warning at $.discounts.codes[0]', async () => {
-  // The lane falls through (the backend refuses the row), so the kernel/storefront path answers.
-  const backend = fakeBackend();
-  backend.state.post = { status: 409, body: houseError('row_not_found', 409) };
-  const { out } = await createReap(CODES_ON, { backend, args: { discounts: { codes: ['SAVE10'] } } });
-  assert.equal(String(out.id || '').startsWith('reap_'), false);
-  const notice = (out.messages || []).filter((m) => m.path === '$.discounts.codes[0]');
-  assert.equal(notice.length, 1);
-  assert.equal(notice[0].type, 'warning');
-  assert.equal(notice[0].code, 'discount_code_invalid');
-  assert.equal(notice[0].content.includes('SAVE10'), false);
-  // No code sent: no notice.
-  const b2 = fakeBackend();
-  b2.state.post = { status: 409, body: houseError('row_not_found', 409) };
-  const { out: out2 } = await createReap(CODES_ON, { backend: b2 });
-  assert.equal((out2.messages || []).some((m) => m.path === '$.discounts.codes[0]'), false);
-  // A Reap answer is not annotated.
-  const { out: reapOut } = await createReap(CODES_ON, { args: { discounts: { codes: ['SAVE10'] } } });
-  assert.match(reapOut.id, REAP_ID_RE);
-  assert.equal((reapOut.messages || []).some((m) => m.path === '$.discounts.codes[0]'), false);
+test('a catalog refusal with an offer code stops the checkout and never exposes another link',async()=>{
+ const backend=fakeBackend();backend.state.post={status:409,body:houseError('row_not_found',409)};const ctx=await build({backend});const result=await withEnv(CODES_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({discounts:{codes:['SAVE10']}}),SESSION)));assert.equal(errorOf(result).detail.reason,'ucp_reap_create_refused');assert.equal(JSON.stringify(result).includes('SAVE10'),false);assert.equal(JSON.stringify(result).includes('continue_url'),false);assert.equal(backend.calls.length,1);
 });
-
-test('backend 400 invalid_offer_code: no Reap purchase, and ONE warning about the code (the backend owns the rule)', async () => {
-  const backend = fakeBackend();
-  backend.state.post = { status: 400, body: houseError('invalid_offer_code', 400) };
-  const { out } = await createReap({ ...CODES_ON, [ESCALATION_FLAG]: '1' }, { backend, args: { discounts: { codes: ['SAVE10'] } } });
-  const notes = (out.messages || []).filter((m) => m.path === '$.discounts.codes[0]');
-  assert.equal(notes.length, 1);
-  assert.match(notes[0].content, /Reap payment-partner route/);
+test('backend invalid_offer_code stops the selected checkout without another rail or key',async()=>{
+ const backend=fakeBackend();backend.state.post={status:400,body:houseError('invalid_offer_code',400)};const ctx=await build({backend});const result=await withEnv({...CODES_ON,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({discounts:{codes:['SAVE10']}}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(errorOf(result).detail.reason,'ucp_reap_create_refused');assert.equal(backend.calls.length,1);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 function priced(extra) {
@@ -1708,68 +1582,17 @@ test('get_checkout: refused offer_code_rejected tells the agent to create a NEW 
   assert.match(msg.content, /NEW idempotency key/);
 });
 
-test('Tier B: merchant_not_eligible is retried ONCE as item_source cart_link under a separate namespace — only with the dial on', async () => {
-  const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
-  const accepted = { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } };
-
-  // dial OFF: one POST, the storefront path answers as before.
-  const off = fakeBackend();
-  off.state.post = [notEligible, accepted];
-  const r0 = await createReap(ON, { backend: off });
-  assert.equal(off.calls.length, 1);
-  assert.equal(String(r0.out.id || '').startsWith('reap_'), false);
-
-  // dial ON: a second POST, same buyer and code, item_source cart_link, its own derived key.
-  const on = fakeBackend();
-  on.state.post = [notEligible, accepted];
-  const r1 = await createReap(CODES_ON, { backend: on, args: { discounts: { codes: ['SAVE10'] } } });
-  assert.equal(on.calls.length, 2);
-  const [first, second] = on.calls.map((c) => c.body);
-  assert.equal(Object.hasOwn(first, 'item_source'), false);
-  assert.equal(second.item_source, 'cart_link');
-  assert.equal(second.offer_code, 'SAVE10');
-  assert.deepEqual(second.buyer, first.buyer);
-  assert.equal(second.idempotency_key, r1.m.lane.reapCartLinkIdempotencyKey('idem-reap-0001'));
-  assert.notEqual(second.idempotency_key, first.idempotency_key);
-  assert.match(r1.out.id, REAP_ID_RE);
+test('Tier B: a variant refusal never retries cart_link, whatever the dial',async()=>{
+ for(const env of [ON,CODES_ON]){const backend=fakeBackend();backend.state.post=[{status:409,body:houseError('merchant_not_eligible',409)},{status:202,body:{purchase_id:PID,status:'resolving',poll_after_seconds:60}}];const ctx=await build({backend});const result=await withEnv(env,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(backend.calls.length,1);assert.equal(backend.calls[0].body.item_source,undefined);}
 });
-
-test('Tier B: a cart_link POST that ITSELF answers merchant_not_eligible is not retried again; nor are merchant_disabled, row_not_shopify or any other refusal', async () => {
-  const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
-  const loop = fakeBackend();
-  loop.state.post = [notEligible, notEligible, notEligible, notEligible];
-  await createReap(CODES_ON, { backend: loop });
-  assert.equal(loop.calls.length, 2, 'variant once, cart_link once, never a third POST');
-  for (const code of ['merchant_disabled', 'row_not_shopify', 'row_not_found', 'merchant_not_purchasable']) {
-    const b = fakeBackend();
-    b.state.post = [{ status: 409, body: houseError(code, 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
-    await createReap(CODES_ON, { backend: b });
-    assert.equal(b.calls.length, 1, code);
-  }
-  const laneOff = fakeBackend();
-  await createReap({ [LANE_FLAG]: undefined, [CART_LINK_FLAG]: '1', [ESCALATION_FLAG]: undefined, [GATE_FLAG_ENV]: undefined }, { backend: laneOff });
-  assert.equal(laneOff.calls.length, 0);
+test('Tier B: every deterministic variant refusal makes exactly one POST',async()=>{
+ for(const code of ['merchant_not_eligible','merchant_disabled','row_not_shopify','row_not_found','merchant_not_purchasable']){const backend=fakeBackend();backend.state.post={status:409,body:houseError(code,409)};const ctx=await build({backend});const result=await withEnv(CODES_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs(),SESSION)));assert.equal(errorOf(result).detail.reason,'ucp_reap_create_refused');assert.equal(backend.calls.length,1);}
 });
-
-test('Tier B keys: deterministic per UCP key, never the variant key — even for a caller key spelled "K:cart_link" (G3); a retried create reuses the SAME cart-link key (G5)', async () => {
-  const { lane } = await mods();
-  assert.equal(lane.reapCartLinkIdempotencyKey('K'), lane.reapCartLinkIdempotencyKey('K'));
-  assert.equal(lane.reapCartLinkIdempotencyKey(' K '), lane.reapCartLinkIdempotencyKey('K'), 'trimmed like the variant key');
-  assert.notEqual(lane.reapCartLinkIdempotencyKey('K'), lane.reapIdempotencyKey('K:cart_link'));
-  assert.notEqual(lane.reapIdempotencyKey('K:cart_link'), lane.reapCartLinkIdempotencyKey('K'));
-  assert.equal(lane.reapCartLinkIdempotencyKey(''), null);
-  // Two creates with one key: the backend refuses the variant key the second time too (it remembers the
-  // refusal), so the lane's second cart-link POST carries the SAME key and the backend replays P1.
-  const notEligible = { status: 409, body: houseError('merchant_not_eligible', 409) };
-  const accepted = { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } };
-  const b = fakeBackend();
-  b.state.post = [notEligible, accepted, notEligible, accepted];
-  await createReap(CODES_ON, { backend: b });
-  await createReap(CODES_ON, { backend: b });
-  const keys = b.calls.map((c) => [c.body.item_source || 'reap_variant', c.body.idempotency_key]);
-  assert.equal(keys.length, 4);
-  assert.deepEqual(keys[2], keys[0]);
-  assert.deepEqual(keys[3], keys[1]);
+test('Tier B keys: explicit initial cart source is stable and differs from every variant namespace',async()=>{
+ const {lane}=await mods();assert.equal(lane.reapCartLinkIdempotencyKey('K'),lane.reapCartLinkIdempotencyKey(' K '));assert.notEqual(lane.reapCartLinkIdempotencyKey('K'),lane.reapIdempotencyKey('K:cart_link'));assert.equal(lane.reapCartLinkIdempotencyKey(''),null);
+ const backend=fakeBackend();const row={...REAP_ROW,source_variant_id:'49819267301653'};const ctx=await build({backend,rows:{[row.product_id]:row}});const args=createArgs({reap:{expected_merchant_domain:'brand.example',item_source:'cart_link'}});
+ for(let i=0;i<2;i++)assert.match((await withEnv(CODES_ON,()=>ctx.ucp.callTool('create_checkout',args,SESSION))).id,REAP_ID_RE);
+ assert.equal(backend.calls.length,2);assert.deepEqual(backend.calls[0].body,backend.calls[1].body);assert.equal(backend.calls[0].body.item_source,'cart_link');assert.equal(backend.calls[0].body.idempotency_key,lane.reapCartLinkIdempotencyKey('idem-reap-0001'));assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
 });
 
 test('the lane itself never forwards a code unless armed, even if handed one directly (belt and braces behind the adapter, G8)', async () => {
@@ -1978,18 +1801,8 @@ test('Tier B DIRECT requires ONE resolvable variant: source_variant_id, or varia
   }
 });
 
-test('Tier B DIRECT: a backend refusal (not a Tier B merchant) falls through with NO second POST; Shopify rows keep the variant lane + retry', async () => {
-  const b = fakeBackend();
-  b.state.post = { status: 409, body: houseError('merchant_not_eligible', 409) };
-  const { out, backend } = await createReap({ ...CODES_ON, [ESCALATION_FLAG]: '1' }, { backend: b, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id } });
-  assert.equal(backend.calls.length, 1, 'no retry of a cart-link refusal');
-  assert.equal(backend.calls[0].body.item_source, 'cart_link');
-  assert.match(out.id, /^esc_/, 'the storefront answers');
-  // A Shopify row: the variant lane first, the Tier B retry second -- unchanged.
-  const b2 = fakeBackend();
-  b2.state.post = [{ status: 409, body: houseError('merchant_not_eligible', 409) }, { status: 202, body: { purchase_id: PID, status: 'resolving', poll_after_seconds: 60 } }];
-  const shop = await createReap(CODES_ON, { backend: b2 });
-  assert.deepEqual(shop.backend.calls.map((c) => c.body.item_source), [undefined, 'cart_link']);
+test('Tier B DIRECT: a cart refusal and a Shopify variant refusal each stop after one original-source POST',async()=>{
+ for(const [rows,pid,source]of [[CART_ROWS,JUDY_ROW.product_id,'cart_link'],[ROWS,REAP_ROW.product_id,undefined]]){const backend=fakeBackend();backend.state.post=[{status:409,body:houseError('merchant_not_eligible',409)},{status:202,body:{purchase_id:PID,status:'resolving'}}];const ctx=await build({backend,rows});const result=await withEnv({...CODES_ON,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({productId:pid}),SESSION)));assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(backend.calls.length,1);assert.equal(backend.calls[0].body.item_source,source);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);}
 });
 
 test('Tier B DIRECT, lane OFF (cart-link dial on or off): external-seed creates are byte-identical to a door without the lane, 0 POSTs', async (t) => {
@@ -2711,4 +2524,54 @@ test('GET recognizes actual owner-route flat404; the same body on403 is never a 
   assert.equal((await ctx.client.getPurchase(PID)).kind, 'not_found');
   b.state.recover.set('client-envelope-test', { status: 403, body: { error: 'purchase_not_found' } });
   assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, 'refused');
+});
+
+for (const strict of [false,true]) for (const shape of ['flat','nested','main']) {
+ const envelope=(status,code)=>shape==='flat'?{error:code}:shape==='nested'?{detail:{error:code}}:{status:'error',error:{code:status===400?'INVALID_REQUEST':'CONFLICT',message:code,details:{error:code}},detail:{error:code}};
+ for(const [status,code,expected] of [[409,'merchant_not_eligible','OPERATION_NOT_ALLOWED'],[409,'idempotency_conflict','CHECKOUT_OUTCOME_UNKNOWN'],[400,'consent_required','OPERATION_NOT_ALLOWED'],[404,'not_available_on_this_rail','CHECKOUT_OUTCOME_UNKNOWN']]) {
+  test(`PRIMARY: ${strict?'private':'ordinary'} ${shape} ${code} never chooses another rail`,async()=>{
+   const backend=fakeBackend(); backend.state.post=[{status,body:envelope(status,code)},{status:202,body:{purchase_id:PID,status:'resolving',poll_after_seconds:60}}];
+   const ctx=await build({backend,requireAuthoritativeRefusal:strict});
+   const result=await withEnv({...CODES_ON,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({reap:{expected_merchant_domain:'brand.example'}}),SESSION)));
+   assert.ok(result.err); const wire=JSON.parse(result.err.content[0].text); assert.equal(wire.error.code,expected);
+   assert.equal(backend.calls.length,1); assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false); assert.equal(JSON.stringify(wire).includes(REAP_ROW.external_redirect_url),false);
+  });
+ }
+}
+for(const row of [MULTI_VARIANT_ROW,{...REAP_ROW,price:null},{...REAP_ROW,product_key:null},NATIVE_ROW]){
+ test(`PRIMARY: preflight block for ${row.product_id}/${row.product_key}/${row.price} never enters kernel or storefront`,async()=>{
+  const ctx=await build({rows:{[row.product_id]:row}});
+  const domain=row===NATIVE_ROW?'native.example':'brand.example';
+  const result=await withEnv({...ON,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({productId:row.product_id,reap:{expected_merchant_domain:domain}}),SESSION)));
+  assert.ok(result.err);assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
+ });
+}
+
+test('explicit Shopify cart_link opens once and recovers only its original source/key after a catalog-independent pause',async()=>{
+ const row={...REAP_ROW,source_variant_id:'49819267301653'};
+ const backend=fakeBackend(),ctx=await build({backend,rows:{[row.product_id]:row}});
+ const args=createArgs({reap:{expected_merchant_domain:'brand.example',item_source:'cart_link'}});
+ const opened=await withEnv(CODES_ON,()=>ctx.ucp.callTool('create_checkout',args,SESSION));
+ assert.match(opened.id,REAP_ID_RE);assert.equal(backend.calls.length,1);
+ const original=backend.calls[0].body;assert.equal(original.item_source,'cart_link');
+ backend.state.recover.set(original.idempotency_key,{status:200,body:view('resolving')});
+ // A malformed competing namespace is deliberately present: selected-source recovery must never inspect it.
+ backend.state.recover.set(ctx.m.lane.reapIdempotencyKey('idem-reap-0001'),{status:500,body:{}});
+ const recovered=await withEnv({...CODES_ON,REAP_AGENTIC_CREATE_ENABLED:'0',REAP_AGENTIC_CART_LINK_LANE_ENABLED:'0'},()=>ctx.ucp.callTool('recover_checkout',args,SESSION));
+ assert.equal(recovered.id,opened.id);assert.equal(backend.calls.length,2);assert.equal(backend.calls[1].path,'/agent/v2/commerce/reap/purchases/recover');
+ assert.deepEqual(backend.calls[1].body,original);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
+});
+
+for(const itemSource of ['',null,{},['cart_link'],'cart-link','auto']){
+ test(`explicit source ${JSON.stringify(itemSource)} is refused before any backend dispatch`,async()=>{
+  const ctx=await build();const result=await withEnv(CODES_ON,()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({reap:{expected_merchant_domain:'brand.example',item_source:itemSource}}),SESSION)));
+  assert.ok(result.err);assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);
+ });
+}
+
+test('explicit cart_link with its dial off or an unresolved variant never dispatches a variant instead',async()=>{
+ for(const [env,row]of [[ON,{...REAP_ROW,source_variant_id:'49819267301653'}],[CODES_ON,REAP_ROW]]){
+  const ctx=await build({rows:{[row.product_id]:row}});const result=await withEnv({...env,[ESCALATION_FLAG]:'1'},()=>outcome(ctx.m,ctx.ucp.callTool('create_checkout',createArgs({reap:{expected_merchant_domain:'brand.example',item_source:'cart_link'}}),SESSION)));
+  assert.equal(errorOf(result).code,'OPERATION_NOT_ALLOWED');assert.equal(ctx.backend.calls.length,0);assert.equal(ctx.executor.seen.some(c=>c.op==='create_checkout_session'),false);assert.equal(JSON.stringify(result).includes('continue_url'),false);
+ }
 });

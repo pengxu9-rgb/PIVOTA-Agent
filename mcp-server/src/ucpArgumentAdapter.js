@@ -820,6 +820,10 @@ const REAP_EXPECTED_SELLER_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
+    item_source: {
+      type: "string", enum: ["reap_variant", "cart_link"],
+      description: "Optional explicit primary source. Selected before create and preserved for recovery; a refusal never retries another source.",
+    },
     expected_merchant_domain: {
       type: "string",
       minLength: 1,
@@ -915,7 +919,7 @@ const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "contex
  * only by the Reap lane from the raw body. The anti-drift leaf walk runs over every variant against these.
  */
 export const UCP_EXPECTED_SELLER_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain"]),
+  create_checkout_session: Object.freeze(["checkout.reap.expected_merchant_domain", "checkout.reap.item_source"]),
 });
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
@@ -1116,7 +1120,10 @@ function requireExpectedSellerShape(checkout, code) {
     ].join(" "), { rejected_field: "checkout.reap.expected_merchant_domain", max_length: EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH });
   };
   if (!isPlainObject(reap)) refuse();
-  rejectUnknown(reap, ["expected_merchant_domain"], "checkout.reap", code);
+  rejectUnknown(reap, ["expected_merchant_domain", "item_source"], "checkout.reap", code);
+  if (own(reap, "item_source") !== undefined && !["reap_variant", "cart_link"].includes(own(reap, "item_source"))) {
+    throw ucpRefusal(code, "ucp_reap_item_source_invalid", "item_source must select reap_variant or cart_link before creating a checkout.", { rejected_field: "checkout.reap.item_source" });
+  }
   const domain = own(reap, "expected_merchant_domain");
   if (domain === undefined) return;
   if (typeof domain !== "string" || domain.length === 0 || domain.length > EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH) refuse();
