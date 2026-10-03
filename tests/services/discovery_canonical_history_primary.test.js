@@ -185,3 +185,19 @@ test('different history query cannot be silently replaced by stored brand', asyn
    expect(response.metadata.candidate_source).not.toBe('canonical_sig_personalized');
    expect(counts).toBe(1);expect(response.total).toBe(123);
  });
+
+
+test('public original subject with unavailable own listing is typed eligibility, not private subject or database failure', async () => {
+  db.query.mockResolvedValue({rows:[row(SIG,{offers:[],price_min:null,offer_count:0})]});
+  const result=await primary();
+  expect(result.products).toEqual([]);
+  expect(result.recallSummary[0]).toMatchObject({status:200,eligibility_reason:'canonical_history_item_unavailable'});
+  expect(result.recallSummary[0]).not.toHaveProperty('failure_reason');
+  const response=await getDiscoveryFeed(request(),{relationshipGraphRecallFn:()=>{throw Error('alternate graph');}});
+  expect(response.products).toEqual([]);
+  expect(response.metadata.primary_path_used).toBe('canonical_sig_personalized');
+  expect(response.metadata.fallback_triggered).toBe(false);
+  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).toMatchObject({successful:true,eligibility_reason:'canonical_history_item_unavailable',zero_recall_reason:'canonical_history_item_unavailable'});
+  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).not.toHaveProperty('failure_reason');
+  expect(axios.get).not.toHaveBeenCalled();
+});
