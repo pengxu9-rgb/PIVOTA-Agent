@@ -30,3 +30,23 @@ for(const strict of [false,true])for(const[label,status,body]of bad){
   assert.equal((await c.startPurchase({})).kind,'unavailable');
  });
 }
+
+// Only a coherent original-owner miss may advance legacy namespace recovery.
+const ownerMissShapes = [
+ ['flat', {error:'purchase_not_found'}, 'not_found'],
+ ['detail', {detail:{error:'purchase_not_found'}}, 'not_found'],
+ ['full-main', {status:'error',error:{code:'PRODUCT_NOT_FOUND',message:'purchase_not_found',details:{error:'purchase_not_found'}},detail:{error:'purchase_not_found'}}, 'not_found'],
+ ['conflicting flat/detail', {detail:{error:'purchase_not_found'},error:'rail_unconfigured'}, 'unavailable'],
+ ['success detailed', {status:'success',detail:{error:'purchase_not_found'}}, 'unavailable'],
+ ['success flat', {status:'success',error:'purchase_not_found'}, 'unavailable'],
+ ['malformed error object', {detail:{error:'purchase_not_found'},error:{}}, 'unavailable'],
+ ['wrong structured class', {status:'error',error:{code:'NOT_FOUND',message:'purchase_not_found',details:{error:'purchase_not_found'}},detail:{error:'purchase_not_found'}}, 'unavailable'],
+ ['conflicting structured message', {status:'error',error:{code:'PRODUCT_NOT_FOUND',message:'rail_unconfigured',details:{error:'purchase_not_found'}},detail:{error:'purchase_not_found'}}, 'unavailable'],
+ ['conflicting structured detail', {status:'error',error:{code:'PRODUCT_NOT_FOUND',message:'purchase_not_found',details:{error:'rail_unconfigured'}},detail:{error:'purchase_not_found'}}, 'unavailable'],
+];
+for(const strict of [false,true])for(const [shape,body,expected]of ownerMissShapes)for(const operation of ['getPurchase','recoverPurchase']){
+ test(`Canonical owner404: ${strict?'private':'ordinary'} ${operation} ${shape}`,async()=>{
+  const c=createReapAgenticPurchaseClient({baseUrl:'https://backend.invalid',authHeaders,requireAuthoritativeRefusal:strict,fetchImpl:async()=>({status:404,text:async()=>JSON.stringify(body)})});
+  const result=await c[operation](operation==='getPurchase'?'rp_'+'1'.repeat(24):{idempotency_key:'synthetic'});assert.equal(result.kind,expected);
+ });
+}

@@ -2504,13 +2504,13 @@ test('actual backend flat purchase_not_found404 advances variant-to-cart recover
 for (const [label, body, expectedKind] of [
   ['authoritative flat miss', { error: 'purchase_not_found' }, 'not_found'],
   ['existing detailed miss', houseError('purchase_not_found', 404), 'not_found'],
-  ['unrelated flat404', { error: 'not_available_on_this_rail' }, 'refused'],
-  ['unrecognized object404', { error: { code: 'purchase_not_found' } }, 'refused'],
-  ['conflicting detailed404', { error: 'purchase_not_found', detail: { error: 'rail_disabled' } }, 'refused'],
-  ['malformed detailed404', { error: 'purchase_not_found', detail: { error: 7 } }, 'refused'],
-  ['null detailed404', { error: 'purchase_not_found', detail: null }, 'refused'],
-  ['string detailed404', { error: 'purchase_not_found', detail: 'rail_disabled' }, 'refused'],
-  ['empty404', {}, 'refused'],
+  ['unrelated flat404', { error: 'not_available_on_this_rail' }, 'unavailable'],
+  ['unrecognized object404', { error: { code: 'purchase_not_found' } }, 'unavailable'],
+  ['conflicting detailed404', { error: 'purchase_not_found', detail: { error: 'rail_disabled' } }, 'unavailable'],
+  ['malformed detailed404', { error: 'purchase_not_found', detail: { error: 7 } }, 'unavailable'],
+  ['null detailed404', { error: 'purchase_not_found', detail: null }, 'unavailable'],
+  ['string detailed404', { error: 'purchase_not_found', detail: 'rail_disabled' }, 'unavailable'],
+  ['empty404', {}, 'unavailable'],
 ]) {
   test(`recover client actual envelope ${label} preserves specific404 classification`, async () => {
     const b = fakeBackend(); const ctx = await build({ backend: b });
@@ -2523,7 +2523,7 @@ test('GET recognizes actual owner-route flat404; the same body on403 is never a 
   b.state.get.set(PID, { status: 404, body: { error: 'purchase_not_found' } });
   assert.equal((await ctx.client.getPurchase(PID)).kind, 'not_found');
   b.state.recover.set('client-envelope-test', { status: 403, body: { error: 'purchase_not_found' } });
-  assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, 'refused');
+  assert.equal((await ctx.client.recoverPurchase({ idempotency_key: 'client-envelope-test' })).kind, 'unavailable');
 });
 
 for (const strict of [false,true]) for (const shape of ['flat','nested','main']) {
