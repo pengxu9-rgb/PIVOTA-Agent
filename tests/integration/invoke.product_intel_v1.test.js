@@ -406,6 +406,10 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     expect(productIntelModule).toBeTruthy();
     expect(productIntelModule.data.display_name).toBe('Pivota Insights');
     expect(productIntelModule.data.product_intel_core).toBeTruthy();
+    expect(productIntelModule.data.public_display_eligible).toBe(true);
+    expect(productIntelModule.data).not.toHaveProperty('provenance');
+    expect(productIntelModule.data).not.toHaveProperty('agent_context');
+    expect(productIntelModule.data.freshness).not.toHaveProperty('source_version');
     expect(productIntelModule.data.quality_state).toBeTruthy();
     expect(Array.isArray(productIntelModule.data.external_highlight_signals)).toBe(true);
     expect(offersModule.data.offers[0].commerce_mode).toBe('merchant_embedded_checkout');

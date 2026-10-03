@@ -158,6 +158,7 @@ const {
   PRODUCT_INTEL_CONTRACT_VERSION,
   buildProductIntelBundle,
   buildProductIntelDraftBundle,
+  buildPublicProductIntelProjection,
   hydrateProductWithPublishedIntel,
   buildNormalizedPdpMetadata,
   buildProductFeedbackResponse,
@@ -1869,8 +1870,18 @@ const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
 
 function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
+  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
+    ? { ...pdpPayload.product } : pdpPayload.product;
+  if (product && typeof product === 'object') {
+    // Raw backend blobs can contain operator dossiers even when Insights was
+    // not requested. Public PDP consumers receive the typed product/variants.
+    for (const key of ['raw', 'raw_detail', 'raw_payload', '_raw', 'product_intel', 'productIntel', 'product_intel_v1', 'agent_context', 'provenance']) {
+      delete product[key];
+    }
+  }
   return {
     ...pdpPayload,
+    product,
     modules: Array.isArray(pdpPayload.modules)
       ? pdpPayload.modules.filter((module) => {
           const type = String(module?.type || '').trim();
@@ -45290,6 +45301,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         } finally {
           markPdpV2Module('product_intel', productIntelModuleStartedAt);
         }
+        productIntel = buildPublicProductIntelProjection(productIntel);
         if (productIntel) {
           productIntelStatus = 'ready';
           productIntelMissingReason = null;

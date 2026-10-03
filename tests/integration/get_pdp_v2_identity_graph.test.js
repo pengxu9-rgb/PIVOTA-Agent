@@ -562,15 +562,13 @@ describe('get_pdp_v2 identity graph live read', () => {
     expect(productIntelModule).toEqual(
       expect.objectContaining({
         required: true,
-        data: expect.objectContaining({
-          display_name: 'Pivota Insights',
-          evidence_profile: 'pivota_reviewed',
-          provenance: expect.objectContaining({
-            source: 'aurora_product_intel_kb',
-          }),
-        }),
+        // This fixture contains review-process copy only, so the public module
+        // is withheld while canonical identity and review scope stay available.
+        data: null,
+        reason: 'published_intel_missing',
       }),
     );
+    expect(res.body.metadata.product_intel_status).toBe('missing_blocked');
   });
 
   test('keeps identity graph live when product intel is not yet published for the selected line item', async () => {
