@@ -1,3 +1,5 @@
+import selectionContract from '../../src/services/reapSelectionWitness.js';
+const { readSelectionWitness, sameSelection } = selectionContract;
 // The REAP AGENTIC lane of the UCP checkout door — the third lane, beside the kernel path and the storefront
 // escalation (ucpCheckoutEscalation.js). Plan: pivota-backend WP5 (Reap agentic payments), owner decision
 // 2026-09-23 after Reap showed a COMPLETED sandbox checkout.
@@ -1416,16 +1418,21 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   if (items.length !== 1 || !isPlainObject(items[0])) throw unknown();
   const productId = str(items[0].product_id), quantity = items[0].quantity;
   if (!productId || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > REAP_MAX_QUANTITY) throw unknown();
-  let rows;
-  // NEVER call the normal catalog/PDP executor here: it can enrich variants
-  // from a storefront. Only the server-injected SQL identity reader is allowed.
-  if (typeof recoveryIdentityReader !== "function") throw unknown();
-  const identityExecutor = { execute: async (_op, args, readCtx) => ({
-    product: await recoveryIdentityReader(args.payload.product.product_id, readCtx),
-  }) };
-  try { rows = await readCheckoutRows([{ product_id: productId, quantity }], identityExecutor, ctx, { timeoutMs }); }
-  catch { throw unknown(); }
-  const row = rows.get(productId), productKey = productKeyOf(row);
+  const recordedSelection = readSelectionWitness(ucpArgs.checkout?.reap?.selection);
+  if (ucpArgs.checkout?.reap?.selection !== undefined && !recordedSelection) throw unknown();
+  let row;
+  if (recordedSelection) {
+    // Original canonical body is enough: the backend owner+immutable hash verifies it.
+    // Do not consult present catalog/proof/price/default/source configuration for this read.
+    row={product_key:recordedSelection.product_key};
+  } else {
+    // Legacy attempts retain their original SQL identity/key derivation, never guess a hashed SKU.
+    if (typeof recoveryIdentityReader !== "function") throw unknown();
+    const identityExecutor={execute:async(_op,args,readCtx)=>({product:await recoveryIdentityReader(args.payload.product.product_id,readCtx)})};
+    let rows;try {rows=await readCheckoutRows([{product_id:productId,quantity}],identityExecutor,ctx,{timeoutMs});} catch {throw unknown();}
+    row=rows.get(productId);
+  }
+  const productKey = productKeyOf(row);
   if (!productKey) throw unknown();
   const target = escalationTargetOf(row);
   const email = attestedOrBodyEmail(attested, quote.customer_email);
@@ -1439,6 +1446,11 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   // Reconstruct the ORIGINAL selector without current variant/proof/price reads.
   const selectedKey = selectedReapVariantKey(ucpArgs, row, productKey, { recovery: true });
   if (selectedKey !== undefined) base.variant_key = selectedKey;
+  const originalSelection = readSelectionWitness(ucpArgs.checkout?.reap?.selection);
+  if (ucpArgs.checkout?.reap?.selection !== undefined && (!originalSelection
+    || originalSelection.quantity!==quantity || originalSelection.market!==escalationBuyerMarket(ucpArgs)
+    || ucpArgs.checkout?.reap?.item_source!==originalSelection.item_source
+    || canonicalReapMerchantDomain(originalSelection.merchant_domain)!==reapExpectedMerchantDomain(ucpArgs))) throw unknown();
   const offerCode = reapOfferCode(ucpArgs); // ORIGINAL requested code, even when new offers are paused
   if (offerCode !== undefined) base.offer_code = offerCode;
   const variantDomain = reapMerchantDomain(row, target);
@@ -1447,8 +1459,8 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   const cartDomain = cartLinkMerchantDomain(row, target);
   const selectedSource = own(own(own(ucpArgs, "checkout"), "reap"), "item_source");
   const candidates = [
-    selectedSource !== "cart_link" && variantDomain && { ...base, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) },
-    selectedSource !== "reap_variant" && cartDomain && { ...base, merchant_domain: cartDomain, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) },
+    !originalSelection && selectedSource !== "cart_link" && variantDomain && { ...base, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) },
+    selectedSource !== "reap_variant" && (originalSelection?.merchant_domain || cartDomain) && { ...base, merchant_domain: originalSelection?.merchant_domain || cartDomain, item_source: "cart_link", idempotency_key: reapCartLinkIdempotencyKey(params.idempotency_key) },
   ].filter(Boolean);
   if (!candidates.length || candidates.some((b) => !b.idempotency_key)) throw unknown();
   const matches = [];
@@ -1480,7 +1492,13 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
 // The selected id is a catalog selector, never provider authority. The backend must
 // find this exact product SKU and validate its storefront proof and price.
 export function selectedReapVariantKey(ucpArgs, row, productKey, { recovery = false } = {}) {
-  const selected = own(own(own(ucpArgs, "checkout"), "reap"), "selected_variant_id");
+  const reap = own(own(ucpArgs, "checkout"), "reap");
+  const selected = own(reap, "selected_variant_id");
+  const supplied = own(reap, "selection");
+  const witness = supplied === undefined ? undefined : readSelectionWitness(supplied);
+  if (supplied !== undefined && (!witness || witness.product_key !== productKey || witness.variant_id !== selected)) {
+    throw new PivotaCommerceError("QUOTE_REQUIRED", { reason:"ucp_reap_variant_not_created" });
+  }
   if (selected === undefined) return undefined;
   const refuse = () => { throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" }); };
   if (typeof selected !== "string" || !/^[1-9][0-9]{0,24}$/.test(selected)) refuse();
@@ -1488,11 +1506,38 @@ export function selectedReapVariantKey(ucpArgs, row, productKey, { recovery = fa
     const variants = own(row, "variants");
     if (!Array.isArray(variants) || variants.filter(v => String(own(v, "variant_id") ?? own(v, "id")) === selected).length !== 1) refuse();
   }
+  if (witness) return witness.variant_key;
+  // Legacy numeric-only attempts retain their exact original key spelling during recovery.
   // Mirror promoter and enrichment ingestion use distinct catalog key formats.
   // Both are server-owned product namespaces; the backend still requires an
   // existing SKU and never substitutes another key when this one is absent.
   const infix = productKey.startsWith(MIRROR_KEY_PREFIX) ? "::v::" : "::v:";
   return `${productKey}${infix}${selected}`;
+}
+
+// Read-only preparation shares the real catalog/proof authority with create, never a checkout executor.
+export async function prepareReapCheckout({ params, ctx, executor, ucpArgs, client, env = process.env, timeoutMs }) {
+  const refuse = () => { throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason:"ucp_reap_selection_not_prepared" }); };
+  if (!reapAgenticLaneEnabled(env) || !reapAgenticCreateEnabled(env) || !reapCartLinkLaneEnabled(env)
+    || !client?.hasCallerCredentials?.() || typeof client.preparePurchase !== "function") refuse();
+  const items=params.quote?.items;
+  if (!Array.isArray(items) || items.length!==1 || !str(items[0]?.product_id)
+    || !Number.isSafeInteger(items[0].quantity) || items[0].quantity<1 || items[0].quantity>REAP_MAX_QUANTITY) refuse();
+  const reap=ucpArgs.checkout?.reap;
+  if (reap?.item_source!=="cart_link" || typeof reap.selected_variant_id!=="string" || !/^[1-9][0-9]{0,24}$/.test(reap.selected_variant_id)) refuse();
+  let rows;
+  try { rows=await readCheckoutRows(items,executor,ctx,{timeoutMs}); } catch { refuse(); }
+  const row=rows.get(items[0].product_id), productKey=productKeyOf(row), target=escalationTargetOf(row);
+  const merchant=cartLinkMerchantDomain(row,target), market=escalationBuyerMarket(ucpArgs);
+  const shipping = reapShippingAddress(ucpArgs);
+  if (!productKey || !merchant || !market || !shipping || shipping.country?.toUpperCase()!==market
+    || canonicalReapMerchantDomain(merchant)!==canonicalReapMerchantDomain(reap.expected_merchant_domain)) refuse();
+  const request={merchant_domain:merchant,product_key:productKey,variant_id:reap.selected_variant_id,quantity:items[0].quantity,market_country:market,item_source:"cart_link"};
+  let out;try { out=await client.preparePurchase(request); } catch { refuse(); }
+  const witness=readSelectionWitness(out?.selection);
+  if (out?.kind!=="accepted" || !witness || witness.product_key!==productKey || witness.variant_id!==request.variant_id
+    || witness.quantity!==request.quantity || witness.market!==market || canonicalReapMerchantDomain(witness.merchant_domain)!==canonicalReapMerchantDomain(merchant)) refuse();
+  return { selection:witness };
 }
 
 async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, client, log, env, now, timeoutMs, shouldOfferPurchase, clock, hints }) {
@@ -1605,6 +1650,22 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
       reason: "reap_create_paused", recovery: "keep polling existing Reap checkouts; new purchases are paused",
     });
+  }
+
+  // A chosen numeric selector resolves to the backend's actual canonical SKU before ANY create POST.
+  // Fresh authoritative preparation must agree with the original selection and the selected PDP price.
+  if (selectedKey !== undefined && !cartLinkDirect) {
+    throw new PivotaCommerceError("QUOTE_REQUIRED", {reason:"ucp_reap_variant_not_created"});
+  }
+  if (selectedKey !== undefined && cartLinkDirect) {
+    const prepared = await prepareReapCheckout({params,ctx,executor,ucpArgs,client,env,timeoutMs});
+    const witness=readSelectionWitness(ucpArgs.checkout?.reap?.selection);
+    const actual=prepared.selection;
+    if ((witness && !sameSelection(witness,actual)) || actual.variant_key!==selectedKey
+      || actual.unit_price_minor!==price.amount || actual.currency!==price.currency
+      || actual.quantity!==quantity || !cartLinkDirect) {
+      throw new PivotaCommerceError("QUOTE_REQUIRED", {reason:"ucp_reap_variant_not_created"});
+    }
   }
 
   // 4. THE PURCHASABILITY GATE — exactly as the escalation lane consults it: same switch, same singleton

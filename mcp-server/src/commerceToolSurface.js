@@ -38,6 +38,7 @@ import { shapeUcpResult } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
+  prepareReapCheckout,
   DISCOUNT_CODE_PATH,
   REAP_CHECKOUT_ID_PREFIX,
   reapAgenticCreateEnabled,
@@ -315,6 +316,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     dialect difference ends at this line. See ucpArgumentAdapter.js for what maps and what deliberately
     //     does not.
     const recoverOnly = dialect === TOOL_DIALECTS.ucp && options.reapRecoverOnly === true;
+    const prepareOnly = dialect === TOOL_DIALECTS.ucp && options.reapPrepareOnly === true;
     if (recoverOnly && (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id))) throw new IdentityRequiredError();
     const nativeArgs = recoverOnly ? ucpRecoverToNativeToolArgs(toolArgs)
       : dialect === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, toolArgs) : toolArgs;
@@ -350,6 +352,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       if (op.id === "create_checkout_session" && !recoverOnly) {
         await assertExpectedSeller({ ucpArgs: toolArgs, params, executor: reads, ctx });
       }
+      if (prepareOnly) return sanitizeResult(await prepareReapCheckout({params,ctx,executor:reads,ucpArgs:toolArgs,
+        client:reapAgentic?.client}), {handoffAllowed:false});
       // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
       //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
       //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
@@ -1106,13 +1110,20 @@ export function ucpDialectSurface(surface) {
         description: "Pivota vendor read-only recovery of an unresolved Reap checkout. Send the identical original create payload and idempotency key. Never creates a purchase or alternative checkout; unknown outcomes remain unresolved.",
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: UCP_REAP_RECOVER_INPUT_SCHEMA,
+      }, {
+        name:"prepare_checkout",
+        description:"Read-only authoritative selected Reap cart SKU preparation. Records selection before first create; never creates, enrolls, quotes or pays. Recovery must never call this tool.",
+        annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+        inputSchema:UCP_REAP_RECOVER_INPUT_SCHEMA,
       }] : tools;
     },
     callTool: async (name, args, sessionContext) =>
-      name === "recover_checkout"
+      name === "prepare_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
+        : name === "recover_checkout"
         ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
         : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
-    isCommerceTool: (name) => name === "recover_checkout" || (
+    isCommerceTool: (name) => name === "prepare_checkout" || name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
         : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name)),
