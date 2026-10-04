@@ -1,3 +1,4 @@
+const { normalizeReviewMedia, reviewAvailability, isSyntheticReviewSummary, buildContentModuleStates, publicSourceUrl } = require('./services/pdpPublicEvidence');
 const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
 const { isDisplayablePdpFaqItem } = require('./services/pdpFaqQuality');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
@@ -893,8 +894,6 @@ function isPublicContributionVisible(item) {
 
 const PDP_SYNTHETIC_QUESTION_SOURCE_RE =
   /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
-const PDP_SYNTHETIC_REVIEW_SOURCE_RE =
-  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
 const PDP_SYNTHETIC_HOW_TO_SOURCE_RE =
   /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
 const PDP_GENERIC_FORCE_FILL_HOW_TO_RE =
@@ -922,27 +921,7 @@ function isSyntheticPdpQuestionSource(item) {
 }
 
 function isSyntheticPdpReviewSummary(summary) {
-  const source = asPlainObject(summary) || {};
-  if (source.force_filled === true) return true;
-  if (source.distribution_estimated === true) return true;
-  const sourceSignals = [
-    source.status,
-    source.review_status,
-    source.source,
-    source.source_kind,
-    source.sourceKind,
-    source.source_origin,
-    source.sourceOrigin,
-    source.source_type,
-    source.sourceType,
-    source.content_review_state,
-    source.review_status,
-    source.aggregation_scope,
-  ]
-    .map((value) => asNonEmptyString(value))
-    .filter(Boolean)
-    .join(' ');
-  return PDP_SYNTHETIC_REVIEW_SOURCE_RE.test(sourceSignals) || /\bestimated\b/i.test(sourceSignals);
+  return isSyntheticReviewSummary(summary);
 }
 
 function isSyntheticPdpHowToCandidate(candidate, candidateText = '') {
@@ -2419,6 +2398,8 @@ function buildMediaItems(product, variants) {
       type: 'image',
       url,
       ...extra,
+      role: 'official_product',
+      provenance: { source_type: 'merchant_product', scope: 'exact_item', product_id: String(product.product_id || product.id || ''), merchant_id: String(product.merchant_id || product.merchant?.id || ''), source_url: publicSourceUrl(product.source_url || product.url || product.product_url) },
     });
   };
 
@@ -2505,6 +2486,8 @@ function buildMediaItems(product, variants) {
         source_tier: m.source_tier,
         source_kind: m.source_kind,
         duration_ms: m.duration_ms,
+        role: 'official_product',
+        provenance: { source_type: 'merchant_product', scope: 'exact_item', product_id: String(product.product_id || product.id || ''), merchant_id: String(product.merchant_id || product.merchant?.id || '') },
       });
       return;
     }
@@ -4411,16 +4394,17 @@ function buildReviewsPreview(product, options = {}) {
 
   const scale = Number(summary?.scale || summary?.rating_scale || 5) || 5;
   const summaryIsSynthetic = isSyntheticPdpReviewSummary(summary);
+  const summaryIsUnavailable = reviewAvailability(summary, summaryIsSynthetic) !== 'ready';
   const rawRating = Number(summary?.rating || summary?.average_rating || summary?.avg_rating || 0) || 0;
   const rawReviewCount = Number(summary?.review_count || summary?.count || summary?.total || 0) || 0;
-  const rating = summaryIsSynthetic ? 0 : rawRating;
-  const reviewCount = summaryIsSynthetic ? 0 : rawReviewCount;
+  const rating = summaryIsUnavailable ? 0 : rawRating;
+  const reviewCount = summaryIsUnavailable ? 0 : rawReviewCount;
   const rawPreviewItems = Array.isArray(summary?.preview_items)
     ? summary.preview_items
     : Array.isArray(summary?.snippets)
       ? summary.snippets
       : [];
-  const previewItems = summaryIsSynthetic
+  const previewItems = summaryIsUnavailable
     ? []
     : rawPreviewItems.filter((item) => isPublicContributionVisible(item));
   const explicitQuestions = normalizeReviewSummaryQuestions(summary?.questions);
@@ -4434,7 +4418,7 @@ function buildReviewsPreview(product, options = {}) {
   const brandCardSubtitle = String(summaryBrandCard?.subtitle || '').trim() || null;
 
   const distributionRaw =
-    summaryIsSynthetic
+    summaryIsUnavailable
       ? null
       : summary?.rating_distribution ||
         summary?.star_distribution ||
@@ -4448,20 +4432,21 @@ function buildReviewsPreview(product, options = {}) {
   const normalizeScopedSummary = (rawSummary) => {
     if (!rawSummary || typeof rawSummary !== 'object') return null;
     const nestedIsSynthetic = isSyntheticPdpReviewSummary(rawSummary);
+    const nestedIsUnavailable = reviewAvailability(rawSummary, nestedIsSynthetic) !== 'ready';
     const nestedScale = Number(rawSummary.scale || rawSummary.rating_scale || scale) || scale;
     const rawNestedRating =
       Number(rawSummary.rating || rawSummary.average_rating || rawSummary.avg_rating || 0) || 0;
     const rawNestedReviewCount =
       Number(rawSummary.review_count || rawSummary.count || rawSummary.total || 0) || 0;
-    const nestedRating = nestedIsSynthetic ? 0 : rawNestedRating;
-    const nestedReviewCount = nestedIsSynthetic ? 0 : rawNestedReviewCount;
+    const nestedRating = nestedIsUnavailable ? 0 : rawNestedRating;
+    const nestedReviewCount = nestedIsUnavailable ? 0 : rawNestedReviewCount;
     const nestedPreviewItems = Array.isArray(rawSummary.preview_items)
       ? rawSummary.preview_items
       : Array.isArray(rawSummary.snippets)
         ? rawSummary.snippets
         : [];
     const nestedDistributionRaw =
-      nestedIsSynthetic
+      nestedIsUnavailable
         ? null
         : rawSummary.rating_distribution ||
           rawSummary.star_distribution ||
@@ -4478,6 +4463,7 @@ function buildReviewsPreview(product, options = {}) {
       scale: nestedScale,
       rating: nestedRating,
       review_count: nestedReviewCount,
+      availability_state: reviewAvailability(rawSummary, nestedIsSynthetic),
       ...(typeof rawSummary.scope_label === 'string' && rawSummary.scope_label.trim()
         ? { scope_label: rawSummary.scope_label.trim() }
         : {}),
@@ -4487,7 +4473,7 @@ function buildReviewsPreview(product, options = {}) {
             rating_distribution: nestedRatingDistribution,
           }
         : {}),
-      preview_items: (nestedIsSynthetic ? [] : nestedPreviewItems)
+      preview_items: (nestedIsUnavailable ? [] : nestedPreviewItems)
         .filter((item) => isPublicContributionVisible(item))
         .slice(0, 6)
         .map((item, idx) => ({
@@ -4497,11 +4483,7 @@ function buildReviewsPreview(product, options = {}) {
           title: item.title ? String(item.title) : undefined,
           text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
           media: Array.isArray(item.media)
-            ? item.media.map((m) => ({
-                type: m.type || 'image',
-                url: m.url || m.image_url,
-                thumbnail_url: m.thumbnail_url,
-              }))
+            ? item.media.map((m) => normalizeReviewMedia(m, item)).filter(Boolean)
             : undefined,
         })),
       ...(rawSummary?.brand_card && typeof rawSummary.brand_card === 'object'
@@ -4525,6 +4507,7 @@ function buildReviewsPreview(product, options = {}) {
     scale,
     rating,
     review_count: reviewCount,
+    availability_state: reviewAvailability(summary, summaryIsSynthetic),
     status: typeof summary?.status === 'string' ? summary.status : undefined,
     unavailable_reason:
       typeof summary?.unavailable_reason === 'string' ? summary.unavailable_reason : undefined,
@@ -4564,11 +4547,7 @@ function buildReviewsPreview(product, options = {}) {
       title: item.title ? String(item.title) : undefined,
       text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
       media: Array.isArray(item.media)
-        ? item.media.map((m) => ({
-            type: m.type || 'image',
-            url: m.url || m.image_url,
-            thumbnail_url: m.thumbnail_url,
-          }))
+        ? item.media.map((m) => normalizeReviewMedia(m, item)).filter(Boolean)
         : undefined,
     })),
     filters: Array.isArray(summary?.filters)
@@ -4726,6 +4705,7 @@ function buildRecommendations(items, currencyFallback) {
           && p.why_candidate?.summary) || p.reason || p.recommendation_reason || undefined,
         ...((p.source === 'relationship_graph' || p.recommendation_source === 'relationship_graph' || p.relationship_edge_id) ? {
           relationship_type: p.relationship_type,
+          relationship_edge_id: p.relationship_edge_id,
           why_candidate: p.why_candidate, tradeoffs: p.tradeoffs, watchouts: p.watchouts,
           evidence_refs: p.evidence_refs,
         } : {}),
@@ -4977,18 +4957,22 @@ function buildPdpPayload(args) {
   const supplementalDetails = buildSupplementalDetailSections(product, detailSections);
   const productFacts = buildProductFactsSections(product, detailSections, structuredContentImagePlan);
   const externalSeedIngredientAuthority =
-    isBeautyFormulaProfile && isExternalSeedLikeProduct(product)
+    isBeautyFormulaProfile
       ? buildStructuredPdpIngredientModules(product)
       : null;
-  const ingredientsInci = isBeautyFormulaProfile && !formulaContentSuppressed
-    ? externalSeedIngredientAuthority
-      ? externalSeedIngredientAuthority.ingredientsInciData
-      : buildIngredientsInci(product)
+  // Every beauty source uses the same rejection boundary. Preserve legacy display
+  // labels/source metadata for connected merchants only after content validation.
+  const validatedInci = externalSeedIngredientAuthority?.ingredientsInciData || null;
+  const validatedActives = externalSeedIngredientAuthority?.activeIngredientsData || null;
+  const legacyInci = !isExternalSeedLikeProduct(product) && validatedInci ? buildIngredientsInci(product) : null;
+  const ingredientsInci = isBeautyFormulaProfile && !formulaContentSuppressed && validatedInci
+    ? legacyInci ? { ...validatedInci, ...legacyInci, items: validatedInci.items,
+        raw_text: validatedInci.raw_text, authority_scope: validatedInci.authority_scope,
+        ...(validatedInci.authority_scope ? { title: validatedInci.title } : {}) } : validatedInci
     : null;
-  const activeIngredients = isBeautyFormulaProfile && !formulaContentSuppressed
-    ? externalSeedIngredientAuthority
-      ? externalSeedIngredientAuthority.activeIngredientsData
-      : buildActiveIngredients(product, ingredientsInci)
+  const legacyActives = !isExternalSeedLikeProduct(product) && validatedActives ? buildActiveIngredients(product, ingredientsInci) : null;
+  const activeIngredients = isBeautyFormulaProfile && !formulaContentSuppressed && validatedActives
+    ? legacyActives ? { ...validatedActives, ...legacyActives, items: validatedActives.items } : validatedActives
     : null;
   const howToUse = formulaContentSuppressed ? null : buildHowToUse(product, structuredContentImagePlan);
   const genericAttributeModules = isBeautyFormulaProfile
@@ -5329,7 +5313,9 @@ function buildPdpPayload(args) {
         ],
   };
 
-  return compilePdpPayload(payload, { debug: args.debug });
+  const compiledPayload = compilePdpPayload(payload, { debug: args.debug });
+  compiledPayload.x_content_module_states = buildContentModuleStates(compiledPayload.modules, product);
+  return compiledPayload;
 }
 
 module.exports = {

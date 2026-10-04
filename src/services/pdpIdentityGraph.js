@@ -1,3 +1,4 @@
+const { reviewAvailability } = require('./pdpPublicEvidence');
 const { createHash, randomUUID } = require('crypto');
 const logger = require('../logger');
 const { getPool, query, withClient } = require('../db');
@@ -2498,8 +2499,15 @@ function buildReviewSummaryAggregateKey(listing, summary) {
 function aggregateReviewSummary(listings, fallbackSummary = null) {
   const summaries = [];
   const seenSummaryKeys = new Set();
+  const inputSummaries = (Array.isArray(listings) ? listings : []).map(listing => asPlainObject(listing?.review_summary)).filter(Boolean);
+  const fallbackInput = asPlainObject(fallbackSummary);
+  const states = [...inputSummaries, ...(fallbackInput ? [fallbackInput] : [])].map(summary => reviewAvailability(summary));
+  const explicitStates = [...inputSummaries, ...(fallbackInput ? [fallbackInput] : [])].filter(summary => Object.keys(summary).length > 0).map(summary => reviewAvailability(summary));
+  const denied = ['blocked', 'withheld', 'error', 'loading', 'unavailable', 'not_fetched', 'absent'].find(state => explicitStates.includes(state));
+  if (['blocked', 'withheld'].includes(denied)) return { scale: 5, rating: 0, review_count: 0, preview_items: [], availability_state: denied };
   for (const listing of listings) {
     const summary = asPlainObject(listing?.review_summary) || {};
+    if (reviewAvailability(summary) !== 'ready') continue;
     if (Number(summary.review_count || summary.count || summary.total || 0) <= 0) continue;
     const summaryKey = buildReviewSummaryAggregateKey(listing, summary);
     if (summaryKey && seenSummaryKeys.has(summaryKey)) continue;
@@ -2507,6 +2515,7 @@ function aggregateReviewSummary(listings, fallbackSummary = null) {
     summaries.push(summary);
   }
   const fallback = asPlainObject(fallbackSummary);
+  if (!summaries.length && denied) return { scale: 5, rating: 0, review_count: 0, preview_items: [], availability_state: denied };
   if (!summaries.length && fallback) {
     return {
       ...fallback,
@@ -2515,7 +2524,9 @@ function aggregateReviewSummary(listings, fallbackSummary = null) {
       scale: Number(fallback.scale || fallback.rating_scale || 5) || 5,
     };
   }
-  if (!summaries.length) return null;
+  if (!summaries.length) return states.length && states.every(state => state === 'empty')
+    ? { scale: 5, rating: 0, review_count: 0, preview_items: [], availability_state: 'empty', review_scope: 'linked_review_store' }
+    : null;
   let totalCount = 0;
   let weightedRating = 0;
   const previewItems = [];
@@ -2544,6 +2555,8 @@ function aggregateReviewSummary(listings, fallbackSummary = null) {
     scale: Number(top.scale || top.rating_scale || 5) || 5,
     rating: totalCount > 0 ? Number((weightedRating / totalCount).toFixed(2)) : 0,
     review_count: totalCount,
+    availability_state: totalCount > 0 ? 'ready' : 'empty',
+    ...(denied ? { partial_sources: true } : {}),
     ...(starDistribution ? { star_distribution: starDistribution, rating_distribution: starDistribution } : {}),
     ...(previewItems.length ? { preview_items: previewItems } : {}),
     ...(asPlainObject(top.brand_card) ? { brand_card: top.brand_card } : {}),
@@ -2576,6 +2589,9 @@ function buildReviewScopeMetadata(exactSummary, lineSummary) {
       scale: Number(src.scale || src.rating_scale || fallbackScale) || fallbackScale,
       rating: Number(src.rating || src.average_rating || src.avg_rating || 0) || 0,
       review_count: reviewCount,
+      availability_state: reviewAvailability(summary),
+      ...(src.partial_sources === true ? { partial_sources: true } : {}),
+      ...(src.review_scope ? { review_scope: src.review_scope } : {}),
       ...(distribution ? { star_distribution: distribution, rating_distribution: distribution } : {}),
       ...(previewItems.length ? { preview_items: previewItems } : { preview_items: [] }),
       ...(asPlainObject(src.brand_card) ? { brand_card: src.brand_card } : {}),

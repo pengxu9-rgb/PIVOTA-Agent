@@ -34,8 +34,9 @@ function uniqueStrings(values, limit = 64) {
 
 function stripHtml(input) {
   return String(input || '')
+    .replace(/<(?:script|style)\b[^>]*>[\s\S]*?<\/(?:script|style)>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
+    .replace(/&nbsp;|&#160;|&#x0*a0;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
@@ -47,6 +48,13 @@ const INGREDIENT_SECTION_RE =
   /\b(full ingredient(?:s| list)?|full ingredients? list|ingredients(?:\s*\(inci\))?|inci(?: list)?)\b\s*:?\s*/ig;
 const ACTIVE_SECTION_RE = /\bactive ingredients?\s*:/ig;
 const STOP_MARKERS = [
+  // A heading can be glued to the last ingredient by a flattened HTML crawl.
+  // Do not require punctuation (or a leading word boundary) for "How to Use".
+  /how\s+to\s+(?:use|apply)\b/i,
+  /\b(?:directions(?:\s+for\s+use)?|suggested\s+use|recommended\s+use|usage|application\s+instructions)\b/i,
+  /\b(?:key\s+benefits|benefits|shipping\s*(?:and|&)\s*returns)\b/i,
+  /\b(?:apply|massage|rinse)\s+(?:a|an|the|this|to|onto|into|gently|thoroughly|off|well|with)\b/i,
+  /\buse\s+(?:once|twice|daily|every|morning|at\s+night|as\s+directed)\b/i,
   /\bfree from\s*:/i,
   /\bpeta-certified\b/i,
   /\bhow to pair\b/i,
@@ -55,9 +63,9 @@ const STOP_MARKERS = [
   /\bfaq\b/i,
   /\bfrequently asked questions\b/i,
   /\bcan i use this with an active ingredient\b/i,
-  /\bwarning[s]?\s*:/i,
+  /\bwarnings?\b/i,
   /\bnote\s*:/i,
-  /\bcaution\s*:/i,
+  /\b(?:caution|precautions?|safety\s+information)\b/i,
   /\bfor external use only\b/i,
   /(?:^|[,.]\s*)\*+\s*organic(?:ally)?\s+(?:grown\s+)?ingredients?\b/i,
   /(?:^|[,.]\s*)\^?\*+\s*natural constituent of essential oils listed\b/i,
@@ -70,6 +78,8 @@ const ACTIVE_STOP_MARKERS = [
 ];
 const MARKETING_SIGNAL_RE =
   /\b(soothes?|supports?|fades?|helps?|comforts?|improves?|hydrates?|nourishes?|clarifies?|brightens?|renews?|refines?|conditions?|antibacterial|good for|best for|works? well|pair with|apply|massage|barrier|redness|discoloration|irritation|suitable for|not tested on animals|cruelty[-\s]?free|paraben[-\s]?free|biodegradable|translucent)\b/i;
+const USAGE_COPY_RE =
+  /\b(?:how\s+to\s+(?:use|apply)|directions|suggested\s+use|recommended\s+use|usage|your|you|our|we|this|these|will|should|must|twice|daily|nightly|weekly|morning\s+(?:and|or)\s+night|day\s+(?:and|or)\s+night|am\s*(?:and|or|\/)\s*pm|face\s+and\s+neck|before\s+bed|after\s+cleansing|avoid\s+contact|keep\s+out\s+of|pat\s+dry)\b|^(?:morning|evening|night|use|rinse|repeat|follow|smooth\s+skin)\s*$/i;
 const SECTION_HEADING_RE = /^(full ingredients?|ingredients(?:\s*\(inci\))?|inci(?: list)?|active ingredients?)$/i;
 const INGREDIENT_FUNCTION_LABEL_RE =
   /^(?:carrier|antioxidant|chelating agent|emollient|emulsifier|emulsion stabilizer|film former|humectant|thickener|skin conditioner|preservative|surfactant|solvent|stabilizer|ph adjuster|buffering agent|colorant|opacifier|viscosity controlling|viscosity controller|absorbent|abrasive|binder|cleansing agent)$/i;
@@ -252,10 +262,26 @@ function readReviewedActiveCandidates(product, inputs) {
   });
 }
 
-function findLastSectionMatch(text, re, predicate = null) {
+function findIngredientSectionEnd(text, markers = STOP_MARKERS) {
+  let cutoff = text.length;
+  for (const marker of markers) {
+    const found = marker.exec(text);
+    marker.lastIndex = 0;
+    if (found) cutoff = Math.min(cutoff, found.index);
+  }
+  return cutoff;
+}
+
+function findLastSectionMatch(text, re, predicate = null, stopMarkers = []) {
   let match = null;
   let next = re.exec(text);
   while (next) {
+    // A later mention of ingredients inside usage/FAQ copy must not reopen a
+    // section that has already ended.
+    if (match) {
+      const between = text.slice(match.index + match[0].length, next.index);
+      if (findIngredientSectionEnd(between, stopMarkers) < between.length) break;
+    }
     if (!predicate || predicate(next)) match = next;
     next = re.exec(text);
   }
@@ -278,23 +304,20 @@ function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
   if (!text) return '';
 
   const sectionRe = activeOnly ? ACTIVE_SECTION_RE : INGREDIENT_SECTION_RE;
+  const stopMarkers = activeOnly ? ACTIVE_STOP_MARKERS : STOP_MARKERS;
   const sectionMatch = findLastSectionMatch(text, sectionRe, (match) =>
-    activeOnly || looksLikeIngredientSectionHeadingMatch(text, match)
+    activeOnly || looksLikeIngredientSectionHeadingMatch(text, match),
+    stopMarkers,
   );
-  if (sectionMatch && typeof sectionMatch.index === 'number') {
+  const initialCutoff = findIngredientSectionEnd(text, stopMarkers);
+  const startsWithIngredientList = !activeOnly && initialCutoff < text.length &&
+    isLikelyAuthoritativeIngredientSet(normalizeIngredientItems(splitIngredientText(text.slice(0, initialCutoff))));
+  if (sectionMatch && typeof sectionMatch.index === 'number' &&
+    !(startsWithIngredientList && sectionMatch.index > initialCutoff)) {
     text = text.slice(sectionMatch.index + sectionMatch[0].length);
   }
 
-  let cutoff = text.length;
-  const stopMarkers = activeOnly ? ACTIVE_STOP_MARKERS : STOP_MARKERS;
-  for (const marker of stopMarkers) {
-    const found = marker.exec(text);
-    marker.lastIndex = 0;
-    if (found && typeof found.index === 'number') {
-      cutoff = Math.min(cutoff, found.index);
-    }
-  }
-  text = text.slice(0, cutoff);
+  text = text.slice(0, findIngredientSectionEnd(text, stopMarkers));
 
   text = text
     .replace(/^[\s:;,.|-]+/, '')
@@ -358,11 +381,13 @@ function isLikelyIngredientItem(value) {
   if (INGREDIENT_FUNCTION_LABEL_RE.test(text)) return false;
   if (looksLikeQuestion(text)) return false;
   if (text.length > 140) return false;
-  if (/[:]/.test(text)) return false;
-  if (/[.!?]/.test(text)) return false;
+  if (/[:]/.test(text.replace(/^\[?\+\/-\s*:\s*/, '').replace(/\bCI\s*\d{5}:\d+\b/ig, ''))) return false;
+  if (/[.!?]/.test(text.replace(/\bdenat\./ig, 'denat').replace(/\d+\.\d+\s*%/g, ''))) return false;
   if (/^(warning|warnings|note|how to|shop now|our story|peta-certified)\b/i.test(text)) return false;
   if (MARKETING_SIGNAL_RE.test(text)) return false;
-  if (/^\d+$/.test(text)) return false;
+  if (USAGE_COPY_RE.test(text)) return false;
+  if (!/\p{L}/u.test(text)) return false;
+  if (/^(?:undefined|null|none|n\/a|not available|\[object\s+\w+\])$/i.test(text)) return false;
   const words = text.split(/\s+/g).filter(Boolean);
   if (words.length > 10) return false;
   return true;
@@ -371,6 +396,7 @@ function isLikelyIngredientItem(value) {
 function isLikelyInciStructuredItem(value) {
   const text = asString(value);
   if (!text) return false;
+  if (!isLikelyIngredientItem(text)) return false;
   if (INCI_MARKETING_ONLY_RE.test(text)) return false;
   if (INGREDIENT_FUNCTION_LABEL_RE.test(text)) return false;
   if (/[()]/.test(text)) return true;
@@ -405,6 +431,43 @@ function normalizeIngredientItems(values, { max = 160 } = {}) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+function readCleanIngredientEvidence(rawText, values = []) {
+  const raw = asString(rawText);
+  let tokens;
+  if (raw) {
+    // Explicit section headings can close a flattened HTML ingredient block.
+    // A standalone usage entry inside a comma list cannot prove that the next
+    // allergen is unrelated usage. Reject that ambiguity before truncation.
+    const flat = stripHtml(raw);
+    const cutoff = findIngredientSectionEnd(flat);
+    const tail = flat.slice(cutoff);
+    const explicitHeading = /^(?:how\s+to\s+(?:use|apply)|directions|suggested\s+use|recommended\s+use|usage|application\s+instructions|warnings?|caution|precautions?|safety\s+information)\b/i.test(tail);
+    if (cutoff < flat.length && !explicitHeading && /[,;|•]\s*$/.test(flat.slice(0, cutoff))) return null;
+    const sanitized = sanitizeIngredientRawText(raw);
+    if (!sanitized) return null;
+    tokens = splitIngredientText(sanitized);
+  } else {
+    // Structured entries are already delimited. Joining them destroys the
+    // boundary between CI 77491 and 1,2-Hexanediol, and hides dropped allergens.
+    tokens = (Array.isArray(values) ? values : []).map(asString).filter(Boolean);
+    // An INCI array is already a declared sequence, not a flattened page. A
+    // usage heading anywhere means malformed structure: withhold the whole
+    // source rather than deciding which later words look chemical enough.
+    if (tokens.some(token => {
+      const flat = stripHtml(token);
+      return findIngredientSectionEnd(flat) < flat.length;
+    })) return null;
+  }
+  const invalidToken = tokens.some((token) => {
+    if (normalizeIngredientItems([token]).length) return false;
+    return !INGREDIENT_FUNCTION_LABEL_RE.test(asString(token).replace(/[.;]+$/, ''));
+  });
+  if (invalidToken) return null;
+  const items = normalizeIngredientItems(tokens, { max: 181 });
+  if (!items.length || items.length > 180) return null;
+  return { items, raw_text: items.join(', ') };
 }
 
 const SUNSCREEN_ACTIVE_ITEMS = [
@@ -719,7 +782,7 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
     options.validateAgainstIngredients === true &&
     normalizedItemsText &&
     Array.isArray(items) &&
-    items.length >= 3;
+    items.length > 0;
   if (
     !inferredSunscreenActives.length &&
     !shouldValidateAgainstIngredients &&
@@ -848,7 +911,7 @@ function isTrustedOfficialIngredientQuality(value) {
     ['official_html', 'official_pdp', 'official_public_pdp'].includes(sourceOrigin) ||
     /official_pdp_full_ingredients|official_pdp_ingredients|official_html/.test(sourceKinds);
   const trustedQuality = ['high', 'authoritative', 'reviewed'].includes(sourceQuality);
-  const reviewedState = !reviewState || /reviewed|approved/.test(reviewState);
+  const reviewedState = !reviewState || /^(?:reviewed|approved|assistant_reviewed|human_reviewed)$/.test(reviewState);
   return officialSource && trustedQuality && reviewedState;
 }
 
@@ -1094,6 +1157,32 @@ function buildExternalSeedProductFamilySuppression(product, generatedAt, inputs 
   });
 }
 
+function readReviewedShortFullAuthority(product) {
+  const quality = asPlainObject(product?.pdp_field_quality_summary) || {};
+  const structured = product?.ingredients_inci || product?.ingredientsInci;
+  const declared = Array.isArray(structured) ? structured : Array.isArray(structured?.items) ? structured.items : null;
+  const raw = asString(product?.pdp_ingredients_raw || product?.pdpIngredientsRaw || structured?.raw_text || structured?.rawText);
+  if (!raw) return null;
+  const evidence = readCleanIngredientEvidence(raw);
+  if (!evidence || evidence.items.length !== 2) return null;
+  // Narrow full-formula path: reviewed same-field official source, exact raw/
+  // structured agreement and no partial scope. Length is not a completeness test.
+  if (declared) {
+    const list = readCleanIngredientEvidence('', declared);
+    if (!list || list.items.length !== evidence.items.length || !list.items.every((item, index) => ingredientKey(item) === ingredientKey(evidence.items[index]))) return null;
+  }
+  for (const q of [quality.ingredients_raw, quality.ingredients_inci].map(asPlainObject).filter(Boolean)) {
+    const review = asString(q.review_state || q.reviewState || q.content_review_state).toLowerCase();
+    const scope = asString(q.authority_scope || q.authorityScope);
+    if (!isTrustedOfficialIngredientQuality(q) || !['approved', 'reviewed', 'assistant_reviewed', 'human_reviewed'].includes(review) || /partial|not[_ -]full|key[_ -]ingredients/i.test(scope)) continue;
+    const qualitySource = asString(q.source_url || q.source_ref);
+    const dataSource = asString(structured?.source_url || structured?.source_ref || product.source_url);
+    if (qualitySource && dataSource && qualitySource !== dataSource) continue;
+    return buildAuthorityRecord({ rawText: evidence.raw_text, items: evidence.items, sourceOrigin: q.source_origin || q.sourceOrigin, purityStatus: 'authoritative', authorityScope: scope || 'reviewed_full_inci' });
+  }
+  return null;
+}
+
 function readStructuredArrayAuthority(product, inputs = readIngredientInputs(product)) {
   const readItems = (...values) => {
     for (const value of values) {
@@ -1111,79 +1200,69 @@ function readStructuredArrayAuthority(product, inputs = readIngredientInputs(pro
     }
     return [];
   };
-  const directItems = normalizeIngredientItems(
-    readItems(
-      product?.ingredients_inci,
-      product?.ingredientsInci,
-      product?.inci_ingredients,
-      product?.inciIngredients,
-      product?.inci_list,
-      product?.inciList,
-      product?.ingredients,
-      product?.inci,
-      inputs.seedData?.inci_list,
-      inputs.seedData?.inciList,
-      inputs.snapshot?.inci_list,
-      inputs.snapshot?.inciList,
-      inputs.ingredientIntel?.inci_list,
-      inputs.snapshotIngredientIntel?.inci_list,
-    ),
-  );
-  const directStructuredItems = directItems.filter((item) => isLikelyInciStructuredItem(item));
-  const rawText = asString(
-    product?.ingredients_inci?.raw_text ||
-      product?.ingredientsInci?.raw_text ||
-      product?.inci_ingredients?.raw_text ||
-      product?.inciIngredients?.raw_text ||
-      product?.inci_list?.raw_text ||
-      product?.inciList?.raw_text ||
-      product?.ingredients?.raw_text ||
-      product?.inci?.raw_text,
-  );
-  const parsedRawItems = directItems.length < 3 && rawText
-    ? normalizeIngredientItems(splitIngredientText(sanitizeIngredientRawText(rawText)), { max: 180 })
-    : [];
-  const parsedStructuredItems = parsedRawItems.filter((item) => isLikelyInciStructuredItem(item));
-  const finalItems =
-    directStructuredItems.length >= 3
-      ? directStructuredItems
-      : directItems.length >= 3
-        ? directItems
-        : parsedStructuredItems.length >= 3
-          ? parsedStructuredItems
-          : parsedRawItems.length
-            ? parsedRawItems
-            : directStructuredItems.length
-              ? directStructuredItems
-              : directItems;
-  const trustedSingleIngredient = hasTrustedSingleIngredientAuthority(product, finalItems, inputs);
-  if (!trustedSingleIngredient) {
-    if (!isLikelyAuthoritativeIngredientSet(finalItems)) return null;
-    if (finalItems.length < 3) return null;
+  const sourceValues = [
+    product?.ingredients_inci,
+    product?.ingredientsInci,
+    product?.inci_ingredients,
+    product?.inciIngredients,
+    product?.inci_list,
+    product?.inciList,
+    product?.ingredients,
+    product?.inci,
+    inputs.seedData?.inci_list,
+    inputs.seedData?.inciList,
+    inputs.snapshot?.inci_list,
+    inputs.snapshot?.inciList,
+    inputs.ingredientIntel?.inci_list,
+    inputs.snapshotIngredientIntel?.inci_list,
+  ];
+  // Keep raw text and items scoped to the same structured source. Selecting
+  // them independently can combine different formulas or preserve a stale list.
+  let evidence = null;
+  let trustedSingleIngredient = false;
+  let structuredPartialQuality = null;
+  for (const source of sourceValues) {
+    const candidate = readCleanIngredientEvidence(
+      asString(source?.raw_text || source?.rawText),
+      readItems(source),
+    );
+    if (!candidate) continue;
+    const trustedSingle = hasTrustedSingleIngredientAuthority(product, candidate.items, inputs);
+    const partial = readReviewedPartialIngredientQuality(product);
+    const partialSource = asString(partial?.source_url || partial?.source_ref);
+    const candidateSource = asString(source?.source_url || source?.source_ref);
+    const isProductField = sourceValues.slice(0, 8).includes(source);
+    const matchingPartial = partial && isProductField && (!partialSource && !candidateSource || partialSource && partialSource === candidateSource);
+    const validPartial = matchingPartial && candidate.items.length >= 2 && candidate.items.length <= 16 && candidate.items.some(isLikelyInciStructuredItem);
+    if (!trustedSingle && !isLikelyAuthoritativeIngredientSet(candidate.items) && !validPartial) continue;
+    evidence = candidate;
+    structuredPartialQuality = matchingPartial ? partial : null;
+    trustedSingleIngredient = trustedSingle;
+    break;
   }
+  if (!evidence) return null;
+  const finalItems = evidence.items;
   const activeItems = normalizeIngredientItems(
     readItems(product?.active_ingredients, product?.activeIngredients),
   );
   return buildAuthorityRecord({
-    rawText: rawText || finalItems.join(', '),
+    rawText: evidence.raw_text,
     items: finalItems,
     activeItems,
     sourceOrigin: trustedSingleIngredient
       ? resolveSingleIngredientAuthoritySourceOrigin(product, inputs)
       : 'structured_array',
     purityStatus: 'authoritative',
+    authorityScope: structuredPartialQuality ? asString(structuredPartialQuality.authority_scope || structuredPartialQuality.authorityScope) || 'reviewed_key_ingredients_not_full_inci' : undefined,
   });
 }
 
 function parseCandidateRawText(rawText, sourceOrigin) {
-  const sanitized = sanitizeIngredientRawText(rawText);
-  if (!sanitized) return null;
-  const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 180 });
-  if (!isLikelyAuthoritativeIngredientSet(items)) return null;
-  if (items.length < 3) return null;
+  const evidence = readCleanIngredientEvidence(rawText);
+  if (!evidence || !isLikelyAuthoritativeIngredientSet(evidence.items)) return null;
   return buildAuthorityRecord({
-    rawText: sanitized,
-    items,
+    rawText: evidence.raw_text,
+    items: evidence.items,
     sourceOrigin,
     purityStatus: 'authoritative',
   });
@@ -1217,10 +1296,10 @@ function readReviewedPartialIngredientQuality(product) {
 }
 
 function parseReviewedPartialIngredientText(rawText, quality) {
-  const sanitized = sanitizeIngredientRawText(rawText);
-  if (!sanitized) return null;
-  const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 16 });
-  if (items.length < 2) return null;
+  const evidence = readCleanIngredientEvidence(rawText);
+  if (!evidence) return null;
+  const items = evidence.items;
+  if (items.length < 2 || items.length > 16) return null;
   const structuredCount = items.filter((item) => isLikelyInciStructuredItem(item)).length;
   const marketingCount = items.filter((item) => INCI_MARKETING_ONLY_RE.test(item) || MARKETING_SIGNAL_RE.test(item)).length;
   if (marketingCount > 0) return null;
@@ -1228,7 +1307,7 @@ function parseReviewedPartialIngredientText(rawText, quality) {
     return null;
   }
   return buildAuthorityRecord({
-    rawText: sanitized,
+    rawText: evidence.raw_text,
     items,
     sourceOrigin: asString(quality?.source_origin || quality?.sourceOrigin) || 'reviewed_key_ingredients',
     purityStatus: 'authoritative',
@@ -1289,12 +1368,12 @@ function buildAuthorityFromLegacyRaw(product, inputs) {
       const partialAuthority = parseReviewedPartialIngredientText(candidate, reviewedPartialQuality);
       if (partialAuthority) parsed.push(partialAuthority);
     }
-    const sanitized = sanitizeIngredientRawText(candidate);
-    const singleItems = normalizeIngredientItems(splitIngredientText(sanitized), { max: 4 });
+    const evidence = readCleanIngredientEvidence(candidate);
+    const singleItems = evidence?.items || [];
     if (singleItems.length === 1 && hasTrustedSingleIngredientAuthority(product, singleItems, inputs)) {
       parsed.push(
         buildAuthorityRecord({
-          rawText: sanitized,
+          rawText: evidence.raw_text,
           items: singleItems,
           sourceOrigin: resolveSingleIngredientAuthoritySourceOrigin(product, inputs),
           purityStatus: 'authoritative',
@@ -1414,7 +1493,7 @@ function readExplicitActiveCandidates(product, inputs) {
   return null;
 }
 
-function readActiveCandidates(product, inputs) {
+function readActiveCandidates(product, inputs, { excludeExistingAuthority = false } = {}) {
   const reviewed = readReviewedActiveCandidates(product, inputs);
   if (reviewed) return reviewed;
 
@@ -1424,7 +1503,7 @@ function readActiveCandidates(product, inputs) {
   const arrays = [
     { value: product?.active_ingredients, source: 'product_active_array', validateAgainstIngredients: true },
     { value: product?.activeIngredients, source: 'product_active_array', validateAgainstIngredients: true },
-    { value: inputs.ingredientIntel?.authoritative?.active_items, source: 'existing_authority' },
+    { value: excludeExistingAuthority ? [] : inputs.ingredientIntel?.authoritative?.active_items, source: 'existing_authority', validateAgainstIngredients: true },
     { value: inputs.ingredientIntel?.active_ingredients, source: 'ingredient_intel_array', validateAgainstIngredients: true },
     { value: inputs.seedData?.active_ingredients, source: 'seed_active_array', validateAgainstIngredients: true },
     { value: inputs.snapshot?.active_ingredients, source: 'snapshot_active_array', validateAgainstIngredients: true },
@@ -1472,15 +1551,37 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   const reviewedPartialQuality = readReviewedPartialIngredientQuality(product);
 
   const existingAuthority = asPlainObject(inputs.authoritative);
+  let rejectedExistingAuthority = false;
   if (existingAuthority) {
     const existingSourceOrigin = existingAuthority.source_origin || 'existing_authority';
+    const existingScope = asString(existingAuthority.authority_scope || existingAuthority.authorityScope);
+    const parsedExistingEvidence = readCleanIngredientEvidence(
+      existingAuthority.raw_text || existingAuthority.rawText,
+      existingAuthority.items,
+    );
+    const existingListedItems = normalizeIngredientItems(existingAuthority.items, { max: 180 });
+    const shortSourceAgreesWithList = !existingListedItems.length || (
+      parsedExistingEvidence?.items.length === existingListedItems.length &&
+      parsedExistingEvidence.items.every((item, index) => ingredientKey(item) === ingredientKey(existingListedItems[index]))
+    );
+    const existingEvidence = parsedExistingEvidence && (
+      isLikelyAuthoritativeIngredientSet(parsedExistingEvidence.items) ||
+      (shortSourceAgreesWithList && parsedExistingEvidence.items.filter(isLikelyInciStructuredItem).length >= 2) ||
+      (parsedExistingEvidence.items.length < 3 && existingListedItems.length > 0 && shortSourceAgreesWithList && parsedExistingEvidence.items.every(isLikelyInciStructuredItem)) ||
+      (parsedExistingEvidence.items.length < 3 && isReviewedIngredientAuthoritySource(existingSourceOrigin) && shortSourceAgreesWithList && parsedExistingEvidence.items.every(isLikelyInciStructuredItem)) ||
+      (/reviewed.*not[_\s-]?full[_\s-]?inci/i.test(existingScope) && parsedExistingEvidence.items.length >= 2) ||
+      hasTrustedSingleIngredientAuthority(product, parsedExistingEvidence.items, inputs)
+    ) ? parsedExistingEvidence : null;
+    rejectedExistingAuthority = !existingEvidence && Boolean(asString(existingAuthority.raw_text || existingAuthority.rawText) || existingAuthority.items?.length);
     const normalizedExisting = buildAuthorityRecord({
-      rawText: existingAuthority.raw_text,
-      items: existingAuthority.items,
+      rawText: existingEvidence?.raw_text,
+      items: existingEvidence?.items || [],
       activeItems: existingAuthority.active_items,
       sourceOrigin: existingSourceOrigin,
-      purityStatus: existingAuthority.purity_status || 'authoritative',
-      authorityScope: existingAuthority.authority_scope || existingAuthority.authorityScope,
+      purityStatus: existingEvidence
+        ? existingAuthority.purity_status || 'authoritative'
+        : 'suppressed',
+      authorityScope: existingScope,
       suppressedReason: existingAuthority.suppressed_reason,
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
@@ -1490,7 +1591,9 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       asString(normalizedExisting.purity_status).toLowerCase() === 'suppressed' &&
       asString(normalizedExisting.suppressed_reason).toLowerCase() === 'full_inci_low_purity';
     if (
-      (normalizedExisting.items.length || normalizedExisting.active_items.length) &&
+      (normalizedExisting.items.length ||
+        (normalizedExisting.active_items.length && !asString(existingAuthority.raw_text || existingAuthority.rawText) &&
+          !(existingAuthority.items?.length))) &&
       !(existingIsActiveOnlySuppressedAuthority && reviewedPartialQuality)
     ) {
       const reviewedActiveCandidate = readReviewedActiveCandidates(product, inputs);
@@ -1529,11 +1632,12 @@ function buildAuthoritativeIngredientView(product, options = {}) {
     }
   }
 
+  const fromReviewedShortFull = readReviewedShortFullAuthority(product);
   const fromStructuredArray = readStructuredArrayAuthority(product, inputs);
   const fromSections = buildAuthorityFromSections(product, inputs.sections);
   const fromLegacy = buildAuthorityFromLegacyRaw(product, inputs);
   const picked =
-    [fromSections, fromStructuredArray, fromLegacy]
+    [fromSections, fromReviewedShortFull, fromStructuredArray, fromLegacy]
       .filter(Boolean)
       .sort((left, right) => {
         const leftPriority = SOURCE_PRIORITY[left.source_origin] || 0;
@@ -1542,7 +1646,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
         return (right.items?.length || 0) - (left.items?.length || 0);
       })[0] || null;
 
-  const activeCandidateResult = readActiveCandidates(product, inputs);
+  const activeCandidateResult = readActiveCandidates(product, inputs, { excludeExistingAuthority: rejectedExistingAuthority });
   const activeItems = activeCandidateResult.items;
   if (picked) {
     const titleDeclaredActiveItems = inferTitleDeclaredActiveItems(product, picked.items, picked.raw_text);
@@ -1589,6 +1693,9 @@ function buildAuthoritativeIngredientView(product, options = {}) {
     )
       .filter((item) => {
         if (!activeCandidateResult.validateAgainstIngredients) return true;
+        // A second unreviewed array is not independent proof after the source
+        // INCI was rejected. Generic active-role heuristics do not prove presence.
+        if (rejectedExistingAuthority) return false;
         return hasExplicitActiveRoleContext(product, item);
       });
     if (!displayableActiveItems.length) {
@@ -1693,7 +1800,7 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
   const ingredientsInciData =
     authority.purity_status === 'authoritative' && Array.isArray(authority.items) && authority.items.length
       ? {
-          title: 'Ingredients (INCI)',
+          title: /not[_\s-]?full[_\s-]?inci/i.test(authority.authority_scope || '') ? 'Key ingredients (partial)' : 'Ingredients (INCI)',
           items: authority.items,
           raw_text: authority.raw_text || undefined,
           source_origin: authority.source_origin || 'pdp_section',
