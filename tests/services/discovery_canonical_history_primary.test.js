@@ -27,6 +27,7 @@ beforeEach(() => {
   db.query.mockImplementation(async (sql) => ({ rows: sql.includes('WITH brand_match') ? candidates : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()] : [] }));
   jest.spyOn(axios, 'get').mockRejectedValue(new Error('no HTTP transport should be dispatched'));
   i.resetProductsSearchBreaker();
+  i.resetBrowseCatalogCountCache();
 });
 afterEach(() => { jest.restoreAllMocks(); process.env = env; });
 function request(override = {}) {
@@ -61,10 +62,21 @@ test.each([
   expect(axios.get).not.toHaveBeenCalled();
 });
 
-test('empty canonical pool stays honestly empty without alternate providers or graph recall', async () => {
-  db.query.mockImplementation(async sql => ({ rows: sql.includes('WITH brand_match') ? [] : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()] : [] }));
-  const response = await getDiscoveryFeed(request(), { relationshipGraphRecallFn: () => { throw Error('alternate graph'); } });
-  expect(response.products).toEqual([]); expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');
+// A resolved subject whose stored scope holds nothing beyond the (always
+// suppressed) view used to render "No picks yet". It now serves the cold
+// canonical_sig feed, still without alternate providers or graph recall.
+// A cold canonical universe wide enough that the no-history request is itself
+// served by canonical_sig; the fallback is that same request.
+const wideCold = Array.from({ length: 48 }, (_, n) => row('sig_' + String(n + 100).padStart(32, '0')));
+const coldOnly = (brandRows) => async (sql) => ({ rows: sql.includes('WITH brand_match') ? brandRows
+  : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()]
+  : sql.includes('FROM agent_pdp_view apv') ? wideCold : [] });
+test('empty canonical pool serves the cold canonical feed without alternate providers or graph recall', async () => {
+  db.query.mockImplementation(coldOnly([]));
+  const response = await getDiscoveryFeed(request(), { identityGraphRowsResolverFn: async () => [], relationshipGraphRecallFn: () => { throw Error('alternate graph'); } });
+  expect(response.products.length).toBeGreaterThan(0); expect(response.metadata.candidate_source).toBe('canonical_sig');
+  expect(response.metadata.fallback_reason).toBe('canonical_history_pool_empty');
+  expect(response.metadata.catalog_status).toBeUndefined();
   expect(axios.get).not.toHaveBeenCalled();
 });
 
@@ -126,14 +138,19 @@ test('different history query cannot be silently replaced by stored brand', asyn
    expect(response.products.length).toBeGreaterThanOrEqual(6);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
  });
  test.each(['home_hot_deals','browse_products'])('canonical failure stays failed on %s with zero HTTP alternate',async surface=>{
-   db.query.mockRejectedValue(Error('synthetic DB timeout'));
+   // A real statement timeout: the primary is under stress, so no cold read and
+   // no alternate is attempted. (A non-stress error instead takes the identical
+   // no-history route, whatever that route itself dispatches.)
+   db.query.mockRejectedValue(Object.assign(Error('canceling statement due to statement timeout'),{code:'57014'}));
    await expect(getDiscoveryFeed(request({surface}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}})).rejects.toThrow();
    expect(axios.get).not.toHaveBeenCalled();
  });
- test('empty canonical browse stays empty without graph or SDK substitution',async()=>{
-   db.query.mockImplementation(async sql=>({rows:sql.includes('WITH brand_match')?[]:[row()]}));
-   const response=await getDiscoveryFeed(request({surface:'browse_products'}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}});
-   expect(response.products).toEqual([]);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
+ test('empty canonical browse serves the cold canonical feed without graph or SDK substitution',async()=>{
+   db.query.mockImplementation(coldOnly([row()]));
+   const response=await getDiscoveryFeed(request({surface:'browse_products'}),{identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate graph')}});
+   expect(response.products.length).toBeGreaterThan(0);expect(response.metadata.candidate_source).toBe('canonical_sig');
+   expect(response.metadata.fallback_reason).toBe('canonical_history_pool_empty');
+   expect(response.products.some(p=>p.product_id===SIG)).toBe(false);expect(axios.get).not.toHaveBeenCalled();
  });
 
  test('canonical history keeps the same suppressed universe across consecutive browse pages',async()=>{
@@ -193,11 +210,16 @@ test('public original subject with unavailable own listing is typed eligibility,
   expect(result.products).toEqual([]);
   expect(result.recallSummary[0]).toMatchObject({status:200,eligibility_reason:'canonical_history_item_unavailable'});
   expect(result.recallSummary[0]).not.toHaveProperty('failure_reason');
-  const response=await getDiscoveryFeed(request(),{relationshipGraphRecallFn:()=>{throw Error('alternate graph');}});
-  expect(response.products).toEqual([]);
-  expect(response.metadata.primary_path_used).toBe('canonical_sig_personalized');
-  expect(response.metadata.fallback_triggered).toBe(false);
-  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).toMatchObject({successful:true,eligibility_reason:'canonical_history_item_unavailable',zero_recall_reason:'canonical_history_item_unavailable'});
+  // The page itself is no longer empty: the cold canonical feed is served and
+  // the typed reason stays observable.
+  db.query.mockImplementation(async sql=>({rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row(SIG,{offers:[],price_min:null,offer_count:0})]
+    :sql.includes('FROM agent_pdp_view apv')?wideCold:[]}));
+  const response=await getDiscoveryFeed(request(),{identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate graph');}});
+  expect(response.products.length).toBeGreaterThan(0);
+  expect(response.metadata.primary_path_used).toBe('canonical_sig');
+  expect(response.metadata.fallback_triggered).toBe(true);
+  expect(response.metadata.fallback_reason).toBe('canonical_history_item_unavailable');
+  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).toMatchObject({successful:true,history_failure_reason:'canonical_history_item_unavailable',history_fallback:'cold_request'});
   expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).not.toHaveProperty('failure_reason');
   expect(axios.get).not.toHaveBeenCalled();
 });
