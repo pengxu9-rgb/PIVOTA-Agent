@@ -1876,6 +1876,7 @@ const PRIVATE_PDP_PRODUCT_KEYS = new Set([
 
 const PUBLIC_PDP_STATE_VALUES = new Set([
   'absent', 'loading', 'ready', 'empty', 'error', 'missing', 'unavailable', 'blocked',
+  'not_fetched', 'withheld', 'not_applicable',
 ]);
 
 function projectPublicPdpStateValue(value) {

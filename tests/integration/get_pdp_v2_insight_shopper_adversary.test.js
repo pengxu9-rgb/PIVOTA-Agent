@@ -118,6 +118,7 @@ describe('real public PDP Insights transport boundary', () => {
     const states = {
       product_intel: 'ready', media_gallery: 'READY', pending: 'loading', absent: 'absent',
       empty: 'empty', error: 'error', missing: 'missing', unavailable: 'unavailable', blocked: 'blocked',
+      ingredients_inci: 'not_fetched', recommendations: 'withheld', variant_selector: 'not_applicable',
       boolean_on: true, boolean_off: false, numeric: 2,
       structured: { state: 'ready', status: 'empty', source_version: 'official_pdp_manual_review_v1' },
       unsupported_text: 'human_standard', malformed: ['ready', { field_sources: sentinel }],
@@ -129,6 +130,7 @@ describe('real public PDP Insights transport boundary', () => {
     expect(projected.x_content_module_states).toEqual({
       product_intel: 'ready', media_gallery: 'READY', pending: 'loading', absent: 'absent',
       empty: 'empty', error: 'error', missing: 'missing', unavailable: 'unavailable', blocked: 'blocked',
+      ingredients_inci: 'not_fetched', recommendations: 'withheld', variant_selector: 'not_applicable',
       boolean_on: true, boolean_off: false, numeric: 2,
       structured: { state: 'ready', status: 'empty' },
       unsupported_text: null, malformed: null, invalid_state: {}, bad_number: null,
