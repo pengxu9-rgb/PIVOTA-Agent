@@ -1,0 +1,346 @@
+{
+  "search_receipt": "retrieval/evidence/ui-singular.json",
+  "search_card": {
+    "id": "sig_7dbc9be45ef987752f80014d6abaac30",
+    "product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+    "pivota_signature_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+    "signature_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+    "title": "Missha - Glow Skin Balm to Go Mist 80ml",
+    "name": "Missha - Glow Skin Balm to Go Mist 80ml",
+    "brand": "Missha",
+    "vendor": "Missha",
+    "merchant_id": "agent_seed::retailer::theglowbeautyshop.com",
+    "merchant_name": "theglowbeautyshop.com",
+    "platform": "external_seed",
+    "category": "cream",
+    "product_type": "cream",
+    "price": 12,
+    "currency": "USD",
+    "in_stock": true,
+    "inventory_quantity": 0,
+    "image_url": "https://cdn.shopify.com/s/files/1/0605/9356/9866/files/Screenshot_2024-08-30_at_9.21.26_PM.png?v=1725078334",
+    "canonical_url": "https://agent.pivota.cc/products/sig_7dbc9be45ef987752f80014d6abaac30",
+    "url": "https://agent.pivota.cc/products/sig_7dbc9be45ef987752f80014d6abaac30",
+    "offer_id": "offer:catalog_enrichment_agent_v1:e103604c3c8f8c3f",
+    "payment_offer_evidence": {
+      "pricing_confidence": "not_applicable",
+      "offers": [],
+      "decisions": []
+    },
+    "description": "Get instant, all-day glow with this 4-in-1 facial mist that hydrates, primes, refreshes, and illuminates. Packed with the benefits of a moisturizer, primer, morning mask, and glow cream , it delivers a dewy, glass-skin finish in seconds. Key Ingredients Rose damascena flower water 77.8%: Helps calm and moisturize the skin Hyaluronic Acid: Hydrates your skin Aquaeramide: Increases skin moisture retention and minimizes moisture loss Jojoba seed oil: Softens the skin texture",
+    "images": [
+      "https://cdn.shopify.com/s/files/1/0605/9356/9866/files/Screenshot_2024-08-30_at_9.21.26_PM.png?v=1725078334"
+    ],
+    "variants": [
+      {
+        "id": "41566195908682",
+        "variant_id": "41566195908682",
+        "sku": "MS29-Mist",
+        "title": "Default Title",
+        "options": {
+          "visible_attributes": {
+            "shade": [
+              "Default Title"
+            ]
+          },
+          "visible_option_labels": [
+            "shade_default_title"
+          ]
+        },
+        "price": "12.00",
+        "compare_at_price": "12.00",
+        "image_url": "https://cdn.shopify.com/s/files/1/0605/9356/9866/files/Screenshot_2024-08-30_at_9.21.26_PM.png?v=1725078334"
+      },
+      {
+        "id": "ext:retailer:df6a3d082cc372abc4eded161a160cf1",
+        "variant_id": "ext:retailer:df6a3d082cc372abc4eded161a160cf1",
+        "title": "Missha - Glow Skin Balm to Go Mist 80ml",
+        "options": {
+          "visible_attributes": {},
+          "visible_option_labels": []
+        },
+        "price": "12.00",
+        "compare_at_price": "12.00",
+        "image_url": "https://cdn.shopify.com/s/files/1/0605/9356/9866/files/Screenshot_2024-08-30_at_9.21.26_PM.png?v=1725078334"
+      }
+    ],
+    "variants_count": 2,
+    "offers": [
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:e103604c3c8f8c3f",
+        "merchant_id": "agent_seed::retailer::theglowbeautyshop.com",
+        "merchant_name": "theglowbeautyshop.com",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "12.00",
+          "merchant_effective_price": "12.00",
+          "estimated_best_price": "12.00",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      },
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:ec4aa56c3e11f8a3",
+        "merchant_id": "agent_seed::retailer::theglowbeautyshop.com",
+        "merchant_name": "theglowbeautyshop.com",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "12.00",
+          "merchant_effective_price": "12.00",
+          "estimated_best_price": "12.00",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      }
+    ],
+    "offers_count": 2
+  },
+  "public_unscoped_pdp": {
+    "captured_at": "2026-10-04T09:47:15.964116+00:00",
+    "url": "https://agent.pivota.cc/api/gateway",
+    "request": {
+      "operation": "get_pdp_v2",
+      "payload": {
+        "product_ref": {
+          "product_id": "sig_7dbc9be45ef987752f80014d6abaac30"
+        },
+        "include": [
+          "product_overview",
+          "ingredients_inci"
+        ]
+      }
+    },
+    "status": 409,
+    "headers": {
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "Server-Timing, x-gateway-server-timing, x-gateway-retries, x-gateway-request-id, x-service-commit, x-service-deployment-id, x-aurora-build, x-aurora-git-sha",
+      "content-type": "application/json; charset=utf-8",
+      "server-timing": "upstream;dur=117, reviews;dur=0, proxy;dur=1, gateway;dur=118",
+      "x-aurora-build": "a4fa137b60b1",
+      "x-aurora-git-sha": "a4fa137b60b1",
+      "x-gateway-request-id": "5131a3bb-2372-458e-b993-2fcd6cb858dc",
+      "x-gateway-server-timing": "upstream;dur=117, reviews;dur=0, proxy;dur=1, gateway;dur=118",
+      "x-service-commit": "a4fa137b60b1",
+      "x-service-deployment-id": "gateway-shopping-a4fa137b60b1",
+      "x-cloud-trace-context": "2d117c8cc01c011673c841bfced38f66",
+      "date": "Sun, 04 Oct 2026 09:47:15 GMT",
+      "server": "Google Frontend",
+      "Content-Length": "2408",
+      "via": "1.1 google",
+      "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "Connection": "close"
+    },
+    "body": {
+      "error": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "message": "Selected canonical listing has no verified current offer money",
+      "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "gateway_request_id": "5131a3bb-2372-458e-b993-2fcd6cb858dc",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+          "requested_merchant_id": null,
+          "resolved_product_id": "theglowbeautyshop-com:6453b18aae79e35c",
+          "resolved_merchant_id": "merch_obs_4028ca046b366cd1",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false,
+          "resolution_source": null
+        },
+        "route_health": {
+          "total_latency_ms": 98,
+          "phases": {
+            "parse_request": 0,
+            "resolve_catalog_signature": 24,
+            "build_external_seed_product": 0,
+            "resolve_variant_to_product": 0,
+            "resolve_subject_group": 0,
+            "resolve_offer_group": 0,
+            "resolve_canonical_catalog_group": 0,
+            "precheck_entry_product": 21,
+            "resolve_group_cached": 0,
+            "serving_eligibility_gate": 0,
+            "fetch_canonical_product": 0,
+            "catalog_identity_hydration": 0,
+            "identity_graph_live": 32,
+            "fetch_optional_modules_parallel": 0,
+            "catalog_pdp_content_hydration": 2,
+            "reviewed_ingredient_authority": 4,
+            "savings_presentation_hydration": 0
+          },
+          "checkpoints_ms": {
+            "phase:parse_request": 1,
+            "phase:resolve_catalog_signature": 25,
+            "phase:build_external_seed_product": 25,
+            "after_build_external_seed_product": 25,
+            "phase:resolve_variant_to_product": 25,
+            "phase:resolve_subject_group": 25,
+            "phase:resolve_offer_group": 25,
+            "phase:resolve_canonical_catalog_group": 25,
+            "phase:precheck_entry_product": 46,
+            "phase:resolve_group_cached": 46,
+            "phase:serving_eligibility_gate": 46,
+            "phase:fetch_canonical_product": 46,
+            "phase:identity_graph_live": 78,
+            "phase:fetch_optional_modules_parallel": 78,
+            "phase:catalog_pdp_content_hydration": 80,
+            "phase:reviewed_ingredient_authority": 84,
+            "phase:savings_presentation_hydration": 84,
+            "after_savings_hydration": 84,
+            "after_related_services": 85
+          },
+          "modules": {},
+          "savings_presentation_hydration_mode": "prefetched_only",
+          "product_group_resolve_mode": "not_needed",
+          "product_group_resolve_budget_exceeded": false,
+          "product_group_resolve_budget_ms": 1200,
+          "identity_graph_live_mode": "executed_full_hydration",
+          "requested_product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+          "requested_merchant_id": null,
+          "resolved_product_id": "theglowbeautyshop-com:6453b18aae79e35c",
+          "resolved_merchant_id": "merch_obs_4028ca046b366cd1",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false
+        }
+      }
+    }
+  },
+  "public_scoped_pdp": {
+    "captured_at": "2026-10-04T09:47:18.426833+00:00",
+    "url": "https://agent.pivota.cc/api/gateway",
+    "request": {
+      "operation": "get_pdp_v2",
+      "payload": {
+        "product_ref": {
+          "product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+          "merchant_id": "agent_seed::retailer::theglowbeautyshop.com"
+        },
+        "include": [
+          "product_overview",
+          "ingredients_inci"
+        ]
+      }
+    },
+    "status": 404,
+    "headers": {
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "Server-Timing, x-gateway-server-timing, x-gateway-retries, x-gateway-request-id, x-service-commit, x-service-deployment-id, x-aurora-build, x-aurora-git-sha",
+      "content-type": "application/json; charset=utf-8",
+      "server-timing": "upstream;dur=2558, reviews;dur=0, proxy;dur=1, gateway;dur=2559",
+      "x-aurora-build": "a4fa137b60b1",
+      "x-aurora-git-sha": "a4fa137b60b1",
+      "x-gateway-request-id": "bcb6e6bb-9503-4341-b010-737caf2da3ec",
+      "x-gateway-server-timing": "upstream;dur=2558, reviews;dur=0, proxy;dur=1, gateway;dur=2559",
+      "x-service-commit": "a4fa137b60b1",
+      "x-service-deployment-id": "gateway-shopping-a4fa137b60b1",
+      "x-cloud-trace-context": "dca23b31dd7e2ddcc6c4f9764291d903",
+      "date": "Sun, 04 Oct 2026 09:47:18 GMT",
+      "server": "Google Frontend",
+      "Content-Length": "1988",
+      "via": "1.1 google",
+      "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "Connection": "close"
+    },
+    "body": {
+      "error": "PRODUCT_NOT_FOUND",
+      "message": "Product not found",
+      "reason_code": "PRODUCT_NOT_FOUND",
+      "gateway_request_id": "bcb6e6bb-9503-4341-b010-737caf2da3ec",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+          "requested_merchant_id": "agent_seed::retailer::theglowbeautyshop.com",
+          "resolved_product_id": "retailer:df6a3d082cc372abc4eded161a160cf1",
+          "resolved_merchant_id": "merch_obs_4028ca046b366cd1",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": true,
+          "resolution_source": "identity_graph_product_group_alias"
+        },
+        "route_health": {
+          "total_latency_ms": 2540,
+          "phases": {
+            "parse_request": 0,
+            "resolve_identity_group_alias": 359,
+            "resolve_variant_to_product": 0,
+            "resolve_subject_group": 0,
+            "resolve_offer_group": 0,
+            "resolve_canonical_catalog_group": 0,
+            "precheck_entry_product": 40,
+            "resolve_group_cached": 0,
+            "serving_eligibility_gate": 7,
+            "fetch_canonical_product": 2086,
+            "identity_graph_rescue": 48
+          },
+          "checkpoints_ms": {
+            "phase:parse_request": 0,
+            "before_group_alias": 0,
+            "phase:resolve_identity_group_alias": 359,
+            "phase:resolve_variant_to_product": 359,
+            "phase:resolve_subject_group": 359,
+            "phase:resolve_offer_group": 359,
+            "phase:resolve_canonical_catalog_group": 359,
+            "phase:precheck_entry_product": 399,
+            "phase:resolve_group_cached": 399,
+            "phase:serving_eligibility_gate": 406,
+            "phase:fetch_canonical_product": 2492,
+            "phase:identity_graph_rescue": 2540
+          },
+          "modules": {},
+          "savings_presentation_hydration_mode": "not_started",
+          "product_group_resolve_mode": "not_needed",
+          "product_group_resolve_budget_exceeded": false,
+          "product_group_resolve_budget_ms": 1200,
+          "identity_graph_live_mode": "not_started",
+          "requested_product_id": "sig_7dbc9be45ef987752f80014d6abaac30",
+          "requested_merchant_id": "agent_seed::retailer::theglowbeautyshop.com",
+          "resolved_product_id": "retailer:df6a3d082cc372abc4eded161a160cf1",
+          "resolved_merchant_id": "merch_obs_4028ca046b366cd1",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": true
+        }
+      }
+    }
+  }
+}

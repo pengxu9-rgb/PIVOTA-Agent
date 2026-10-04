@@ -923,11 +923,16 @@ describe('get_pdp_v2 — review suppression follows the seed LANE, not the retir
         operation: 'get_pdp_v2',
         payload: {
           product_ref: { product_id: MINTED_LANE_SIG },
+          // Drifted source/platform has no purchase authority; review evidence
+          // is still readable through the explicit content-only contract.
+          options: { allow_read_only: true },
           include: ['reviews_preview'],
         },
       });
 
     expect(res.status).toBe(200);
+    expect(res.body.metadata.commerce).toMatchObject({ read_only: true, purchase_eligible: false });
+    expect(res.body.modules.find(m => m.type === 'canonical').data.pdp_payload.actions).toEqual([]);
 
     // --- every other arm of the gate, AND the platform arm of the lane
     // --- predicate itself, are proven false in this fixture -----------------
