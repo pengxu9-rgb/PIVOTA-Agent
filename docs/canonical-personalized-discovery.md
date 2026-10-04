@@ -52,7 +52,7 @@ Personalization fails soft. When the history cannot personalize this page, the r
 
 This supersedes "a clean empty result stays empty" above for those cases. When canonical_sig covers the page the result is the canonical_sig cold feed. When it is empty, below its threshold or failing, the fallback takes exactly the route the no-history request takes, and nothing else; the relationship graph is not run.
 
-A statement timeout, query read timeout, connection-pool exhaustion or too-many-connections error on the history read is excluded. It keeps the unavailable outcome instead of adding a second catalog read to a stressed primary.
+A database stress error on the history anchor or brand-pool read is excluded. It keeps the unavailable outcome instead of adding a second catalog read to a stressed primary. Stress here means statement_timeout specifically, the pg query read timeout, a pool-acquire timeout, too many connections (53300), cannot-connect (57P03), a terminated or reset connection, or out of memory (53200). Lock timeout, idle-in-transaction and user cancel share SQLSTATE 57014 but are not load, so they still fall back.
 
 The reason is recorded in `fallback_reason`, `history_fallback_reason` and the canonical_sig provider breakdown (`history_failure_reason`, `history_fallback: cold_request`), and as a `canonical_sig_personalized_unresolved` recall step. If the cold request itself takes a fallback, that reason goes in `cold_route_fallback_reason`.
 
