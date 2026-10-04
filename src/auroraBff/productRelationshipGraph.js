@@ -1289,7 +1289,22 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   };
 }
 
-async function listApprovedRelationshipEdgesForAnchorUncollapsed({
+// Structured reader separates an unavailable store from a successfully read empty
+// eligible set. The legacy list APIs below intentionally keep returning arrays.
+// Counts are bounded serving-view observations, never raw stored-label totals.
+function relationshipGraphReadResult(edges, diagnostics = {}) {
+  return {
+    edges,
+    diagnostics: {
+      read_status: edges.length ? 'ready' : 'empty',
+      read_reason: edges.length ? null : 'no_eligible_edges',
+      edge_count_semantics: 'returned_eligible_edges',
+      ...diagnostics,
+    },
+  };
+}
+
+async function readApprovedRelationshipEdgesForAnchorUncollapsed({
   anchorType = 'product',
   anchorRefs,
   market = DEFAULT_MARKET,
@@ -1300,7 +1315,7 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
   const refs = (Array.isArray(anchorRefs) ? anchorRefs : [anchorRefs])
     .map((item) => normalizeLower(item, 260))
     .filter(Boolean);
-  if (!refs.length) return [];
+  if (!refs.length) return relationshipGraphReadResult([], { read_status: 'not_attempted', read_reason: 'no_anchor_refs' });
   const rels = (Array.isArray(relationTypes) ? relationTypes : [])
     .map((item) => normalizeLower(item, 64))
     .filter((item) => RELATION_TYPES.has(item));
@@ -1346,15 +1361,29 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
       logger.warn?.({ kind: 'metric', name: 'aurora_bff_relationship_graph_serving_guard_dropped', dropped_count: dropped },
         'aurora bff: relationship graph serving guard dropped unsafe edges');
     }
-    return dedupeApprovedRelationshipEdges(safeEdges).slice(0, requestedLimit);
+    return relationshipGraphReadResult(dedupeApprovedRelationshipEdges(safeEdges).slice(0, requestedLimit), {
+      serving_rows_read: edges.length,
+      serving_guard_dropped_count: dropped,
+    });
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
-    if (code === 'NO_DATABASE' || code === '42P01') return [];
+    if (code === 'NO_DATABASE' || code === '42P01') {
+      return relationshipGraphReadResult([], {
+        read_status: 'unavailable',
+        read_reason: code === 'NO_DATABASE' ? 'no_database' : 'schema_unavailable',
+        serving_rows_read: null,
+        serving_guard_dropped_count: null,
+      });
+    }
     throw err;
   }
 }
 
-async function listApprovedRelationshipEdgesForAnchor(options = {}) {
+async function listApprovedRelationshipEdgesForAnchorUncollapsed(options = {}) {
+  return (await readApprovedRelationshipEdgesForAnchorUncollapsed(options)).edges;
+}
+
+async function readApprovedRelationshipEdgesForAnchor(options = {}) {
   const {
     anchor,
     anchorType = 'product',
@@ -1366,7 +1395,7 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
   } = isPlainObject(options) ? options : {};
 
   if (!isRelationshipGraphFamilyCollapseEnabled()) {
-    return listApprovedRelationshipEdgesForAnchorUncollapsed({
+    return readApprovedRelationshipEdgesForAnchorUncollapsed({
       anchorType,
       anchorRefs,
       market,
@@ -1382,13 +1411,13 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
     normalizedAnchorType === 'product' && isPlainObject(anchor)
       ? buildAnchorRefsFromProduct(anchor)
       : (Array.isArray(anchorRefs) ? anchorRefs : [anchorRefs]).filter(Boolean);
-  if (!baseRefs.length) return [];
+  if (!baseRefs.length) return relationshipGraphReadResult([], { read_status: 'not_attempted', read_reason: 'no_anchor_refs' });
 
   const expandedRefs =
     normalizedAnchorType === 'product'
       ? await expandAnchorRefsWithGroupSiblings(baseRefs, { queryFn })
       : baseRefs;
-  const rawEdges = await listApprovedRelationshipEdgesForAnchorUncollapsed({
+  const readResult = await readApprovedRelationshipEdgesForAnchorUncollapsed({
     anchorType: normalizedAnchorType,
     anchorRefs: expandedRefs,
     market,
@@ -1396,6 +1425,9 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
     limit: 500,
     queryFn,
   });
+
+  const rawEdges = readResult.edges;
+  if (readResult.diagnostics.read_status === 'unavailable') return readResult;
 
   const refsToResolve = [];
   const pushRef = (ref, snapshot) => {
@@ -1427,7 +1459,10 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
       },
       'aurora bff: relationship graph family collapse failed; serving uncollapsed edges',
     );
-    return rawEdges.slice(0, requestedLimit);
+    return relationshipGraphReadResult(rawEdges.slice(0, requestedLimit), {
+      ...readResult.diagnostics,
+      family_collapse_status: 'fallback_uncollapsed',
+    });
   }
   const stats = collapsed.__collapse_stats || {};
   logger.info?.(
@@ -1444,7 +1479,16 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
     },
     'aurora bff: relationship graph family collapse',
   );
-  return collapsed;
+  return relationshipGraphReadResult(collapsed, {
+    ...readResult.diagnostics,
+    read_status: collapsed.length ? 'ready' : 'empty',
+    read_reason: collapsed.length ? null : 'no_eligible_edges',
+    family_collapse_status: 'completed',
+  });
+}
+
+async function listApprovedRelationshipEdgesForAnchor(options = {}) {
+  return (await readApprovedRelationshipEdgesForAnchor(options)).edges;
 }
 
 // Read-time alias expansion (per docs/SIG_EXT_FRONT_FACING_FIX.md). A queried
@@ -1587,7 +1631,7 @@ async function getRelationshipGraphCandidatesForAnchor({
 } = {}) {
   const baseRefs = buildAnchorRefsFromProduct(anchor);
   const anchorRefs = await expandAnchorRefsWithGroupSiblings(baseRefs, { queryFn });
-  const edges = await listApprovedRelationshipEdgesForAnchor({
+  const { edges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
     anchorType: 'product',
     anchorRefs,
     market,
@@ -1600,8 +1644,15 @@ async function getRelationshipGraphCandidatesForAnchor({
     meta: {
       query_attempted: anchorRefs.length ? 1 : 0,
       relationship_graph_edge_count: edges.length,
+      relationship_graph_edge_count_semantics: diagnostics.edge_count_semantics,
+      relationship_graph_read_status: diagnostics.read_status,
+      relationship_graph_read_reason: diagnostics.read_reason,
       attempted_sources: ['product_relationship_edges'],
-      reason_counts: edges.length ? { relationship_graph_hit: edges.length } : { relationship_graph_miss: 1 },
+      reason_counts: edges.length
+        ? { relationship_graph_hit: edges.length }
+        : diagnostics.read_status === 'unavailable'
+          ? { relationship_graph_unavailable: 1 }
+          : { relationship_graph_miss: 1 },
     },
   };
 }
@@ -1923,6 +1974,8 @@ module.exports = {
   listCatalogOfferPricesForRefs,
   listApprovedRelationshipEdgesForAnchor,
   listApprovedRelationshipEdgesForAnchorUncollapsed,
+  readApprovedRelationshipEdgesForAnchor,
+  readApprovedRelationshipEdgesForAnchorUncollapsed,
   collapseApprovedRelationshipEdgesToFamilies,
   getRelationshipGraphCandidatesForAnchor,
   upsertRelationshipEdge,
