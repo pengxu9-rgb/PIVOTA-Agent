@@ -223,14 +223,29 @@ describe('get_pdp_v2 product_group subject -> member signature lane', () => {
     expect(viaSig.body.metadata.identity_resolution).not.toHaveProperty('requested_product_group_id');
   });
 
-  test('the minted member with no current own offer refuses its seed price on both routes', async () => {
+  test('the minted member with no current own offer renders unpriced and not purchasable on both routes, never at its seed price', async () => {
     const { app, db } = loadServerWithDb();
     install(db, { currentOwnMoneyRows: [] });
     for (const payload of [groupSubject, { product_ref: { product_id: MINTED_SIG } }]) {
       const res = await invoke(app, payload);
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
-      expect(res.body.modules || []).toEqual([]);
+      expect(res.status).toBe(200);
+      expect(res.body.error).toBeUndefined();
+      expect(res.body.metadata).toMatchObject({
+        current_own_offer_status: 'unavailable',
+        current_own_offer_reason_code: 'CURRENT_OWN_OFFER_UNAVAILABLE',
+      });
+      const product = res.body.modules.find((m) => m?.type === 'canonical')?.data?.pdp_payload?.product;
+      expect(product?.title).toBe('Slim Lip Color Shine');
+      expect(product).not.toHaveProperty('price');
+      expect(product.availability.in_stock).toBe(false);
+      expect(product.variants.length).toBeGreaterThan(0);
+      for (const variant of product.variants) {
+        expect(variant).toMatchObject({ current_own_offer_status: 'unavailable', availability: { in_stock: false } });
+        expect(variant).not.toHaveProperty('price');
+      }
+      // The seed's 62.00 is not presented anywhere as current money.
+      expect(JSON.stringify(res.body.modules)).not.toMatch(/"(amount|price|price_amount)":\s*"?62(\.0+)?"?[,}]/);
+      expect(res.body.modules.some((m) => m?.type === 'price_promo')).toBe(false);
     }
   });
 

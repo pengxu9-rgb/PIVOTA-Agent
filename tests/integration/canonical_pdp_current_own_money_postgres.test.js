@@ -1,5 +1,7 @@
 const { Client } = require('pg');
-const { readCanonicalOwnMoney, projectCanonicalProductMoney } = require('../../src/services/canonicalPdpOwnMoney');
+const {
+  readCanonicalOwnMoney, projectCanonicalProductMoney, currentOwnMoneyReasonCode, withholdCanonicalProductMoney,
+} = require('../../src/services/canonicalPdpOwnMoney');
 const { buildPdpPayload } = require('../../src/pdpBuilder');
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
@@ -87,6 +89,17 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
   ])('unadmitted current listing refuses without source45 substitution: %s', async sql => {
     await client.query(sql);
     await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+  });
+  test('an out-of-stock own listing is a gap: the page renders it unpriced and not purchasable, never at source45', async () => {
+    await client.query("UPDATE catalog_offers SET availability='out_of_stock'");
+    const gap = await read().catch(error => error);
+    expect(currentOwnMoneyReasonCode(gap)).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
+    const payload = buildPdpPayload({ product: withholdCanonicalProductMoney(product) });
+    expect(payload.product).not.toHaveProperty('price');
+    expect(payload.product.variants[0]).toMatchObject({ variant_id: '111', current_own_offer_status: 'unavailable',
+      availability: { in_stock: false }, source_quality_status: 'captured' });
+    expect(payload.product.variants[0]).not.toHaveProperty('price');
+    expect(JSON.stringify(payload)).not.toMatch(/"amount":45[,}]/);
   });
   test('only eligible US/USD current offers participate; rejected currency shadow never supplies money', async () => {
     await client.query(`INSERT INTO catalog_offers SELECT (jsonb_populate_record(NULL::catalog_offers,

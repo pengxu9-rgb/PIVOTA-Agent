@@ -4022,19 +4022,265 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     });
   });
 
-  test('an enrichment listing without current own money refuses the stale seed price', async () => {
+  // Every money value a client could read as a price, anywhere under `node`.
+  function moneyValues(node, out = []) {
+    if (Array.isArray(node)) node.forEach((item) => moneyValues(item, out));
+    else if (node && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) {
+        if (/^(amount|price|price_amount|priceAmount|current_price|currentPrice)$/.test(key) &&
+            (typeof value === 'number' || typeof value === 'string')) out.push(Number(value));
+        moneyValues(value, out);
+      }
+    }
+    return out;
+  }
+
+  async function invokeDegradedPdp(app) {
+    return request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'get_pdp_v2',
+      payload: { product_ref: { product_id: sigId }, include: ['offers', 'variant_selector'], options: { no_cache: true } },
+    });
+  }
+
+  function expectUnpricedNotPurchasable(res, reasonCode) {
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.metadata).toMatchObject({
+      current_own_offer_status: 'unavailable',
+      current_own_offer_reason_code: reasonCode,
+    });
+    const types = res.body.modules.map((m) => m.type);
+    expect(types).toEqual(expect.arrayContaining(['canonical', 'offers']));
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    expect(product).not.toHaveProperty('price');
+    expect(product.availability.in_stock).toBe(false);
+    expect(product.variants.length).toBeGreaterThan(0);
+    for (const variant of product.variants) {
+      expect(variant).toMatchObject({ current_own_offer_status: 'unavailable', availability: { in_stock: false } });
+      expect(variant).not.toHaveProperty('price');
+    }
+    const offers = res.body.modules.find((m) => m.type === 'offers').data;
+    const own = offers.offers.find((o) => o.merchant_id === merchantId && o.product_id === slug);
+    expect(own).toMatchObject({ current_own_offer_status: 'unavailable', inventory: { in_stock: false } });
+    expect(own).not.toHaveProperty('price');
+    for (const variant of own.variants || []) {
+      expect(variant).toMatchObject({ current_own_offer_status: 'unavailable', availability: { in_stock: false } });
+      expect(variant).not.toHaveProperty('price');
+    }
+    expect(offers.best_price_offer_id).not.toBe(own.offer_id);
+    // Neither the seed's 499 nor any other amount is presented as this listing's money.
+    expect(moneyValues(res.body.modules)).toEqual([]);
+    expect(res.body.modules.some((m) => m.type === 'price_promo')).toBe(false);
+  }
+
+  test('an enrichment listing without current own money renders unpriced and not purchasable, never at the seed price', async () => {
     const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
     mockDbForCatalogGroupLane(db, {
       ...buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }),
       currentOwnMoneyRows: [],
     });
-    const res = await request(app).post('/agent/shop/v1/invoke').send({
-      operation: 'get_pdp_v2',
-      payload: { product_ref: { product_id: sigId }, options: { no_cache: true } },
+    const res = await invokeDegradedPdp(app);
+    expectUnpricedNotPurchasable(res, 'CURRENT_OWN_OFFER_UNAVAILABLE');
+    // Content still renders.
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    expect(product.title).toBe('HOVERAir X1 PRO');
+    expect(product.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('a failed current own money read renders unpriced (READ_FAILED) and logs a warning, never seed money', async () => {
+    const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+    const fixtures = buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true });
+    mockDbForCatalogGroupLane(db, fixtures);
+    const seededQuery = db.query.getMockImplementation();
+    db.query.mockImplementation((sql, params) => (String(sql || '').includes('FROM catalog_products own_cp')
+      ? Promise.reject(new Error('owned read outage'))
+      : seededQuery(sql, params)));
+    const logger = require('../src/logger');
+    const warn = jest.spyOn(logger, 'warn');
+    const res = await invokeDegradedPdp(app);
+    expectUnpricedNotPurchasable(res, 'CURRENT_OWN_OFFER_READ_FAILED');
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pdp_current_own_money_read_failed',
+        reason_code: 'CURRENT_OWN_OFFER_READ_FAILED',
+        err: 'owned read outage',
+      }),
+      expect.any(String),
+    );
+    warn.mockRestore();
+  });
+
+  test('a slow current own money read degrades at its stage budget instead of waiting it out', async () => {
+    const { app, db } = loadServerWithDb({
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS: '150',
     });
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
-    expect(res.body.modules || []).toEqual([]);
+    mockDbForCatalogGroupLane(db, buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }));
+    const seededQuery = db.query.getMockImplementation();
+    db.query.mockImplementation((sql, params) => (String(sql || '').includes('FROM catalog_products own_cp')
+      // Money that arrives after the budget is never used.
+      ? new Promise((resolve) => setTimeout(() => resolve({ rows: [{
+        offer_id: 'late', sku_key: `${productKey}::x1pro-default`, source_variant_id: 'x1pro-default',
+        currency: 'USD', amount: '509.00' }] }), 3000).unref())
+      : seededQuery(sql, params)));
+    const startedAt = Date.now();
+    const res = await invokeDegradedPdp(app);
+    expect(Date.now() - startedAt).toBeLessThan(2500);
+    expectUnpricedNotPurchasable(res, 'CURRENT_OWN_OFFER_READ_FAILED');
+  });
+
+  test('a selected offer without verified SKU money withholds the already projected card money too', async () => {
+    // The product projects at 509; the offer projection then refuses. No surface may keep the 509.
+    jest.doMock('../src/services/canonicalPdpOwnMoney', () => {
+      const actual = jest.requireActual('../src/services/canonicalPdpOwnMoney');
+      return { ...actual, projectCanonicalOffersMoney: () => {
+        const error = new Error('Current own listing money is unavailable');
+        error.code = 'CURRENT_OWN_OFFER_UNAVAILABLE';
+        throw error;
+      } };
+    });
+    try {
+      const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+      mockDbForCatalogGroupLane(db, buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }));
+      const res = await invokeDegradedPdp(app);
+      expectUnpricedNotPurchasable(res, 'CURRENT_OWN_OFFER_UNAVAILABLE');
+    } finally {
+      jest.dontMock('../src/services/canonicalPdpOwnMoney');
+    }
+  });
+
+  // Runs the real gap path with extra priced listings added to the offers it withholds, so everything
+  // downstream of withholdCanonicalOffersMoney (commerce metadata, card hydration, response) is real.
+  // Runs the real gap path with extra priced listings added to the offers it withholds, so everything
+  // downstream of withholdCanonicalOffersMoney (commerce metadata, card hydration, response) is real.
+  // `decorate` may add fields to what the withhold helpers return, to prove the gateway strips them after.
+  async function invokeGapWithExtraOffers(extraOffers, decorate = {}) {
+    jest.doMock('../src/services/canonicalPdpOwnMoney', () => {
+      const actual = jest.requireActual('../src/services/canonicalPdpOwnMoney');
+      return {
+        ...actual,
+        withholdCanonicalProductMoney: (product) => {
+          const withheld = actual.withholdCanonicalProductMoney(product);
+          return decorate.product ? decorate.product(withheld) : withheld;
+        },
+        withholdCanonicalOffersMoney: (data, ref) => {
+          const own = data.offers.find((o) => o.merchant_id === ref.merchant_id && o.product_id === ref.product_id);
+          expect(own).toBeTruthy();
+          const extra = extraOffers(own);
+          const withheld = actual.withholdCanonicalOffersMoney(
+            { ...data, offers: [...data.offers, ...extra], offers_count: data.offers.length + extra.length },
+            ref,
+          );
+          return decorate.offers ? decorate.offers(withheld, ref) : withheld;
+        },
+      };
+    });
+    try {
+      const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+      mockDbForCatalogGroupLane(db, {
+        ...buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }),
+        currentOwnMoneyRows: [],
+      });
+      return await invokeDegradedPdp(app);
+    } finally {
+      jest.dontMock('../src/services/canonicalPdpOwnMoney');
+    }
+  }
+
+  function expectCardStaysOwnListing(res) {
+    expect(res.status).toBe(200);
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    expect(product).toMatchObject({ title: 'HOVERAir X1 PRO', merchant_id: merchantId, product_id: sigId });
+    expect(product).not.toHaveProperty('price');
+    expect(product).not.toHaveProperty('price_source');
+    expect(product.seller_source).toBeUndefined();
+    expect(product.availability.in_stock).toBe(false);
+    expect(res.body.modules.some((m) => m.type === 'price_promo')).toBe(false);
+    const canonicalModules = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.modules || [];
+    expect(canonicalModules.some((m) => m.type === 'price_promo')).toBe(false);
+    const offers = res.body.modules.find((m) => m.type === 'offers').data;
+    const own = offers.offers.filter((o) => o.merchant_id === merchantId && o.product_id === slug);
+    expect(own).toHaveLength(1);
+    expect(own[0]).not.toHaveProperty('price');
+    // Each marker resolves to exactly one offer; the default is the card's own (unpriced) listing.
+    for (const id of [offers.default_offer_id, offers.best_price_offer_id]) {
+      expect(offers.offers.filter((o) => o.offer_id === id)).toHaveLength(1);
+    }
+    expect(offers.default_offer_id).toBe(own[0].offer_id);
+    expect(offers.best_price_offer_id).not.toBe(own[0].offer_id);
+    return { product, offers, own: own[0] };
+  }
+
+  test('gap path: a priced same-merchant twin listing never prices or re-sellers the card, and stays listed with its own price', async () => {
+    const res = await invokeGapWithExtraOffers((own) => [{
+      // buildOfferId adds no listing discriminator for merch_obs_ sellers: the twin shares the own id.
+      offer_id: own.offer_id, merchant_id: merchantId, merchant_name: 'us.hoverair.com',
+      product_id: 'hoverair_x1_pro_bundle', price: { amount: 449, currency: 'USD' }, inventory: { in_stock: true },
+      purchase_route: 'affiliate_outbound', url: 'https://us.hoverair.com/products/hoverair-x1-pro-bundle',
+    }]);
+    const { offers, own } = expectCardStaysOwnListing(res);
+    expect(own.offer_id).not.toBe(offers.best_price_offer_id);
+    const twin = offers.offers.find((o) => o.product_id === 'hoverair_x1_pro_bundle');
+    expect(twin).toMatchObject({ merchant_id: merchantId, price: { amount: 449, currency: 'USD' } });
+    expect(offers.best_price_offer_id).toBe(twin.offer_id);
+    // agent-ui pickInternalFirstOfferId (PdpContainer.tsx), in order: the card merchant's first
+    // internal-checkout offer, then any internal-checkout offer, then the card merchant's FIRST offer,
+    // then default_offer_id, then offers[0]. These are all links-out offers, so the card merchant's
+    // first offer decides: it must be the withheld own offer, never the priced twin.
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    const cardMerchantOffers = offers.offers.filter((o) => o.merchant_id === product.merchant_id);
+    expect(cardMerchantOffers.map((o) => o.product_id)).toEqual([slug, 'hoverair_x1_pro_bundle']);
+    expect(cardMerchantOffers[0].offer_id).toBe(offers.default_offer_id);
+    expect(offers.offers.some((o) => o.purchase_route === 'internal_checkout')).toBe(false);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    expect(JSON.stringify(card)).not.toMatch(/"amount":449[,}]/);
+  });
+
+  test('gap path: a priced different-merchant sibling never prices or re-sellers the card, and stays listed', async () => {
+    const res = await invokeGapWithExtraOffers(() => [{
+      offer_id: 'of:v1:merch_obs_sibling:sig_e99bf03f82c811fd66b44cb1cf141aee:merchant:default',
+      merchant_id: 'merch_obs_sibling', merchant_name: 'Sibling Store', product_id: 'sibling_listing',
+      price: { amount: 489, currency: 'USD' }, inventory: { in_stock: true }, purchase_route: 'affiliate_outbound',
+      url: 'https://sibling.example/products/x1-pro',
+    }]);
+    const { offers } = expectCardStaysOwnListing(res);
+    const sibling = offers.offers.find((o) => o.merchant_id === 'merch_obs_sibling');
+    expect(sibling).toMatchObject({ merchant_name: 'Sibling Store', price: { amount: 489, currency: 'USD' } });
+    expect(offers.best_price_offer_id).toBe(sibling.offer_id);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    expect(JSON.stringify(card)).not.toMatch(/"amount":489[,}]|Sibling Store/);
+  });
+
+  test('gap path: no savings presentation field survives on the card, its variants or the own offer', async () => {
+    // Every SAVINGS_PRESENTATION_FIELDS entry (src/server.js).
+    const SAVINGS = {
+      payment_offer_evidence: [{ source: 'card' }], payment_offer_summary: { headline: '10% off with card' },
+      payment_offer_badges: ['Card offer'], payment_pricing: { amount: 449, currency: 'USD' },
+      store_discount_evidence: [{ code: 'SAVE' }], store_discount_summary: { headline: 'Store discount' },
+      store_discount_badges: ['Sale'], discount_evidence: [{ pct: 10 }], promotion_lines: ['$50 off today'],
+    };
+    const siblingId = 'of:v1:merch_obs_sibling:sig_e99bf03f82c811fd66b44cb1cf141aee:merchant:default';
+    const res = await invokeGapWithExtraOffers(() => [{
+      offer_id: siblingId, merchant_id: 'merch_obs_sibling', merchant_name: 'Sibling Store', product_id: 'sibling_listing',
+      price: { amount: 489, currency: 'USD' }, inventory: { in_stock: true }, purchase_route: 'affiliate_outbound',
+      url: 'https://sibling.example/products/x1-pro', ...SAVINGS,
+    }], {
+      product: (product) => ({ ...product, ...SAVINGS,
+        variants: (product.variants || []).map((v) => ({ ...v, ...SAVINGS })) }),
+      offers: (data, ref) => ({ ...data, offers: data.offers.map((o) => (
+        o.merchant_id === ref.merchant_id && o.product_id === ref.product_id
+          ? { ...o, ...SAVINGS, variants: (o.variants || []).map((v) => ({ ...v, ...SAVINGS })) } : o)) }),
+    });
+    expectCardStaysOwnListing(res);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    const offers = res.body.modules.find((m) => m.type === 'offers').data.offers;
+    const own = offers.find((o) => o.merchant_id === merchantId && o.product_id === slug);
+    const selector = res.body.modules.find((m) => m.type === 'variant_selector')?.data || null;
+    for (const field of Object.keys(SAVINGS)) {
+      for (const surface of [card, own, selector]) expect(JSON.stringify(surface || {})).not.toContain(`"${field}"`);
+    }
+    // Another seller's own savings copy is theirs and stays.
+    expect(offers.find((o) => o.offer_id === siblingId)).toMatchObject(SAVINGS);
   });
 
   test('unit: catalogGroup branch whitelists promoted meta and emits nothing without a valid source', async () => {
