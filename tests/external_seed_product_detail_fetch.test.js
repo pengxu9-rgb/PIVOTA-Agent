@@ -3918,9 +3918,19 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     };
   }
 
-  function mockDbForCatalogGroupLane(db, { signatureRow, seedDetailRow, catalogGroupRow }) {
+  function mockDbForCatalogGroupLane(db, { signatureRow, seedDetailRow, catalogGroupRow, currentOwnMoneyRows }) {
     db.query.mockImplementation((sql, params = []) => {
       const text = String(sql || '');
+      // Enrichment PDP money must come from this listing's current own SKU,
+      // independently of the seed detail used by the metadata regression.
+      if (text.includes('FROM catalog_products own_cp') && text.includes('JOIN catalog_offers co')) {
+        expect(params).toEqual([productKey, merchantId]);
+        return Promise.resolve({ rows: currentOwnMoneyRows ?? [{
+          offer_id: 'own_hoverair_current', sku_key: `${productKey}::x1pro-default`,
+          source_variant_id: 'x1pro-default', currency: 'USD', amount: '509.00',
+        }] });
+      }
+
       if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
         return Promise.resolve({
           rows: [
@@ -3989,6 +3999,7 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
         content_review_state: 'not_needed',
       }),
     );
+    expect(canonicalModule?.data?.pdp_payload?.product?.price?.current?.amount).toBe(509);
     expect(canonicalModule?.data?.pdp_payload?.product?.electronics_meta).toEqual({
       spec_groups: SPEC_GROUPS,
     });
@@ -4005,9 +4016,25 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     const res = await invokePdp(app);
     const canonicalModule = res.body.modules?.find((m) => m?.type === 'canonical');
     expect(canonicalModule?.data?.canonical_scope).toBe('canonical_catalog');
+    expect(canonicalModule?.data?.pdp_payload?.product?.price?.current?.amount).toBe(509);
     expect(canonicalModule?.data?.pdp_payload?.product?.electronics_meta).toEqual({
       spec_groups: SPEC_GROUPS,
     });
+  });
+
+  test('an enrichment listing without current own money refuses the stale seed price', async () => {
+    const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+    mockDbForCatalogGroupLane(db, {
+      ...buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }),
+      currentOwnMoneyRows: [],
+    });
+    const res = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'get_pdp_v2',
+      payload: { product_ref: { product_id: sigId }, options: { no_cache: true } },
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
+    expect(res.body.modules || []).toEqual([]);
   });
 
   test('unit: catalogGroup branch whitelists promoted meta and emits nothing without a valid source', async () => {

@@ -139,10 +139,17 @@ function seedDetailRow() {
   };
 }
 
-function install(db, { groupQueryThrows = false, signatureRowOverrides = {} } = {}) {
+function install(db, { groupQueryThrows = false, signatureRowOverrides = {}, currentOwnMoneyRows } = {}) {
   const seen = [];
   db.query.mockImplementation(async (sql, params) => {
     seen.push({ sql: String(sql || ''), params });
+    if (String(sql || '').includes('FROM catalog_products own_cp') && String(sql || '').includes('JOIN catalog_offers co')) {
+      expect(params).toEqual([MINTED_PRODUCT_KEY, MINTED_MERCHANT]);
+      return { rows: currentOwnMoneyRows ?? [{
+        offer_id: 'own_bluemercury_current', sku_key: `${MINTED_PRODUCT_KEY}::canonical`,
+        source_variant_id: MINTED_PRODUCT_KEY, currency: 'USD', amount: '62.00',
+      }] };
+    }
     if (isCanonicalGroupQuery(sql)) {
       if (groupQueryThrows) throw new Error('connection terminated');
       return { rows: groupRows() };
@@ -214,6 +221,17 @@ describe('get_pdp_v2 product_group subject -> member signature lane', () => {
     expect(groupIdentity).toEqual(viaSig.body.metadata.identity_resolution);
     // The sig request itself carries no group field.
     expect(viaSig.body.metadata.identity_resolution).not.toHaveProperty('requested_product_group_id');
+  });
+
+  test('the minted member with no current own offer refuses its seed price on both routes', async () => {
+    const { app, db } = loadServerWithDb();
+    install(db, { currentOwnMoneyRows: [] });
+    for (const payload of [groupSubject, { product_ref: { product_id: MINTED_SIG } }]) {
+      const res = await invoke(app, payload);
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
+      expect(res.body.modules || []).toEqual([]);
+    }
   });
 
   test('kill switch off restores the group lane (the pre-fix 404 on the slug)', async () => {
