@@ -1874,14 +1874,31 @@ const PRIVATE_PDP_PRODUCT_KEYS = new Set([
   'provenance', 'quality_improvement',
 ]);
 
+const PUBLIC_PDP_STATE_VALUES = new Set([
+  'absent', 'loading', 'ready', 'empty', 'error', 'missing', 'unavailable', 'blocked',
+]);
+
+function projectPublicPdpStateValue(value) {
+  const isState = (item) => typeof item === 'string' && PUBLIC_PDP_STATE_VALUES.has(item.toLowerCase());
+  if (isState(value) || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key, item]) => (key === 'state' || key === 'status') && isState(item)));
+}
+
+function projectPublicPdpStateDictionary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([moduleName, state]) => [moduleName, projectPublicPdpStateValue(state)]));
+}
+
 function stripPrivatePdpProductFields(value) {
   if (Array.isArray(value)) return value.map(stripPrivatePdpProductFields);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value)
     .filter(([key]) => !PRIVATE_PDP_PRODUCT_KEYS.has(key))
-    .map(([key, item]) => [key, key === 'x_content_module_states' && item && typeof item === 'object' && !Array.isArray(item)
-      ? Object.fromEntries(Object.entries(item)
-          .map(([moduleName, state]) => [moduleName, stripPrivatePdpProductFields(state)]))
+    .map(([key, item]) => [key, key === 'x_content_module_states'
+      ? projectPublicPdpStateDictionary(item)
       : stripPrivatePdpProductFields(item)]));
 }
 
@@ -1892,6 +1909,7 @@ function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
   const product = stripPrivatePdpProductFields(pdpPayload.product);
   return {
     ...pdpPayload,
+    ...(pdpPayload.x_content_module_states ? { x_content_module_states: projectPublicPdpStateDictionary(pdpPayload.x_content_module_states) } : {}),
     product,
     modules: Array.isArray(pdpPayload.modules)
       ? pdpPayload.modules.filter((module) => {

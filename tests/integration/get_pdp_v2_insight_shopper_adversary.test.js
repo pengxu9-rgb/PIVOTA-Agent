@@ -83,6 +83,61 @@ describe('real public PDP Insights transport boundary', () => {
     expect(projected.modules[0].data.x_content_module_states).toEqual({ product_intel: { state: 'ready' }, media_gallery: 'ready' });
   });
 
+  test.each(['root', 'product', 'variant', 'selector'])(
+    'direct operator metadata in %s state dictionary cannot reach the public transport', (placement) => {
+      const states = {
+        product_intel: {
+          state: 'ready',
+          field_sources: { body: 'human_standard' },
+          freshness: { source_version: 'official_pdp_manual_review_v1' },
+          source_coverage: { seller: true },
+          confidence: { rationale: 'PRIVATE_DIRECT_REVIEW_SENTINEL' },
+        },
+        media_gallery: 'ready',
+      };
+      const input = { product: { product_id: 'p07', variants: [{ variant_id: 'v07' }] },
+        modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v07' } }] };
+      const target = placement === 'root' ? input
+        : placement === 'product' ? input.product
+        : placement === 'variant' ? input.product.variants[0]
+        : input.modules[0].data;
+      target.x_content_module_states = states;
+      const before = JSON.stringify(input);
+      const projected = app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload(input);
+      const publicTarget = placement === 'root' ? projected
+        : placement === 'product' ? projected.product
+        : placement === 'variant' ? projected.product.variants[0]
+        : projected.modules[0].data;
+      expect(JSON.stringify(input)).toBe(before);
+      expect(publicTarget.x_content_module_states).toEqual({ product_intel: { state: 'ready' }, media_gallery: 'ready' });
+      expect(JSON.stringify(projected)).not.toMatch(/human_standard|official_pdp_manual_review_v1|PRIVATE_DIRECT_REVIEW_SENTINEL|field_sources|source_coverage|confidence/);
+    },
+  );
+
+  test('state value projection preserves supported scalars and typed state/status only', () => {
+    const states = {
+      product_intel: 'ready', media_gallery: 'READY', pending: 'loading', absent: 'absent',
+      empty: 'empty', error: 'error', missing: 'missing', unavailable: 'unavailable', blocked: 'blocked',
+      boolean_on: true, boolean_off: false, numeric: 2,
+      structured: { state: 'ready', status: 'empty', source_version: 'official_pdp_manual_review_v1' },
+      unsupported_text: 'human_standard', malformed: ['ready', { field_sources: sentinel }],
+      invalid_state: { state: sentinel }, bad_number: Infinity,
+    };
+    const input = { product: { product_id: 'p07' }, x_content_module_states: states, modules: [] };
+    const before = JSON.stringify(input);
+    const projected = app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload(input);
+    expect(projected.x_content_module_states).toEqual({
+      product_intel: 'ready', media_gallery: 'READY', pending: 'loading', absent: 'absent',
+      empty: 'empty', error: 'error', missing: 'missing', unavailable: 'unavailable', blocked: 'blocked',
+      boolean_on: true, boolean_off: false, numeric: 2,
+      structured: { state: 'ready', status: 'empty' },
+      unsupported_text: null, malformed: null, invalid_state: {}, bad_number: null,
+    });
+    expect(JSON.stringify(input)).toBe(before);
+    expect(input.x_content_module_states.bad_number).toBe(Infinity);
+    expect(JSON.stringify(projected)).not.toContain(sentinel);
+  });
+
   test.each([
     ['raw', []], ['raw_detail', ['product_intel', 'variant_selector']], ['raw_payload', ['product_intel', 'product_overview', 'variant_selector']],
   ])('public request excludes internal Insights in canonical %s with include=%j', async (alias, include) => {
