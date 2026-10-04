@@ -211,3 +211,47 @@ test('withheld built payload drops the projected card money, its price module an
   }
   expect(JSON.stringify(payload)).not.toMatch(/"amount":(45|49)[,}]/);
 });
+
+test('withheld listing carries no stock count, payment price or promotion copy beside in_stock:false', () => {
+  const extra = { available_quantity: 7, inventory_quantity: 7, payment_pricing: { amount: 40, currency: 'USD' },
+    promotion_lines: ['$5 off'] };
+  const product = withholdCanonicalProductMoney({ product_id: 'ext_owned', title: 'Owned', price: 45, ...extra,
+    variants: [variant('111', extra), variant('222', { ...extra, inventory: { available_quantity: 3 } })] });
+  const payload = buildPdpPayload({ product });
+  const text = JSON.stringify(payload);
+  expect(text).not.toMatch(/available_quantity|inventory_quantity|payment_pricing|promotion_lines|\$5 off/);
+  expect(payload.product.availability).toEqual({ in_stock: false });
+  for (const built of payload.product.variants) expect(built.availability).toEqual({ in_stock: false });
+
+  const projected = buildPdpPayload({ product: { product_id: 'ext_owned', title: 'Owned', price: 45, ...extra,
+    variants: [variant('111', extra)] } });
+  expect(JSON.stringify(projected)).toMatch(/available_quantity/);
+  expect(JSON.stringify(withholdCanonicalPdpPayloadMoney(projected)))
+    .not.toMatch(/available_quantity|payment_pricing|promotion_lines|\$5 off/);
+
+  const own = withholdCanonicalOffersMoney({ offers: [{ offer_id: 'o', merchant_id: ref.merchant_id, product_id: ref.product_id,
+    inventory: { in_stock: true, available_quantity: 7 }, payment_pricing: { amount: 40 }, promotion_lines: ['$5 off'],
+    variants: [{ variant_id: '111', availability: { in_stock: true, available_quantity: 7 } }] }] }, ref).offers[0];
+  expect(own.inventory).toEqual({ in_stock: false });
+  expect(own.variants[0].availability).toEqual({ in_stock: false });
+  expect(JSON.stringify(own)).not.toMatch(/available_quantity|payment_pricing|promotion_lines/);
+});
+
+test('a same-merchant twin sharing the withheld offer id keeps it; the withheld offer gets its own id and is the default', () => {
+  const shared = 'of:v1:merch_obs_owned:sig_x:merchant:default';
+  const own = { offer_id: shared, merchant_id: ref.merchant_id, product_id: ref.product_id, price: { amount: 45, currency: 'USD' } };
+  const twin = { offer_id: shared, merchant_id: ref.merchant_id, product_id: 'ext_owned_bundle', price: { amount: 44, currency: 'USD' } };
+  const result = withholdCanonicalOffersMoney({ offers: [own, twin], default_offer_id: shared, best_price_offer_id: shared }, ref);
+  const withheldOwn = result.offers.find(o => o.product_id === ref.product_id);
+  expect(withheldOwn.offer_id).toBe(`${shared}__current_own_unavailable`);
+  expect(result.offers.find(o => o.product_id === 'ext_owned_bundle')).toBe(twin);
+  expect(result.default_offer_id).toBe(withheldOwn.offer_id);
+  expect(result.best_price_offer_id).toBe(shared);
+  for (const id of [result.default_offer_id, result.best_price_offer_id]) {
+    expect(result.offers.filter(o => o.offer_id === id)).toHaveLength(1);
+  }
+  // Without a collision the withheld offer keeps its id.
+  const alone = withholdCanonicalOffersMoney({ offers: [own] }, ref);
+  expect(alone.offers[0].offer_id).toBe(shared);
+  expect(alone.default_offer_id).toBe(shared);
+});

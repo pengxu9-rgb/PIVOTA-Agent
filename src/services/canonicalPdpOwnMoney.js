@@ -40,10 +40,33 @@ function unavailableVariant(variant) {
   return { ...withoutCurrentMoney(variant), current_own_offer_status: 'unavailable' };
 }
 
-// The built (pdpBuilder) shape of an unavailable variant: no price, and not in stock.
-function unavailableBuiltVariant(variant) {
-  const availability = variant?.availability && typeof variant.availability === 'object' ? variant.availability : {};
-  return { ...unavailableVariant(variant), availability: { ...availability, in_stock: false } };
+// On the gap path nothing left on the own listing may contradict "not purchasable": no money, no
+// payment price or promotion copy, and no stock count beside in_stock:false.
+const QUANTITY_FIELDS = ['available_quantity', 'availableQuantity', 'inventory_quantity', 'quantity', 'stock'];
+const WITHHELD_FIELDS = [...CURRENT_MONEY_FIELDS, 'payment_pricing', 'promotion_lines', ...QUANTITY_FIELDS];
+
+function notInStock(state) {
+  const next = { ...(state && typeof state === 'object' && !Array.isArray(state) ? state : {}), in_stock: false };
+  for (const field of QUANTITY_FIELDS) delete next[field];
+  return next;
+}
+
+function withheld(record) {
+  const next = { ...record };
+  for (const field of WITHHELD_FIELDS) delete next[field];
+  for (const key of ['availability', 'inventory']) {
+    if (next[key] && typeof next[key] === 'object' && !Array.isArray(next[key])) next[key] = notInStock(next[key]);
+  }
+  return next;
+}
+
+function withheldVariant(variant) {
+  return { ...withheld(variant), current_own_offer_status: 'unavailable' };
+}
+
+// The built (pdpBuilder) shape of a withheld variant: no price, and not in stock.
+function withheldBuiltVariant(variant) {
+  return { ...withheldVariant(variant), availability: notInStock(variant?.availability) };
 }
 
 // This is the selected enrichment canonical source, not a generic seed price overlay.
@@ -174,8 +197,8 @@ function rankCanonicalOffers(data, offers) {
 // Missing current own money is a gap, not a page failure: the selected listing renders unpriced and
 // not purchasable. No seed/APV or other-listing money is substituted for it.
 function withholdCanonicalProductMoney(product) {
-  const next = { ...withoutCurrentMoney(product), current_own_offer_status: 'unavailable', in_stock: false };
-  if (Array.isArray(product?.variants)) next.variants = product.variants.map(unavailableVariant);
+  const next = { ...withheld(product), current_own_offer_status: 'unavailable', in_stock: false };
+  if (Array.isArray(product?.variants)) next.variants = product.variants.map(withheldVariant);
   return next;
 }
 
@@ -183,15 +206,14 @@ function withholdCanonicalProductMoney(product) {
 // was projected): the card, its variants and selector lose their money and the price module goes.
 function withholdVariantSelectorMoney(data) {
   if (!data || !Array.isArray(data.variants)) return data;
-  return { ...data, variants: data.variants.map(unavailableBuiltVariant) };
+  return { ...data, variants: data.variants.map(withheldBuiltVariant) };
 }
 
 function withholdCanonicalPdpPayloadMoney(payload) {
   if (!payload?.product || typeof payload.product !== 'object') return payload;
   const source = payload.product;
-  const availability = source.availability && typeof source.availability === 'object' ? source.availability : {};
-  const product = { ...withoutCurrentMoney(source), availability: { ...availability, in_stock: false } };
-  if (Array.isArray(source.variants)) product.variants = source.variants.map(unavailableBuiltVariant);
+  const product = { ...withheld(source), availability: notInStock(source.availability) };
+  if (Array.isArray(source.variants)) product.variants = source.variants.map(withheldBuiltVariant);
   const modules = Array.isArray(payload.modules)
     ? payload.modules.filter(module => module?.type !== 'price_promo').map(module => module?.type === 'variant_selector'
       ? { ...module, data: withholdVariantSelectorMoney(module.data) } : module)
@@ -199,19 +221,32 @@ function withholdCanonicalPdpPayloadMoney(payload) {
   return { ...payload, product, ...(modules ? { modules } : {}) };
 }
 
-// Only the exact selected listing loses its money; a sibling seller keeps its own primary source.
-// The unpriced offer is out of stock, so it sorts last and never wins the best-price marker.
+const WITHHELD_OFFER_ID_SUFFIX = '__current_own_unavailable';
+
+function isSelectedListingOffer(offer, ref) {
+  return offer?.merchant_id === ref.merchant_id && offer?.product_id === ref.product_id;
+}
+
+// Only the exact selected listing loses its money; every other listing (another seller, or the same
+// seller's twin listing) keeps its own offer, attribution and money. The unpriced offer is out of
+// stock, sorts last and never wins the best-price marker. The card is the selected listing, so the
+// default offer is that listing's offer. A same-merchant twin can carry the very same offer id
+// (buildOfferId has no listing discriminator), so the withheld offer gets its own id here: neither
+// marker can then resolve to the twin through the shared id.
 function withholdCanonicalOffersMoney(data, ref) {
   if (!data || !Array.isArray(data.offers)) return data;
+  const otherIds = new Set(data.offers.filter(offer => !isSelectedListingOffer(offer, ref))
+    .map(offer => offer?.offer_id).filter(Boolean));
   const offers = data.offers.map(offer => {
-    if (offer.merchant_id !== ref.merchant_id || offer.product_id !== ref.product_id) return offer;
-    const inventory = offer.inventory && typeof offer.inventory === 'object' ? offer.inventory : {};
-    const next = { ...withoutCurrentMoney(offer), current_own_offer_status: 'unavailable',
-      inventory: { ...inventory, in_stock: false } };
-    if (Array.isArray(offer.variants)) next.variants = offer.variants.map(unavailableBuiltVariant);
+    if (!isSelectedListingOffer(offer, ref)) return offer;
+    const next = { ...withheld(offer), current_own_offer_status: 'unavailable', inventory: notInStock(offer.inventory) };
+    if (otherIds.has(offer.offer_id)) next.offer_id = `${offer.offer_id}${WITHHELD_OFFER_ID_SUFFIX}`;
+    if (Array.isArray(offer.variants)) next.variants = offer.variants.map(withheldBuiltVariant);
     return next;
   });
-  return rankCanonicalOffers(data, offers);
+  const ranked = rankCanonicalOffers(data, offers);
+  const own = ranked.offers.find(offer => isSelectedListingOffer(offer, ref));
+  return own?.offer_id ? { ...ranked, default_offer_id: own.offer_id } : ranked;
 }
 
 module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney,

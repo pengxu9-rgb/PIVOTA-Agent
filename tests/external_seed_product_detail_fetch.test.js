@@ -4149,29 +4149,85 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     }
   });
 
-  test('a priced sibling seller keeps its own offer and money; the unpriced own listing never wins', () => {
-    const { debug } = loadServerWithDb();
-    const {
-      withholdCanonicalProductMoney, withholdCanonicalOffersMoney,
-    } = require('../src/services/canonicalPdpOwnMoney');
-    const { buildPdpPayload } = require('../src/pdpBuilder');
-    const ref = { merchant_id: merchantId, product_id: slug };
-    const own = { offer_id: 'own', merchant_id: merchantId, product_id: slug, price: { amount: 499, currency: 'USD' },
-      inventory: { in_stock: true }, variants: [{ variant_id: 'x1pro-default', price: { current: { amount: 499, currency: 'USD' } } }] };
-    const sibling = { offer_id: 'sibling', merchant_id: 'merch_obs_sibling', merchant_name: 'Sibling Store',
-      product_id: 'sibling_listing', price: { amount: 489, currency: 'USD' }, inventory: { in_stock: true } };
-    const offersData = withholdCanonicalOffersMoney({ offers: [own, sibling], default_offer_id: 'own',
-      best_price_offer_id: 'own', offer_source: 'group_fused' }, ref);
-    expect(offersData.best_price_offer_id).toBe('sibling');
-    expect(offersData.offers.find((o) => o.offer_id === 'sibling')).toBe(sibling);
-    const card = buildPdpPayload({ product: withholdCanonicalProductMoney({ product_id: sigId, source_product_id: slug,
-      merchant_id: merchantId, title: 'HOVERAir X1 PRO', price: 499,
-      variants: [{ variant_id: 'x1pro-default', price: 499, currency: 'USD' }] }) });
-    const payload = debug.hydrateCanonicalPdpPayloadFromOffers(card, offersData, { servingCurrency: 'USD', cardListingId: slug });
-    // The card's money is the sibling's, under the sibling's name; the own listing's 499 appears nowhere.
-    expect(payload.product).toMatchObject({ merchant_id: 'merch_obs_sibling', seller_source: 'default_offer',
-      price: { current: { amount: 489, currency: 'USD' } } });
-    expect(JSON.stringify(payload)).not.toMatch(/"amount":499[,}]/);
+  // Runs the real gap path with extra priced listings added to the offers it withholds, so everything
+  // downstream of withholdCanonicalOffersMoney (commerce metadata, card hydration, response) is real.
+  async function invokeGapWithExtraOffers(extraOffers) {
+    jest.doMock('../src/services/canonicalPdpOwnMoney', () => {
+      const actual = jest.requireActual('../src/services/canonicalPdpOwnMoney');
+      return { ...actual, withholdCanonicalOffersMoney: (data, ref) => {
+        const own = data.offers.find((o) => o.merchant_id === ref.merchant_id && o.product_id === ref.product_id);
+        expect(own).toBeTruthy();
+        return actual.withholdCanonicalOffersMoney(
+          { ...data, offers: [...data.offers, ...extraOffers(own)], offers_count: data.offers.length + extraOffers(own).length },
+          ref,
+        );
+      } };
+    });
+    try {
+      const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+      mockDbForCatalogGroupLane(db, {
+        ...buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }),
+        currentOwnMoneyRows: [],
+      });
+      return await invokeDegradedPdp(app);
+    } finally {
+      jest.dontMock('../src/services/canonicalPdpOwnMoney');
+    }
+  }
+
+  function expectCardStaysOwnListing(res) {
+    expect(res.status).toBe(200);
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    expect(product).toMatchObject({ title: 'HOVERAir X1 PRO', merchant_id: merchantId, product_id: sigId });
+    expect(product).not.toHaveProperty('price');
+    expect(product).not.toHaveProperty('price_source');
+    expect(product.seller_source).toBeUndefined();
+    expect(product.availability.in_stock).toBe(false);
+    expect(res.body.modules.some((m) => m.type === 'price_promo')).toBe(false);
+    const canonicalModules = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.modules || [];
+    expect(canonicalModules.some((m) => m.type === 'price_promo')).toBe(false);
+    const offers = res.body.modules.find((m) => m.type === 'offers').data;
+    const own = offers.offers.filter((o) => o.merchant_id === merchantId && o.product_id === slug);
+    expect(own).toHaveLength(1);
+    expect(own[0]).not.toHaveProperty('price');
+    // Each marker resolves to exactly one offer; the default is the card's own (unpriced) listing.
+    for (const id of [offers.default_offer_id, offers.best_price_offer_id]) {
+      expect(offers.offers.filter((o) => o.offer_id === id)).toHaveLength(1);
+    }
+    expect(offers.default_offer_id).toBe(own[0].offer_id);
+    expect(offers.best_price_offer_id).not.toBe(own[0].offer_id);
+    return { product, offers, own: own[0] };
+  }
+
+  test('gap path: a priced same-merchant twin listing never prices or re-sellers the card, and stays listed with its own price', async () => {
+    const res = await invokeGapWithExtraOffers((own) => [{
+      // buildOfferId adds no listing discriminator for merch_obs_ sellers: the twin shares the own id.
+      offer_id: own.offer_id, merchant_id: merchantId, merchant_name: 'us.hoverair.com',
+      product_id: 'hoverair_x1_pro_bundle', price: { amount: 449, currency: 'USD' }, inventory: { in_stock: true },
+      purchase_route: 'affiliate_outbound', url: 'https://us.hoverair.com/products/hoverair-x1-pro-bundle',
+    }]);
+    const { offers, own } = expectCardStaysOwnListing(res);
+    expect(own.offer_id).not.toBe(offers.best_price_offer_id);
+    const twin = offers.offers.find((o) => o.product_id === 'hoverair_x1_pro_bundle');
+    expect(twin).toMatchObject({ merchant_id: merchantId, price: { amount: 449, currency: 'USD' } });
+    expect(offers.best_price_offer_id).toBe(twin.offer_id);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    expect(JSON.stringify(card)).not.toMatch(/"amount":449[,}]/);
+  });
+
+  test('gap path: a priced different-merchant sibling never prices or re-sellers the card, and stays listed', async () => {
+    const res = await invokeGapWithExtraOffers(() => [{
+      offer_id: 'of:v1:merch_obs_sibling:sig_e99bf03f82c811fd66b44cb1cf141aee:merchant:default',
+      merchant_id: 'merch_obs_sibling', merchant_name: 'Sibling Store', product_id: 'sibling_listing',
+      price: { amount: 489, currency: 'USD' }, inventory: { in_stock: true }, purchase_route: 'affiliate_outbound',
+      url: 'https://sibling.example/products/x1-pro',
+    }]);
+    const { offers } = expectCardStaysOwnListing(res);
+    const sibling = offers.offers.find((o) => o.merchant_id === 'merch_obs_sibling');
+    expect(sibling).toMatchObject({ merchant_name: 'Sibling Store', price: { amount: 489, currency: 'USD' } });
+    expect(offers.best_price_offer_id).toBe(sibling.offer_id);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    expect(JSON.stringify(card)).not.toMatch(/"amount":489[,}]|Sibling Store/);
   });
 
   test('unit: catalogGroup branch whitelists promoted meta and emits nothing without a valid source', async () => {

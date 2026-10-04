@@ -9973,7 +9973,7 @@ function projectCanonicalCardSellerFromOffer(product, offer, money, fallbackList
 function hydrateCanonicalPdpPayloadFromOffers(
   pdpPayload,
   offersData,
-  { servingCurrency = null, cardListingId = '' } = {},
+  { servingCurrency = null, cardListingId = '', withholdCardMoney = false } = {},
 ) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
   let product = pdpPayload.product && typeof pdpPayload.product === 'object'
@@ -10004,7 +10004,10 @@ function hydrateCanonicalPdpPayloadFromOffers(
 
   let projectedOfferPrice = null;
   let sellerProjected = false;
-  if (selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
+  // withholdCardMoney: the card's own listing has no current own money. It stays that listing, unpriced:
+  // no offer (another seller, or the same seller's twin listing) prices or re-sellers it. Those offers
+  // remain in the offers module under their own attribution.
+  if (!withholdCardMoney && selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
     const offerIsCardListing = offerSellsCardListing(product, selectedOffer, cardListingId);
     // Another listing's price replaces the content member's whole price object: its other keys
     // (compare-at, original) are that seller's, possibly in that seller's currency.
@@ -45304,6 +45307,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
           canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
             servingCurrency: pdpServingCurrency,
+            withholdCardMoney: Boolean(canonicalOwnMoneyGap),
             // A sig_ card may carry no listing id of its own; the row it was resolved from names it.
             cardListingId:
               [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]
