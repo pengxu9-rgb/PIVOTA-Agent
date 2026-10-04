@@ -54,7 +54,9 @@ import {
   ucpToolDescriptionsFor,
   ucpToNativeToolArgs,
   ucpRecoverToNativeToolArgs,
+  ucpResumeToNativeToolArgs,
   UCP_REAP_RECOVER_INPUT_SCHEMA,
+  UCP_REAP_RESUME_INPUT_SCHEMA,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
@@ -317,8 +319,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     does not.
     const recoverOnly = dialect === TOOL_DIALECTS.ucp && options.reapRecoverOnly === true;
     const prepareOnly = dialect === TOOL_DIALECTS.ucp && options.reapPrepareOnly === true;
-    if (recoverOnly && (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id))) throw new IdentityRequiredError();
-    const nativeArgs = recoverOnly ? ucpRecoverToNativeToolArgs(toolArgs)
+    const resumeOnly = dialect === TOOL_DIALECTS.ucp && options.reapResumeOnly === true;
+    if ((recoverOnly || resumeOnly) && (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id))) throw new IdentityRequiredError();
+    const nativeArgs = resumeOnly ? ucpResumeToNativeToolArgs(toolArgs)
+      : recoverOnly ? ucpRecoverToNativeToolArgs(toolArgs)
       : dialect === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, toolArgs) : toolArgs;
 
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
@@ -349,7 +353,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     of them would sell from, or send the buyer to, the SERVED row's seller. Fails closed on a row it
       //     cannot read or whose merchant it cannot read. A no-op without the member (and the adapter accepts the
       //     member only while the Reap lane is on), so every other create is untouched.
-      if (op.id === "create_checkout_session" && !recoverOnly) {
+      if (op.id === "create_checkout_session" && !recoverOnly && !resumeOnly) {
         await assertExpectedSeller({ ucpArgs: toolArgs, params, executor: reads, ctx });
       }
       if (prepareOnly) return sanitizeResult(await prepareReapCheckout({params,ctx,executor:reads,ucpArgs:toolArgs,
@@ -365,11 +369,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const reapHints = [];
       const reap = await tryReapAgenticCheckout({
         op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, recoverOnly,
+        resumeCheckoutId: resumeOnly ? toolArgs.checkout_id : undefined,
         client: reapAgentic && reapAgentic.client,
         recoveryIdentityReader: reapAgentic && reapAgentic.recoveryIdentityReader, log: logger, hints: reapHints,
       });
       if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
-      if (recoverOnly || String(params.session_id || "").startsWith("reap_")) {
+      if (recoverOnly || resumeOnly || String(params.session_id || "").startsWith("reap_")) {
         throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_primary_route_unavailable" });
       }
       // checkout.reap selects this primary route. A preflight exclusion is a refusal,
@@ -1111,6 +1116,11 @@ export function ucpDialectSurface(surface) {
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: UCP_REAP_RECOVER_INPUT_SCHEMA,
       }, {
+        name: "resume_checkout",
+        description: "Pivota vendor enrollment continuation of the same retained Reap checkout. Send its exact checkout_id plus the identical original create payload and idempotency key. Requires new purchases enabled. Never creates a replacement, changes original identity, or bypasses merchant, variant or price revalidation.",
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        inputSchema: UCP_REAP_RESUME_INPUT_SCHEMA,
+      }, {
         name:"prepare_checkout",
         description:"Read-only authoritative selected Reap cart SKU preparation. Records selection before first create; never creates, enrolls, quotes or pays. Recovery must never call this tool.",
         annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
@@ -1118,12 +1128,14 @@ export function ucpDialectSurface(surface) {
       }] : tools;
     },
     callTool: async (name, args, sessionContext) =>
-      name === "prepare_checkout"
+      name === "resume_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
+        : name === "prepare_checkout"
         ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
         : name === "recover_checkout"
         ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
         : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
-    isCommerceTool: (name) => name === "prepare_checkout" || name === "recover_checkout" || (
+    isCommerceTool: (name) => name === "resume_checkout" || name === "prepare_checkout" || name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
         : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name)),

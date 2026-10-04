@@ -1,0 +1,102 @@
+{
+  "ucp": {
+    "version": "2026-04-08",
+    "status": "success",
+    "payment_handlers": {}
+  },
+  "id": "reap_rp_283fba3ce85c4e59bb331e54.eyJ2IjoxLCJpIjoic2lnX3JlYXBfYSIsImsiOiJwcm9kOjptX2JyYW5kOjpzaG9waWZ5OjoxMDAxIiwicSI6MSwiYyI6IlVTRCIsInUiOjQyNTB9",
+  "status": "incomplete",
+  "currency": "USD",
+  "line_items": [
+    {
+      "id": "li_1",
+      "item": {
+        "id": "sig_reap_a",
+        "title": "Standard Eau de Parfum",
+        "price": 4250
+      },
+      "quantity": 1,
+      "totals": [
+        {
+          "type": "subtotal",
+          "amount": 4250
+        },
+        {
+          "type": "total",
+          "amount": 4250
+        }
+      ]
+    }
+  ],
+  "totals": [
+    {
+      "type": "subtotal",
+      "amount": 4250,
+      "display_text": "Subtotal at Pivota's catalog price"
+    },
+    {
+      "type": "total",
+      "amount": 4250,
+      "display_text": "Expected total before the merchant's shipping and tax"
+    }
+  ],
+  "links": [
+    {
+      "type": "terms_of_service",
+      "url": "https://pivota.cc/terms",
+      "title": "Pivota Terms of Service"
+    }
+  ],
+  "expires_at": "2026-09-29T16:00:00.000Z",
+  "messages": [
+    {
+      "type": "info",
+      "code": "reap.checkout_dispatch_state",
+      "path": "$.status",
+      "content": "not_dispatched",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.contact_reentry_required",
+      "path": "$.status",
+      "content": "false",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.resolving",
+      "path": "$.status",
+      "content": "Pivota has opened this purchase with the payment partner (Reap) and is confirming the item with the merchant. Nothing is charged. Poll get_checkout for the next step.",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.poll_after_seconds",
+      "path": "$.status",
+      "content": "60",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.merchant_domain",
+      "path": "$.line_items[0]",
+      "content": "www.brand.example",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.merchant_id",
+      "path": "$.line_items[0]",
+      "content": "m_brand",
+      "content_type": "plain"
+    },
+    {
+      "type": "info",
+      "code": "reap.lane",
+      "path": "$",
+      "content": "This checkout is fulfilled through Reap, a payment partner: the buyer enters a card and approves the total on Reap's own pages, and Reap places the order with the merchant. Pivota never receives card details and does not hold or move money. This checkout cannot be updated or completed through update_checkout / complete_checkout.",
+      "content_type": "plain"
+    }
+  ]
+}

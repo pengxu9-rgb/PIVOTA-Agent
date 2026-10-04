@@ -686,3 +686,20 @@ before switching off mid-purchase.
 New Reap first creates require paired `checkout.reap.expected_unit_price_minor` (positive safe integer) and `checkout.reap.expected_currency` (uppercase ISO-shaped currency). The UI captures the own-offer unit amount before asynchronous preparation for both sole and explicitly selected variants. These values constrain the buyer's original displayed money; they do not authorize pricing. The gateway requires current PDP/selected preparation agreement and forwards the unchanged pair to the backend, which compares it with its authoritative stored item before creating buyer, consent, key, purchase, click or provider state. A coherent `409 price_changed` returns `ucp_reap_price_not_created` on create only, with no alternate checkout.
 
 The pair belongs in the original persisted body and immutable owner hash. Recovery replays the pair exactly without preparation or current price/proof reads. An original legacy request without the pair retains its absence even when its nine-field selection includes a price; adding or removing a pair changes the request identity. A recovery refusal remains unknown and never permits a new purchase or source switch. Native checkout operations outside the selected Reap route keep their existing route.
+
+### Same-attempt enrollment continuation
+
+The owner purchase view now publishes two facts as plain `info` messages at `$.status`:
+
+- `reap.checkout_dispatch_state`: exact `not_dispatched`, `dispatch_started`, `dispatched`, or `unknown`. Missing or malformed source values map to `unknown`. A missing checkout/quote/provider ID never proves nondispatch.
+- `reap.contact_reentry_required`: `"true"` or `"false"` only when the backend sends a boolean. A degraded view omits the flag and publishes unknown dispatch.
+
+The vendor tool `resume_checkout` accepts the identical original UCP create envelope (`meta`, including the original idempotency key, and `checkout`) plus the exact opaque `checkout_id`. It is a mutating, idempotent tool, advertised only with the Reap lane and executable only while Reap creates are enabled. It does not add a canonical/spec UCP operation or a native MCP tool.
+
+Continuation first uses existing owner/hash recovery to reconstruct and validate the exact original backend request. The returned purchase and all opaque snapshot fields must match the retained ID. Only a current `resolving`, `needs_enrollment`, or `quoting` owner view with `contact_reentry_required=true` and `checkout_dispatch_state=not_dispatched` can cause one `POST /agent/v2/commerce/reap/purchases/{purchase_id}/resume`, carrying that same body and key. There is no preparation, new create, seller/source switch, or kernel/storefront fallback. Selected requests reuse their original selection witness without fresh gateway catalog reads; legacy requests retain their existing recovery identity lookup. The backend owns atomic state, retention, merchant/variant/price freshness, and duplicate-resume enforcement.
+
+Already-progressed, terminal, or dispatch-uncertain views return the current same checkout read-only. A resume transport failure, refusal, malformed result, or identity/money mismatch produces a degraded view of the same ID with unknown dispatch; it never clears the original attempt or offers a replacement. Contact data is forwarded only in the original backend request and is not logged or added to the checkout ID/messages.
+
+### Enrollment continuation: recognized review-only outcomes
+
+The owner-view internal errors `checkout_dispatch_unresolved` and `checkout_unresolvable:3:checkout_no_hosted_action` add the fixed warning `reap.checkout_requires_review` at `$.status`. This is a status-only/support outcome: polling remains available, no hosted action or approval is fabricated, and `resume_checkout` does not dispatch for a recognized review state. Arbitrary provider error strings cannot create this warning. The authoritative checkout-dispatch state is still published independently and never inferred from missing provider identifiers.

@@ -154,7 +154,7 @@ import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // The ONE offer-code arming rule (the Reap lane AND its cart-link dial). ucpReapAgenticLane.js imports nothing
 // from this module, so this cannot cycle.
-import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled } from "./ucpReapAgenticLane.js";
+import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled, REAP_CHECKOUT_ID_MAX_CHARS } from "./ucpReapAgenticLane.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
@@ -2176,4 +2176,25 @@ export function ucpRecoverToNativeToolArgs(args, env = process.env) {
   const idempotency_key = requireIdempotencyKey(meta, code);
   const checkout = requireCheckoutObject(args, "create_checkout", env, { recovery: true });
   return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
+}
+
+
+// A vendor continuation, not a replacement create. The nested create envelope
+// and original key are validated unchanged, including while offer flags pause.
+export const UCP_REAP_RESUME_INPUT_SCHEMA = Object.freeze({
+  ...UCP_REAP_RECOVER_INPUT_SCHEMA,
+  properties: {
+    ...UCP_REAP_RECOVER_INPUT_SCHEMA.properties,
+    checkout_id: { type: "string", minLength: 1, maxLength: REAP_CHECKOUT_ID_MAX_CHARS, description: "The exact opaque Reap checkout ID returned for this original create attempt." },
+  },
+  required: [...UCP_REAP_RECOVER_INPUT_SCHEMA.required, "checkout_id"],
+});
+export function ucpResumeToNativeToolArgs(args, env = process.env) {
+  const code = CHECKOUT_REFUSAL_CODE;
+  requireArgsObject(args, code);
+  rejectUnknown(args, ["meta", "checkout", "checkout_id"], "arguments", code);
+  if (typeof args.checkout_id !== "string" || !args.checkout_id.length || args.checkout_id.length > REAP_CHECKOUT_ID_MAX_CHARS) {
+    throw new PivotaCommerceError(code, { reason: "ucp_reap_resume_checkout_id_invalid" });
+  }
+  return ucpRecoverToNativeToolArgs({ meta: args.meta, checkout: args.checkout }, env);
 }
