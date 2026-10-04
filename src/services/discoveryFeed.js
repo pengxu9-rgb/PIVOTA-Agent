@@ -7289,8 +7289,6 @@ function buildProviderBreakdown(results = []) {
       : (stepFailureReason || skipReasonAsFailure);
     const eligibilityReason = recallSummary.find((step) =>
       step?.eligibility_reason === 'canonical_history_item_unavailable')?.eligibility_reason || null;
-    const historyFailureReason = recallSummary.find((step) =>
-      typeof step?.history_failure_reason === 'string')?.history_failure_reason || null;
     let zeroRecallReason = null;
     if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
       if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
@@ -7317,7 +7315,6 @@ function buildProviderBreakdown(results = []) {
       ...(failureReason ? { failure_reason: failureReason } : {}),
       ...(zeroRecallReason ? { zero_recall_reason: zeroRecallReason } : {}),
       ...(eligibilityReason ? { eligibility_reason: eligibilityReason } : {}),
-      ...(historyFailureReason ? { history_failure_reason: historyFailureReason, history_fallback: 'canonical_sig_cold' } : {}),
     };
   });
 }
@@ -7743,69 +7740,20 @@ async function loadCatalogCandidates({
 
   const canonicalHistory = await loadCanonicalHistoryPrimary({ request, profile, limit: safeLimit });
   const canonicalHistoryFailureReason = resolveCanonicalHistoryFailureReason(canonicalHistory);
-  if (canonicalHistory && canonicalHistoryFailureReason) {
-    // Personalization fails soft. A history subject that cannot be resolved
-    // (conflict, not public, ambiguous, unavailable, item unavailable, query
-    // error) serves the canonical_sig cold feed this request would get with no
-    // history, instead of an empty "unavailable" catalog. Still no legacy SDK,
-    // seed ladder or graph dispatch, and the reason stays on the provider
-    // breakdown, the recall summary and fallback_reason.
-    const historyStep = canonicalHistory.recallSummary?.[0] || {};
-    const unresolvedHistoryStep = {
-      provider: 'canonical_sig',
-      label: 'canonical_sig_personalized_unresolved',
-      query: historyStep.query || null,
-      offset: 0,
-      limit: Number(historyStep.limit || 0),
-      status: null,
-      returned: 0,
-      latency_ms: Number(historyStep.latency_ms || 0),
-      cache_hit: false,
-      history_failure_reason: canonicalHistoryFailureReason,
-      history_fallback: 'canonical_sig_cold',
-    };
-    const coldStartedAt = Date.now();
-    let coldProducts = null;
-    let coldStep;
-    try {
-      coldProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
-      coldStep = buildDiscoveryProviderStepSummary({
-        provider: 'canonical_sig',
-        label: getProviderLabel('canonical_sig'),
-        query: 'canonical_sig_browse',
-        limit: safeLimit,
-        returned: Array.isArray(coldProducts) ? coldProducts.length : 0,
-        status: Array.isArray(coldProducts) ? 200 : null,
-        latencyMs: Date.now() - coldStartedAt,
-        ...(Array.isArray(coldProducts) ? {} : { failureReason: 'canonical_sig_unavailable' }),
-      });
-    } catch (err) {
-      coldStep = buildDiscoveryProviderStepSummary({
-        provider: 'canonical_sig',
-        label: getProviderLabel('canonical_sig'),
-        query: 'canonical_sig_browse',
-        limit: safeLimit,
-        returned: 0,
-        status: null,
-        latencyMs: Date.now() - coldStartedAt,
-        failureReason: classifyDiscoveryQueryError(err),
-        error: err?.message || String(err),
-      });
-    }
-    const coldAnnotated = annotateProviderProducts('canonical_sig', Array.isArray(coldProducts) ? coldProducts : []);
-    providerResults.push({ provider: 'canonical_sig', products: coldAnnotated, recallSummary: [unresolvedHistoryStep, coldStep] });
-    mergeProducts(coldAnnotated);
-    candidateSource = 'canonical_sig';
-    primaryPathUsed = 'canonical_sig';
-    fallbackTriggered = true;
-    fallbackReason = canonicalHistoryFailureReason;
-    for (const provider of ['products_search', 'internal_catalog', 'external_seeds']) {
-      providerResults.push(buildSkippedProviderResult(provider, {
-        label: getProviderLabel(provider), query: providerQueries.join(' | '), limit: safeLimit,
-        skipReason: 'canonical_sig_history_cold_fallback',
-      }));
-    }
-    return { ...finalizeProviderResult(), canonicalHistoryFallbackReason: canonicalHistoryFailureReason };
+  if (canonicalHistory && canonicalHistoryFailureReason && !canonicalHistory.recallSummary?.[0]?.database_stress) {
+    // Personalization fails soft. When the history cannot personalize this page
+    // (conflict, not public, ambiguous, unavailable, query error, item
+    // unavailable, exhausted stored scope), the request is loaded by the SAME
+    // code path as the identical request without history: canonical_sig, and
+    // whatever that request itself falls back to when canonical_sig is empty or
+    // below its threshold. The reason stays on the provider breakdown, the
+    // recall summary and fallback_reason. A database stress failure (statement
+    // timeout, pool exhaustion) is excluded above: it keeps the unavailable
+    // outcome rather than adding a second heavy read to a struggling primary.
+    return loadCanonicalHistoryColdFallback({
+      request, providerOverrides, identityGraphRowsResolverFn, brandDirectPoolEmpty,
+      historyResult: canonicalHistory, reason: canonicalHistoryFailureReason,
+    });
   }
   if (canonicalHistory) {
     candidateSource = 'canonical_sig_personalized';
@@ -9629,6 +9577,13 @@ function canonicalStoredDomain(value) {
   return path.length > 1 ? root : null;
 }
 
+// History domain of a canonical product: the listing's own taxonomy (the path
+// the public PDP serves) first, then the view's stored path. Both are stored
+// catalog data; neither brand nor caller text is consulted.
+function canonicalHistoryProductDomain(product) {
+  return canonicalStoredDomain(product?.stored_listing_category_path) || canonicalStoredDomain(product?.category_path);
+}
+
 function mapCanonicalIndexRowToProduct(row) {
   const categoryPath = canonicalCategoryPath(row.category_path);
   const productId = String(row.pivota_signature_id || '').trim();
@@ -9723,6 +9678,7 @@ async function fetchBrandScopedCanonicalCandidates({
   failures = null,
   strictPublicSource = false,
   exactBrandQuery = false,
+  withListingCategory = false,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -9791,7 +9747,12 @@ async function fetchBrandScopedCanonicalCandidates({
           ${strictPublicSource ? 'own_offers.price_max' : 'apv.price_max'} AS price_max,
           ${strictPublicSource ? 'own_offers.offer_count' : 'apv.offer_count'} AS offer_count,
           ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,
-          apv.category_path
+          apv.category_path${withListingCategory ? `,
+          -- The listing's own taxonomy (catalog_products.category_path): the
+          -- slash path the public PDP serves as product.category_path. Read
+          -- only for history domain checks; never served from here.
+          (SELECT listing_path.category_path FROM catalog_products listing_path
+            WHERE listing_path.product_key = coalesce(first_party.product_key, ext_seed.product_key)) AS listing_category_path` : ''}
         FROM picked
         JOIN agent_pdp_view apv ON apv.content_key = picked.content_key
         LEFT JOIN LATERAL (
@@ -9935,7 +9896,12 @@ async function fetchBrandScopedCanonicalCandidates({
       [normalizedAliases, compactAliases, safeLimit],
     );
     return (res.rows || []).filter((row) => !strictPublicSource || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
-      .map(mapCanonicalIndexRowToProduct).filter(Boolean);
+      .map((row) => {
+        const product = mapCanonicalIndexRowToProduct(row);
+        if (product && withListingCategory) product.stored_listing_category_path = row.listing_category_path ?? null;
+        return product;
+      })
+      .filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -10047,7 +10013,12 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
               AND listing.sync_status = 'live'
               AND listing.suppression_reason IS NULL
             ORDER BY listing.merchant_id
-          ) AS public_listing_merchant_ids` : ''}
+          ) AS public_listing_merchant_ids,
+          -- The listing's own taxonomy (catalog_products.category_path): the
+          -- slash path the public PDP serves as product.category_path. Read
+          -- only for history domain checks; never served from here.
+          (SELECT listing_path.category_path FROM catalog_products listing_path
+            WHERE listing_path.product_key = coalesce(first_party.product_key, ext_seed.product_key)) AS listing_category_path` : ''}
         FROM agent_pdp_view apv
         LEFT JOIN LATERAL (
           SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
@@ -10206,7 +10177,10 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
       .map((row) => {
         const product = mapCanonicalIndexRowToProduct(row);
         // History anchors are never served; only they carry the subject identity set.
-        if (product && signatureIds) product.history_subject_merchant_ids = canonicalHistorySubjectMerchantIds(product, row);
+        if (product && signatureIds) {
+          product.history_subject_merchant_ids = canonicalHistorySubjectMerchantIds(product, row);
+          product.stored_listing_category_path = row.listing_category_path ?? null;
+        }
         return product;
       })
       .filter(Boolean);
@@ -10321,7 +10295,8 @@ function scopeCanonicalHistoryProduct(product) {
     offer?.market === 'US' && offer.currency === 'USD' && offer.availability === 'in_stock' &&
     Number.isFinite(Number(offer.price)) && Number(offer.price) > 0);
   if (!offers.length) return null;
-  return { ...product, offers, offers_count: offers.length,
+  const { stored_listing_category_path: _storedListingCategoryPath, ...served } = product;
+  return { ...served, offers, offers_count: offers.length,
     price: Math.min(...offers.map((offer) => Number(offer.price))), currency: 'USD' };
 }
 
@@ -10337,6 +10312,85 @@ function isPotentialCanonicalHistoryPrimary(request) {
       resolveDiscoveryExternalSeedMarketConfig().market !== 'US' ||
       views.some((view) => !/^sig_[a-f0-9]{32}$/.test(view.product_id || '') || !view.merchant_id)) return false;
   return true;
+}
+
+// Statement timeout, query read timeout, connection-pool exhaustion or too many
+// connections: the primary is under stress, so a history failure of this kind
+// must not trigger a second (cold) catalog read.
+function isDiscoveryDatabaseStressError(err) {
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (['57014', '53300', '53400', '57P03'].includes(code)) return true;
+  const message = String(err?.message || err || '');
+  return /statement timeout|query read timeout|timeout exceeded when trying to connect|too many clients|remaining connection slots|timed out|timeout/i.test(message);
+}
+
+// The cold fallback is the identical request without history, loaded by the
+// same loader. Only the history step and the reason are added.
+async function loadCanonicalHistoryColdFallback({ request, providerOverrides, identityGraphRowsResolverFn,
+  brandDirectPoolEmpty, historyResult, reason } = {}) {
+  const coldRequest = { ...request, context: { ...(request?.context || {}), recent_views: [], recent_queries: [] } };
+  const historyStep = historyResult?.recallSummary?.[0] || {};
+  const unresolvedHistoryStep = {
+    provider: 'canonical_sig',
+    label: 'canonical_sig_personalized_unresolved',
+    query: historyStep.query || null,
+    offset: 0,
+    limit: Number(historyStep.limit || 0),
+    status: null,
+    returned: 0,
+    latency_ms: Number(historyStep.latency_ms || 0),
+    cache_hit: false,
+    history_failure_reason: reason,
+    history_fallback: 'cold_request',
+  };
+  const annotate = (result) => {
+    const coldFallbackReason = result?.fallbackReason || null;
+    return {
+      ...result,
+      recallSummary: [unresolvedHistoryStep, ...(Array.isArray(result?.recallSummary) ? result.recallSummary : [])],
+      providerBreakdown: (Array.isArray(result?.providerBreakdown) ? result.providerBreakdown : []).map((entry) =>
+        entry?.provider === 'canonical_sig'
+          ? { ...entry, history_failure_reason: reason, history_fallback: 'cold_request' }
+          : entry),
+      fallbackTriggered: true,
+      fallbackReason: reason,
+      ...(coldFallbackReason ? { coldRouteFallbackReason: coldFallbackReason } : {}),
+      canonicalHistoryFallbackReason: reason,
+    };
+  };
+  try {
+    const result = await loadCatalogCandidates({
+      request: coldRequest,
+      profile: buildDiscoveryProfile(coldRequest.context),
+      // The candidate limit the no-history request computes (history requests
+      // compute a smaller, page-dependent one), so the pool and its paging match.
+      limit: resolveDiscoveryCandidateLimit(coldRequest),
+      providerOverrides,
+      identityGraphRowsResolverFn,
+      brandDirectPoolEmpty,
+    });
+    const annotated = annotate(result);
+    if (annotated.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError) {
+      Object.assign(annotated.catalogUnavailableError.details, {
+        providerBreakdown: annotated.providerBreakdown, recallSummary: annotated.recallSummary,
+        historyFallbackReason: reason,
+      });
+    }
+    return annotated;
+  } catch (err) {
+    if (err instanceof DiscoveryCatalogUnavailableError) {
+      const details = err.details || {};
+      const annotated = annotate({ providerBreakdown: details.providerBreakdown, recallSummary: details.recallSummary });
+      Object.assign(err.details, {
+        providerBreakdown: annotated.providerBreakdown,
+        recallSummary: annotated.recallSummary,
+        fallbackTriggered: true,
+        fallbackReason: reason,
+        historyFallbackReason: reason,
+      });
+    }
+    throw err;
+  }
 }
 
 // Why a canonical history primary cannot personalize this page, or null when it
@@ -10390,9 +10444,10 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
           (view.brand && normalizeBrandText(view.brand) !== normalizeBrandText(anchor.brand)))
         return summary([], null, 'canonical_history_subject_conflict');
       const path = canonicalCategoryPath(anchor.category_path);
-      // Compared in the profile's own domain vocabulary. The stored path is
-      // often a bare leaf ('Serum', 'Beauty Product'), never a domain itself.
-      const domain = canonicalStoredDomain(path);
+      // Compared in the profile's own domain vocabulary. The view's stored path
+      // is often a bare leaf ('Serum', 'Beauty Product') or NULL, so the
+      // listing's own taxonomy (what the PDP shows) is read first.
+      const domain = canonicalHistoryProductDomain(anchor);
       if (profile?.dominantDomain && profile.dominantDomain !== domain)
         return summary([], null, 'canonical_history_domain_conflict');
       if (anchor.currency !== 'USD') return summary([], null, 'canonical_history_currency_mismatch');
@@ -10409,11 +10464,11 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     // not widen this stored-brand request or be silently replaced by it.
     if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
     const failures = [];
-    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true });
+    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true });
     if (failures.length) return summary([], null, 'canonical_history_query_failed');
     const allowedBrands = new Set(brands.map(normalizeBrandText));
     const scoped = products.filter((product) => {
-      const domain = canonicalStoredDomain(product.category_path);
+      const domain = canonicalHistoryProductDomain(product);
       return allowedBrands.has(normalizeBrandText(product.brand)) &&
         (!domains.size || domains.has(domain)) && (!profile?.dominantDomain || domain === profile.dominantDomain);
     })
@@ -10429,7 +10484,9 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     }
     return summary(scoped, 200);
   } catch (err) {
-    return summary([], null, classifyDiscoveryQueryError(err));
+    const failed = summary([], null, classifyDiscoveryQueryError(err));
+    if (isDiscoveryDatabaseStressError(err)) failed.recallSummary[0].database_stress = true;
+    return failed;
   }
 }
 
@@ -12852,7 +12909,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request.limit,
         {
           collectDebug: true,
-          suppressRecentViewsOnAllPages: candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized',
+          // The fallback keeps the same rule as the personalized reader: a viewed
+          // item suppressed on page 1 only would shift offsets and repeat a card.
+          suppressRecentViewsOnAllPages: candidateLoadResult?.primaryPathUsed === 'canonical_sig_personalized' ||
+            Boolean(canonicalHistoryFallbackReason),
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
@@ -12971,6 +13031,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
       ...(canonicalHistoryFallbackReason ? { history_fallback_reason: canonicalHistoryFallbackReason } : {}),
+      ...(canonicalHistoryFallbackReason && candidateLoadResult?.coldRouteFallbackReason
+        ? { cold_route_fallback_reason: candidateLoadResult.coldRouteFallbackReason } : {}),
       history_items_used: profile.historyItemsUsed,
       query_items_used: Number(profile.queryItemsUsed || 0),
       anchor_count: profile.anchors.length,
@@ -13292,7 +13354,9 @@ module.exports = {
     loadCanonicalHistoryPrimary,
     resolveCanonicalHistoryFailureReason,
     canonicalStoredDomain,
+    canonicalHistoryProductDomain,
     canonicalHistorySubjectMerchantIds,
+    isDiscoveryDatabaseStressError,
     loadCanonicalBrandQueryPrimary,
     isPotentialCanonicalBrandQueryPrimary,
     canonicalCategoryPath,

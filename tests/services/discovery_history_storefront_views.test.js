@@ -2,8 +2,9 @@
 // catalog_status "unavailable" with zero products for every home/browse request
 // that carried a storefront-recorded view. Inputs are the REAL producer shapes,
 // captured from the public storefront proxy (see the fixture's _note): the
-// browse_history entry pivota-agent-ui writes from a public PDP, the
-// recent_view it sends, and the canonical card the reader maps for that sig.
+// browse_history entry pivota-agent-ui writes from a public PDP, the recent_view
+// it sends, the canonical cards the reader maps, and each sig's listing taxonomy
+// as its own PDP serves it.
 jest.mock('../../src/db', () => ({ query: jest.fn() }));
 const axios = require('axios');
 const db = require('../../src/db');
@@ -13,67 +14,73 @@ const smoke = require('../../scripts/run_discovery_feed_smoke.cjs');
 
 const { krave, judydoll, jurlique } = fixture.subjects;
 const ANCHOR_SQL = 'AND apv.pivota_signature_id = ANY($2::text[])';
+const fold = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-// The SQL row the canonical reader receives for a captured card: a mirror
-// (external_seed) listing, no first-party row, the card's stored brand and
-// category_path (TEXT), own offers by the card's offer sellers, and the public
-// listing merchant the PDP showed (canonical_product_ref.merchant_id).
-function rowFor(card, { title, price, listingMerchant, signature = card.product_id, brand = card.brand, categoryPath = card.category_path } = {}) {
-  const productKey = card.external_product_key || 'key_' + signature;
+// The SQL row the canonical readers receive for a captured card: a mirror
+// (external_seed) listing, the card's stored brand and agent_pdp_view leaf,
+// own offers by the card's offer sellers, the PDP listing merchant and the
+// listing's own taxonomy (catalog_products.category_path).
+function poolRow(entry, overrides = {}) {
+  const productKey = 'listing_' + entry.product_id;
   return {
-    pivota_signature_id: signature,
-    content_key: 'ck_' + signature,
+    pivota_signature_id: entry.product_id,
+    content_key: 'ck_' + entry.product_id,
     external_product_key: productKey,
     external_product_id: productKey,
-    external_brand: brand,
-    brand,
-    title: title || 'Captured ' + signature,
+    external_brand: entry.brand,
+    brand: entry.brand,
+    title: entry.title,
     description: null,
-    category_path: Array.isArray(categoryPath) ? categoryPath.join('/') : categoryPath ?? null,
+    category_path: Array.isArray(entry.card_category_path) ? entry.card_category_path.join('/') : entry.card_category_path ?? null,
+    listing_category_path: entry.listing_category_path ?? null,
     currency: 'USD',
-    price_min: price,
-    offers: (card.offer_merchant_ids || []).map((merchantId) => ({ offer_id: 'of_' + signature, product_key: productKey,
-      merchant_id: merchantId, market: 'US', currency: 'USD', price, availability: 'in_stock' })),
-    offer_count: (card.offer_merchant_ids || []).length,
-    ...(listingMerchant ? { public_listing_merchant_ids: [listingMerchant] } : {}),
+    price_min: entry.price,
+    offers: entry.offer_merchant_ids.map((merchantId) => ({ offer_id: 'of_' + entry.product_id, product_key: productKey,
+      merchant_id: merchantId, market: 'US', currency: 'USD', price: entry.price, availability: 'in_stock' })),
+    offer_count: entry.offer_merchant_ids.length,
+    public_listing_merchant_ids: entry.pdp_merchant_id ? [entry.pdp_merchant_id] : [],
+    ...overrides,
   };
 }
-const anchorFor = (subject) => rowFor(subject.canonical_card, { title: subject.recent_view.title,
-  price: subject.browse_history_entry.price, listingMerchant: subject.pdp.canonical_product_ref.merchant_id });
+const POOLS = Object.fromEntries(Object.entries(fixture.brand_pools).map(([key, rows]) => [key, rows.map((row) => poolRow(row))]));
+const seed = fixture.smoke_seed_card;
+const SEED_ROW = poolRow({ product_id: seed.product_id, brand: seed.brand, title: seed.title, card_category_path: seed.category_path,
+  listing_category_path: null, offer_merchant_ids: seed.offer_merchant_ids, price: 6, pdp_merchant_id: seed.offer_merchant_ids[0] });
+const rowOf = (subject) => Object.values(POOLS).flat().find((row) => row.pivota_signature_id === subject.recent_view.product_id);
 
-// Captured Jurlique brand page (canonical cards, merch_obs listing offers).
-const JURLIQUE_POOL = [
-  ['sig_f6bb2d1156aaaaaaaaaaaaaaaaaaaaaa', 'Face Mist', 'Sweet Violet & Grapefruit Hydrating Mist', 44],
-  ['sig_aac87f822aaaaaaaaaaaaaaaaaaaaaaa', 'Skincare Set', 'Skin Recovery Duo', 127],
-  ['sig_3895bb0aa8aaaaaaaaaaaaaaaaaaaaaa', 'Gel Cleanser', 'Revitalising Cleansing Gel', 44],
-  ['sig_110f5c5de4aaaaaaaaaaaaaaaaaaaaaa', 'Beauty Product', 'Lavender Pure Essential Oil', 31],
-  ['sig_c46231d8eaaaaaaaaaaaaaaaaaaaaaaa', 'Beauty Product', 'Lavender Hydrating Mist', 48],
-  ['sig_fd91dfb83eaaaaaaaaaaaaaaaaaaaaaa', 'Beauty Product', 'Rose Love Balm', 20],
-  ['sig_ba68a1c261aaaaaaaaaaaaaaaaaaaaaa', 'Skincare Set', '8+2 Revitalizing Duo', 120],
-  ['sig_a996276358aaaaaaaaaaaaaaaaaaaaaa', 'Skincare Tool', 'Cooling Facial Spoons', 15],
-].map(([signature, leaf, title, price]) => rowFor({ ...jurlique.canonical_card, external_product_key: null,
-  offer_merchant_ids: [jurlique.pdp.product_merchant_id] }, { signature, categoryPath: [leaf], title, price }));
-// Captured Judydoll brand page: the viewed lip ink plus two unclassifiable leaves.
-const JUDYDOLL_POOL = [
-  rowFor(judydoll.canonical_card, { title: judydoll.recent_view.title, price: 13.99 }),
-  rowFor({ ...judydoll.canonical_card, external_product_key: null }, { signature: 'sig_f15748a12c2929ca5ced9c263ff3c1b2', categoryPath: ['Bronzer'], title: 'Dual-Ended Contour Stick', price: 12.99 }),
-  rowFor({ ...judydoll.canonical_card, external_product_key: null }, { signature: 'sig_d4f93c2b9b88ac7bd32f44d13ebe9d31', categoryPath: ['Highlighter'], title: 'Sheer Tinted Highlighter', price: 12.99 }),
-];
-// The cold canonical feed: captured cold-home cards (stored leaves), padded with
-// the captured Jurlique cards so home/browse have a full page.
-const COLD_POOL = [
-  rowFor(fixture.smoke_seed_card, { title: fixture.smoke_seed_card.title, price: 6 }),
-  ...JURLIQUE_POOL,
-];
+// A cold canonical universe large enough that the no-history request itself is
+// served by canonical_sig (its coverage threshold is 24 on home, 18 on browse).
+function coldUniverse(base = Object.values(POOLS).flat(), size = 48) {
+  return Array.from({ length: size }, (_, n) => {
+    const row = base[n % base.length];
+    if (n < base.length) return row;
+    const signature = 'sig_' + String(n + 1).padStart(32, '0');
+    return { ...row, pivota_signature_id: signature, content_key: 'ck_' + signature, external_product_key: 'listing_' + signature,
+      title: row.title + ' ' + n };
+  });
+}
 
 let env;
 let calls;
-function mockCatalog({ anchors = [], brandPool = [], cold = COLD_POOL, coldError = null } = {}) {
+// catalog: every row the anchor and brand readers may return; cold: the cold reader's rows.
+function mockCatalog({ catalog = [...Object.values(POOLS).flat(), SEED_ROW], cold = coldUniverse(), anchorError = null, coldError = null } = {}) {
   calls = { anchor: 0, brand: 0, cold: 0 };
-  db.query.mockImplementation(async (sql) => {
-    if (sql.includes(ANCHOR_SQL)) { calls.anchor += 1; return { rows: anchors }; }
-    if (sql.includes('WITH brand_match')) { calls.brand += 1; return { rows: brandPool }; }
-    if (sql.includes('FROM agent_pdp_view apv')) { calls.cold += 1; if (coldError) throw coldError; return { rows: cold }; }
+  db.query.mockImplementation(async (sql, params = []) => {
+    if (sql.includes(ANCHOR_SQL)) {
+      calls.anchor += 1;
+      if (anchorError) throw anchorError;
+      return { rows: catalog.filter((row) => params[1].includes(row.pivota_signature_id)) };
+    }
+    if (sql.includes('WITH brand_match')) {
+      calls.brand += 1;
+      const aliases = new Set((params[0] || []).map(fold));
+      return { rows: catalog.filter((row) => aliases.has(fold(row.brand))) };
+    }
+    if (sql.includes('FROM agent_pdp_view apv')) {
+      calls.cold += 1;
+      if (coldError) throw coldError;
+      return { rows: cold };
+    }
     return { rows: [] };
   });
 }
@@ -84,6 +91,18 @@ function feed(views, override = {}) {
     context: { locale: 'en-US', recent_views: views }, ...override }, opts);
 }
 const canonicalBreakdown = (response) => response.metadata.provider_breakdown.find((entry) => entry.provider === 'canonical_sig');
+const noSdk = () => { expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled(); };
+const forgedKrave = () => ({ ...krave.recent_view, merchant_id: judydoll.recent_view.merchant_id });
+async function outcome(promise) {
+  try {
+    const response = await promise;
+    return { ok: true, products: response.products.map((p) => p.product_id), candidate_source: response.metadata.candidate_source,
+      primary_path_used: response.metadata.primary_path_used, catalog_status: response.metadata.catalog_status ?? null,
+      strategy: response.metadata.discovery_strategy };
+  } catch (err) {
+    return { ok: false, code: err.code, statusCode: err.statusCode };
+  }
+}
 
 beforeEach(() => {
   env = { ...process.env };
@@ -103,16 +122,13 @@ afterEach(() => { jest.restoreAllMocks(); process.env = env; });
 describe('captured producer shapes', () => {
   test('the storefront records the PDP listing merchant, which the canonical card does not carry', () => {
     for (const subject of [krave, judydoll, jurlique]) {
-      // What agent-ui stores and what it sends are the PDP's product identity.
       expect(subject.browse_history_entry.merchant_id).toBe(subject.pdp.product_merchant_id);
       expect(subject.recent_view.merchant_id).toBe(subject.pdp.canonical_product_ref.merchant_id);
-      // The canonical card maps the mirror listing to the shared seed convention.
-      const anchor = i.mapCanonicalIndexRowToProduct(anchorFor(subject));
+      const anchor = i.mapCanonicalIndexRowToProduct(rowOf(subject));
       expect(anchor.merchant_id).toBe(subject.canonical_card.merchant_id);
       expect(anchor.merchant_id).not.toBe(subject.recent_view.merchant_id);
     }
-    // Jurlique's own offer seller differs from the listing merchant the PDP shows,
-    // so offers alone cannot identify the recorded subject.
+    // Jurlique's own offer seller differs from the listing merchant the PDP shows.
     expect(jurlique.canonical_card.offer_merchant_ids).not.toContain(jurlique.recent_view.merchant_id);
   });
 
@@ -123,197 +139,254 @@ describe('captured producer shapes', () => {
     expect(observed.home_smoke_seed_view.canonical_sig.failure_reason).toBe('canonical_history_domain_conflict');
     expect(observed.home_no_history.products).toBeGreaterThan(0);
   });
+});
 
-  test('stored category paths map into the profile domain vocabulary', () => {
-    expect(i.canonicalStoredDomain(krave.canonical_card.category_path)).toBeNull();
-    expect(i.canonicalStoredDomain(judydoll.canonical_card.category_path)).toBe('beauty');
-    expect(i.canonicalStoredDomain(fixture.smoke_seed_card.category_path)).toBe('beauty');
-    expect(i.canonicalStoredDomain(jurlique.canonical_card.category_path)).toBeNull();
-    expect(i.canonicalStoredDomain(jurlique.pdp.category_path)).toBe('beauty');
-    expect(i.canonicalStoredDomain(['Bronzer'])).toBeNull();
-    expect(i.canonicalStoredDomain('fashion/dresses')).toBe('apparel');
-    expect(i.canonicalStoredDomain('home/decor')).toBe('home');
+describe('stored domain', () => {
+  test('the agent_pdp_view leaf alone leaves most real rows unknown', () => {
+    const unknown = Object.values(fixture.brand_pools).flat().filter((row) => !i.canonicalStoredDomain(row.card_category_path));
+    expect(unknown.map((row) => row.title)).toEqual(expect.arrayContaining(['24 Carrot Retinal', 'Lavender Shampoo', 'Sheer Tinted Highlighter']));
+  });
+
+  test('the listing taxonomy the PDP serves maps every captured Krave, Jurlique and Judydoll row to beauty', () => {
+    for (const row of Object.values(POOLS).flat()) {
+      const product = { ...i.mapCanonicalIndexRowToProduct(row), stored_listing_category_path: row.listing_category_path };
+      expect(i.canonicalHistoryProductDomain(product)).toBe('beauty');
+    }
+  });
+
+  test.each([
+    [null, null], [['Serum'], 'beauty'], ['Beauty Product', 'beauty'], [['gift-set'], null], [['Bronzer'], null],
+    ['beauty/sets/gift-set', 'beauty'], ['fashion/dresses', 'apparel'], ['home/decor', 'home'],
+  ])('canonicalStoredDomain(%p) = %p', (path, domain) => {
+    expect(i.canonicalStoredDomain(path)).toBe(domain);
+  });
+
+  test('the history reads select the listing taxonomy, other reads do not', async () => {
+    mockCatalog();
+    const [anchor] = await i.fetchCanonicalSigBrowseCandidates({ limit: 1, signatureIds: [krave.recent_view.product_id] });
+    expect(db.query.mock.calls[0][0]).toContain('AS listing_category_path');
+    expect(anchor.stored_listing_category_path).toBe('beauty/skincare/treat/serum');
+    await i.fetchCanonicalSigBrowseCandidates({ limit: 48 });
+    expect(db.query.mock.calls[1][0]).not.toContain('listing_category_path');
+    await i.fetchBrandScopedCanonicalCandidates({ brandAliases: ['KraveBeauty'], limit: 48, strictPublicSource: true });
+    expect(db.query.mock.calls[2][0]).not.toContain('listing_category_path');
   });
 });
 
-describe('stored subject identity', () => {
+describe('stored subject identity and personalization', () => {
   test('anchor SQL exposes public listing merchants only on the history read', async () => {
-    mockCatalog({ anchors: [anchorFor(krave)] });
+    mockCatalog();
     const [anchor] = await i.fetchCanonicalSigBrowseCandidates({ limit: 1, signatureIds: [krave.recent_view.product_id] });
     const anchorSql = db.query.mock.calls[0][0];
     expect(anchorSql).toContain('AS public_listing_merchant_ids');
     expect(anchorSql).toContain("listing_trust.serving_decision = 'public'");
     expect(anchor.history_subject_merchant_ids).toEqual(expect.arrayContaining([krave.pdp.product_merchant_id, krave.canonical_card.merchant_id]));
-    await i.fetchCanonicalSigBrowseCandidates({ limit: 48 });
-    expect(db.query.mock.calls[1][0]).not.toContain('public_listing_merchant_ids');
   });
 
-  test('a single storefront view of a mirror sig resolves and personalizes (Jurlique)', async () => {
-    mockCatalog({ anchors: [anchorFor(jurlique)], brandPool: [anchorFor(jurlique), ...JURLIQUE_POOL] });
-    const request = i.normalizeDiscoveryRequest({ surface: 'home_hot_deals', limit: 6, context: { locale: 'en-US', recent_views: [jurlique.recent_view] } });
-    const primary = await i.loadCanonicalHistoryPrimary({ request, profile: buildDiscoveryProfile(request.context), limit: 48 });
-    expect(primary.recallSummary[0]).toMatchObject({ status: 200 });
-    expect(primary.recallSummary[0]).not.toHaveProperty('failure_reason');
-
-    const response = await feed([jurlique.recent_view]);
+  test.each([
+    ['krave', 'home_hot_deals', 4], ['krave', 'browse_products', 6],
+    ['jurlique', 'home_hot_deals', 4], ['jurlique', 'browse_products', 6],
+    ['judydoll', 'home_hot_deals', 2],
+  ])('a single storefront %s view personalizes on %s', async (name, surface, minimum) => {
+    const subject = fixture.subjects[name];
+    mockCatalog();
+    // Judydoll has two siblings; home backfills a viewed item only into an underfilled page.
+    const response = await feed([subject.recent_view], { surface, ...(name === 'judydoll' ? { limit: 2 } : {}) });
     expect(response.metadata.catalog_status).toBeUndefined();
     expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');
-    expect(response.products.length).toBeGreaterThanOrEqual(4);
-    expect(response.products.every((p) => p.brand === 'Jurlique')).toBe(true);
-    expect(response.products.some((p) => p.product_id === jurlique.recent_view.product_id)).toBe(false);
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
-  });
-
-  test.each(['home_hot_deals', 'browse_products'])('the Krave repro view is never an unavailable catalog on %s', async (surface) => {
-    mockCatalog({ anchors: [anchorFor(krave)], brandPool: [anchorFor(krave)] });
-    const response = await feed([krave.recent_view], { surface });
-    expect(response.metadata.catalog_status).toBeUndefined();
-    expect(response.products.length).toBeGreaterThanOrEqual(surface === 'browse_products' ? 6 : 4);
-    // The subject resolves; the history text says beauty ("KraveBeauty") while
-    // the stored row has no category, so the reader refuses on domain and the
-    // cold canonical feed is served with that reason.
-    expect(response.metadata).toMatchObject({ candidate_source: 'canonical_sig', primary_path_used: 'canonical_sig',
-      fallback_triggered: true, fallback_reason: 'canonical_history_domain_conflict',
-      history_fallback_reason: 'canonical_history_domain_conflict', discovery_strategy: 'cold_start_curated' });
-    expect(canonicalBreakdown(response)).toMatchObject({ successful: true,
-      history_failure_reason: 'canonical_history_domain_conflict', history_fallback: 'canonical_sig_cold' });
-    expect(calls.brand).toBe(0);
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
-  });
-
-  test.each(['home_hot_deals', 'browse_products'])('the Judydoll repro view resolves, and an exhausted stored scope serves the cold feed on %s', async (surface) => {
-    mockCatalog({ anchors: [anchorFor(judydoll)], brandPool: JUDYDOLL_POOL });
-    const response = await feed([judydoll.recent_view], { surface });
-    expect(response.metadata.catalog_status).toBeUndefined();
-    expect(response.products.length).toBeGreaterThan(0);
-    expect(response.metadata.fallback_reason).toBe('canonical_history_pool_empty');
-    expect(response.products.some((p) => p.product_id === judydoll.recent_view.product_id)).toBe(false);
-    const steps = response.metadata.rank_debug.recall_summary.filter((step) => step.provider === 'canonical_sig');
-    expect(steps.map((step) => step.label)).toEqual(['canonical_sig_personalized_unresolved', 'canonical_sig_browse']);
-    expect(steps[0]).toMatchObject({ history_failure_reason: 'canonical_history_pool_empty', status: null });
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+    expect(response.metadata).not.toHaveProperty('fallback_reason');
+    expect(response.metadata).not.toHaveProperty('history_fallback_reason');
+    expect(response.products.length).toBeGreaterThanOrEqual(minimum);
+    expect(response.products.every((p) => p.brand === subject.recent_view.brand)).toBe(true);
+    expect(response.products.some((p) => p.product_id === subject.recent_view.product_id)).toBe(false);
+    expect(response.products.every((p) => !('stored_listing_category_path' in p))).toBe(true);
+    expect(calls.cold).toBe(0);
+    noSdk();
   });
 
   test('a forged pairing (sig with a merchant it never had) is refused and served the cold feed', async () => {
-    mockCatalog({ anchors: [anchorFor(krave)], brandPool: [anchorFor(krave)] });
-    const forged = { ...krave.recent_view, merchant_id: judydoll.recent_view.merchant_id };
+    mockCatalog();
+    const forged = forgedKrave();
     const request = i.normalizeDiscoveryRequest({ surface: 'home_hot_deals', limit: 6, context: { locale: 'en-US', recent_views: [forged] } });
     const primary = await i.loadCanonicalHistoryPrimary({ request, profile: buildDiscoveryProfile(request.context), limit: 48 });
     expect(primary.recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');
 
     const response = await feed([forged]);
     expect(response.products.length).toBeGreaterThanOrEqual(4);
-    expect(response.metadata).toMatchObject({ candidate_source: 'canonical_sig', fallback_reason: 'canonical_history_subject_conflict' });
-    expect(canonicalBreakdown(response).history_failure_reason).toBe('canonical_history_subject_conflict');
-    expect(response.products.every((p) => !String(p.brand).includes('Krave'))).toBe(true);
+    expect(response.metadata).toMatchObject({ candidate_source: 'canonical_sig', fallback_reason: 'canonical_history_subject_conflict',
+      history_fallback_reason: 'canonical_history_subject_conflict', discovery_strategy: 'cold_start_curated' });
+    expect(canonicalBreakdown(response)).toMatchObject({ successful: true, history_failure_reason: 'canonical_history_subject_conflict' });
     expect(calls.brand).toBe(0);
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+    noSdk();
   });
 
   test('a private listing merchant cannot vouch for the subject', async () => {
-    // The anchor SQL only lists public live listings; a merchant absent from it is foreign.
-    mockCatalog({ anchors: [{ ...anchorFor(krave), public_listing_merchant_ids: [] , offers: [] }] });
+    mockCatalog({ catalog: [{ ...rowOf(krave), public_listing_merchant_ids: [], offers: [] }] });
     const request = i.normalizeDiscoveryRequest({ surface: 'home_hot_deals', limit: 6, context: { locale: 'en-US', recent_views: [krave.recent_view] } });
     const primary = await i.loadCanonicalHistoryPrimary({ request, profile: buildDiscoveryProfile(request.context), limit: 48 });
     expect(primary.recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');
   });
+
+  test('an unclassifiable listing under an explicit history domain is still a conflict', async () => {
+    mockCatalog({ catalog: POOLS.krave.map((row) => row.pivota_signature_id === krave.recent_view.product_id ? { ...row, listing_category_path: null } : row) });
+    const response = await feed([krave.recent_view]);
+    expect(response.metadata.fallback_reason).toBe('canonical_history_domain_conflict');
+    expect(response.products.length).toBeGreaterThan(0);
+  });
 });
 
 describe('fail soft for personalization only', () => {
-  test('the cold fallback equals the no-history cold feed (same products, cold strategy)', async () => {
-    // A cold canonical pool large enough that the no-history request is itself
-    // served by canonical_sig (below its threshold it uses the seed fastpath).
-    const wideCold = Array.from({ length: 60 }, (_, n) => ({ ...COLD_POOL[n % COLD_POOL.length],
-      pivota_signature_id: 'sig_' + String(n + 1).padStart(32, '0'), content_key: 'ck_wide_' + n,
-      external_product_key: 'wide_' + n, title: COLD_POOL[n % COLD_POOL.length].title + ' ' + n }));
-    mockCatalog({ anchors: [anchorFor(krave)], cold: wideCold });
-    const fallback = await feed([krave.recent_view]);
-    mockCatalog({ cold: wideCold });
-    const cold = await feed([]);
-    expect(cold.metadata.candidate_source).toBe('canonical_sig');
-    expect(cold.metadata).not.toHaveProperty('history_fallback_reason');
-    expect(canonicalBreakdown(cold)).not.toHaveProperty('history_failure_reason');
-    expect(fallback.products.map((p) => p.product_id)).toEqual(cold.products.map((p) => p.product_id));
-    expect(fallback.metadata.discovery_strategy).toBe(cold.metadata.discovery_strategy);
+  test('a one-product brand (the captured smoke seed) serves the cold feed as canonical_history_pool_empty', async () => {
+    mockCatalog();
+    const response = await feed([smoke.buildRecentView(seed)]);
+    expect(response.metadata).toMatchObject({ candidate_source: 'canonical_sig', fallback_reason: 'canonical_history_pool_empty' });
+    const steps = response.metadata.rank_debug.recall_summary.filter((step) => step.provider === 'canonical_sig');
+    expect(steps[0]).toMatchObject({ label: 'canonical_sig_personalized_unresolved', history_failure_reason: 'canonical_history_pool_empty', status: null });
+    noSdk();
   });
 
-  test('a history whose cold read also fails is still a catalog failure, not a silent empty page', async () => {
-    mockCatalog({ anchors: [anchorFor(krave)], coldError: Object.assign(Error('canceling statement due to statement timeout'), { code: '57014' }) });
-    await expect(feed([krave.recent_view])).rejects.toThrow();
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+  test.each(['home_hot_deals', 'browse_products'])('the fallback is the no-history request on %s (wide cold universe)', async (surface) => {
+    const forged = forgedKrave();
+    mockCatalog();
+    const fallback = await outcome(feed([forged], { surface }));
+    mockCatalog();
+    const cold = await outcome(feed([], { surface }));
+    expect(cold.candidate_source).toBe('canonical_sig');
+    expect(fallback.candidate_source).toBe(cold.candidate_source);
+    expect(fallback.primary_path_used).toBe(cold.primary_path_used);
+    expect(fallback.strategy).toBe(cold.strategy);
+    // Same ranking; only the viewed sig is suppressed.
+    expect(fallback.products).toEqual(cold.products.filter((id) => id !== forged.product_id).slice(0, fallback.products.length));
   });
 
   test.each([
-    ['not public', () => ({ anchors: [] }), 'canonical_history_subject_not_public'],
-    ['currency', () => ({ anchors: [{ ...anchorFor(jurlique), currency: 'GBP' }] }), 'canonical_history_currency_mismatch'],
-    ['item unavailable', () => ({ anchors: [{ ...anchorFor(jurlique), offers: [], offer_count: 0, price_min: null }] }), 'canonical_history_item_unavailable'],
+    ['below the canonical threshold', { cold: Object.values(POOLS).flat().slice(0, 5) }],
+    ['zero cold rows', { cold: [] }],
+    ['a failing cold read', { coldError: Object.assign(Error('relation "agent_pdp_view" is broken'), { code: 'XX000' }) }],
+  ])('with %s the fallback takes the same route as the no-history request', async (_name, coldSetup) => {
+    const forged = forgedKrave();
+    mockCatalog(coldSetup);
+    const fallback = await outcome(feed([forged]));
+    const fallbackHttp = axios.get.mock.calls.length + axios.post.mock.calls.length;
+    axios.get.mockClear(); axios.post.mockClear(); i.resetProductsSearchBreaker();
+    mockCatalog(coldSetup);
+    const cold = await outcome(feed([]));
+    const coldHttp = axios.get.mock.calls.length + axios.post.mock.calls.length;
+    expect(cold.candidate_source).not.toBe('canonical_sig');
+    expect(fallback).toEqual(cold);
+    expect(fallbackHttp).toBe(coldHttp);
+  });
+
+  test('fallback browse pages 1-3 never repeat a card and never show the viewed sig', async () => {
+    const forged = forgedKrave();
+    const cold = coldUniverse();
+    // The viewed sig early in the cold order, so page-1-only suppression would shift page 2.
+    const viewedRow = cold.find((row) => row.pivota_signature_id === forged.product_id);
+    const ordered = [cold[0], cold[1], viewedRow, ...cold.filter((row) => row !== viewedRow && row !== cold[0] && row !== cold[1])];
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      mockCatalog({ cold: ordered });
+      const response = await feed([forged], { surface: 'browse_products', page, limit: 6 });
+      expect(response.metadata.fallback_reason).toBe('canonical_history_subject_conflict');
+      pages.push(response.products.map((p) => p.product_id));
+    }
+    const all = pages.flat();
+    expect(all).toHaveLength(18);
+    expect(new Set(all).size).toBe(18);
+    expect(all).not.toContain(forged.product_id);
+  });
+
+  test.each([
+    ['statement timeout', Object.assign(Error('canceling statement due to statement timeout'), { code: '57014' })],
+    ['pool exhaustion', Error('timeout exceeded when trying to connect')],
+    ['too many connections', Object.assign(Error('sorry, too many clients already'), { code: '53300' })],
+  ])('a history %s keeps the unavailable outcome without a second (cold) read', async (_name, error) => {
+    mockCatalog({ anchorError: error });
+    await expect(feed([jurlique.recent_view])).rejects.toMatchObject({ code: 'DISCOVERY_CATALOG_UNAVAILABLE' });
+    expect(calls.cold).toBe(0);
+    noSdk();
+  });
+
+  test('a non-stress history query error falls back to the cold feed', async () => {
+    mockCatalog({ anchorError: Object.assign(Error('column "x" does not exist'), { code: '42703' }) });
+    const response = await feed([jurlique.recent_view]);
+    expect(response.metadata.fallback_reason).toBe('schema_missing');
+    expect(response.products.length).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ['not public', { catalog: [] }, 'canonical_history_subject_not_public'],
+    ['currency', { catalog: [{ ...POOLS.jurlique[0], pivota_signature_id: jurlique.recent_view.product_id, currency: 'GBP' }] }, 'canonical_history_currency_mismatch'],
+    ['item unavailable', { catalog: [{ ...rowOf(jurlique), offers: [], offer_count: 0, price_min: null }] }, 'canonical_history_item_unavailable'],
   ])('%s serves the cold feed with the reason recorded', async (_name, setup, reason) => {
-    mockCatalog(setup());
+    mockCatalog(setup);
     const response = await feed([jurlique.recent_view]);
     expect(response.products.length).toBeGreaterThanOrEqual(4);
     expect(response.metadata.fallback_reason).toBe(reason);
     expect(canonicalBreakdown(response).history_failure_reason).toBe(reason);
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+    noSdk();
   });
 
-  test('the history step of a fallback never reads as a canonical failure', () => {
+  test('resolver and stress classifier', () => {
     expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: 200 }] })).toBeNull();
     expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: 200, eligibility_reason: 'canonical_history_pool_empty' }] })).toBe('canonical_history_pool_empty');
-    expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: null, failure_reason: 'timeout' }] })).toBe('timeout');
+    expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: null, failure_reason: 'query_error' }] })).toBe('query_error');
     expect(i.resolveCanonicalHistoryFailureReason(null)).toBeNull();
+    expect(i.isDiscoveryDatabaseStressError(Object.assign(Error('x'), { code: '57014' }))).toBe(true);
+    expect(i.isDiscoveryDatabaseStressError(Object.assign(Error('column missing'), { code: '42703' }))).toBe(false);
   });
 });
 
-describe('release-gate smoke logic against this code', () => {
-  // runSmoke's own steps, with the gate's own validator and expectations: the
-  // seed is today's first cold card (Good Molecules, stored leaf 'Serum').
-  async function runGateSteps({ brandPool }) {
-    mockCatalog({ anchors: [rowFor(fixture.smoke_seed_card, { title: fixture.smoke_seed_card.title, price: 6 })], brandPool });
-    const view = smoke.buildRecentView(fixture.smoke_seed_card);
-    const context = { auth_state: 'authenticated', locale: 'en-US', recent_views: [view], recent_queries: [smoke.deriveRecentQuery(fixture.smoke_seed_card)] };
-    const suppressedKey = `${view.merchant_id}::${view.product_id}`;
-    const base = { discoveryStrategy: 'personalized_interest', personalizationSource: 'account_history',
-      candidateSource: ['multi_provider', 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'],
-      requireRankDebug: true, excludeProductKeys: [suppressedKey] };
-    const home = await getDiscoveryFeed({ surface: 'home_hot_deals', page: 1, limit: 6, debug: true, context }, opts);
-    const homeResult = smoke.validateDiscoveryResponse(home, smoke.resolvePersonalizedExpectations(home, { ...base, minProducts: 4,
-      requiredRecallLabels: [['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
-        ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized']] }));
-    const browse = await getDiscoveryFeed({ surface: 'browse_products', page: 1, limit: 6, debug: true, context }, opts);
-    const browseResult = smoke.validateDiscoveryResponse(browse, smoke.resolvePersonalizedExpectations(browse, { ...base, minProducts: 6,
-      requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline', 'canonical_sig_personalized']] }));
-    return { homeResult, browseResult };
-  }
+describe('release-gate smoke (runSmoke) against a local gateway on this code', () => {
+  let server;
+  let baseUrl;
+  beforeAll(async () => {
+    const app = require('../../src/server');
+    await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
+  });
+  afterAll(async () => { await new Promise((resolve) => server.close(resolve)); });
+  beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
+  const run = () => smoke.runSmoke({ baseUrl, endpoint: '/agent/shop/v1/invoke', timeoutMs: 20000 });
 
-  test('the seed that hit canonical_history_domain_conflict now personalizes and passes the gate', async () => {
-    const siblings = JURLIQUE_POOL.map((row, n) => ({ ...row, brand: 'Good Molecules', external_brand: 'Good Molecules',
-      category_path: n % 2 ? 'Serum' : 'Face Cream', title: 'Good Molecules ' + row.title }));
-    const { homeResult, browseResult } = await runGateSteps({ brandPool: siblings });
-    expect(homeResult.candidateSource).toBe('canonical_sig_personalized');
-    expect(browseResult.candidateSource).toBe('canonical_sig_personalized');
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+  test('passes on a genuinely personalized seed, skipping one-product brands', async () => {
+    // Cold order: the captured one-product seed brand first, then Jurlique rows.
+    const cold = [SEED_ROW, ...coldUniverse(POOLS.jurlique, 47)];
+    mockCatalog({ cold, catalog: cold });
+    const result = await run();
+    expect(result.personalizedHome.topProducts.every((p) => p.product_id !== SEED_ROW.pivota_signature_id)).toBe(true);
+    // The one-product seed brand was walked past, not used as the personalization seed.
+    expect(console.log.mock.calls.some(([line]) => String(line).startsWith('SKIP seed') && String(line).includes(SEED_ROW.pivota_signature_id))).toBe(true);
+    expect(result.personalizedHome.candidateSource).toBe('canonical_sig_personalized');
+    expect(result.browsePageOne.candidateSource).toBe('canonical_sig_personalized');
+    noSdk();
   });
 
-  test('the captured one-product brand passes the gate on the declared cold fallback', async () => {
-    const { homeResult, browseResult } = await runGateSteps({ brandPool: [] });
-    expect(homeResult).toMatchObject({ candidateSource: 'canonical_sig', historyColdFallbackReason: 'canonical_history_pool_empty' });
-    expect(browseResult.historyColdFallbackReason).toBe('canonical_history_pool_empty');
+  test('fails with a clear reason when no cold card has a multi-row brand', async () => {
+    const solos = Array.from({ length: 48 }, (_, n) => ({ ...SEED_ROW, pivota_signature_id: 'sig_' + String(n + 1).padStart(32, '0'),
+      content_key: 'ck_solo_' + n, external_product_key: 'solo_' + n, brand: 'Solo Brand ' + n, external_brand: 'Solo Brand ' + n,
+      title: 'Solo Serum ' + n }));
+    mockCatalog({ cold: solos, catalog: solos });
+    await expect(run()).rejects.toThrow(/no multi-row brand to test personalization/);
   });
 
-  test('a subject that fails to resolve still fails the gate', async () => {
-    mockCatalog({ anchors: [] });
-    const view = smoke.buildRecentView(fixture.smoke_seed_card);
-    const response = await getDiscoveryFeed({ surface: 'home_hot_deals', page: 1, limit: 6, debug: true,
-      context: { auth_state: 'authenticated', locale: 'en-US', recent_views: [view], recent_queries: [] } }, opts);
-    expect(response.metadata.fallback_reason).toBe('canonical_history_subject_not_public');
-    expect(() => smoke.validateDiscoveryResponse(response, smoke.resolvePersonalizedExpectations(response, {
-      discoveryStrategy: 'personalized_interest', candidateSource: ['canonical_sig_personalized'], minProducts: 4,
-    }))).toThrow(/candidate_source/);
+  test('a seed whose history refuses on domain fails the gate instead of passing on the cold feed', async () => {
+    // Krave cards whose listing taxonomy says fashion while their text says beauty.
+    const conflicted = coldUniverse(POOLS.krave).map((row) => ({ ...row, listing_category_path: 'fashion/dresses' }));
+    mockCatalog({ cold: conflicted, catalog: conflicted });
+    await expect(run()).rejects.toThrow(/fell back|candidate_source|discovery_strategy/);
+  });
+
+  test('seed helpers', () => {
+    const response = { products: [{ merchant_id: 'm', product_id: 'a', title: 'A', brand: 'X' }, { merchant_id: 'm', product_id: 'b', title: 'B', brand: 'x' },
+      { merchant_id: 'm', product_id: 'c', title: 'C', brand: 'Y' }] };
+    expect(smoke.listSeedProducts(response).map((p) => p.product_id)).toEqual(['a', 'c']);
+    expect(smoke.isExhaustedHistoryScope({ metadata: { fallback_reason: 'canonical_history_pool_empty', history_fallback_reason: 'canonical_history_pool_empty' } })).toBe(true);
+    expect(smoke.isExhaustedHistoryScope({ metadata: { fallback_reason: 'canonical_history_domain_conflict', history_fallback_reason: 'canonical_history_domain_conflict' } })).toBe(false);
   });
 });
 
 describe('invoke route', () => {
-  // The storefront proxy forwards get_discovery_feed to this route.
   async function invoke(payload) {
     const app = require('../../src/server');
     const request = require('supertest');
@@ -323,23 +396,23 @@ describe('invoke route', () => {
 
   test.each([
     ['krave', 'home_hot_deals'], ['judydoll', 'browse_products'], ['jurlique', 'home_hot_deals'],
-  ])('a stored %s view on %s returns products, never DISCOVERY_CATALOG_UNAVAILABLE', async (name, surface) => {
+  ])('a stored %s view on %s returns personalized products, never DISCOVERY_CATALOG_UNAVAILABLE', async (name, surface) => {
     const subject = fixture.subjects[name];
-    const brandPool = name === 'jurlique' ? [anchorFor(jurlique), ...JURLIQUE_POOL] : name === 'judydoll' ? JUDYDOLL_POOL : [anchorFor(krave)];
-    mockCatalog({ anchors: [anchorFor(subject)], brandPool });
+    mockCatalog();
     const res = await invoke({ surface, limit: 4, context: { locale: 'en-US', recent_views: [subject.recent_view] } });
     expect(res.status).toBe(200);
     expect(res.body.metadata?.catalog_status).not.toBe('unavailable');
-    expect(res.body.metadata?.error_code).toBeUndefined();
+    expect(res.body.metadata?.candidate_source).toBe('canonical_sig_personalized');
     expect(res.body.products.length).toBeGreaterThan(0);
     expect(res.body.products.some((p) => p.product_id === subject.recent_view.product_id)).toBe(false);
-    expect(axios.get).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+    noSdk();
   });
 
   test('an empty history is unchanged: the cold canonical feed', async () => {
     mockCatalog();
     const res = await invoke({ surface: 'home_hot_deals', limit: 4, context: { locale: 'en-US', recent_views: [] } });
     expect(res.status).toBe(200);
+    expect(res.body.metadata.candidate_source).toBe('canonical_sig');
     expect(res.body.products.length).toBeGreaterThan(0);
     expect(res.body.metadata).not.toHaveProperty('history_fallback_reason');
     expect(calls.anchor).toBe(0);

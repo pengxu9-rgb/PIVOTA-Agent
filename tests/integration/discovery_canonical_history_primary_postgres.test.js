@@ -19,7 +19,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     client = new Client({ connectionString: url }); await client.connect();
     await client.query(`BEGIN; CREATE SCHEMA ${schema}; SET LOCAL search_path TO ${schema}, public;
       CREATE TABLE agent_pdp_view(content_key text PRIMARY KEY,pivota_signature_id text,brand text,title text,description text,image_url text,image_urls jsonb,currency text,price_min numeric,price_max numeric,offer_count int,offers jsonb,category_path text,refreshed_at timestamptz);
-      CREATE TABLE catalog_products(product_key text PRIMARY KEY,content_key text,pivota_signature_id text,merchant_id text,platform text,source_product_id text,brand text,canonical_url text,sync_status text,suppression_reason text,updated_at timestamptz);
+      CREATE TABLE catalog_products(product_key text PRIMARY KEY,content_key text,pivota_signature_id text,merchant_id text,platform text,source_product_id text,brand text,canonical_url text,sync_status text,suppression_reason text,updated_at timestamptz,category_path text);
       CREATE UNIQUE INDEX own_cp_signature_unique ON catalog_products(pivota_signature_id) WHERE pivota_signature_id IS NOT NULL;
       CREATE TABLE catalog_row_trust(subject_type text,subject_key text,serving_decision text);
       CREATE TABLE catalog_offers(offer_id text,product_key text,merchant_id text,market text,currency text,availability text,merchant_effective_price numeric,list_price numeric,suppressed_at timestamptz,suppression_reason text);
@@ -97,6 +97,23 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     expect((await load(req)).recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');
     await client.query("UPDATE catalog_row_trust SET serving_decision='public' WHERE subject_key='other-listing'; UPDATE catalog_products SET sync_status='live',suppression_reason=NULL WHERE product_key='other-listing'");
     expect((await load(req)).recallSummary[0]).not.toHaveProperty('failure_reason');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+  // Captured 2026-10-04: agent_pdp_view.category_path is NULL for every Krave
+  // row while the listing (catalog_products.category_path, what the PDP serves)
+  // is beauty/skincare/treat/serum; Jurlique's view leaves are 'gift-set',
+  // 'Face Mist', 'Haircare' while every listing path is beauty/....
+  test('history domain reads the listing taxonomy through the real anchor and pool SQL',async () => {
+    await client.query("UPDATE agent_pdp_view SET category_path=NULL; UPDATE catalog_products SET category_path='beauty/skincare/treat/serum'");
+    const req=i.normalizeDiscoveryRequest(payload);const profile=buildDiscoveryProfile(req.context);profile.dominantDomain='beauty';
+    const result=await i.loadCanonicalHistoryPrimary({request:req,profile,limit:48});
+    expect(result.recallSummary[0]).not.toHaveProperty('failure_reason');
+    expect(result.products).toHaveLength(9);
+    expect(result.products.every(p=>!('stored_listing_category_path' in p))).toBe(true);
+    await client.query("UPDATE catalog_products SET category_path=NULL WHERE product_key='local_0'");
+    expect((await i.loadCanonicalHistoryPrimary({request:req,profile,limit:48})).recallSummary[0].failure_reason).toBe('canonical_history_domain_conflict');
+    await client.query("UPDATE catalog_products SET category_path='beauty/sets/gift-set' WHERE product_key='local_0'; UPDATE catalog_products SET category_path='fashion/dresses' WHERE product_key IN ('local_1','local_2')");
+    expect((await i.loadCanonicalHistoryPrimary({request:req,profile,limit:48})).products).toHaveLength(7);
     expect(axios.get).not.toHaveBeenCalled();
   });
   test('only own US/USD in-stock offer determines served price',async () => {

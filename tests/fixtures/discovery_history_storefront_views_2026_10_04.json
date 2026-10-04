@@ -1,5 +1,5 @@
 {
-  "_note": "Captured 2026-10-04 from the public storefront proxy (https://agent.pivota.cc/api/gateway): get_pdp_v2 with include offers, get_discovery_feed cold home and brand-scoped browse. Catalog ids only, no buyer data. browse_history entries are what pivota-agent-ui ProductDetailClient.upsertLocalBrowseHistory writes from that PDP payload; recent_views are what mergeDiscoveryRecentViews/normalizeDiscoveryRecentView send. anchor_rows reconstruct the canonical history SQL row from the captured card (merchant_id external_seed, brand, category_path, offers) plus the PDP listing identity (canonical_product_ref.product_key/merchant_id).",
+  "_note": "Captured 2026-10-04 from the public storefront proxy (https://agent.pivota.cc/api/gateway): get_pdp_v2 with include offers, get_discovery_feed cold home and brand-scoped browse. Catalog ids only, no buyer data. browse_history entries are what pivota-agent-ui ProductDetailClient.upsertLocalBrowseHistory writes from that PDP payload; recent_views are what mergeDiscoveryRecentViews/normalizeDiscoveryRecentView send. anchor_rows reconstruct the canonical history SQL row from the captured card (merchant_id external_seed, brand, category_path, offers) plus the PDP listing identity (canonical_product_ref.product_key/merchant_id). brand_pools: captured brand-page cards for the brand (card_category_path = agent_pdp_view leaf) joined to that sig's own get_pdp_v2 category_path (listing_category_path = catalog_products.category_path as the PDP serves it).",
   "subjects": {
     "krave": {
       "pdp": {
@@ -49,7 +49,8 @@
         "currency": "USD",
         "offer_merchant_ids": [
           "merch_obs_a6747fa7eb42a31c"
-        ]
+        ],
+        "listing_category_path": "beauty/skincare/treat/serum"
       }
     },
     "judydoll": {
@@ -99,7 +100,8 @@
         "currency": "USD",
         "offer_merchant_ids": [
           "merch_obs_a25cbba37ef98c52"
-        ]
+        ],
+        "listing_category_path": "beauty"
       }
     },
     "jurlique": {
@@ -151,7 +153,8 @@
         "currency": "USD",
         "offer_merchant_ids": [
           "agent_seed::jurlique"
-        ]
+        ],
+        "listing_category_path": "beauty/sets/gift-set"
       }
     }
   },
@@ -214,5 +217,247 @@
         "failure_reason": null
       }
     }
+  },
+  "brand_pools": {
+    "krave": [
+      {
+        "product_id": "sig_29aeccce71159d296e86632ab1292af4",
+        "title": "Duo Matcha Hemp Hydrating Cleanser",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/cleanse/cleanser",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 27
+      },
+      {
+        "product_id": "sig_53950c833b653e5068f9940a6db79df1",
+        "title": "Puffy Pouch",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/accessories/pouch",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 25
+      },
+      {
+        "product_id": "sig_6f925eeb5c75a2775982695b9fce06a2",
+        "title": "Oat So Simple Water Cream Refill Pouch",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/moisturize/cream",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 51
+      },
+      {
+        "product_id": "sig_b00a158ebb583851842308b0c42afc39",
+        "title": "Oil La La",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/treat/serum",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 28
+      },
+      {
+        "product_id": "sig_b6313418910cddc464e7bfa7a77b1d4c",
+        "title": "Great Body Relief",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/body/care",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 25
+      },
+      {
+        "product_id": "sig_bb8acf5d9319c377ce7710dd06fd3395",
+        "title": "24 Carrot Retinal",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/treat/serum",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 28
+      },
+      {
+        "product_id": "sig_c8c039ff78d1fc566872b00da644e441",
+        "title": "Double Cleanse",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/cleanse/cleanser",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 34
+      },
+      {
+        "product_id": "sig_f0d11099a21241518f77054b8f7e4ff1",
+        "title": "Plumptuous Lip Jelly",
+        "brand": "KraveBeauty",
+        "card_category_path": null,
+        "listing_category_path": "beauty/makeup/lip/oil",
+        "pdp_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "price": 16
+      }
+    ],
+    "jurlique": [
+      {
+        "product_id": "sig_110f5c5de4a7b37635bb171d04617eda",
+        "title": "Lavender Pure Essential Oil",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "Beauty Product"
+        ],
+        "listing_category_path": "beauty",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "price": 31
+      },
+      {
+        "product_id": "sig_3d1b5a5627cbb101f388e5a90c80b4e5",
+        "title": "Iconic Starter Ritual",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "gift-set"
+        ],
+        "listing_category_path": "beauty/sets/gift-set",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "agent_seed::jurlique"
+        ],
+        "price": 45
+      },
+      {
+        "product_id": "sig_98dd992c932f6f89265278e1a60027ee",
+        "title": "Lavender Shampoo",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "Haircare"
+        ],
+        "listing_category_path": "beauty/haircare",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "price": 24
+      },
+      {
+        "product_id": "sig_aac87f822a228dedc435fe07e1ecb51e",
+        "title": "Skin Recovery Duo",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "Skincare Set"
+        ],
+        "listing_category_path": "beauty/sets/gift-set",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "price": 127
+      },
+      {
+        "product_id": "sig_dcb523f50e963e320b151a5fad3d870e",
+        "title": "Facial Cleansing Brush",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "brush"
+        ],
+        "listing_category_path": "beauty/tools/brush",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "agent_seed::jurlique"
+        ],
+        "price": 15
+      },
+      {
+        "product_id": "sig_f6bb2d11561077a580c9fe9e4c2921df",
+        "title": "Sweet Violet & Grapefruit Hydrating Mist",
+        "brand": "Jurlique",
+        "card_category_path": [
+          "Face Mist"
+        ],
+        "listing_category_path": "beauty/skincare/tone/toner",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "price": 44
+      },
+      {
+        "product_id": "sig_fbb0cc12bc461ad73fde306d4819e8be",
+        "title": "Herbal Recovery Eye Cream",
+        "brand": "Jurlique",
+        "card_category_path": null,
+        "listing_category_path": "beauty/skincare/moisturize/cream",
+        "pdp_merchant_id": "merch_obs_25b829cb679502f8",
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "price": 65
+      }
+    ],
+    "judydoll": [
+      {
+        "product_id": "sig_6433c8107859a484fb72d14861e84690",
+        "title": "Silky Matte Lip Ink",
+        "brand": "Judydoll",
+        "card_category_path": [
+          "Beauty Product"
+        ],
+        "listing_category_path": "beauty",
+        "pdp_merchant_id": "merch_obs_a25cbba37ef98c52",
+        "offer_merchant_ids": [
+          "merch_obs_a25cbba37ef98c52"
+        ],
+        "price": 13.99
+      },
+      {
+        "product_id": "sig_d4f93c2b9b88ac7bd32f44d13ebe9d31",
+        "title": "Sheer Tinted Highlighter",
+        "brand": "Judydoll",
+        "card_category_path": [
+          "Highlighter"
+        ],
+        "listing_category_path": "beauty/makeup/face/highlighter",
+        "pdp_merchant_id": "merch_obs_a25cbba37ef98c52",
+        "offer_merchant_ids": [
+          "merch_obs_a25cbba37ef98c52"
+        ],
+        "price": 12.99
+      },
+      {
+        "product_id": "sig_f15748a12c2929ca5ced9c263ff3c1b2",
+        "title": "Dual-Ended Contour Stick",
+        "brand": "Judydoll",
+        "card_category_path": [
+          "Bronzer"
+        ],
+        "listing_category_path": "beauty/makeup/face/bronzer",
+        "pdp_merchant_id": "merch_obs_a25cbba37ef98c52",
+        "offer_merchant_ids": [
+          "merch_obs_a25cbba37ef98c52"
+        ],
+        "price": 11.99
+      }
+    ]
   }
 }

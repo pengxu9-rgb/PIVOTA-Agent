@@ -65,9 +65,12 @@ test.each([
 // A resolved subject whose stored scope holds nothing beyond the (always
 // suppressed) view used to render "No picks yet". It now serves the cold
 // canonical_sig feed, still without alternate providers or graph recall.
+// A cold canonical universe wide enough that the no-history request is itself
+// served by canonical_sig; the fallback is that same request.
+const wideCold = Array.from({ length: 48 }, (_, n) => row('sig_' + String(n + 100).padStart(32, '0')));
 const coldOnly = (brandRows) => async (sql) => ({ rows: sql.includes('WITH brand_match') ? brandRows
   : sql.includes('AND apv.pivota_signature_id = ANY($2::text[])') ? [row()]
-  : sql.includes('FROM agent_pdp_view apv') ? candidates : [] });
+  : sql.includes('FROM agent_pdp_view apv') ? wideCold : [] });
 test('empty canonical pool serves the cold canonical feed without alternate providers or graph recall', async () => {
   db.query.mockImplementation(coldOnly([]));
   const response = await getDiscoveryFeed(request(), { identityGraphRowsResolverFn: async () => [], relationshipGraphRecallFn: () => { throw Error('alternate graph'); } });
@@ -207,13 +210,13 @@ test('public original subject with unavailable own listing is typed eligibility,
   // The page itself is no longer empty: the cold canonical feed is served and
   // the typed reason stays observable.
   db.query.mockImplementation(async sql=>({rows:sql.includes('AND apv.pivota_signature_id = ANY($2::text[])')?[row(SIG,{offers:[],price_min:null,offer_count:0})]
-    :sql.includes('FROM agent_pdp_view apv')?candidates:[]}));
+    :sql.includes('FROM agent_pdp_view apv')?wideCold:[]}));
   const response=await getDiscoveryFeed(request(),{identityGraphRowsResolverFn:async()=>[],relationshipGraphRecallFn:()=>{throw Error('alternate graph');}});
   expect(response.products.length).toBeGreaterThan(0);
   expect(response.metadata.primary_path_used).toBe('canonical_sig');
   expect(response.metadata.fallback_triggered).toBe(true);
   expect(response.metadata.fallback_reason).toBe('canonical_history_item_unavailable');
-  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).toMatchObject({successful:true,history_failure_reason:'canonical_history_item_unavailable',history_fallback:'canonical_sig_cold'});
+  expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).toMatchObject({successful:true,history_failure_reason:'canonical_history_item_unavailable',history_fallback:'cold_request'});
   expect(response.metadata.provider_breakdown.find(p=>p.provider==='canonical_sig')).not.toHaveProperty('failure_reason');
   expect(axios.get).not.toHaveBeenCalled();
 });
