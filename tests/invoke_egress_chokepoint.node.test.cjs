@@ -133,10 +133,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // 2026-09-26: +1, the 400 QUERY_TOO_LONG reject for an over-long search query.
   // 2026-09-27: +3, pdp_route_id_exists — its 200 answer, its 400 on a malformed id, and its 503 when the
   // probe cannot answer (which must never be sent as exists:false).
+  // 2026-10-04: +2, canonical current-own-money read failure and selected-offer
+  // money refusal. Both use the existing wrapped res.status(...).json exit.
   assert.equal(
     exits.length,
-    100,
-    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
+    102,
+    `expected 102 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(

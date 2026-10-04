@@ -1760,6 +1760,7 @@ function buildVariantSelectorVariants(variants) {
         display_label: displayLabel || undefined,
         options,
         ...(variant.price ? { price: variant.price } : {}),
+        ...(variant.current_own_offer_status === 'unavailable' ? { current_own_offer_status: 'unavailable' } : {}),
         ...(variant.availability ? { availability: variant.availability } : {}),
         image_url: normalizePdpImageUrl(variant.image_url || variant.image) || undefined,
         label_image_url:
@@ -2075,7 +2076,8 @@ function buildVariants(product) {
     );
 
     const availability = {};
-    if (inStock !== undefined) availability.in_stock = inStock;
+    if (v.current_own_offer_status === 'unavailable') availability.in_stock = false;
+    else if (inStock !== undefined) availability.in_stock = inStock;
     if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
     const variantImages = normalizePdpImageUrls([
       v.image_url,
@@ -2096,7 +2098,7 @@ function buildVariants(product) {
     if (hasReviewedSingleSkuSpecFallback) {
       filteredOptions = [singleSkuSizeOption];
     }
-    const variantPrice = toVariantPrice(
+    const variantPrice = v.current_own_offer_status === 'unavailable' ? null : toVariantPrice(
       v.price ||
         v.pricing || {
           amount: v.price_amount ?? v.priceAmount,
@@ -2106,6 +2108,9 @@ function buildVariants(product) {
     );
     return {
       variant_id: String(variantId),
+      ...(v.current_own_offer_status === 'unavailable'
+        ? { current_own_offer_status: 'unavailable', ...(v.hidden_from_selector === true ? { hidden_from_selector: true } : {}) }
+        : {}),
       sku_id: attrs.sku || v.sku_id || v.sku || v.sku_code,
       title: hasReviewedSingleSkuSpecFallback ? singleSkuSizeOption.value : normalizedTitle,
       options: filteredOptions,
@@ -5324,6 +5329,8 @@ function buildPdpPayload(args) {
 }
 
 module.exports = {
+  buildVariants,
+  pickDefaultVariant,
   buildPdpPayload,
   buildVariantSelectorModuleData,
   buildBundleCompositionModuleData,
