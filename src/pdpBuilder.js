@@ -1975,11 +1975,15 @@ function buildVariants(product) {
           : undefined;
 
     const availability = {};
-    if (availabilityInStock !== undefined) availability.in_stock = availabilityInStock;
+    // A product-grain listing without current own money: the implicit variant is unpriced, not in stock.
+    const moneyUnavailable = product.current_own_offer_status === 'unavailable';
+    if (moneyUnavailable) availability.in_stock = false;
+    else if (availabilityInStock !== undefined) availability.in_stock = availabilityInStock;
     if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
     return [
       {
         variant_id: product.product_id || product.id,
+        ...(moneyUnavailable ? { current_own_offer_status: 'unavailable' } : {}),
         sku_id: product.sku || product.product_id || product.id,
         title: singleSkuSizeOption?.value || 'Default',
         options: singleSkuSizeOption ? [singleSkuSizeOption] : [],
@@ -1990,7 +1994,7 @@ function buildVariants(product) {
               source_quality_status: 'captured',
             }
           : {}),
-        price: { current: { amount: normalizeAmount(product.price), currency } },
+        ...(moneyUnavailable ? {} : { price: { current: { amount: normalizeAmount(product.price), currency } } }),
         availability,
         image_url: normalizePdpDisplayImageUrl(product.image_url) || undefined,
         ...pickSavingsPresentationFields(product),

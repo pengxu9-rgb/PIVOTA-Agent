@@ -112,7 +112,11 @@ const {
   pickElectronicsMeta,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
-const { usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney, projectCanonicalOffersMoney, isCanonicalProductGrain } = require('./services/canonicalPdpOwnMoney');
+const {
+  usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney, projectCanonicalOffersMoney, isCanonicalProductGrain,
+  currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
+  withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED,
+} = require('./services/canonicalPdpOwnMoney');
 const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
@@ -3718,6 +3722,12 @@ const PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS = Math.min(
 const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 5000),
+);
+// The selected canonical listing's current own money read. Past the budget the PDP renders that listing
+// unpriced and not purchasable (CURRENT_OWN_OFFER_READ_FAILED) instead of waiting out the statement timeout.
+const PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS, 1500),
 );
 const PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS = Math.max(
   100,
@@ -44534,23 +44544,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       let canonicalOwnMoney = null;
+      // Set when the selected canonical listing has no verified current own money: the page still renders,
+      // that listing is unpriced and not purchasable, and metadata names the reason. Never seed money.
+      let canonicalOwnMoneyGap = null;
       const canonicalOwnProductGrain = isCanonicalProductGrain(canonicalProductForPdp, canonicalProductRef);
       if (requestedPivotaSignatureId && usesCanonicalOwnMoney(
         canonicalProductRef, offersGateBuyerMarket(payload, metadata) || primaryMarket(), pdpServingCurrency,
       )) {
         try {
-          canonicalOwnMoney = await readCanonicalOwnMoney({ ref: canonicalProductRef, query });
+          canonicalOwnMoney = await withStageBudget(
+            readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
+            PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
+            'pdp_current_own_money',
+          );
           canonicalProductForPdp = projectCanonicalProductMoney(canonicalProductForPdp, canonicalOwnMoney, { ref: canonicalProductRef });
         } catch (error) {
-          const unavailable = error?.code === 'CURRENT_OWN_OFFER_UNAVAILABLE';
-          return res.status(unavailable ? 409 : 503).json(buildPdpV2ErrorBody({
-            error: unavailable ? 'CURRENT_OWN_OFFER_UNAVAILABLE' : 'CURRENT_OWN_OFFER_READ_FAILED',
-            message: 'Selected canonical listing has no verified current offer money',
-            reasonCode: unavailable ? 'CURRENT_OWN_OFFER_UNAVAILABLE' : 'CURRENT_OWN_OFFER_READ_FAILED',
-            requestedProductId: requestedPivotaSignatureId,
-            resolvedProductId: canonicalProductRef.product_id,
-            resolvedMerchantId: canonicalProductRef.merchant_id,
-          }));
+          canonicalOwnMoney = null;
+          canonicalOwnMoneyGap = currentOwnMoneyReasonCode(error);
+          if (canonicalOwnMoneyGap === CURRENT_OWN_OFFER_READ_FAILED) {
+            logger.warn(
+              {
+                event: 'pdp_current_own_money_read_failed',
+                reason_code: canonicalOwnMoneyGap,
+                product_key: canonicalProductRef.product_key || null,
+                merchant_id: canonicalProductRef.merchant_id || null,
+                err: error?.message || String(error),
+              },
+              'current own listing money read failed; PDP renders the listing unpriced and not purchasable',
+            );
+          }
+          canonicalProductForPdp = withholdCanonicalProductMoney(canonicalProductForPdp);
         }
       }
 
@@ -45201,13 +45224,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           try {
             offersData = projectCanonicalOffersMoney(offersData, canonicalProductRef, canonicalOwnMoney, { productGrain: canonicalOwnProductGrain, selectedVariantId: canonicalProductForPdp.default_variant_id, publicSignatureId: requestedPivotaSignatureId });
           } catch {
-            return res.status(409).json(buildPdpV2ErrorBody({
-              error: 'CURRENT_OWN_OFFER_UNAVAILABLE',
-              message: 'Selected canonical offer has no verified current SKU money',
-              reasonCode: 'CURRENT_OWN_OFFER_UNAVAILABLE',
-              requestedProductId: requestedPivotaSignatureId,
-            }));
+            // The selected offer has no verified current SKU money: the card already built from the
+            // product's money is withheld with it, so no surface prices a listing it cannot sell.
+            canonicalOwnMoney = null;
+            canonicalOwnMoneyGap = CURRENT_OWN_OFFER_UNAVAILABLE;
+            canonicalProductForPdp = withholdCanonicalProductMoney(canonicalProductForPdp);
+            canonicalPayload = withholdCanonicalPdpPayloadMoney(canonicalPayload);
+            modules[0].data.pdp_payload = canonicalPayload;
+            const variantSelectorModule = modules.find((module) => module?.type === 'variant_selector');
+            if (variantSelectorModule?.data) {
+              variantSelectorModule.data = withholdVariantSelectorMoney(variantSelectorModule.data);
+            }
           }
+        }
+        if (offersData && canonicalOwnMoneyGap) {
+          offersData = withholdCanonicalOffersMoney(offersData, canonicalProductRef);
         }
 
         if (offersData) {
@@ -45266,7 +45297,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const fallbackOfferId = offers[0]?.offer_id || null;
           if (fallbackOfferId) {
             if (!offersData.default_offer_id) offersData.default_offer_id = fallbackOfferId;
-            if (!offersData.best_price_offer_id) offersData.best_price_offer_id = fallbackOfferId;
+            // An unpriced selected listing (current own money unavailable) is never the best price.
+            if (!offersData.best_price_offer_id && offers[0]?.current_own_offer_status !== 'unavailable') {
+              offersData.best_price_offer_id = fallbackOfferId;
+            }
           }
           canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
             servingCurrency: pdpServingCurrency,
@@ -45733,6 +45767,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             severity: moduleHealth.severity,
             modules: moduleHealth.items,
           },
+          ...(canonicalOwnMoneyGap
+            ? { current_own_offer_status: 'unavailable', current_own_offer_reason_code: canonicalOwnMoneyGap }
+            : {}),
         },
       };
       logger.info(
@@ -45764,6 +45801,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // pg_ traffic on this line is indistinguishable from direct sig requests.
           requested_product_group_id: pdpV2ProductGroupSubjectId,
           include: includeList,
+          ...(canonicalOwnMoneyGap ? { current_own_offer_reason_code: canonicalOwnMoneyGap } : {}),
           modules_returned: modules.map((module) => module.type),
           missing_modules: missing.map((module) => module.type),
           timing_ms: {

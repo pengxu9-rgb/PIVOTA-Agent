@@ -15,10 +15,35 @@ function storedNumericVariant(id, productKey) {
   return external && external[1] === productKey.split('::').at(-1) ? external[2] : null;
 }
 
+const CURRENT_OWN_OFFER_UNAVAILABLE = 'CURRENT_OWN_OFFER_UNAVAILABLE';
+const CURRENT_OWN_OFFER_READ_FAILED = 'CURRENT_OWN_OFFER_READ_FAILED';
+const CURRENT_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price', 'currentPrice'];
+
 function unavailable(message = 'Current own listing money is unavailable') {
   const error = new Error(message);
-  error.code = 'CURRENT_OWN_OFFER_UNAVAILABLE';
+  error.code = CURRENT_OWN_OFFER_UNAVAILABLE;
   return error;
+}
+
+// A gap (no eligible current own money) and a failed or timed-out read are both reported, never priced.
+function currentOwnMoneyReasonCode(error) {
+  return error?.code === CURRENT_OWN_OFFER_UNAVAILABLE ? CURRENT_OWN_OFFER_UNAVAILABLE : CURRENT_OWN_OFFER_READ_FAILED;
+}
+
+function withoutCurrentMoney(record) {
+  const next = { ...record };
+  for (const field of CURRENT_MONEY_FIELDS) delete next[field];
+  return next;
+}
+
+function unavailableVariant(variant) {
+  return { ...withoutCurrentMoney(variant), current_own_offer_status: 'unavailable' };
+}
+
+// The built (pdpBuilder) shape of an unavailable variant: no price, and not in stock.
+function unavailableBuiltVariant(variant) {
+  const availability = variant?.availability && typeof variant.availability === 'object' ? variant.availability : {};
+  return { ...unavailableVariant(variant), availability: { ...availability, in_stock: false } };
 }
 
 // This is the selected enrichment canonical source, not a generic seed price overlay.
@@ -74,11 +99,7 @@ function projectVariant(variant, moneyByVariant, nativeIdentity = null) {
   const id = nativeIdentity || String(variant?.variant_id || variant?.id ||
     variant?.variant_attributes?.variant_id || variant?.sku || variant?.sku_id || '').trim();
   const money = moneyByVariant.get(id);
-  if (!money) {
-    const next = { ...variant, current_own_offer_status: 'unavailable' };
-    for (const field of ['price', 'price_amount', 'priceAmount', 'current_price', 'currentPrice']) delete next[field];
-    return next;
-  }
+  if (!money) return unavailableVariant(variant);
   // Identity, options, visibility, source quality and availability remain the source's fields.
   return { ...variant, price: { amount: money.amount, currency: money.currency },
     price_amount: money.amount, currency: money.currency };
@@ -140,11 +161,60 @@ function projectCanonicalOffersMoney(data, ref, moneyByVariant, { productGrain =
     return { ...offer, price: { amount: money.amount, currency: money.currency },
       ...(variants ? { variants } : {}) };
   });
+  return rankCanonicalOffers(data, offers);
+}
+
+function rankCanonicalOffers(data, offers) {
   const prioritized = prioritizeOffers(offers);
   const priced = prioritized.filter(offer => offer?.price?.currency === 'USD');
   const best = [...priced].sort((left, right) => computeOfferTotal(left) - computeOfferTotal(right))[0];
   return { ...data, offers: prioritized, best_price_offer_id: best?.offer_id || null };
 }
 
+// Missing current own money is a gap, not a page failure: the selected listing renders unpriced and
+// not purchasable. No seed/APV or other-listing money is substituted for it.
+function withholdCanonicalProductMoney(product) {
+  const next = { ...withoutCurrentMoney(product), current_own_offer_status: 'unavailable', in_stock: false };
+  if (Array.isArray(product?.variants)) next.variants = product.variants.map(unavailableVariant);
+  return next;
+}
+
+// The same gap applied to an already built PDP payload (the selected offer failed after the product
+// was projected): the card, its variants and selector lose their money and the price module goes.
+function withholdVariantSelectorMoney(data) {
+  if (!data || !Array.isArray(data.variants)) return data;
+  return { ...data, variants: data.variants.map(unavailableBuiltVariant) };
+}
+
+function withholdCanonicalPdpPayloadMoney(payload) {
+  if (!payload?.product || typeof payload.product !== 'object') return payload;
+  const source = payload.product;
+  const availability = source.availability && typeof source.availability === 'object' ? source.availability : {};
+  const product = { ...withoutCurrentMoney(source), availability: { ...availability, in_stock: false } };
+  if (Array.isArray(source.variants)) product.variants = source.variants.map(unavailableBuiltVariant);
+  const modules = Array.isArray(payload.modules)
+    ? payload.modules.filter(module => module?.type !== 'price_promo').map(module => module?.type === 'variant_selector'
+      ? { ...module, data: withholdVariantSelectorMoney(module.data) } : module)
+    : payload.modules;
+  return { ...payload, product, ...(modules ? { modules } : {}) };
+}
+
+// Only the exact selected listing loses its money; a sibling seller keeps its own primary source.
+// The unpriced offer is out of stock, so it sorts last and never wins the best-price marker.
+function withholdCanonicalOffersMoney(data, ref) {
+  if (!data || !Array.isArray(data.offers)) return data;
+  const offers = data.offers.map(offer => {
+    if (offer.merchant_id !== ref.merchant_id || offer.product_id !== ref.product_id) return offer;
+    const inventory = offer.inventory && typeof offer.inventory === 'object' ? offer.inventory : {};
+    const next = { ...withoutCurrentMoney(offer), current_own_offer_status: 'unavailable',
+      inventory: { ...inventory, in_stock: false } };
+    if (Array.isArray(offer.variants)) next.variants = offer.variants.map(unavailableBuiltVariant);
+    return next;
+  });
+  return rankCanonicalOffers(data, offers);
+}
+
 module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney,
-  projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain };
+  projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain,
+  currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
+  withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED };

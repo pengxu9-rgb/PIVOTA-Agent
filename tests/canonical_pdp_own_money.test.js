@@ -1,6 +1,7 @@
 const {
   usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney,
-  projectCanonicalOffersMoney, storedNumericVariant,
+  projectCanonicalOffersMoney, storedNumericVariant, currentOwnMoneyReasonCode,
+  withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdCanonicalOffersMoney,
 } = require('../src/services/canonicalPdpOwnMoney');
 const { buildPdpPayload } = require('../src/pdpBuilder');
 
@@ -129,4 +130,84 @@ test('native external-seed default variant remains product-grain without inventi
   const product = { product_id: 'sig_public', variants: [{ id: ref.product_id, variant_id: ref.product_id, title: 'Default', options: [], price: 45 }] };
   expect(projectCanonicalProductMoney(product, money, { ref }).variants[0].price.amount).toBe(49);
   expect(() => projectCanonicalProductMoney({ ...product, variants: [{ ...product.variants[0], variant_id: '999' }] }, money, { ref })).toThrow('unavailable');
+});
+
+
+test('a gap or failed read is a reason code, never a price', async () => {
+  const gap = await load([]).catch(error => error);
+  expect(currentOwnMoneyReasonCode(gap)).toBe('CURRENT_OWN_OFFER_UNAVAILABLE');
+  expect(currentOwnMoneyReasonCode(Object.assign(Error('budget'), { code: 'STAGE_TIMEOUT' }))).toBe('CURRENT_OWN_OFFER_READ_FAILED');
+  expect(currentOwnMoneyReasonCode(Error('owned read outage'))).toBe('CURRENT_OWN_OFFER_READ_FAILED');
+});
+
+test('withheld product renders with no seed money and every variant not purchasable', () => {
+  const product = withholdCanonicalProductMoney({ product_id: 'ext_owned', title: 'Owned', price: 45, price_amount: 45,
+    current_price: 45, currency: 'USD', in_stock: true, default_variant_id: '222',
+    variants: [variant(), variant('222', { price_amount: 45 })] });
+  expect(product).toMatchObject({ current_own_offer_status: 'unavailable', in_stock: false, currency: 'USD', title: 'Owned' });
+  for (const field of ['price', 'price_amount', 'current_price']) expect(product).not.toHaveProperty(field);
+  const payload = buildPdpPayload({ product });
+  expect(payload.product.title).toBe('Owned');
+  expect(payload.product).not.toHaveProperty('price');
+  expect(payload.product.availability.in_stock).toBe(false);
+  expect(payload.product.default_variant_id).toBe('222');
+  for (const built of payload.product.variants) {
+    expect(built).toMatchObject({ current_own_offer_status: 'unavailable', availability: { in_stock: false } });
+    expect(built).not.toHaveProperty('price');
+  }
+  expect(payload.modules.some(m => m.type === 'price_promo')).toBe(false);
+  expect(JSON.stringify(payload)).not.toMatch(/"(amount|price|price_amount)":45[,}]/);
+});
+
+test('withheld product-grain listing keeps its implicit variant identity without a price', () => {
+  const payload = buildPdpPayload({ product: withholdCanonicalProductMoney({ product_id: 'ext_owned', title: 'Owned', price: 45 }) });
+  expect(payload.product.purchase_grain).toBe('product');
+  expect(payload.product.variants[0]).toMatchObject({ variant_id: 'ext_owned', current_own_offer_status: 'unavailable',
+    availability: { in_stock: false } });
+  expect(payload.product.variants[0]).not.toHaveProperty('price');
+  expect(payload.product).not.toHaveProperty('price');
+  expect(payload.modules.some(m => m.type === 'price_promo')).toBe(false);
+});
+
+test('withheld offers: only the exact selected listing loses money; it never wins best price; siblings are unchanged', () => {
+  const selected = { offer_id: 'selected', merchant_id: ref.merchant_id, product_id: ref.product_id,
+    selected_variant_id: '111', price: { amount: 45, currency: 'USD' }, inventory: { in_stock: true },
+    purchase_route: 'affiliate_outbound', variants: [{ variant_id: '111', price: { current: { amount: 45, currency: 'USD' } },
+      availability: { in_stock: true } }] };
+  const sameMerchantOtherListing = { offer_id: 'other-listing', merchant_id: ref.merchant_id, product_id: 'ext_other',
+    price: { amount: 52, currency: 'USD' } };
+  const sibling = { offer_id: 'sibling', merchant_id: 'another', product_id: 'another', price: { amount: 47, currency: 'USD' } };
+  const result = withholdCanonicalOffersMoney({ offers: [selected, sameMerchantOtherListing, sibling],
+    default_offer_id: 'selected', best_price_offer_id: 'selected' }, ref);
+  const own = result.offers.find(o => o.offer_id === 'selected');
+  expect(own).toMatchObject({ current_own_offer_status: 'unavailable', inventory: { in_stock: false },
+    purchase_route: 'affiliate_outbound', variants: [{ variant_id: '111', current_own_offer_status: 'unavailable',
+      availability: { in_stock: false } }] });
+  expect(own).not.toHaveProperty('price');
+  expect(own.variants[0]).not.toHaveProperty('price');
+  expect(result.offers.find(o => o.offer_id === 'sibling')).toBe(sibling);
+  expect(result.offers.find(o => o.offer_id === 'other-listing')).toBe(sameMerchantOtherListing);
+  expect(result.best_price_offer_id).toBe('sibling');
+  expect(result.offers.at(-1).offer_id).toBe('selected');
+  const alone = withholdCanonicalOffersMoney({ offers: [selected], default_offer_id: 'selected', best_price_offer_id: 'selected' }, ref);
+  expect(alone.best_price_offer_id).toBeNull();
+});
+
+test('withheld built payload drops the projected card money, its price module and selector prices', async () => {
+  const projected = projectCanonicalProductMoney({ product_id: 'ext_owned', title: 'Owned', price: 45, default_variant_id: '111',
+    variants: [variant(), variant('222')] }, await load());
+  const built = buildPdpPayload({ product: projected });
+  expect(built.modules.some(m => m.type === 'price_promo')).toBe(true);
+  const payload = withholdCanonicalPdpPayloadMoney(built);
+  expect(payload.product.title).toBe('Owned');
+  expect(payload.product).not.toHaveProperty('price');
+  expect(payload.product.availability.in_stock).toBe(false);
+  expect(payload.modules.some(m => m.type === 'price_promo')).toBe(false);
+  const selector = payload.modules.find(m => m.type === 'variant_selector').data.variants;
+  expect(selector.map(v => v.variant_id)).toEqual(['111', '222']);
+  for (const v of [...payload.product.variants, ...selector]) {
+    expect(v).toMatchObject({ current_own_offer_status: 'unavailable', availability: { in_stock: false } });
+    expect(v).not.toHaveProperty('price');
+  }
+  expect(JSON.stringify(payload)).not.toMatch(/"amount":(45|49)[,}]/);
 });

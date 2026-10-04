@@ -4,7 +4,17 @@ For an explicitly resolved enrichment canonical product in US/USD, the PDP reads
 
 The native builder chooses the original default variant before any money projection. Exact stored numeric, Shopify GID and product-bound external IDs can match that variant. A canonical product-grain placeholder funds only the native implicit product variant, not a hydrated numeric variant. No SKU key or variant identity is inferred from a key suffix.
 
-The selected product, exact selected listing offer and visible selected variant use the current eligible offer price. Eligible US/USD offers for one identity must agree. An unpriced unselected sibling keeps its identity, option, visibility and source-quality metadata, but has no displayed price and is marked `current_own_offer_status: unavailable` with nonpurchasable availability. Missing selected money returns HTTP 409 `CURRENT_OWN_OFFER_UNAVAILABLE`; a failed authoritative read returns HTTP 503 `CURRENT_OWN_OFFER_READ_FAILED`. Neither response substitutes seed/APV money or another listing.
+The selected product, exact selected listing offer and visible selected variant use the current eligible offer price. Eligible US/USD offers for one identity must agree. An unpriced unselected sibling keeps its identity, option, visibility and source-quality metadata, but has no displayed price and is marked `current_own_offer_status: unavailable` with nonpurchasable availability.
+
+Missing money is a gap, not a page failure. When the selected product or variant has no eligible current own money (`CURRENT_OWN_OFFER_UNAVAILABLE`: no admitted row, the selected variant unfunded, or the selected offer's SKU unfunded), or the authoritative read fails or exceeds its stage budget (`CURRENT_OWN_OFFER_READ_FAILED`, logged as `pdp_current_own_money_read_failed`), `get_pdp_v2` still returns 200 with its content modules, and the selected listing is unpriced and not purchasable:
+
+- the product carries no `price`/`price_amount`/`priceAmount`/`current_price`/`currentPrice` and `availability.in_stock` is false; there is no `price_promo` module;
+- every product and selector variant is `current_own_offer_status: unavailable`, unpriced and not in stock (a product-grain listing's implicit variant too);
+- the exact selected listing offer (same merchant and product id) has no price, `current_own_offer_status: unavailable`, `inventory.in_stock: false` and unavailable variants, so it sorts last and is never `best_price_offer_id`. Its referral route is not changed;
+- other listings' offers are unchanged. If the card would otherwise show no price, the existing card projection may name a priced sibling seller as the card's seller, with that seller's own money;
+- `metadata.current_own_offer_status: unavailable` and `metadata.current_own_offer_reason_code` say why.
+
+Nothing on this path substitutes seed/APV money or another listing's money for the selected listing. The read budget is `PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS` (default 1500 ms, minimum 100). Past it the PDP degrades; the abandoned query still ends at the database statement timeout.
 
 The listing's referral route and checkout handoff remain unchanged. Offer prioritization and the best-price marker are recomputed from the projected prices. Noncanonical, other-source and non-US/USD readers retain their existing behavior.
 

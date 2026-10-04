@@ -135,10 +135,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // probe cannot answer (which must never be sent as exists:false).
   // 2026-10-04: +2, canonical current-own-money read failure and selected-offer
   // money refusal. Both use the existing wrapped res.status(...).json exit.
+  // 2026-10-04: -2, both removed again: a missing or unreadable current own money
+  // read now renders the PDP with that listing unpriced and not purchasable.
   assert.equal(
     exits.length,
-    102,
-    `expected 102 response exits in handleInvokeRequest, saw ${exits.length}`,
+    100,
+    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
