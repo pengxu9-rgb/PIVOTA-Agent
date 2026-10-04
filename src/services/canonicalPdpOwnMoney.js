@@ -40,10 +40,10 @@ function unavailableVariant(variant) {
   return { ...withoutCurrentMoney(variant), current_own_offer_status: 'unavailable' };
 }
 
-// On the gap path nothing left on the own listing may contradict "not purchasable": no money, no
-// payment price or promotion copy, and no stock count beside in_stock:false.
+// On the gap path nothing left on the own listing may contradict "not purchasable": no money and no
+// stock count beside in_stock:false. (The gateway also strips every savings presentation field.)
 const QUANTITY_FIELDS = ['available_quantity', 'availableQuantity', 'inventory_quantity', 'quantity', 'stock'];
-const WITHHELD_FIELDS = [...CURRENT_MONEY_FIELDS, 'payment_pricing', 'promotion_lines', ...QUANTITY_FIELDS];
+const WITHHELD_FIELDS = [...CURRENT_MONEY_FIELDS, ...QUANTITY_FIELDS];
 
 function notInStock(state) {
   const next = { ...(state && typeof state === 'object' && !Array.isArray(state) ? state : {}), in_stock: false };
@@ -229,8 +229,10 @@ function isSelectedListingOffer(offer, ref) {
 
 // Only the exact selected listing loses its money; every other listing (another seller, or the same
 // seller's twin listing) keeps its own offer, attribution and money. The unpriced offer is out of
-// stock, sorts last and never wins the best-price marker. The card is the selected listing, so the
-// default offer is that listing's offer. A same-merchant twin can carry the very same offer id
+// stock and never wins the best-price marker. The card is the selected listing, so the default offer
+// is that listing's offer, and it leads its own merchant's offers: a client that picks "the card
+// merchant's first offer" (agent-ui pickInternalFirstOfferId) must land on it, not on a priced twin.
+// Other merchants' offers keep their relative order. A same-merchant twin can carry the very same offer id
 // (buildOfferId has no listing discriminator), so the withheld offer gets its own id here: neither
 // marker can then resolve to the twin through the shared id.
 function withholdCanonicalOffersMoney(data, ref) {
@@ -246,7 +248,12 @@ function withholdCanonicalOffersMoney(data, ref) {
   });
   const ranked = rankCanonicalOffers(data, offers);
   const own = ranked.offers.find(offer => isSelectedListingOffer(offer, ref));
-  return own?.offer_id ? { ...ranked, default_offer_id: own.offer_id } : ranked;
+  if (!own) return ranked;
+  const rest = ranked.offers.filter(offer => offer !== own);
+  const merchantSlot = rest.findIndex(offer => offer?.merchant_id === own.merchant_id);
+  const ordered = merchantSlot < 0 ? ranked.offers
+    : [...rest.slice(0, merchantSlot), own, ...rest.slice(merchantSlot)];
+  return { ...ranked, offers: ordered, ...(own.offer_id ? { default_offer_id: own.offer_id } : {}) };
 }
 
 module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney,

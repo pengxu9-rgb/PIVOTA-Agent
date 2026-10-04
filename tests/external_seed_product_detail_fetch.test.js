@@ -4151,17 +4151,29 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
 
   // Runs the real gap path with extra priced listings added to the offers it withholds, so everything
   // downstream of withholdCanonicalOffersMoney (commerce metadata, card hydration, response) is real.
-  async function invokeGapWithExtraOffers(extraOffers) {
+  // Runs the real gap path with extra priced listings added to the offers it withholds, so everything
+  // downstream of withholdCanonicalOffersMoney (commerce metadata, card hydration, response) is real.
+  // `decorate` may add fields to what the withhold helpers return, to prove the gateway strips them after.
+  async function invokeGapWithExtraOffers(extraOffers, decorate = {}) {
     jest.doMock('../src/services/canonicalPdpOwnMoney', () => {
       const actual = jest.requireActual('../src/services/canonicalPdpOwnMoney');
-      return { ...actual, withholdCanonicalOffersMoney: (data, ref) => {
-        const own = data.offers.find((o) => o.merchant_id === ref.merchant_id && o.product_id === ref.product_id);
-        expect(own).toBeTruthy();
-        return actual.withholdCanonicalOffersMoney(
-          { ...data, offers: [...data.offers, ...extraOffers(own)], offers_count: data.offers.length + extraOffers(own).length },
-          ref,
-        );
-      } };
+      return {
+        ...actual,
+        withholdCanonicalProductMoney: (product) => {
+          const withheld = actual.withholdCanonicalProductMoney(product);
+          return decorate.product ? decorate.product(withheld) : withheld;
+        },
+        withholdCanonicalOffersMoney: (data, ref) => {
+          const own = data.offers.find((o) => o.merchant_id === ref.merchant_id && o.product_id === ref.product_id);
+          expect(own).toBeTruthy();
+          const extra = extraOffers(own);
+          const withheld = actual.withholdCanonicalOffersMoney(
+            { ...data, offers: [...data.offers, ...extra], offers_count: data.offers.length + extra.length },
+            ref,
+          );
+          return decorate.offers ? decorate.offers(withheld, ref) : withheld;
+        },
+      };
     });
     try {
       const { app, db } = loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
@@ -4211,6 +4223,15 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     const twin = offers.offers.find((o) => o.product_id === 'hoverair_x1_pro_bundle');
     expect(twin).toMatchObject({ merchant_id: merchantId, price: { amount: 449, currency: 'USD' } });
     expect(offers.best_price_offer_id).toBe(twin.offer_id);
+    // agent-ui pickInternalFirstOfferId (PdpContainer.tsx), in order: the card merchant's first
+    // internal-checkout offer, then any internal-checkout offer, then the card merchant's FIRST offer,
+    // then default_offer_id, then offers[0]. These are all links-out offers, so the card merchant's
+    // first offer decides: it must be the withheld own offer, never the priced twin.
+    const product = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload.product;
+    const cardMerchantOffers = offers.offers.filter((o) => o.merchant_id === product.merchant_id);
+    expect(cardMerchantOffers.map((o) => o.product_id)).toEqual([slug, 'hoverair_x1_pro_bundle']);
+    expect(cardMerchantOffers[0].offer_id).toBe(offers.default_offer_id);
+    expect(offers.offers.some((o) => o.purchase_route === 'internal_checkout')).toBe(false);
     const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
     expect(JSON.stringify(card)).not.toMatch(/"amount":449[,}]/);
   });
@@ -4228,6 +4249,38 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     expect(offers.best_price_offer_id).toBe(sibling.offer_id);
     const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
     expect(JSON.stringify(card)).not.toMatch(/"amount":489[,}]|Sibling Store/);
+  });
+
+  test('gap path: no savings presentation field survives on the card, its variants or the own offer', async () => {
+    // Every SAVINGS_PRESENTATION_FIELDS entry (src/server.js).
+    const SAVINGS = {
+      payment_offer_evidence: [{ source: 'card' }], payment_offer_summary: { headline: '10% off with card' },
+      payment_offer_badges: ['Card offer'], payment_pricing: { amount: 449, currency: 'USD' },
+      store_discount_evidence: [{ code: 'SAVE' }], store_discount_summary: { headline: 'Store discount' },
+      store_discount_badges: ['Sale'], discount_evidence: [{ pct: 10 }], promotion_lines: ['$50 off today'],
+    };
+    const siblingId = 'of:v1:merch_obs_sibling:sig_e99bf03f82c811fd66b44cb1cf141aee:merchant:default';
+    const res = await invokeGapWithExtraOffers(() => [{
+      offer_id: siblingId, merchant_id: 'merch_obs_sibling', merchant_name: 'Sibling Store', product_id: 'sibling_listing',
+      price: { amount: 489, currency: 'USD' }, inventory: { in_stock: true }, purchase_route: 'affiliate_outbound',
+      url: 'https://sibling.example/products/x1-pro', ...SAVINGS,
+    }], {
+      product: (product) => ({ ...product, ...SAVINGS,
+        variants: (product.variants || []).map((v) => ({ ...v, ...SAVINGS })) }),
+      offers: (data, ref) => ({ ...data, offers: data.offers.map((o) => (
+        o.merchant_id === ref.merchant_id && o.product_id === ref.product_id
+          ? { ...o, ...SAVINGS, variants: (o.variants || []).map((v) => ({ ...v, ...SAVINGS })) } : o)) }),
+    });
+    expectCardStaysOwnListing(res);
+    const card = res.body.modules.find((m) => m.type === 'canonical').data.pdp_payload;
+    const offers = res.body.modules.find((m) => m.type === 'offers').data.offers;
+    const own = offers.find((o) => o.merchant_id === merchantId && o.product_id === slug);
+    const selector = res.body.modules.find((m) => m.type === 'variant_selector')?.data || null;
+    for (const field of Object.keys(SAVINGS)) {
+      for (const surface of [card, own, selector]) expect(JSON.stringify(surface || {})).not.toContain(`"${field}"`);
+    }
+    // Another seller's own savings copy is theirs and stays.
+    expect(offers.find((o) => o.offer_id === siblingId)).toMatchObject(SAVINGS);
   });
 
   test('unit: catalogGroup branch whitelists promoted meta and emits nothing without a valid source', async () => {

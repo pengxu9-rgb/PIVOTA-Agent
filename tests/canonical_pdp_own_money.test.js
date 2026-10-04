@@ -188,7 +188,8 @@ test('withheld offers: only the exact selected listing loses money; it never win
   expect(result.offers.find(o => o.offer_id === 'sibling')).toBe(sibling);
   expect(result.offers.find(o => o.offer_id === 'other-listing')).toBe(sameMerchantOtherListing);
   expect(result.best_price_offer_id).toBe('sibling');
-  expect(result.offers.at(-1).offer_id).toBe('selected');
+  // Ranked last as unpriced, then moved to lead its own merchant's offers.
+  expect(result.offers.map(o => o.offer_id)).toEqual(['sibling', 'selected', 'other-listing']);
   const alone = withholdCanonicalOffersMoney({ offers: [selected], default_offer_id: 'selected', best_price_offer_id: 'selected' }, ref);
   expect(alone.best_price_offer_id).toBeNull();
 });
@@ -212,29 +213,40 @@ test('withheld built payload drops the projected card money, its price module an
   expect(JSON.stringify(payload)).not.toMatch(/"amount":(45|49)[,}]/);
 });
 
-test('withheld listing carries no stock count, payment price or promotion copy beside in_stock:false', () => {
-  const extra = { available_quantity: 7, inventory_quantity: 7, payment_pricing: { amount: 40, currency: 'USD' },
-    promotion_lines: ['$5 off'] };
+test('withheld listing carries no stock count beside in_stock:false', () => {
+  const extra = { available_quantity: 7, inventory_quantity: 7 };
   const product = withholdCanonicalProductMoney({ product_id: 'ext_owned', title: 'Owned', price: 45, ...extra,
     variants: [variant('111', extra), variant('222', { ...extra, inventory: { available_quantity: 3 } })] });
   const payload = buildPdpPayload({ product });
-  const text = JSON.stringify(payload);
-  expect(text).not.toMatch(/available_quantity|inventory_quantity|payment_pricing|promotion_lines|\$5 off/);
+  expect(JSON.stringify(payload)).not.toMatch(/available_quantity|inventory_quantity/);
   expect(payload.product.availability).toEqual({ in_stock: false });
   for (const built of payload.product.variants) expect(built.availability).toEqual({ in_stock: false });
 
   const projected = buildPdpPayload({ product: { product_id: 'ext_owned', title: 'Owned', price: 45, ...extra,
     variants: [variant('111', extra)] } });
   expect(JSON.stringify(projected)).toMatch(/available_quantity/);
-  expect(JSON.stringify(withholdCanonicalPdpPayloadMoney(projected)))
-    .not.toMatch(/available_quantity|payment_pricing|promotion_lines|\$5 off/);
+  expect(JSON.stringify(withholdCanonicalPdpPayloadMoney(projected))).not.toMatch(/available_quantity/);
 
   const own = withholdCanonicalOffersMoney({ offers: [{ offer_id: 'o', merchant_id: ref.merchant_id, product_id: ref.product_id,
-    inventory: { in_stock: true, available_quantity: 7 }, payment_pricing: { amount: 40 }, promotion_lines: ['$5 off'],
+    inventory: { in_stock: true, available_quantity: 7 },
     variants: [{ variant_id: '111', availability: { in_stock: true, available_quantity: 7 } }] }] }, ref).offers[0];
   expect(own.inventory).toEqual({ in_stock: false });
   expect(own.variants[0].availability).toEqual({ in_stock: false });
-  expect(JSON.stringify(own)).not.toMatch(/available_quantity|payment_pricing|promotion_lines/);
+});
+
+test('the withheld offer leads its own merchant; other merchants keep their relative order', () => {
+  const offer = (id, merchant, product, amount) => ({ offer_id: id, merchant_id: merchant, product_id: product,
+    ...(amount ? { price: { amount, currency: 'USD' } } : {}), inventory: { in_stock: true } });
+  const result = withholdCanonicalOffersMoney({ offers: [
+    offer('own', ref.merchant_id, ref.product_id, 45), offer('a', 'merch_a', 'pa', 40), offer('twin', ref.merchant_id, 'twin', 41),
+    offer('b', 'merch_b', 'pb', 42), offer('twin2', ref.merchant_id, 'twin2', 43),
+  ] }, ref);
+  const ids = result.offers.map(o => o.offer_id);
+  // Ranked by price, the own offer sorts last; it moves into its merchant's first slot.
+  expect(ids).toEqual(['a', 'own', 'twin', 'b', 'twin2']);
+  expect(result.offers.find(o => o.merchant_id === ref.merchant_id).offer_id).toBe('own');
+  expect(result.default_offer_id).toBe('own');
+  expect(result.best_price_offer_id).toBe('a');
 });
 
 test('a same-merchant twin sharing the withheld offer id keeps it; the withheld offer gets its own id and is the default', () => {

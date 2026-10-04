@@ -44576,7 +44576,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               'current own listing money read failed; PDP renders the listing unpriced and not purchasable',
             );
           }
-          canonicalProductForPdp = withholdCanonicalProductMoney(canonicalProductForPdp);
+          canonicalProductForPdp = stripSavingsPresentationFields(withholdCanonicalProductMoney(canonicalProductForPdp));
         }
       }
 
@@ -45231,8 +45231,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             // product's money is withheld with it, so no surface prices a listing it cannot sell.
             canonicalOwnMoney = null;
             canonicalOwnMoneyGap = CURRENT_OWN_OFFER_UNAVAILABLE;
-            canonicalProductForPdp = withholdCanonicalProductMoney(canonicalProductForPdp);
+            canonicalProductForPdp = stripSavingsPresentationFields(withholdCanonicalProductMoney(canonicalProductForPdp));
             canonicalPayload = withholdCanonicalPdpPayloadMoney(canonicalPayload);
+            canonicalPayload = { ...canonicalPayload, product: stripSavingsPresentationFields(canonicalPayload.product) };
             modules[0].data.pdp_payload = canonicalPayload;
             const variantSelectorModule = modules.find((module) => module?.type === 'variant_selector');
             if (variantSelectorModule?.data) {
@@ -45242,6 +45243,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
         if (offersData && canonicalOwnMoneyGap) {
           offersData = withholdCanonicalOffersMoney(offersData, canonicalProductRef);
+          // No savings copy (payment offers, discounts, promotion lines) on a listing that cannot be bought.
+          if (Array.isArray(offersData.offers)) {
+            offersData = {
+              ...offersData,
+              offers: offersData.offers.map((offer) => (
+                offer?.merchant_id === canonicalProductRef.merchant_id && offer?.product_id === canonicalProductRef.product_id
+                  ? stripSavingsPresentationFields(offer) : offer)),
+            };
+          }
         }
 
         if (offersData) {
