@@ -2632,3 +2632,26 @@ for (const [label,body,expected] of [
   const client=createReapAgenticPurchaseClient({baseUrl:'https://backend.example',authHeaders:()=>({'X-API-Key':API_KEY,'X-Agent-User-JWT':USER_JWT}),fetchImpl:async()=>({status:200,text:async()=>JSON.stringify(body)})});
   assert.equal((await client.recoverPurchase({idempotency_key:'original-key'})).kind,expected);
 });
+
+
+// The UI uses this same captured wire fixture, not a synthetic resolvingCheckout builder.
+test('fresh backend202 preserves authoritative facts through real client/lane/UCP mapping', async (t) => {
+  t.mock.method(Date, 'now', () => Date.parse('2026-09-29T10:00:00Z'));
+  const backend = fakeBackend();
+  backend.state.post.body.checkout_dispatch_state = 'not_dispatched';
+  backend.state.post.body.contact_reentry_required = false;
+  const ctx = await createReap(ON, { backend });
+  assert.deepEqual(ctx.out, require('./fixtures/reap-accepted-continuation.json'));
+  assert.equal(ctx.backend.calls.filter(call => call.method === 'POST').length, 1);
+});
+for (const dispatch of [undefined, 'invalid', 'dispatch_started', 'dispatched', 'unknown']) {
+  test(`accepted backend202 ${dispatch} never invents no-dispatch`, async () => {
+    const backend = fakeBackend();
+    if (dispatch !== undefined) backend.state.post.body.checkout_dispatch_state = dispatch;
+    backend.state.post.body.contact_reentry_required = 'false';
+    const ctx = await createReap(ON, { backend });
+    assert.equal(message(ctx.out, 'reap.checkout_dispatch_state').content,
+      ['dispatch_started', 'dispatched', 'unknown'].includes(dispatch) ? dispatch : 'unknown');
+    assert.equal(message(ctx.out, 'reap.contact_reentry_required'), undefined);
+  });
+}

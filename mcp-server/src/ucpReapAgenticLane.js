@@ -12,8 +12,8 @@ const { readSelectionWitness, sameSelection } = selectionContract;
 // buyer enters a card and approves on REAP'S OWN hosted pages. Pivota holds and moves no money on this lane —
 // the backend never sees a card, and neither does this gateway.
 //
-// THE BUYER AGENT USES THE TOOLS IT ALREADY HAS. No new ucpTool name (mcp-server/test/ucpToolVocabulary.test.js
-// pins the vocabulary), no new canonical operation (safety-kernel/test/protocol.test.js pins those), and the
+// THE BUYER AGENT USES THE TOOLS IT ALREADY HAS. No new spec ucpTool name (mcp-server/test/ucpToolVocabulary.test.js
+// pins the vocabulary); recovery/continuation are vendor tools. No new canonical operation (safety-kernel/test/protocol.test.js pins those), and the
 // answer is the SAME checkout object the escalation lane builds (`buildUcpCheckoutEnvelope`), so the pinned
 // required members and the UCP status enum hold by construction:
 //
@@ -202,7 +202,8 @@ export const REAP_CONSENT_MAX_CHARS = 32;
 
 const PURCHASE_ID_RE = /^rp_[0-9a-f]{24}$/;
 const SNAPSHOT_RE = /^[A-Za-z0-9_-]{1,1000}$/;
-const MAX_ID_CHARS = 1100;
+export const REAP_CHECKOUT_ID_MAX_CHARS = 1100;
+const MAX_ID_CHARS = REAP_CHECKOUT_ID_MAX_CHARS;
 const MAX_PRODUCT_KEY_CHARS = 256;
 const CURRENCY_RE = /^[A-Z]{3}$/;
 const REASON_RE = /^[a-z0-9_:.-]{1,64}$/;
@@ -1069,6 +1070,7 @@ export function buildDegradedReapCheckout({ id, snapshot, now = Date.now(), env 
     env,
     messages: [
       warning("reap.view_unavailable", VIEW_UNAVAILABLE_MESSAGE, "$"),
+      ...continuationMessages(null),
       pollMessage(DEFAULT_POLL_SECONDS),
       // NO seller messages: the only source here is the id, which travels through the caller, and a crafted id
       // must not be able to make this door name a seller. A platform keeps the seller its last good answer named.
@@ -1078,6 +1080,21 @@ export function buildDegradedReapCheckout({ id, snapshot, now = Date.now(), env 
 }
 
 const STATE_SHAPE_RE = /^[a-z][a-z0-9_]{0,39}$/;
+const CHECKOUT_DISPATCH_STATES = new Set(["not_dispatched", "dispatch_started", "dispatched", "unknown"]);
+const CHECKOUT_REVIEW_CODES = new Set(["checkout_dispatch_unresolved", "checkout_unresolvable:3:checkout_no_hosted_action"]);
+
+// Owner-view facts only. Missing IDs, an enrollment link, or a gateway snapshot
+// never establish that dispatch did not happen.
+function continuationMessages(view) {
+  const state = own(view, "checkout_dispatch_state");
+  const messages = [info("reap.checkout_dispatch_state", CHECKOUT_DISPATCH_STATES.has(state) ? state : "unknown")];
+  const contactRequired = own(view, "contact_reentry_required");
+  if (typeof contactRequired === "boolean") messages.push(info("reap.contact_reentry_required", String(contactRequired)));
+  if (CHECKOUT_REVIEW_CODES.has(own(view, "last_error_code"))) {
+    messages.push(warning("reap.checkout_requires_review", "This checkout needs review before it can continue. Check its status or contact support; do not start another checkout or approve an old link."));
+  }
+  return messages;
+}
 
 /**
  * The backend's purchase view -> the UCP checkout. EVERY displayed field comes from `view`: the item id (our
@@ -1128,7 +1145,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
   let status = known ? STATE_TO_STATUS[state] : "incomplete";
   let continueUrl;
   let expiresAt = new Date(now + ESCALATION_TTL_MS).toISOString();
-  const messages = [];
+  const messages = continuationMessages(view);
   if (!known) {
     if (typeof onUnrecognisedState === "function") onUnrecognisedState(state);
     messages.push(info("reap.state_unrecognised", UNRECOGNISED_STATE_MESSAGE));
@@ -1339,8 +1356,14 @@ export async function tryReapAgenticCheckout({
   clock,
   hints,
   recoverOnly = false,
+  resumeCheckoutId,
   recoveryIdentityReader,
 }) {
+  if (resumeCheckoutId !== undefined) {
+    if (!decodeReapCheckoutId(resumeCheckoutId)) throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_resume_outcome_unknown" });
+    if (!reapAgenticCreateEnabled(env)) throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "reap_create_paused" });
+    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId });
+  }
   if (recoverOnly) {
     return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs });
   }
@@ -1409,9 +1432,9 @@ export async function tryReapAgenticCheckout({
 // Read-only recovery deliberately bypasses purchase/proof/freshness/price gates.
 // Only a catalog IDENTITY read reconstructs the exact backend body; loss/change
 // of that identity remains unknown. The ledger hash/owner decides authoritatively.
-async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs }) {
+async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId }) {
   const unknown = () => new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", {
-    reason: "ucp_reap_create_outcome_unknown",
+    reason: resumeCheckoutId === undefined ? "ucp_reap_create_outcome_unknown" : "ucp_reap_resume_outcome_unknown",
   });
   if (!client || typeof client.recoverPurchase !== "function"
     || (typeof client.hasCallerCredentials === "function" && !client.hasCallerCredentials())) throw unknown();
@@ -1479,7 +1502,7 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
       continue;
     }
     if (!result || result.kind !== "accepted" || !isPlainObject(result.purchase)) throw unknown();
-    matches.push(result.purchase);
+    matches.push({ purchase: result.purchase, body });
   }
   // Only two matching immutable namespace fences can close an unopened legacy
   // attempt. A single receipt, absent companion or live purchase stays unknown.
@@ -1491,7 +1514,7 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   }
   // Zero matches never means 'safe to start another'; two matches need support.
   if (matches.length !== 1) throw unknown();
-  const view = matches[0];
+  const { purchase: view, body: originalBody } = matches[0];
   const expectedSeller = reapExpectedMerchantDomain(ucpArgs);
   if (expectedSeller !== undefined && !isSameReapMerchant(expectedSeller, view.merchant_domain)) throw unknown();
   const totals = own(view, "totals");
@@ -1504,7 +1527,29 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   const id = encodeReapCheckoutId(snapshot);
   const out = mapReapPurchaseToCheckout({ id, snapshot, view, now, env });
   if (!out) throw unknown();
-  return out;
+  if (resumeCheckoutId === undefined) return out;
+  // The caller must retain the exact opaque ID. It is a selector, never owner
+  // authority: recovery has already verified the original owner/body/key.
+  if (id !== resumeCheckoutId) throw unknown();
+  // Repeated continuation after progress or terminal settlement is a read of
+  // the same attempt. Missing dispatch/contact facts never permit a write.
+  if (CHECKOUT_REVIEW_CODES.has(view.last_error_code) || !["resolving", "needs_enrollment", "quoting"].includes(view.state) || view.contact_reentry_required !== true
+    || view.checkout_dispatch_state !== "not_dispatched") return out;
+  if (typeof client.resumePurchase !== "function") throw unknown();
+  let resumed;
+  try { resumed = await client.resumePurchase(snapshot.purchaseId, originalBody); }
+  catch { resumed = null; }
+  // A failed resume response does not prove no dispatch: return a degraded
+  // SAME-ID view, with unknown dispatch and no contact or replacement claim.
+  const resumedView = resumed?.kind === "accepted" ? resumed.purchase : null;
+  if (!isPlainObject(resumedView) || resumedView.id !== snapshot.purchaseId
+    || resumedView.product_key !== productKey || resumedView.quantity !== quantity
+    || resumedView.totals?.currency !== snapshot.currency || resumedView.totals?.our_price_minor !== snapshot.unitMinor
+    || (expectedSeller !== undefined && !isSameReapMerchant(expectedSeller, resumedView.merchant_domain))) {
+    return buildDegradedReapCheckout({ id, snapshot, now, env });
+  }
+  return mapReapPurchaseToCheckout({ id, snapshot, view: resumedView, now, env })
+    || buildDegradedReapCheckout({ id, snapshot, now, env });
 }
 
 // The selected id is a catalog selector, never provider authority. The backend must
@@ -1798,6 +1843,8 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
       id: res.purchase.id,
       state: res.purchase.state,
       poll_after_seconds: res.purchase.poll_after_seconds,
+      checkout_dispatch_state: res.purchase.checkout_dispatch_state,
+      contact_reentry_required: res.purchase.contact_reentry_required,
       // The host this lane just POSTed — the purchase's seller (the 202 carries no view of its own).
       merchant_domain: merchantDomain,
       product_key: productKey,

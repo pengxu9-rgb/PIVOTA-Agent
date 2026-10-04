@@ -546,19 +546,23 @@ test('paused Reap tools/list retains explicit read-only recover_checkout with th
     assert.ok(recover.properties.checkout.properties.discounts);
     assert.ok(recover.properties.checkout.properties.reap);
     assert.equal(recover.properties.checkout.properties.payment, undefined);
+    assert.deepEqual(tools.resume_checkout.inputSchema.required, ['meta', 'checkout', 'checkout_id']);
+    assert.equal(tools.resume_checkout.annotations.readOnlyHint, false);
+    assert.equal(tools.resume_checkout.annotations.idempotentHint, true);
+    assert.equal(tools.resume_checkout.inputSchema.properties.checkout.properties.payment, undefined);
     assert.equal(tools.create_checkout.inputSchema.properties.checkout.properties.discounts, undefined);
     const profile = await supertest(app).get('/.well-known/ucp').expect(200);
     assert.equal(profile.body.ucp.capabilities['dev.ucp.shopping.discount'], undefined);
     assert.equal(profile.body.ucp.capabilities['cc.pivota.reap_seller'], undefined);
     const native = await supertest(app).post('/mcp').send(rpc('tools/list', undefined, 92)).expect(200);
-    assert.equal(native.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+    assert.equal(native.body.result.tools.some((t) => t.name === 'recover_checkout' || t.name === 'resume_checkout'), false);
   });
 });
 
 test('a dark Reap profile does not advertise new recovery or purchase features', async () => {
   await withEnv({ ...DOOR_LIT, ...CHARGE_ON, REAP_AGENTIC_LANE_ENABLED: undefined }, async () => {
     const listed = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 93)).expect(200);
-    assert.equal(listed.body.result.tools.some((t) => t.name === 'recover_checkout'), false);
+    assert.equal(listed.body.result.tools.some((t) => t.name === 'recover_checkout' || t.name === 'resume_checkout'), false);
   });
 });
 

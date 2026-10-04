@@ -5,11 +5,13 @@
  * rail (`/agent/v2/commerce/reap/purchases`, backend WP4 #2215/#2219/#2251).
  *
  * The contract is the backend's `docs/reap_agentic_routes.md` (byte-exact JSON captured from the real
- * app); `docs/reap-agentic-lane.md` in THIS repo is the door-side half. Three routes are used:
+ * app); `docs/reap-agentic-lane.md` in THIS repo is the door-side half. Five routes are used:
  *
  *   POST /agent/v2/commerce/reap/purchases        -> 202 {purchase_id, status, poll_after_seconds}
  *   GET  /agent/v2/commerce/reap/purchases/{id}   -> the public purchase view (state, totals, hosted_url…)
+ *   POST /agent/v2/commerce/reap/purchases/prepare -> read-only authoritative selection
  *   POST /agent/v2/commerce/reap/purchases/recover -> read-only original-body/key owner lookup
+ *   POST /agent/v2/commerce/reap/purchases/{id}/resume -> same-attempt enrollment continuation
  *
  * WHAT THIS MODULE IS NOT. It decides nothing about eligibility, prices nothing and builds no checkout.
  * It performs exactly ONE request per call, bounded, and CLASSIFIES the answer into four kinds the lane
@@ -247,6 +249,11 @@ function createReapAgenticPurchaseClient(deps = {}) {
             id: b.purchase_id,
             state: b.status.trim(),
             poll_after_seconds: b.poll_after_seconds,
+            // Forward only explicit owner-view facts. Older/malformed replies remain unknown.
+            ...(['not_dispatched', 'dispatch_started', 'dispatched', 'unknown'].includes(b.checkout_dispatch_state)
+              ? { checkout_dispatch_state: b.checkout_dispatch_state } : {}),
+            ...(typeof b.contact_reentry_required === 'boolean'
+              ? { contact_reentry_required: b.contact_reentry_required } : {}),
           },
         };
       }
@@ -313,6 +320,30 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code: 'http_5xx' };
   }
 
+  /** Continue the same retained attempt with its EXACT original body/key. One request, never create. */
+  async function resumePurchase(purchaseId, body) {
+    if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId)) return { kind: KIND.notFound, code: 'invalid_id' };
+    const headers = requestHeaders();
+    if (!headers) return { kind: KIND.unauthenticated };
+    const out = await send('resume', `${baseUrl}${PURCHASES_PATH}/${purchaseId}/resume`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (out.error) return { kind: KIND.unavailable, code: out.error };
+    if (out.status >= 200 && out.status < 300) {
+      const purchase = out.body;
+      return isPlainObject(purchase) && purchase.id === purchaseId
+        ? { kind: KIND.accepted, purchase }
+        : { kind: KIND.unavailable, code: 'malformed' };
+    }
+    // A resume failure is never a create refusal and cannot authorize a new
+    // attempt. Preserve the existing attempt even for owner misses/conflicts.
+    // Never echo backend-controlled reason text here. A syntactically canonical
+    // value can still be a purchase id, buyer detail, or idempotency key.
+    const code = 'resume_unavailable';
+    log('warn', { route: 'resume', outcome: KIND.unavailable, code, http_status: out.status });
+    return { kind: KIND.unavailable, code, http_status: out.status };
+  }
+
   /** Read one purchase the calling agent + buyer own. */
   async function getPurchase(purchaseId) {
     // Validated HERE as well as in the lane: this string becomes a URL path segment, and a value that is not
@@ -352,7 +383,7 @@ function createReapAgenticPurchaseClient(deps = {}) {
     return { kind: KIND.unavailable, code };
   }
 
-  return { startPurchase, preparePurchase, recoverPurchase, getPurchase, hasCallerCredentials, timeoutMs };
+  return { startPurchase, preparePurchase, recoverPurchase, resumePurchase, getPurchase, hasCallerCredentials, timeoutMs };
 }
 
 module.exports = {
