@@ -138,7 +138,10 @@ test('different history query cannot be silently replaced by stored brand', asyn
    expect(response.products.length).toBeGreaterThanOrEqual(6);expect(response.metadata.candidate_source).toBe('canonical_sig_personalized');expect(axios.get).not.toHaveBeenCalled();
  });
  test.each(['home_hot_deals','browse_products'])('canonical failure stays failed on %s with zero HTTP alternate',async surface=>{
-   db.query.mockRejectedValue(Error('synthetic DB timeout'));
+   // A real statement timeout: the primary is under stress, so no cold read and
+   // no alternate is attempted. (A non-stress error instead takes the identical
+   // no-history route, whatever that route itself dispatches.)
+   db.query.mockRejectedValue(Object.assign(Error('canceling statement due to statement timeout'),{code:'57014'}));
    await expect(getDiscoveryFeed(request({surface}),{relationshipGraphRecallFn:()=>{throw Error('alternate graph')}})).rejects.toThrow();
    expect(axios.get).not.toHaveBeenCalled();
  });

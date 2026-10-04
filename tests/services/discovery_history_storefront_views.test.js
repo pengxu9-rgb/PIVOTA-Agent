@@ -277,41 +277,90 @@ describe('fail soft for personalization only', () => {
     expect(fallbackHttp).toBe(coldHttp);
   });
 
-  test('fallback browse pages 1-3 never repeat a card and never show the viewed sig', async () => {
-    const forged = forgedKrave();
+  test('fallback browse pages 1-3 never repeat a card when the viewed sig is the no-history page-1 top card', async () => {
     const cold = coldUniverse();
-    // The viewed sig early in the cold order, so page-1-only suppression would shift page 2.
-    const viewedRow = cold.find((row) => row.pivota_signature_id === forged.product_id);
-    const ordered = [cold[0], cold[1], viewedRow, ...cold.filter((row) => row !== viewedRow && row !== cold[0] && row !== cold[1])];
+    mockCatalog({ cold, catalog: cold });
+    const noHistoryPageOne = await feed([], { surface: 'browse_products', page: 1, limit: 6 });
+    const top = noHistoryPageOne.products[0];
+    // A view of that top card under a merchant it never had: the subject is
+    // refused and the request falls back to the no-history feed.
+    const view = { ...krave.recent_view, product_id: top.product_id, brand: top.brand, title: top.title,
+      merchant_id: judydoll.recent_view.merchant_id };
     const pages = [];
     for (const page of [1, 2, 3]) {
-      mockCatalog({ cold: ordered });
-      const response = await feed([forged], { surface: 'browse_products', page, limit: 6 });
+      mockCatalog({ cold, catalog: cold });
+      const response = await feed([view], { surface: 'browse_products', page, limit: 6 });
       expect(response.metadata.fallback_reason).toBe('canonical_history_subject_conflict');
       pages.push(response.products.map((p) => p.product_id));
     }
     const all = pages.flat();
+    const duplicates = all.filter((id, index) => all.indexOf(id) !== index);
+    expect(duplicates).toEqual([]);
     expect(all).toHaveLength(18);
-    expect(new Set(all).size).toBe(18);
-    expect(all).not.toContain(forged.product_id);
+    expect(all).not.toContain(top.product_id);
   });
 
-  test.each([
-    ['statement timeout', Object.assign(Error('canceling statement due to statement timeout'), { code: '57014' })],
-    ['pool exhaustion', Error('timeout exceeded when trying to connect')],
-    ['too many connections', Object.assign(Error('sorry, too many clients already'), { code: '53300' })],
-  ])('a history %s keeps the unavailable outcome without a second (cold) read', async (_name, error) => {
-    mockCatalog({ anchorError: error });
+  const STRESS = [
+    ['statement timeout', () => Object.assign(Error('canceling statement due to statement timeout'), { code: '57014' })],
+    ['pg query read timeout', () => Error('Query read timeout')],
+    ['pool acquire timeout', () => Error('timeout exceeded when trying to connect')],
+    ['too many connections', () => Object.assign(Error('sorry, too many clients already'), { code: '53300' })],
+    ['connection terminated', () => Error('Connection terminated unexpectedly')],
+    ['connection reset', () => Object.assign(Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+    ['out of memory', () => Object.assign(Error('out of memory'), { code: '53200' })],
+  ];
+  const NOT_STRESS = [
+    ['lock timeout', () => Object.assign(Error('canceling statement due to lock timeout'), { code: '55P03' })],
+    ['lock-timeout cancel under 57014', () => Object.assign(Error('canceling statement due to lock timeout'), { code: '57014' })],
+    ['user cancel', () => Object.assign(Error('canceling statement due to user request'), { code: '57014' })],
+    ['idle in transaction', () => Object.assign(Error('terminating connection due to idle-in-transaction timeout'), { code: '25P03' })],
+    ['an unrelated "timeout" word', () => Error('upstream timeout budget exceeded')],
+    ['schema', () => Object.assign(Error('column "x" does not exist'), { code: '42703' })],
+  ];
+
+  test.each(STRESS)('a history anchor %s keeps the unavailable outcome without a second (cold) read', async (_name, make) => {
+    mockCatalog({ anchorError: make() });
     await expect(feed([jurlique.recent_view])).rejects.toMatchObject({ code: 'DISCOVERY_CATALOG_UNAVAILABLE' });
     expect(calls.cold).toBe(0);
     noSdk();
   });
 
-  test('a non-stress history query error falls back to the cold feed', async () => {
-    mockCatalog({ anchorError: Object.assign(Error('column "x" does not exist'), { code: '42703' }) });
+  test.each([STRESS[0], STRESS[2]])('a history BRAND-read %s keeps the unavailable outcome without a cold read', async (_name, make) => {
+    mockCatalog();
+    const base = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params) => {
+      if (sql.includes('WITH brand_match')) { calls.brand += 1; throw make(); }
+      return base(sql, params);
+    });
+    await expect(feed([jurlique.recent_view])).rejects.toMatchObject({ code: 'DISCOVERY_CATALOG_UNAVAILABLE' });
+    expect(calls.brand).toBe(1);
+    expect(calls.cold).toBe(0);
+    noSdk();
+  });
+
+  test('a non-stress brand-read failure still falls back to the cold feed', async () => {
+    mockCatalog();
+    const base = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params) => {
+      if (sql.includes('WITH brand_match')) throw Object.assign(Error('canceling statement due to lock timeout'), { code: '55P03' });
+      return base(sql, params);
+    });
     const response = await feed([jurlique.recent_view]);
-    expect(response.metadata.fallback_reason).toBe('schema_missing');
+    expect(response.metadata.fallback_reason).toBe('canonical_history_query_failed');
     expect(response.products.length).toBeGreaterThan(0);
+  });
+
+  test.each(NOT_STRESS)('a history anchor %s is not stress and falls back to the cold feed', async (_name, make) => {
+    mockCatalog({ anchorError: make() });
+    const response = await feed([jurlique.recent_view]);
+    expect(response.metadata.history_fallback_reason).toBeTruthy();
+    expect(response.products.length).toBeGreaterThan(0);
+    expect(calls.cold).toBe(1);
+  });
+
+  test('stress classifier', () => {
+    for (const [, make] of STRESS) expect(i.isDiscoveryDatabaseStressError(make())).toBe(true);
+    for (const [, make] of NOT_STRESS) expect(i.isDiscoveryDatabaseStressError(make())).toBe(false);
   });
 
   test.each([
@@ -327,13 +376,11 @@ describe('fail soft for personalization only', () => {
     noSdk();
   });
 
-  test('resolver and stress classifier', () => {
+  test('failure-reason resolver', () => {
     expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: 200 }] })).toBeNull();
     expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: 200, eligibility_reason: 'canonical_history_pool_empty' }] })).toBe('canonical_history_pool_empty');
     expect(i.resolveCanonicalHistoryFailureReason({ recallSummary: [{ status: null, failure_reason: 'query_error' }] })).toBe('query_error');
     expect(i.resolveCanonicalHistoryFailureReason(null)).toBeNull();
-    expect(i.isDiscoveryDatabaseStressError(Object.assign(Error('x'), { code: '57014' }))).toBe(true);
-    expect(i.isDiscoveryDatabaseStressError(Object.assign(Error('column missing'), { code: '42703' }))).toBe(false);
   });
 });
 

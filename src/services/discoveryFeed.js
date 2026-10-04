@@ -9921,7 +9921,11 @@ async function fetchBrandScopedCanonicalCandidates({
       },
       'brand scoped commerce-index query failed',
     );
-    if (Array.isArray(failures)) failures.push('canonical');
+    if (Array.isArray(failures)) {
+      failures.push('canonical');
+      // Callers that must not add load to a stressed primary read this marker.
+      if (isDiscoveryDatabaseStressError(err)) failures.push('canonical_database_stress');
+    }
     return [];
   }
 }
@@ -10314,14 +10318,32 @@ function isPotentialCanonicalHistoryPrimary(request) {
   return true;
 }
 
-// Statement timeout, query read timeout, connection-pool exhaustion or too many
-// connections: the primary is under stress, so a history failure of this kind
-// must not trigger a second (cold) catalog read.
+// The primary database (or our pool to it) is saturated or unreachable, so a
+// history failure of this kind must not trigger a second (cold) catalog read.
+// Deliberately narrow:
+// - statement_timeout only. SQLSTATE 57014 alone also covers lock_timeout,
+//   idle_in_transaction_session_timeout and a user cancel, which are not load;
+//   those still get the cold feed.
+// - pg client query_timeout (our read deadline) and pool-acquire timeout.
+// - too many connections (53300) and the server refusing / dropping the
+//   connection (57P03 cannot connect now, connection terminated, ECONNRESET,
+//   ECONNREFUSED).
+// - out of memory (53200) IS treated as stress: a server out of memory is
+//   saturated and a second full-catalog read is the wrong response to it.
+// A bare "timeout" is not matched.
+const DISCOVERY_DATABASE_STRESS_CODES = new Set(['53300', '53200', '57P03', 'ECONNRESET', 'ECONNREFUSED']);
+const DISCOVERY_DATABASE_STRESS_MESSAGES = [
+  /canceling statement due to statement timeout/i,
+  /^Query read timeout$/i,
+  /timeout exceeded when trying to connect/i,
+  /too many clients already|remaining connection slots are reserved/i,
+  /Connection terminated( unexpectedly| due to connection timeout)?/i,
+];
 function isDiscoveryDatabaseStressError(err) {
   const code = String(err?.code || '').trim().toUpperCase();
-  if (['57014', '53300', '53400', '57P03'].includes(code)) return true;
-  const message = String(err?.message || err || '');
-  return /statement timeout|query read timeout|timeout exceeded when trying to connect|too many clients|remaining connection slots|timed out|timeout/i.test(message);
+  if (DISCOVERY_DATABASE_STRESS_CODES.has(code)) return true;
+  const message = String(err?.message || err || '').trim();
+  return DISCOVERY_DATABASE_STRESS_MESSAGES.some((pattern) => pattern.test(message));
 }
 
 // The cold fallback is the identical request without history, loaded by the
@@ -10465,7 +10487,11 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
     const failures = [];
     const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true });
-    if (failures.length) return summary([], null, 'canonical_history_query_failed');
+    if (failures.length) {
+      const failed = summary([], null, 'canonical_history_query_failed');
+      if (failures.includes('canonical_database_stress')) failed.recallSummary[0].database_stress = true;
+      return failed;
+    }
     const allowedBrands = new Set(brands.map(normalizeBrandText));
     const scoped = products.filter((product) => {
       const domain = canonicalHistoryProductDomain(product);
