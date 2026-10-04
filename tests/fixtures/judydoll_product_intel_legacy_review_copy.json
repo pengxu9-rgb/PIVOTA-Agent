@@ -1,0 +1,113 @@
+{
+  "contract_version": "pivota.product_intel.v1",
+  "product_intel_core": {
+    "best_for": [
+      {
+        "tag": "color_payoff",
+        "label": "color payoff",
+        "confidence": "moderate"
+      },
+      {
+        "tag": "lip_comfort",
+        "label": "lip comfort",
+        "confidence": "moderate"
+      },
+      {
+        "tag": "matte_finish",
+        "label": "matte finish",
+        "confidence": "moderate"
+      }
+    ],
+    "freshness": {
+      "generated_at": "2026-05-27T00:04:53.277Z",
+      "source_version": "official_pdp_manual_review_v1"
+    },
+    "watchouts": [
+      {
+        "type": "shade_fit",
+        "label": "Color appearance can shift with lip tone, lighting, and paired liner.",
+        "severity": "low"
+      }
+    ],
+    "what_it_is": {
+      "body": "Silky Matte Lip Ink is a lip color from Judydoll. 48H Long-Lasting Color: Bold, lightweight color that stays put all day.",
+      "headline": "Lip color"
+    },
+    "routine_fit": {
+      "step": "lip color",
+      "am_pm": [
+        "as_needed"
+      ],
+      "pairing_notes": [
+        "Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,"
+      ]
+    },
+    "display_name": "Pivota Insights",
+    "quality_state": "reviewed",
+    "source_coverage": {
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "official_pdp_how_to": true,
+      "official_pdp_formula": false,
+      "official_pdp_variants": 1,
+      "official_pdp_description": true
+    },
+    "evidence_profile": "official_pdp_reviewed_line",
+    "why_it_stands_out": [
+      {
+        "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+        "headline": "Lip finish cues are specific",
+        "evidence_strength": "official_pdp_reviewed"
+      },
+      {
+        "body": "Variant labels such as 07 BURGUNDY INK, Shade: 07 BURGUNDY INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+        "headline": "Shade and size are explicit",
+        "evidence_strength": "official_pdp_reviewed"
+      },
+      {
+        "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+        "headline": "Usage instructions available",
+        "evidence_strength": "official_pdp_reviewed"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "pivota_insights_official_pdp_manual_review_v1",
+    "reviewer": "codex_manual_review",
+    "generator": "strict_human_manual_rewrite",
+    "review_tier": "assistant_reviewed",
+    "field_sources": {
+      "best_for": "official_pdp_derived",
+      "watchouts": "human_standard",
+      "what_it_is": "official_pdp_manual_review",
+      "routine_fit": "official_pdp_derived",
+      "why_it_stands_out": "official_pdp_manual_review"
+    },
+    "review_status": "completed",
+    "reviewer_kind": "assistant",
+    "source_signals": [
+      "official_pdp_description",
+      "official_pdp_how_to",
+      "official_pdp_details",
+      "official_pdp_variants"
+    ],
+    "review_decision": "rewrite",
+    "selection_strategy": "curated_override",
+    "source_url": "https://judydoll.com/products/silky-matte-lip-ink",
+    "quality_state": "reviewed",
+    "source_origin": "official_pdp_fields",
+    "evidence_profile": "official_pdp_reviewed_line",
+    "external_product_id": "ext_0f95730ee5ba05a6b7957ada",
+    "pivota_signature_id": "sig_6433c8107859a484fb72d14861e84690",
+    "quality_improvement": {
+      "previous_bundle_hash": null,
+      "replacement_decision": "new_product_intel_bundle",
+      "candidate_bundle_hash": "c209d325bcae7871b2ef080af844d5b6173825d8ff5bc6d43532f7e084418138",
+      "existing_quality_lane": null,
+      "candidate_quality_lane": "keep",
+      "existing_evidence_profile": null,
+      "candidate_evidence_profile": "official_pdp_reviewed_line"
+    },
+    "kb_key": "product:ext_0f95730ee5ba05a6b7957ada",
+    "generated_at": "2026-05-27T00:04:54.006Z"
+  }
+}

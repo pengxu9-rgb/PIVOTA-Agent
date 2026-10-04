@@ -8,6 +8,7 @@ const BLOCKED_PUBLIC_INTEL_EVIDENCE_PROFILES = new Set([
 const BLOCKED_PUBLIC_INTEL_REVIEW_DECISIONS = new Set([
   'seller_only_fallback',
 ]);
+const { sanitizeProductIntelShopperCopy } = require('./services/productIntelShopperCopy');
 const { buildAuthoritativeIngredientView } = require('./services/pdpIngredientAuthority');
 const {
   buildSearchCardPayload,
@@ -694,7 +695,7 @@ function normalizePublishedProductIntelBundle(bundle, {
     { fallback: normalizedCore.what_it_is?.body },
   );
 
-  return {
+  return sanitizeProductIntelShopperCopy({
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
     display_name: PIVOTA_INSIGHTS_DISPLAY_NAME,
     canonical_product_ref: canonicalProductRef || source.canonical_product_ref || null,
@@ -790,6 +791,60 @@ function normalizePublishedProductIntelBundle(bundle, {
         ...(overlayProvenance || {}),
       };
     })(),
+  });
+}
+
+// Public PDP data must not serialize the operator dossier. Compute eligibility
+// against the original reviewed bundle, then expose only shopper fields.
+function buildPublicProductIntelProjection(bundle) {
+  if ([bundle?.quality_state, bundle?.product_intel_core?.quality_state]
+    .some((value) => asString(value).toLowerCase() === 'blocked')) return null;
+  const normalized = normalizePublishedProductIntelBundle(bundle, { requireReviewed: true });
+  if (!normalized) return null;
+  const pick = (value, keys) => {
+    const source = asPlainObject(value) || {};
+    const lists = new Set(['am_pm', 'pairing_notes', 'top_loves', 'top_complaints']);
+    return Object.fromEntries(keys.flatMap((key) => {
+      const item = source[key];
+      if (lists.has(key)) return Array.isArray(item)
+        ? [[key, item.filter((text) => typeof text === 'string')]] : [];
+      return item === null || ['string', 'number', 'boolean'].includes(typeof item)
+        ? [[key, item]] : [];
+    }));
+  };
+  const rows = (value, keys) => asArray(value).map((row) => pick(row, keys));
+  const core = normalized.product_intel_core;
+  const { filterPublicSafeClaims } = require('./services/pivotaInsightsQuality');
+  // Respect the existing publication flag/stamp; raw agent claims are private.
+  const publicClaims = normalized.public_ready === true || bundle.public_ready === true
+    ? filterPublicSafeClaims(core.evidence_claims)
+    : [];
+  return {
+    contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+    display_name: PIVOTA_INSIGHTS_DISPLAY_NAME,
+    public_display_eligible: true,
+    canonical_product_ref: pick(normalized.canonical_product_ref, ['merchant_id', 'product_id', 'platform', 'product_key', 'content_key', 'pivota_signature_id']),
+    product_group_id: typeof normalized.product_group_id === 'string' ? normalized.product_group_id : null,
+    quality_state: normalized.quality_state,
+    evidence_profile: normalized.evidence_profile,
+    freshness: pick(normalized.freshness, ['generated_at']),
+    product_intel_core: {
+      display_name: PIVOTA_INSIGHTS_DISPLAY_NAME,
+      quality_state: core.quality_state,
+      evidence_profile: core.evidence_profile,
+      what_it_is: pick(core.what_it_is, ['headline', 'body']),
+      why_it_stands_out: rows(core.why_it_stands_out, ['headline', 'body']),
+      best_for: rows(core.best_for, ['tag', 'label', 'confidence']),
+      watchouts: rows(core.watchouts, ['type', 'label', 'severity']),
+      routine_fit: pick(core.routine_fit, ['step', 'am_pm', 'pairing_notes']),
+      ...(publicClaims.length ? { public_claims: publicClaims } : {}),
+    },
+    ...(publicClaims.length ? { public_ready: true } : {}),
+    texture_finish: pick(normalized.texture_finish, ['texture', 'finish']),
+    community_signals: pick(normalized.community_signals, ['status', 'top_loves', 'top_complaints', 'confidence']),
+    external_highlight_signals: rows(normalized.external_highlight_signals, ['claim_text', 'surface_text', 'source_type', 'claim_type']),
+    ...(normalized.shopping_card ? { shopping_card: pick(normalized.shopping_card, ['contract_version', 'title', 'subtitle', 'highlight', 'intro', 'proof_badge']) } : {}),
+    ...(normalized.search_card ? { search_card: pick(normalized.search_card, ['title_candidate', 'compact_candidate', 'highlight_candidate', 'intro_candidate', 'proof_badge_candidate']) } : {}),
   };
 }
 
@@ -2006,14 +2061,14 @@ function buildProductIntelBundleInternal({
 
   const shoppingCard = buildShoppingCardPayload({ product: normalizedProduct, bundle });
   const searchCard = buildSearchCardPayload({ product: normalizedProduct, bundle });
-  return {
+  return sanitizeProductIntelShopperCopy({
     ...bundle,
     ...(Array.isArray(shoppingCard.market_signal_badges) && shoppingCard.market_signal_badges.length
       ? { market_signal_badges: shoppingCard.market_signal_badges }
       : {}),
     shopping_card: shoppingCard,
     search_card: searchCard,
-  };
+  });
 }
 
 // Attach the agent-facing context (pivota.agent_product_context.v1) to every
@@ -2281,5 +2336,6 @@ module.exports = {
   hydrateProductWithGroundedIntel,
   synthesizeGroundedProductIntelBundle,
   normalizePublishedProductIntelBundle,
+  buildPublicProductIntelProjection,
   readPublishedProductIntelBundle,
 };

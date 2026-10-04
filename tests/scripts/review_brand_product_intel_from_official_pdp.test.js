@@ -275,7 +275,7 @@ describe('official PDP manual insight review', () => {
     expect(bundle.quality_state).toBe('reviewed');
     expect(bundle.evidence_profile).toBe('official_pdp_reviewed_formula_and_usage');
     expect(bundle.product_intel_core.what_it_is.body).toContain('satin finish');
-    expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
+    expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('How to use');
     expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).not.toContain('Official product detail');
   });
 
@@ -312,7 +312,7 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.what_it_is).toContain('Fenty Skin');
     expect(plan.preview.what_it_is).not.toContain('STRAIGHT UP');
     expect(plan.preview.what_it_is).not.toContain('THE LOWDOWN');
-    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('How to use');
   });
 
   test('keeps Fenty hydrating primer out of foundation coverage and matte language', () => {
@@ -408,9 +408,9 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.what_it_is).toContain('Kylie Cosmetics');
     expect(plan.preview.what_it_is).not.toContain('Shop');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
-      'Component pairing is clear',
-      'Finish role is easy to compare',
-      'Application order is explicit',
+      'Product details',
+      'Options',
+      'How to use',
     ]));
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
     expect(plan.preview.why_it_stands_out[0].body).toContain('Precision Pout Lip Liner');
@@ -687,8 +687,8 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.headline).toBe('Lip color');
     expect(plan.preview.what_it_is).not.toContain('Kylie Jenner Fragrances');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
-      'Ingredient list is available',
-      'Usage instructions available',
+      'Ingredients',
+      'How to use',
     ]));
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Scent profile cues');
     expect(plan.preview.shopping_highlight).toContain('shine finish');
@@ -845,9 +845,9 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.what_it_is).not.toContain('excludes it from recommendation merchandising');
     expect(JSON.stringify(plan.preview)).not.toContain('product data');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
-      'Sample format is explicit',
-      'Ingredient list is available',
-      'Usage instructions available',
+      'Product details',
+      'Sample size',
+      'How to use',
     ]));
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
     expect(plan.preview.shopping_highlight).not.toContain('shade range');
@@ -1017,9 +1017,9 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.what_it_is).toContain('This SKU is Rose Amber');
     expect(plan.preview.what_it_is).not.toContain('Finally');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
-      'Wear claims are specific',
-      'Application sequence is explicit',
-      'Formula disclosure is available',
+      'Shade',
+      'How to use',
+      'Ingredients',
     ]));
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
   });
@@ -1368,7 +1368,7 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.headline).toBe('Beauty accessory');
     expect(plan.preview.shopping_highlight).toBe('fragrance display');
     expect(plan.preview.what_it_is).toContain('non-formula fragrance tray accessory');
-    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Accessory format is explicit');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Options');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Shade and size are explicit');
     expect(JSON.stringify(plan.preview)).not.toContain('makeup organization');
   });
@@ -1779,5 +1779,85 @@ describe('official PDP manual insight review', () => {
     const bundle = buildInsightBundle(serumRow);
     expect(bundle.evidence_profile).toBe('official_pdp_reviewed_line');
     expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).not.toContain('Ingredient list is available');
+  });
+});
+
+
+describe('shopper facts stay separate from insight evaluation criteria', () => {
+  const rubricLanguage = /reviewed (?:pdp|usage|sku|key|lip|scent|tool|color|complexion|skincare)|source-backed|formula-sensitive review|safer to evaluate|unsupported (?:claims|benefits|actives)|claim-only listing|before (?:the shopper leaves|a shopper clicks)|reducing ambiguity|cues (?:are|such as)|fields are present|evidence only/i;
+
+  test('Judydoll matte lip ink explains finish, the exact shade, and application without internal standards', () => {
+    const bundle = buildInsightBundle(row({
+      title: 'Judydoll Matte Lip Ink',
+      brand: 'Judydoll',
+      canonical_url: 'https://judydoll.com/products/matte-lip-ink',
+      seed_data: {
+        pdp_description_raw: 'A lip ink with a soft matte finish.',
+        pdp_details_sections: [{ heading: 'Finish', body: 'Soft matte finish with buildable color.' }],
+        pdp_how_to_use_raw: 'Apply a thin layer to clean lips, then let it dry.',
+        variants: [{ title: '07 BURGUNDY INK', options: [{ name: 'Shade', value: '07 BURGUNDY INK' }] }],
+      },
+    }));
+    const points = bundle.product_intel_core.why_it_stands_out;
+    expect(points).toEqual([
+      expect.objectContaining({ headline: 'Product details', body: 'Soft matte finish with buildable color.' }),
+      expect.objectContaining({ headline: 'Shade', body: 'Shade: 07 BURGUNDY INK.' }),
+      expect.objectContaining({ headline: 'How to use', body: 'Apply a thin layer to clean lips, then let it dry.' }),
+    ]);
+    expect(JSON.stringify(points)).not.toMatch(rubricLanguage);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(rubricLanguage);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/shade (?:clarity|range)/i);
+    expect(bundle.shopping_card.highlight).not.toMatch(/shade (?:range|clarity)|full inci available/i);
+    expect(bundle.product_intel_core.best_for.map((item) => item.label).join(' ')).not.toMatch(/shade (?:range|clarity)|full inci available/i);
+    // Evidence strength remains structured metadata rather than shopper copy.
+    expect(points[0].evidence_strength).toBe('official_pdp_reviewed');
+  });
+
+  test.each([
+    ['Rose Eau de Parfum', 'Rose and cedar notes form a woody floral scent.'],
+    ['Scalp Massage Brush', 'Flexible silicone bristles massage the scalp during shampooing.'],
+    ['Matte Nail Polish', 'A matte nail polish in a deep burgundy shade.'],
+    ['Barrier Serum', 'A lightweight serum containing ceramides and glycerin.'],
+    ['Lip Liner Pencil', 'A retractable lip pencil with a matte finish.'],
+    ['Lip Gloss and Lip Liner Set', 'A set containing lip gloss and a lip liner pencil.'],
+    ['Lip Color Deluxe Sample', 'A 0.03 oz sample of satin-finish lip color.'],
+    ['Fragrance Display Tray', 'A glass tray for arranging fragrance bottles.'],
+  ])('%s keeps actual facts and omits unsupported ingredient and usage slots', (title, description) => {
+    const bundle = buildInsightBundle(row({ title, seed_data: { pdp_description_raw: description } }));
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([
+      expect.objectContaining({ headline: 'Product details', body: description }),
+    ]);
+    expect(JSON.stringify(bundle.product_intel_core.why_it_stands_out)).not.toMatch(rubricLanguage);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(rubricLanguage);
+  });
+
+  test.each(['Lip Ink', 'Lipstick', 'Lip Gloss', 'Lip Oil', 'Lip Balm', 'Lip Liner Pencil'])('%s intros use a known shade instead of shade-evaluation labels', (title) => {
+    const bundle = buildInsightBundle(row({
+      title,
+      seed_data: {
+        pdp_description_raw: 'A lip product in Burgundy with a matte finish and smooth color.',
+        variants: [{ title: 'Burgundy', options: [{ name: 'Shade', value: 'Burgundy' }] }],
+      },
+    }));
+    expect(bundle.product_intel_core.what_it_is.body).toContain('Burgundy');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/shade (?:clarity|range)|role cues|formula-sensitive review|source-backed/i);
+  });
+
+  test('ingredient-only copy names actual ingredients without claiming a full formula or safety advantage', () => {
+    const bundle = buildInsightBundle(row({
+      title: 'Lip Color',
+      seed_data: { pdp_ingredients_raw: 'Ingredients: Water, Glycerin, Silica, Synthetic Wax.' },
+    }));
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([
+      expect.objectContaining({ headline: 'Ingredients', body: 'Listed ingredients include Water, Glycerin, Silica.' }),
+    ]);
+    expect(bundle.product_intel_core.why_it_stands_out[0].body).not.toMatch(/full inci|safer|review|complete formula/i);
+  });
+
+  test('missing product facts do not become evidence-coverage filler', () => {
+    const sourceRow = row({ title: 'Lip Color', seed_data: {} });
+    expect(buildInsightBundle(sourceRow).product_intel_core.why_it_stands_out).toEqual([]);
+    expect(buildPlan(sourceRow, { brand: 'Tom Ford Beauty' }).skip_reason)
+      .toBe('candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity');
   });
 });
