@@ -2,7 +2,7 @@
 
 const {
   buildAnchorRefsFromProduct,
-  listApprovedRelationshipEdgesForAnchor,
+  readApprovedRelationshipEdgesForAnchor,
   relationshipEdgeToSimilarItem,
 } = require('../auroraBff/productRelationshipGraph');
 const {
@@ -63,6 +63,7 @@ function buildRelationshipGraphFetchMetadata({
   edges = [],
   items = [],
   error = null,
+  diagnostics = null,
 } = {}) {
   return {
     source: 'relationship_graph',
@@ -72,7 +73,23 @@ function buildRelationshipGraphFetchMetadata({
     anchor_ref_count: Array.isArray(anchorRefs) ? anchorRefs.length : 0,
     edge_count: Array.isArray(edges) ? edges.length : 0,
     item_count: Array.isArray(items) ? items.length : 0,
+    edge_count_semantics: 'returned_eligible_edges',
+    read_status: diagnostics?.read_status || (!enabled || !anchorRefs.length ? 'not_attempted' : error ? 'unavailable' : 'unknown'),
+    read_reason: diagnostics?.read_reason ?? (!enabled ? 'disabled' : !anchorRefs.length ? 'no_anchor_refs' : error ? 'read_failed' : null),
     ...(error ? { error: String(error) } : {}),
+  };
+}
+
+// An additive public contract. Old cached/mocked results remain unknown instead
+// of being relabeled empty, and arbitrary database error text is never projected.
+function relationshipGraphReadMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) metadata = {};
+  const statuses = new Set(['ready', 'empty', 'unavailable', 'not_attempted']);
+  const reasons = new Set(['no_eligible_edges', 'no_database', 'schema_unavailable', 'no_anchor_refs', 'disabled', 'read_failed']);
+  return {
+    relationship_graph_read_status: statuses.has(metadata.read_status) ? metadata.read_status : 'unknown',
+    relationship_graph_read_reason: reasons.has(metadata.read_reason) ? metadata.read_reason : null,
+    relationship_graph_edge_count_semantics: 'returned_eligible_edges',
   };
 }
 
@@ -152,7 +169,7 @@ async function fetchRelationshipGraphRecallForAnchor({
   }
 
   try {
-    const edges = await listApprovedRelationshipEdgesForAnchor({
+    const { edges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
       anchorType: 'product',
       anchorRefs,
       market,
@@ -163,7 +180,8 @@ async function fetchRelationshipGraphRecallForAnchor({
     const items = (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
     recordRelationshipGraphRecall({
       surface: normalizedSurface,
-      status: 'success',
+      status: diagnostics.read_status === 'unavailable' ? 'unavailable' : 'success',
+      ...(diagnostics.read_status === 'unavailable' ? { error: diagnostics.read_reason } : {}),
       latencyMs: Date.now() - startedAt,
       anchorRefCount: anchorRefs.length,
       edgeCount: Array.isArray(edges) ? edges.length : 0,
@@ -178,6 +196,7 @@ async function fetchRelationshipGraphRecallForAnchor({
         anchorRefs,
         edges,
         items,
+        diagnostics,
       }),
     };
   } catch (err) {
@@ -262,7 +281,7 @@ async function fetchRelationshipGraphRecallForAnchors({
   }
 
   try {
-    const edges = await listApprovedRelationshipEdgesForAnchor({
+    const { edges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
       anchorType: 'product',
       anchorRefs,
       market,
@@ -273,7 +292,8 @@ async function fetchRelationshipGraphRecallForAnchors({
     const items = (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
     recordRelationshipGraphRecall({
       surface: normalizedSurface,
-      status: 'success',
+      status: diagnostics.read_status === 'unavailable' ? 'unavailable' : 'success',
+      ...(diagnostics.read_status === 'unavailable' ? { error: diagnostics.read_reason } : {}),
       latencyMs: Date.now() - startedAt,
       anchorRefCount: anchorRefs.length,
       edgeCount: Array.isArray(edges) ? edges.length : 0,
@@ -288,6 +308,7 @@ async function fetchRelationshipGraphRecallForAnchors({
         anchorRefs,
         edges,
         items,
+        diagnostics,
       }),
     };
   } catch (err) {
@@ -393,6 +414,7 @@ function mapRelationshipGraphItemToDiscoveryProduct(item = {}, { rank = 0 } = {}
 
 module.exports = {
   SURFACE_FLAGS,
+  relationshipGraphReadMetadata,
   normalizeSurface,
   parseBooleanFlag,
   isRelationshipGraphSurfaceEnabled,

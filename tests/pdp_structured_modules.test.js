@@ -389,7 +389,16 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 
-  test('filters marketing fragments out of ingredient arrays when enough INCI evidence remains', () => {
+  test.each([false, true])('requires clean source evidence before promoting a polluted ingredient array (recovered=%s)', (recoverFromRawSource) => {
+    const expectedIngredients = [
+      'Helianthus Annuus (Sunflower) Seed Oil',
+      'Rosa Canina (Rosehip) Fruit Oil',
+      'Vitis Vinifera (Grape) Seed Oil',
+      'Butylene Glycol',
+      '1,2-Hexanediol',
+      'Sodium Hyaluronate',
+      'Water (Aqua/Eau)',
+    ];
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_structured_oil_lala',
@@ -399,6 +408,7 @@ describe('pdpBuilder structured PDP modules', () => {
         category: 'Serum',
         image_url: 'https://cdn.example.com/oil.jpg',
         price: { amount: 28, currency: 'USD' },
+        ...(recoverFromRawSource ? { pdp_ingredients_raw: expectedIngredients.join(', ') } : {}),
         ingredients_inci: [
           '10% Upcycled Rosehip Oil: Packed with fatty acids',
           'antioxidants',
@@ -419,17 +429,17 @@ describe('pdpBuilder structured PDP modules', () => {
       entryPoint: 'agent',
     });
 
+    // An ingredient-shaped subset cannot establish completeness after unknown
+    // fragments were dropped. Only a clean source can recover full authority.
+    if (!recoverFromRawSource) {
+      expect(findModule(payload, 'ingredients_inci')).toBeFalsy();
+      return;
+    }
     expect(findModule(payload, 'ingredients_inci')?.data).toEqual(
       expect.objectContaining({
-        items: [
-          'Helianthus Annuus (Sunflower) Seed Oil',
-          'Rosa Canina (Rosehip) Fruit Oil',
-          'Vitis Vinifera (Grape) Seed Oil',
-          'Butylene Glycol',
-          '1,2-Hexanediol',
-          'Sodium Hyaluronate',
-          'Water (Aqua/Eau)',
-        ],
+        items: expectedIngredients,
+        raw_text: expectedIngredients.join(', '),
+        source_quality_status: 'authoritative',
       }),
     );
   });

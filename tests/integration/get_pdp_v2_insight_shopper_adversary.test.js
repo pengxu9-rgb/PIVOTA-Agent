@@ -64,6 +64,22 @@ describe('real public PDP Insights transport boundary', () => {
     expect(result.modules.map((m) => m.type)).toEqual(['variant_selector', 'media_gallery']);
   });
 
+  test('media provenance is bounded without reopening arbitrary product dossiers', () => {
+    const media = { type: 'image', url: 'https://reviews.example/photo.jpg', role: 'customer_review',
+      provenance: { source_type: 'customer_review', review_id: 'r1', merchant_id: 'm1', product_id: 'p1',
+        scope: 'exact_item', verification_status: 'review_linked', moderation_status: 'active',
+        operator_note: sentinel, raw: { secret: sentinel } } };
+    const input = { product: { product_id: 'p1', provenance: { secret: sentinel } },
+      modules: [{ type: 'media_gallery', data: { items: [media], provenance: { secret: sentinel } } }] };
+    const projected = app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload(input);
+    expect(JSON.stringify(projected)).not.toContain(sentinel);
+    expect(projected.product.provenance).toBeUndefined();
+    expect(projected.modules[0].data.provenance).toBeUndefined();
+    expect(projected.modules[0].data.items[0].provenance).toEqual({
+      source_type: 'customer_review', review_id: 'r1', merchant_id: 'm1', product_id: 'p1',
+      scope: 'exact_item', verification_status: 'review_linked', moderation_status: 'active' });
+  });
+
   test('state dictionary module names survive but nested private values do not bypass wire redaction', () => {
     const input = {
       product: { product_id: 'p07', variants: [{ variant_id: 'v07', x_content_module_states: {

@@ -112,6 +112,7 @@ const {
   pickElectronicsMeta,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
+const { projectPublicMediaEvidence, projectPublicPdpStateDictionary } = require('./services/pdpPublicEvidence');
 const { usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney, projectCanonicalOffersMoney, isCanonicalProductGrain } = require('./services/canonicalPdpOwnMoney');
 const {
   enrichProductWithCatalogFashionFields,
@@ -465,6 +466,7 @@ const productRelationshipGraph = require('./auroraBff/productRelationshipGraph')
 const {
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
+  relationshipGraphReadMetadata,
 } = require('./services/relationshipGraphRecall');
 const {
   recordRelationshipGraphPostFilter,
@@ -1875,33 +1877,15 @@ const PRIVATE_PDP_PRODUCT_KEYS = new Set([
   'provenance', 'quality_improvement',
 ]);
 
-const PUBLIC_PDP_STATE_VALUES = new Set([
-  'absent', 'loading', 'ready', 'empty', 'error', 'missing', 'unavailable', 'blocked',
-  'not_fetched', 'withheld', 'not_applicable',
-]);
-
-function projectPublicPdpStateValue(value) {
-  const isState = (item) => typeof item === 'string' && PUBLIC_PDP_STATE_VALUES.has(item.toLowerCase());
-  if (isState(value) || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return value;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return Object.fromEntries(Object.entries(value)
-    .filter(([key, item]) => (key === 'state' || key === 'status') && isState(item)));
-}
-
-function projectPublicPdpStateDictionary(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value)
-    .map(([moduleName, state]) => [moduleName, projectPublicPdpStateValue(state)]));
-}
-
 function stripPrivatePdpProductFields(value) {
   if (Array.isArray(value)) return value.map(stripPrivatePdpProductFields);
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value)
+  const boundedMediaEvidence = projectPublicMediaEvidence(value);
+  return { ...Object.fromEntries(Object.entries(value)
     .filter(([key]) => !PRIVATE_PDP_PRODUCT_KEYS.has(key))
     .map(([key, item]) => [key, key === 'x_content_module_states'
       ? projectPublicPdpStateDictionary(item)
-      : stripPrivatePdpProductFields(item)]));
+      : stripPrivatePdpProductFields(item)])), ...(boundedMediaEvidence || {}) };
 }
 
 function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
@@ -1917,7 +1901,7 @@ function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
       ? pdpPayload.modules.filter((module) => {
           const type = String(module?.type || '').trim();
           return !RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES.has(type);
-        }).map((module) => module?.type === 'variant_selector'
+        }).map((module) => ['variant_selector', 'media_gallery'].includes(module?.type)
           ? { ...module, data: stripPrivatePdpProductFields(module.data) } : module)
       : [],
   };
@@ -26770,6 +26754,7 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
       underfill: 0,
       relationship_graph_enabled: true,
       relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+      ...relationshipGraphReadMetadata(graphRecall?.metadata),
       relationship_graph_curated_count: graphItems.length,
       relationship_graph_served_count: countRelationshipGraphSimilarProducts(items),
     },
@@ -26793,6 +26778,7 @@ async function fetchSimilarProductsDeduped(args = {}) {
         relationshipGraphMeta = {
           relationship_graph_enabled: true,
           relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+          ...relationshipGraphReadMetadata(graphRecall?.metadata),
           relationship_graph_curated_count: curated.length,
           relationship_graph_served_count: 0,
         };
@@ -27645,6 +27631,8 @@ function calibrateRelationshipGraphMetadataForVisibleProducts({
   return {
     relationship_graph_enabled: metadata.relationship_graph_enabled === true,
     relationship_graph_edge_count: toNonNegativeInteger(metadata.relationship_graph_edge_count),
+    ...relationshipGraphReadMetadata({ read_status: metadata.relationship_graph_read_status,
+      read_reason: metadata.relationship_graph_read_reason }),
     relationship_graph_curated_count: toNonNegativeInteger(metadata.relationship_graph_curated_count),
     ...(rawServedCount !== visibleServedCount
       ? { relationship_graph_raw_served_count: rawServedCount }
@@ -44041,11 +44029,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 servingCurrency: pdpServingCurrency,
               });
               if (skipSimilarFetchForAccessory) {
+                let graphReadDiagnostics = {};
                 if (isPdpRelationshipGraphServingEnabled()) {
                   const graphRecall = await fetchRelationshipGraphSimilarItems(fetchArgs.pdp_product, {
                     market: fetchArgs.pdp_product?.market || 'US',
                     limit: Number(fetchArgs.k) || 24,
                   });
+                  graphReadDiagnostics = { ...relationshipGraphReadMetadata(graphRecall?.metadata),
+                    relationship_graph_enabled: true,
+                    relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+                    relationship_graph_curated_count: Array.isArray(graphRecall?.items) ? graphRecall.items.length : 0,
+                    relationship_graph_served_count: 0 };
                   const graphOnlyEnvelope = buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
                     graphRecall,
                     limit: Number(fetchArgs.k) || 24,
@@ -44061,6 +44055,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     similar_status: 'empty',
                     skipped: true,
                     skipped_reason: 'no_verified_accessory_matches',
+                    ...graphReadDiagnostics,
                     low_confidence: false,
                     low_confidence_reason_codes: [],
                     underfill: 0,
@@ -44585,7 +44580,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const activeIngredientsData =
         allowsBeautyFormulaModules
           ? structuredIngredientModules.activeIngredientsData ||
-            (!productFamilyFormulaNotApplicable
+            (!structuredIngredientModules.authority && !productFamilyFormulaNotApplicable
               ? findPdpPayloadModuleData(pdpPayload, 'active_ingredients')
               : null) ||
             null
@@ -44593,7 +44588,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const ingredientsInciData =
         allowsBeautyFormulaModules
           ? structuredIngredientModules.ingredientsInciData ||
-            (!productFamilyFormulaNotApplicable
+            (!structuredIngredientModules.authority && !productFamilyFormulaNotApplicable
               ? findPdpPayloadModuleData(pdpPayload, 'ingredients_inci')
               : null) ||
             null
@@ -45643,7 +45638,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
       const responseModules = sanitizePdpSimilarResponseModules(modules, {
         servingCurrency: pdpServingCurrency,
-      }).map((module) => module?.type === 'variant_selector'
+      }).map((module) => ['variant_selector', 'reviews_preview', 'media_gallery'].includes(module?.type)
         ? { ...module, data: stripPrivatePdpProductFields(module.data) } : module);
       const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
@@ -45666,6 +45661,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         warnings: debug ? [] : [],
         missing,
         metadata: {
+          // The accessory UI may intentionally omit cards, but an attempted
+          // graph read still exposes its bounded status instead of losing it.
+          ...(hasRelationshipGraphMetadata(relatedProductsEnvelope?.metadata)
+            ? calibrateRelationshipGraphMetadataForVisibleProducts({ metadata: relatedProductsEnvelope.metadata, products: relatedProducts }) : {}),
           similar_status:
             wantsSimilar
               ? relatedProductsEnvelope?.metadata?.similar_status ||
@@ -48390,6 +48389,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 {
                   surface: 'find_similar_products',
                   edge_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_edge_count),
+                  ...relationshipGraphReadMetadata({ read_status: rawSimilarMetadata.relationship_graph_read_status, read_reason: rawSimilarMetadata.relationship_graph_read_reason }),
                   curated_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_curated_count),
                   raw_served_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_served_count),
                   final_served_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_served_count),
