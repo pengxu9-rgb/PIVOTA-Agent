@@ -76,6 +76,29 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
   test('requested merchant cannot impersonate a canonical observed subject',async () => {
     const req=i.normalizeDiscoveryRequest(payload);req.context.recent_views[0].merchant_id='foreign';const result=await load(req);expect(result.recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');expect(axios.get).not.toHaveBeenCalled();
   });
+  // Captured 2026-10-04: the storefront records the public PDP's listing
+  // merchant (merch_obs_…), while the canonical card carries the external-seed
+  // convention and the official offer keeps an agent_seed:: seller.
+  test('storefront view carrying the public listing merchant resolves through the real anchor SQL',async () => {
+    await officialListing();
+    const req=i.normalizeDiscoveryRequest(payload);req.context.recent_views[0].merchant_id='merch_obs_local';
+    const result=await load(req);
+    expect(result.recallSummary[0].status).toBe(200);expect(result.recallSummary[0]).not.toHaveProperty('failure_reason');
+    expect(result.products).toHaveLength(9);
+    const [anchor]=await i.fetchCanonicalSigBrowseCandidates({limit:1,signatureIds:[sig]});
+    expect(anchor.merchant_id).toBe('external_seed');
+    expect(anchor.history_subject_merchant_ids).toEqual(expect.arrayContaining(['external_seed','merch_obs_local','agent_seed::jurlique']));
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+  test.each([['private',"'private'",'live',null],['expired',"'public'",'expired',null],['suppressed',"'public'",'live','hidden']])('a %s listing merchant of the same product cannot vouch for a stored view',async (_,decision,status,suppression)=>{
+    await client.query(`INSERT INTO catalog_products(product_key,content_key,pivota_signature_id,merchant_id,platform,source_product_id,brand,canonical_url,sync_status,suppression_reason,updated_at) VALUES('other-listing','local_0',NULL,'merch_obs_other','external_seed','other','Jurlique','https://jurlique.com/products/other',$1,$2,NOW())`,[status,suppression]);
+    await client.query(`INSERT INTO catalog_row_trust VALUES('product','other-listing',${decision})`);
+    const req=i.normalizeDiscoveryRequest(payload);req.context.recent_views[0].merchant_id='merch_obs_other';
+    expect((await load(req)).recallSummary[0].failure_reason).toBe('canonical_history_subject_conflict');
+    await client.query("UPDATE catalog_row_trust SET serving_decision='public' WHERE subject_key='other-listing'; UPDATE catalog_products SET sync_status='live',suppression_reason=NULL WHERE product_key='other-listing'");
+    expect((await load(req)).recallSummary[0]).not.toHaveProperty('failure_reason');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
   test('only own US/USD in-stock offer determines served price',async () => {
     await client.query(`UPDATE agent_pdp_view SET price_min=1,offers=$1 WHERE content_key='local_1'`,[JSON.stringify([{market:'GB',currency:'GBP',price:1,availability:'in_stock'},{market:'US',currency:'USD',price:45,availability:'in_stock'}])]);
     await client.query("INSERT INTO catalog_offers(offer_id,product_key,merchant_id,market,currency,availability,merchant_effective_price,list_price,suppressed_at,suppression_reason) VALUES('foreign-cheap','local_1','foreign','US','USD','in_stock',1,NULL,NULL,NULL)");

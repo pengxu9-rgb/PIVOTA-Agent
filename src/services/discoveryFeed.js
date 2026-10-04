@@ -7289,6 +7289,8 @@ function buildProviderBreakdown(results = []) {
       : (stepFailureReason || skipReasonAsFailure);
     const eligibilityReason = recallSummary.find((step) =>
       step?.eligibility_reason === 'canonical_history_item_unavailable')?.eligibility_reason || null;
+    const historyFailureReason = recallSummary.find((step) =>
+      typeof step?.history_failure_reason === 'string')?.history_failure_reason || null;
     let zeroRecallReason = null;
     if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
       if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
@@ -7315,6 +7317,7 @@ function buildProviderBreakdown(results = []) {
       ...(failureReason ? { failure_reason: failureReason } : {}),
       ...(zeroRecallReason ? { zero_recall_reason: zeroRecallReason } : {}),
       ...(eligibilityReason ? { eligibility_reason: eligibilityReason } : {}),
+      ...(historyFailureReason ? { history_failure_reason: historyFailureReason, history_fallback: 'canonical_sig_cold' } : {}),
     };
   });
 }
@@ -7739,6 +7742,71 @@ async function loadCatalogCandidates({
   }
 
   const canonicalHistory = await loadCanonicalHistoryPrimary({ request, profile, limit: safeLimit });
+  const canonicalHistoryFailureReason = resolveCanonicalHistoryFailureReason(canonicalHistory);
+  if (canonicalHistory && canonicalHistoryFailureReason) {
+    // Personalization fails soft. A history subject that cannot be resolved
+    // (conflict, not public, ambiguous, unavailable, item unavailable, query
+    // error) serves the canonical_sig cold feed this request would get with no
+    // history, instead of an empty "unavailable" catalog. Still no legacy SDK,
+    // seed ladder or graph dispatch, and the reason stays on the provider
+    // breakdown, the recall summary and fallback_reason.
+    const historyStep = canonicalHistory.recallSummary?.[0] || {};
+    const unresolvedHistoryStep = {
+      provider: 'canonical_sig',
+      label: 'canonical_sig_personalized_unresolved',
+      query: historyStep.query || null,
+      offset: 0,
+      limit: Number(historyStep.limit || 0),
+      status: null,
+      returned: 0,
+      latency_ms: Number(historyStep.latency_ms || 0),
+      cache_hit: false,
+      history_failure_reason: canonicalHistoryFailureReason,
+      history_fallback: 'canonical_sig_cold',
+    };
+    const coldStartedAt = Date.now();
+    let coldProducts = null;
+    let coldStep;
+    try {
+      coldProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
+      coldStep = buildDiscoveryProviderStepSummary({
+        provider: 'canonical_sig',
+        label: getProviderLabel('canonical_sig'),
+        query: 'canonical_sig_browse',
+        limit: safeLimit,
+        returned: Array.isArray(coldProducts) ? coldProducts.length : 0,
+        status: Array.isArray(coldProducts) ? 200 : null,
+        latencyMs: Date.now() - coldStartedAt,
+        ...(Array.isArray(coldProducts) ? {} : { failureReason: 'canonical_sig_unavailable' }),
+      });
+    } catch (err) {
+      coldStep = buildDiscoveryProviderStepSummary({
+        provider: 'canonical_sig',
+        label: getProviderLabel('canonical_sig'),
+        query: 'canonical_sig_browse',
+        limit: safeLimit,
+        returned: 0,
+        status: null,
+        latencyMs: Date.now() - coldStartedAt,
+        failureReason: classifyDiscoveryQueryError(err),
+        error: err?.message || String(err),
+      });
+    }
+    const coldAnnotated = annotateProviderProducts('canonical_sig', Array.isArray(coldProducts) ? coldProducts : []);
+    providerResults.push({ provider: 'canonical_sig', products: coldAnnotated, recallSummary: [unresolvedHistoryStep, coldStep] });
+    mergeProducts(coldAnnotated);
+    candidateSource = 'canonical_sig';
+    primaryPathUsed = 'canonical_sig';
+    fallbackTriggered = true;
+    fallbackReason = canonicalHistoryFailureReason;
+    for (const provider of ['products_search', 'internal_catalog', 'external_seeds']) {
+      providerResults.push(buildSkippedProviderResult(provider, {
+        label: getProviderLabel(provider), query: providerQueries.join(' | '), limit: safeLimit,
+        skipReason: 'canonical_sig_history_cold_fallback',
+      }));
+    }
+    return { ...finalizeProviderResult(), canonicalHistoryFallbackReason: canonicalHistoryFailureReason };
+  }
   if (canonicalHistory) {
     candidateSource = 'canonical_sig_personalized';
     primaryPathUsed = 'canonical_sig_personalized';
@@ -9543,6 +9611,24 @@ function canonicalCategoryPath(value) {
   return parts.filter((part) => typeof part === 'string' && part.trim()).map((part) => part.trim());
 }
 
+// The stored category path expressed in the SAME domain vocabulary the profile's
+// dominantDomain uses (DOMAIN_KEYWORDS keys). agent_pdp_view stores a bare leaf
+// for most rows ('Serum', 'Face Cream', 'Beauty Product', 'gift-set') or NULL,
+// so its first segment is not a domain; comparing it raw to 'beauty' refused
+// every such history as a domain conflict. A taxonomy root is used as-is, a leaf
+// is classified by the stored labels only (never the brand or caller text), and
+// an unclassifiable single leaf is unknown (null).
+function canonicalStoredDomain(value) {
+  const path = canonicalCategoryPath(value);
+  if (!path.length) return null;
+  const root = normalizeText(path[0]);
+  if (root === 'fashion') return 'apparel';
+  if (Object.prototype.hasOwnProperty.call(DOMAIN_KEYWORDS, root)) return root;
+  const labelled = inferExplicitDomainFromLabels(path);
+  if (labelled) return labelled;
+  return path.length > 1 ? root : null;
+}
+
 function mapCanonicalIndexRowToProduct(row) {
   const categoryPath = canonicalCategoryPath(row.category_path);
   const productId = String(row.pivota_signature_id || '').trim();
@@ -9943,6 +10029,25 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           own_offers.offer_count,
           own_offers.offers,
           apv.category_path
+          ${signatureIds ? `,
+          -- History subject identity: every merchant whose PUBLIC, live,
+          -- unsuppressed listing belongs to this canonical product. These are
+          -- the merchants a public PDP of this sig can show (its listing
+          -- merchant), which is what the storefront records in browse history.
+          -- The mapped product's merchant_id is the external-seed sentinel for
+          -- mirror rows, so it alone can never match a recorded mirror view.
+          ARRAY(
+            SELECT DISTINCT listing.merchant_id
+            FROM catalog_products listing
+            JOIN catalog_row_trust listing_trust ON listing_trust.subject_type = 'product'
+              AND listing_trust.subject_key = listing.product_key
+              AND listing_trust.serving_decision = 'public'
+            WHERE listing.content_key = apv.content_key
+              AND listing.merchant_id IS NOT NULL
+              AND listing.sync_status = 'live'
+              AND listing.suppression_reason IS NULL
+            ORDER BY listing.merchant_id
+          ) AS public_listing_merchant_ids` : ''}
         FROM agent_pdp_view apv
         LEFT JOIN LATERAL (
           SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
@@ -10098,7 +10203,13 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
       params,
     );
     return (res.rows || []).filter((row) => (row.first_party_product_key || row.external_product_key) && (signatureIds || (Array.isArray(row.offers) && row.offers.length)))
-      .map(mapCanonicalIndexRowToProduct).filter(Boolean);
+      .map((row) => {
+        const product = mapCanonicalIndexRowToProduct(row);
+        // History anchors are never served; only they carry the subject identity set.
+        if (product && signatureIds) product.history_subject_merchant_ids = canonicalHistorySubjectMerchantIds(product, row);
+        return product;
+      })
+      .filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -10112,6 +10223,20 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
     // Everything else is a real failure and must stay one.
     throw err;
   }
+}
+
+// The merchants a recorded view of this canonical sig may legitimately carry:
+// the merchant the canonical card shows (first-party merchant, or the shared
+// external-seed convention for mirror rows), every public live listing merchant
+// of the same canonical product (what a public PDP shows as product.merchant_id
+// and canonical_product_ref.merchant_id), and the own offer sellers the card
+// carries. A merchant outside this set never had a public listing of the sig,
+// so a pairing with it stays refused.
+function canonicalHistorySubjectMerchantIds(product, row = {}) {
+  const listingMerchants = Array.isArray(row.public_listing_merchant_ids) ? row.public_listing_merchant_ids : [];
+  const offerMerchants = (Array.isArray(product?.offers) ? product.offers : []).map((offer) => offer?.merchant_id);
+  return uniqStrings([product?.merchant_id, ...listingMerchants, ...offerMerchants]
+    .map((value) => String(value || '').trim()).filter(Boolean), 64);
 }
 
 // A cold explicit query can select the same owned canonical brand index only
@@ -10214,6 +10339,22 @@ function isPotentialCanonicalHistoryPrimary(request) {
   return true;
 }
 
+// Why a canonical history primary cannot personalize this page, or null when it
+// can: a failure (conflict, not public, ambiguous, unavailable, query error) or
+// a typed eligibility outcome (the viewed item is unavailable, or its stored
+// scope holds nothing beyond the suppressed views).
+const CANONICAL_HISTORY_FALLBACK_ELIGIBILITY = new Set([
+  'canonical_history_item_unavailable',
+  'canonical_history_pool_empty',
+]);
+function resolveCanonicalHistoryFailureReason(result) {
+  const step = Array.isArray(result?.recallSummary) ? result.recallSummary[0] : null;
+  if (!step) return null;
+  if (typeof step.failure_reason === 'string' && step.failure_reason) return step.failure_reason;
+  if (CANONICAL_HISTORY_FALLBACK_ELIGIBILITY.has(step.eligibility_reason)) return step.eligibility_reason;
+  return null;
+}
+
 async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
   if (!isPotentialCanonicalHistoryPrimary(request)) return null;
   const views = request.context.recent_views;
@@ -10239,11 +10380,19 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     const allowedHistoryTerms = new Set();
     for (const view of views) {
       const anchor = byId.get(view.product_id);
-      if (!anchor || anchor.merchant_id !== view.merchant_id || !anchor.brand ||
+      // The storefront records the merchant its public PDP showed for the sig
+      // (the listing merchant), not the canonical card's merchant convention, so
+      // the stored subject accepts any merchant that has a public listing of
+      // this canonical product. A merchant the sig never had stays refused.
+      const subjectMerchants = Array.isArray(anchor?.history_subject_merchant_ids)
+        ? anchor.history_subject_merchant_ids : [anchor?.merchant_id];
+      if (!anchor || !subjectMerchants.includes(String(view.merchant_id || '').trim()) || !anchor.brand ||
           (view.brand && normalizeBrandText(view.brand) !== normalizeBrandText(anchor.brand)))
         return summary([], null, 'canonical_history_subject_conflict');
       const path = canonicalCategoryPath(anchor.category_path);
-      const domain = path[0] === 'fashion' ? 'apparel' : path[0];
+      // Compared in the profile's own domain vocabulary. The stored path is
+      // often a bare leaf ('Serum', 'Beauty Product'), never a domain itself.
+      const domain = canonicalStoredDomain(path);
       if (profile?.dominantDomain && profile.dominantDomain !== domain)
         return summary([], null, 'canonical_history_domain_conflict');
       if (anchor.currency !== 'USD') return summary([], null, 'canonical_history_currency_mismatch');
@@ -10264,12 +10413,20 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     if (failures.length) return summary([], null, 'canonical_history_query_failed');
     const allowedBrands = new Set(brands.map(normalizeBrandText));
     const scoped = products.filter((product) => {
-      const path = canonicalCategoryPath(product.category_path);
-      const domain = path[0] === 'fashion' ? 'apparel' : path[0];
+      const domain = canonicalStoredDomain(product.category_path);
       return allowedBrands.has(normalizeBrandText(product.brand)) &&
         (!domains.size || domains.has(domain)) && (!profile?.dominantDomain || domain === profile.dominantDomain);
     })
       .map(scopeCanonicalHistoryProduct).filter(Boolean);
+    // Recorded views are always suppressed from the page. A resolved subject
+    // whose stored scope holds nothing else would render "No picks yet", so it
+    // is typed (not a failure) and the caller serves the cold canonical feed.
+    const viewedIds = new Set(views.map((view) => view.product_id));
+    if (!scoped.some((product) => !viewedIds.has(product.product_id))) {
+      const exhausted = summary([], 200);
+      exhausted.recallSummary[0].eligibility_reason = 'canonical_history_pool_empty';
+      return exhausted;
+    }
     return summary(scoped, 200);
   } catch (err) {
     return summary([], null, classifyDiscoveryQueryError(err));
@@ -12228,6 +12385,8 @@ function buildRankDebug({
       ...(step?.failure_reason ? { failure_reason: String(step.failure_reason) } : {}),
       ...(step?.eligibility_reason === 'canonical_history_item_unavailable'
         ? { eligibility_reason: step.eligibility_reason } : {}),
+      ...(step?.history_failure_reason
+        ? { history_failure_reason: String(step.history_failure_reason), history_fallback: String(step.history_fallback || '') } : {}),
       ...(step?.config_source ? { config_source: String(step.config_source) } : {}),
       ...(step?.legacy_config_fallback ? { legacy_config_fallback: true } : {}),
       ...(step?.market ? { market: String(step.market) } : {}),
@@ -12442,8 +12601,21 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         ? candidateLoadResult.catalogUnavailableError
         : null;
     phaseTimer.mark('recall_catalog');
+    const canonicalHistoryFallbackReason =
+      typeof candidateLoadResult?.canonicalHistoryFallbackReason === 'string'
+        ? candidateLoadResult.canonicalHistoryFallbackReason
+        : null;
+    if (canonicalHistoryFallbackReason) {
+      // The served candidates are the cold canonical feed, so rank and select
+      // them exactly as the same request without history would. The recorded
+      // views still drive suppression (viewedKeys reads request.context).
+      profile = buildDiscoveryProfile({ ...request.context, recent_views: [], recent_queries: [] });
+      strategy = 'cold_start_curated';
+      personalizationSource = 'none';
+    }
     const relationshipGraphDiscovery =
-      (Array.isArray(options.candidateProducts) || ['canonical_sig_personalized', 'canonical_sig_explicit_brand'].includes(candidateLoadResult?.primaryPathUsed))
+      (Array.isArray(options.candidateProducts) || canonicalHistoryFallbackReason ||
+        ['canonical_sig_personalized', 'canonical_sig_explicit_brand'].includes(candidateLoadResult?.primaryPathUsed))
         ? {
             products: [],
             recallSummary: [],
@@ -12611,6 +12783,17 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         .map((view) => buildProductKey(view.merchant_id, view.product_id))
         .filter(Boolean),
     );
+    if (primaryPathUsed === 'canonical_sig_personalized' || canonicalHistoryFallbackReason) {
+      // A canonical sig names one product whichever merchant recorded it. The
+      // storefront records the PDP listing merchant while the canonical card
+      // carries its own merchant convention, so suppress the viewed sig by id.
+      const viewedSignatures = new Set((request.context.recent_views || [])
+        .map((view) => String(view?.product_id || '').trim())
+        .filter((id) => /^sig_[a-f0-9]{32}$/.test(id)));
+      for (const candidate of scopedCandidates) {
+        if (candidate?.key && viewedSignatures.has(String(candidate.productId || '').trim())) viewedKeys.add(candidate.key);
+      }
+    }
 
     const scoredCandidates = scopedCandidates.map((candidate) => ({
       candidate,
@@ -12787,6 +12970,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 	    const metadata = {
 	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
+      ...(canonicalHistoryFallbackReason ? { history_fallback_reason: canonicalHistoryFallbackReason } : {}),
       history_items_used: profile.historyItemsUsed,
       query_items_used: Number(profile.queryItemsUsed || 0),
       anchor_count: profile.anchors.length,
@@ -12969,6 +13153,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         candidate_source: effectiveCandidateSource,
         candidate_counts: candidateCounts,
         provider_breakdown: providerBreakdown,
+        ...(canonicalHistoryFallbackReason ? { history_fallback_reason: canonicalHistoryFallbackReason } : {}),
         latency_ms: latencyMs,
         phase_ms: phaseMs,
       },
@@ -13105,6 +13290,9 @@ module.exports = {
     browseUsesCanonicalSig,
     fetchCanonicalSigBrowseCandidates,
     loadCanonicalHistoryPrimary,
+    resolveCanonicalHistoryFailureReason,
+    canonicalStoredDomain,
+    canonicalHistorySubjectMerchantIds,
     loadCanonicalBrandQueryPrimary,
     isPotentialCanonicalBrandQueryPrimary,
     canonicalCategoryPath,

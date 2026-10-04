@@ -1,0 +1,218 @@
+{
+  "_note": "Captured 2026-10-04 from the public storefront proxy (https://agent.pivota.cc/api/gateway): get_pdp_v2 with include offers, get_discovery_feed cold home and brand-scoped browse. Catalog ids only, no buyer data. browse_history entries are what pivota-agent-ui ProductDetailClient.upsertLocalBrowseHistory writes from that PDP payload; recent_views are what mergeDiscoveryRecentViews/normalizeDiscoveryRecentView send. anchor_rows reconstruct the canonical history SQL row from the captured card (merchant_id external_seed, brand, category_path, offers) plus the PDP listing identity (canonical_product_ref.product_key/merchant_id).",
+  "subjects": {
+    "krave": {
+      "pdp": {
+        "product_merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_a6747fa7eb42a31c",
+          "product_id": "ext_8026e90301d17f1f7745b5c7",
+          "platform": "external_seed",
+          "product_key": "prod::external_seed::external_seed::ext_8026e90301d17f1f7745b5c7"
+        },
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ],
+        "category_path": [
+          "beauty",
+          "skincare",
+          "treat",
+          "serum"
+        ]
+      },
+      "browse_history_entry": {
+        "product_id": "sig_bb8acf5d9319c377ce7710dd06fd3395",
+        "merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "title": "24 Carrot Retinal",
+        "brand": "KraveBeauty",
+        "price": 28,
+        "image": "https://cdn.shopify.com/s/files/1/2090/8057/files/24CR01_e62fc7ab-fd9d-4aa8-83a1-76411b3ebed5.png?v=1757687087",
+        "description": "Powered by encapsulated retinal, antioxidant-rich upcycled carrot extract, and barrier-supporting torula oil, this multi-benefit retinal serum promotes cell turnover and helps improve uneven skin tone, texture, and fine lines—without the irritation.",
+        "timestamp": 1791100800000
+      },
+      "recent_view": {
+        "product_id": "sig_bb8acf5d9319c377ce7710dd06fd3395",
+        "merchant_id": "merch_obs_a6747fa7eb42a31c",
+        "title": "24 Carrot Retinal",
+        "description": "Powered by encapsulated retinal, antioxidant-rich upcycled carrot extract, and barrier-supporting torula oil, this multi-benefit retinal serum promotes cell turnover and helps improve uneven skin tone, texture, and fine lines—without the irritation.",
+        "brand": "KraveBeauty",
+        "viewed_at": "2026-10-04T08:00:00.000Z",
+        "history_source": "local"
+      },
+      "canonical_card": {
+        "product_id": "sig_bb8acf5d9319c377ce7710dd06fd3395",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "brand": "KraveBeauty",
+        "category_path": null,
+        "external_product_key": "prod::external_seed::external_seed::ext_8026e90301d17f1f7745b5c7",
+        "currency": "USD",
+        "offer_merchant_ids": [
+          "merch_obs_a6747fa7eb42a31c"
+        ]
+      }
+    },
+    "judydoll": {
+      "pdp": {
+        "product_merchant_id": "merch_obs_a25cbba37ef98c52",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_a25cbba37ef98c52",
+          "product_id": "ext_0f95730ee5ba05a6b7957ada",
+          "platform": "external_seed",
+          "product_key": "prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada"
+        },
+        "offer_merchant_ids": [
+          "merch_obs_a25cbba37ef98c52"
+        ],
+        "category_path": [
+          "beauty"
+        ]
+      },
+      "browse_history_entry": {
+        "product_id": "sig_6433c8107859a484fb72d14861e84690",
+        "merchant_id": "merch_obs_a25cbba37ef98c52",
+        "title": "Silky Matte Lip Ink",
+        "brand": "Judydoll",
+        "price": 13.99,
+        "image": "https://cdn.shopify.com/s/files/1/0735/0098/3573/files/07-1_8853efa7-049b-4d61-a316-bb598493e4e4.webp?v=1776762363",
+        "description": "48H Long-Lasting Color: Bold, lightweight color that stays put all day. Silky Smooth Glide: Effortless application with a non-dragging, even finish. Transfer-Proof & Waterproof: Smudge-proof, food-proof, and resistant to daily wear. Comfortable, Non-Drying Wear: Lightweight formula with a soft matte feel, no stickiness. NET WT.: 5.0 g / 0.176 oz",
+        "timestamp": 1791100800000
+      },
+      "recent_view": {
+        "product_id": "sig_6433c8107859a484fb72d14861e84690",
+        "merchant_id": "merch_obs_a25cbba37ef98c52",
+        "title": "Silky Matte Lip Ink",
+        "description": "48H Long-Lasting Color: Bold, lightweight color that stays put all day. Silky Smooth Glide: Effortless application with a non-dragging, even finish. Transfer-Proof & Waterproof: Smudge-proof, food-proof, and resistant to daily wear. Comfortable, Non-Drying Wear: Lightweight formula with a soft matte feel, no stickiness. NET WT.: 5.0 g / 0.176 oz",
+        "brand": "Judydoll",
+        "viewed_at": "2026-10-04T08:00:00.000Z",
+        "history_source": "local"
+      },
+      "canonical_card": {
+        "product_id": "sig_6433c8107859a484fb72d14861e84690",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "brand": "Judydoll",
+        "category_path": [
+          "Beauty Product"
+        ],
+        "external_product_key": "prod::external_seed::external_seed::ext_0f95730ee5ba05a6b7957ada",
+        "currency": "USD",
+        "offer_merchant_ids": [
+          "merch_obs_a25cbba37ef98c52"
+        ]
+      }
+    },
+    "jurlique": {
+      "pdp": {
+        "product_merchant_id": "merch_obs_25b829cb679502f8",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "jurlique:56d282dd7dd0fc1a",
+          "platform": "external_seed",
+          "product_key": "ext:jurlique-iconic-starter-ritual::746baef9"
+        },
+        "offer_merchant_ids": [
+          "merch_obs_25b829cb679502f8"
+        ],
+        "category_path": [
+          "beauty",
+          "sets",
+          "gift-set"
+        ]
+      },
+      "browse_history_entry": {
+        "product_id": "sig_3d1b5a5627cbb101f388e5a90c80b4e5",
+        "merchant_id": "merch_obs_25b829cb679502f8",
+        "title": "Iconic Starter Ritual",
+        "brand": "Jurlique",
+        "price": 45,
+        "image": "https://jurlique.com/cdn/shop/files/Herbal_Recovery_cd1f4e1e-5b7c-4ecb-930b-6299bdb41de1.png?v=1769735530",
+        "description": "Indulge in this iconic discovery set for a complete ritual that transforms your skincare experience. Perfect for gifting or self-pampering. $64 value**Valued by Jurlique based on RRP of full-sized products.",
+        "timestamp": 1791100800000
+      },
+      "recent_view": {
+        "product_id": "sig_3d1b5a5627cbb101f388e5a90c80b4e5",
+        "merchant_id": "merch_obs_25b829cb679502f8",
+        "title": "Iconic Starter Ritual",
+        "description": "Indulge in this iconic discovery set for a complete ritual that transforms your skincare experience. Perfect for gifting or self-pampering. $64 value**Valued by Jurlique based on RRP of full-sized products.",
+        "brand": "Jurlique",
+        "viewed_at": "2026-10-04T08:00:00.000Z",
+        "history_source": "local"
+      },
+      "canonical_card": {
+        "product_id": "sig_3d1b5a5627cbb101f388e5a90c80b4e5",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "brand": "Jurlique",
+        "category_path": [
+          "gift-set"
+        ],
+        "external_product_key": "ext:jurlique-iconic-starter-ritual::746baef9",
+        "currency": "USD",
+        "offer_merchant_ids": [
+          "agent_seed::jurlique"
+        ]
+      }
+    }
+  },
+  "smoke_seed_card": {
+    "product_id": "sig_615cde705e4be2eaf7eea5f25b391728",
+    "merchant_id": "external_seed",
+    "platform": "external_seed",
+    "title": "Niacinamide Serum",
+    "description": "Promote smooth, even skin and minimize the appearance of pores with Niacinamide Serum from Good Molecules. Formulated with 10% Niacinamide (vitamin B3),...",
+    "brand": "Good Molecules",
+    "category": "Serum",
+    "category_path": [
+      "Serum"
+    ],
+    "product_type": "Serum",
+    "external_product_key": "prod::external_seed::external_seed::ext_1c9bedf3881413c3e5b81689",
+    "currency": "USD",
+    "offer_merchant_ids": [
+      "merch_obs_e644ed0256549e83"
+    ]
+  },
+  "observed_prod_gateway_1e225cc40": {
+    "home_krave_view": {
+      "products": 0,
+      "catalog_status": "unavailable",
+      "candidate_source": "canonical_sig_personalized",
+      "canonical_sig": {
+        "successful": false,
+        "returned": 0,
+        "failure_reason": "canonical_history_subject_conflict"
+      }
+    },
+    "browse_judydoll_view": {
+      "products": 0,
+      "catalog_status": "unavailable",
+      "candidate_source": "canonical_sig_personalized",
+      "canonical_sig": {
+        "successful": false,
+        "returned": 0,
+        "failure_reason": "canonical_history_subject_conflict"
+      }
+    },
+    "home_smoke_seed_view": {
+      "products": 0,
+      "catalog_status": "unavailable",
+      "candidate_source": "canonical_sig_personalized",
+      "canonical_sig": {
+        "successful": false,
+        "returned": 0,
+        "failure_reason": "canonical_history_domain_conflict"
+      }
+    },
+    "home_no_history": {
+      "products": 4,
+      "catalog_status": null,
+      "candidate_source": "canonical_sig",
+      "canonical_sig": {
+        "successful": true,
+        "returned": 46,
+        "failure_reason": null
+      }
+    }
+  }
+}
