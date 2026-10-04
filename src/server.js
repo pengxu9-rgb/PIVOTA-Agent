@@ -112,6 +112,7 @@ const {
   pickElectronicsMeta,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
+const { usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney, projectCanonicalOffersMoney, isCanonicalProductGrain } = require('./services/canonicalPdpOwnMoney');
 const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
@@ -44532,6 +44533,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         logger?.warn?.({ err: err?.message || String(err) }, 'merchant variant publish skipped');
       }
 
+      let canonicalOwnMoney = null;
+      const canonicalOwnProductGrain = isCanonicalProductGrain(canonicalProductForPdp, canonicalProductRef);
+      if (requestedPivotaSignatureId && usesCanonicalOwnMoney(
+        canonicalProductRef, offersGateBuyerMarket(payload, metadata) || primaryMarket(), pdpServingCurrency,
+      )) {
+        try {
+          canonicalOwnMoney = await readCanonicalOwnMoney({ ref: canonicalProductRef, query });
+          canonicalProductForPdp = projectCanonicalProductMoney(canonicalProductForPdp, canonicalOwnMoney, { ref: canonicalProductRef });
+        } catch (error) {
+          const unavailable = error?.code === 'CURRENT_OWN_OFFER_UNAVAILABLE';
+          return res.status(unavailable ? 409 : 503).json(buildPdpV2ErrorBody({
+            error: unavailable ? 'CURRENT_OWN_OFFER_UNAVAILABLE' : 'CURRENT_OWN_OFFER_READ_FAILED',
+            message: 'Selected canonical listing has no verified current offer money',
+            reasonCode: unavailable ? 'CURRENT_OWN_OFFER_UNAVAILABLE' : 'CURRENT_OWN_OFFER_READ_FAILED',
+            requestedProductId: requestedPivotaSignatureId,
+            resolvedProductId: canonicalProductRef.product_id,
+            resolvedMerchantId: canonicalProductRef.merchant_id,
+          }));
+        }
+      }
+
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
         relatedProducts,
@@ -45173,6 +45195,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         } catch {
           offersData = null;
+        }
+
+        if (offersData && canonicalOwnMoney) {
+          try {
+            offersData = projectCanonicalOffersMoney(offersData, canonicalProductRef, canonicalOwnMoney, { productGrain: canonicalOwnProductGrain, selectedVariantId: canonicalProductForPdp.default_variant_id, publicSignatureId: requestedPivotaSignatureId });
+          } catch {
+            return res.status(409).json(buildPdpV2ErrorBody({
+              error: 'CURRENT_OWN_OFFER_UNAVAILABLE',
+              message: 'Selected canonical offer has no verified current SKU money',
+              reasonCode: 'CURRENT_OWN_OFFER_UNAVAILABLE',
+              requestedProductId: requestedPivotaSignatureId,
+            }));
+          }
         }
 
         if (offersData) {
