@@ -96,12 +96,18 @@ async function readCanonicalOwnMoney({ ref, query }) {
       AND coalesce(co.merchant_effective_price, co.list_price) > 0
     ORDER BY s.source_variant_id, co.offer_id
   `, [ref.product_key, ref.merchant_id]);
+  return moneyFromOwnRows(result.rows || [], ref.product_key);
+}
+
+// One rule for turning eligible own-offer rows into money per variant, shared by the selected listing
+// and every other seller's listing.
+function moneyFromOwnRows(rows, productKey) {
   const moneyByVariant = new Map();
-  for (const row of result.rows || []) {
+  for (const row of rows) {
     const id = typeof row.source_variant_id === 'string' ? row.source_variant_id.trim() : '';
     if (!id) continue;
-    const placeholder = id === ref.product_key && row.sku_key === `${ref.product_key}::canonical`;
-    const numeric = storedNumericVariant(id, ref.product_key);
+    const placeholder = id === productKey && row.sku_key === `${productKey}::canonical`;
+    const numeric = storedNumericVariant(id, productKey);
     // Unknown external namespace IDs do not gain a numeric alias by suffix.
     const keys = placeholder ? [CANONICAL_PRODUCT] : [id, ...(numeric ? [numeric] : [])];
     const amount = Number(row.amount);
@@ -116,6 +122,80 @@ async function readCanonicalOwnMoney({ ref, query }) {
   }
   if (!moneyByVariant.size) throw unavailable();
   return moneyByVariant;
+}
+
+// Other sellers' listings on a verified page are checked by the same rules as the selected listing's
+// own money: public trust, live, enrichment lane, own-seller offer, US/USD, in stock, positive whole
+// cents. One statement for every displayed listing. A listing that maps to more than one product, has
+// no eligible row, or carries conflicting prices is simply absent from the result (unverified).
+const MAX_VERIFIED_SELLER_LISTINGS = 20;
+
+async function readCanonicalSellerOffersMoney({ listings, query }) {
+  const unique = [];
+  const seen = new Set();
+  for (const listing of listings || []) {
+    const merchantId = typeof listing?.merchant_id === 'string' ? listing.merchant_id.trim() : '';
+    const productId = typeof listing?.product_id === 'string' ? listing.product_id.trim() : '';
+    const key = `${merchantId}\u0000${productId}`;
+    if (!merchantId || !productId || seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ merchantId, productId });
+    if (unique.length >= MAX_VERIFIED_SELLER_LISTINGS) break;
+  }
+  const verified = new Map();
+  if (!unique.length) return verified;
+  const result = await query(`
+    WITH wanted AS (
+      SELECT * FROM unnest($1::text[], $2::text[]) AS w(merchant_id, product_id)
+    ), listing AS (
+      SELECT DISTINCT w.merchant_id, w.product_id, cp.product_key
+      FROM wanted w
+      JOIN catalog_products cp ON cp.merchant_id = w.merchant_id
+        AND (cp.source_product_id = w.product_id OR cp.product_key IN (
+          SELECT eps.attached_product_key FROM external_product_seeds eps
+          WHERE eps.external_product_id = w.product_id AND eps.status = 'active'))
+    )
+    SELECT l.merchant_id AS listing_merchant_id, l.product_id AS listing_product_id,
+      own_cp.product_key, co.offer_id, co.sku_key, s.source_variant_id,
+      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount
+    FROM listing l
+    JOIN catalog_products own_cp ON own_cp.product_key = l.product_key
+    JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+      AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
+    JOIN catalog_offers co ON co.product_key = own_cp.product_key
+    JOIN catalog_skus s ON s.sku_key = co.sku_key
+      AND s.product_key = own_cp.product_key AND s.merchant_id = own_cp.merchant_id
+      AND s.currency = 'USD' AND s.suppressed_at IS NULL AND s.suppression_reason IS NULL
+    WHERE own_cp.platform = 'external_seed'
+      AND own_cp.source_system = 'catalog_enrichment_agent_v1'
+      AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+      AND ${buildCanonicalOwnOfferSellerSql()}
+      AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+      AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
+      AND coalesce(co.merchant_effective_price, co.list_price) > 0
+    ORDER BY l.merchant_id, l.product_id, s.source_variant_id, co.offer_id
+  `, [unique.map(item => item.merchantId), unique.map(item => item.productId)]);
+  const grouped = new Map();
+  for (const row of result.rows || []) {
+    const key = `${row.listing_merchant_id}\u0000${row.listing_product_id}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+  for (const [key, rows] of grouped) {
+    const productKeys = new Set(rows.map(row => row.product_key));
+    if (productKeys.size !== 1) continue;
+    const [productKey] = productKeys;
+    try {
+      verified.set(key, moneyFromOwnRows(rows, productKey));
+    } catch {
+      // Conflicting or malformed money: this listing stays unverified, the others are unaffected.
+    }
+  }
+  return verified;
+}
+
+function sellerListingKey(offer) {
+  return `${String(offer?.merchant_id || '').trim()}\u0000${String(offer?.product_id || '').trim()}`;
 }
 
 function projectVariant(variant, moneyByVariant, nativeIdentity = null) {
@@ -187,6 +267,46 @@ function projectCanonicalOffersMoney(data, ref, moneyByVariant, { productGrain =
   return rankCanonicalOffers(data, offers);
 }
 
+// Every other seller's offer on a verified page shows only money the current read verified. An offer
+// with verified money is re-priced from it (offer and each of its own variants) and listed in
+// `verifiedOffers`; an offer that could not be verified keeps its listing but loses its money, is out
+// of stock and says why, so it can never be bought on a stale cache price. The selected listing is
+// already projected by projectCanonicalOffersMoney and is left untouched here.
+function projectSellerOffersMoney(data, ref, verifiedByListing) {
+  if (!data || !Array.isArray(data.offers)) return { data, verifiedOffers: [] };
+  const verifiedOffers = [];
+  const offers = data.offers.map(offer => {
+    if (isSelectedListingOffer(offer, ref)) return offer;
+    const money = verifiedByListing?.get(sellerListingKey(offer));
+    const offerVariantId = String(offer?.selected_variant_id || offer?.variant_id || '').trim();
+    const rows = Array.isArray(offer?.variants) ? offer.variants : [];
+    // Product-grain: one placeholder price for a listing with no own variant axis.
+    const grain = money?.get(CANONICAL_PRODUCT);
+    const variantMoney = (id) => (grain && (rows.length <= 1) ? grain : money?.get(String(id || '').trim()));
+    const selectedMoney = money && variantMoney(offerVariantId || rows[0]?.variant_id || offer?.product_id);
+    if (!money || !selectedMoney) {
+      const next = { ...withheld(offer), current_own_offer_status: 'unavailable',
+        price_verification: 'unverified', inventory: notInStock(offer?.inventory) };
+      if (rows.length) next.variants = rows.map(withheldBuiltVariant);
+      return next;
+    }
+    const variants = rows.map(variant => {
+      const current = variantMoney(variant?.variant_id);
+      if (!current) return withheldBuiltVariant(variant);
+      verifiedOffers.push({ offer_id: offer.offer_id, merchant_id: offer.merchant_id, product_id: offer.product_id,
+        variant_id: String(variant.variant_id), amount: current.amount, currency: current.currency });
+      return { ...variant, price: { current: { amount: current.amount, currency: current.currency } } };
+    });
+    if (!rows.length) {
+      verifiedOffers.push({ offer_id: offer.offer_id, merchant_id: offer.merchant_id, product_id: offer.product_id,
+        variant_id: offerVariantId || String(offer.product_id), amount: selectedMoney.amount, currency: selectedMoney.currency });
+    }
+    return { ...offer, price: { amount: selectedMoney.amount, currency: selectedMoney.currency },
+      price_verification: 'verified', ...(rows.length ? { variants } : {}) };
+  });
+  return { data: rankCanonicalOffers(data, offers), verifiedOffers };
+}
+
 function rankCanonicalOffers(data, offers) {
   const prioritized = prioritizeOffers(offers);
   const priced = prioritized.filter(offer => offer?.price?.currency === 'USD');
@@ -256,7 +376,26 @@ function withholdCanonicalOffersMoney(data, ref) {
   return { ...ranked, offers: ordered, ...(own.offer_id ? { default_offer_id: own.offer_id } : {}) };
 }
 
-module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney,
+// A listing without current own money is not purchasable, so a legacy (non-evidence) reply must not
+// offer generic "Add to Cart" / "Buy Now" actions for it: they carry no target and send an agent into
+// a checkout that cannot succeed. Every other action and all content are kept.
+const PURCHASE_ACTION_TYPES = new Set(['add_to_cart', 'buy_now']);
+
+function withoutCanonicalPurchaseActions(response) {
+  if (!response || !Array.isArray(response.modules)) return response;
+  return {
+    ...response,
+    modules: response.modules.map(module => {
+      const payload = module?.type === 'canonical' ? module.data?.pdp_payload : null;
+      if (!payload || !Array.isArray(payload.actions)) return module;
+      return { ...module, data: { ...module.data, pdp_payload: { ...payload,
+        actions: payload.actions.filter(action => !PURCHASE_ACTION_TYPES.has(action?.action_type)) } } };
+    }),
+  };
+}
+
+module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney, readCanonicalSellerOffersMoney, projectSellerOffersMoney,
+  MAX_VERIFIED_SELLER_LISTINGS, withoutCanonicalPurchaseActions,
   projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain,
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
   withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED };

@@ -155,6 +155,11 @@ test.each([undefined, false, 'true'])('preserves current-main legacy unpriced200
   expect(product).not.toHaveProperty('price');
   expect(product.availability.in_stock).toBe(false); // Preserved upstream legacy presentation only.
   expect(product.variants.every(v => v.current_own_offer_status === 'unavailable' && !v.price)).toBe(true);
+  // 2026-10-05: a listing that cannot be bought no longer offers targetless purchase actions to
+  // legacy callers (MCP agents and other non-evidence clients); the page itself is unchanged.
+  const actions = res.body.modules.find(m => m.type === 'canonical').data.pdp_payload.actions || [];
+  expect(actions.map(a => a.action_type)).not.toContain('add_to_cart');
+  expect(actions.map(a => a.action_type)).not.toContain('buy_now');
 });
 
 test('a DB read failure remains distinguishable503 even with evidence opt-in', async () => {
@@ -191,6 +196,8 @@ test('a valid exact current-own product offer remains executable when opt-in is 
     reason_code: 'CURRENT_OWN_OFFER_VERIFIED',
     product_ref: { merchant_id: merchant, product_id: pid }, selected_variant_id: product.default_variant_id,
     verified_variants: [{ variant_id: product.default_variant_id, amount: 19.95, currency: 'USD' }],
+    // No other seller is displayed in this fixture, so no other seller's offer is certified.
+    verified_offers: [],
     verified_at: expect.any(String), expires_at: expect.any(String) };
   expect(Date.parse(res.body.metadata.commerce.expires_at) - Date.parse(res.body.metadata.commerce.verified_at)).toBe(60000);
   expect(Date.parse(res.body.metadata.commerce.verified_at)).toBeLessThanOrEqual(Date.now());
