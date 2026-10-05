@@ -73,6 +73,43 @@ function buildRecentView(seedProduct) {
   };
 }
 
+// The personalized steps must test personalization. A seed whose stored brand
+// holds nothing beyond itself is served the cold feed by design
+// (canonical_history_pool_empty), so it cannot test personalization: the gate
+// walks the cold cards to the first brand with more than one in-scope row, as
+// decided by the canonical history reader itself. Every other outcome of a
+// walked seed is evaluated strictly (conflicts, not public, unavailable,
+// underfill all fail). If no walked card qualifies the gate fails with a clear
+// reason instead of passing on the cold feed.
+const MAX_PERSONALIZATION_SEEDS = 6;
+const EXHAUSTED_SCOPE_REASON = 'canonical_history_pool_empty';
+
+function listSeedProducts(response, max = MAX_PERSONALIZATION_SEEDS) {
+  const products = Array.isArray(response?.products) ? response.products : [];
+  const seen = new Set();
+  const seeds = [];
+  for (const product of products) {
+    const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+    const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
+    const title = String(product?.title || product?.name || '').trim();
+    if (!merchantId || !productId || !title) continue;
+    const brandKey = String(product?.brand || '').trim().toLowerCase() || `product:${productId}`;
+    if (seen.has(brandKey)) continue;
+    seen.add(brandKey);
+    seeds.push(product);
+    if (seeds.length >= max) break;
+  }
+  return seeds;
+}
+
+// True only for the declared "stored scope holds nothing beyond the view"
+// outcome; anything else (including other fallbacks) is evaluated strictly.
+function isExhaustedHistoryScope(response) {
+  const metadata = response && typeof response.metadata === 'object' && response.metadata ? response.metadata : {};
+  return String(metadata.history_fallback_reason || '') === EXHAUSTED_SCOPE_REASON &&
+    String(metadata.fallback_reason || '') === EXHAUSTED_SCOPE_REASON;
+}
+
 function ensure(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -156,6 +193,16 @@ function validateDiscoveryResponse(response, expectations = {}) {
     ensure(
       String(metadata.candidate_source || '') === String(expectations.candidateSource || EXPECTED_CANDIDATE_SOURCE),
       `unexpected candidate_source: ${metadata.candidate_source || 'missing'}`,
+    );
+  }
+
+  if (expectations.requireNoHistoryFallback) {
+    ensure(
+      !metadata.history_fallback_reason && !metadata.fallback_reason,
+      `personalized step fell back: ${JSON.stringify({
+        fallback_reason: metadata.fallback_reason || null,
+        history_fallback_reason: metadata.history_fallback_reason || null,
+      })}`,
     );
   }
 
@@ -397,19 +444,15 @@ async function runSmoke(options = {}) {
   });
   console.log(`PASS cold_start_home ${JSON.stringify(coldStartResult)}`);
 
-  const seedProduct = pickSeedProduct(coldStart);
-  const recentView = buildRecentView(seedProduct);
-  const recentQuery = deriveRecentQuery(seedProduct);
-  const suppressedKey = `${recentView.merchant_id}::${recentView.product_id}`;
-
-  const personalizedHome = await postDiscoveryFeed({
+  const personalizedCandidateSources = [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'];
+  const postPersonalized = (surface, recentView, recentQuery, traceSuffix) => postDiscoveryFeed({
     baseUrl,
     endpoint,
     apiKey,
     authToken,
     timeoutMs,
     payload: {
-      surface: 'home_hot_deals',
+      surface,
       page: 1,
       limit: 6,
       debug: true,
@@ -422,58 +465,58 @@ async function runSmoke(options = {}) {
     },
     metadata: {
       source,
-      trace_id: `${tracePrefix}_personalized_home`,
+      trace_id: `${tracePrefix}_${traceSuffix}`,
     },
   });
 
-  const personalizedHomeResult = validateDiscoveryResponse(personalizedHome, {
-    discoveryStrategy: 'personalized_interest',
-    personalizationSource: 'account_history',
-    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'],
-    minProducts: 4,
-    requireRankDebug: true,
-    requiredRecallLabels: [
-      ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
-      ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
-    ],
-    excludeProductKeys: [suppressedKey],
-  });
-  console.log(`PASS personalized_home ${JSON.stringify(personalizedHomeResult)}`);
+  const seeds = listSeedProducts(coldStart);
+  ensure(seeds.length > 0, 'could not pick a seed product from discovery response');
+  const exhaustedSeeds = [];
+  let personalizedHomeResult = null;
+  let browsePageOneResult = null;
+  for (let index = 0; index < seeds.length && !personalizedHomeResult; index += 1) {
+    const seedProduct = seeds[index];
+    const recentView = buildRecentView(seedProduct);
+    const recentQuery = deriveRecentQuery(seedProduct);
+    const suppressedKey = `${recentView.merchant_id}::${recentView.product_id}`;
+    const personalizedHome = await postPersonalized('home_hot_deals', recentView, recentQuery, `personalized_home_${index}`);
+    if (isExhaustedHistoryScope(personalizedHome)) {
+      exhaustedSeeds.push({ product_id: recentView.product_id, brand: recentView.brand || null });
+      console.log(`SKIP seed ${JSON.stringify(exhaustedSeeds[exhaustedSeeds.length - 1])}: ${EXHAUSTED_SCOPE_REASON}`);
+      continue;
+    }
+    personalizedHomeResult = validateDiscoveryResponse(personalizedHome, {
+      discoveryStrategy: 'personalized_interest',
+      personalizationSource: 'account_history',
+      candidateSource: personalizedCandidateSources,
+      requireNoHistoryFallback: true,
+      minProducts: 4,
+      requireRankDebug: true,
+      requiredRecallLabels: [
+        ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
+        ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline', 'canonical_sig_personalized'],
+      ],
+      excludeProductKeys: [suppressedKey],
+    });
+    console.log(`PASS personalized_home ${JSON.stringify({ seed: recentView.product_id, ...personalizedHomeResult })}`);
 
-  const browsePageOne = await postDiscoveryFeed({
-    baseUrl,
-    endpoint,
-    apiKey,
-    authToken,
-    timeoutMs,
-    payload: {
-      surface: 'browse_products',
-      page: 1,
-      limit: 6,
-      debug: true,
-      context: {
-        auth_state: 'authenticated',
-        locale,
-        recent_views: [recentView],
-        recent_queries: [recentQuery],
-      },
-    },
-    metadata: {
-      source,
-      trace_id: `${tracePrefix}_browse_page_one`,
-    },
-  });
-
-  const browsePageOneResult = validateDiscoveryResponse(browsePageOne, {
-    discoveryStrategy: 'personalized_interest',
-    personalizationSource: 'account_history',
-    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider', 'canonical_sig_personalized'],
-    minProducts: 6,
-    requireRankDebug: true,
-    requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline', 'canonical_sig_personalized']],
-    excludeProductKeys: [suppressedKey],
-  });
-  console.log(`PASS browse_page_one ${JSON.stringify(browsePageOneResult)}`);
+    const browsePageOne = await postPersonalized('browse_products', recentView, recentQuery, `browse_page_one_${index}`);
+    browsePageOneResult = validateDiscoveryResponse(browsePageOne, {
+      discoveryStrategy: 'personalized_interest',
+      personalizationSource: 'account_history',
+      candidateSource: personalizedCandidateSources,
+      requireNoHistoryFallback: true,
+      minProducts: 6,
+      requireRankDebug: true,
+      requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline', 'canonical_sig_personalized']],
+      excludeProductKeys: [suppressedKey],
+    });
+    console.log(`PASS browse_page_one ${JSON.stringify({ seed: recentView.product_id, ...browsePageOneResult })}`);
+  }
+  ensure(
+    personalizedHomeResult && browsePageOneResult,
+    `no multi-row brand to test personalization: the first ${seeds.length} cold cards' brands each hold a single in-scope row (${EXHAUSTED_SCOPE_REASON}): ${JSON.stringify(exhaustedSeeds)}`,
+  );
 
   console.log('PASS discovery feed smoke');
   return {
@@ -496,6 +539,8 @@ module.exports = {
   deriveRecentQuery,
   normalizeBaseUrl,
   normalizeEndpoint,
+  isExhaustedHistoryScope,
+  listSeedProducts,
   pickSeedProduct,
   runSmoke,
   validateDiscoveryResponse,

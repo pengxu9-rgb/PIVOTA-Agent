@@ -36,3 +36,26 @@ The production diagnostic captured the original public Iconic CP/SKU and active 
 An exact public history subject with no eligible own offer is a healthy empty eligibility outcome, `canonical_history_item_unavailable`, exposed in provider breakdown and debug recall metadata. Missing/private subjects and real database failures retain their failure classifications. Once history or exact-brand canonical primary is selected, this outcome never dispatches another provider. Generic cold's established coverage policy is unchanged.
 
 Regression tests use real PostgreSQL source/offer/registry/SKU rows and published HTTP discovery routes for cold→original history→browse, current49 versus cached45, and strict foreign/private/suppression/market/currency/stock/URL/SKU negatives. Ancillary identity/hydration/count projections and test authentication remain explicitly synthetic. A separate rollback test runs the native producer and selected apply stages through the actual reader SQL. Neither test establishes live checkout clearance or provider acceptance.
+
+## Storefront-recorded history and fail-soft personalization (2026-10-04)
+
+The storefront (pivota-agent-ui) records a view from the public PDP as `{product_id: sig_…, merchant_id: <PDP product.merchant_id>}`. For a mirrored product that merchant is the observed listing merchant (`merch_obs_…`), not the canonical card's shared external-seed merchant convention, so comparing it to the card's `merchant_id` refused every storefront-recorded mirror view as `canonical_history_subject_conflict`.
+
+The anchor read now also returns `public_listing_merchant_ids`: every merchant with a public, live, unsuppressed listing of the same canonical product. A view is accepted when its merchant is the card merchant, one of those listing merchants, or an own offer seller. A merchant with no public listing of the sig (including a private, expired or suppressed one) is still refused.
+
+The history domain is read from the listing's own taxonomy (`catalog_products.category_path`, the slash path the public PDP serves), falling back to the view's `agent_pdp_view.category_path`. The view path is usually a bare leaf (`Serum`, `Beauty Product`, `gift-set`) or NULL, e.g. NULL for every Krave row. Both are mapped into the profile's `DOMAIN_KEYWORDS` vocabulary from stored labels only: a taxonomy root is used as-is, a leaf goes through the shared label classifier, and an unclassifiable single leaf is unknown. The listing path is selected only by the history anchor and history pool reads, and is never served. Brand and caller text never widen the stored brand or domain. An unknown stored domain under an explicit history domain is still a conflict.
+
+Personalization fails soft. When the history cannot personalize this page, the request is loaded by the same loader as the identical request without history (`recent_views`/`recent_queries` empty, the cold candidate limit) and ranked as that request (`cold_start_curated`). The covered cases are:
+- the subject does not resolve: subject, domain or currency conflict, not public, ambiguous, unavailable, or a non-stress query error;
+- its own listing is unavailable (`canonical_history_item_unavailable`);
+- its stored scope holds nothing beyond the suppressed views (`canonical_history_pool_empty`).
+
+This supersedes "a clean empty result stays empty" above for those cases. When canonical_sig covers the page the result is the canonical_sig cold feed. When it is empty, below its threshold or failing, the fallback takes exactly the route the no-history request takes, and nothing else; the relationship graph is not run.
+
+A database stress error on the history anchor or brand-pool read is excluded. It keeps the unavailable outcome instead of adding a second catalog read to a stressed primary. Stress here means statement_timeout specifically, the pg query read timeout, a pool-acquire timeout, too many connections (53300), cannot-connect (57P03), a terminated or reset connection, or out of memory (53200). Lock timeout, idle-in-transaction and user cancel share SQLSTATE 57014 but are not load, so they still fall back.
+
+The reason is recorded in `fallback_reason`, `history_fallback_reason` and the canonical_sig provider breakdown (`history_failure_reason`, `history_fallback: cold_request`), and as a `canonical_sig_personalized_unresolved` recall step. If the cold request itself takes a fallback, that reason goes in `cold_route_fallback_reason`.
+
+Viewed canonical sigs are suppressed by id, on every browse page in both the personalized reader and the fallback, so offsets cannot shift.
+
+The release-gate smoke walks the first cold cards, one per brand, until a seed's history genuinely personalizes: `canonical_sig_personalized` with no fallback reason. Only the declared `canonical_history_pool_empty` outcome skips a seed. Every other outcome is evaluated strictly. If no walked card has a multi-row brand, the gate fails with "no multi-row brand to test personalization".
