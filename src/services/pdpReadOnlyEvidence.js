@@ -132,7 +132,39 @@ function projectReadOnlyPdpResponse(response, reasonCode) {
 // Call only after the existing exact current-own-money gate succeeds. The
 // response's selected seller/variant can still have changed during later offer
 // hydration, so bind proof to the final displayed tuple as well as that read.
-function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, productGrain, money, moneyByVariant, verifiedAt }) {
+// Another seller's offer is certified only as it is finally served: exactly one offer with this
+// seller/listing/offer id, showing exactly the verified money on exactly that variant.
+function bindVerifiedSellerOffers(response, ref, verifiedOffers) {
+  const offersModule = (response.modules || []).find(module => module.type === 'offers');
+  const offers = Array.isArray(offersModule?.data?.offers) ? offersModule.data.offers : [];
+  const sameMoney = (shown, entry) => shown && typeof shown.amount === 'number' && Number.isFinite(shown.amount) &&
+    shown.amount > 0 && shown.amount === entry.amount && shown.currency === entry.currency;
+  const bound = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(verifiedOffers) ? verifiedOffers : []) {
+    if (!entry?.offer_id || !entry.merchant_id || !entry.product_id || !entry.variant_id) continue;
+    if (entry.merchant_id === ref.merchant_id && entry.product_id === ref.product_id) continue;
+    const key = [entry.offer_id, entry.merchant_id, entry.product_id, entry.variant_id].join('\u0000');
+    if (seen.has(key)) continue;
+    const matches = offers.filter(offer => offer?.offer_id === entry.offer_id &&
+      offer?.merchant_id === entry.merchant_id && offer?.product_id === entry.product_id);
+    if (matches.length !== 1 || matches[0].price_verification !== 'verified') continue;
+    const offer = matches[0];
+    const rows = Array.isArray(offer.variants) ? offer.variants : [];
+    const ok = rows.length
+      ? rows.filter(row => String(row?.variant_id) === entry.variant_id).length === 1 &&
+        sameMoney(rows.find(row => String(row?.variant_id) === entry.variant_id)?.price?.current, entry)
+      : sameMoney(offer.price, entry);
+    if (!ok) continue;
+    seen.add(key);
+    bound.push({ offer_id: entry.offer_id, merchant_id: entry.merchant_id, product_id: entry.product_id,
+      variant_id: entry.variant_id, amount: entry.amount, currency: entry.currency });
+    if (bound.length >= 200) break;
+  }
+  return bound;
+}
+
+function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, productGrain, money, moneyByVariant, verifiedAt, verifiedOffers = [] }) {
   // This is the time of the current own-offer database verification, not a
   // claim about when the retailer last updated its source data.
   const expiresAt = verifiedAt + 60000;
@@ -184,6 +216,7 @@ function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, pr
     product_ref: { merchant_id: ref.merchant_id, product_id: ref.product_id },
     selected_variant_id: displayedVariant,
     verified_variants: boundedVariants,
+    verified_offers: bindVerifiedSellerOffers(response, ref, verifiedOffers),
     verified_at: new Date(verifiedAt).toISOString(),
     expires_at: new Date(expiresAt).toISOString(),
   };
@@ -196,4 +229,4 @@ function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, pr
   };
 }
 
-module.exports = { buildReadOnlyCommerce, projectReadOnlyPdpResponse, projectVerifiedCanonicalCommerce };
+module.exports = { buildReadOnlyCommerce, projectReadOnlyPdpResponse, projectVerifiedCanonicalCommerce, bindVerifiedSellerOffers };

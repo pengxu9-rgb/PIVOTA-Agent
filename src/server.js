@@ -117,6 +117,7 @@ const {
   usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney, projectCanonicalOffersMoney, isCanonicalProductGrain,
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
   withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED,
+  readCanonicalSellerOffersMoney, projectSellerOffersMoney, withoutCanonicalPurchaseActions,
 } = require('./services/canonicalPdpOwnMoney');
 const { projectReadOnlyPdpResponse, projectVerifiedCanonicalCommerce } = require('./services/pdpReadOnlyEvidence');
 const {
@@ -6991,6 +6992,7 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       category: firstNonEmptyString(row?.category),
       product_type: firstNonEmptyString(row?.product_type),
       category_path: firstNonEmptyString(row?.category_path),
+      catalog_description: firstNonEmptyString(row?.catalog_description),
       category_label_source: firstNonEmptyString(row?.category_label_source),
       category_confidence: Number.isFinite(Number(row?.category_confidence))
         ? Number(row.category_confidence)
@@ -7036,6 +7038,7 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
           cp.category_confidence,
           cp.rating_value AS catalog_rating_value,
           cp.rating_count AS catalog_rating_count,
+          cp.description AS catalog_description,
           pil.sellable_item_group_id,
           pil.product_line_id,
           pil.review_family_id,
@@ -7132,6 +7135,24 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
 // pivota_canonical_url FIRST (lib/productHref.resolveProductRouteId), so the
 // keeper being correct on `canonical_url` alone still renders a self-canonical
 // page. Caught by tests/integration/get_pdp_v2_dedupe_keeper_canonical.
+// Seed-routed listings read their description from the seed, which for the enrichment lane often has
+// none, while the brand-copy backfill (backend scripts/backfill_brand_official_descriptions.py) writes
+// catalog_products.description. Use that copy when it is real prose: at least the backfill's own
+// 50-character floor, longer than what the seed gave, and not the bare product-type summary the
+// ingest stores in the same column for rows the backfill has not reached.
+const CATALOG_DESCRIPTION_MIN_CHARS = 50;
+
+function catalogDescriptionFallback(product, identity) {
+  const catalog = firstNonEmptyString(identity?.catalog_description, identity?.description) || '';
+  if (catalog.length < CATALOG_DESCRIPTION_MIN_CHARS) return '';
+  const current = firstNonEmptyString(product?.description) || '';
+  if (current.length >= catalog.length) return '';
+  const lowered = catalog.toLowerCase();
+  if ([product?.product_type, identity?.product_type, product?.category, identity?.category]
+    .some((label) => String(label || '').trim().toLowerCase() === lowered)) return '';
+  return catalog;
+}
+
 function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRouteSigId = '', options = {}) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const sigId = firstNonEmptyString(identity.pivota_signature_id, identity.signature_id);
@@ -7162,6 +7183,7 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRoute
   const catalogCategoryParts = catalogCategoryPath
     ? catalogCategoryPath.split('/').map((part) => String(part || '').trim()).filter(Boolean)
     : [];
+  const catalogDescription = catalogDescriptionFallback(product, identity);
   const catalogCategoryPathLooksFormula =
     /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i
       .test(catalogCategoryPath);
@@ -7178,6 +7200,7 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRoute
       ? { product_type: identity.product_type }
       : {}),
     ...(catalogCategoryPathLooksFormula ? { pdp_schema_profile: 'beauty_formula' } : {}),
+    ...(catalogDescription ? { description: catalogDescription } : {}),
     ...(identity.category_label_source ? { category_label_source: identity.category_label_source } : {}),
     ...(identity.category_confidence !== undefined ? { category_confidence: identity.category_confidence } : {}),
     ...(identity.product_line_id ? { product_line_id: identity.product_line_id } : {}),
@@ -44544,6 +44567,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       let canonicalOwnMoney = null;
       let canonicalOwnMoneyVerifiedAt = null;
+      let verifiedSellerOffers = [];
       let canonicalReadOnlyReason = null;
       // Set when the selected canonical listing has no verified current own money: the page still renders,
       // that listing is unpriced and not purchasable, and metadata names the reason. Never seed money.
@@ -45250,6 +45274,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }
           }
         }
+        // Evidence clients get every other seller's money from the same current read rules as the
+        // selected listing, or no money for that seller. A failed read leaves those sellers unverified;
+        // it never costs the selected listing its own verified purchase.
+        if (offersData && canonicalOwnMoney && options.allow_read_only === true) {
+          let verifiedByListing = new Map();
+          try {
+            verifiedByListing = await withStageBudget(
+              readCanonicalSellerOffersMoney({
+                listings: (offersData.offers || []).filter((offer) => !(
+                  offer?.merchant_id === canonicalProductRef.merchant_id && offer?.product_id === canonicalProductRef.product_id)),
+                query,
+              }),
+              PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
+              'pdp_seller_offers_money',
+            );
+          } catch (error) {
+            logger.warn(
+              { event: 'pdp_seller_offers_money_read_failed', product_key: canonicalProductRef.product_key || null,
+                err: error?.message || String(error) },
+              'other sellers\' current money read failed; their offers render unverified and not purchasable',
+            );
+          }
+          const projectedSellers = projectSellerOffersMoney(offersData, canonicalProductRef, verifiedByListing);
+          offersData = projectedSellers.data;
+          verifiedSellerOffers = projectedSellers.verifiedOffers;
+        }
         if (offersData && canonicalOwnMoneyGap) {
           offersData = withholdCanonicalOffersMoney(offersData, canonicalProductRef);
           // No savings copy (payment offers, discounts, promotion lines) on a listing that cannot be bought.
@@ -45875,12 +45925,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           money: canonicalProductForPdp.price,
           moneyByVariant: canonicalOwnMoney,
           verifiedAt: canonicalOwnMoneyVerifiedAt,
+          verifiedOffers: verifiedSellerOffers,
         });
         return res.json(verifiedResponse.metadata?.commerce?.state === 'ready'
           ? verifiedResponse
           : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
       }
-      return res.json(responsePayload);
+      return res.json(canonicalOwnMoneyGap ? withoutCanonicalPurchaseActions(responsePayload) : responsePayload);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
       const upstreamRequestId =

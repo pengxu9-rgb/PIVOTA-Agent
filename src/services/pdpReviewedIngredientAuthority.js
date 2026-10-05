@@ -129,9 +129,14 @@ function buildReviewedIngredientKeyCandidates(product = {}, canonicalProductRef 
       scopedIds.push(`merchant:${merchantId}:product:${id}`);
     }
   }
+  // The backend's canonical INCI intake (services/canonical_inci_intake.py) files a row under the
+  // catalog product_key and its SKU keys, never under the public product id, so the catalog identity
+  // of a canonical listing must be a lookup key too or collected INCI is never read.
+  const productKey = asString(canonicalProductRef?.product_key || canonicalProductRef?.productKey);
+  const catalogKeys = productKey ? [productKey, `${productKey}::canonical`] : [];
   return {
     merchantId: merchantId || null,
-    keys: uniqStrings(scopedIds, 80),
+    keys: uniqStrings([...catalogKeys, ...scopedIds], 80),
   };
 }
 
