@@ -1,0 +1,415 @@
+{
+  "search_receipt": "retrieval/evidence/singular.json",
+  "search_card": {
+    "id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "title": "Full Cream Moisturizer",
+    "name": "Full Cream Moisturizer",
+    "brand": "MooGoo",
+    "vendor": "MooGoo",
+    "merchant_id": "agent_seed::moogoo",
+    "merchant_name": "MooGoo",
+    "platform": "external_seed",
+    "category": "cream",
+    "product_type": "cream",
+    "price": 11.9,
+    "currency": "USD",
+    "in_stock": true,
+    "inventory_quantity": 0,
+    "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+    "canonical_url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "offer_id": "offer:catalog_enrichment_agent_v1:51a211608e7454bd",
+    "payment_offer_evidence": {
+      "pricing_confidence": "not_applicable",
+      "offers": [],
+      "decisions": []
+    },
+    "description": "MooGoo Full Cream Moisturizer is a natural face and body moisturizer designed to hydrate and revitalise dry skin. Suitable for all ages and skin types.",
+    "images": [
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+    ],
+    "variants": [
+      {
+        "id": "ext:moogoo-full-cream-moisturizer::61709ce3",
+        "variant_id": "ext:moogoo-full-cream-moisturizer::61709ce3",
+        "title": "Full Cream Moisturizer",
+        "options": {
+          "visible_attributes": {},
+          "visible_option_labels": []
+        },
+        "price": "11.90",
+        "compare_at_price": "11.90",
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+      },
+      {
+        "id": "45890202206515",
+        "variant_id": "45890202206515",
+        "sku": "1636",
+        "title": "120g",
+        "options": {
+          "visible_attributes": {
+            "shade": [
+              "120g"
+            ]
+          },
+          "visible_option_labels": [
+            "shade_120g"
+          ]
+        },
+        "price": "11.90",
+        "compare_at_price": "11.90",
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+      },
+      {
+        "id": "45890202239283",
+        "variant_id": "45890202239283",
+        "sku": "1425",
+        "title": "200g",
+        "options": {
+          "visible_attributes": {
+            "shade": [
+              "200g"
+            ]
+          },
+          "visible_option_labels": [
+            "shade_200g"
+          ]
+        },
+        "price": "14.90",
+        "compare_at_price": "14.90",
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+      },
+      {
+        "id": "45890202272051",
+        "variant_id": "45890202272051",
+        "sku": "2741",
+        "title": "500g",
+        "options": {
+          "visible_attributes": {
+            "shade": [
+              "500g"
+            ]
+          },
+          "visible_option_labels": [
+            "shade_500g"
+          ]
+        },
+        "price": "28.90",
+        "compare_at_price": "28.90",
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+      }
+    ],
+    "variants_count": 4,
+    "offers": [
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:51a211608e7454bd",
+        "merchant_id": "agent_seed::moogoo",
+        "merchant_name": "MooGoo",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "external_referral",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "11.90",
+          "merchant_effective_price": "11.90",
+          "estimated_best_price": "11.90",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      },
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:df906e879dcb3efa",
+        "merchant_id": "agent_seed::moogoo",
+        "merchant_name": "MooGoo",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "external_referral",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "11.90",
+          "merchant_effective_price": "11.90",
+          "estimated_best_price": "11.90",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      },
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:35cec1a9ac527508",
+        "merchant_id": "agent_seed::moogoo",
+        "merchant_name": "MooGoo",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "external_referral",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "14.90",
+          "merchant_effective_price": "14.90",
+          "estimated_best_price": "14.90",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      }
+    ],
+    "offers_count": 4
+  },
+  "public_unscoped_pdp": {
+    "captured_at": "2026-10-04T09:46:21.795525+00:00",
+    "url": "https://agent.pivota.cc/api/gateway",
+    "request": {
+      "operation": "get_pdp_v2",
+      "payload": {
+        "product_ref": {
+          "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+        },
+        "include": [
+          "product_overview",
+          "ingredients_inci"
+        ]
+      }
+    },
+    "status": 409,
+    "headers": {
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "Server-Timing, x-gateway-server-timing, x-gateway-retries, x-gateway-request-id, x-service-commit, x-service-deployment-id, x-aurora-build, x-aurora-git-sha",
+      "content-type": "application/json; charset=utf-8",
+      "server-timing": "upstream;dur=248, reviews;dur=0, proxy;dur=1, gateway;dur=249",
+      "x-aurora-build": "a4fa137b60b1",
+      "x-aurora-git-sha": "a4fa137b60b1",
+      "x-gateway-request-id": "c0f12020-4d2d-484b-83b2-34b524ca3c32",
+      "x-gateway-server-timing": "upstream;dur=248, reviews;dur=0, proxy;dur=1, gateway;dur=249",
+      "x-service-commit": "a4fa137b60b1",
+      "x-service-deployment-id": "gateway-shopping-a4fa137b60b1",
+      "x-cloud-trace-context": "db454a166e85e5331f41894ebb3755a3",
+      "date": "Sun, 04 Oct 2026 09:46:21 GMT",
+      "server": "Google Frontend",
+      "Content-Length": "2388",
+      "via": "1.1 google",
+      "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "Connection": "close"
+    },
+    "body": {
+      "error": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "message": "Selected canonical listing has no verified current offer money",
+      "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "gateway_request_id": "c0f12020-4d2d-484b-83b2-34b524ca3c32",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "requested_merchant_id": null,
+          "resolved_product_id": "moogoo:484391fddf3260cb",
+          "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false,
+          "resolution_source": null
+        },
+        "route_health": {
+          "total_latency_ms": 236,
+          "phases": {
+            "parse_request": 0,
+            "resolve_catalog_signature": 51,
+            "build_external_seed_product": 0,
+            "resolve_variant_to_product": 0,
+            "resolve_subject_group": 0,
+            "resolve_offer_group": 0,
+            "resolve_canonical_catalog_group": 0,
+            "precheck_entry_product": 34,
+            "resolve_group_cached": 0,
+            "serving_eligibility_gate": 0,
+            "fetch_canonical_product": 0,
+            "catalog_identity_hydration": 0,
+            "identity_graph_live": 106,
+            "fetch_optional_modules_parallel": 0,
+            "catalog_pdp_content_hydration": 2,
+            "reviewed_ingredient_authority": 11,
+            "savings_presentation_hydration": 0
+          },
+          "checkpoints_ms": {
+            "phase:parse_request": 0,
+            "phase:resolve_catalog_signature": 51,
+            "phase:build_external_seed_product": 51,
+            "after_build_external_seed_product": 51,
+            "phase:resolve_variant_to_product": 51,
+            "phase:resolve_subject_group": 51,
+            "phase:resolve_offer_group": 51,
+            "phase:resolve_canonical_catalog_group": 51,
+            "phase:precheck_entry_product": 85,
+            "phase:resolve_group_cached": 85,
+            "phase:serving_eligibility_gate": 85,
+            "phase:fetch_canonical_product": 85,
+            "phase:identity_graph_live": 191,
+            "phase:fetch_optional_modules_parallel": 191,
+            "phase:catalog_pdp_content_hydration": 193,
+            "phase:reviewed_ingredient_authority": 204,
+            "phase:savings_presentation_hydration": 204,
+            "after_savings_hydration": 204,
+            "after_related_services": 205
+          },
+          "modules": {},
+          "savings_presentation_hydration_mode": "prefetched_only",
+          "product_group_resolve_mode": "not_needed",
+          "product_group_resolve_budget_exceeded": false,
+          "product_group_resolve_budget_ms": 1200,
+          "identity_graph_live_mode": "executed_full_hydration",
+          "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "requested_merchant_id": null,
+          "resolved_product_id": "moogoo:484391fddf3260cb",
+          "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false
+        }
+      }
+    }
+  },
+  "public_scoped_pdp": {
+    "captured_at": "2026-10-04T09:46:30.758899+00:00",
+    "url": "https://agent.pivota.cc/api/gateway",
+    "request": {
+      "operation": "get_pdp_v2",
+      "payload": {
+        "product_ref": {
+          "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "merchant_id": "agent_seed::moogoo"
+        },
+        "include": [
+          "product_overview",
+          "ingredients_inci"
+        ]
+      }
+    },
+    "status": 404,
+    "headers": {
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "Server-Timing, x-gateway-server-timing, x-gateway-retries, x-gateway-request-id, x-service-commit, x-service-deployment-id, x-aurora-build, x-aurora-git-sha",
+      "content-type": "application/json; charset=utf-8",
+      "server-timing": "upstream;dur=2616, reviews;dur=0, proxy;dur=0, gateway;dur=2616",
+      "x-aurora-build": "a4fa137b60b1",
+      "x-aurora-git-sha": "a4fa137b60b1",
+      "x-gateway-request-id": "cbecab88-e0d0-4bdd-998c-6e0f0f6cdad4",
+      "x-gateway-server-timing": "upstream;dur=2616, reviews;dur=0, proxy;dur=0, gateway;dur=2616",
+      "x-service-commit": "a4fa137b60b1",
+      "x-service-deployment-id": "gateway-shopping-a4fa137b60b1",
+      "x-cloud-trace-context": "9fc3430102fd6a349b31cf2c35a622e6",
+      "date": "Sun, 04 Oct 2026 09:46:30 GMT",
+      "server": "Google Frontend",
+      "Content-Length": "1914",
+      "via": "1.1 google",
+      "Alt-Svc": "h3=\":443\"; ma=2592000",
+      "Connection": "close"
+    },
+    "body": {
+      "error": "PRODUCT_NOT_FOUND",
+      "message": "Product not found",
+      "reason_code": "PRODUCT_NOT_FOUND",
+      "gateway_request_id": "cbecab88-e0d0-4bdd-998c-6e0f0f6cdad4",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "requested_merchant_id": "agent_seed::moogoo",
+          "resolved_product_id": "moogoo-full-cream-moisturizer",
+          "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": true,
+          "resolution_source": "identity_graph_product_group_alias"
+        },
+        "route_health": {
+          "total_latency_ms": 2603,
+          "phases": {
+            "parse_request": 0,
+            "resolve_identity_group_alias": 387,
+            "resolve_variant_to_product": 0,
+            "resolve_subject_group": 0,
+            "resolve_offer_group": 0,
+            "resolve_canonical_catalog_group": 0,
+            "precheck_entry_product": 40,
+            "resolve_group_cached": 0,
+            "serving_eligibility_gate": 8,
+            "fetch_canonical_product": 2119,
+            "identity_graph_rescue": 49
+          },
+          "checkpoints_ms": {
+            "phase:parse_request": 0,
+            "before_group_alias": 0,
+            "phase:resolve_identity_group_alias": 387,
+            "phase:resolve_variant_to_product": 387,
+            "phase:resolve_subject_group": 387,
+            "phase:resolve_offer_group": 387,
+            "phase:resolve_canonical_catalog_group": 387,
+            "phase:precheck_entry_product": 427,
+            "phase:resolve_group_cached": 427,
+            "phase:serving_eligibility_gate": 435,
+            "phase:fetch_canonical_product": 2554,
+            "phase:identity_graph_rescue": 2603
+          },
+          "modules": {},
+          "savings_presentation_hydration_mode": "not_started",
+          "product_group_resolve_mode": "not_needed",
+          "product_group_resolve_budget_exceeded": false,
+          "product_group_resolve_budget_ms": 1200,
+          "identity_graph_live_mode": "not_started",
+          "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "requested_merchant_id": "agent_seed::moogoo",
+          "resolved_product_id": "moogoo-full-cream-moisturizer",
+          "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": true
+        }
+      }
+    }
+  }
+}

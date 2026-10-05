@@ -118,6 +118,7 @@ const {
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
   withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED,
 } = require('./services/canonicalPdpOwnMoney');
+const { projectReadOnlyPdpResponse, projectVerifiedCanonicalCommerce } = require('./services/pdpReadOnlyEvidence');
 const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
@@ -44542,6 +44543,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       let canonicalOwnMoney = null;
+      let canonicalOwnMoneyVerifiedAt = null;
+      let canonicalReadOnlyReason = null;
       // Set when the selected canonical listing has no verified current own money: the page still renders,
       // that listing is unpriced and not purchasable, and metadata names the reason. Never seed money.
       let canonicalOwnMoneyGap = null;
@@ -44555,6 +44558,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
             'pdp_current_own_money',
           );
+          canonicalOwnMoneyVerifiedAt = Date.now();
           canonicalProductForPdp = projectCanonicalProductMoney(canonicalProductForPdp, canonicalOwnMoney, { ref: canonicalProductRef });
         } catch (error) {
           canonicalOwnMoney = null;
@@ -44570,6 +44574,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
               'current own listing money read failed; PDP renders the listing unpriced and not purchasable',
             );
+          }
+          // Legacy consumers retain PR2365's bounded unpriced-page fallback.
+          // Evidence-mode consumers distinguish a failed read from valid absence.
+          if (options.allow_read_only === true && canonicalOwnMoneyGap === CURRENT_OWN_OFFER_READ_FAILED) {
+            return res.status(503).json(buildPdpV2ErrorBody({
+              error: CURRENT_OWN_OFFER_READ_FAILED,
+              message: 'Current own listing money could not be verified',
+              reasonCode: CURRENT_OWN_OFFER_READ_FAILED, requestedProductId: requestedPivotaSignatureId,
+              resolvedProductId: canonicalProductRef.product_id, resolvedMerchantId: canonicalProductRef.merchant_id,
+            }));
           }
           canonicalProductForPdp = stripSavingsPresentationFields(withholdCanonicalProductMoney(canonicalProductForPdp));
         }
@@ -44964,7 +44978,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : null;
       let offersData = null;
 
-      if (wantsOffers || wantsProductIntel) {
+      if (!canonicalReadOnlyReason && (wantsOffers || wantsProductIntel)) {
         const offersModuleStartedAt = Date.now();
         try {
           if (groupMembers.length > 0) {
@@ -45355,7 +45369,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         } else if (wantsOffers) {
           const offersUnavailableReason =
-            groupMembers.length > 0 ? 'unavailable' : 'no_product_group_members';
+            canonicalReadOnlyReason || (groupMembers.length > 0 ? 'unavailable' : 'no_product_group_members');
           modules.push({
             type: 'offers',
             required: false,
@@ -45368,6 +45382,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           markPdpV2Module('offers', offersModuleStartedAt);
         }
 	      }
+
+      if (canonicalReadOnlyReason) {
+        if (wantsOffers && !modules.some(module => module.type === 'offers')) {
+          modules.push({ type: 'offers', required: false, data: null, reason: canonicalReadOnlyReason });
+        }
+        if (!missing.some(module => module.type === 'offers' && module.reason === canonicalReadOnlyReason)) {
+          missing.push({ type: 'offers', reason: canonicalReadOnlyReason });
+        }
+      }
 
       let productIntel = null;
       let productIntelStatus = wantsProductIntel ? 'missing_blocked' : 'not_requested';
@@ -45825,6 +45848,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
         'get_pdp_v2 completed',
       );
+      // Only these existing, identified legacy lanes retain their pre-contract
+      // commerce gates. An unknown canonical producer is evidence, not proof.
+      // shopify_products_sync is an established producer documented by
+      // src/services/contentKey.js and the upstream internal-self-offer suite.
+      const supportedLegacyCanonicalCommerce =
+        (canonicalProductRef?.platform === 'external_seed' && canonicalProductRef?.source_system === 'external_product_seeds_mirror_v1') ||
+        (canonicalProductRef?.platform === 'shopify' && ['shopify_sync_v1', 'shopify_products_sync'].includes(canonicalProductRef?.source_system));
+      if (canonicalOwnMoneyGap && options.allow_read_only === true) canonicalReadOnlyReason = CURRENT_OWN_OFFER_UNAVAILABLE;
+      // This is an additive evidence-client contract. Do not impose a new
+      // authority vocabulary on legacy callers which did not request it.
+      if (requestedPivotaSignatureId && options.allow_read_only === true && !canonicalOwnMoney &&
+          !canonicalOwnMoneyGap && !supportedLegacyCanonicalCommerce) {
+        canonicalReadOnlyReason = 'CURRENT_OWN_OFFER_UNAVAILABLE';
+      }
+      if (canonicalReadOnlyReason) {
+        res.set('Cache-Control', 'private, no-store');
+        return res.json(projectReadOnlyPdpResponse(responsePayload, canonicalReadOnlyReason));
+      }
+      if (options.allow_read_only === true && canonicalOwnMoney) {
+        res.set('Cache-Control', 'private, no-store');
+        const verifiedResponse = projectVerifiedCanonicalCommerce(responsePayload, {
+          ref: canonicalProductRef,
+          selectedVariantId: canonicalProductForPdp.default_variant_id,
+          productGrain: canonicalOwnProductGrain,
+          money: canonicalProductForPdp.price,
+          moneyByVariant: canonicalOwnMoney,
+          verifiedAt: canonicalOwnMoneyVerifiedAt,
+        });
+        return res.json(verifiedResponse.metadata?.commerce?.state === 'ready'
+          ? verifiedResponse
+          : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
+      }
       return res.json(responsePayload);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);

@@ -137,10 +137,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // money refusal. Both use the existing wrapped res.status(...).json exit.
   // 2026-10-04: -2, both removed again: a missing or unreadable current own money
   // read now renders the PDP with that listing unpriced and not purchasable.
+  // Evidence opt-in adds three wrapped JSON exits: read failure,
+  // read-only content, and current verified content.
   assert.equal(
     exits.length,
-    100,
-    `expected 100 response exits in handleInvokeRequest, saw ${exits.length}`,
+    103,
+    `expected 103 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(

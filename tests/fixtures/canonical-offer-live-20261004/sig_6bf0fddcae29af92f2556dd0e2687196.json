@@ -1,0 +1,247 @@
+{
+  "search_receipt": "retrieval/evidence/ui-singular.json",
+  "search_card": {
+    "id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+    "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+    "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+    "signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+    "title": "[MISSHA] Bee Pollen Renew Intense Moisturizer",
+    "name": "[MISSHA] Bee Pollen Renew Intense Moisturizer",
+    "brand": "Missha",
+    "vendor": "Missha",
+    "merchant_id": "agent_seed::retailer::holiholic.com",
+    "merchant_name": "holiholic.com",
+    "platform": "external_seed",
+    "category": "cream",
+    "product_type": "cream",
+    "price": 24.5,
+    "currency": "USD",
+    "in_stock": true,
+    "inventory_quantity": 0,
+    "image_url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078",
+    "canonical_url": "https://agent.pivota.cc/products/sig_6bf0fddcae29af92f2556dd0e2687196",
+    "url": "https://agent.pivota.cc/products/sig_6bf0fddcae29af92f2556dd0e2687196",
+    "offer_id": "offer:catalog_enrichment_agent_v1:e435c48cac42e9b2",
+    "payment_offer_evidence": {
+      "pricing_confidence": "not_applicable",
+      "offers": [],
+      "decisions": []
+    },
+    "description": "[MISSHA] Bee Pollen Renew Intense Moisturizer 130ml - This intensive moisturizer helps to strengthen skin barrier while repairing wrinkles and brightening. - Suitable for dry, sensitive and dull skin.",
+    "images": [
+      "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+    ],
+    "variants": [
+      {
+        "id": "ext:retailer:1f5b532d1f2ed2b64d8cc24d6598289b",
+        "variant_id": "ext:retailer:1f5b532d1f2ed2b64d8cc24d6598289b",
+        "title": "[MISSHA] Bee Pollen Renew Intense Moisturizer",
+        "options": {
+          "visible_attributes": {},
+          "visible_option_labels": []
+        },
+        "price": "24.50",
+        "compare_at_price": "24.50",
+        "image_url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+      },
+      {
+        "id": "40316766060736",
+        "variant_id": "40316766060736",
+        "sku": "MISSHA \ube44\ud3f4\ub80c \ub9ac\ub274 \ubaa8\uc774\uc2a4\ucc98\ub77c\uc774\uc800 130ml",
+        "title": "Default Title",
+        "options": {
+          "visible_attributes": {
+            "shade": [
+              "Default Title"
+            ]
+          },
+          "visible_option_labels": [
+            "shade_default_title"
+          ]
+        },
+        "price": "24.50",
+        "compare_at_price": "24.50",
+        "image_url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+      }
+    ],
+    "variants_count": 2,
+    "offers": [
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:e435c48cac42e9b2",
+        "merchant_id": "agent_seed::retailer::holiholic.com",
+        "merchant_name": "holiholic.com",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "24.50",
+          "merchant_effective_price": "24.50",
+          "estimated_best_price": "24.50",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      },
+      {
+        "offer_id": "offer:catalog_enrichment_agent_v1:e1fe7c7c12b97710",
+        "merchant_id": "agent_seed::retailer::holiholic.com",
+        "merchant_name": "holiholic.com",
+        "catalog_track": "external_referral",
+        "truth_tier": "primary",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "source_system": "catalog_enrichment_agent_v1",
+        "availability": "in_stock",
+        "payment_offer_evidence": {
+          "pricing_confidence": "not_applicable",
+          "offers": [],
+          "decisions": []
+        },
+        "market": "US",
+        "is_first_party": false,
+        "official_source": false,
+        "why_buy_direct": null,
+        "market_availability": "domestic",
+        "is_buy_pick": true,
+        "pricing": {
+          "currency": "USD",
+          "list_price": "24.50",
+          "merchant_effective_price": "24.50",
+          "estimated_best_price": "24.50",
+          "exact_quote_price": null,
+          "price_confidence": "0.70"
+        },
+        "incentives": []
+      }
+    ],
+    "offers_count": 2
+  },
+  "public_unscoped_pdp": {
+    "captured_at": "2026-10-04T09:47:15.936887+00:00",
+    "url": "https://agent.pivota.cc/api/gateway",
+    "request": {
+      "operation": "get_pdp_v2",
+      "payload": {
+        "product_ref": {
+          "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196"
+        },
+        "include": [
+          "product_overview",
+          "ingredients_inci"
+        ]
+      }
+    },
+    "status": 409,
+    "headers": {
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "Server-Timing, x-gateway-server-timing, x-gateway-retries, x-gateway-request-id, x-service-commit, x-service-deployment-id, x-aurora-build, x-aurora-git-sha",
+      "content-type": "application/json; charset=utf-8",
+      "server-timing": "upstream;dur=121, reviews;dur=0, proxy;dur=1, gateway;dur=122",
+      "x-aurora-build": "a4fa137b60b1",
+      "x-aurora-git-sha": "a4fa137b60b1",
+      "x-gateway-request-id": "44553a4c-bd35-4cfb-a715-ceab5c93face",
+      "x-gateway-server-timing": "upstream;dur=121, reviews;dur=0, proxy;dur=1, gateway;dur=122",
+      "x-service-commit": "a4fa137b60b1",
+      "x-service-deployment-id": "gateway-shopping-a4fa137b60b1",
+      "x-cloud-trace-context": "8e0e244ca51c24287454708f08c4d176",
+      "date": "Sun, 04 Oct 2026 09:47:15 GMT",
+      "server": "Google Frontend",
+      "Content-Length": "2393",
+      "via": "1.1 google",
+      "Alt-Svc": "h3=\":443\"; ma=2592000",
+      "Connection": "close"
+    },
+    "body": {
+      "error": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "message": "Selected canonical listing has no verified current offer money",
+      "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE",
+      "gateway_request_id": "44553a4c-bd35-4cfb-a715-ceab5c93face",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+          "requested_merchant_id": null,
+          "resolved_product_id": "holiholic-com:471957515448dc23",
+          "resolved_merchant_id": "merch_obs_702970e666c0de6e",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false,
+          "resolution_source": null
+        },
+        "route_health": {
+          "total_latency_ms": 108,
+          "phases": {
+            "parse_request": 0,
+            "resolve_catalog_signature": 15,
+            "build_external_seed_product": 0,
+            "resolve_variant_to_product": 0,
+            "resolve_subject_group": 0,
+            "resolve_offer_group": 0,
+            "resolve_canonical_catalog_group": 0,
+            "precheck_entry_product": 14,
+            "resolve_group_cached": 0,
+            "serving_eligibility_gate": 0,
+            "fetch_canonical_product": 0,
+            "catalog_identity_hydration": 0,
+            "identity_graph_live": 49,
+            "fetch_optional_modules_parallel": 0,
+            "catalog_pdp_content_hydration": 1,
+            "reviewed_ingredient_authority": 4,
+            "savings_presentation_hydration": 0
+          },
+          "checkpoints_ms": {
+            "phase:parse_request": 0,
+            "phase:resolve_catalog_signature": 15,
+            "phase:build_external_seed_product": 15,
+            "after_build_external_seed_product": 15,
+            "phase:resolve_variant_to_product": 15,
+            "phase:resolve_subject_group": 15,
+            "phase:resolve_offer_group": 15,
+            "phase:resolve_canonical_catalog_group": 15,
+            "phase:precheck_entry_product": 29,
+            "phase:resolve_group_cached": 29,
+            "phase:serving_eligibility_gate": 29,
+            "phase:fetch_canonical_product": 29,
+            "phase:identity_graph_live": 78,
+            "phase:fetch_optional_modules_parallel": 78,
+            "phase:catalog_pdp_content_hydration": 79,
+            "phase:reviewed_ingredient_authority": 83,
+            "phase:savings_presentation_hydration": 83,
+            "after_savings_hydration": 83,
+            "after_related_services": 84
+          },
+          "modules": {},
+          "savings_presentation_hydration_mode": "prefetched_only",
+          "product_group_resolve_mode": "not_needed",
+          "product_group_resolve_budget_exceeded": false,
+          "product_group_resolve_budget_ms": 1200,
+          "identity_graph_live_mode": "executed_full_hydration",
+          "requested_product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+          "requested_merchant_id": null,
+          "resolved_product_id": "holiholic-com:471957515448dc23",
+          "resolved_merchant_id": "merch_obs_702970e666c0de6e",
+          "canonicalization_applied": false,
+          "canonicalization_reason_code": null,
+          "entry_precheck_missing": false
+        }
+      }
+    }
+  },
+  "public_scoped_pdp": null
+}
