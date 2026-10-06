@@ -24,8 +24,14 @@ function buildCanonicalOwnOfferSellerSql() {
         WHERE listing_merchant.merchant_id = co.merchant_id
           AND listing_merchant.source_system = 'catalog_enrichment_agent_v1'
           AND listing_merchant.status = 'active' AND listing_merchant.indexable IS TRUE
-          AND listing_merchant.source_ref = own_cp.source_domain
-          AND listing_merchant.metadata_json->>'domain' = own_cp.source_domain
+          -- The merchant row keeps the bare host while a listing may store its own host with a
+          -- leading "www." (tower28beauty.com vs www.tower28beauty.com, measured 2026-10-06): the same
+          -- store either way. Only this merchant-row comparison folds "www."; every listing/offer
+          -- equality above stays exact.
+          AND regexp_replace(lower(listing_merchant.source_ref), '^www[.]', '')
+              = regexp_replace(lower(own_cp.source_domain), '^www[.]', '')
+          AND regexp_replace(lower(listing_merchant.metadata_json->>'domain'), '^www[.]', '')
+              = regexp_replace(lower(own_cp.source_domain), '^www[.]', '')
           AND co.merchant_id = 'agent_seed::' || left(trim(both '-' from
             regexp_replace(lower(own_cp.brand), '[^a-z0-9]+', '-', 'g')), 80)
       )
