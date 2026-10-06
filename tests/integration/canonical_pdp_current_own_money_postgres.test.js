@@ -107,6 +107,24 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       FROM catalog_offers co`);
     expect(projectCanonicalProductMoney(product, await read()).price.amount).toBe(49);
   });
+  // 2026-10-06: Tower 28 and Native listings store their own host as www.<host> while their brand
+  // merchant row keeps the bare host. The same store either way; only the merchant-row comparison folds.
+  const wwwListing = 'https://www.jurlique.com/products/owned-synthetic';
+  async function moveListingToWww() {
+    await client.query("UPDATE catalog_products SET source_domain='www.jurlique.com', canonical_url=$1", [wwwListing]);
+    await client.query(`UPDATE catalog_offers SET source_domain='www.jurlique.com', source_ref=$1,
+      offer_payload=$2`, [wwwListing, { destination_url: wwwListing, canonical_url: wwwListing }]);
+  }
+  test('a listing stored as www.<host> still matches its bare-host brand merchant row', async () => {
+    await moveListingToWww();
+    expect(projectCanonicalProductMoney(product, await read()).price.amount).toBe(49);
+  });
+  test('folding www. never lets a merchant row for another host vouch for the listing', async () => {
+    await moveListingToWww();
+    await client.query(`UPDATE catalog_merchants SET source_ref='notjurlique.com',
+      metadata_json='{"domain":"notjurlique.com"}'`);
+    await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+  });
   test('two eligible own rows disagreeing49/59 refuse rather than choosing the cheaper value', async () => {
     await client.query(`INSERT INTO catalog_offers SELECT (jsonb_populate_record(NULL::catalog_offers,
       to_jsonb(co)||'{"offer_id":"conflict","merchant_effective_price":59}'::jsonb)).* FROM catalog_offers co`);
