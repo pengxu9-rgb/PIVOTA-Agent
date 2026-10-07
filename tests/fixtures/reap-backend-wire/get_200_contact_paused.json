@@ -1,0 +1,38 @@
+{
+  "body": {
+    "brand": "Brand",
+    "category": "fragrance",
+    "checkout_dispatch_state": "not_dispatched",
+    "consent_version": "reap-agentic-v1",
+    "consented_at": "2026-10-07T09:20:43+00:00",
+    "contact_reentry_required": true,
+    "created_at": "2026-10-07T09:04:03+00:00",
+    "id": "rp_8be1df1301914ee6add902f5",
+    "last_error_code": "contact_retention_elapsed",
+    "merchant_domain": "brand.example",
+    "offer_code": null,
+    "offer_code_outcome": null,
+    "poll_after_seconds": 60,
+    "product_key": "prod::m_brand::shopify::1001",
+    "product_name": "Standard Eau de Parfum",
+    "quantity": 1,
+    "reap_quote_expires_at": null,
+    "refusal_reason": null,
+    "state": "resolving",
+    "terminal_at": null,
+    "totals": {
+      "currency": "USD",
+      "discount_minor": null,
+      "final_total_minor": null,
+      "our_price_minor": 4250,
+      "quoted_total_minor": null,
+      "shipping_minor": null,
+      "tax_included": null,
+      "tax_minor": null
+    },
+    "updated_at": "2026-10-07T09:20:43+00:00",
+    "variant_key": "sku::prod::m_brand::shopify::1001::v1",
+    "variant_title": "Standard"
+  },
+  "status": 200
+}

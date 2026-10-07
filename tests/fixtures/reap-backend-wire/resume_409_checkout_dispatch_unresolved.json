@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "checkout_dispatch_unresolved"
+    },
+    "error": {
+      "code": "CONFLICT",
+      "details": {
+        "error": "checkout_dispatch_unresolved"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "checkout_dispatch_unresolved"
+    },
+    "metadata": {
+      "request_id": "b44462f9-b9db-48d0-add1-968eb605c31b",
+      "timestamp": "2026-10-07T09:20:43.696484Z"
+    },
+    "status": "error"
+  },
+  "status": 409
+}

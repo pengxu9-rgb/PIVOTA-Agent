@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "purchase_not_found"
+    },
+    "error": {
+      "code": "PRODUCT_NOT_FOUND",
+      "details": {
+        "error": "purchase_not_found"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "purchase_not_found"
+    },
+    "metadata": {
+      "request_id": "e1b93504-c33f-4559-862a-398a7ae84d78",
+      "timestamp": "2026-10-07T09:20:43.929085Z"
+    },
+    "status": "error"
+  },
+  "status": 404
+}

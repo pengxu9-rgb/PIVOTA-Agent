@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "not_available_on_this_rail"
+    },
+    "error": {
+      "code": "PRODUCT_NOT_FOUND",
+      "details": {
+        "error": "not_available_on_this_rail"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "not_available_on_this_rail"
+    },
+    "metadata": {
+      "request_id": "df82be9c-6541-457d-b209-ee7c36edaa2f",
+      "timestamp": "2026-10-07T09:20:44.040307Z"
+    },
+    "status": "error"
+  },
+  "status": 404
+}
