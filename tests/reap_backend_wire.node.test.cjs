@@ -183,7 +183,7 @@ test('GET and recover: only the captured purchase_not_found envelope is an owner
 
 test('GET: a captured 409 envelope yields exactly its reason code, read from the middleware wrapping', async () => {
   for (const name of ['resume_409_checkout_dispatch_unresolved', 'resume_409_resume_raced', 'resume_409_terminal_purchase_not_resumable']) {
-    const record = WIRE[name];
+    const record = wire(name);
     const res = await clientAnswering(record).client.getPurchase('rp_0123456789abcdef01234567');
     assert.deepEqual(res, { kind: 'unavailable', code: record.body.detail.error, http_status: 409 }, name);
   }

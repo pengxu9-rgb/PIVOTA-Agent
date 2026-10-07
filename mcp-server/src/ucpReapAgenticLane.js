@@ -874,7 +874,7 @@ const REASON_HINTS = Object.freeze({
   // writes the reason again still gets an actionable answer here.
   offer_code_rejected: " The merchant refused the buyer's offer code and there was no time left to price the order without it; nothing was charged. Create a NEW checkout WITHOUT the code, with a NEW idempotency key (the old key replays this canceled purchase).",
   // Backend #2525: a contact-paused purchase nobody resumed within the re-entry window. The backend lapses only a
-  // purchase with no checkout-dispatch evidence, so no payment page exists for it.
+  // purchase with no checkout-dispatch evidence, so no checkout exists for it.
   contact_reentry_lapsed: " The buyer's contact details were erased for privacy while this purchase waited, and they were not re-entered in time. No checkout was created with the payment partner and nothing was charged. To buy, create a NEW checkout with a NEW idempotency key (the old key replays this ended purchase).",
 });
 // Terminal states each reason's hint may appear on (backend #2525 lapses needs_enrollment -> expired, resolving and
