@@ -216,6 +216,55 @@ test('a valid exact current-own product offer remains executable when opt-in is 
   }
 });
 
+// 2026-10-07: 545 public enrichment listings were single items whose seed carries ONLY the lane's minted
+// product-level variant (pivota-backend services/catalog_enrichment_agent/ingestion.py synthetic_variant:
+// `<external_product_id>::canonical`, product title, no options), priced by the `<product_key>::canonical`
+// placeholder SKU. Each stayed CURRENT_OWN_OFFER_UNAVAILABLE although its current own money was verified.
+// (This receipt's title carries "120g", so the builder derives a one-value Size option for the sole variant:
+// a description of the one item, not a choice.)
+const lanePlaceholderVariant = (pid, title) => ({ variant_id: `${pid}::canonical`, id: `${pid}::canonical`,
+  sku: pid, title, currency: 'USD', price_amount: 32, price: 32, availability: 'in_stock', in_stock: true,
+  variant_id_provenance: 'product_derived', purchasable: false });
+const placeholderMoney = ({ key }) => [{ source_variant_id: key, sku_key: `${key}::canonical`, amount: 19.95, currency: 'USD' }];
+
+test('a single item carrying only the lane-minted <pid>::canonical variant is ready on its verified money', async () => {
+  const card = receipts[0].search_card;
+  const pid = receipts[0].public_unscoped_pdp.body.metadata.identity_resolution.resolved_product_id;
+  const { app, merchant } = start(receipts[0], { variants: [lanePlaceholderVariant(pid, card.title)], moneyRows: placeholderMoney });
+  const res = await invoke(app, receipts[0], { allow_read_only: true });
+  expect(res.status).toBe(200);
+  expect(res.body.metadata.commerce).toMatchObject({ state: 'ready', purchase_eligible: true,
+    product_ref: { merchant_id: merchant, product_id: pid }, selected_variant_id: `${pid}::canonical`,
+    verified_variants: [{ variant_id: `${pid}::canonical`, amount: 19.95, currency: 'USD' }] });
+  const product = res.body.modules.find(m => m.type === 'canonical').data.pdp_payload.product;
+  expect(product.price.current).toEqual({ amount: 19.95, currency: 'USD' });
+  expect(product.variants).toHaveLength(1);
+  expect(product.variants[0]).toMatchObject({ variant_id: `${pid}::canonical`, options: [{ name: 'Size', value: '120 g' }] });
+  // This fixture has no identity group members, so its offers module is blocked; the selected offer's own
+  // check is covered in tests/canonical_pdp_own_money.test.js with the live offer shape.
+  // Legacy callers get the same verified money, with no gap reason.
+  const legacy = await invoke(app, receipts[0]);
+  expect(legacy.body.metadata.current_own_offer_reason_code).toBeUndefined();
+  expect(legacy.body.modules.find(m => m.type === 'canonical').data.pdp_payload.product.price.current)
+    .toEqual({ amount: 19.95, currency: 'USD' });
+});
+
+test.each([
+  ['two shades (the seed lists real variants)', pid => [
+    { variant_id: 'C-AMLP99-001A', title: 'Shade 1', price: 18, currency: 'USD', in_stock: true },
+    { variant_id: 'C-AMLP99-002A', title: 'Shade 2', price: 18, currency: 'USD', in_stock: true }]],
+  ['the minted id beside a real variant', (pid, title) => [lanePlaceholderVariant(pid, title),
+    { variant_id: 'C-AMLP99-001A', title: 'Shade 1', price: 18, currency: 'USD', in_stock: true }]],
+  ['a sole real variant', () => [{ variant_id: 'C-AMLP99-001A', title: 'Shade 1', price: 18, currency: 'USD', in_stock: true }]],
+  ['another product\'s minted id', (pid, title) => [lanePlaceholderVariant(`${pid}x`, title)]],
+  ['two minted ids', (pid, title) => [lanePlaceholderVariant(pid, title), lanePlaceholderVariant(`${pid}-b`, title)]],
+])('product-level placeholder money never prices %s', async (_label, variantsFor) => {
+  const pid = receipts[0].public_unscoped_pdp.body.metadata.identity_resolution.resolved_product_id;
+  const { app } = start(receipts[0], { variants: variantsFor(pid, receipts[0].search_card.title), moneyRows: placeholderMoney });
+  const res = await invoke(app, receipts[0], { allow_read_only: true });
+  assertReadOnly(res, receipts[0]);
+});
+
 test('a verified numeric variant proof names the exact displayed variant and its own money', async () => {
   const { app, pid, merchant } = start(receipts[0], {
     variants: [{ variant_id: '111', title: '120g', options: [{ name: 'Size', value: '120g' }],

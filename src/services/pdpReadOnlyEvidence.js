@@ -1,5 +1,7 @@
 'use strict';
 
+const { isOwnImplicitVariantId } = require('./canonicalPdpOwnMoney');
+
 // Evidence can be useful when the selected listing has no current own offer.
 // This projection must never turn cached money, availability or a sibling
 // listing into an executable offer. It is applied at the public response edge,
@@ -179,9 +181,11 @@ function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, pr
   const expectedVariant = String(selectedVariantId || '').trim();
   const displayedVariant = String(product.default_variant_id || '').trim();
   const ownAliases = new Set([ref.product_id, product.product_id]);
+  // The variant ids product-grain money may stand for: the product itself under any of its aliases.
+  const isOwnImplicit = id => isOwnImplicitVariantId(id, ref, [product.product_id]);
   const variantMatches = expectedVariant && displayedVariant &&
     (expectedVariant === displayedVariant ||
-      (productGrain && ownAliases.has(expectedVariant) && ownAliases.has(displayedVariant)));
+      (productGrain && isOwnImplicit(expectedVariant) && isOwnImplicit(displayedVariant)));
   const displayedMoney = product.price?.current;
   if (!variantMatches || !money || displayedMoney?.currency !== money.currency ||
       Number(displayedMoney?.amount) !== Number(money.amount)) return response;
@@ -197,7 +201,7 @@ function projectVerifiedCanonicalCommerce(response, { ref, selectedVariantId, pr
         (variant.merchant_id && variant.merchant_id !== ref.merchant_id) ||
         (variant.source_product_id && variant.source_product_id !== ref.product_id) ||
         (variant.product_id && !ownAliases.has(variant.product_id))) return [];
-    const own = productGrain && id === displayedVariant && ownAliases.has(id)
+    const own = productGrain && id === displayedVariant && isOwnImplicit(id)
       ? money : moneyByVariant?.get(id);
     const shown = variant.price?.current;
     if (!own || !shown || shown.currency !== own.currency ||

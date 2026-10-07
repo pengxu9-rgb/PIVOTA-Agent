@@ -1,6 +1,6 @@
 const {
   usesCanonicalOwnMoney, readCanonicalOwnMoney, projectCanonicalProductMoney,
-  projectCanonicalOffersMoney, storedNumericVariant, currentOwnMoneyReasonCode,
+  projectCanonicalOffersMoney, storedNumericVariant, currentOwnMoneyReasonCode, isCanonicalProductGrain,
   withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdCanonicalOffersMoney,
 } = require('../src/services/canonicalPdpOwnMoney');
 const { buildPdpPayload } = require('../src/pdpBuilder');
@@ -101,6 +101,46 @@ test('canonical placeholder funds only the genuine implicit product variant, nev
   for (const changed of [{ ...implicit, variant_id: '999' }, { ...implicit, variants: [{ variant_id: '999' }] }]) {
     expect(() => projectCanonicalOffersMoney({ offers: [changed] }, ref, money, { productGrain: true })).toThrow('unavailable');
   }
+});
+
+// 2026-10-07, measured live on https://agent.pivota.cc sig_732f3a8f1f618e94ba0b29b81300f076 (Tarte concealer paw):
+// a single item's seed carries only the enrichment lane's minted product variant `<product_id>::canonical`
+// (pivota-backend ingestion.py synthetic_variant), on the product AND as the selected offer's identity.
+test('the lane-minted <product_id>::canonical sole variant is the product: placeholder money prices it', async () => {
+  const money = await load([{ source_variant_id: ref.product_key, sku_key: `${ref.product_key}::canonical`, amount: 49, currency: 'USD' }]);
+  const minted = `${ref.product_id}::canonical`;
+  const product = { product_id: ref.product_id, price: 45,
+    variants: [{ variant_id: minted, id: minted, sku: ref.product_id, title: '', options: [], price: 45, currency: 'USD' }] };
+  expect(isCanonicalProductGrain(product, ref)).toBe(true);
+  // The builder may derive a one-value option from the title; it is still the one item.
+  expect(isCanonicalProductGrain({ ...product, variants: [{ ...product.variants[0], options: [{ name: 'Size', value: '120 g' }] }] }, ref)).toBe(true);
+  const priced = projectCanonicalProductMoney(product, money, { ref });
+  expect(priced.price).toEqual({ amount: 49, currency: 'USD' });
+  expect(priced.default_variant_id).toBe(minted);
+  const offer = { merchant_id: ref.merchant_id, product_id: ref.product_id, variant_id: minted, selected_variant_id: minted,
+    variants: [{ variant_id: minted }] };
+  const result = projectCanonicalOffersMoney({ offers: [offer] }, ref, money, { productGrain: true, selectedVariantId: minted });
+  expect(result.offers[0].price).toEqual({ amount: 49, currency: 'USD' });
+  expect(result.offers[0].variants[0].price.current).toEqual({ amount: 49, currency: 'USD' });
+});
+
+test('placeholder money never stands for a variant that is not the lane-minted product variant', async () => {
+  const money = await load([{ source_variant_id: ref.product_key, sku_key: `${ref.product_key}::canonical`, amount: 49, currency: 'USD' }]);
+  const minted = `${ref.product_id}::canonical`;
+  const v = id => ({ variant_id: id, title: 'Shade', options: [], price: 18, currency: 'USD' });
+  for (const variants of [[v(minted), v('C-AMLP99-001A')], [v('C-AMLP99-001A')], [v('ext_other::canonical')],
+    [v(`${ref.product_key}::canonical`)], [v(`${minted}x`)], [v(`${ref.product_id}::v:1`)]]) {
+    expect(isCanonicalProductGrain({ product_id: ref.product_id, variants }, ref)).toBe(false);
+    expect(() => projectCanonicalProductMoney({ product_id: ref.product_id, price: 18, variants }, money, { ref })).toThrow('unavailable');
+  }
+  const offer = { merchant_id: ref.merchant_id, product_id: ref.product_id, variant_id: minted, variants: [{ variant_id: minted }] };
+  for (const changed of [{ ...offer, variants: [{ variant_id: minted }, { variant_id: 'C-AMLP99-001A' }] },
+    { ...offer, variant_id: 'C-AMLP99-001A' }, { ...offer, variants: [{ variant_id: 'ext_other::canonical' }] }]) {
+    expect(() => projectCanonicalOffersMoney({ offers: [changed] }, ref, money,
+      { productGrain: true, selectedVariantId: minted })).toThrow('unavailable');
+  }
+  expect(() => projectCanonicalOffersMoney({ offers: [offer] }, ref, money,
+    { productGrain: true, selectedVariantId: 'ext_other::canonical' })).toThrow('unavailable');
 });
 
 test('native multi-variant offer lacking a selected ID uses the already selected canonical identity only', async () => {

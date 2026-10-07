@@ -208,15 +208,37 @@ function projectVariant(variant, moneyByVariant, nativeIdentity = null) {
     price_amount: money.amount, currency: money.currency };
 }
 
+// The enrichment lane mints this as a single-item listing's only seed variant (pivota-backend
+// services/catalog_enrichment_agent/ingestion.py synthetic_variant: `<external_product_id>::canonical`,
+// product title, no options). It names the product itself, as the `<product_key>::canonical` placeholder
+// SKU that prices it does.
+function laneProductVariantId(ref) {
+  return ref?.product_id ? `${ref.product_id}::canonical` : null;
+}
+
+// The variant identities that ARE the selected listing's product, never one of its options: the one rule
+// for every check that lets product-grain money stand for a displayed variant.
+function isOwnImplicitVariantId(id, ref, aliases = []) {
+  const value = String(id || '').trim();
+  return Boolean(value) && (value === ref?.product_id || value === laneProductVariantId(ref) ||
+    aliases.some(alias => alias && value === alias));
+}
+
 function isCanonicalProductGrain(product, ref) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   if (!variants.length) return true;
   if (variants.length !== 1 || !ref?.product_id) return false;
   const variant = variants[0];
+  const id = String(variant.variant_id || variant.id || '');
   // The external-seed builder materializes this exact implicit source product variant.
   // A numeric/group-selected variant is not backed by the product placeholder.
-  return String(variant.variant_id || variant.id || '') === ref.product_id &&
-    variant.title === 'Default' && Array.isArray(variant.options) && variant.options.length === 0;
+  if (id === ref.product_id) {
+    return variant.title === 'Default' && Array.isArray(variant.options) && variant.options.length === 0;
+  }
+  // The lane's minted product variant. The lane writes it only as a seed's SOLE variant (real variants
+  // replace it), so beside nothing else it is the product; an option the builder derives from the title
+  // ("Size: 120 g") describes that one item and offers no choice.
+  return id === laneProductVariantId(ref);
 }
 
 function projectCanonicalProductMoney(product, moneyByVariant, { ref = null } = {}) {
@@ -247,10 +269,10 @@ function projectCanonicalOffersMoney(data, ref, moneyByVariant, { productGrain =
       // Only the native implicit product variant is backed by the canonical placeholder.
       // An independently hydrated numeric/group variant needs its own exact SKU money.
       const implicitId = selectedVariantId || ref.product_id;
-      const ownedImplicitIds = new Set([ref.product_id]);
-      if (/^sig_[a-z0-9]+$/i.test(publicSignatureId || '')) ownedImplicitIds.add(publicSignatureId);
+      const signature = /^sig_[a-z0-9]+$/i.test(publicSignatureId || '') ? [publicSignatureId] : [];
+      const owned = identity => isOwnImplicitVariantId(identity, ref, signature);
       const identities = [explicitId, ...(offer.variants || []).map(v => String(v.variant_id || '').trim())].filter(Boolean);
-      if (!implicitId || !ownedImplicitIds.has(implicitId) || identities.some(identity => !ownedImplicitIds.has(identity))) throw unavailable();
+      if (!implicitId || !owned(implicitId) || identities.some(identity => !owned(identity))) throw unavailable();
     }
     const money = productGrain ? moneyByVariant.get(CANONICAL_PRODUCT) : moneyByVariant.get(id);
     if (!money) throw unavailable();
@@ -396,6 +418,6 @@ function withoutCanonicalPurchaseActions(response) {
 
 module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney, readCanonicalSellerOffersMoney, projectSellerOffersMoney,
   MAX_VERIFIED_SELLER_LISTINGS, withoutCanonicalPurchaseActions,
-  projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain,
+  projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain, isOwnImplicitVariantId,
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
   withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED };
