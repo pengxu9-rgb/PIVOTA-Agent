@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "price_changed"
+    },
+    "error": {
+      "code": "CONFLICT",
+      "details": {
+        "error": "price_changed"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "price_changed"
+    },
+    "metadata": {
+      "request_id": "d114e545-2d46-439a-b57b-5e506eb658d0",
+      "timestamp": "2026-10-07T09:20:43.351541Z"
+    },
+    "status": "error"
+  },
+  "status": 409
+}

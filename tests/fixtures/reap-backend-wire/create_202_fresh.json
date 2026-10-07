@@ -1,0 +1,10 @@
+{
+  "body": {
+    "checkout_dispatch_state": "not_dispatched",
+    "contact_reentry_required": false,
+    "poll_after_seconds": 60,
+    "purchase_id": "rp_289f00cb329e44b7912fbdf5",
+    "status": "resolving"
+  },
+  "status": 202
+}

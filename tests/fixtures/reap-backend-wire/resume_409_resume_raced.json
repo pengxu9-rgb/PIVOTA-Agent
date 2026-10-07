@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "resume_raced"
+    },
+    "error": {
+      "code": "CONFLICT",
+      "details": {
+        "error": "resume_raced"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "resume_raced"
+    },
+    "metadata": {
+      "request_id": "55865e85-2328-47c8-b694-b3cf83656105",
+      "timestamp": "2026-10-07T09:20:43.815223Z"
+    },
+    "status": "error"
+  },
+  "status": 409
+}

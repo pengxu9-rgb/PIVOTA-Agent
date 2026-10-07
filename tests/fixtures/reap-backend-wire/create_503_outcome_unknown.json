@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "checkout_outcome_unknown"
+    },
+    "error": {
+      "code": "EXTERNAL_SERVICE_ERROR",
+      "details": {
+        "error": "checkout_outcome_unknown"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "checkout_outcome_unknown"
+    },
+    "metadata": {
+      "request_id": "4b9fb14c-9c20-4bcc-8865-49552962cfed",
+      "timestamp": "2026-10-07T09:20:43.449850Z"
+    },
+    "status": "error"
+  },
+  "status": 503
+}

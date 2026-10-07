@@ -1,0 +1,21 @@
+{
+  "body": {
+    "detail": {
+      "error": "terminal_purchase_not_resumable"
+    },
+    "error": {
+      "code": "CONFLICT",
+      "details": {
+        "error": "terminal_purchase_not_resumable"
+      },
+      "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+      "message": "terminal_purchase_not_resumable"
+    },
+    "metadata": {
+      "request_id": "a1a004fe-21a5-4492-918b-9d72d3184cbc",
+      "timestamp": "2026-10-07T09:20:44.165671Z"
+    },
+    "status": "error"
+  },
+  "status": 409
+}
