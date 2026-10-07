@@ -9,6 +9,10 @@ None is hand-written. `tests/reap_backend_wire.node.test.cjs` runs every file he
 - Captured: 2026-10-07.
 - Buyer data: the backend test fixture's (`ada@example.test`). No file carries it: the owner views are redacted.
 
+Not covered: the capture runs on SQLite, so timestamps carry no microseconds (prod Postgres views do), and no
+fixture carries `hosted_url`, `approval_deadline`, quoted totals or an order (those need a provider; the lane tests
+cover them from the contract's examples).
+
 Each file is `{"status": <http status>, "body": <response JSON>}`. Ids, request ids and timestamps vary per
 capture; the test reads them from the file and never pins them.
 

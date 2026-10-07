@@ -875,7 +875,7 @@ const REASON_HINTS = Object.freeze({
   offer_code_rejected: " The merchant refused the buyer's offer code and there was no time left to price the order without it; nothing was charged. Create a NEW checkout WITHOUT the code, with a NEW idempotency key (the old key replays this canceled purchase).",
   // Backend #2525: a contact-paused purchase nobody resumed within the re-entry window. The backend lapses only a
   // purchase with no checkout-dispatch evidence, so no payment page exists for it.
-  contact_reentry_lapsed: " The buyer's contact details were erased for privacy while this purchase waited, and they were not re-entered through resume_checkout in time. No payment page was opened and nothing was charged. To buy, create a NEW checkout with a NEW idempotency key (the old key replays this ended purchase).",
+  contact_reentry_lapsed: " The buyer's contact details were erased for privacy while this purchase waited, and they were not re-entered in time. No checkout was created with the payment partner and nothing was charged. To buy, create a NEW checkout with a NEW idempotency key (the old key replays this ended purchase).",
 });
 // Terminal states each reason's hint may appear on (backend #2525 lapses needs_enrollment -> expired, resolving and
 // quoting -> failed).
@@ -1096,10 +1096,30 @@ const CONTACT_REENTRY_STATES = new Set(["resolving", "needs_enrollment", "quotin
 // backend lapses it after its re-entry window (`contact_reentry_lapsed`).
 const CONTACT_REENTRY_NEEDED_MESSAGE =
   "This purchase is paused: the buyer's contact details were erased for privacy while it waited, and it will not be priced until they are re-entered. Nothing has been charged. Ask the buyer to continue, then call resume_checkout with this checkout_id and the IDENTICAL original create_checkout payload and idempotency key (the same email and shipping address). Do not create a new checkout for it. If it is not resumed in time it ends with reason contact_reentry_lapsed.";
+// The same pause while new Reap purchases are paused here (REAP_AGENTIC_CREATE_ENABLED off): resume_checkout refuses
+// then, and the backend's /resume is unavailable too, so the agent is not sent to a tool that cannot work.
+const CONTACT_REENTRY_UNAVAILABLE_MESSAGE =
+  "This purchase is paused: the buyer's contact details were erased for privacy while it waited, and it will not be priced until they are re-entered. Nothing has been charged. Continuing it is temporarily unavailable because new Reap purchases are paused. Keep polling get_checkout; when this message changes, follow it. Do not create a new checkout for it. If it is not continued in time it ends with reason contact_reentry_lapsed, with nothing charged.";
+// needs_enrollment's own text says "poll afterwards", which is wrong while the purchase waits for a resume.
+const NEEDS_ENROLLMENT_PAUSED_MESSAGE =
+  "The buyer can add a card on the payment partner's secure page at continue_url (Pivota never sees the card), but this purchase will not continue until its contact details are re-entered: follow the reap.contact_reentry_needed or reap.contact_reentry_unavailable message first.";
+
+/**
+ * Which contact re-entry instruction a view gets: "needed" (call resume_checkout), "unavailable" (paused here, keep
+ * polling) or null. "needed" is exactly the condition under which resume_checkout sends the backend's /resume
+ * (tryReapAgenticCheckout + recoverReapCheckout); any other dispatch state means a checkout may exist, and the
+ * backend refuses the resume.
+ */
+function contactReentryInstruction(view, env) {
+  if (CHECKOUT_REVIEW_CODES.has(own(view, "last_error_code"))) return null;
+  if (own(view, "contact_reentry_required") !== true || own(view, "checkout_dispatch_state") !== "not_dispatched"
+    || !CONTACT_REENTRY_STATES.has(own(view, "state"))) return null;
+  return reapAgenticCreateEnabled(env) ? "needed" : "unavailable";
+}
 
 // Owner-view facts only. Missing IDs, an enrollment link, or a gateway snapshot
 // never establish that dispatch did not happen.
-function continuationMessages(view) {
+function continuationMessages(view, env = process.env) {
   const state = own(view, "checkout_dispatch_state");
   const messages = [info("reap.checkout_dispatch_state", CHECKOUT_DISPATCH_STATES.has(state) ? state : "unknown")];
   const contactRequired = own(view, "contact_reentry_required");
@@ -1108,11 +1128,9 @@ function continuationMessages(view) {
   if (review) {
     messages.push(warning("reap.checkout_requires_review", "This checkout needs review before it can continue. Check its status or contact support; do not start another checkout or approve an old link."));
   }
-  // Exactly the condition under which resume_checkout sends the backend's /resume (recoverReapCheckout): any other
-  // dispatch state means a checkout may exist, and the backend refuses the resume.
-  if (!review && contactRequired === true && state === "not_dispatched" && CONTACT_REENTRY_STATES.has(own(view, "state"))) {
-    messages.push(warning("reap.contact_reentry_needed", CONTACT_REENTRY_NEEDED_MESSAGE));
-  }
+  const reentry = contactReentryInstruction(view, env);
+  if (reentry === "needed") messages.push(warning("reap.contact_reentry_needed", CONTACT_REENTRY_NEEDED_MESSAGE));
+  if (reentry === "unavailable") messages.push(warning("reap.contact_reentry_unavailable", CONTACT_REENTRY_UNAVAILABLE_MESSAGE));
   return messages;
 }
 
@@ -1165,7 +1183,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
   let status = known ? STATE_TO_STATUS[state] : "incomplete";
   let continueUrl;
   let expiresAt = new Date(now + ESCALATION_TTL_MS).toISOString();
-  const messages = continuationMessages(view);
+  const messages = continuationMessages(view, env);
   if (!known) {
     if (typeof onUnrecognisedState === "function") onUnrecognisedState(state);
     messages.push(info("reap.state_unrecognised", UNRECOGNISED_STATE_MESSAGE));
@@ -1183,7 +1201,8 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     continueUrl = vetHostedUrl(own(view, "hosted_url"), deadline, now) || undefined;
     if (continueUrl) {
       expiresAt = new Date(Date.parse(deadline)).toISOString();
-      messages.push(info(`reap.${state}`, STATE_MESSAGES[state], "$.continue_url"));
+      const pausedEnrollment = state === "needs_enrollment" && contactReentryInstruction(view, env) !== null;
+      messages.push(info(`reap.${state}`, pausedEnrollment ? NEEDS_ENROLLMENT_PAUSED_MESSAGE : STATE_MESSAGES[state], "$.continue_url"));
       // The bare instant, so a platform can read the deadline without parsing prose — the same reason
       // `reap.poll_after_seconds` is a bare integer. The same value is `expires_at` on the checkout.
       if (state === "awaiting_approval") messages.push(info("reap.approval_deadline", expiresAt, "$.expires_at"));
@@ -1205,7 +1224,7 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     const reason = raw ? raw.toLowerCase() : null;
     const named = reason && REASON_RE.test(reason) ? ` Reason: ${reason}.` : "";
     // Keyed on the state as well as the code: the backend writes `approval_window_lapsed` on 'failed' only.
-    const hint = named && Object.prototype.hasOwnProperty.call(REASON_HINTS, reason) && REASON_HINT_STATES[reason].includes(state) ? REASON_HINTS[reason] : "";
+    const hint = named && Object.prototype.hasOwnProperty.call(REASON_HINTS, reason) && (REASON_HINT_STATES[reason] || []).includes(state) ? REASON_HINTS[reason] : "";
     messages.push(warning(`reap.purchase_${state}`, `${STATE_MESSAGES[state]}${named}${hint}`));
   } else {
     messages.push(info(`reap.${state}`, STATE_MESSAGES[state]));
