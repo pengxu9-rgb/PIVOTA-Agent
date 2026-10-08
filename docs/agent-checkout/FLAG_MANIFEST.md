@@ -32,6 +32,10 @@ is worse than none.
 | `AGENT_CHECKOUT_HOSTED_LINK_ENABLED` | `1` | `create_payment_link` tool | ON |
 | `AURORA_BFF_USE_MOCK` | `false` | Aurora mock mode | OFF (also triple-gated non-prod in code) |
 | `PROMOTIONS_MODE` | `remote` | Gateway promotions source | Remote (backend `/agent/internal/promotions`); `local`/`none` semantics per PR #1948 |
+| `AGENT_SIGNATURE_VERIFY_MODE` | absent (`off`) | Inbound agent-signature verification on `/mcp`, `/ucp/*`, `/acp/*` (Visa TAP, IETF Web Bot Auth) | `observe` verifies and logs (`event: agent_signature`, access-log `agent_sig_*`); never refuses or changes a response in any mode. `delegate_payment` is never inspected |
+| `AGENT_SIGNATURE_TRUSTED_KEY_SOURCES_JSON` | absent (default: Visa TAP JWKS `https://mcp.visa.com/.well-known/jwks`) | Which agent key sources are ever fetched | Allowlist of `{id, profile: web-bot-auth\|visa-tap, url}`; any other Signature-Agent is logged as an unresolved claim and never fetched (no SSRF) |
+| `AGENT_SIGNATURE_EXPECTED_AUTHORITIES` | absent (default `commerce.mcp.pivota.cc,mcp.pivota.cc,gateway.pivota.cc,ucp.pivota.cc`) | Hosts a signature may name in `@authority` | A signature made for any other host (e.g. captured at another merchant and replayed here) is `authority_mismatch`. Set this if a door is served on another custom domain |
+| `AGENT_SIGNATURE_VERIFY_BUDGET_MS` | absent (`1500`, clamped to ≤ `5000`) | Max time a signed door request waits for verification | On timeout the result is `verification_timeout` and the request proceeds. Key-source fetches time out at 1s, below this budget |
 
 ## Backend — pivota-backend (`web`, Pivota Infra)
 
