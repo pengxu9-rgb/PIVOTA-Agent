@@ -93,7 +93,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 // (Node resolves `src/services/*` against the repo-root package.json, which declares no `type`, so the
 // default interop import is the module's `module.exports` object.)
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
-import { judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
+import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
@@ -306,7 +306,9 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   if (!gateEnabled) return true;
   // The SELLER's domain — a Pivota attribution hop decoded to its destination — never api.pivota.cc: asking the gate
   // about Pivota's own host is asking about nobody. A link whose seller cannot be read keeps the previous key.
-  return mayOfferPurchaseForDomain(sellerHostOf(continueUrl) || hostOf(continueUrl), market, gate, gateEnabled, budgetMs);
+  // A link whose seller cannot be read is asked about NO domain (the gate's own "domain unknown" answer: a decline
+  // under enforcement, the previous behaviour otherwise) — never about api.pivota.cc or a redirector's host.
+  return mayOfferPurchaseForDomain(sellerHostOf(continueUrl), market, gate, gateEnabled, budgetMs);
 }
 
 /**
@@ -405,7 +407,8 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     });
   });
 
-  const host = sellerHostOf(continueUrl) || hostOf(continueUrl);
+  const host = sellerHostOf(continueUrl);
+  const where = host ? `the seller's own storefront (${host})` : "the seller's own storefront (continue_url)";
   return buildUcpCheckoutEnvelope({
     id,
     status: "requires_escalation",
@@ -425,7 +428,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
         code: "checkout.completes_on_seller_storefront",
         path: "$.continue_url",
         content: [
-          `This purchase completes on the seller's own storefront (${host}) — Pivota has no contract, payment or fulfillment relationship with this seller and does not price, charge or ship this checkout.`,
+          `This purchase completes on ${where} — Pivota has no contract, payment or fulfillment relationship with this seller and does not price, charge or ship this checkout.`,
           "Totals are the catalog's last observed prices for these items and may differ on the storefront; verify there before paying.",
           "This checkout cannot be updated or completed here; change items or pay on the storefront.",
         ].join(" "),
@@ -576,10 +579,8 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // api.pivota.cc and two different sellers could share a checkout whose continue_url sends the buyer to only the
     // first. The seller is the hop's destination (sellerHostOf). In a cart of more than one product, a row whose
     // seller cannot be read cannot be proven to share a seller with the rest: refused, never assumed.
-    const sellerOf = new Map([...targets.entries()].map(([pid, t]) => [pid, sellerHostOf(t)]));
-    const hosts = new Set([...sellerOf.values()].filter(Boolean));
-    const unconfirmed = [...sellerOf.entries()].filter(([, h]) => !h).map(([pid]) => pid);
-    if (hosts.size > 1 || (sellerOf.size > 1 && unconfirmed.length > 0)) {
+    const { hosts, unconfirmed, oneSeller } = sellerGroupingOf(targets);
+    if (!oneSeller) {
       throw intakeRefusal("QUOTE_REQUIRED", "ucp_multi_seller_escalation", [
         "These items complete on different sellers' storefronts (or on a storefront that cannot be confirmed) and cannot share one checkout.",
         `Send one checkout per seller${hosts.size ? `: ${[...hosts].join(", ")}` : ""}.`,
@@ -588,7 +589,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const normalized = items.map((it) => (str(it.variant_id)
       ? { product_id: it.product_id, quantity: it.quantity, variant_id: str(it.variant_id) }
       : { product_id: it.product_id, quantity: it.quantity }));
-    const continueUrl = targets.get(normalized[0].product_id);
+    // THE LINK HANDED OUT for a one-seller cart: a row's Pivota attribution hop when any row carries one (the hop
+    // records the click and its destination carries the referral `carryAttribution` copies), else the first row's.
+    // Taking the first row's link regardless dropped Pivota's attribution whenever a direct link happened to come
+    // first in a cart that also held a hop to the same seller.
+    const orderedTargets = normalized.map((it) => targets.get(it.product_id));
+    const continueUrl = orderedTargets.find(isReadablePivotaHop) || orderedTargets[0];
     // THE EXPECTED SELLER, AGAIN, ON THE LINK ITSELF (docs/reap-agentic-lane.md §5.4). The door has already
     // refused a create whose rows are not that seller (ucpReapAgenticLane.js `assertExpectedSeller`); this is
     // belt and braces on the one value this lane hands the buyer: a continue_url whose host is not the expected
@@ -648,6 +654,11 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (targets.some((t) => !t)) {
       // The row stopped being an escalation row since the id was minted (it became a contracted merchant, or
       // lost its destination). There is no session to recover: say so rather than fabricate one.
+      throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
+    }
+    // ONE SELLER, AGAIN, on the re-read: a row re-pointed to another seller since create (or an id nobody minted —
+    // esc_ ids are unsigned) must not come back as one checkout whose continue_url reaches only the first seller.
+    if (!sellerGroupingOf(new Map(decoded.map((it, i) => [it.product_id, targets[i]]))).oneSeller) {
       throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
     }
     // The same seam on the re-read, deliberately symmetrical: the UCP `get_checkout` wire body carries no
@@ -766,8 +777,36 @@ function sellerHostOf(url) {
   try { parsed = new URL(url); } catch { return null; }
   const hop = pivotaHopDestination(parsed);
   // One hop only, as judgeSellerUrl: a `dest` that is itself a Pivota host (another hop) names nobody.
-  const host = hop ? (hop.dest && /^https:\/\//i.test(hop.dest) ? hostOf(hop.dest) : null) : hostOf(url);
+  let dest = parsed;
+  if (hop) {
+    if (!hop.dest || !/^https:\/\//i.test(hop.dest)) return null;
+    try { dest = new URL(hop.dest); } catch { return null; }
+  }
+  // A destination that carries ANOTHER URL (an affiliate redirector: `…/deeplink?murl=https://seller…`) does not
+  // end at its own host, so its host is not the seller — the same rule judgeSellerUrl and the merchant-door
+  // pricing apply. It names nobody; two such links are never "the same seller".
+  if (carriesAnotherUrl(dest)) return null;
+  const host = hostOf(dest.toString());
   return host && !SELF_HOST_RE.test(host) ? host : null;
+}
+
+/** A Pivota attribution hop whose destination this door can read. */
+function isReadablePivotaHop(url) {
+  try { const hop = pivotaHopDestination(new URL(url)); return Boolean(hop && hop.dest); } catch { return false; }
+}
+
+/**
+ * One seller per checkout, judged on the SELLER (sellerHostOf), for a map of product id -> storefront link.
+ * `oneSeller` is false when two sellers are named, or when a cart of MORE than one product holds a row whose seller
+ * cannot be read (it cannot be proven to share a seller with the rest). Hosts are compared after `www.` is dropped;
+ * a subdomain is a DIFFERENT seller here (fail closed, as canonicalReapMerchantDomain treats it), although a seller
+ * cart URL on a subdomain is accepted by the merchant-door pricing, which already knows the seller.
+ */
+function sellerGroupingOf(targets) {
+  const sellerOf = new Map([...targets.entries()].map(([pid, t]) => [pid, sellerHostOf(t)]));
+  const hosts = new Set([...sellerOf.values()].filter(Boolean));
+  const unconfirmed = [...sellerOf.entries()].filter(([, h]) => !h).map(([pid]) => pid);
+  return { hosts, unconfirmed, oneSeller: !(hosts.size > 1 || (sellerOf.size > 1 && unconfirmed.length > 0)) };
 }
 
 /** The storefront's own hostname (`www.` KEPT, lower-cased) behind a catalog link, hop decoded; null otherwise. */
