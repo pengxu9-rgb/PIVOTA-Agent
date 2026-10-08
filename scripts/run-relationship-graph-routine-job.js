@@ -19,6 +19,11 @@ const DEFAULT_LIMIT = 200;
 const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_REVIEW_MIN_SCORE = 0;
 const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
+// Legacy ceiling. Legacy suppressed edges (approved before this run) do not fail
+// the run, but a guard change that suddenly hides a large slice of the graph
+// must not be just a WARNING. Production on 2026-10-08: ~108 of 9,478 (1.1%).
+const DEFAULT_MAX_LEGACY_SUPPRESSED_PCT = 10;
+const DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS = 1500;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
 const DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES = 10;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
@@ -28,6 +33,15 @@ const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
 // at or after the run's start. last_verified_at is stamped by the database
 // clock and the run start by this process's clock; the allowance only widens
 // the run's side (more rows gated), never the legacy side.
+//
+// Known limit: the scope is one run. A Cloud Run retry of a failed task scopes
+// back over the failed attempt (see runScopeStartedAt in the cron), but a
+// MANUAL re-run started fresh (task attempt 0) after a failed night treats that
+// night's writes as legacy: an unsafe edge the failed run approved is then only
+// reported (legacy_suppressed_*, WARNING) and counted against the legacy
+// ceiling, not failed again. After a run fails on run_suppressed_rows, fix or
+// quarantine those edges before re-running; or pass --run-started-at with the
+// failed run's start to keep them in scope.
 const RUN_SCOPE_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
 
@@ -131,7 +145,9 @@ function usage() {
     'Use --fail-on-serving-suppression-reasons reason_a,reason_b to fail when any listed suppression reason appears.',
     'Serving thresholds gate only the edges this run approved or renewed (last_verified_at at or after --run-started-at,',
     'default: this process start): any such edge the guard suppresses fails the job. Older (legacy) suppressed edges are',
-    'reported as legacy_suppressed_* and logged at WARNING, but do not fail it — the read path already hides them.',
+    'reported as legacy_suppressed_* and logged at WARNING, but do not fail it — the read path already hides them —',
+    `unless they exceed --max-legacy-suppressed-pct (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_PCT}, of legacy edges) or`,
+    `--max-legacy-suppressed-rows (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS}).`,
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
@@ -204,6 +220,14 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
       max: Number.MAX_SAFE_INTEGER,
     }),
     failOnServingSuppressionReasons: parseDelimitedList(argValue(argv, 'fail-on-serving-suppression-reasons')),
+    maxLegacySuppressedPct: parseNumber(argValue(argv, 'max-legacy-suppressed-pct'), DEFAULT_MAX_LEGACY_SUPPRESSED_PCT, {
+      min: 0,
+      max: 100,
+    }),
+    maxLegacySuppressedRows: parseNumber(argValue(argv, 'max-legacy-suppressed-rows'), DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
     affectedRefs: normalizeString(argValue(argv, 'affected-refs'), 2000),
     affectedRefsFile: normalizeString(argValue(argv, 'affected-refs-file'), 2000),
     affectedProductsFile: normalizeString(argValue(argv, 'affected-products-file'), 2000),
@@ -642,6 +666,24 @@ function evaluateRunScopedServingAuditThresholds(audit, options = {}) {
       });
     }
   }
+  const legacyRows = parseNumber(audit.legacy_suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const legacyPct = parseNumber(audit.legacy_suppressed_pct, 0, { min: 0, max: 100 });
+  if (options.maxLegacySuppressedRows != null && legacyRows > options.maxLegacySuppressedRows) {
+    violations.push({
+      metric: 'legacy_suppressed_rows',
+      observed: legacyRows,
+      max: options.maxLegacySuppressedRows,
+      message: `serving guard suppresses ${legacyRows} legacy approved edges, above the legacy ceiling ${options.maxLegacySuppressedRows}`,
+    });
+  }
+  if (options.maxLegacySuppressedPct != null && legacyPct > options.maxLegacySuppressedPct) {
+    violations.push({
+      metric: 'legacy_suppressed_pct',
+      observed: legacyPct,
+      max: options.maxLegacySuppressedPct,
+      message: `serving guard suppresses ${legacyPct}% of legacy approved edges, above the legacy ceiling ${options.maxLegacySuppressedPct}%`,
+    });
+  }
   return violations;
 }
 
@@ -799,6 +841,8 @@ function serializableOptions(options) {
     max_serving_suppressed_pct: options.maxServingSuppressedPct,
     max_serving_suppressed_rows: options.maxServingSuppressedRows,
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
+    max_legacy_suppressed_pct: options.maxLegacySuppressedPct == null ? null : options.maxLegacySuppressedPct,
+    max_legacy_suppressed_rows: options.maxLegacySuppressedRows == null ? null : options.maxLegacySuppressedRows,
     affected_refs: options.affectedRefs || null,
     affected_refs_file: options.affectedRefsFile || null,
     affected_products_file: options.affectedProductsFile || null,

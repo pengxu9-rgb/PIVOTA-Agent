@@ -59,7 +59,8 @@ function pushFlag(args, name, enabled) {
 }
 
 // The routine's serving audit fails only on suppressed edges written at or after
-// the run start. When Cloud Run retries a failed task, this attempt starts later
+// the run start (a manual re-run is not a retry: see RUN_SCOPE_CLOCK_SKEW_MS in
+// run-relationship-graph-routine-job.js for that limit). When Cloud Run retries a failed task, this attempt starts later
 // than the one that failed, so an unsafe edge the failed attempt approved would
 // look "legacy" and the retry would pass. A retry (CLOUD_RUN_TASK_ATTEMPT >= 1)
 // therefore scopes back far enough to include the attempt(s) before it.
@@ -186,6 +187,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'max-serving-suppressed-pct', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_PCT);
   pushArg(args, 'max-serving-suppressed-rows', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_ROWS);
   pushArg(args, 'fail-on-serving-suppression-reasons', env.RELGRAPH_SYNC_FAIL_ON_SERVING_SUPPRESSION_REASONS);
+  pushArg(args, 'max-legacy-suppressed-pct', env.RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_PCT);
+  pushArg(args, 'max-legacy-suppressed-rows', env.RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_ROWS);
   pushArg(args, 'renewal-window-days', env.RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS);
   pushArg(args, 'renewal-max-age-days', env.RELGRAPH_SYNC_RENEWAL_MAX_AGE_DAYS);
   pushArg(args, 'lock-stale-after-minutes', env.RELGRAPH_SYNC_LOCK_STALE_AFTER_MINUTES);

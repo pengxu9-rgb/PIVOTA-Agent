@@ -94,9 +94,10 @@ function dearBarberRow(id, overrides = {}) {
 }
 
 function legacyTable() {
-  // 30 legacy suppressed rows (above the 25-row cap) in a small table (well above 1%).
+  // 30 legacy suppressed rows (above the 25-row cap) in a small table (well above 1%), but under
+  // the legacy ceiling (30 of 430 legacy rows = 6.98% < 10%).
   const legacy = Array.from({ length: 30 }, (_, i) => dearBarberRow(`legacy_${i}`));
-  const legacySafe = Array.from({ length: 50 }, (_, i) => approvedRow(`legacy_safe_${i}`, { last_verified_at: LEGACY_VERIFIED_AT }));
+  const legacySafe = Array.from({ length: 400 }, (_, i) => approvedRow(`legacy_safe_${i}`, { last_verified_at: LEGACY_VERIFIED_AT }));
   const runSafe = Array.from({ length: 24 }, (_, i) => approvedRow(`run_safe_${i}`));
   return [...legacy, ...legacySafe, ...runSafe];
 }
@@ -120,7 +121,7 @@ describe('serving audit gate scoped to the rows this run wrote', () => {
     // ...split by who wrote them.
     expect(audit.run_total_rows).toBe(24);
     expect(audit.run_suppressed_rows).toBe(0);
-    expect(audit.legacy_total_rows).toBe(80);
+    expect(audit.legacy_total_rows).toBe(430);
     expect(audit.legacy_suppressed_rows).toBe(30);
     expect(audit.legacy_suppressed_by_reason).toEqual({ related_product_same_product_across_listings_or_sizes: 30 });
     expect(audit.legacy_suppressed_examples.related_product_same_product_across_listings_or_sizes).toHaveLength(8);
@@ -323,6 +324,51 @@ describe('a Cloud Run retry cannot launder the failed attempt\'s unsafe rows int
     const yesterday = dearBarberRow('yesterday', { last_verified_at: '2026-10-07T10:58:00.000Z' });
     const withYesterday = summarizeSuppressionRows([...legacyTable(), yesterday], { runVerifiedSince: retrySince });
     expect(withYesterday.run_suppressed_rows).toBe(0);
+  });
+});
+
+describe('legacy ceiling: a guard change that suppresses a big slice of the graph still fails', () => {
+  const LEGACY_GATE = { ...PROD_GATE, maxLegacySuppressedPct: 10, maxLegacySuppressedRows: 1500 };
+  const legacyRows = (suppressed, safe) => [
+    ...Array.from({ length: suppressed }, (_, i) => dearBarberRow(`lg_${i}`)),
+    ...Array.from({ length: safe }, (_, i) => approvedRow(`ls_${i}`, { last_verified_at: LEGACY_VERIFIED_AT })),
+  ];
+
+  test('routine defaults: 10% / 1500 rows, overridable', () => {
+    const defaults = parseArgs(['--skip-review', '--out-dir', '/tmp/x'], { now: RUN_START });
+    expect(defaults.maxLegacySuppressedPct).toBe(10);
+    expect(defaults.maxLegacySuppressedRows).toBe(1500);
+    const tuned = parseArgs(['--skip-review', '--out-dir', '/tmp/x', '--max-legacy-suppressed-pct', '4', '--max-legacy-suppressed-rows', '200'], { now: RUN_START });
+    expect(tuned).toEqual(expect.objectContaining({ maxLegacySuppressedPct: 4, maxLegacySuppressedRows: 200 }));
+  });
+
+  test('under both bounds (prod today: ~108 of 9,478) passes', () => {
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(108, 9370 - 24)), LEGACY_GATE)).toEqual([]);
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(30, 400)), LEGACY_GATE)).toEqual([]);
+  });
+
+  test('over the percent bound fails', () => {
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(50, 400)), LEGACY_GATE)).toEqual([
+      expect.objectContaining({ metric: 'legacy_suppressed_pct', observed: 11.11, max: 10 }),
+    ]);
+  });
+
+  test('over the row bound fails even when the percent is small', () => {
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(1501, 20000)), LEGACY_GATE)).toEqual([
+      expect.objectContaining({ metric: 'legacy_suppressed_rows', observed: 1501, max: 1500 }),
+    ]);
+  });
+
+  test('the sync wrapper and the cron pass the bounds through', () => {
+    const config = buildCronArgs({ RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_PCT: '5', RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_ROWS: '900' }, { now: RUN_START });
+    const options = parseSyncArgs(config.args, { now: RUN_START, cwd: '/tmp/pivota' });
+    const routine = buildSyncRoutineSteps(options).steps.find((step) => step.id === 'relationship_graph_routine');
+    expect(routine.args[routine.args.indexOf('--max-legacy-suppressed-pct') + 1]).toBe('5');
+    expect(routine.args[routine.args.indexOf('--max-legacy-suppressed-rows') + 1]).toBe('900');
+    // Unset: the routine's own defaults apply.
+    const plain = buildSyncRoutineSteps(parseSyncArgs(['--skip-review', '--select-hours', '24'], { now: RUN_START, cwd: '/tmp/pivota' }))
+      .steps.find((step) => step.id === 'relationship_graph_routine');
+    expect(plain.args).not.toContain('--max-legacy-suppressed-pct');
   });
 });
 

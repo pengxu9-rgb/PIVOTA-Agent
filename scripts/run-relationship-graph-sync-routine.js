@@ -253,6 +253,12 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       argValue(argv, 'fail-on-serving-suppression-reasons'),
       DEFAULT_FAIL_REASONS,
     ),
+    // Unset: the routine's own legacy-ceiling defaults apply.
+    maxLegacySuppressedPct: parseNumber(argValue(argv, 'max-legacy-suppressed-pct'), null, { min: 0, max: 100 }),
+    maxLegacySuppressedRows: parseNumber(argValue(argv, 'max-legacy-suppressed-rows'), null, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
     dbLock: !hasFlag(argv, 'no-db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key'), 500),
     lockStaleAfterMinutes: parseNumber(
@@ -480,6 +486,8 @@ function buildSyncRoutineSteps(options = {}) {
     String(options.dbLockHeartbeatMs),
   ];
   pushArg(routineArgs, 'run-started-at', options.runStartedAt);
+  pushArg(routineArgs, 'max-legacy-suppressed-pct', options.maxLegacySuppressedPct);
+  pushArg(routineArgs, 'max-legacy-suppressed-rows', options.maxLegacySuppressedRows);
   if (options.stepTimeoutMs) {
     routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
   } else {
