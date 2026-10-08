@@ -294,9 +294,9 @@ function compareStructured(a, b, { anchorRef = '', candidateRef = '' } = {}) {
   if (aRef && bRef && aRef === bRef) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_product_ref'] };
   const aIds = fieldTokens(a, LISTING_ID_FIELDS, 6);
   const bIds = fieldTokens(b, LISTING_ID_FIELDS, 6);
+  // Refs join the listing-id pool unprefixed: 'product:ext_1' and 'external:ext_1' are one listing.
   const aRefToken = identityToken(anchorRef, 4);
   const bRefToken = identityToken(candidateRef, 4);
-  if (aRefToken && bRefToken && aRefToken === bRefToken) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_product_ref'] };
   if (aRefToken) aIds.add(aRefToken);
   if (bRefToken) bIds.add(bRefToken);
   if (intersects(aIds, bIds)) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_listing_id'] };
@@ -442,8 +442,6 @@ function optionValueKind(slot, { label, separated, role, terminal, numericTail }
   return '';
 }
 
-const STRONG_OPTION_KINDS = new Set(['marker', 'labelled', 'code', 'numeric_shade']);
-
 // Two listings that differ only in one terminal option slot: "#23 Natural Beige" / "#27 Honey Beige",
 // "- Style A" / "- Style B", "in Hope" / "in Joy", "Berry" / "Vanilla" (lip mask), "18mm" / "16mm",
 // "MN230" / "DP320". The shared base must name the product (two or more words); a slot inside the
@@ -471,9 +469,10 @@ function optionSlotRule(aTokens, bTokens, role) {
     label, separated, role, terminal: suffix.length === 0,
     numericTail: suffixShadeWords ? slot.concat(suffix) : slot,
   });
+  // The base listing against one of its options ("Tinted Sunscreen" / "Tinted Sunscreen MN230").
   if (!slotA.length || !slotB.length) {
     const present = kind(slotA.length ? slotA : slotB);
-    return STRONG_OPTION_KINDS.has(present) && suffix.length === 0 ? `option_value_vs_base:${present}` : '';
+    return present && suffix.length === 0 ? `option_value_vs_base:${present}` : '';
   }
   const aKind = kind(slotA);
   const bKind = kind(slotB);

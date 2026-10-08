@@ -40,6 +40,19 @@ const BRIEF = [
   ['COSRX', 'Advanced Snail 96 Mucin Power Essence', 'Advanced Snail 92 Mucin Power Essence', 'distinct'],
   ['House', 'Retinol 0.2% in Squalane', 'Retinol 0.5% in Squalane', 'distinct'],
   ['Chanel', 'Perfume No. 5 Eau de Parfum', 'Perfume No. 19 Eau de Parfum', 'distinct'],
+  ['House', 'Garden Eau de Parfum No. 5', 'Garden Eau de Parfum No. 19', 'distinct'],
+  ['House', 'Skin Relief Toner No.1 Calming Formula', 'Skin Relief Toner No.2 Brightening Formula', 'distinct'],
+  ['House', 'Brightening Serum 15 Strong', 'Brightening Serum 10 Gentle', 'distinct'],
+  ['House', 'Retinol Serum in Squalane', 'Retinol Serum in Rosehip Oil', 'distinct'],
+  ['House', 'Clay Mask Black', 'Clay Mask White', 'distinct'],
+  ['House', 'Balm - Rose', 'Balm - Pink', 'distinct'],
+  ['House', 'Glow Highlighter - Cream', 'Glow Highlighter - Powder', 'distinct'],
+  ['Laneige', 'Lip Sleeping Mask Berry', 'Lip Sleeping Mask Overnight Repair', 'distinct'],
+  // Option markers and listing packs.
+  ['House', 'Glow Cushion Compact N°21', 'Glow Cushion Compact N°23', 'same_family_variant'],
+  ['Laneige', 'Lip Sleeping Mask', 'Lip Sleeping Mask Berry', 'same_family_variant'],
+  ['Lav Kids', 'Gentle Care Shampoo 12 fl oz (Case of 12)', 'Gentle Care Shampoo', 'same_product'],
+  ['Falscara', 'Volume Wisps - 3-Pack', 'Volume Wisps', 'same_product'],
 ];
 const REAL = real.identity.map((row) => [row.anchor.brand, row.anchor.name, row.candidate.name, row.expected, row]);
 
@@ -128,6 +141,27 @@ describe('structured keys come first; a different key never proves distinct', ()
   test('a key shared by two different brands is not identity evidence', () => {
     expect(compareProductIdentity(snapshot('Luxury', 'Barrier Cream', { product_id: 'shared-id-123' }), snapshot('Value', 'Barrier Cream', { product_id: 'shared-id-123' })))
       .toMatchObject({ relation: 'distinct', reasons: ['different_brand', 'structured_key_brand_conflict'] });
+  });
+});
+
+describe('rules that only fire with their evidence', () => {
+  test('one title with two structured shades is a variant', () => {
+    expect(compareProductIdentity(snapshot('House', 'Hydrating Tint', { variant_title: 'Shade: Fair' }), snapshot('House', 'Hydrating Tint', { variant_title: 'Shade: Deep' })))
+      .toMatchObject({ relation: 'same_family_variant', reasons: ['listing_title_equal', 'structured_variant_differs'] });
+    expect(compareProductIdentity(snapshot('House', 'Hydrating Tint', { variant_title: 'Shade: Fair' }), snapshot('House', 'Hydrating Tint', { variant_title: 'Shade: Fair' })).relation)
+      .toBe('same_product');
+  });
+  test('a different product job (here from the category) is never a shade of the other', () => {
+    expect(compareProductIdentity(snapshot('House', 'Velvet Stick - Rose', { category: 'blush' }), snapshot('House', 'Velvet Stick - Pink', { category: 'highlighter' })))
+      .toMatchObject({ relation: 'distinct', reasons: ['different_product_role'] });
+  });
+  test('labelled options cannot make a variant when the product job is unknown', () => {
+    expect(compareProductIdentity(snapshot('House', 'Mystery Thing, Rose Gold', { variant_title: 'Shade: Rose Gold' }),
+      snapshot('House', 'Mystery Thing, Black Onyx', { variant_title: 'Shade: Black Onyx' })).relation).toBe('distinct');
+  });
+  test('identical short refs are one listing', () => {
+    expect(compareProductIdentity(snapshot('House', 'Cream'), snapshot('House', 'Serum'), { anchorRef: 'product:a', candidateRef: 'product:a' }))
+      .toMatchObject({ relation: 'same_product', reasons: ['equal_product_ref'] });
   });
 });
 
