@@ -45,7 +45,7 @@ const { getRelationshipEdgeServingSuppressionReasons, coerceRelationshipEdge, va
 const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, validReviewerIdentity } = require('../src/services/relationshipCrossAgentReview');
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
-const { optionRole } = require('../src/auroraBff/relationshipPairPolicy');
+const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -905,8 +905,8 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
         (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
   }
+  let suggestedRelationType = '';
   if (!reason && row.relation_type === 'related_product') {
-    const aRole = optionRole(row.anchor_snapshot); const bRole = optionRole(row.candidate_snapshot);
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
       ...row.candidate_snapshot, ...row.score_breakdown, similarity_score: row.score_total,
     });
@@ -932,17 +932,19 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     const pairGrounded = !contradicted && pairing.some((note) => note.affirmative);
     if (contradicted) reason = 'contradictory_pairing_evidence';
     if (!reason && !pairGrounded) {
-      // Structural substitution evidence is independent of the role vocabulary.
-      if (['dupe', 'competitive_alternative'].includes(inferred.relation_type) || (aRole && aRole === bRole)) {
-        reason = 'same_step_substitutes_are_not_complements';
-      } else if (!aRole || !bRole) {
-        reason = 'complement_role_evidence_unresolved';
-      }
+      // The builder's complement policy, with structural substitution evidence independent of roles.
+      const routine = classifyComplementPair(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
+        substitutable: ['dupe', 'competitive_alternative'].includes(inferred.relation_type),
+      });
+      if (routine.kind !== 'complement') reason = routine.reason;
+      // A same-job pair is a finding about the edge, not a relabel: it stays rejected as claimed.
+      if (reason === SAME_JOB_REASON) suggestedRelationType = routine.suggested_relation_type;
     }
   }
   if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';
   if (!reason) return decision;
   return { ...decision, verdict: 'reject', utility_rejection: reason,
+    ...(suggestedRelationType ? { suggested_relation_type: suggestedRelationType } : {}),
     rationale: `${reason}: ${normalizeString(decision.rationale, 600)}` };
 }
 // Model prose cannot establish efficacy, strength, medical safety or performance.
@@ -1286,6 +1288,7 @@ async function runReview({
       anchor_brand: normalizeString(row.anchor_snapshot?.brand, 120),
       candidate_brand: normalizeString(row.candidate_snapshot?.brand, 120),
       ...(decision.utility_rejection ? { utility_rejection: decision.utility_rejection } : {}),
+      ...(decision.suggested_relation_type ? { suggested_relation_type: decision.suggested_relation_type } : {}),
       ...(decision.cross_agent_review ? { cross_agent_review: decision.cross_agent_review } : {}),
       old_label_state: 'generated',
       new_label_state: targetLabelState(decision.verdict),
@@ -1395,6 +1398,7 @@ async function runReview({
     approved_count: approvedCount,
     useful_approval_by_kind: distribution(approvals, 'relationship_kind'),
     semantic_rejected_count: completed.filter((row) => row.utility_rejection).length,
+    suggested_relation_type_counts: distribution(completed.filter((row) => row.suggested_relation_type), 'suggested_relation_type'),
     variant_rejected_count: completed.filter((row) => row.relationship_kind === 'variant' ||
       (row.serving_guard_reasons || []).some((reason) => /same_family_variant|mismatched_shade/.test(reason))).length,
     candidate_brand_distribution: distribution(completed, 'candidate_brand'),

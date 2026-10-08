@@ -428,7 +428,13 @@ test('unknown product roles cannot establish variants from matching option marke
   const a=snapshot('House','Studio Collection, Unresolved Job A #01','beauty');
   const b=snapshot('House','Studio Collection, Unresolved Job B #01','beauty');
   expect(optionRole(a)).toBe('');expect(optionRole(b)).toBe('');
-  assertRetainedPair(a,b);
+  expect(isSameFamilyVariant(a,b)).toBe(false);
+  for(const relation of ['related_product','competitive_alternative']) {
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
+  }
+  // Not a variant, but no routine roles either: related_product means complement, so nothing is claimed.
+  expect(inferRelationship(a,b,{...b,similarity_score:0.95,category_use_case_match:0.9})).toMatchObject({
+    relation_type:'rejected', utilityCompatibility:{reason:'related_product_without_complement_roles'}});
 });
 
 const substantiveFormulaNames = [
@@ -476,10 +482,11 @@ const decorativeRoles = [['Salon Collection False Eyelashes','false eyelashes'],
 const attachmentPairs = decorativeRoles.flatMap(([name,category])=>attachmentModes.map(([a,b])=>[name,category,a,b]));
 test.each(attachmentPairs)('attachment constraints remain meaningful choices: %s %s %s/%s', (name,category,aMode,bMode) => {
   const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
-  // The existing set-composition guard treats 'Collection' as a possible set.
-  // Preserve that evidence requirement, but never reject this pair as a variant.
-  expect(assertRetainedPair(a,b).relation_type).toBe('related_product');
-  expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement')).verdict).toBe('reject');
+  // Never a variant: the attachment mode is a meaningful choice. One shopper job (lashes or nails)
+  // makes it a same-brand alternative, never a complement; a complement claim is refused with that finding.
+  expect(assertRetainedPair(a,b).relation_type).toBe('competitive_alternative');
+  expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement'))).toMatchObject({
+    verdict:'reject', utility_rejection:'same_step_substitutes_are_not_complements', suggested_relation_type:'competitive_alternative'});
 });
 
 test.each(decorativeRoles.flatMap(([name,category])=>['Magnetic','No Glue','Glue Required','Self Adhesive'].map(mode=>[name,category,mode])))('same attachment mode still rejects decorative style siblings: %s %s %s', (name,category,mode) => {
