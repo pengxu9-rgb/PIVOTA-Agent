@@ -1,4 +1,5 @@
-const { isSameFamilyVariant, optionRole } = require('./relationshipPairPolicy');
+const { optionRole } = require('./relationshipPairPolicy');
+const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
 const {
   DUPE_MIN_SCORE_TOTAL,
   coerceRelationshipEdge,
@@ -1515,13 +1516,14 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       useCaseAlignment,
     };
   }
-  if (sameBrand && relationshipInternals.isSameProductAcrossListingsOrSizes(
-    snapshotNameText(anchorSnapshot), snapshotNameText(candidateSnapshot), anchorBrand)) {
-    return {relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+  // Identity has one owner. Any brand may list the same product; a variant is never a recommendation.
+  const identity = compareProductIdentity(anchorSnapshot, candidateSnapshot);
+  if (identity.relation === IDENTITY.SAME_PRODUCT) {
+    return {relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio, identity,
       utilityCompatibility: {compatible: false, reason: 'same_product_listing_or_size'}};
   }
-  if (sameBrand && isSameFamilyVariant(anchorSnapshot, candidateSnapshot)) {
-    return { relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+  if (identity.relation === IDENTITY.SAME_FAMILY_VARIANT) {
+    return { relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio, identity,
       utilityCompatibility: { compatible: false, reason: 'same_family_variant' } };
   }
   if (sameBrand) {
@@ -1533,7 +1535,7 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
     const substitutable = sameRole && setCompatibility.compatible && formCompatibility.compatible &&
       jobCompatibility.compatible && leafCompatibility.compatible && useCaseAlignment.aligned && categoryScore >= 0.55;
     return { relation_type: substitutable ? 'competitive_alternative' : 'related_product',
-      categoryScore, ingredientScore, scoreTotal, priceRatio, setCompatibility,
+      categoryScore, ingredientScore, scoreTotal, priceRatio, identity, setCompatibility,
       formCompatibility, jobCompatibility, leafCompatibility, useCaseAlignment };
   }
   if (!setCompatibility.compatible) {

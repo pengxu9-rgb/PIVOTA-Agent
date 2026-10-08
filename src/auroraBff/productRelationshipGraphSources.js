@@ -1,4 +1,10 @@
-const { isSameFamilyVariant, brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
+const { brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
+const {
+  isSameProductOrVariant,
+  normalizeFamilyKeySegment,
+  isRecognizedNumericShadeSegment,
+  isRecognizedLexiconShadeSegment,
+} = require('./relationshipProductIdentity');
 const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 const { withoutRelationshipPairContext } = require('./relationshipCandidatePairContext');
@@ -1925,69 +1931,6 @@ function productIdentityKeys(product = {}) {
   return Array.from(new Set(keys));
 }
 
-const SHADE_LEXICON = new Set([
-  'almond',
-  'amber',
-  'banana',
-  'beige',
-  'berry',
-  'black',
-  'bronze',
-  'brown',
-  'caramel',
-  'champagne',
-  'chestnut',
-  'clear',
-  'cocoa',
-  'cool',
-  'copper',
-  'coral',
-  'dark',
-  'deep',
-  'espresso',
-  'fair',
-  'golden',
-  'honey',
-  'ivory',
-  'light',
-  'maple',
-  'mauve',
-  'medium',
-  'mocha',
-  'neutral',
-  'nude',
-  'olive',
-  'opal',
-  'peach',
-  'pearl',
-  'pink',
-  'plum',
-  'porcelain',
-  'red',
-  'rose',
-  'sand',
-  'tan',
-  'translucent',
-  'vanilla',
-  'warm',
-  'white',
-  'wine',
-]);
-
-const SHADE_DESCRIPTOR_LEXICON = new Set([
-  'beige',
-  'cool',
-  'dark',
-  'deep',
-  'fair',
-  'golden',
-  'light',
-  'medium',
-  'neutral',
-  'tan',
-  'warm',
-]);
-
 const STRUCTURED_VARIANT_ALLOW_LABELS = new Set([
   'shade',
   'color',
@@ -2014,29 +1957,6 @@ const STRUCTURED_VARIANT_BLOCK_LABELS = new Set([
   'fragrance',
 ]);
 
-function normalizeFamilyText(value, max = 512) {
-  const text = normalizeString(value, max)
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\u2010-\u2015]/g, '-')
-    .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
-    .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9#./'-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text.length > max ? text.slice(0, max).trim() : text;
-}
-
-function normalizeFamilyKeySegment(value, max = 512) {
-  return normalizeFamilyText(value, max)
-    .replace(/#/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function terminalVariantSegment(title) {
   const text = normalizeString(title, 512).replace(/[\u2010-\u2015]/g, '-');
   const match = text.match(/\s(?:-{1,2})\s*([^-\u2010-\u2015]+?)\s*$/);
@@ -2047,24 +1967,8 @@ function terminalVariantSegment(title) {
   };
 }
 
-function shadeTokens(value) {
-  return normalizeFamilyKeySegment(value, 256).split(/\s+/g).filter(Boolean);
-}
-
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function isRecognizedNumericShadeSegment(value) {
-  const tokens = shadeTokens(value);
-  if (!tokens.length) return false;
-  if (!/^\d+(?:\.\d+)?[a-z]?$/.test(tokens[0])) return false;
-  return tokens.slice(1).every((token) => SHADE_DESCRIPTOR_LEXICON.has(token));
-}
-
-function isRecognizedLexiconShadeSegment(value) {
-  const tokens = shadeTokens(value);
-  return Boolean(tokens.length) && tokens.every((token) => SHADE_LEXICON.has(token));
 }
 
 function pickStructuredVariantField(raw = {}, fields = []) {
@@ -2697,7 +2601,7 @@ function compareScoredCandidates(a, b) {
 // diversity is a retrieval opportunity, never evidence of recommendation utility.
 function selectCandidateOpportunities(anchor, candidates, maxPerAnchor = 24) {
   const cap = Math.max(1, Math.trunc(Number(maxPerAnchor) || 24));
-  const ranked = candidates.filter((candidate) => !isSameFamilyVariant(anchor, candidate)).sort(compareScoredCandidates);
+  const ranked = candidates.filter((candidate) => !isSameProductOrVariant(anchor, candidate)).sort(compareScoredCandidates);
   const anchorBrand = pairBrand(anchor);
   // Resolve lazily: the builder consumes this source module; execution happens
   // after both modules are initialized, and shares its structural admission rules.
@@ -2905,7 +2809,7 @@ function buildCandidatesByAnchorFromSources({
       const normalized = normalizeProductCandidateSnapshot(rawCandidate);
       const baseCandidate = normalized ? mergeCandidateWithIngredients({ ...rawCandidate, ...normalized }, ingredientIndex) : null;
       if (!baseCandidate) continue;
-      if (isSameFamilyVariant(anchor, baseCandidate)) continue;
+      if (isSameProductOrVariant(anchor, baseCandidate)) continue;
       if (familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(baseCandidate))) continue;
       if (hasIntersectingIdentity(anchor, baseCandidate)) continue;
       const intelMatches = findIntelForCandidate(baseCandidate, intelIndex);
