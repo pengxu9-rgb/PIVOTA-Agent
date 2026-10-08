@@ -21,7 +21,9 @@ const {
   evaluateServingAuditThresholds,
   parseArgs,
   runRoutineJob,
+  runScopeVerifiedSince,
 } = require('../../scripts/run-relationship-graph-routine-job');
+const { buildCronArgs, runScopeStartedAt } = require('../../scripts/run-relationship-graph-sync-routine-cron');
 const { evaluateRenewalCandidates } = require('../../scripts/renew-relationship-ai-approved-labels');
 const {
   DEFAULT_FAIL_REASONS,
@@ -280,6 +282,48 @@ test('the sync wrapper re-emits the routine\'s legacy-suppression WARNING and ke
   expect(summary.warnings).toEqual([expect.stringMatching(/^30 legacy approved edges are suppressed/)]);
   const lines = written.map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
   expect(lines).toEqual([expect.objectContaining({ severity: 'WARNING', legacy_suppressed_rows: 30, run_suppressed_rows: 0 })]);
+});
+
+describe('a Cloud Run retry cannot launder the failed attempt\'s unsafe rows into legacy', () => {
+  const ATTEMPT0 = new Date('2026-10-08T10:37:00.000Z');
+  const ATTEMPT1 = new Date('2026-10-08T11:30:00.000Z');
+  // Attempt 0 approved this, then failed the audit; Cloud Run reran the task.
+  const unsafeFromAttempt0 = dearBarberRow('attempt0_unsafe', { last_verified_at: '2026-10-08T10:58:00.000Z' });
+  const sinceFor = (env, now) => runScopeVerifiedSince({ runStartedAt: runScopeStartedAt(env, now) });
+
+  test('first attempt scopes to its own start; a retry scopes back (default 6h, overridable)', () => {
+    expect(runScopeStartedAt({}, ATTEMPT0)).toBe(ATTEMPT0.toISOString());
+    expect(runScopeStartedAt({ CLOUD_RUN_TASK_ATTEMPT: '0' }, ATTEMPT0)).toBe(ATTEMPT0.toISOString());
+    expect(runScopeStartedAt({ CLOUD_RUN_TASK_ATTEMPT: '1' }, ATTEMPT1)).toBe('2026-10-08T05:30:00.000Z');
+    expect(runScopeStartedAt({ CLOUD_RUN_TASK_ATTEMPT: '1', RELGRAPH_SYNC_RETRY_RUN_SCOPE_LOOKBACK_MINUTES: '120' }, ATTEMPT1))
+      .toBe('2026-10-08T09:30:00.000Z');
+  });
+
+  test('the cron hands the scope start to the sync wrapper, which hands it to the routine', () => {
+    const config = buildCronArgs({ CLOUD_RUN_TASK_ATTEMPT: '1' }, { now: ATTEMPT1 });
+    expect(config.args[config.args.indexOf('--run-started-at') + 1]).toBe('2026-10-08T05:30:00.000Z');
+    const options = parseSyncArgs(config.args, { now: ATTEMPT1, cwd: '/tmp/pivota' });
+    expect(options.runStartedAt).toBe('2026-10-08T05:30:00.000Z');
+    const routine = buildSyncRoutineSteps(options).steps.find((step) => step.id === 'relationship_graph_routine');
+    expect(routine.args[routine.args.indexOf('--run-started-at') + 1]).toBe('2026-10-08T05:30:00.000Z');
+    expect(() => parseSyncArgs(['--skip-review', '--select-hours', '24', '--run-started-at', 'nope'], { now: ATTEMPT1 }))
+      .toThrow(/invalid --run-started-at/);
+  });
+
+  test('the retry still fails on the row attempt 0 wrote; yesterday\'s run stays legacy', () => {
+    const retrySince = sinceFor({ CLOUD_RUN_TASK_ATTEMPT: '1' }, ATTEMPT1);
+    const audit = summarizeSuppressionRows([...legacyTable(), unsafeFromAttempt0], { runVerifiedSince: retrySince });
+    expect(evaluateServingAuditThresholds(audit, PROD_GATE)).toEqual([
+      expect.objectContaining({ metric: 'run_suppressed_rows', observed: 1 }),
+    ]);
+    // Without the lookback the retry would have passed.
+    const naive = summarizeSuppressionRows([...legacyTable(), unsafeFromAttempt0], { runVerifiedSince: sinceFor({}, ATTEMPT1) });
+    expect(evaluateServingAuditThresholds(naive, PROD_GATE)).toEqual([]);
+    // The previous day's run (verified ~24h earlier) is outside even the retry's scope.
+    const yesterday = dearBarberRow('yesterday', { last_verified_at: '2026-10-07T10:58:00.000Z' });
+    const withYesterday = summarizeSuppressionRows([...legacyTable(), yesterday], { runVerifiedSince: retrySince });
+    expect(withYesterday.run_suppressed_rows).toBe(0);
+  });
 });
 
 describe('renewal never renews a guard-suppressed row', () => {

@@ -1123,6 +1123,7 @@ module.exports = {
   buildRoutineSteps,
   postgresAdvisoryLockParts,
   evaluateServingAuditThresholds,
+  legacySuppressionWarning,
   runScopeVerifiedSince,
   parseArgs,
   runCommand,

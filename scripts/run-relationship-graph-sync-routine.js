@@ -9,7 +9,10 @@ const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics }
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
-const { APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN } = require('./run-relationship-graph-routine-job');
+const {
+  APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN,
+  legacySuppressionWarning,
+} = require('./run-relationship-graph-routine-job');
 const {
   APPLY_CONFIRM_TOKEN: RENEWAL_CONFIRM_TOKEN,
   DEFAULT_WINDOW_DAYS: DEFAULT_RENEWAL_WINDOW_DAYS,
@@ -181,12 +184,17 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     : path.join(outDir, 'affected-products.json');
   const syncOut = resolvePathMaybeRelative(argValue(argv, 'sync-out') || path.join(outDir, 'catalog_sync.json'), cwd);
   const routineOutDir = resolvePathMaybeRelative(argValue(argv, 'routine-out-dir') || path.join(outDir, 'routine'), cwd);
+  const runStartedAtInput = normalizeString(argValue(argv, 'run-started-at'), 80);
+  if (runStartedAtInput && Number.isNaN(new Date(runStartedAtInput).getTime())) {
+    throw new Error(`invalid --run-started-at timestamp: ${runStartedAtInput}`);
+  }
 
   return {
     cutoff,
     // Stamped before the first step (renewal), so the routine's serving audit
-    // can tell the rows this run approved or renewed from older ones.
-    runStartedAt: now.toISOString(),
+    // can tell the rows this run approved or renewed from older ones. The cron
+    // passes an earlier start on a Cloud Run retry; see its runScopeStartedAt.
+    runStartedAt: new Date(runStartedAtInput || now).toISOString(),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     outDir,
     summaryOut: resolvePathMaybeRelative(argValue(argv, 'summary-out') || path.join(outDir, 'sync_routine_summary.json'), cwd),
@@ -332,19 +340,14 @@ function surfaceServingAuditScope(summary, routine = {}) {
   const scope = routine && routine.serving_audit_scope;
   if (!scope || typeof scope !== 'object') return;
   summary.serving_audit_scope = scope;
-  const legacyRows = Number(scope.legacy_suppressed_rows) || 0;
-  if (!(legacyRows > 0)) return;
-  const message = `${legacyRows} legacy approved edges are suppressed by the serving guard `
-    + '(approved before this run; hidden at read time; not a failure of this run)';
+  const warning = legacySuppressionWarning(scope);
+  if (!warning) return;
   summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
-  if (!summary.warnings.includes(message)) summary.warnings.push(message);
+  if (!summary.warnings.includes(warning.message)) summary.warnings.push(warning.message);
   process.stderr.write(`${JSON.stringify({
     severity: 'WARNING',
     run_id: summary.run_id,
-    message,
-    legacy_suppressed_rows: legacyRows,
-    legacy_suppressed_pct: scope.legacy_suppressed_pct,
-    legacy_suppressed_by_reason: scope.legacy_suppressed_by_reason,
+    ...warning,
     run_suppressed_rows: scope.run_suppressed_rows,
   })}\n`);
 }

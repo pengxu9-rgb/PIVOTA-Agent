@@ -18,6 +18,9 @@ const DEFAULT_LIMIT = 200;
 const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_SELECT_SOURCES = 'catalog_products,external_product_seeds';
 const DEFAULT_RUN_TRIGGER = 'railway_cron';
+// See runScopeStartedAt. Must cover a whole failed attempt (the routine's steps
+// at their timeouts) and stay well short of the previous day's run.
+const DEFAULT_RETRY_RUN_SCOPE_LOOKBACK_MINUTES = 6 * 60;
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
@@ -53,6 +56,22 @@ function pushArg(args, name, value) {
 
 function pushFlag(args, name, enabled) {
   if (enabled) args.push(`--${name}`);
+}
+
+// The routine's serving audit fails only on suppressed edges written at or after
+// the run start. When Cloud Run retries a failed task, this attempt starts later
+// than the one that failed, so an unsafe edge the failed attempt approved would
+// look "legacy" and the retry would pass. A retry (CLOUD_RUN_TASK_ATTEMPT >= 1)
+// therefore scopes back far enough to include the attempt(s) before it.
+function runScopeStartedAt(env = process.env, now = new Date()) {
+  const attempt = Math.trunc(parseNumberEnv(env.CLOUD_RUN_TASK_ATTEMPT, 0, { min: 0, max: 1000 }));
+  if (!(attempt > 0)) return now.toISOString();
+  const lookbackMinutes = parseNumberEnv(
+    env.RELGRAPH_SYNC_RETRY_RUN_SCOPE_LOOKBACK_MINUTES,
+    DEFAULT_RETRY_RUN_SCOPE_LOOKBACK_MINUTES,
+    { min: 0, max: 23 * 60 },
+  );
+  return new Date(now.getTime() - lookbackMinutes * 60 * 1000).toISOString();
 }
 
 function buildCronArgs(env = process.env, { now = new Date() } = {}) {
@@ -130,6 +149,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     String(parseNumberEnv(env.RELGRAPH_SYNC_LIMIT, DEFAULT_LIMIT, { min: 1, max: 2000 })),
     '--review-limit',
     String(parseNumberEnv(env.RELGRAPH_SYNC_REVIEW_LIMIT, DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 })),
+    '--run-started-at',
+    runScopeStartedAt(env, now),
   ];
 
   if (skipReview) {
@@ -275,6 +296,7 @@ if (require.main === module) {
 
 module.exports = {
   buildCronArgs,
+  runScopeStartedAt,
   parseBooleanEnv,
   runCron,
 };
