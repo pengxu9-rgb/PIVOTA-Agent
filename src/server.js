@@ -35621,16 +35621,16 @@ function shouldCaptureAcpRawBody(url) {
 // land on the request object, and the refusal answers from a constant. The route stays registered in the LATE
 // block, so the caller-identity access log still records WHO knocked on a cardholder-data door.
 function isAcpDelegatePaymentRequest(req) {
-  // The path the ROUTER will match: Express routes on parseurl's pathname, which for an absolute-form
-  // request-target (`POST http://host/acp/…/delegate_payment`, RFC 9112 §3.2.2) is the part after the
-  // authority. Comparing the raw target as-is (as this once did) let that spelling past this predicate, so
-  // express.json parsed a delegate_payment body into req.body. Case and trailing slashes are ignored for
-  // the same reason: the router ignores them.
-  let raw = String(req?.originalUrl || req?.url || '');
-  const abs = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(.*)$/i.exec(raw);
-  if (abs) raw = abs[1] || '/';
-  const pathOnly = raw.split('?')[0].toLowerCase().replace(/\/+$/, '');
-  return pathOnly === `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`;
+  // Compare EXACTLY what the router matches on: Express routes on parseurl(req).pathname, which is what
+  // req.path returns (available here — express.json's `type` predicate and every middleware receive the
+  // Express request). Re-deriving it from the raw target disagreed with the router on spellings it still
+  // routes to the refusal: an absolute-form target (`POST http://host/acp/…/delegate_payment`, RFC 9112
+  // §3.2.2), a `#fragment` (dropped by url.parse), and `\` in absolute-form (rewritten to `/`). Each one let
+  // express.json parse a delegate_payment body. Case and a trailing slash are ignored because the router
+  // ignores them; over-matching (e.g. two trailing slashes) only skips parsing a path that 404s anyway.
+  const target = `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`;
+  const p = typeof req?.path === 'string' ? req.path : String(req?.originalUrl || req?.url || '').split(/[?#]/)[0];
+  return p.toLowerCase().replace(/\/+$/, '') === target;
 }
 
 // Body parser with error handling
@@ -35821,6 +35821,8 @@ app.use(async function agentSignatureMiddleware(req, res, next) {
         claimed_agent: result.claimed_agent || null,
         keyid: result.keyid ? String(result.keyid).slice(0, 100) : null,
         alg: result.alg || null,
+        // Verified with a key set that has not refreshed since its source last failed (draft: never evict).
+        keys_stale: result.keys_stale || false,
         caller_class: caller.caller_class,
         caller_ua: caller.ua,
       },

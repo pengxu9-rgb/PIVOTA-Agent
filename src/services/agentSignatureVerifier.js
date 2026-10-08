@@ -241,11 +241,11 @@ function createNonceStore({ nowMs, max = NONCE_STORE_MAX }) {
   const seen = new Map(); // key → expiresAtMs
 
   /**
-   * Record a nonce. 'replay' when it was seen and has not expired; 'full' when the store holds `max`
-   * unexpired nonces — refusing then is the only bounded option that never forgets a live nonce
+   * Record a nonce until `untilMs`. 'replay' when it was seen and has not expired; 'full' when the store
+   * holds `max` unexpired nonces — refusing then is the only bounded option that never forgets a live nonce
    * (evicting one would reopen exactly the replay it was recorded to stop).
    */
-  function claim(parts, ttlS) {
+  function claim(parts, untilMs) {
     const key = JSON.stringify(parts); // no separator a keyid or nonce can contain
     const now = nowMs();
     const exp = seen.get(key);
@@ -255,7 +255,7 @@ function createNonceStore({ nowMs, max = NONCE_STORE_MAX }) {
       for (const [k, e] of seen) if (e <= now) seen.delete(k);
       if (seen.size >= max) return 'full';
     }
-    seen.set(key, now + ttlS * 1000);
+    seen.set(key, untilMs);
     return 'ok';
   }
 
@@ -353,14 +353,14 @@ function checkWindow({ created, expires }, maxWindowS, nowS) {
   return null;
 }
 
-function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThis.fetch, nowMs = Date.now, log } = {}) {
+function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThis.fetch, nowMs = Date.now, log, nonceStoreMax = NONCE_STORE_MAX } = {}) {
   const sources = loadKeySources(env, log);
   const expectedAuthorities = loadExpectedAuthorities(env);
   const keyCache = createKeySourceCache({ fetchImpl, nowMs });
   // One store per key source: a busy agent (Web Bot Auth nonces live up to 24h) can fill only its own.
   const nonceStores = new Map();
   const noncesFor = (id) => {
-    if (!nonceStores.has(id)) nonceStores.set(id, createNonceStore({ nowMs }));
+    if (!nonceStores.has(id)) nonceStores.set(id, createNonceStore({ nowMs, max: nonceStoreMax }));
     return nonceStores.get(id);
   };
 
@@ -415,6 +415,7 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
 
     let source = null;
     let key = null;
+    let keysStale = false;
     let lastReason = 'unknown_key';
     for (const candidate of candidates) {
       let got = await keyCache.getKeys(candidate.url);
@@ -427,6 +428,7 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
       if (match) {
         source = candidate;
         key = match;
+        keysStale = Boolean(got.stale);
         break;
       }
       lastReason = 'unknown_key';
@@ -438,11 +440,12 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
 
     // Only a VERIFIED signature may consume a nonce — otherwise anyone could burn an agent's nonces.
     if (params.nonce) {
-      // Remember the nonce for exactly as long as the signature itself can still verify (expires + skew).
-      // For TAP that is at least its 8-minute replay window whenever a replay could still verify; past
-      // expires + skew the signature fails as `expired` before the nonce is ever consulted.
-      const ttl = Math.max(1, params.expires + CLOCK_SKEW_S - nowS);
-      const claimed = noncesFor(source.id).claim([params.keyid, params.nonce], ttl);
+      // Remember the nonce for exactly as long as the signature itself can still verify. checkWindow works
+      // in whole seconds and accepts all of second `expires + skew`, so the nonce lives until that second
+      // ENDS. For TAP that covers its 8-minute replay window whenever a replay could still verify; after it
+      // the signature fails as `expired` before the nonce is ever consulted.
+      const untilMs = (params.expires + CLOCK_SKEW_S + 1) * 1000;
+      const claimed = noncesFor(source.id).claim([params.keyid, params.nonce], untilMs);
       if (claimed !== 'ok') {
         return { ...out, verified: false, reason: claimed === 'replay' ? 'nonce_replay' : 'nonce_store_full', agent: source.id, alg: check.alg };
       }
@@ -455,6 +458,7 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
       agent: source.id,
       agent_url: source.url,
       alg: check.alg,
+      keys_stale: keysStale,
       covered,
       created: params.created,
       expires: params.expires,

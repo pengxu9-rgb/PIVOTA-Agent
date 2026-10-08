@@ -121,30 +121,46 @@ test('observe: no spelling of the delegate_payment path is inspected (Express ma
   }
 });
 
-test('observe: an absolute-form delegate_payment request is neither inspected nor body-parsed', async () => {
-  // Raw socket: supertest cannot send an absolute-form request-target (RFC 9112 §3.2.2).
-  const http = require('http');
+test('observe: every request-target the router sends to delegate_payment is neither inspected nor body-parsed', async () => {
+  // Raw TCP: these spellings (absolute-form RFC 9112 §3.2.2, a #fragment, backslashes) are exactly what an
+  // HTTP client would normalise away. Each one is routed to the refusal by Express (parseurl/url.parse).
+  const net = require('net');
   process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
-  try {
-    const target = `http://${HOST}/acp/agentic_commerce/delegate_payment`;
-    const send = (body) => new Promise((resolve, reject) => {
-      const req = http.request({
-        host: '127.0.0.1',
-        port: server.address().port,
-        method: 'POST',
-        path: target,
-        headers: { host: HOST, 'content-type': 'application/json', ...tapHeaders('/acp/agentic_commerce/delegate_payment') },
-      }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
-      req.on('error', reject);
-      req.end(body);
+  const sendRaw = (target, body) => new Promise((resolve, reject) => {
+    const sig = tapHeaders('/acp/agentic_commerce/delegate_payment');
+    const sock = net.connect(server.address().port, '127.0.0.1', () => {
+      sock.end([
+        `POST ${target} HTTP/1.1`,
+        `Host: ${HOST}`,
+        'Content-Type: application/json',
+        `Content-Length: ${Buffer.byteLength(body)}`,
+        `Signature-Input: ${sig['signature-input']}`,
+        `Signature: ${sig.signature}`,
+        'Connection: close',
+        '',
+        body,
+      ].join('\r\n'));
     });
+    let data = '';
+    sock.on('data', (c) => { data += c; });
+    sock.on('end', () => resolve(Number((/^HTTP\/1\.1 (\d{3})/.exec(data) || [])[1])));
+    sock.on('error', reject);
+  });
+  try {
     const before = fetchCalls.length;
-    // Invalid JSON: a parser that ran would answer 400; the refusal answers 501 without reading it.
-    const { result, entries } = await captureLogs(() => send('{"number": "4242424242424242", '));
-    assert.equal(result, 501);
-    assert.equal(sigEvents(entries).length, 0);
+    for (const target of [
+      `http://${HOST}/acp/agentic_commerce/delegate_payment`,
+      '/acp/agentic_commerce/delegate_payment#frag',
+      `http://${HOST}/acp/agentic_commerce/delegate_payment#f`,
+      `http://${HOST}/acp\\agentic_commerce\\delegate_payment`,
+    ]) {
+      // Invalid JSON: a parser that ran would answer 400; the refusal answers 501 without reading it.
+      const { result, entries } = await captureLogs(() => sendRaw(target, '{"number": "4242424242424242", '));
+      assert.equal(result, 501, target);
+      assert.equal(sigEvents(entries).length, 0, target);
+    }
     assert.equal(fetchCalls.length, before);
   } finally {
     delete process.env.AGENT_SIGNATURE_VERIFY_MODE;

@@ -158,8 +158,7 @@ function requestView(req) {
   const abs = /^https?:\/\/([^/?#]*)(.*)$/i.exec(target);
   if (abs) {
     authority = abs[1].toLowerCase();
-    target = abs[2] || '/';
-    if (!target.startsWith('/')) target = `/${target}`;
+    target = abs[2]; // '' or '?q' when there is no path: an empty path reads as '/' below
   }
   if ((scheme === 'https' && authority.endsWith(':443')) || (scheme === 'http' && authority.endsWith(':80'))) {
     authority = authority.replace(/:\d+$/, '');

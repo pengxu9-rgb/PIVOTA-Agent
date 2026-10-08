@@ -503,15 +503,15 @@ test('nonce store: refuses when full of live nonces instead of evicting one; key
   let nowMs = 0;
   const { createNonceStore } = require('../src/services/agentSignatureVerifier')._internal;
   const store = createNonceStore({ nowMs: () => nowMs, max: 2 });
-  assert.equal(store.claim(['s', 'k', 'x'], 60), 'ok');
-  assert.equal(store.claim(['s', 'k', 'y'], 60), 'ok');
-  assert.equal(store.claim(['s', 'k', 'z'], 60), 'full');
-  assert.equal(store.claim(['s', 'k', 'x'], 60), 'replay', 'x was not evicted');
+  assert.equal(store.claim(['s', 'k', 'x'], 60_000), 'ok');
+  assert.equal(store.claim(['s', 'k', 'y'], 60_000), 'ok');
+  assert.equal(store.claim(['s', 'k', 'z'], 60_000), 'full');
+  assert.equal(store.claim(['s', 'k', 'x'], 60_000), 'replay', 'x was not evicted');
   nowMs = 61_000;
-  assert.equal(store.claim(['s', 'k', 'z'], 60), 'ok', 'expired entries make room');
+  assert.equal(store.claim(['s', 'k', 'z'], 120_000), 'ok', 'expired entries make room');
   const fresh = createNonceStore({ nowMs: () => 0 });
-  assert.equal(fresh.claim(['a|b', 'c', 'n'], 60), 'ok');
-  assert.equal(fresh.claim(['a', 'b|c', 'n'], 60), 'ok');
+  assert.equal(fresh.claim(['a|b', 'c', 'n'], 60_000), 'ok');
+  assert.equal(fresh.claim(['a', 'b|c', 'n'], 60_000), 'ok');
 });
 
 test('a bare Signature header (the ACP adapter\'s HMAC) is not an agent signature', async () => {
@@ -673,4 +673,58 @@ test('WBA: whole-field coverage reads every Signature-Agent line, so two lines a
   const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
   const r = await verifier.verifyRequest({ method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-agent': lines, 'signature-input': `s=${params}`, signature: `s=:${sig}:` } });
   assert.equal(r.reason, 'ambiguous_signature_agent');
+});
+
+// ---- review round 3 ---------------------------------------------------------------------------------
+
+test('replay: the nonce outlives every instant the signature still passes the window (skew and sub-second)', async () => {
+  const ed = keypair('ed25519');
+  let nowMs = (T0 + 10) * 1000 + 900;
+  const { verifier } = makeVerifier({ now: () => nowMs, routes: { [VISA_URL]: { body: { keys: [{ ...ed.publicJwk, kid: 'k' }] } } } });
+  const req = tapRequest({ privateKey: ed.privateKey, keyid: 'k', nonce: 'edge', created: T0, expires: T0 + 300 });
+  assert.equal((await verifier.verifyRequest(req)).verified, true);
+  for (const at of [T0 + 330, T0 + 360, T0 + 360.95]) {
+    nowMs = Math.round(at * 1000);
+    assert.equal((await verifier.verifyRequest(req)).reason, 'nonce_replay', `at expires+${Math.round((at - T0 - 300) * 100) / 100}s`);
+  }
+  nowMs = (T0 + 361) * 1000;
+  assert.equal((await verifier.verifyRequest(req)).reason, 'expired');
+});
+
+test('nonce stores are per source: a full store for one source does not block another', async () => {
+  const ed = keypair('ed25519');
+  const second = 'https://visa-secondary.example/jwks';
+  const stub = fetchStub({ [VISA_URL]: { body: { keys: [{ ...ed.publicJwk, kid: 'k1' }] } }, [second]: { body: { keys: [{ ...ed.publicJwk, kid: 'k2' }] } } });
+  const verifier = createAgentSignatureVerifier({
+    env: { AGENT_SIGNATURE_TRUSTED_KEY_SOURCES_JSON: JSON.stringify([{ id: 'visa', profile: 'visa-tap', url: VISA_URL }, { id: 'visa-2', profile: 'visa-tap', url: second }]) },
+    fetchImpl: stub.impl,
+    nowMs: () => T0 * 1000,
+    nonceStoreMax: 1,
+  });
+  assert.equal((await verifier.verifyRequest(tapRequest({ privateKey: ed.privateKey, keyid: 'k1', nonce: 'a' }))).verified, true);
+  assert.equal((await verifier.verifyRequest(tapRequest({ privateKey: ed.privateKey, keyid: 'k1', nonce: 'b' }))).reason, 'nonce_store_full');
+  const other = await verifier.verifyRequest(tapRequest({ privateKey: ed.privateKey, keyid: 'k2', nonce: 'c' }));
+  assert.equal(other.verified, true, other.reason);
+});
+
+test('stale keys are surfaced on the result', async () => {
+  const ed = keypair('ed25519');
+  let nowS = T0;
+  let up = true;
+  const { verifier } = makeVerifier({ now: () => nowS * 1000, routes: { [VISA_URL]: () => (up ? { status: 200, text: async () => JSON.stringify({ keys: [{ ...ed.publicJwk, kid: 'k' }] }) } : { status: 503, text: async () => '' }) } });
+  const tap = (n) => tapRequest({ privateKey: ed.privateKey, keyid: 'k', nonce: n, created: nowS, expires: nowS + 300 });
+  assert.equal((await verifier.verifyRequest(tap('a'))).keys_stale, false);
+  up = false;
+  nowS += 11 * 60;
+  const r = await verifier.verifyRequest(tap('b'));
+  assert.equal(r.verified, true);
+  assert.equal(r.keys_stale, true);
+});
+
+test('absolute-form target with no path and WBA with two foreign covered members', async () => {
+  const comps = parseDictionary('s=("@path" "@query");created=1').get('s');
+  const built = buildSignatureBase(requestView({ method: 'GET', originalUrl: 'https://target.example?q=1', headers: { host: 'x' } }), comps);
+  assert.deepEqual(built.base.split('\n').slice(0, 2), ['"@path": /', '"@query": ?q=1']);
+  const { coveredSignatureAgentMember } = require('../src/services/agentSignatureVerifier');
+  assert.deepEqual(coveredSignatureAgentMember(['"signature-agent";key="a"', '"signature-agent";key="b"'], 'sig1', 'a="https://a.test", b="https://b.test"'), { reason: 'ambiguous_signature_agent' });
 });
