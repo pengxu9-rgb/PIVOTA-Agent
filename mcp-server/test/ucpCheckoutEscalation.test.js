@@ -460,6 +460,14 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
       assert.equal(err.retriable, false);
       assert.equal(err.detail.acp_detail.reason, 'merchant_not_purchasable');
       assert.equal(err.detail.acp_detail.storefront_urls, undefined, 'the gate exists to stop recommending that checkout');
+      assert.deepEqual(err.detail.acp_detail.seller_hosts, ['comfortzone.us']);
+      assert.deepEqual(err.detail.acp_detail.storefront_items, [SEED.product_id]);
+      // A RE-READ that declines says nothing about the seller (get_checkout carries no market): its own reason.
+      const reread = await rejected(ucp.callTool('get_checkout', { meta: AGENT_META, id: encodeEscalationId(items([SEED.product_id, 1])) }, SESSION));
+      assert.equal(reread.code, 'OPERATION_NOT_ALLOWED');
+      assert.equal(reread.retriable, false);
+      assert.equal(reread.detail.acp_detail.reason, 'ucp_escalation_reread_unconfirmed');
+      assert.equal(executor.seen.some((c) => c.op !== 'get_product'), false, 'no kernel op on either');
       assert.equal(JSON.stringify(err.detail).includes(SEED.external_redirect_url), false);
       assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
     } finally {
@@ -540,5 +548,82 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
       assert.equal(err.code, 'USER_AUTH_REQUIRED');
       assert.equal(executor.seen.length, 0);
     } finally { if (saved === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  // ---- review of #2374 ------------------------------------------------------------------------------------------
+
+  const hop = (dest) => `https://api.pivota.cc/r?token=${Buffer.from(JSON.stringify({ dest }), 'utf8').toString('base64url')}.c2ln`;
+  const withFlag = async (value, fn) => {
+    const saved = process.env[UCP_ESCALATION_FLAG];
+    if (value === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = value;
+    try { return await fn(); } finally { if (saved === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = saved; }
+  };
+  const SEED_V = { ...SEED, purchase_grain: 'product', variants: [{ variant_id: SEED.product_id }] };
+
+  test('update_checkout of a KERNEL session naming a storefront row is refused (switch off AND on) — the kernel never re-prices it', async () => {
+    for (const flag of [undefined, '1']) {
+      await withFlag(flag, async () => {
+        const executor = executorWith({ [SEED.product_id]: SEED_V, [CONTRACTED.product_id]: CONTRACTED });
+        const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+        const err = await rejected(ucp.callTool('update_checkout', { meta: AGENT_META, id: 'q_kernel', checkout: { line_items: [{ item: { id: SEED.product_id }, quantity: 2 }], buyer: { email: 'shopper@example.test' } } }, SESSION));
+        assert.equal(err.code, 'OPERATION_NOT_ALLOWED', String(flag));
+        assert.equal(err.retriable, false);
+        assert.equal(err.detail.acp_detail.reason, 'ucp_storefront_checkout_unavailable');
+        assert.equal(executor.seen.some((c) => c.op === 'update_checkout_session'), false, String(flag));
+        // …and a contracted update still reaches the kernel.
+        await ucp.callTool('update_checkout', { meta: AGENT_META, id: 'q_kernel', checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 2 }], buyer: { email: 'shopper@example.test' } } }, SESSION);
+        assert.ok(executor.seen.some((c) => c.op === 'update_checkout_session'), String(flag));
+      });
+    }
+  });
+
+  test('gate ARMED but escalation off: hosts are named, storefront links are NOT handed out (nothing asked the gate)', async () => {
+    const savedGate = process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
+    process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = '1';
+    try {
+      await withFlag(undefined, async () => {
+        const ucp = ucpDialectSurface(createCommerceToolSurface(executorWith({ [SEED.product_id]: SEED_V }), { cache: false }));
+        const err = await rejected(ucp.callTool('create_checkout', body(SEED.product_id), SESSION));
+        assert.equal(err.detail.acp_detail.reason, 'ucp_storefront_checkout_unavailable');
+        assert.deepEqual(err.detail.acp_detail.seller_hosts, ['comfortzone.us']);
+        assert.equal(err.detail.acp_detail.storefront_urls, undefined);
+        assert.equal(JSON.stringify(err.detail).includes(SEED.external_redirect_url), false);
+        assert.doesNotMatch(err.detail.acp_message, /storefront_urls/);
+      });
+    } finally { if (savedGate === undefined) delete process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED; else process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = savedGate; }
+  });
+
+  test('seller host behind a Pivota hop: its https dest is named; a nested hop or a non-https dest names nobody — never pivota.cc', async () => {
+    const cases = [
+      [hop('https://www.comfortzone.us/products/x'), ['comfortzone.us']],
+      [hop(hop('https://comfortzone.us/products/x')), undefined],
+      [hop('http://comfortzone.us/products/x'), undefined],
+      ['https://api.pivota.cc/r?token=not-a-token', undefined],
+    ];
+    for (const [url, hosts] of cases) {
+      await withFlag(undefined, async () => {
+        const row = { ...SEED_V, external_redirect_url: url };
+        const ucp = ucpDialectSurface(createCommerceToolSurface(executorWith({ [SEED.product_id]: row }), { cache: false }));
+        const err = await rejected(ucp.callTool('create_checkout', body(SEED.product_id), SESSION));
+        assert.equal(err.detail.acp_detail.reason, 'ucp_storefront_checkout_unavailable', url);
+        assert.deepEqual(err.detail.acp_detail.seller_hosts, hosts, url);
+        assert.doesNotMatch(err.detail.acp_message, /pivota\.cc/, url);
+        assert.equal(err.detail.acp_detail.storefront_urls[SEED.product_id], url, 'the link handed out is the row\'s own (attribution intact)');
+      });
+    }
+  });
+
+  test('carts intake refuses on shape keep INTAKE\'s refusal (bad quantity; too many distinct products, with its count)', async () => {
+    await withFlag(undefined, async () => {
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executorWith({ [SEED.product_id]: SEED_V }), { cache: false }));
+      const bad = await rejected(ucp.callTool('create_checkout', body(SEED.product_id, 0), SESSION));
+      assert.notEqual(bad.detail?.acp_detail?.reason, 'ucp_storefront_checkout_unavailable');
+      const many = Array.from({ length: 26 }, (_, i) => ({ item: { id: `sig_seed_${i}` }, quantity: 1 }));
+      const rows = Object.fromEntries(many.map((l) => [l.item.id, { ...SEED_V, product_id: l.item.id }]));
+      const ucp2 = ucpDialectSurface(createCommerceToolSurface(executorWith(rows), { cache: false }));
+      const err = await rejected(ucp2.callTool('create_checkout', { meta: AGENT_META, checkout: { line_items: many, buyer: { email: 'shopper@example.test' } } }, SESSION));
+      assert.equal(err.detail.acp_detail.reason, 'acp_cart_too_many_products');
+      assert.equal(err.detail.acp_detail.distinct_product_count, 26, "intake's own detail, not the read helper's");
+    });
   });
 });

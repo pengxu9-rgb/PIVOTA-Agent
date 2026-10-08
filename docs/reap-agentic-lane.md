@@ -51,11 +51,14 @@ For a `create_checkout`, in this order (`mcp-server/src/commerceToolSurface.js`,
    `purchase_route: 'internal_checkout'`) never enters the Reap lane. The decision is the door's
    existing typed classification, taken inside the lane before anything else.
 2. **Reap** — a non-native row that is eligible (§3).
-3. **Storefront escalation** — `ucpCheckoutEscalation.js`, unchanged, whenever the Reap lane
-   declines: not eligible, declined by the merchant-purchasability gate, or **refused by the
-   backend**. A backend refusal is a fall-through, never an error, so the buyer still gets an answer.
-4. **The kernel path's own answer** — when escalation is off or declines too. (This door has no
-   separate "referral" lane; the buyer's other route is the offer link discovery already served.)
+3. **Storefront escalation** — `ucpCheckoutEscalation.js`, whenever the Reap lane steps aside: the
+   create did not select Reap (no `checkout.reap`), the row is not eligible, or the
+   merchant-purchasability gate declined. A create that selected Reap never falls through (see
+   "Route selection" below).
+4. **A named refusal** — when escalation is off or declines too, a storefront row is refused
+   (`ucp_storefront_checkout_unavailable` / `merchant_not_purchasable`); only a cart with no storefront
+   row reaches the kernel. (This door has no separate "referral" lane; the buyer's other route is the
+   offer link discovery already served.)
 
 Why this order: a contracted merchant is paid in chat through Pivota's own kernel, so a partner card
 page would be a detour; and for a merchant Pivota cannot charge, Reap completes the purchase at our
@@ -691,9 +694,11 @@ name and never falls through.
 
 When no lane serves a storefront row (escalation off, or the purchasability gate declining), the door refuses
 it by name instead of handing it to the kernel, which cannot price a seller Pivota is not connected to:
-`OPERATION_NOT_ALLOWED` / `ucp_storefront_checkout_unavailable` (`retriable: false`; the detail names the items,
-the seller hosts, and the storefront links the product read already publishes), or `NO_MERCHANT_OFFER` /
-`merchant_not_purchasable` on a gate decline (no link). Only a cart with no storefront row reaches the kernel.
+`OPERATION_NOT_ALLOWED` / `ucp_storefront_checkout_unavailable` (`retriable: false`; the detail names the items
+and the seller hosts, plus the rows' storefront links only while the purchasability gate is not armed), or
+`NO_MERCHANT_OFFER` / `merchant_not_purchasable` on a gate decline (no link). The same refusal covers an
+`update_checkout` of a kernel session that names a storefront row. Only a cart with no storefront row reaches
+the kernel.
 Older passages in this document that say a storefront row "falls through to the kernel path" describe the
 behaviour before this change.
 

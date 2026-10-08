@@ -359,7 +359,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       if (prepareOnly) return sanitizeResult(await prepareReapCheckout({params,ctx,executor:reads,ucpArgs:toolArgs,
         client:reapAgentic?.client}), {handoffAllowed:false});
       // 3a-i) THE REAP AGENTIC LANE (third lane; see ucpReapAgenticLane.js for the order and the status map).
-      //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> the kernel path's own answer. The
+      //     LANE ORDER: native (kernel) -> Reap -> storefront escalation -> a named refusal for a storefront row
+      //     neither served (3a-ii); only a cart with no storefront row reaches the kernel. The
       //     native decision is taken INSIDE the lane, on the same typed classification the escalation lane
       //     uses: a row Pivota transacts returns null there before anything else, and so reaches the kernel
       //     below exactly as it did without this lane. Kill-switched (REAP_AGENTIC_LANE_ENABLED, default OFF)
