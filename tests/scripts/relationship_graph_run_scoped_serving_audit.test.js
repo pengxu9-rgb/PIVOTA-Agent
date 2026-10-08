@@ -338,7 +338,7 @@ describe('a Cloud Run retry cannot launder the failed attempt\'s unsafe rows int
 });
 
 describe('legacy ceiling: a guard change that suppresses a big slice of the graph still fails', () => {
-  const LEGACY_GATE = { ...PROD_GATE, maxLegacySuppressedPct: 10, maxLegacySuppressedRows: 1500 };
+  const LEGACY_GATE = { ...PROD_GATE, maxLegacySuppressedPct: 10, maxLegacySuppressedRows: 1500, minLegacyRowsForPct: 500 };
   const legacyRows = (suppressed, safe) => [
     ...Array.from({ length: suppressed }, (_, i) => dearBarberRow(`lg_${i}`)),
     ...Array.from({ length: safe }, (_, i) => approvedRow(`ls_${i}`, { last_verified_at: LEGACY_VERIFIED_AT })),
@@ -348,8 +348,10 @@ describe('legacy ceiling: a guard change that suppresses a big slice of the grap
     const defaults = parseArgs(['--skip-review', '--out-dir', '/tmp/x'], { now: RUN_START });
     expect(defaults.maxLegacySuppressedPct).toBe(10);
     expect(defaults.maxLegacySuppressedRows).toBe(1500);
-    const tuned = parseArgs(['--skip-review', '--out-dir', '/tmp/x', '--max-legacy-suppressed-pct', '4', '--max-legacy-suppressed-rows', '200'], { now: RUN_START });
-    expect(tuned).toEqual(expect.objectContaining({ maxLegacySuppressedPct: 4, maxLegacySuppressedRows: 200 }));
+    expect(defaults.minLegacyRowsForPct).toBe(500);
+    const tuned = parseArgs(['--skip-review', '--out-dir', '/tmp/x', '--max-legacy-suppressed-pct', '4', '--max-legacy-suppressed-rows', '200',
+      '--min-legacy-rows-for-pct', '100'], { now: RUN_START });
+    expect(tuned).toEqual(expect.objectContaining({ maxLegacySuppressedPct: 4, maxLegacySuppressedRows: 200, minLegacyRowsForPct: 100 }));
   });
 
   test('under both bounds (prod today: ~108 of 9,478) passes', () => {
@@ -357,10 +359,46 @@ describe('legacy ceiling: a guard change that suppresses a big slice of the grap
     expect(evaluateServingAuditThresholds(auditFor(legacyRows(30, 400)), LEGACY_GATE)).toEqual([]);
   });
 
-  test('over the percent bound fails', () => {
-    expect(evaluateServingAuditThresholds(auditFor(legacyRows(50, 400)), LEGACY_GATE)).toEqual([
+  test('over the percent bound fails once there are enough legacy rows (default minimum 500)', () => {
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(100, 800)), LEGACY_GATE)).toEqual([
       expect.objectContaining({ metric: 'legacy_suppressed_pct', observed: 11.11, max: 10 }),
     ]);
+  });
+
+  test('a small legacy table is not held to the percent bound; the row bound still applies', () => {
+    // 50 of 450 legacy rows = 11.11%, but 450 < 500: a percent of a small denominator is noise.
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(50, 400)), LEGACY_GATE)).toEqual([]);
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(50, 400)), { ...LEGACY_GATE, minLegacyRowsForPct: 400 })).toEqual([
+      expect.objectContaining({ metric: 'legacy_suppressed_pct', observed: 11.11 }),
+    ]);
+    expect(evaluateServingAuditThresholds(auditFor(legacyRows(50, 400)), { ...LEGACY_GATE, maxLegacySuppressedRows: 40 })).toEqual([
+      expect.objectContaining({ metric: 'legacy_suppressed_rows', observed: 50, max: 40 }),
+    ]);
+  });
+
+  test('the legacy ceiling alone turns the threshold gate on', async () => {
+    const outDir = tempOutDir();
+    const options = parseArgs([
+      '--skip-review', '--skip-build', '--skip-validation', '--skip-lock', '--out-dir', outDir,
+      '--run-started-at', RUN_START.toISOString(), '--max-legacy-suppressed-rows', '40',
+    ], { now: RUN_START });
+    expect(options.maxServingSuppressedRows).toBeNull();
+    expect(options.failOnServingSuppressionReasons).toEqual([]);
+    const runner = jest.fn(async (_command, args) => {
+      const out = args[args.indexOf('--out') + 1];
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, JSON.stringify(summarizeSuppressionRows(legacyRows(50, 400), { runVerifiedSince: args[args.indexOf('--run-verified-since') + 1] })));
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await expect(runRoutineJob(options, { runner, now: RUN_START })).rejects.toMatchObject({
+        code: 'SERVING_AUDIT_THRESHOLD_VIOLATION',
+        violations: [expect.objectContaining({ metric: 'legacy_suppressed_rows', observed: 50, max: 40 })],
+      });
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   test('over the row bound fails even when the percent is small', () => {
@@ -370,11 +408,14 @@ describe('legacy ceiling: a guard change that suppresses a big slice of the grap
   });
 
   test('the sync wrapper and the cron pass the bounds through', () => {
-    const config = buildCronArgs({ RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_PCT: '5', RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_ROWS: '900' }, { now: RUN_START });
+    const config = buildCronArgs({
+      RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_PCT: '5', RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_ROWS: '900', RELGRAPH_SYNC_MIN_LEGACY_ROWS_FOR_PCT: '250',
+    }, { now: RUN_START });
     const options = parseSyncArgs(config.args, { now: RUN_START, cwd: '/tmp/pivota' });
     const routine = buildSyncRoutineSteps(options).steps.find((step) => step.id === 'relationship_graph_routine');
     expect(routine.args[routine.args.indexOf('--max-legacy-suppressed-pct') + 1]).toBe('5');
     expect(routine.args[routine.args.indexOf('--max-legacy-suppressed-rows') + 1]).toBe('900');
+    expect(routine.args[routine.args.indexOf('--min-legacy-rows-for-pct') + 1]).toBe('250');
     // Unset: the routine's own defaults apply.
     const plain = buildSyncRoutineSteps(parseSyncArgs(['--skip-review', '--select-hours', '24'], { now: RUN_START, cwd: '/tmp/pivota' }))
       .steps.find((step) => step.id === 'relationship_graph_routine');

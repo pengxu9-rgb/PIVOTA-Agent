@@ -189,6 +189,7 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'fail-on-serving-suppression-reasons', env.RELGRAPH_SYNC_FAIL_ON_SERVING_SUPPRESSION_REASONS);
   pushArg(args, 'max-legacy-suppressed-pct', env.RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_PCT);
   pushArg(args, 'max-legacy-suppressed-rows', env.RELGRAPH_SYNC_MAX_LEGACY_SUPPRESSED_ROWS);
+  pushArg(args, 'min-legacy-rows-for-pct', env.RELGRAPH_SYNC_MIN_LEGACY_ROWS_FOR_PCT);
   pushArg(args, 'renewal-window-days', env.RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS);
   pushArg(args, 'renewal-max-age-days', env.RELGRAPH_SYNC_RENEWAL_MAX_AGE_DAYS);
   pushArg(args, 'lock-stale-after-minutes', env.RELGRAPH_SYNC_LOCK_STALE_AFTER_MINUTES);

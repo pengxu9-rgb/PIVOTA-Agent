@@ -24,6 +24,9 @@ const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
 // must not be just a WARNING. Production on 2026-10-08: ~108 of 9,478 (1.1%).
 const DEFAULT_MAX_LEGACY_SUPPRESSED_PCT = 10;
 const DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS = 1500;
+// A percent of a small legacy table is noise (5 of 40 is 12.5%): the percent
+// ceiling waits for this many legacy edges; the row ceiling always applies.
+const DEFAULT_MIN_LEGACY_ROWS_FOR_PCT = 500;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
 const DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES = 10;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
@@ -147,7 +150,8 @@ function usage() {
     'default: this process start): any such edge the guard suppresses fails the job. Older (legacy) suppressed edges are',
     'reported as legacy_suppressed_* and logged at WARNING, but do not fail it — the read path already hides them —',
     `unless they exceed --max-legacy-suppressed-pct (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_PCT}, of legacy edges) or`,
-    `--max-legacy-suppressed-rows (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS}).`,
+    `--max-legacy-suppressed-rows (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS}); the percent applies only from`,
+    `--min-legacy-rows-for-pct legacy edges (default ${DEFAULT_MIN_LEGACY_ROWS_FOR_PCT}). Either ceiling alone enables the gate.`,
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
@@ -225,6 +229,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
       max: 100,
     }),
     maxLegacySuppressedRows: parseNumber(argValue(argv, 'max-legacy-suppressed-rows'), DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
+    minLegacyRowsForPct: parseNumber(argValue(argv, 'min-legacy-rows-for-pct'), DEFAULT_MIN_LEGACY_ROWS_FOR_PCT, {
       min: 0,
       max: Number.MAX_SAFE_INTEGER,
     }),
@@ -614,6 +622,8 @@ function hasServingAuditThresholds(options = {}) {
   return (
     options.maxServingSuppressedPct != null ||
     options.maxServingSuppressedRows != null ||
+    options.maxLegacySuppressedPct != null ||
+    options.maxLegacySuppressedRows != null ||
     (Array.isArray(options.failOnServingSuppressionReasons) && options.failOnServingSuppressionReasons.length > 0)
   );
 }
@@ -668,6 +678,8 @@ function evaluateRunScopedServingAuditThresholds(audit, options = {}) {
   }
   const legacyRows = parseNumber(audit.legacy_suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
   const legacyPct = parseNumber(audit.legacy_suppressed_pct, 0, { min: 0, max: 100 });
+  const legacyTotal = parseNumber(audit.legacy_total_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const minLegacyRowsForPct = options.minLegacyRowsForPct == null ? 0 : options.minLegacyRowsForPct;
   if (options.maxLegacySuppressedRows != null && legacyRows > options.maxLegacySuppressedRows) {
     violations.push({
       metric: 'legacy_suppressed_rows',
@@ -676,7 +688,8 @@ function evaluateRunScopedServingAuditThresholds(audit, options = {}) {
       message: `serving guard suppresses ${legacyRows} legacy approved edges, above the legacy ceiling ${options.maxLegacySuppressedRows}`,
     });
   }
-  if (options.maxLegacySuppressedPct != null && legacyPct > options.maxLegacySuppressedPct) {
+  if (options.maxLegacySuppressedPct != null && legacyTotal >= minLegacyRowsForPct
+      && legacyPct > options.maxLegacySuppressedPct) {
     violations.push({
       metric: 'legacy_suppressed_pct',
       observed: legacyPct,
@@ -843,6 +856,7 @@ function serializableOptions(options) {
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
     max_legacy_suppressed_pct: options.maxLegacySuppressedPct == null ? null : options.maxLegacySuppressedPct,
     max_legacy_suppressed_rows: options.maxLegacySuppressedRows == null ? null : options.maxLegacySuppressedRows,
+    min_legacy_rows_for_pct: options.minLegacyRowsForPct == null ? null : options.minLegacyRowsForPct,
     affected_refs: options.affectedRefs || null,
     affected_refs_file: options.affectedRefsFile || null,
     affected_products_file: options.affectedProductsFile || null,

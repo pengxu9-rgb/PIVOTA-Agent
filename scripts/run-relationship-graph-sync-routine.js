@@ -259,6 +259,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       min: 0,
       max: Number.MAX_SAFE_INTEGER,
     }),
+    minLegacyRowsForPct: parseNumber(argValue(argv, 'min-legacy-rows-for-pct'), null, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
     dbLock: !hasFlag(argv, 'no-db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key'), 500),
     lockStaleAfterMinutes: parseNumber(
@@ -488,6 +492,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'run-started-at', options.runStartedAt);
   pushArg(routineArgs, 'max-legacy-suppressed-pct', options.maxLegacySuppressedPct);
   pushArg(routineArgs, 'max-legacy-suppressed-rows', options.maxLegacySuppressedRows);
+  pushArg(routineArgs, 'min-legacy-rows-for-pct', options.minLegacyRowsForPct);
   if (options.stepTimeoutMs) {
     routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
   } else {

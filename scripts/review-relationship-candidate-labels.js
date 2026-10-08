@@ -1526,6 +1526,9 @@ async function runReview({
         // eslint-disable-next-line no-await-in-loop
         const remembered = await rememberNegativeVerdict(row, buildNegativeReviewMemo(decision, {
           fingerprint: prepared.fingerprint,
+          // Known limit (pre-existing): a provider built with a fallback reports
+          // the PRIMARY provider's __meta, so a verdict the fallback model gave
+          // is recorded under the primary model's name.
           model: llmProvider && llmProvider.__meta && llmProvider.__meta.model,
           reviewedAt: new Date(clock()).toISOString(),
           minApprovalConfidence: confidenceFloor,

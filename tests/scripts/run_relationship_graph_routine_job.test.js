@@ -261,7 +261,16 @@ describe('run-relationship-graph-routine-job', () => {
       outDir,
       '--skip-validation',
     ], { now: NOW });
-    const runner = jest.fn(async () => ({ exitCode: 0, stdout: '{"ok":true}', stderr: '' }));
+    // The legacy-suppression ceiling is on by default, so the serving audit
+    // step's artifact is always read; a real audit always writes it.
+    const runner = jest.fn(async (_command, args) => {
+      if (args[0].endsWith('audit-relationship-graph-serving-guard.js')) {
+        const out = args[args.indexOf('--out') + 1];
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(out, JSON.stringify({ total_rows: 0, suppressed_rows: 0, suppressed_pct: 0 }));
+      }
+      return { exitCode: 0, stdout: '{"ok":true}', stderr: '' };
+    });
 
     const summary = await runRoutineJob(options, { runner, now: NOW });
 

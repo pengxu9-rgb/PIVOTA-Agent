@@ -103,6 +103,13 @@ describe('pair fingerprint through the real builder', () => {
       return row;
     };
     expect(fingerprintOf(withStamps('2026-10-08T00:00:00Z'))).toBe(fingerprintOf(withStamps('2026-10-09T00:00:00Z')));
+    // *_until is bookkeeping too: only fresh_until differs here.
+    const until = (freshUntil) => {
+      const row = seedEdge();
+      row.candidate_snapshot.product_intel = { freshness: { fresh_until: freshUntil, source_version: 'pivota.product_intel.v1' } };
+      return row;
+    };
+    expect(fingerprintOf(until('2026-11-08T00:00:00Z'))).toBe(fingerprintOf(until('2026-11-09T00:00:00Z')));
     const dupe = (observedAt) => ({ ...seedEdge(), relation_type: 'dupe', price_evidence: { ...seedEdge().price_evidence, observed_at: observedAt } });
     expect(fingerprintOf(dupe('2026-10-01T00:00:00Z'))).not.toBe(fingerprintOf(dupe('2026-10-08T00:00:00Z')));
   });
