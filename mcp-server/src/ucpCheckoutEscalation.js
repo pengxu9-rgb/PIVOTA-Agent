@@ -304,7 +304,9 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   // should not pay for a call whose answer is "disabled" — and this makes "the switch is ignored on THIS
   // path" a mutant that a test can kill without touching the client every other lane shares.
   if (!gateEnabled) return true;
-  return mayOfferPurchaseForDomain(hostOf(continueUrl), market, gate, gateEnabled, budgetMs);
+  // The SELLER's domain — a Pivota attribution hop decoded to its destination — never api.pivota.cc: asking the gate
+  // about Pivota's own host is asking about nobody. A link whose seller cannot be read keeps the previous key.
+  return mayOfferPurchaseForDomain(sellerHostOf(continueUrl) || hostOf(continueUrl), market, gate, gateEnabled, budgetMs);
 }
 
 /**
@@ -403,7 +405,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     });
   });
 
-  const host = hostOf(continueUrl);
+  const host = sellerHostOf(continueUrl) || hostOf(continueUrl);
   return buildUcpCheckoutEnvelope({
     id,
     status: "requires_escalation",
@@ -569,12 +571,19 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         `Send one checkout per lane: these items complete on a seller storefront and cannot share a checkout with the others: ${over.join(", ")}.`,
       ].join(" "), { storefront_items: over });
     }
-    const hosts = new Set([...targets.values()].map(hostOf));
-    if (hosts.size > 1) {
+    // ONE SELLER PER CHECKOUT, judged on the SELLER, not on the link's host. A stamped row's link is Pivota's
+    // attribution hop (`https://api.pivota.cc/r?token=…`), so every hop row used to read as the one "seller"
+    // api.pivota.cc and two different sellers could share a checkout whose continue_url sends the buyer to only the
+    // first. The seller is the hop's destination (sellerHostOf). In a cart of more than one product, a row whose
+    // seller cannot be read cannot be proven to share a seller with the rest: refused, never assumed.
+    const sellerOf = new Map([...targets.entries()].map(([pid, t]) => [pid, sellerHostOf(t)]));
+    const hosts = new Set([...sellerOf.values()].filter(Boolean));
+    const unconfirmed = [...sellerOf.entries()].filter(([, h]) => !h).map(([pid]) => pid);
+    if (hosts.size > 1 || (sellerOf.size > 1 && unconfirmed.length > 0)) {
       throw intakeRefusal("QUOTE_REQUIRED", "ucp_multi_seller_escalation", [
-        "These items complete on different sellers' storefronts and cannot share one checkout.",
-        `Send one checkout per seller: ${[...hosts].join(", ")}.`,
-      ].join(" "), { seller_hosts: [...hosts] });
+        "These items complete on different sellers' storefronts (or on a storefront that cannot be confirmed) and cannot share one checkout.",
+        `Send one checkout per seller${hosts.size ? `: ${[...hosts].join(", ")}` : ""}.`,
+      ].join(" "), compact({ seller_hosts: [...hosts], unconfirmed_seller_items: unconfirmed.length ? unconfirmed : undefined }));
     }
     const normalized = items.map((it) => (str(it.variant_id)
       ? { product_id: it.product_id, quantity: it.quantity, variant_id: str(it.variant_id) }
