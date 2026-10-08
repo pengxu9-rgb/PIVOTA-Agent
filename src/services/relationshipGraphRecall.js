@@ -59,10 +59,11 @@ function isRelationshipGraphSurfaceEnabled(surface = 'pdp_similar', env = proces
 // The relation types the shopper "similar" surfaces serve. `related_product` is held by default: the
 // builder files every same-brand non-substitute pair there (prod 2026-10-08: 6,355 of 6,355 served
 // related_product edges are same-brand) while the reviewer treats it as a complement, so it is not yet
-// a relation a similar rail can stand behind. AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES
-// (comma list) overrides; an explicit caller list always wins. Other surfaces are unchanged.
+// a relation a similar rail can stand behind. Every other type keeps being served. The variable
+// AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES (comma list) overrides; an explicit caller list
+// always wins. Other surfaces are unchanged.
 const SIMILAR_SURFACES = new Set(['pdp_similar', 'find_similar_products']);
-const DEFAULT_SIMILAR_RELATION_TYPES = Object.freeze(['competitive_alternative', 'niche_specialist']);
+const DEFAULT_SIMILAR_RELATION_TYPES = Object.freeze(['dupe', 'competitive_alternative', 'niche_specialist']);
 const KNOWN_RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
 
 function resolveServingRelationTypes(surface, relationTypes, env = process.env) {

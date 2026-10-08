@@ -1556,9 +1556,11 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
         SELECT DISTINCT pgm.platform_product_id AS sibling
         FROM product_group_members pgm
         JOIN groups g ON g.product_group_id = pgm.product_group_id
+        LIMIT 100
       `,
       // Keyed by the seed lane (platform): ADR-009 re-keyed external-seed group members onto their
-      // observed sellers, so the old sentinel-merchant predicate matched no member at all.
+      // observed sellers, so the old sentinel-merchant predicate matched no member at all. Bounded:
+      // the largest external-seed group in prod (2026-10-09) has 45 members.
       [extKeys, EXTERNAL_SEED_PLATFORM],
     );
     const seen = new Set(refs.map((r) => String(r).toLowerCase()));

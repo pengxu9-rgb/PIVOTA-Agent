@@ -91,7 +91,7 @@ const catalogRow = (id, overrides = {}) => ({
 });
 
 const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), recommend: null, sql: [] };
-const queryMock = jest.fn(async (sql, params = []) => {
+const defaultQuery = async (sql, params = []) => {
   const text = String(sql);
   state.sql.push({ text, params });
   if (text.includes('FROM product_relationship_edges')) {
@@ -108,7 +108,8 @@ const queryMock = jest.fn(async (sql, params = []) => {
     return { rows: state.catalog(ids) };
   }
   return { rows: [] };
-});
+};
+const queryMock = jest.fn(defaultQuery);
 
 let app;
 let request;
@@ -219,7 +220,7 @@ describe('find_similar_products serves re-keyed external-seed graph candidates',
     let body = await findSimilar();
     expect(body.products.map((product) => product.relationship_edge_id)).not.toContain('prel_rekey_1');
     const read = state.sql.find(({ text }) => text.includes('FROM product_relationship_edges'));
-    expect(read.params[4]).toEqual(['competitive_alternative', 'niche_specialist']);
+    expect(read.params[4]).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
 
     process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES = 'competitive_alternative,related_product';
     state.sql = [];
@@ -229,16 +230,68 @@ describe('find_similar_products serves re-keyed external-seed graph candidates',
     expect(served).not.toContain('prel_rekey_5');
   });
 
-  test('a dynamic-recall failure no longer hides the graph; with no graph items it still surfaces', async () => {
+  test('a dynamic-recall failure no longer hides the graph, but stays visible and keeps its 503', async () => {
     state.recommend = async () => { throw new Error('recall exploded'); };
     const body = await findSimilar();
     expect(body.products.filter((product) => product.relationship_edge_id)).toHaveLength(4);
+    expect(body.metadata.dynamic_recall_failed).toBe(true);
 
+    const send = () => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_similar_products',
+      payload: { product_id: ANCHOR, limit: 12, options: { cache_bypass: true } }, metadata: { market: 'US' } });
     state.edges = [];
-    const res = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({ operation: 'find_similar_products', payload: { product_id: ANCHOR, limit: 12, options: { cache_bypass: true } }, metadata: { market: 'US' } });
-    expect(res.body.products || []).toHaveLength(0);
+    let res = await send();
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('SIMILAR_MAINLINE_UNAVAILABLE');
+
+    // Graph items that all fail the public filter are not an answer either.
+    state.edges = [edgeRow(2, 'competitive_alternative')];
+    state.catalog = () => [];
+    res = await send();
+    expect(res.status).toBe(503);
+  });
+
+  test('the dedupe step re-raises a recall failure when the graph has nothing to serve', async () => {
+    state.recommend = async () => { throw new Error('recall exploded'); };
+    state.edges = [];
+    await expect(app._debug.fetchSimilarProductsDeduped({
+      pdp_product: { product_id: ANCHOR, merchant_id: 'external_seed', market: 'US' }, k: 12, cache_bypass: true,
+    })).rejects.toThrow('recall exploded');
+  });
+
+  test('a human-approved dupe is served on the similar surfaces by default; an AI-approved one stays quarantined', async () => {
+    state.edges = [{ ...edgeRow(3, 'dupe'), label_state: 'human_approved' }, edgeRow(4, 'dupe')];
+    const body = await findSimilar();
+    expect(body.products.map((product) => product.relationship_edge_id)).toEqual(['prel_rekey_3']);
+  });
+
+  test('an ambiguous source id never reaches the identity-listing fallback', async () => {
+    state.catalog = (ids) => ids.flatMap((id) => (id === candidateId(2)
+      ? [catalogRow(id), catalogRow(id, { merchant_id: 'merch_obs_other', pivota_signature_id: sigOf(9) })]
+      : [catalogRow(id)]));
+    queryMock.mockImplementation(async (sql, params = []) => {
+      if (String(sql).includes('FROM pdp_identity_listing')) {
+        state.sql.push({ text: String(sql), params });
+        return { rows: [{ product_id: candidateId(2), sellable_item_group_id: sigOf(7) }] };
+      }
+      return defaultQuery(sql, params);
+    });
+    try {
+      const body = await findSimilar();
+      expect(body.products.map((product) => product.relationship_edge_id)).not.toContain('prel_rekey_2');
+      const fallback = state.sql.filter(({ text }) => text.includes('FROM pdp_identity_listing'));
+      for (const call of fallback) expect(JSON.stringify(call.params)).not.toContain(candidateId(2));
+    } finally {
+      queryMock.mockImplementation(defaultQuery);
+    }
+  });
+
+  test('an archived listing under another signature does not make a live listing ambiguous', async () => {
+    state.catalog = (ids) => ids.flatMap((id) => (id === candidateId(2)
+      ? [catalogRow(id), catalogRow(id, { merchant_id: 'merch_obs_old', pivota_signature_id: sigOf(9), sync_status: 'archived' })]
+      : [catalogRow(id)]));
+    const body = await findSimilar();
+    const card = body.products.find((product) => product.relationship_edge_id === 'prel_rekey_2');
+    expect(card.product_id).toBe(sigOf(2));
   });
 });
 
@@ -276,6 +329,18 @@ describe('graph card money is one record\'s amount and currency', () => {
       price_evidence: { candidate_price_amount: 20 }, candidate_snapshot: snapshot,
     }));
     expect(mismatch.price).toBeUndefined();
+  });
+
+  test('a collapsed edge prices from its display snapshot only as a pair', () => {
+    const collapsed = edge({
+      price_evidence: {},
+      candidate_snapshot: { ...edgeRow(2).candidate_snapshot, price: undefined },
+      candidate_family_key: 'family:pomade',
+      candidate_display_snapshot: { product_id: candidateId(2), name: 'Matte Clay Pomade', price: { amount: 41, currency: 'USD' } },
+    });
+    expect(relationshipGraph.relationshipEdgeToSimilarItem(collapsed)).toMatchObject({ price: 41, currency: 'USD' });
+    const bare = edge({ ...collapsed, candidate_display_snapshot: { product_id: candidateId(2), name: 'Matte Clay Pomade', price: 41 } });
+    expect(relationshipGraph.relationshipEdgeToSimilarItem(bare).price).toBeUndefined();
   });
 
   test('non-positive amounts project nothing', () => {
@@ -327,6 +392,20 @@ describe('presentation filter keeps reviewed graph cards', () => {
     const graph = { product_id: 'sig_g', image_url: 'https://cdn.example.test/g.jpg', source: 'relationship_graph', relationship_edge_id: 'edge_g' };
     const kept = app._debug.filterSimilarProductsWithCardHighlights([graph, ...heuristic], { baseProduct: {} });
     expect(kept.map((item) => item.product_id)).toContain('sig_g');
+    // A graph card does not count toward the heuristic highlight threshold either (review R5).
+    const mixed = [
+      graph,
+      ...[0, 1, 2].map((i) => ({ product_id: `sig_hl${i}`, image_url: 'https://cdn.example.test/h.jpg', card_highlight: 'A shampoo' })),
+      ...[0, 1, 2, 3].map((i) => ({ product_id: `sig_img${i}`, image_url: 'https://cdn.example.test/i.jpg' })),
+    ];
+    expect(app._debug.filterSimilarProductsWithCardHighlights(mixed, { baseProduct: {} })).toHaveLength(8);
+    // Highlighted graph cards must not lift the heuristic pool over the threshold.
+    const highlightedGraph = [0, 1, 2].map((i) => ({ ...graph, product_id: `sig_g${i}`, relationship_edge_id: `edge_g${i}`, card_highlight: 'Reviewed' }));
+    const heuristicMix = [
+      { product_id: 'sig_hl', image_url: 'https://cdn.example.test/h.jpg', card_highlight: 'A shampoo' },
+      ...[0, 1, 2].map((i) => ({ product_id: `sig_plain${i}`, image_url: 'https://cdn.example.test/i.jpg' })),
+    ];
+    expect(app._debug.filterSimilarProductsWithCardHighlights([...highlightedGraph, ...heuristicMix], { baseProduct: {} })).toHaveLength(7);
     const noImage = { ...graph, image_url: '' };
     expect(app._debug.filterSimilarProductsWithCardHighlights([noImage, ...heuristic], { baseProduct: {} })
       .map((item) => item.product_id)).not.toContain('sig_g');
@@ -343,6 +422,7 @@ describe('group-sibling anchor expansion follows the seed lane', () => {
       },
     });
     expect(calls[0].sql).not.toMatch(/merchant_id/);
+    expect(calls[0].sql).toMatch(/LIMIT 100/);
     expect(calls[0].params).toEqual([['ext_anchor'], 'external_seed']);
     expect(refs).toEqual(expect.arrayContaining(['product:ext_sibling', 'ext_sibling']));
   });
@@ -351,8 +431,8 @@ describe('group-sibling anchor expansion follows the seed lane', () => {
 describe('similar-surface relation allowlist', () => {
   test('defaults, override and explicit caller lists', () => {
     const { resolveServingRelationTypes } = recall;
-    expect(resolveServingRelationTypes('pdp_similar', undefined, {})).toEqual(['competitive_alternative', 'niche_specialist']);
-    expect(resolveServingRelationTypes('find_similar_products', undefined, {})).toEqual(['competitive_alternative', 'niche_specialist']);
+    expect(resolveServingRelationTypes('pdp_similar', undefined, {})).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
+    expect(resolveServingRelationTypes('find_similar_products', undefined, {})).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
     expect(resolveServingRelationTypes('pdp_similar', undefined, {
       AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES: 'related_product, bogus ,competitive_alternative',
     })).toEqual(['related_product', 'competitive_alternative']);
@@ -360,6 +440,6 @@ describe('similar-surface relation allowlist', () => {
     expect(resolveServingRelationTypes('discovery_feed', undefined, {})).toBeUndefined();
     expect(resolveServingRelationTypes('pdp_similar', undefined, {
       AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES: 'bogus',
-    })).toEqual(['competitive_alternative', 'niche_specialist']);
+    })).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
   });
 });

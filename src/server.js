@@ -5493,7 +5493,12 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
             ''
           ) AS image_url,
           coalesce(price_amount::text, seed_data->'snapshot'->>'price', seed_data->>'price', '') AS price_amount,
-          coalesce(price_currency, seed_data->'snapshot'->>'currency', seed_data->>'currency', '') AS price_currency,
+          -- The currency of the layer that supplied the amount above, never another layer's.
+          CASE
+            WHEN price_amount IS NOT NULL THEN coalesce(price_currency, '')
+            WHEN seed_data->'snapshot'->>'price' IS NOT NULL THEN coalesce(seed_data->'snapshot'->>'currency', '')
+            ELSE coalesce(seed_data->>'currency', '')
+          END AS price_currency,
           coalesce(
             seed_data->'snapshot'->>'pdp_description_raw',
             seed_data->>'pdp_description_raw',
@@ -26884,6 +26889,9 @@ async function fetchSimilarProductsDeduped(args = {}) {
       metadata: {
         ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
         ...(relationshipGraphMeta || {}),
+        // Graph-only items after a recall failure are not a healthy answer: callers keep the outage
+        // visible, and find_similar_products still answers 503 when no graph card survives its filters.
+        ...(recResult.ok ? {} : { dynamic_recall_failed: true }),
       },
       ...(rec?.debug ? { debug: rec.debug } : {}),
       ...(rec?.cache ? { cache: rec.cache } : {}),
@@ -27647,11 +27655,15 @@ function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = nul
       !isNonFormulaMerchSimilarCandidateForBeautyBase(item, baseProduct),
   );
   // A reviewed relationship-graph card is not a heuristic candidate competing on card copy: its
-  // relation was reviewed, so four highlighted heuristic cards must not evict it.
-  const highlightReady = displayable.filter(
-    (item) => isRelationshipGraphSimilarProduct(item) || hasSimilarCardPresentation(item),
+  // relation was reviewed, so four highlighted heuristic cards must not evict it. The highlight
+  // threshold is decided on heuristic cards alone, so a graph card neither is evicted nor shrinks
+  // the heuristic pool; every displayable graph card is kept in its original position.
+  const heuristicDisplayable = displayable.filter((item) => !isRelationshipGraphSimilarProduct(item));
+  const highlightReady = heuristicDisplayable.filter((item) => hasSimilarCardPresentation(item));
+  const heuristicPool = new Set(highlightReady.length >= targetCount ? highlightReady : heuristicDisplayable);
+  const candidatePool = displayable.filter(
+    (item) => isRelationshipGraphSimilarProduct(item) || heuristicPool.has(item),
   );
-  const candidatePool = highlightReady.length >= targetCount ? highlightReady : displayable;
   const baseCategory = normalizeSimilarCategoryForDisplay(
     baseProduct?.category ||
       baseProduct?.product_type ||
@@ -28530,7 +28542,8 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
           category_path,
           image_url,
           canonical_url,
-          product_payload
+          product_payload,
+          sync_status
         FROM catalog_products
         WHERE platform = $1
           AND source_product_id = ANY($2::text[])
@@ -28546,17 +28559,27 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
       // relationship-graph candidates and the public filter dropped every one of them.
       [EXTERNAL_SEED_PLATFORM, unresolvedExternalIds],
     );
-    const sigsBySourceProductId = new Map();
+    const rowsBySourceProductId = new Map();
     for (const row of result?.rows || []) {
       const sourceProductId = firstNonEmptyString(row.source_product_id);
       const sigId = firstNonEmptyString(row.pivota_signature_id);
       if (!sourceProductId || !/^sig[_:]/i.test(sigId)) continue;
-      if (!sigsBySourceProductId.has(sourceProductId)) sigsBySourceProductId.set(sourceProductId, new Set());
-      sigsBySourceProductId.get(sourceProductId).add(sigId);
-      if (!catalogBySourceProductId.has(sourceProductId)) catalogBySourceProductId.set(sourceProductId, row);
+      if (!rowsBySourceProductId.has(sourceProductId)) rowsBySourceProductId.set(sourceProductId, []);
+      rowsBySourceProductId.get(sourceProductId).push(row);
     }
     // A source id that two sellers list under different signatures names no one public product;
     // it stays unresolved (and is filtered) rather than being served under whichever row sorted first.
+    // Only live rows decide when any exist: an archived listing elsewhere does not make it ambiguous.
+    const sigsBySourceProductId = new Map();
+    for (const [sourceProductId, rows] of rowsBySourceProductId) {
+      const liveRows = rows.filter((row) => String(row.sync_status || '').trim() === 'live');
+      const decidingRows = liveRows.length ? liveRows : rows;
+      sigsBySourceProductId.set(
+        sourceProductId,
+        new Set(decidingRows.map((row) => firstNonEmptyString(row.pivota_signature_id))),
+      );
+      catalogBySourceProductId.set(sourceProductId, decidingRows[0]);
+    }
     for (const [sourceProductId, sigIds] of sigsBySourceProductId) {
       if (sigIds.size === 1) {
         sigBySourceProductId.set(sourceProductId, [...sigIds][0]);
@@ -48695,6 +48718,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               servingCurrency: similarServingCurrency,
             });
             const products = publicSimilarCandidates.slice(0, limit);
+            if (!products.length && rec?.metadata?.dynamic_recall_failed === true) {
+              throw new Error('dynamic recall failed and no relationship graph card survived the filters');
+            }
             directRouteTimingMs.public_filter = Date.now() - publicFilterStartedAt;
             directRouteTimingMs.total = Date.now() - directRouteStartedAt;
             const publicExternalIdFilteredCount = Math.max(
