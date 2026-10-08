@@ -35,6 +35,7 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
+import { judgeSellerUrl, pivotaHopDestination } from "./ucpExpectedSeller.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
 export const MERCHANT_PRICING_BUDGET_MS = 5000; // discovery (usually cached) + one cart call
@@ -69,10 +70,21 @@ function bareHost(h) {
   return String(h || "").toLowerCase().replace(/^www\./, "");
 }
 
+// A URL that carries ANOTHER URL in a query value (`?return_to=https://…`) is a hop whose final destination is
+// not its host; the same rule ucpExpectedSeller applies. Tracking members (`ref`, `utm_*`) are context, not hops.
+function carriesAnotherUrl(parsed) {
+  for (const [key, value] of parsed.searchParams.entries()) {
+    if (/^(ref|utm_[a-z0-9_]*)$/i.test(key)) continue;
+    if (/^\s*(https?:)?\/\//i.test(value) || /^\s*https?%3a/i.test(value)) return true;
+  }
+  return false;
+}
+
 function onSellerHost(url, sellerHost) {
   let parsed;
   try { parsed = new URL(url); } catch { return null; }
   if (parsed.protocol !== "https:") return null;
+  if (parsed.username || parsed.password || carriesAnotherUrl(parsed)) return null;
   const host = bareHost(parsed.hostname);
   const seller = bareHost(sellerHost);
   return host === seller || host.endsWith(`.${seller}`) ? parsed : null;
@@ -132,6 +144,16 @@ function singleTotal(totals, type) {
   return hits.length === 1 ? minor(hits[0].amount) : null;
 }
 
+/** Codes of the seller messages whose `type` is "error" (any code, normalised), in order. */
+function sellerErrorCodes(payload) {
+  const messages = Array.isArray(own(payload, "messages")) ? own(payload, "messages") : [];
+  return messages
+    .filter((m) => isPlainObject(m) && String(m.type || "").trim().toLowerCase() === "error")
+    .map((m) => (typeof m.code === "string" ? m.code.trim().toLowerCase() : ""));
+}
+
+const SELLER_OUT_OF_STOCK_CODE_RE = /^(out_of_stock|sold_out|insufficient_inventory|item_unavailable|not_available_for_sale)$/;
+
 function sellerMessageCodes(payload) {
   const messages = Array.isArray(own(payload, "messages")) ? own(payload, "messages") : [];
   const codes = [];
@@ -151,10 +173,16 @@ function sellerMessageCodes(payload) {
  * @param {{product_id:string, quantity:number, gid:string}[]} wanted
  * @param {string} sellerHost
  */
-export function readSellerCart(payload, wanted, sellerHost) {
+export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency } = {}) {
   if (!isPlainObject(payload)) return null;
+  // A cart the seller itself flags with an ERROR message is not a price to show (out of stock is handled by the
+  // caller, from the same messages, before this is reached).
+  if (sellerErrorCodes(payload).length) return null;
   const currency = str(own(payload, "currency"));
   if (!currency || !/^[A-Z]{3}$/.test(currency)) return null;
+  // The market's currency, as the catalog states it for these rows: a seller answering in another currency (a
+  // geo-defaulted storefront, a market the request did not name) is not the price this buyer was shown.
+  if (expectedCurrency && currency !== expectedCurrency) return null;
   const continueUrl = str(own(payload, "continue_url")) || str(own(payload, "checkout_url"));
   if (!continueUrl || !onSellerHost(continueUrl, sellerHost)) return null;
   const lines = Array.isArray(own(payload, "line_items")) ? own(payload, "line_items") : null;
@@ -190,7 +218,8 @@ export function readSellerCart(payload, wanted, sellerHost) {
   const totalsRaw = own(payload, "totals");
   const subtotal = singleTotal(totalsRaw, "subtotal");
   const total = singleTotal(totalsRaw, "total");
-  if (subtotal === null || total === null || !Number.isSafeInteger(sum)) return null;
+  // The seller's own subtotal must be the sum of its own lines: a cart that disagrees with itself has no price.
+  if (subtotal === null || total === null || !Number.isSafeInteger(sum) || subtotal !== sum) return null;
   const totals = [{ type: "subtotal", amount: subtotal, display_text: "Subtotal (priced by the seller's storefront)" }];
   let detailed = false;
   for (const [type, label] of [["discount", "Discount"], ["items_discount", "Item discount"], ["fulfillment", "Shipping"], ["tax", "Tax"], ["fee", "Fee"]]) {
@@ -211,6 +240,35 @@ export function readSellerCart(payload, wanted, sellerHost) {
     cartId: isCarriableCartId(cartId) ? cartId : null,
     sellerMessageCodes: sellerMessageCodes(payload),
   };
+}
+
+// ---- attribution ---------------------------------------------------------------------------------------------------
+//
+// THE CATALOG LINK CARRIES PIVOTA'S REFERRAL. A stamped storefront row's link is Pivota's attribution hop
+// (`https://api.pivota.cc/r?token=…`), whose destination carries `utm_source=pivota&pvt_click_id=…` — the referral
+// the seller joins an order back on (`join_mode: referral_only`). The seller's cart URL carries none of it, so a
+// priced answer would silently drop the referral. The tracking members of the catalog link's destination (the hop's
+// `dest`, or the link itself) are therefore carried onto the cart URL, never overwriting a member the seller set.
+// The hop's own click record (the /r redirect) is NOT reproduced: minting a hop needs the backend's key.
+const TRACKING_KEY_RE = /^(utm_[a-z0-9_]{1,40}|pvt_[a-z0-9_]{1,40})$/i;
+
+export function carryAttribution(cartUrl, catalogLink) {
+  let source;
+  try {
+    const parsed = new URL(catalogLink);
+    const hop = pivotaHopDestination(parsed);
+    source = hop ? (hop.dest ? new URL(hop.dest) : null) : parsed;
+  } catch { source = null; }
+  if (!source) return cartUrl;
+  let out;
+  try { out = new URL(cartUrl); } catch { return cartUrl; }
+  let changed = false;
+  for (const [key, value] of source.searchParams.entries()) {
+    if (!TRACKING_KEY_RE.test(key) || out.searchParams.has(key) || value.length > 200) continue;
+    out.searchParams.append(key, value);
+    changed = true;
+  }
+  return changed ? out.toString() : cartUrl;
 }
 
 // ---- the door ----------------------------------------------------------------------------------------------------
@@ -238,9 +296,9 @@ export function createMerchantDoor({ client, discover, logger } = {}) {
   const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1 });
   const service = discover ? null : warmHandoffModule.createWarmHandoffService({ client: realClient, logger: logger || null });
   return {
-    async endpointFor(sellerHost) {
-      if (discover) return discover(sellerHost);
-      const detailed = await service.discoverBrandEndpointDetailed(`https://${sellerHost}`);
+    async endpointFor(discoveryHost) {
+      if (discover) return discover(discoveryHost);
+      const detailed = await service.discoverBrandEndpointDetailed(`https://${discoveryHost}`);
       return detailed && detailed.mcpEndpoint ? detailed.mcpEndpoint : null;
     },
     createCart: (endpoint, args) => realClient.createCart(endpoint, args),
@@ -249,9 +307,9 @@ export function createMerchantDoor({ client, discover, logger } = {}) {
 }
 
 let defaultDoor = null;
-function door(deps) {
+function door(deps, factory = createMerchantDoor) {
   if (deps) return deps;
-  if (!defaultDoor) defaultDoor = createMerchantDoor();
+  if (!defaultDoor) defaultDoor = factory();
   return defaultDoor;
 }
 
@@ -269,9 +327,13 @@ function emit(log, level, detail) {
  *           cartId?:string, env?:object, merchantDoor?:object, budgetMs?:number, log?:object }} a
  *   `cartId` set = a RE-READ of a cart this door built (get_checkout): `get_cart`, never a new cart.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, market, cartId, env = process.env, merchantDoor, budgetMs = MERCHANT_PRICING_BUDGET_MS, log }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
+  // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
+  const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
+  const expectedCurrency = currencies.size === 1 ? [...currencies][0] : null;
+  if (!expectedCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
   const wanted = [];
   for (const it of items) {
     const gid = sellerVariantGidOf(rows.get(it.product_id), sellerHost);
@@ -279,13 +341,20 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, market, car
     if (wanted.some((w) => w.gid === gid)) { emit(log, "info", { outcome: "fallback", reason: "duplicate_variant", seller_host: sellerHost }); return null; }
     wanted.push({ product_id: it.product_id, quantity: it.quantity, gid });
   }
-  const d = door(merchantDoor);
+  // A door that cannot even be built (e.g. a malformed signing key in env) is a fallback, not a failed checkout.
+  let d;
+  try { d = door(merchantDoor, doorFactory); } catch (err) {
+    emit(log, "warn", { outcome: "fallback", reason: "door_unavailable", seller_host: sellerHost, message: err && err.message });
+    return null;
+  }
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
 
   let endpoint;
   try {
-    const found = await withBudget(d.endpointFor(sellerHost), left());
+    // Discovered on the storefront's OWN hostname (`www.` kept): discovery refuses redirects, so a store whose bare
+    // domain 301s to www would otherwise never be found.
+    const found = await withBudget(d.endpointFor(discoveryHost || sellerHost), left());
     endpoint = found && !found.timedOut ? found : null;
   } catch { endpoint = null; }
   if (!endpoint) { emit(log, "info", { outcome: "fallback", reason: "no_seller_door", seller_host: sellerHost }); return null; }
@@ -308,17 +377,31 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, market, car
   if (!result.ok || result.error) {
     const errorText = result.error && (result.error.message || result.error.code);
     const reason = classifyUcpFailure({ status: result.status, errorMessage: errorText, phase: "create_cart" });
-    // STRICTER than the shared classifier on purpose: it counts any "unavailable" as out of stock, and a
-    // "Service Unavailable" outage must fall back, not tell the buyer the item is sold out. Only an explicit
-    // stock statement in a non-5xx answer refuses.
-    const soldOut = reason === FAILURE_REASON.OUT_OF_STOCK && !(Number(result.status) >= 500)
-      && SELLER_OUT_OF_STOCK_RE.test(String(errorText ?? ""));
+    // STRICTER than the shared classifier on purpose: it counts any "unavailable" as out of stock, and for a non-2xx
+    // answer the "message" is the raw response body (an HTML 404 page with a "Sold out" badge, a 429 saying "may be
+    // out of stock"). Only a STRUCTURED tool answer (HTTP 2xx carrying a JSON-RPC or MCP tool error) with an explicit
+    // stock statement refuses; everything else falls back.
+    const structured = result.ok === true && Number(result.status) >= 200 && Number(result.status) < 300;
+    const soldOut = structured && reason === FAILURE_REASON.OUT_OF_STOCK && SELLER_OUT_OF_STOCK_RE.test(String(errorText ?? ""));
     emit(log, "info", { outcome: soldOut ? "refused" : "fallback", reason, seller_host: sellerHost });
     if (soldOut) throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
     return null;
   }
-  const read = readSellerCart(unwrapPayload(result), wanted, sellerHost);
+  const payload = unwrapPayload(result);
+  // The seller flagging the cart with a structured out-of-stock ERROR message refuses exactly as a tool error does.
+  if (sellerErrorCodes(payload).some((code) => SELLER_OUT_OF_STOCK_CODE_RE.test(code))) {
+    emit(log, "info", { outcome: "refused", reason: FAILURE_REASON.OUT_OF_STOCK, seller_host: sellerHost });
+    throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
+  }
+  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency });
   if (!read) { emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost }); return null; }
+  // THE ONE VALUE HANDED TO THE BUYER, judged as the lane judges its own link: when the platform named the seller it
+  // showed (`checkout.reap.expected_merchant_domain`), a cart URL that is not provably that seller falls back.
+  if (expectedSeller !== undefined && !judgeSellerUrl(expectedSeller, read.continueUrl).ok) {
+    emit(log, "info", { outcome: "fallback", reason: "continue_url_not_expected_seller", seller_host: sellerHost });
+    return null;
+  }
+  if (catalogLink) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
   emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length });
   return read;

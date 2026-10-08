@@ -18,6 +18,7 @@ import {
   sellerVariantGidOf,
   readSellerCart,
   priceOnMerchantDoor,
+  carryAttribution,
 } from '../src/ucpMerchantDoorPricing.js';
 import {
   UCP_ESCALATION_FLAG,
@@ -25,6 +26,7 @@ import {
   encodeEscalationId,
   decodeEscalationId,
   escalationCartIdOf,
+  escalationSellerHostOf,
 } from '../src/ucpCheckoutEscalation.js';
 import { createCommerceToolSurface, ucpDialectSurface, toToolError } from '../src/commerceToolSurface.js';
 
@@ -162,6 +164,7 @@ describe('readSellerCart — the seller answer is used only when it matches exac
   for (const [label, cart] of [
     ['the seller changed the quantity', sellerCart({ lines: [[GID('44012345678901'), 1, 12900]] })],
     ['the seller added a line', sellerCart({ lines: [[GID('44012345678901'), 2, 12900], [GID('5'), 1, 100]] })],
+    ['the seller added a FREE line (the subtotal still agrees)', sellerCart({ lines: [[GID('44012345678901'), 2, 12900], [GID('5'), 1, 0]] })],
     ['a different variant', sellerCart({ lines: [[GID('5'), 2, 12900]] })],
     ['money not integer minor units', sellerCart({ lines: [[GID('44012345678901'), 2, 129.0001]] })],
     ['money as a string', sellerCart({ lines: [[GID('44012345678901'), 2, '12900']] })],
@@ -270,6 +273,7 @@ describe('through the escalation lane', () => {
     assert.match(out.messages[0].content, /comfortzone\.us/);
     assert.deepEqual(decodeEscalationId(out.id), [{ product_id: 'sig_seed_a', quantity: 2 }]);
     assert.equal(escalationCartIdOf(out.id), 'gid://shopify/Cart/c1');
+    assert.equal(escalationSellerHostOf(out.id), 'comfortzone.us');
     for (const k of ['ucp', 'id', 'line_items', 'status', 'currency', 'totals', 'links']) assert.ok(k in out, k);
   });
 
@@ -315,7 +319,7 @@ describe('through the escalation lane', () => {
 
   test('get_checkout when the seller no longer answers for the cart: the catalog answer (never a fabricated price)', async () => {
     const door = fakeDoor({ get: () => ({ ok: false, status: 404, error: { message: 'Cart not found' } }) });
-    const id = encodeEscalationId([{ product_id: SEED.product_id, quantity: 2 }], 'gid://shopify/Cart/c1');
+    const id = encodeEscalationId([{ product_id: SEED.product_id, quantity: 2 }], 'gid://shopify/Cart/c1', 'comfortzone.us');
     const out = await tryEscalateUcpCheckout({ op: GET, params: { session_id: id }, ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
     assert.equal(out.messages[0].code, 'checkout.completes_on_seller_storefront');
     assert.equal(out.continue_url, SEED.external_redirect_url);
@@ -328,7 +332,9 @@ describe('through the escalation lane', () => {
     assert.equal(door.calls.length, 0);
     const forged = 'esc_' + Buffer.from(JSON.stringify({ v: 2, i: [[SEED.product_id, 1]], c: 'a b' })).toString('base64url');
     assert.equal(decodeEscalationId(forged), null);
-    const noCart = 'esc_' + Buffer.from(JSON.stringify({ v: 2, i: [[SEED.product_id, 1]] })).toString('base64url');
+    const noCart = 'esc_' + Buffer.from(JSON.stringify({ v: 2, i: [[SEED.product_id, 1]], h: 'comfortzone.us' })).toString('base64url');
+    const noHost = 'esc_' + Buffer.from(JSON.stringify({ v: 2, i: [[SEED.product_id, 1]], c: 'x' })).toString('base64url');
+    assert.equal(decodeEscalationId(noHost), null, 'a cart id is never carried without the seller it is bound to');
     assert.equal(decodeEscalationId(noCart), null);
     const v1WithCart = 'esc_' + Buffer.from(JSON.stringify({ v: 1, i: [[SEED.product_id, 1]], c: 'x' })).toString('base64url');
     assert.equal(decodeEscalationId(v1WithCart), null);
@@ -371,5 +377,116 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
       assert.equal(wire.retriable, false);
       assert.equal(wire.detail.reason, 'ucp_seller_out_of_stock');
     });
+  });
+});
+
+// ---- review of #2375 ---------------------------------------------------------------------------------------------
+
+const hopTo = (dest) => `https://api.pivota.cc/r?token=${Buffer.from(JSON.stringify({ dest }), 'utf8').toString('base64url')}.c2ln`;
+
+describe('review of #2375', () => {
+  const base = (over = {}) => ({ items: [{ product_id: 'sig_seed_a', quantity: 2 }], rows: rows(SEED), sellerHost: 'comfortzone.us', market: 'US', env: ON, ...over });
+  const create = (row, door, extra = {}) => tryEscalateUcpCheckout({
+    op: CREATE, params: createParams([row.product_id, 2]), ctx: {}, executor: executorWith({ [row.product_id]: row }),
+    ucpArgs: ucpArgs('US'), env: ON, now: NOW, merchantDoor: door, ...extra,
+  });
+
+  test("a HOP row: the seller host is the hop's destination, and Pivota's referral rides onto the seller cart URL", async () => {
+    const row = { ...SEED, external_redirect_url: hopTo('https://www.comfortzone.us/products/vitamin-c-serum?utm_source=pivota&pvt_click_id=clk_1&utm_medium=agent') };
+    const door = fakeDoor();
+    const out = await create(row, door);
+    assert.deepEqual(door.calls[0], ['discover', 'www.comfortzone.us'], "discovered on the storefront's own hostname (www kept)");
+    const url = new URL(out.continue_url);
+    assert.equal(url.origin + url.pathname, 'https://comfortzone.us/cart/c/abc123');
+    assert.equal(url.searchParams.get('key'), 'k', "the seller's own members are kept");
+    assert.equal(url.searchParams.get('pvt_click_id'), 'clk_1');
+    assert.equal(url.searchParams.get('utm_source'), 'pivota');
+    assert.equal(url.searchParams.get('utm_medium'), 'agent');
+    assert.equal(escalationSellerHostOf(out.id), 'comfortzone.us');
+  });
+
+  test('carryAttribution: tracking members only, never overwriting the seller, never non-tracking members', () => {
+    assert.equal(carryAttribution('https://s.example/cart/c/1?utm_source=seller', 'https://s.example/p?utm_source=pivota&pvt_click_id=c&variant=1&secret=x'),
+      'https://s.example/cart/c/1?utm_source=seller&pvt_click_id=c');
+    assert.equal(carryAttribution('https://s.example/cart/c/1', 'https://s.example/p'), 'https://s.example/cart/c/1');
+    assert.equal(carryAttribution('https://s.example/cart/c/1', 'not a url'), 'https://s.example/cart/c/1');
+  });
+
+  test('a re-read whose rows now resolve to ANOTHER seller never hands seller A\'s cart id to seller B', async () => {
+    const door = fakeDoor();
+    const id = encodeEscalationId([{ product_id: SEED.product_id, quantity: 2 }], 'gid://shopify/Cart/A?key=SECRET', 'comfortzone.us');
+    const moved = { ...SEED, external_redirect_url: 'https://seller-b.example/products/x' };
+    const out = await tryEscalateUcpCheckout({ op: GET, params: { session_id: id }, ctx: {}, executor: executorWith({ [SEED.product_id]: moved }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
+    assert.equal(door.calls.length, 0, 'no seller is called');
+    assert.equal(out.messages[0].code, 'checkout.completes_on_seller_storefront');
+  });
+
+  test('raw non-2xx bodies never become OUT_OF_STOCK (an HTML 404 with a "Sold out" badge, a 429)', async () => {
+    for (const create of [
+      () => ({ ok: false, status: 404, error: { code: 404, message: '<html><span class="badge">Sold out</span></html>' } }),
+      () => ({ ok: false, status: 429, error: { code: 429, message: 'Too many requests; item may be out of stock' } }),
+    ]) {
+      assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create }) })), null);
+    }
+  });
+
+  test('a seller ERROR message: out-of-stock codes refuse; any other error falls back; neither is shown as a price', async () => {
+    const oos = fakeDoor({ create: () => sellerCart({ messages: [{ type: 'error', code: 'out_of_stock', severity: 'unrecoverable', content: 'gone' }] }) });
+    const err = await rejected(priceOnMerchantDoor(base({ merchantDoor: oos })));
+    assert.equal(err.code, 'OUT_OF_STOCK');
+    const other = fakeDoor({ create: () => sellerCart({ messages: [{ type: 'error', code: 'invalid_line', content: 'x' }] }) });
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: other })), null);
+    const warning = fakeDoor({ create: () => sellerCart({ messages: [{ type: 'warning', code: 'out_of_stock' }] }) });
+    assert.ok(await priceOnMerchantDoor(base({ merchantDoor: warning })), 'a non-error message is informational');
+  });
+
+  test("the seller's currency must be the catalog's (the market's); a self-inconsistent subtotal falls back", async () => {
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ currency: 'JPY' }) }) })), null);
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ totals: [{ type: 'subtotal', amount: 1 }, { type: 'total', amount: 1 }] }) }) })), null);
+    const noCurrency = fakeDoor();
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: noCurrency, rows: rows({ ...SEED, currency: undefined }) })), null);
+    assert.equal(noCurrency.calls.length, 0);
+  });
+
+  test('negative or fractional money anywhere falls back (line price, cart total)', async () => {
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ lines: [[GID('44012345678901'), 2, -100]] }) }) })), null);
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ totals: [{ type: 'subtotal', amount: 25800 }, { type: 'total', amount: 25800.5 }] }) }) })), null);
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ totals: [{ type: 'subtotal', amount: 25800 }, { type: 'total', amount: -1 }] }) }) })), null);
+  });
+
+  test('the handed-out cart URL: no userinfo, no embedded URL; with an expected seller, judged exactly as the lane judges its link', async () => {
+    for (const continueUrl of ['https://u:p@comfortzone.us/cart/c/1', 'https://comfortzone.us/cart?return_to=https://evil.example']) {
+      assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ continueUrl }) }) })), null, continueUrl);
+    }
+    const sub = () => sellerCart({ continueUrl: 'https://shop.comfortzone.us/cart/c/1' });
+    assert.ok(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: sub }) })), 'a subdomain is the seller when nobody named one');
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: sub }), expectedSeller: 'comfortzone.us' })), null, 'but not the seller the platform named');
+    assert.ok(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor(), expectedSeller: 'comfortzone.us' })));
+  });
+
+  test('a door that cannot be built (bad signing key in env) falls back instead of failing the checkout', async () => {
+    // The default door is built on first use; a factory that throws stands in for createUcpBuyerAgentClient
+    // rejecting a malformed UCP_AGENT_SIGNING_PRIVATE_KEY. Nothing is cached, so the next call tries again.
+    let builds = 0;
+    const doorFactory = () => { builds += 1; throw new Error('bad key'); };
+    assert.equal(await priceOnMerchantDoor(base({ doorFactory })), null);
+    assert.equal(await priceOnMerchantDoor(base({ doorFactory })), null);
+    assert.equal(builds, 2);
+  });
+
+  test('through the lane: the platform-named seller judges the seller cart URL (a subdomain cart falls back to the catalog answer)', async () => {
+    const door = fakeDoor({ create: () => sellerCart({ continueUrl: 'https://shop.comfortzone.us/cart/c/1' }) });
+    const named = { checkout: { context: { address_country: 'US' }, reap: { expected_merchant_domain: 'comfortzone.us' } } };
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: named, env: ON, now: NOW, merchantDoor: door });
+    assert.equal(out.messages[0].code, 'checkout.completes_on_seller_storefront');
+    assert.equal(out.continue_url, SEED.external_redirect_url);
+    const unnamed = await create(SEED, fakeDoor({ create: () => sellerCart({ continueUrl: 'https://shop.comfortzone.us/cart/c/1' }) }));
+    assert.equal(unnamed.messages[0].code, 'checkout.priced_by_seller_storefront');
+  });
+
+  test('through the lane: no market on the request means no context hint (never a default market)', async () => {
+    const door = fakeDoor();
+    await tryEscalateUcpCheckout({ op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
+    assert.equal('context' in door.calls[1][2], false);
   });
 });

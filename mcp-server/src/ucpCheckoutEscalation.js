@@ -139,9 +139,13 @@ export function escalationTargetOf(product) {
 // A checkout the SELLER priced (ucpMerchantDoorPricing.js) also carries the seller's cart id (`v: 2`, `c`), so a
 // re-read asks the seller for THAT cart (`get_cart`) instead of building a new one on every poll. The cart id is
 // the seller's opaque handle, handed back only to the seller the re-read rows resolve to — never used to pick one.
-export function encodeEscalationId(items, cartId) {
+//
+// BOUND TO THE SELLER THAT ISSUED IT (`h`). A cart id is the issuing seller's bearer handle; a re-read whose rows now
+// resolve to a DIFFERENT seller (the row was re-pointed, or the id was forged) must not hand seller A's cart id to
+// seller B. On a host mismatch the re-read does not call the seller at all and falls back to the catalog answer.
+export function encodeEscalationId(items, cartId, sellerHost) {
   const i = items.map((it) => [it.product_id, it.quantity]);
-  const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId } : { v: 1, i };
+  const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
@@ -152,7 +156,9 @@ function parseEscalationId(id) {
     parsed = JSON.parse(Buffer.from(id.slice(ESCALATION_ID_PREFIX.length), "base64url").toString("utf8"));
   } catch { return null; }
   if (!isPlainObject(parsed)) return null;
-  if (parsed.v === 2 ? !isCarriableCartId(parsed.c) : (parsed.v !== 1 || own(parsed, "c") !== undefined)) return null;
+  if (parsed.v === 2
+    ? (!isCarriableCartId(parsed.c) || typeof parsed.h !== "string" || !/^[a-z0-9.-]{1,253}$/.test(parsed.h))
+    : (parsed.v !== 1 || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
   return parsed;
 }
 
@@ -160,6 +166,12 @@ function parseEscalationId(id) {
 export function escalationCartIdOf(id) {
   const parsed = parseEscalationId(id);
   return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.c : undefined;
+}
+
+/** The seller host a seller-priced escalation id is bound to, or undefined. */
+export function escalationSellerHostOf(id) {
+  const parsed = parseEscalationId(id);
+  return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.h : undefined;
 }
 
 export function decodeEscalationId(id) {
@@ -560,9 +572,13 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // THE SELLER PRICES IT, when its door can (ucpMerchantDoorPricing.js; own switch, default OFF). Null = fall back
     // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
     // this door will not offer is never contacted.
-    const priced = await priceOnMerchantDoor({ items: normalized, rows, sellerHost: sellerHostOf(continueUrl), market: buyerMarket, env, merchantDoor, log });
+    const sellerHost = sellerHostOf(continueUrl);
+    const priced = await priceOnMerchantDoor({
+      items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
+      expectedSeller, market: buyerMarket, env, merchantDoor, log,
+    });
     if (priced) {
-      return buildSellerPricedCheckout({ id: encodeEscalationId(normalized, priced.cartId ?? undefined), priced, sellerHost: sellerHostOf(continueUrl), buyerEmail, now, env });
+      return buildSellerPricedCheckout({ id: encodeEscalationId(normalized, priced.cartId ?? undefined, sellerHost), priced, sellerHost, buyerEmail, now, env });
     }
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
@@ -603,9 +619,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // The seller is the one the re-read rows resolve to; a cart the seller no longer answers for falls back to the
     // catalog answer, which says so.
     const cartId = escalationCartIdOf(sessionId);
-    if (cartId !== undefined) {
-      const sellerHost = sellerHostOf(targets[0]);
-      const priced = await priceOnMerchantDoor({ items: decoded, rows, sellerHost, market: buyerMarket, cartId, env, merchantDoor, log });
+    const sellerHost = sellerHostOf(targets[0]);
+    if (cartId !== undefined && sellerHost && escalationSellerHostOf(sessionId) === sellerHost) {
+      const priced = await priceOnMerchantDoor({
+        items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(targets[0]), catalogLink: targets[0],
+        market: buyerMarket, cartId, env, merchantDoor, log,
+      });
       if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
     }
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
@@ -708,6 +727,15 @@ function sellerHostOf(url) {
   // One hop only, as judgeSellerUrl: a `dest` that is itself a Pivota host (another hop) names nobody.
   const host = hop ? (hop.dest && /^https:\/\//i.test(hop.dest) ? hostOf(hop.dest) : null) : hostOf(url);
   return host && !SELF_HOST_RE.test(host) ? host : null;
+}
+
+/** The storefront's own hostname (`www.` KEPT, lower-cased) behind a catalog link, hop decoded; null otherwise. */
+function sellerHostnameOf(url) {
+  if (!sellerHostOf(url)) return null;
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  const hop = pivotaHopDestination(parsed);
+  try { return (hop ? new URL(hop.dest) : parsed).hostname.toLowerCase(); } catch { return null; }
 }
 
 function storefrontRefusal(declined, productIds, targets, linksAllowed) {
