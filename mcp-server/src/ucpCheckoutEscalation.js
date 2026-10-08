@@ -306,8 +306,8 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   if (!gateEnabled) return true;
   // The SELLER's domain — a Pivota attribution hop decoded to its destination — never api.pivota.cc: asking the gate
   // about Pivota's own host is asking about nobody. A link whose seller cannot be read keeps the previous key.
-  // A link whose seller cannot be read is asked about NO domain (the gate's own "domain unknown" answer: a decline
-  // under enforcement, the previous behaviour otherwise) — never about api.pivota.cc or a redirector's host.
+  // A link whose seller cannot be read is asked about NO domain (the gate's own unkeyable path: a decline only once
+  // the backend is KNOWN to enforce, the previous behaviour otherwise) — never about api.pivota.cc or a redirector.
   return mayOfferPurchaseForDomain(sellerHostOf(continueUrl), market, gate, gateEnabled, budgetMs);
 }
 
@@ -593,8 +593,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // records the click and its destination carries the referral `carryAttribution` copies), else the first row's.
     // Taking the first row's link regardless dropped Pivota's attribution whenever a direct link happened to come
     // first in a cart that also held a hop to the same seller.
-    const orderedTargets = normalized.map((it) => targets.get(it.product_id));
-    const continueUrl = orderedTargets.find(isReadablePivotaHop) || orderedTargets[0];
+    const continueUrl = handedOutLinkOf(normalized.map((it) => targets.get(it.product_id)));
     // THE EXPECTED SELLER, AGAIN, ON THE LINK ITSELF (docs/reap-agentic-lane.md §5.4). The door has already
     // refused a create whose rows are not that seller (ucpReapAgenticLane.js `assertExpectedSeller`); this is
     // belt and braces on the one value this lane hands the buyer: a continue_url whose host is not the expected
@@ -666,20 +665,22 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // under ENFORCEMENT it is a decline (`unkeyable_enforced`) and the re-read falls through like the create
     // does — so arming the gate with escalation on needs a market carrier on this lane first (see
     // docs/merchant-purchasability-gate.md §8). An asymmetry here would be a purchase offered on no fact.
-    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
+    // The SAME link create handed out (handedOutLinkOf): a re-read must not swap Pivota's hop for a direct link.
+    const link = handedOutLinkOf(targets);
+    if (!(await mayOfferStorefrontCheckout(link, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
     // A seller-priced checkout is re-read from the SELLER's cart (`get_cart` on the id's cart), never re-created.
     // The seller is the one the re-read rows resolve to; a cart the seller no longer answers for falls back to the
     // catalog answer, which says so.
     const cartId = escalationCartIdOf(sessionId);
-    const sellerHost = sellerHostOf(targets[0]);
+    const sellerHost = sellerHostOf(link);
     if (cartId !== undefined && sellerHost && escalationSellerHostOf(sessionId) === sellerHost) {
       const priced = await priceOnMerchantDoor({
-        items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(targets[0]), catalogLink: targets[0],
+        items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
         market: buyerMarket, cartId, env, merchantDoor, log,
       });
       if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
     }
-    return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
+    return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: link, now, env });
   }
 
   if (opId === "update_checkout_session" || opId === "complete_checkout_session") {
@@ -788,6 +789,15 @@ function sellerHostOf(url) {
   if (carriesAnotherUrl(dest)) return null;
   const host = hostOf(dest.toString());
   return host && !SELF_HOST_RE.test(host) ? host : null;
+}
+
+/**
+ * THE LINK HANDED OUT for a one-seller cart, given its rows' links in line order — ONE rule for create and re-read:
+ * a row's Pivota attribution hop when any row carries a readable one (the hop records the click and its destination
+ * carries the referral `carryAttribution` copies), else the first row's link.
+ */
+function handedOutLinkOf(links) {
+  return links.find(isReadablePivotaHop) || links[0];
 }
 
 /** A Pivota attribution hop whose destination this door can read. */

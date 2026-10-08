@@ -552,3 +552,21 @@ describe('re-review of #2375', () => {
     assert.ok(decodeEscalationId(out.id), 'the id handed out reads back');
   });
 });
+
+describe('review of #2380 — the handed-out link is the same on create and re-read', () => {
+  test("a direct link listed FIRST with a hop to the same seller: the seller-priced cart carries Pivota's referral on create AND on get", async () => {
+    const direct = { ...SEED, product_id: 'sig_direct', external_redirect_url: 'https://comfortzone.us/products/d' };
+    const hop = { ...SEED_B, external_redirect_url: hopTo('https://comfortzone.us/products/h?pvt_click_id=clk_7') };
+    const rowsById = { [direct.product_id]: direct, [hop.product_id]: hop };
+    const cart = () => sellerCart({ lines: [[GID('44012345678901'), 1, 12900], [GID('44012345678902'), 1, 2450]] });
+    const door = fakeDoor({ create: cart, get: cart });
+    const created = await tryEscalateUcpCheckout({
+      op: CREATE, params: createParams([direct.product_id, 1], [hop.product_id, 1]), ctx: {}, executor: executorWith(rowsById),
+      ucpArgs: ucpArgs('US'), env: ON, now: NOW, merchantDoor: door,
+    });
+    assert.equal(created.messages[0].code, 'checkout.priced_by_seller_storefront');
+    assert.equal(new URL(created.continue_url).searchParams.get('pvt_click_id'), 'clk_7');
+    const again = await tryEscalateUcpCheckout({ op: GET, params: { session_id: created.id }, ctx: {}, executor: executorWith(rowsById), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
+    assert.equal(again.continue_url, created.continue_url);
+  });
+});

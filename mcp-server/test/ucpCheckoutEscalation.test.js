@@ -697,8 +697,12 @@ describe('review of #2380', () => {
     const direct = { ...SEED, product_id: 'sig_direct', external_redirect_url: 'https://comfortzone.us/products/d' };
     const hop = hopRow('sig_hop', 'https://comfortzone.us/products/h?utm_source=pivota&pvt_click_id=clk_1');
     for (const order of [[[direct.product_id, 1], [hop.product_id, 1]], [[hop.product_id, 1], [direct.product_id, 1]]]) {
-      const out = await create({ [direct.product_id]: direct, [hop.product_id]: hop }, order);
+      const rowsById = { [direct.product_id]: direct, [hop.product_id]: hop };
+      const out = await create(rowsById, order);
       assert.equal(out.continue_url, hop.external_redirect_url, JSON.stringify(order));
+      // …and a re-read hands out the SAME link (never the direct one).
+      const again = await tryEscalateUcpCheckout({ op: GET, params: { session_id: out.id }, ctx: {}, executor: executorWith(rowsById), ucpArgs: {}, env: ON, now: NOW });
+      assert.equal(again.continue_url, out.continue_url, `re-read ${JSON.stringify(order)}`);
     }
   });
 
