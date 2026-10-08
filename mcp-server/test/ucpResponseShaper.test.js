@@ -557,11 +557,14 @@ describe('checkout responses carry ucp.payment_handlers (UCP response_checkout_s
     assert.deepEqual(shapeUcpCheckoutResponse(partial).ucp, { version: 'v', status: 'success', payment_handlers: {} });
   });
 
-  test('the input is never mutated, and non-objects pass through', () => {
-    const input = structuredClone(KERNEL_SESSION);
-    const before = JSON.stringify(input);
-    shapeUcpCheckoutResponse(input);
-    assert.equal(JSON.stringify(input), before);
+  test('the input is never mutated (with or without an envelope), and non-objects pass through', () => {
+    const deepFreeze = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); };
+    for (const input of [structuredClone(KERNEL_SESSION), { ucp: { version: 'v', status: 'success' }, id: 'c' }]) {
+      const frozen = deepFreeze(structuredClone(input));
+      const shaped = shapeUcpCheckoutResponse(frozen); // a write to the input would throw in strict mode
+      assert.deepEqual(shaped.ucp.payment_handlers, {});
+      assert.deepEqual(frozen, input);
+    }
     assert.equal(shapeUcpCheckoutResponse(null), null);
   });
 

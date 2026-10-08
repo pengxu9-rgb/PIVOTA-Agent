@@ -437,10 +437,13 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
  */
 export function shapeUcpCheckoutResponse(native) {
   if (!isPlainObject(native)) return native;
-  const envelope = isPlainObject(own(native, "ucp")) ? own(native, "ucp") : { version: UCP_RESPONSE_VERSION, status: "success" };
-  if (isPlainObject(own(envelope, "payment_handlers"))) {
-    return envelope === own(native, "ucp") ? native : { ...native, ucp: envelope };
-  }
+  const existing = own(native, "ucp");
+  // Only an envelope the native body already carries can hold a handler map; keep it as-is.
+  if (isPlainObject(existing) && isPlainObject(own(existing, "payment_handlers"))) return native;
+  const envelope = isPlainObject(existing) ? existing : { version: UCP_RESPONSE_VERSION, status: "success" };
+  // `{}` must agree with the business profile, whose handlers come from config (ucpProfile.js,
+  // `toPaymentHandlerMap(config.ucpPaymentHandlers)`, unset everywhere today). Declaring a handler in one
+  // place means declaring it in the other — platforms treat the checkout response as authoritative.
   return { ...native, ucp: { ...envelope, payment_handlers: {} } };
 }
 
