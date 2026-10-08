@@ -130,15 +130,39 @@ pgDescribe('negative review memory survives the nightly rebuild (isolated local 
     // A row with nothing to keep gets exactly the build's provenance.
     expect((await label('plain')).provenance).toEqual({ pipeline: 'product_relationship_graph_builder.v1', generated_at: '2026-10-08T10:40:00.000Z' });
 
-    const night2 = { analyzeTextToJson: jest.fn(async () => REJECT) };
+    const night2 = { __meta: { model: 'gemini-test' }, analyzeTextToJson: jest.fn(async () => REJECT) };
     const second = await review(night2);
     expect(second.decisions.map((d) => d.id)).toEqual(['plain']);
     expect(second.summary.negative_memory_skipped_count).toBe(1);
 
     // The candidate's snapshot changes: the pair is new evidence and is reviewed again.
     await upsertRelationshipCandidateLabel(builtEdge('mem', { generatedAt: '2026-10-09T10:40:00.000Z', candidateTitle: 'Impress Lash Glue Remover + Applicator' }), { queryFn: q });
-    const night3 = { analyzeTextToJson: jest.fn(async () => REJECT) };
+    const night3 = { __meta: { model: 'gemini-test' }, analyzeTextToJson: jest.fn(async () => REJECT) };
     const third = await review(night3);
     expect(third.decisions.map((d) => d.id)).toEqual(['mem']);
+  });
+
+  test('a signature sold by two sellers: touching one seller row does not flip the supplement or the memory', async () => {
+    await q('DELETE FROM relationship_candidate_labels');
+    await q(`CREATE TABLE catalog_products (product_key text primary key, source_product_id text, pivota_signature_id text, title text,
+      description text, brand text, product_type text, category text, category_path text, category_label text, canonical_url text,
+      pivota_canonical_url text, tags jsonb, use_case_tags jsonb, updated_at timestamptz default now())`);
+    try {
+      await q(`INSERT INTO catalog_products (product_key, pivota_signature_id, title, brand) VALUES
+        ('m1:p1', 'sig_anchor_ms', 'Impress Falsies Lashes - Seller One', 'Impress'),
+        ('m2:p9', 'sig_anchor_ms', 'imPRESS Falsies Press-On Lashes (Seller Two)', 'Impress')`);
+      await upsertRelationshipCandidateLabel(builtEdge('ms', { generatedAt: '2026-10-08T10:40:00.000Z' }), { queryFn: q });
+      const first = { __meta: { model: 'gemini-test' }, analyzeTextToJson: jest.fn(async () => REJECT) };
+      await review(first);
+      expect(first.analyzeTextToJson.mock.calls[0][0].prompt).toContain('Seller One');
+      // A price/availability sweep rewrites seller one's tuple; heap order now puts seller two first.
+      await q("UPDATE catalog_products SET updated_at = now() + interval '1 hour' WHERE product_key = 'm1:p1'");
+      const second = { __meta: { model: 'gemini-test' }, analyzeTextToJson: jest.fn(async () => REJECT) };
+      const result = await review(second);
+      expect(second.analyzeTextToJson).not.toHaveBeenCalled();
+      expect(result.summary.negative_memory_skipped_count).toBe(1);
+    } finally {
+      await q('DROP TABLE catalog_products');
+    }
   });
 });

@@ -9,6 +9,8 @@
 const { LlmError } = require('../../src/llm/provider');
 const {
   DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
+  REVIEW_VALIDATOR_VERSION,
+  buildNegativeReviewMemo,
   consumerCopyForKind,
   fetchCandidates,
   negativeReviewTtlDays,
@@ -227,6 +229,7 @@ describe('negative review memory', () => {
       model: 'gemini-3-flash-preview',
       reviewer: 'codex-gpt-5.5-xhigh',
       rubric: 'v4',
+      validator_version: REVIEW_VALIDATOR_VERSION,
       reviewed_at: new Date(T0).toISOString(),
       pair_fingerprint: reviewPairFingerprint(buildEvidence(pairRow('rej', { score_total: 0.9 }), new Map())),
     });
@@ -268,8 +271,12 @@ describe('negative review memory', () => {
   test('selection skips a fresh negative verdict on the same pair, and re-reviews when it should', async () => {
     const remembered = (id, memo, overrides = {}) => {
       const row = pairRow(id, overrides);
-      const fingerprint = reviewPairFingerprint(buildEvidence(row, new Map()));
-      return { ...row, provenance: { ...row.provenance, ai_review_last: { verdict: 'reject', reviewed_at: new Date(T0 - 2 * DAY_MS).toISOString(), pair_fingerprint: fingerprint, ...memo } } };
+      const recorded = buildNegativeReviewMemo(REJECT, {
+        fingerprint: reviewPairFingerprint(buildEvidence(row, new Map())),
+        model: 'gemini-3-flash-preview',
+        reviewedAt: new Date(T0 - 2 * DAY_MS).toISOString(),
+      });
+      return { ...row, provenance: { ...row.provenance, ai_review_last: { ...recorded, ...memo } } };
     };
     const changed = remembered('changed');
     changed.candidate_snapshot = { ...changed.candidate_snapshot, title: 'Impress Lash Glue Remover (new formula)' };
