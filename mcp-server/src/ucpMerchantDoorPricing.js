@@ -36,6 +36,7 @@ import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
 import { judgeSellerUrl, pivotaHopDestination } from "./ucpExpectedSeller.js";
+import { encodeUcpVariantItemId, findRealVariant } from "./ucpVariantIds.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
 export const MERCHANT_PRICING_BUDGET_MS = 5000; // discovery (usually cached) + one cart call
@@ -96,8 +97,20 @@ function onSellerHost(url, sellerHost) {
  * what the product read already carries. `sellerHost` is the storefront host the escalation resolved (a Pivota
  * attribution hop already decoded to its destination).
  */
-export function sellerVariantGidOf(row, sellerHost) {
+export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
   if (!isPlainObject(row)) return null;
+  // A variant the BUYER CHOSE (already proven one of this product's real variants at the door): its own seller id —
+  // `source_variant_id` / `variant_gid`, else its id when that is itself a Shopify variant id. Nothing else: the
+  // row-level id or a URL's `variant=` may name a different variant.
+  if (chosenVariantId !== undefined && chosenVariantId !== null) {
+    const v = findRealVariant(row, chosenVariantId);
+    if (!v) return null;
+    for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid"), own(v, "variant_id"), own(v, "id")]) {
+      const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
+      if (gid) return gid;
+    }
+    return null;
+  }
   const variants = Array.isArray(own(row, "variants")) ? own(row, "variants").filter(isPlainObject) : [];
   if (variants.length > 1) return null; // the buyer's choice is not carried on this door: never guess
   const fromIds = [own(row, "source_variant_id"), own(row, "variant_gid")];
@@ -205,13 +218,14 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency }
     const item = isPlainObject(line.item) ? line.item : {};
     const unit = minor(item.price);
     if (unit === null) return null;
+    const lineId = w.variant_id ? encodeUcpVariantItemId(w.product_id, w.variant_id) : w.product_id;
     const lineSubtotal = singleTotal(line.totals, "subtotal") ?? unit * w.quantity;
     const lineTotal = singleTotal(line.totals, "total") ?? lineSubtotal;
     if (!Number.isSafeInteger(lineSubtotal) || !Number.isSafeInteger(lineTotal)) return null;
     sum += lineSubtotal;
     lineItems.push({
       id: `li_${idx + 1}`,
-      item: { id: w.product_id, title: str(item.title) || w.product_id, price: unit, ...(str(item.image_url) ? { image_url: str(item.image_url) } : {}) },
+      item: { id: lineId, title: str(item.title) || w.product_id, price: unit, ...(str(item.image_url) ? { image_url: str(item.image_url) } : {}) },
       quantity: w.quantity,
       totals: [{ type: "subtotal", amount: lineSubtotal }, { type: "total", amount: lineTotal }],
     });
@@ -359,10 +373,10 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   if (!expectedCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
   const wanted = [];
   for (const it of items) {
-    const gid = sellerVariantGidOf(rows.get(it.product_id), sellerHost);
+    const gid = sellerVariantGidOf(rows.get(it.product_id), sellerHost, it.variant_id);
     if (!gid) { emit(log, "info", { outcome: "fallback", reason: "variant_unresolved", seller_host: sellerHost }); return null; }
     if (wanted.some((w) => w.gid === gid)) { emit(log, "info", { outcome: "fallback", reason: "duplicate_variant", seller_host: sellerHost }); return null; }
-    wanted.push({ product_id: it.product_id, quantity: it.quantity, gid });
+    wanted.push({ product_id: it.product_id, quantity: it.quantity, gid, ...(it.variant_id ? { variant_id: it.variant_id } : {}) });
   }
   // A door that cannot even be built (e.g. a malformed signing key in env) is a fallback, not a failed checkout.
   let d;

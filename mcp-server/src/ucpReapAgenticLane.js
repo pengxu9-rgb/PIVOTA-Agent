@@ -1758,6 +1758,18 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // those keeps its own log code.
   if (own(own(ucpArgs, "checkout"), "reap") === undefined) return skip("route_not_selected");
 
+  // THE LINE'S OWN VARIANT CHOICE (`<product_id>::v::<variant_id>` on item.id, proven at the door) must be the variant
+  // this purchase opens: the vendor selector when one was sent, else the row's sole real variant. Anything else would
+  // buy a different size or shade than the line names, so it is refused before any create — never ignored.
+  const lineVariant = str(items[0].variant_id);
+  if (lineVariant) {
+    const selected = own(own(own(ucpArgs, "checkout"), "reap"), "selected_variant_id");
+    const opens = selectedKey !== undefined ? String(selected) : (realVariantCount(row) === 1 ? soleReadVariantId(row) : null);
+    if (opens === null || opens === undefined || String(opens) !== lineVariant) {
+      throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "ucp_reap_variant_not_created" });
+    }
+  }
+
   // This row is routed away from the native money lane. A deliberate pause
   // must be a refusal, never a null that falls through to another checkout.
   if (!reapAgenticCreateEnabled(env)) {

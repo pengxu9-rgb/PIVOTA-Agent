@@ -33,17 +33,12 @@
 // mcp-server/test/ucpResponseShaper.test.js pins these arrays with the same provenance, so a drift on either
 // side fails CI rather than surfacing in a platform integration.
 //
-// VARIANTS ON get_product — WHY IT IS STILL ONE. The native detail row DOES carry real variants
-// ({variant_id, sku_id, title, options[], price?, availability?}). UCP says variant.id is "used as item.id in
-// cart/checkout line items", and this door's create_checkout maps `item.id` to product_id: it has no field
-// for a variant, and buyerIntake refuses a multi-variant product rather than guessing (rule 3). Publishing
-// per-variant ids here would therefore advertise ids the checkout cannot take — the "advertised but not
-// executable" defect one operation over. So get_product publishes the SAME single variant as search (id =
-// the product id checkout accepts) and, when the row carries more than one REAL variant, SAYS SO in a
-// `messages` warning (`variants.selection_not_supported`) instead of hiding it. Real variants become
-// publishable the day create_checkout accepts a variant id on `item.id`; that is a checkout-mapper decision
-// and lives with it, not here. `selected` / `options` are omitted for the same reason: option axes a caller
-// cannot select would be a promise the door does not keep.
+// VARIANTS ON get_product. A row with MORE THAN ONE real variant (by buyerIntake's own count) publishes each of them,
+// with `<product_id>::v::<variant_id>` as its id — exactly the item.id create_checkout accepts for that variant
+// (ucpVariantIds.js; the door proves the variant is the product's before any lane runs). A single-variant product,
+// and every search result, still publishes ONE variant whose id is the product id. A variant that cannot be
+// published with a usable price is left out and the envelope SAYS so (`variants.partially_published`). This used to
+// publish one variant and warn `variants.selection_not_supported`, because checkout could not yet take a variant.
 //
 // ---- WHAT MAPS, AND THE THREE THINGS THAT DO NOT --------------------------------------------------------
 //
@@ -88,6 +83,7 @@
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { isRestatedProductId, variantIdsFromProductRead } from "../../safety-kernel/src/protocol/buyerIntake.js";
+import { encodeUcpVariantItemId, isPublishableVariantId, realVariantsOf, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -217,7 +213,7 @@ function descriptionOf(p, title) {
  * One native search row -> one UCP product, or undefined when a spec-conformant product cannot be built
  * (no id, or no priced offer). The reason is returned alongside so the envelope can SAY it in `messages`.
  */
-export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE } = {}) {
+export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE, withVariants = false } = {}) {
   if (!isPlainObject(row)) return { product: undefined, dropped: "not_a_row" };
   const id = productIdOf(row);
   if (!id) return { product: undefined, dropped: "no_id" };
@@ -250,15 +246,53 @@ export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE } = {}) {
     media: media.length ? media : undefined,
   });
 
+  // THE REAL VARIANTS, when asked for (get_product) and there is a choice to make (more than one). Each carries
+  // `<product_id>::v::<variant_id>` as its id — the item.id checkout accepts for exactly that variant (see
+  // ucpVariantIds.js). A variant that states no price of its own shows the product's (the same price this door
+  // has always published for it); one in another currency is not published at all rather than mislabelled.
+  // A single-variant product keeps the one variant whose id is the product id: nothing to choose, nothing changes.
+  let variants = [variant];
+  let priceRange = { min: price, max: price };
+  if (withVariants) {
+    const real = realVariantsOf(row);
+    if (real.length > 1) {
+      const shaped = real.map(({ id: vid, variant: v }, idx) => {
+        // Only an id checkout can take back unchanged is published (a space, a non-ASCII character, an over-long
+        // id would be refused as item.id): the door never advertises a choice it would refuse.
+        if (!isPublishableVariantId(id, vid)) return undefined;
+        const own = variantPriceOf(v, row);
+        const vPrice = own && own.currency === price.currency ? own : (own ? undefined : price);
+        if (!vPrice) return undefined;
+        // A variant with no title or option values still gets a DISTINCT title, so a list of choices never shows
+        // two identical lines.
+        const label = variantLabelOf(v) || `option ${idx + 1}`;
+        return compact({
+          id: encodeUcpVariantItemId(id, vid),
+          title: `${title} — ${label}`,
+          description,
+          price: vPrice,
+          url,
+          availability: availabilityOf(v),
+          media: media.length ? media : undefined,
+        });
+      }).filter(Boolean);
+      if (shaped.length > 1) {
+        variants = shaped;
+        const amounts = shaped.map((v) => v.price.amount);
+        priceRange = { min: { amount: Math.min(...amounts), currency: price.currency }, max: { amount: Math.max(...amounts), currency: price.currency } };
+      }
+    }
+  }
+
   const product = compact({
     id,
     title,
     description,
     url,
     categories: category ? [{ value: category }] : undefined,
-    price_range: { min: price, max: price },
+    price_range: priceRange,
     media: media.length ? media : undefined,
-    variants: [variant],
+    variants,
     metadata: brand ? { brand } : undefined,
   });
   return { product, dropped: undefined };
@@ -399,7 +433,7 @@ function realVariantCount(row) {
 export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = DEFAULT_PDP_BASE } = {}) {
   const body = isPlainObject(native) ? native : {};
   const row = isPlainObject(own(body, "product")) ? own(body, "product") : (productIdOf(body) ? body : undefined);
-  const { product, dropped } = shapeUcpProduct(row, { pdpBase });
+  const { product, dropped } = shapeUcpProduct(row, { pdpBase, withVariants: true });
   if (!product) {
     if (dropped === "no_price") {
       throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "ucp_product_unpriced", dialect: "ucp" });
@@ -407,13 +441,17 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
     throw new PivotaCommerceError("UNKNOWN_PRODUCT_ID", { reason: "ucp_product_not_found", dialect: "ucp" });
   }
   const messages = [];
+  // A product with several real variants whose choices could not all be published (a variant priced in another
+  // currency, say) still says so, rather than silently offering a partial list or only the product.
   const variants = realVariantCount(row);
-  if (variants > 1) {
+  if (variants > 1 && product.variants.length !== variants) {
     messages.push({
       type: "warning",
-      code: "variants.selection_not_supported",
+      code: "variants.partially_published",
       path: "$.product.variants",
-      content: `This product has ${variants} purchasable variants, but this catalog cannot yet take a variant choice on a checkout line item: only the product id is accepted as item.id, and checkout refuses rather than guesses among variants. The single variant published here is the product itself.`,
+      content: `This product has ${variants} purchasable variants; ${product.variants.length === 1
+        ? "fewer than two could be published with a usable price and an id checkout accepts, so only the product itself is listed and checkout will refuse rather than guess a variant"
+        : `only ${product.variants.length} could be published with a usable price and an id checkout accepts`}. Send a variant's id as item.id to choose it.`,
       content_type: "plain",
     });
   }

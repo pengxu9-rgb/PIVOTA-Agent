@@ -106,3 +106,16 @@ test('lane wire reasons are allowlisted and never publish arbitrary detail',()=>
 test('price refusal is explicitly no-create on the public MCP wire without leaking constraints or selection',()=>{
  const err=new PivotaCommerceError('QUOTE_REQUIRED',{reason:'ucp_reap_price_not_created',expected_unit_price_minor:1399,secret:'must_not_leak'});const wire=JSON.parse(toToolError(err).content[0].text);assert.deepEqual(wire.error.detail,{reason:'ucp_reap_price_not_created'});assert.equal(JSON.stringify(wire).includes('1399'),false);assert.equal(JSON.stringify(wire).includes('secret'),false);
 });
+
+// A UCP line may name its variant on item.id (`<pid>::v::<vid>` -> quote item `variant_id`). The purchase opened must
+// be exactly that variant: a line naming one variant with a selector naming another is refused before any create.
+const callWithLine=(id,lineVariant,client)=>tryReapAgenticCheckout({op:{id:'create_checkout_session'},params:{idempotency_key:'same-attempt-123',quote:{items:[{product_id:productId,quantity:1,variant_id:lineVariant}]}},ctx:{},executor:{execute:async()=>({product:row})},ucpArgs:args(id),client,env});
+test('a line variant that disagrees with the selected variant is refused before any create; agreeing proceeds',async()=>{
+ let creates=0;
+ const client={preparePurchase,hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async b=>{creates++;return {kind:'accepted',purchase:{id:'rp_'+'b'.repeat(24),state:'resolving',product_key:key,quantity:1,totals:{currency:'USD',our_price_minor:1600}}};}};
+ await assert.rejects(callWithLine('677289689108','42199434526795',client),e=>e.detail?.reason==='ucp_reap_variant_not_created');
+ assert.equal(creates,0);
+ const view=await callWithLine('677289689108','677289689108',client);
+ assert.equal(creates,1);
+ assert.equal(decodeReapCheckoutId(view.id).unitMinor,1600);
+});

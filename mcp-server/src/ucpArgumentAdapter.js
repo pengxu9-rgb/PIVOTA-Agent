@@ -1,3 +1,4 @@
+import { parseUcpItemId } from "./ucpVariantIds.js";
 import moneyContract from '../../src/services/reapExpectedMoney.js';
 import selectionContract from '../../src/services/reapSelectionWitness.js';
 // The UCP↔canonical ARGUMENT adapter — step 3 of UCP transact.
@@ -105,8 +106,9 @@ import selectionContract from '../../src/services/reapSelectionWitness.js';
 //     This is the same position the ACP door is already in — Pivota's own ACP feed publishes `sig_*` product
 //     ids and NO variant identity, which is precisely why `createDefaultVariantResolver` exists — so the UCP
 //     dialect inherits that contract rather than inventing a second one. A product that resolves to more than
-//     one real variant is REFUSED, never guessed (buyerIntake rule 3), and a UCP caller has no field in which
-//     to name the variant it wanted. That bound is real and is stated in the tool description.
+//     one real variant is REFUSED, never guessed (buyerIntake rule 3) — unless the caller NAMED the variant:
+//     `item.id` may be `<product_id>::v::<variant_id>` as get_product publishes it (ucpVariantIds.js), split
+//     here into `product_id` + `variant_id`, and proven to be that product's at the door before any lane runs.
 //
 //  3. THE ADDRESS ARRIVES AS `fulfillment`, AND IT RIDES ON THE QUOTE. This note twice said the wrong thing,
 //     and each wrong version hid the same defect. It first said UCP "carries no shipping_address"; the live
@@ -228,11 +230,11 @@ function metaSchema({ idempotency }) {
 }
 
 const LINE_ITEM_ID_DESCRIPTION = [
-  "The Pivota `product_id` for this line (the id `get_product` answers about).",
-  "Pivota resolves the product's default variant server-side and REFUSES rather than guessing when that is",
-  "ambiguous — a variant id is never derived from a product id. The UCP line-item shape has no field in which",
-  "to name a specific variant, so a product with more than one purchasable variant cannot be checked out over",
-  "this dialect.",
+  "The Pivota `product_id` for this line (the id `get_product` answers about), or — to choose a size, shade or",
+  "other option — one of that product's variant ids exactly as `get_product` publishes it in",
+  "`product.variants[].id`. With a bare product id Pivota resolves the product's sole variant server-side and",
+  "REFUSES rather than guessing when there is more than one; a variant id is never derived from a product id,",
+  "and a variant the product does not have is refused.",
 ].join(" ");
 
 const LINE_ITEMS_SCHEMA = {
@@ -1274,9 +1276,21 @@ function mapLineItems(checkout) {
         "`variant_id`/`product_id` on the line is not part of the UCP shape and is not read.",
       ].join(" "), { required_item_fields: ["item.id", "quantity"] });
     }
+    // A VARIANT CHOICE rides on item.id as get_product publishes it: `<product_id>::v::<variant_id>`
+    // (ucpVariantIds.js). It is split here into the canonical item's `product_id` + `variant_id`; that the variant
+    // really is one of that product's is proven at the door against the product read, before any lane runs.
+    const parsed = parseUcpItemId(id);
+    if (!parsed) {
+      throw ucpRefusal(code, "ucp_line_item_variant_malformed", [
+        "`item.id` names a variant malformedly. Send the product id, or a variant id exactly as get_product",
+        "publishes it in `product.variants[].id`.",
+      ].join(" "), { rejected_field: "checkout.line_items[].item.id" });
+    }
     // `quantity` is copied verbatim (including a malformed one) so the shared cart rule refuses it, with the
     // same message every other door gives for the same mistake.
-    return { product_id: id.trim(), quantity: own(line, "quantity") };
+    return parsed.variant_id
+      ? { product_id: parsed.product_id, variant_id: parsed.variant_id, quantity: own(line, "quantity") }
+      : { product_id: parsed.product_id, quantity: own(line, "quantity") };
   });
 }
 
@@ -1325,8 +1339,9 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "Open a checkout: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record,",
   "total, expires_at). The total is the only authoritative charge amount; a caller cannot set it.",
   "Send `{ meta, checkout: { line_items } }`. Each line is `{ item: { id }, quantity }`, where `item.id` is the",
-  "Pivota product id — the product's default variant is resolved server-side and the call is REFUSED rather",
-  "than guessed when that is ambiguous. `meta[\"idempotency-key\"]` is required. A buyer email is required",
+  "Pivota product id, or — to choose a size, shade or other option — that variant's id exactly as get_product",
+  "publishes it in `product.variants[].id`. With a bare product id the product's sole variant is resolved",
+  "server-side and the call is REFUSED rather than guessed when there is more than one. `meta[\"idempotency-key\"]` is required. A buyer email is required",
   "unless the signed-in buyer's credential attests one, in which case the attested address wins.",
   "`checkout.context` destination hints are accepted but not forwarded into pricing. Supply the shipping",
   "destination as `checkout.fulfillment.methods[0].destinations[0]` — EXACTLY ONE method and ONE destination,",
