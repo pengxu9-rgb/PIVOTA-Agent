@@ -424,10 +424,34 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
   });
 }
 
+/**
+ * Checkout responses (create/update/get/complete) MUST carry `ucp.payment_handlers` — UCP's
+ * `response_checkout_schema` lists it as required, and the handler config a checkout response carries is the
+ * one a platform treats as authoritative. Pivota declares no payment handler, so the truthful value is `{}`
+ * (exactly what the escalation and Reap envelopes already send).
+ *
+ * This shaper adds ONLY that: a `ucp` envelope `{ version, status: "success", payment_handlers: {} }` when the
+ * native session has none, or `payment_handlers: {}` added to an envelope that lacks it. It never replaces a
+ * handler map that is already there (the escalation and Reap envelopes own theirs) and does not touch any other
+ * field — the kernel session's own shape (`session_id`, `status`, `totals`, …) is passed through as it was.
+ */
+export function shapeUcpCheckoutResponse(native) {
+  if (!isPlainObject(native)) return native;
+  const envelope = isPlainObject(own(native, "ucp")) ? own(native, "ucp") : { version: UCP_RESPONSE_VERSION, status: "success" };
+  if (isPlainObject(own(envelope, "payment_handlers"))) {
+    return envelope === own(native, "ucp") ? native : { ...native, ucp: envelope };
+  }
+  return { ...native, ucp: { ...envelope, payment_handlers: {} } };
+}
+
 /** canonical op id -> outbound shaper. Ops absent here return the native result unchanged. */
 const SHAPERS = Object.freeze({
   search_catalog: shapeUcpSearchResponse,
   get_product: shapeUcpGetProductResponse,
+  create_checkout_session: shapeUcpCheckoutResponse,
+  update_checkout_session: shapeUcpCheckoutResponse,
+  get_checkout_session: shapeUcpCheckoutResponse,
+  complete_checkout_session: shapeUcpCheckoutResponse,
 });
 
 export const UCP_SHAPED_OPERATION_IDS = Object.freeze(Object.keys(SHAPERS));

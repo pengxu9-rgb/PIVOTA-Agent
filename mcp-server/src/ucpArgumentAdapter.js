@@ -321,7 +321,7 @@ const BUYER_SCHEMA = {
 // WHY THE MERCHANT'S OWN `instruments` SHAPE IS NOT PUBLISHED HERE. The live cosrx schema (2026-08-13) declares
 // `payment.instruments[]` as `{id, handler_id, type, credential:{token,type}, billing_address, display}`, where
 // `credential.token` is an OPAQUE PSP token (`stripe.token`, `google.pay`) — a payment-handler instrument the
-// MERCHANT charges on its own rail. Pivota is the merchant of record on this lane and holds no UCP
+// MERCHANT charges on its own rail. The merchant is the merchant of record; Pivota holds no UCP
 // payment-handler integration, so that instrument authorizes nothing here. Measured, not assumed:
 //   - the live shape as published by #1966  -> unknown_authorization_method
 //   - the same shape + method:'ucp_handler' -> grant_token_missing      (the discriminator ALONE fixes nothing)
@@ -1375,8 +1375,8 @@ const COMPLETE_CHECKOUT_DESCRIPTION = [
   "checkout's `checkout_session_id` and `exp`. It is verified against a pinned key set and bound to the locked",
   "total, the merchant of record, this session and this buyer; the charge is taken from the locked quote,",
   "never from `max_amount`. A UCP payment-handler instrument (`payment.instruments`, carrying an opaque",
-  "PSP/wallet `credential.token`) is REFUSED and never charged: Pivota is the merchant of record here and has",
-  "no handler integration to charge it on. `meta[\"idempotency-key\"]` is required. Surface any requires_action",
+  "PSP/wallet `credential.token`) is REFUSED and never charged: Pivota is not the merchant of record and declares",
+  "no payment handler to charge it on. `meta[\"idempotency-key\"]` is required. Surface any requires_action",
   "(redirect_url/qr/instructions) verbatim; never fabricate a payment URL or status.",
 ].join(" ");
 

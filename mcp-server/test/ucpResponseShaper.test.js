@@ -10,6 +10,7 @@ import {
   shapeUcpSearchResponse,
   shapeUcpGetProductResponse,
   shapeUcpResult,
+  shapeUcpCheckoutResponse,
   encodeSearchCursor,
   decodeSearchCursor,
   UCP_RESPONSE_VERSION,
@@ -518,10 +519,13 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     assert.equal(JSON.stringify(input), before);
   });
 
-  test('search_catalog and get_product are shaped; any other op passes through native', () => {
-    assert.deepEqual([...UCP_SHAPED_OPERATION_IDS].sort(), ['get_product', 'search_catalog']);
-    const other = canonicalOpForUcpTool('get_checkout');
-    const passthrough = { session_id: 'q_1' };
+  test('search, get_product and the four checkout ops are shaped; any other op passes through native', () => {
+    assert.deepEqual([...UCP_SHAPED_OPERATION_IDS].sort(), [
+      'complete_checkout_session', 'create_checkout_session', 'get_checkout_session', 'get_product',
+      'search_catalog', 'update_checkout_session',
+    ]);
+    const other = { id: 'get_alternatives' };
+    const passthrough = { alternatives: [] };
     assert.equal(shapeUcpResult(other, passthrough, {}), passthrough);
   });
 
@@ -531,5 +535,52 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     const executor = { async execute() { throw new Error('upstream down'); } };
     const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
     await assert.rejects(ucp.callTool('search_catalog', { meta: AGENT_META, catalog: { query: 'q' } }, SESSION));
+  });
+});
+
+describe('checkout responses carry ucp.payment_handlers (UCP response_checkout_schema requires it)', () => {
+  const KERNEL_SESSION = Object.freeze({ session_id: 'q_1', status: 'ready_for_payment', currency: 'USD', totals: { total: 1200 }, line_items: [] });
+
+  test('a kernel session gains a ucp envelope with payment_handlers {} and is otherwise untouched', () => {
+    const shaped = shapeUcpCheckoutResponse(structuredClone(KERNEL_SESSION));
+    assert.deepEqual(shaped.ucp, { version: UCP_RESPONSE_VERSION, status: 'success', payment_handlers: {} });
+    const { ucp, ...rest } = shaped;
+    assert.deepEqual(rest, KERNEL_SESSION);
+  });
+
+  test('an existing envelope keeps its fields; payment_handlers is added only when absent, never replaced', () => {
+    const escalated = { ucp: { version: '2026-04-08', status: 'success', payment_handlers: {} }, status: 'requires_escalation' };
+    assert.equal(shapeUcpCheckoutResponse(escalated), escalated, 'already conformant: returned as-is');
+    const withHandlers = { ucp: { version: 'v', payment_handlers: { 'com.example.pay': [{ id: 'h1' }] } } };
+    assert.deepEqual(shapeUcpCheckoutResponse(withHandlers).ucp.payment_handlers, { 'com.example.pay': [{ id: 'h1' }] });
+    const partial = { ucp: { version: 'v', status: 'success' }, id: 'c' };
+    assert.deepEqual(shapeUcpCheckoutResponse(partial).ucp, { version: 'v', status: 'success', payment_handlers: {} });
+  });
+
+  test('the input is never mutated, and non-objects pass through', () => {
+    const input = structuredClone(KERNEL_SESSION);
+    const before = JSON.stringify(input);
+    shapeUcpCheckoutResponse(input);
+    assert.equal(JSON.stringify(input), before);
+    assert.equal(shapeUcpCheckoutResponse(null), null);
+  });
+
+  test('every checkout op is routed through it by shapeUcpResult', () => {
+    for (const tool of ['create_checkout', 'update_checkout', 'get_checkout', 'complete_checkout']) {
+      const op = canonicalOpForUcpTool(tool);
+      assert.deepEqual(shapeUcpResult(op, structuredClone(KERNEL_SESSION), {}).ucp.payment_handlers, {}, tool);
+    }
+  });
+
+  test('through the real surface: get_checkout on /ucp carries payment_handlers; the same call on /mcp stays native', async () => {
+    const executor = { async execute() { return structuredClone(KERNEL_SESSION); } };
+    const native = createCommerceToolSurface(executor, { cache: false });
+    const ucpSurface = ucpDialectSurface(native);
+    const ucpRes = await ucpSurface.callTool('get_checkout', { meta: AGENT_META, id: 'q_1' }, SESSION);
+    const body = ucpRes.structuredContent || ucpRes;
+    assert.deepEqual(body.ucp && body.ucp.payment_handlers, {}, JSON.stringify(ucpRes).slice(0, 400));
+    const mcpRes = await native.callTool('get_checkout_session', { session_id: 'q_1' }, SESSION);
+    const mcpBody = mcpRes.structuredContent || mcpRes;
+    assert.equal(mcpBody.ucp, undefined);
   });
 });

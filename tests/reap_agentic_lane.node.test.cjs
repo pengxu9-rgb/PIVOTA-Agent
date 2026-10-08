@@ -346,6 +346,11 @@ async function createReap(env, opts = {}) {
 // 0. SWITCH OFF — byte-identical, zero backend calls
 // =========================================================================================================
 
+
+// The kernel's stub checkout answer as it leaves the UCP dialect: unchanged, plus the `ucp` envelope with
+// `payment_handlers: {}` that UCP requires on every checkout response (ucpResponseShaper.shapeUcpCheckoutResponse).
+const KERNEL_ON_UCP = Object.freeze({ session_id: 'q_kernel', ucp: { version: '2026-04-08', status: 'success', payment_handlers: {} } });
+
 test('switch OFF: create/get/update/complete are byte-identical to a door without the lane, with 0 backend calls', async (t) => {
   t.mock.method(Date, 'now', () => NOW);
   const m = await mods();
@@ -379,7 +384,7 @@ test('switch OFF snapshot: the pinned answers for the fixture offer', async (t) 
   const { ucp, backend } = await build({ lane: true });
   // Escalation off: the kernel path, exactly as before.
   const kernel = await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: undefined }, () => ucp.callTool('create_checkout', createArgs(), SESSION));
-  assert.deepEqual(kernel, { session_id: 'q_kernel' });
+  assert.deepEqual(kernel, KERNEL_ON_UCP);
   // Escalation on: the storefront checkout, pinned byte for byte.
   const escalated = await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: '1' }, () => ucp.callTool('create_checkout', createArgs(), SESSION));
   assert.equal(JSON.stringify(escalated), JSON.stringify({
@@ -976,7 +981,7 @@ test('a caller the rail cannot serve (no X-Agent-User-JWT, or no API key — e.g
 test('native-completable merchant NEVER enters the lane — even a Shopify row with a key and a domain', async () => {
   const ctx = await build();
   const out = keep(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => ctx.ucp.callTool('create_checkout', createArgs({ productId: NATIVE_ROW.product_id, consent: ABSENT,legacy:true }), SESSION)));
-  assert.deepEqual(out, { session_id: 'q_kernel' });
+  assert.deepEqual(out, KERNEL_ON_UCP);
   assert.equal(ctx.backend.calls.length, 0);
   assert.ok(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), 'the kernel path ran');
   // …and the row that DECLARES internal_checkout despite a redirect url is native too
@@ -1796,7 +1801,7 @@ test('Tier B DIRECT needs BOTH dials: lane on + cart-link off skips an external-
   for (const env of [ON, { ...ON, [CART_LINK_FLAG]: '0' }]) {
     const logger = fakeLogger();
     const { out, backend } = await createReap(env, { logger, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id,legacy:true } });
-    assert.deepEqual(out, { session_id: 'q_kernel' }, 'the kernel path answers, as before');
+    assert.deepEqual(out, KERNEL_ON_UCP, 'the kernel path answers, as before');
     assert.equal(backend.calls.length, 0);
     assert.ok(logger.lines.some((l) => l.event === 'reap_agentic_lane' && l.code === 'not_shopify'), 'the same skip code as before');
   }
@@ -2192,7 +2197,7 @@ test('enrichment dial OFF (unset, "0", "off"): the live ext: rows are skipped ro
       const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag },{legacy:true});
       assert.equal(backend.calls.length, 0, `${row.product_id} flag ${flag}`);
       assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], `${row.product_id} flag ${flag}`);
-      assert.deepEqual(r, { ok: { session_id: 'q_kernel' } }, 'the kernel path answers, as before');
+      assert.deepEqual(r, { ok: KERNEL_ON_UCP }, 'the kernel path answers, as before');
     }
   }
 });
