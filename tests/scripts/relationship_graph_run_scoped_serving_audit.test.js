@@ -165,6 +165,16 @@ describe('serving audit gate scoped to the rows this run wrote', () => {
     ]);
   });
 
+  test('a row whose last_verified_at cannot be read counts as this run\'s (fail closed)', () => {
+    const unreadable = dearBarberRow('unreadable_verified', { last_verified_at: 'not-a-timestamp' });
+    const audit = auditFor([...legacyTable(), unreadable]);
+    expect(audit.run_suppressed_rows).toBe(1);
+    expect(audit.legacy_suppressed_rows).toBe(30);
+    expect(evaluateServingAuditThresholds(audit, PROD_GATE)).toEqual([
+      expect.objectContaining({ metric: 'run_suppressed_rows', observed: 1 }),
+    ]);
+  });
+
   test('an artifact without the run split is still gated on the whole table (fail closed)', () => {
     const wholeTable = summarizeSuppressionRows(legacyTable());
     expect(wholeTable.run_verified_since).toBeUndefined();
