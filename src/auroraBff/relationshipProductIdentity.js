@@ -408,6 +408,27 @@ function listingTitleTokens(snapshot = {}, brandTexts = []) {
   return trimSeparators(tokens);
 }
 
+function wordSetKey(tokens, words) {
+  return [...new Set(tokens.filter((token) => words.has(token)))].sort().join(' ');
+}
+
+// The audience a listing names: "for Men", or a separated segment that is only audience words
+// ("- Baby", ", Kids"). A shade called "Hu$tla Baby" names no audience.
+function audienceKey(tokens) {
+  const found = new Set();
+  tokens.forEach((token, index) => { if (AUDIENCE_WORDS.has(token) && tokens[index - 1] === 'for') found.add(token); });
+  let start = 0;
+  for (let index = 0; index <= tokens.length; index += 1) {
+    if (index < tokens.length && !SEPARATORS.has(tokens[index])) continue;
+    const segment = tokens.slice(start, index);
+    if (segment.every((token) => AUDIENCE_WORDS.has(token) || token === 'and')) {
+      segment.filter((token) => AUDIENCE_WORDS.has(token)).forEach((token) => found.add(token));
+    }
+    start = index + 1;
+  }
+  return [...found].sort().join(' ');
+}
+
 function wordKey(tokens) {
   return tokens.filter((token) => !SEPARATORS.has(token)).join(' ');
 }
@@ -428,9 +449,6 @@ function sameProductTitleRule(aTokens, bTokens) {
   const [shorter, longer] = aTokens.length < bTokens.length ? [aTokens, bTokens] : [bTokens, aTokens];
   if (!startsWithTokens(longer, shorter) || !wordKey(shorter)) return '';
   const rest = longer.slice(shorter.length);
-  // A tail naming another audience ("for Men", "for Kids") or a set ("- Starter Set", "- Kit") is
-  // another product, not a description of this one.
-  if (rest.some((token) => SET_WORDS.has(token)) || (rest.includes('for') && rest.some((token) => AUDIENCE_WORDS.has(token)))) return '';
   if ([',', '-'].includes(rest[0]) && rest.slice(1).some((token) => !SEPARATORS.has(token))) return 'listing_description_tail';
   if (rest[0] === 'for' && rest[1] && !SEPARATORS.has(rest[1]) && rest[1] !== 'ever') return 'listing_description_tail';
   return '';
@@ -541,6 +559,11 @@ function compareTitles(left, right) {
 
   // A formula difference (SPF, %, waterproof, intense, fragrance-free) vetoes every same / variant rule.
   if (formulaMarkerSet(left) !== formulaMarkerSet(right)) return result(RELATIONS.DISTINCT, 'title', ['formula_marker_differs']);
+  // So does another audience ("for Men", "- Baby") or a set ("- Duo Set", "- Vault Kit"): another
+  // product, never a description or an option of this one.
+  if (audienceKey(aTokens) !== audienceKey(bTokens) || wordSetKey(aTokens, SET_WORDS) !== wordSetKey(bTokens, SET_WORDS)) {
+    return result(RELATIONS.DISTINCT, 'title', ['audience_or_set_differs']);
+  }
   const sameRule = sameProductTitleRule(aTokens, bTokens);
   if (sameRule) {
     const aVariant = structuredVariantLabel(left);

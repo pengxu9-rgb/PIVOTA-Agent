@@ -54,6 +54,16 @@ const BRIEF = [
   ['Lav Kids', 'Gentle Care Shampoo 12 fl oz (Case of 12)', 'Gentle Care Shampoo', 'same_product'],
   ['Falscara', 'Volume Wisps - 3-Pack', 'Volume Wisps', 'same_product'],
   ['Lav Kids', 'Facial Foaming Cleanser Value Pack', 'WH | Facial Foaming Cleanser', 'same_product'],
+  // Delta review 2026-10-09: set / kit and audience words veto every same / variant rule, after a
+  // separator as well as after 'for'.
+  ['Fenty Beauty', 'Killawatt Freestyle Highlighter - Trophy Wife', 'Killawatt Freestyle Highlighter - Duo Set', 'distinct'],
+  ['Fenty Beauty', 'Killawatt Freestyle Highlighter - Trophy Wife', 'Killawatt Freestyle Highlighter - Vault Kit', 'distinct'],
+  ['House', 'Moisturizing Cream', 'Moisturizing Cream - Baby', 'distinct'],
+  ['House', 'Gentle Shampoo', 'Gentle Shampoo, Kids', 'distinct'],
+  ['House', 'Daily Face Wash - Men', 'Daily Face Wash - Women', 'distinct'],
+  ['House', 'Women | Daily Face Wash', 'Daily Face Wash', 'distinct'],
+  // An audience word inside a shade name names no audience.
+  ['Fenty Beauty', 'Mini Killawatt Freestyle Highlighter — Hu$tla Baby', 'Killawatt Freestyle Highlighter — Ruby Richez', 'same_family_variant'],
   // A one-word base does not name a product, and a numbered slot inside a name is not an option.
   ['House', 'Tint - Rose', 'Tint - Pink', 'distinct'],
   ['House', 'Velvet Lip Tint No.1 Matte Formula', 'Velvet Lip Tint No.2 Glossy Formula', 'distinct'],

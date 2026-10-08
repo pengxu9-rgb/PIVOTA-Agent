@@ -31,13 +31,19 @@ const FORM_ROLES = new Set(['cream', 'serum', 'essence', 'emulsion', 'ampoule', 
 // Text-named jobs that precede the option-role vocabulary, whose category fallback calls a fragranced
 // body product 'perfume' and whose tool rule calls a brush shampoo a 'brush'.
 const LEADING_ROLES = [
+  ['tool_cleaner', /\bbrushampoo\b|\bbrush\s*(?:shampoo|cleanser|cleaner|cleaning|soap)\b|\bcleaning\s*(?:mat|glove|pad)\b/],
+  // A "micellar shampoo" is a shampoo; hair-wash nouns precede first-cleanse words.
+  ['shampoo', /^(?!.*\bconditioners?\b).*\bshampoos?\b/],
+  ['conditioner', /^(?!.*\bshampoos?\b).*\bconditioners?\b/],
   ['first_cleanser', /\b(?:makeup|make-up)\s*remover\b|\bmicellar\b|\bcleansing\s*(?:oil|balm|milk|water)\b|\b(?:oil|balm)\s*cleanser\b/],
   ['remover', /\bremover\b/],
-  ['tool_cleaner', /\bbrushampoo\b|\bbrush\s*(?:shampoo|cleanser|cleaner|cleaning|soap)\b|\bcleaning\s*(?:mat|glove|pad)\b/],
   ['deodorant', /\b(?:deodorant|antiperspirant)s?\b/],
   ['body_wash', /\b(?:hand|body)\s*wash\b|\bshower\s*(?:gel|oil|cream)\b|\bbath\s*oil\b/],
   ['body_moisturizer', /\b(?:body|hand|foot)\s*(?:lotion|cream|butter|balm|souffle|milk)\b/],
-  ['oil', /\b(?:body|hair|face|dry)\s*oil\b/],
+  // Oils for different areas are different jobs.
+  ['face_oil', /\b(?:face|facial)\s*oil\b/],
+  ['hair_oil', /\b(?:hair|scalp)\s*oil\b/],
+  ['body_oil', /\b(?:body|dry)\s*oil\b/],
 ];
 
 function routineRole(snapshot = {}) {
@@ -47,9 +53,6 @@ function routineRole(snapshot = {}) {
   if (/\bbrush[\s_-]*clean/.test(String(snapshot.category || snapshot.product_type || '').toLowerCase())) return 'tool_cleaner';
   const role = optionRole(snapshot);
   if (role && !FORM_ROLES.has(role) && role !== 'cleanser') return role;
-  // A "deep cleansing shampoo" is a shampoo, not a face-cleansing step.
-  if (/\bshampoos?\b/.test(value) && !/\bconditioners?\b/.test(value)) return 'shampoo';
-  if (/\bconditioners?\b/.test(value) && !/\bshampoos?\b/.test(value)) return 'conditioner';
   if (/\b(?:sunscreen|sun\s*(?:cream|milk|stick|serum|lotion|gel|essence|block)|sunblock)\b/.test(value) || /\bspf\s*\d+/.test(value)) {
     return 'sunscreen';
   }

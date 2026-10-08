@@ -67,7 +67,9 @@ describe('review 2026-10-09: the builder never claims an alternative its own str
     ['Sigma Beauty', 'Sigmagic® Brushampoo™ Foam', 'F43 Soft Angled Cheek Brush', 'beauty/tools/brush', 'tool_cleaner', 'brush'],
     ['Tom Ford Beauty', 'Oud Wood Deodorant Stick', 'Oud Wood Parfum', 'fragrance', 'deodorant', 'perfume'],
     ['Nuxe', 'Prodigieux Precious scented shower oil', 'The Firming Body Milk', 'fragrance', 'body_wash', 'body_moisturizer'],
-    ['Nuxe', 'Prodigieux Shimmering Body Oil', 'Prodigieux Le Parfum', 'fragrance', 'oil', 'perfume'],
+    ['Nuxe', 'Prodigieux Shimmering Body Oil', 'Prodigieux Le Parfum', 'fragrance', 'body_oil', 'perfume'],
+    // Delta review: oils for different areas are different jobs.
+    ['House', 'Rose Face Oil', 'Rose Hair Oil', 'oils', 'face_oil', 'hair_oil'],
     // Double cleanse: an oil / balm first cleanse and a foam / gel second cleanse are two steps.
     ['Anua', 'Heartleaf Pore Control Cleansing Oil', 'Heartleaf Quercetinol Pore Deep Cleansing Foam', 'cleanser', 'first_cleanser', 'cleanser'],
   ])('%s: %s / %s are different routine roles', (brand, x, y, category, aRole, bRole) => {
@@ -76,6 +78,13 @@ describe('review 2026-10-09: the builder never claims an alternative its own str
     const inferred = inferRelationship(a, b, { ...b, similarity_score: 0.6, category_use_case_match: 0.6 });
     expect(inferred.relation_type).not.toBe('competitive_alternative');
     expect(validateRecommendationDecision(edge(a, b, 'competitive_alternative'), alternativeApproval(a, b)).verdict).toBe('reject');
+  });
+  test('a micellar shampoo is a shampoo, the same job as another shampoo', () => {
+    expect(routineRole({ title: 'Micellar Shampoo' })).toBe('shampoo');
+    expect(routineRole({ title: 'Micellar Conditioner' })).toBe('conditioner');
+    expect(classifyComplementPair({ title: 'Micellar Shampoo' }, { title: 'Volume Shampoo' }).kind).toBe('same_job');
+    expect(routineRole({ title: 'Micellar Cleansing Water' })).toBe('first_cleanser');
+    expect(routineRole({ title: 'Brush Shampoo' })).toBe('tool_cleaner');
   });
   test('double cleanse is a complement', () => {
     const a = house('Heartleaf Pore Control Cleansing Oil', 'cleanser'); const b = house('Heartleaf Quercetinol Pore Deep Cleansing Foam', 'cleanser');
