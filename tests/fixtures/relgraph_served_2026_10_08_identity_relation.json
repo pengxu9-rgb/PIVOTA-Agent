@@ -606,7 +606,7 @@
    }
   },
   {
-   "expected_relation": "competitive_alternative",
+   "expected_relation": "rejected",
    "served_as": "related_product",
    "anchor": {
     "brand": "ORGANIST",
@@ -648,7 +648,7 @@
    }
   },
   {
-   "expected_relation": "competitive_alternative",
+   "expected_relation": "rejected",
    "served_as": "related_product",
    "anchor": {
     "brand": "Tom Ford Beauty",
@@ -662,7 +662,7 @@
    }
   },
   {
-   "expected_relation": "competitive_alternative",
+   "expected_relation": "rejected",
    "served_as": "related_product",
    "anchor": {
     "brand": "COSRX",

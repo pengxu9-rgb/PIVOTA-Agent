@@ -180,8 +180,11 @@ function formulaMarkers(snapshot = {}) {
   }
   return markers.sort().join('|');
 }
+// "Intense Black" names a shade; only a free-standing "intense" names a formula.
+const INTENSE_SHADE = new RegExp(`\\bintense(?=\\s+(?:${[...SHADE_LEXICON].join('|')})\\b)`, 'gi');
 function formulaMarkerSet(snapshot = {}) {
-  return [...new Set(formulaMarkers(snapshot).split('|').map((marker) => marker.replace(/\s+/g, '')).filter(Boolean))].sort().join('|');
+  const title = snapshotTitle(snapshot).replace(INTENSE_SHADE, ' ');
+  return [...new Set(formulaMarkers({ ...snapshot, title, name: title }).split('|').map((marker) => marker.replace(/\s+/g, '')).filter(Boolean))].sort().join('|');
 }
 function hasExplicitVariant(snapshot = {}) {
   if (/#/.test(normalizedTitle(snapshot))) return true;
@@ -272,6 +275,7 @@ function parseUrl(value) {
     const url = new URL(raw);
     const path = url.pathname.replace(/\/+$/, '').toLowerCase();
     return {
+      raw: raw.toLowerCase(),
       key: `${url.hostname.toLowerCase().replace(/^www\./, '')}${path}`,
       variant: normalizeString(url.searchParams.get('variant') || url.searchParams.get('variant_id') || url.searchParams.get('sku'), 120),
     };
@@ -288,10 +292,18 @@ function firstUrl(snapshot) {
   return null;
 }
 
+// Three strengths of structured evidence:
+//   listing  - equal ref, listing id / pivota signature, or the identical URL: one listing, whatever
+//              the brand is spelled ("Fenty Beauty" / "FENTY BEAUTY by Rihanna").
+//   keyed    - canonical entity / product group, or the same PDP path once the query is dropped: the
+//              same product only when the brands do not disagree.
+//   support  - content_key and GTIN. In prod both are shared by different products (one content_key
+//              spans 11 O HUI products; two different sets share a GTIN), so they may confirm a title
+//              rule but never create a match.
 function compareStructured(a, b, { anchorRef = '', candidateRef = '' } = {}) {
+  const out = { listing: null, keyed: null, support: [] };
   const aRef = scalar(anchorRef).toLowerCase();
   const bRef = scalar(candidateRef).toLowerCase();
-  if (aRef && bRef && aRef === bRef) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_product_ref'] };
   const aIds = fieldTokens(a, LISTING_ID_FIELDS, 6);
   const bIds = fieldTokens(b, LISTING_ID_FIELDS, 6);
   // Refs join the listing-id pool unprefixed: 'product:ext_1' and 'external:ext_1' are one listing.
@@ -299,26 +311,24 @@ function compareStructured(a, b, { anchorRef = '', candidateRef = '' } = {}) {
   const bRefToken = identityToken(candidateRef, 4);
   if (aRefToken) aIds.add(aRefToken);
   if (bRefToken) bIds.add(bRefToken);
-  if (intersects(aIds, bIds)) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_listing_id'] };
-  if (intersects(fieldTokens(a, CONTENT_KEY_FIELDS, 6), fieldTokens(b, CONTENT_KEY_FIELDS, 6))) {
-    return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_content_key'] };
-  }
-  if (intersects(fieldTokens(a, CANONICAL_ENTITY_FIELDS, 4), fieldTokens(b, CANONICAL_ENTITY_FIELDS, 4))) {
-    return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_canonical_entity'] };
-  }
-  const gtins = (snapshot) => new Set(GTIN_FIELDS.map((field) => scalar(snapshot[field]).replace(/\D+/g, '').replace(/^0+/, ''))
-    .filter((value) => value.length >= 7));
-  if (intersects(gtins(a), gtins(b))) return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_gtin'] };
   const aUrl = firstUrl(a);
   const bUrl = firstUrl(b);
-  if (aUrl && bUrl && aUrl.key === bUrl.key) {
-    // One PDP URL, two selected options (?variant=): two options of one product.
-    if (aUrl.variant && bUrl.variant && aUrl.variant !== bUrl.variant) {
-      return { relation: RELATIONS.SAME_FAMILY_VARIANT, reasons: ['equal_canonical_url_different_variant'] };
-    }
-    return { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_canonical_url'] };
+  if (aRef && bRef && aRef === bRef) out.listing = { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_product_ref'] };
+  else if (intersects(aIds, bIds)) out.listing = { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_listing_id'] };
+  else if (aUrl && bUrl && aUrl.raw === bUrl.raw) out.listing = { relation: RELATIONS.SAME_PRODUCT, reasons: ['identical_url'] };
+  if (intersects(fieldTokens(a, CANONICAL_ENTITY_FIELDS, 4), fieldTokens(b, CANONICAL_ENTITY_FIELDS, 4))) {
+    out.keyed = { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_canonical_entity'] };
+  } else if (aUrl && bUrl && aUrl.key === bUrl.key) {
+    // One PDP path, two selected options (?variant=): two options of one product.
+    out.keyed = aUrl.variant && bUrl.variant && aUrl.variant !== bUrl.variant
+      ? { relation: RELATIONS.SAME_FAMILY_VARIANT, reasons: ['equal_canonical_url_different_variant'] }
+      : { relation: RELATIONS.SAME_PRODUCT, reasons: ['equal_canonical_url'] };
   }
-  return null;
+  if (intersects(fieldTokens(a, CONTENT_KEY_FIELDS, 6), fieldTokens(b, CONTENT_KEY_FIELDS, 6))) out.support.push('content_key_agrees');
+  const gtins = (snapshot) => new Set(GTIN_FIELDS.map((field) => scalar(snapshot[field]).replace(/\D+/g, '').replace(/^0+/, ''))
+    .filter((value) => value.length >= 7));
+  if (intersects(gtins(a), gtins(b))) out.support.push('gtin_agrees');
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -328,14 +338,18 @@ const SEPARATORS = new Set(['-', ',', '|']);
 const LISTING_TAG = /[[(]\s*(?:deal|hot deal|sale|subscription|new|best seller|bestseller|online exclusive|imperfect box)\s*[\])]/g;
 const SIZE_UNIT = '(?:fl\\.?\\s*oz|ml|oz|grams?|g|kg|l|litres?|liters?|ea|pcs|pieces|count|ct|sheets|pads|masks|wipes|patches|capsules|pairs?)';
 const SIZE_PATTERN = new RegExp(`\\b\\d+(?:[.,]\\d+)?\\s*${SIZE_UNIT}\\b(?:\\s*[x×]\\s*\\d+(?:[.,]\\d+)?\\s*${SIZE_UNIT}?\\b)?`, 'g');
-const SIZE_WORDS = /\b(?:mini|travel[ -]sized?|full[ -]sized?|larger?[ -]size|jumbo|value[ -]size|deluxe[ -]size|refill)\b/g;
+const SIZE_WORDS = /\b(?:mini|travel[ -]sized?|full[ -]sized?|larger?[ -]size|jumbo|value[ -](?:size|pack)|deluxe[ -]size|refill)\b/g;
 const PACK_WORDS = /\b(?:case|pack) of \d+\b|\b\d+\s*box(?:es)?\s*=?|\b\d+[ -]?(?:pack|pk)\b/g;
 const RETAILER_TAILS = new Set([
   'sephora', 'ulta', 'ulta beauty', 'amazon', 'target', 'walmart', 'nordstrom', 'boots', 'cult beauty',
   'yesstyle', 'olive young', 'stylevana', 'tiktok exclusive',
 ]);
+const AUDIENCE_WORDS = new Set(['men', 'man', 'women', 'woman', 'kids', 'kid', 'children', 'child', 'baby', 'babies', 'teen', 'teens', 'him', 'her', 'boys', 'girls', 'toddler', 'toddlers']);
+const SET_WORDS = new Set(['set', 'sets', 'kit', 'kits', 'starter', 'bundle', 'duo', 'trio', 'gift', 'collection', 'routine', 'regimen']);
+// Base words of a shade-bearing product when the option-role vocabulary does not name it ("Boy Brow",
+// "Glow Cushion Compact", "Daily Tinted Fluid Sunscreen").
+const COLOUR_NOUN = /\b(?:brow|brows|lip|lips|lash|lashes|eye|eyes|cheek|cheeks|blush|nail|nails|tint|tinted|gloss|liner|shadow|cushion|concealer|foundation|powder|bronzer|highlighter|contour|palette|stain|colou?r)\b/;
 const OPTION_LABELS = new Set(['style', 'shade', 'color', 'colour', 'scent', 'flavor', 'flavour', 'tone']);
-const SKINCARE_ROLES = new Set(['emulsion', 'ampoule', 'essence', 'toner', 'cleanser', 'serum', 'cream', 'eye_cream', 'shampoo', 'conditioner']);
 const COLOUR_ROLES = new Set(COSMETIC_ROLES.map(([name]) => name).filter((name) => name !== 'perfume'));
 const OPTION_ROLES = new Set([...COLOUR_ROLES, 'lashes', 'nails', 'lip_mask']);
 
@@ -414,25 +428,28 @@ function sameProductTitleRule(aTokens, bTokens) {
   const [shorter, longer] = aTokens.length < bTokens.length ? [aTokens, bTokens] : [bTokens, aTokens];
   if (!startsWithTokens(longer, shorter) || !wordKey(shorter)) return '';
   const rest = longer.slice(shorter.length);
+  // A tail naming another audience ("for Men", "for Kids") or a set ("- Starter Set", "- Kit") is
+  // another product, not a description of this one.
+  if (rest.some((token) => SET_WORDS.has(token)) || (rest.includes('for') && rest.some((token) => AUDIENCE_WORDS.has(token)))) return '';
   if ([',', '-'].includes(rest[0]) && rest.slice(1).some((token) => !SEPARATORS.has(token))) return 'listing_description_tail';
   if (rest[0] === 'for' && rest[1] && !SEPARATORS.has(rest[1]) && rest[1] !== 'ever') return 'listing_description_tail';
   return '';
 }
 
-function optionValueKind(slot, { label, separated, role, terminal, numericTail }) {
+function optionValueKind(slot, { label, separated, role, terminal, numericTail, shadeBearing }) {
   if (!slot.length || slot.length > 4) return '';
-  if (label === '#' || (label === 'no' && role !== 'perfume')) return 'marker';
+  if (label === '#' || (label === 'no' && shadeBearing)) return 'marker';
   if (OPTION_LABELS.has(label)) return 'labelled';
   if (OPTION_LABELS.has(slot[0]) && slot.length >= 2) return 'labelled';
   if (slot[0] === '#' && slot.length >= 2) return 'marker';
-  if (slot.length === 1 && /^[a-z]{1,3}\d{2,3}[a-z]?$/.test(slot[0]) && !SKINCARE_ROLES.has(role)) return 'code';
+  if (slot.length === 1 && /^[a-z]{1,3}\d{2,3}[a-z]?$/.test(slot[0]) && shadeBearing) return 'code';
   if (/^\d{1,3}[a-z]?$/.test(slot[0]) && numericTail.length > 1 && numericTail.slice(1).every((word) => NUMERIC_SHADE_WORDS.has(word))) {
     return 'numeric_shade';
   }
   if (slot.length === 1 && /^\d{1,3}$/.test(slot[0]) && terminal && COLOUR_ROLES.has(role)) return 'numeric_shade';
   if (slot.length === 1 && /^\d+(?:\.\d+)?mm$/.test(slot[0])) return 'length';
   if (label === 'in' && COLOUR_ROLES.has(role) && slot.length <= 3) return 'named_shade';
-  if (slot.every((word) => SHADE_LEXICON.has(word)) && (separated || OPTION_ROLES.has(role))) return 'lexicon_shade';
+  if (slot.every((word) => SHADE_LEXICON.has(word)) && shadeBearing) return 'lexicon_shade';
   // A named shade after a spaced dash in a shade-bearing job ("Highlighter - Trophy Wife"), as long as
   // the name carries no product job or formula of its own.
   const slotText = slot.join(' ');
@@ -465,8 +482,9 @@ function optionSlotRule(aTokens, bTokens, role) {
   const suffixShadeWords = suffix.length > 0 && suffix.every((word) => NUMERIC_SHADE_WORDS.has(word));
   const terminal = suffix.length === 0 || SEPARATORS.has(suffix[0]) || suffixShadeWords;
   if (!terminal) return '';
+  const shadeBearing = OPTION_ROLES.has(role) || (!role && COLOUR_NOUN.test(wordKey(base)));
   const kind = (slot) => optionValueKind(slot, {
-    label, separated, role, terminal: suffix.length === 0,
+    label, separated, role, shadeBearing, terminal: suffix.length === 0,
     numericTail: suffixShadeWords ? slot.concat(suffix) : slot,
   });
   // The base listing against one of its options ("Tinted Sunscreen" / "Tinted Sunscreen MN230").
@@ -498,10 +516,20 @@ function compareProductIdentity(a = {}, b = {}, options = {}) {
   const right = isPlainObject(b) ? b : {};
   const brand = compareBrands(left, right);
   const structured = compareStructured(left, right, options);
-  // A key shared by two different brands is a data defect, not identity evidence.
-  if (structured && brand !== 'different') return result(structured.relation, 'structured', structured.reasons);
+  if (structured.listing) return result(structured.listing.relation, 'structured', structured.listing.reasons);
+  // A product key shared by two different brands is a data defect, not identity evidence.
+  if (structured.keyed && brand !== 'different') return result(structured.keyed.relation, 'structured', structured.keyed.reasons);
   if (brand === 'unknown') return result(RELATIONS.UNKNOWN, 'title', ['brand_unresolved']);
-  if (brand === 'different') return result(RELATIONS.DISTINCT, 'title', structured ? ['different_brand', 'structured_key_brand_conflict'] : ['different_brand']);
+  if (brand === 'different') return result(RELATIONS.DISTINCT, 'title', structured.keyed ? ['different_brand', 'structured_key_brand_conflict'] : ['different_brand']);
+  const titled = compareTitles(left, right);
+  // content_key / GTIN only confirm what the title rules already decided.
+  if (structured.support.length && [RELATIONS.SAME_PRODUCT, RELATIONS.SAME_FAMILY_VARIANT].includes(titled.relation)) {
+    return { ...titled, reasons: [...titled.reasons, ...structured.support] };
+  }
+  return titled;
+}
+
+function compareTitles(left, right) {
   if (!snapshotTitle(left) || !snapshotTitle(right)) return result(RELATIONS.UNKNOWN, 'title', ['title_missing']);
 
   const brandTexts = [brandNameText(left), brandNameText(right)].filter(Boolean);
@@ -511,6 +539,8 @@ function compareProductIdentity(a = {}, b = {}, options = {}) {
   const aRole = optionRole(left);
   const bRole = optionRole(right);
 
+  // A formula difference (SPF, %, waterproof, intense, fragrance-free) vetoes every same / variant rule.
+  if (formulaMarkerSet(left) !== formulaMarkerSet(right)) return result(RELATIONS.DISTINCT, 'title', ['formula_marker_differs']);
   const sameRule = sameProductTitleRule(aTokens, bTokens);
   if (sameRule) {
     const aVariant = structuredVariantLabel(left);
@@ -524,7 +554,6 @@ function compareProductIdentity(a = {}, b = {}, options = {}) {
     return result(RELATIONS.SAME_PRODUCT, 'title', [sameRule]);
   }
 
-  if (formulaMarkerSet(left) !== formulaMarkerSet(right)) return result(RELATIONS.DISTINCT, 'title', ['formula_marker_differs']);
   if (decorativeStructure(left).unresolved || decorativeStructure(right).unresolved) {
     return result(RELATIONS.DISTINCT, 'title', ['decorative_constraint_unresolved']);
   }

@@ -53,10 +53,56 @@ const BRIEF = [
   ['Laneige', 'Lip Sleeping Mask', 'Lip Sleeping Mask Berry', 'same_family_variant'],
   ['Lav Kids', 'Gentle Care Shampoo 12 fl oz (Case of 12)', 'Gentle Care Shampoo', 'same_product'],
   ['Falscara', 'Volume Wisps - 3-Pack', 'Volume Wisps', 'same_product'],
+  ['Lav Kids', 'Facial Foaming Cleanser Value Pack', 'WH | Facial Foaming Cleanser', 'same_product'],
+  // A one-word base does not name a product, and a numbered slot inside a name is not an option.
+  ['House', 'Tint - Rose', 'Tint - Pink', 'distinct'],
+  ['House', 'Velvet Lip Tint No.1 Matte Formula', 'Velvet Lip Tint No.2 Glossy Formula', 'distinct'],
+  // Review 2026-10-09 P2-b: a formula, audience or set tail vetoes the description-tail rule.
+  ['House', 'Daily Moisturizer', 'Daily Moisturizer - SPF 30', 'distinct'],
+  ['House', 'Daily Moisturizer', 'Daily Moisturizer, SPF 30', 'distinct'],
+  ['House', 'Volume Mascara', 'Volume Mascara - Waterproof', 'distinct'],
+  ['YSL', 'Libre Eau de Parfum', 'Libre Eau de Parfum - Intense', 'distinct'],
+  ['Clinique', 'Moisture Surge Hydrator', 'Moisture Surge Hydrator for Men', 'distinct'],
+  ['House', 'Mineral Sunscreen', 'Mineral Sunscreen for Kids', 'distinct'],
+  ['Neutrogena', 'Hydro Boost Water Gel', 'Hydro Boost Water Gel - Fragrance Free', 'distinct'],
+  ['House', 'Barrier Repair Cream', 'Barrier Repair Cream - Starter Set', 'distinct'],
+  ['House', 'Barrier Repair Cream', 'Barrier Repair Cream - Kit', 'distinct'],
+  // Review 2026-10-09 P2-c: shade words, No. markers and codes only name options in shade-bearing jobs.
+  ['House', 'Hydrating Sheet Mask - Honey', 'Hydrating Sheet Mask - Rose', 'distinct'],
+  ['Olaplex', 'Hair Perfector No.3', 'Hair Perfector No.4', 'distinct'],
+  ['House', 'Collagen Sheet Mask PK100', 'Collagen Sheet Mask PK200', 'distinct'],
 ];
 const REAL = real.identity.map((row) => [row.anchor.brand, row.anchor.name, row.candidate.name, row.expected, row]);
 
+// Review 2026-10-09 P1-a / P1-c: real prod keys. content_key and GTIN are shared by different products in
+// prod, so they may confirm a title match but never create one; listing refs / ids / signatures and an
+// identical URL are the same listing whatever the brand spelling.
+const KEYED = [
+  { name: 'real ck_9aa75773 Birch Juice toner vs cream', expected: 'distinct',
+    a: { brand: 'Round Lab', title: '[ROUND LAB] Birch Juice Moisturizing Toner 300ml', content_key: 'ck_9aa75773611a00a1eced5d0b1cce295a' },
+    b: { brand: 'Round Lab', title: '[ROUND LAB] Birch Juice Moisturizing Cream 80ml', content_key: 'ck_9aa75773611a00a1eced5d0b1cce295a' } },
+  { name: 'real ck_03c8b782 O HUI serum vs cream', expected: 'distinct',
+    a: { brand: 'O HUI', title: 'O HUI Miracle Toning Glow Serum 20mL', content_key: 'ck_03c8b782b45b435bdb158d9c50f1dcbb' },
+    b: { brand: 'O HUI', title: 'O HUI Miracle Toning Glow Cream 60mL', content_key: 'ck_03c8b782b45b435bdb158d9c50f1dcbb' } },
+  { name: 'real ck_67e7694a two A\'PIEU cleansers', expected: 'distinct',
+    a: { brand: "A'PIEU", title: "A'pieu Deep Clean Foam Cleanser - Pore 130ml X 3ea", content_key: 'ck_67e7694a364d4cd0d2b05eab80f64fa2' },
+    b: { brand: "A'PIEU", title: "A'pieu Pore King Minji Trouble Cleansing Foam 200ml", content_key: 'ck_67e7694a364d4cd0d2b05eab80f64fa2' } },
+  { name: 'two different sets sharing GTIN 08801051438130', expected: 'distinct',
+    a: { brand: 'O HUI', title: 'Miracle Moisture Pink Barrier Ampoule 777 Set', gtin: '08801051438130' },
+    b: { brand: 'O HUI', title: 'Age Recovery Collagen Special Set', gtin: '08801051438130' } },
+  { name: 'real ck_9de1dc93 confirms two listings of one cream', expected: 'same_product',
+    a: { brand: 'Anua', title: '[ANUA] Heartleaf 70% Intense Calming Cream 50ml', content_key: 'ck_9de1dc9381ac584375f83e34b0113688' },
+    b: { brand: 'Anua', title: 'Anua Heartleaf 70% Intense Calming Cream (50ml)', content_key: 'ck_9de1dc9381ac584375f83e34b0113688' } },
+  { name: 'shared signature, brand spelled differently', expected: 'same_product', crossBrand: true,
+    a: { brand: 'Laneige', title: 'Lip Sleeping Mask', pivota_signature_id: 'sig_111111aa' },
+    b: { brand: 'LANEIGE US', title: 'Lip Sleeping Mask Berry', pivota_signature_id: 'sig_111111aa' } },
+  { name: 'identical URL, V1 / Good Molecules', expected: 'same_product', crossBrand: true,
+    a: { brand: 'Good Molecules', title: 'Niacinamide Serum', url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml' },
+    b: { brand: 'V1', title: 'Niacinamide Serum', url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml' } },
+];
+
 const cases = [
+  ...KEYED.map(({ name, expected, crossBrand, a, b }) => ({ name, expected, crossBrand, a: { ...a, name: a.title, category: 'beauty' }, b: { ...b, name: b.title, category: 'beauty' } })),
   ...BRIEF.map(([brand, a, b, expected]) => ({ name: `${brand} | ${a} || ${b}`, a: snapshot(brand, a), b: snapshot(brand, b), expected })),
   ...REAL.map(([, a, b, expected, row]) => ({ name: `real: ${row.anchor.brand} | ${a} || ${b}`, a: fromReal(row.anchor), b: fromReal(row.candidate), expected })),
 ];
@@ -68,7 +114,7 @@ const pairEdge = (a, b, relation = 'related_product', state = 'ai_approved') => 
   anchor_snapshot: a, candidate_snapshot: b, relation_type: relation, label_state: state,
 });
 
-describe.each(cases)('$name -> $expected', ({ a, b, expected }) => {
+describe.each(cases)('$name -> $expected', ({ a, b, expected, crossBrand }) => {
   test('compareProductIdentity, both directions', () => {
     expect(compareProductIdentity(a, b).relation).toBe(expected);
     expect(compareProductIdentity(b, a).relation).toBe(expected);
@@ -101,7 +147,8 @@ describe.each(cases)('$name -> $expected', ({ a, b, expected }) => {
     expect(isSameFamilyVariant(a, b)).toBe(expected === 'same_family_variant');
     const errors = validateRelationshipEdge({ ...pairEdge(a, b, 'competitive_alternative'), review_status: 'pending',
       score_breakdown: { category_use_case_match: 0.9 }, source_refs: [{ type: 'catalog_products' }] }).errors;
-    expect(errors.includes('competitive_alternative_same_family_variant')).toBe(Boolean(IDENTITY_SERVING[expected]));
+    // Edge validation checks this only for a same-brand alternative; a cross-brand pair is refused elsewhere.
+    expect(errors.includes('competitive_alternative_same_family_variant')).toBe(Boolean(IDENTITY_SERVING[expected]) && !crossBrand);
   });
   test('recall never offers the anchor itself or its option', () => {
     const candidate = { ...b, product_ref: 'product:candidate_1', similarity_score: 0.9, category_use_case_match: 0.9 };
@@ -115,14 +162,19 @@ describe('structured keys come first; a different key never proves distinct', ()
   const other = snapshot('House', 'Completely Different Serum');
   test.each([
     ['pivota_signature_id', { pivota_signature_id: 'sig_abcdef123' }, 'equal_listing_id'],
-    ['content_key', { content_key: 'ck_0123456789' }, 'equal_content_key'],
     ['canonical entity', { canonical_entity_id: 'ent_42abc' }, 'equal_canonical_entity'],
     ['product group', { product_group_id: 'pg_42abc' }, 'equal_canonical_entity'],
-    ['gtin', { gtin: '00012345678905' }, 'equal_gtin'],
     ['canonical url', { url: 'https://www.example.com/products/cream/?utm=x' }, 'equal_canonical_url'],
   ])('equal %s => same_product', (_label, key, reason) => {
     const other2 = { ...other, ...key, ...(key.url ? { url: 'https://example.com/products/cream' } : {}) };
     expect(compareProductIdentity({ ...a, ...key }, other2)).toEqual({ relation: 'same_product', basis: 'structured', reasons: [reason] });
+  });
+  test('content_key and GTIN confirm a title match but never create one', () => {
+    for (const key of [{ content_key: 'ck_0123456789' }, { gtin: '00012345678905' }]) {
+      expect(compareProductIdentity({ ...a, ...key }, { ...other, ...key })).toMatchObject({ relation: 'distinct', reasons: ['different_product_role'] });
+      expect(compareProductIdentity({ ...a, ...key, title: 'Hydrating Cream 50ml' }, { ...a, ...key }))
+        .toMatchObject({ relation: 'same_product', basis: 'title', reasons: ['listing_title_equal', key.gtin ? 'gtin_agrees' : 'content_key_agrees'] });
+    }
   });
   test('equal refs => same_product', () => {
     expect(compareProductIdentity(a, other, { anchorRef: 'product:ext_9f8e7d', candidateRef: 'product:ext_9f8e7d' }).relation).toBe('same_product');
@@ -138,9 +190,21 @@ describe('structured keys come first; a different key never proves distinct', ()
     const y = snapshot('Missha', 'BB Cream #27', { pivota_signature_id: 'sig_bbbbbb2', content_key: 'ck_bbbbbbb' });
     expect(compareProductIdentity(x, y).relation).toBe('same_family_variant');
   });
-  test('a key shared by two different brands is not identity evidence', () => {
-    expect(compareProductIdentity(snapshot('Luxury', 'Barrier Cream', { product_id: 'shared-id-123' }), snapshot('Value', 'Barrier Cream', { product_id: 'shared-id-123' })))
+  test('a canonical entity or normalised URL shared by two different brands is not identity evidence', () => {
+    expect(compareProductIdentity(snapshot('Luxury', 'Barrier Cream', { canonical_entity_id: 'ent_shared1' }), snapshot('Value', 'Barrier Cream', { canonical_entity_id: 'ent_shared1' })))
       .toMatchObject({ relation: 'distinct', reasons: ['different_brand', 'structured_key_brand_conflict'] });
+    expect(compareProductIdentity(snapshot('Luxury', 'Barrier Cream', { url: 'https://shop.example/products/cream?utm=a' }), snapshot('Value', 'Barrier Cream', { url: 'https://shop.example/products/cream' })).relation)
+      .toBe('distinct');
+  });
+  test('equal refs, listing ids and signatures win over a differently spelled brand (build prefilter)', () => {
+    const edgeOf = (a, b, ar, cr) => ({ relation_type: 'related_product', anchor_ref: ar, candidate_product_ref: cr, anchor_snapshot: a, candidate_snapshot: b });
+    const run = (edge) => classifyEdgeForPrefilter({ edge, defaultLabelState: 'generated' }).prefilter_reasons;
+    expect(run(edgeOf({ brand: 'Fenty Beauty', title: 'Gloss Bomb' }, { brand: 'FENTY BEAUTY by Rihanna', title: 'Gloss Bomb Universal Lip Luminizer' }, 'product:sig_abc123', 'product:sig_abc123')))
+      .toEqual(['same_product_identity']);
+    expect(run(edgeOf({ brand: 'Laneige', title: 'Lip Sleeping Mask', pivota_signature_id: 'sig_111111' }, { brand: 'LANEIGE US', title: 'Lip Sleeping Mask Berry', pivota_signature_id: 'sig_111111' }, 'product:a1', 'product:c1')))
+      .toEqual(['same_product_identity']);
+    expect(run(edgeOf({ brand: 'Good Molecules', title: 'Niacinamide Serum', url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml' },
+      { brand: 'V1', title: 'Niacinamide Serum', url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml' }, 'product:a1', 'product:c1'))).toEqual(['same_product_identity']);
   });
 });
 

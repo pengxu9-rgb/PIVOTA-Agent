@@ -1538,7 +1538,11 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
     const routineRelation = classifyComplementPair(anchorSnapshot, candidateSnapshot, { substitutable });
     const metrics = { categoryScore, ingredientScore, scoreTotal, priceRatio, identity, setCompatibility,
       formCompatibility, jobCompatibility, leafCompatibility, useCaseAlignment, routineRelation };
-    if (routineRelation.kind === 'same_job') return { relation_type: 'competitive_alternative', ...metrics };
+    // An alternative needs the builder's own substitution evidence, not only a shared role word.
+    if (substitutable) return { relation_type: 'competitive_alternative', ...metrics };
+    if (routineRelation.kind === 'same_job') {
+      return { relation_type: 'rejected', ...metrics, utilityCompatibility: { compatible: false, reason: 'same_job_not_substitutable' } };
+    }
     if (routineRelation.kind === 'complement') return { relation_type: 'related_product', ...metrics };
     return { relation_type: 'rejected', ...metrics,
       utilityCompatibility: { compatible: false, reason: 'related_product_without_complement_roles' } };

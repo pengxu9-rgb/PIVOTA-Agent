@@ -933,12 +933,12 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     if (contradicted) reason = 'contradictory_pairing_evidence';
     if (!reason && !pairGrounded) {
       // The builder's complement policy, with structural substitution evidence independent of roles.
-      const routine = classifyComplementPair(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
-        substitutable: ['dupe', 'competitive_alternative'].includes(inferred.relation_type),
-      });
+      const substitutable = ['dupe', 'competitive_alternative'].includes(inferred.relation_type);
+      const routine = classifyComplementPair(row.anchor_snapshot || {}, row.candidate_snapshot || {}, { substitutable });
       if (routine.kind !== 'complement') reason = routine.reason;
-      // A same-job pair is a finding about the edge, not a relabel: it stays rejected as claimed.
-      if (reason === SAME_JOB_REASON) suggestedRelationType = routine.suggested_relation_type;
+      // A same-job pair the builder would itself propose as an alternative is a finding about the
+      // edge, not a relabel: it stays rejected as claimed.
+      if (reason === SAME_JOB_REASON && substitutable) suggestedRelationType = routine.suggested_relation_type;
     }
   }
   if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';

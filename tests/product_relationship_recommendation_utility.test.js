@@ -6,7 +6,7 @@ const { buildCandidatesByAnchorFromSources, __internal: { selectCandidateOpportu
 const { validateRecommendationDecision, applyApproval, runReview, consumerCopyForKind } = require('../scripts/review-relationship-candidate-labels');
 const { relationshipEdgeToSignal } = require('../src/agentSignals/relationshipEdgeToSignal');
 const NOW = '2026-10-01T10:37:00.000Z';
-const snapshot = (brand, title, category = 'face cream', other = {}) => ({ product_id: title, brand, title, name: title, category, price: 50, price_currency: 'USD', ...other });
+const snapshot = (brand, title, category = 'face cream', other = {}) => ({ product_id: `${brand} ${title}`, brand, title, name: title, category, price: 50, price_currency: 'USD', ...other });
 const edge = (a, b, relation_type = 'related_product') => ({ id: 'fixture', anchor_type: 'product', anchor_ref: 'product:a', candidate_product_ref: 'product:b', anchor_snapshot: a, candidate_snapshot: b, relation_type, label_state: 'ai_approved', score_total: 0.9, score_breakdown: { category_use_case_match: 0.9 }, source_refs: [{ type: 'catalog_products' }] });
 const decision = (a, b, relationship_kind = 'alternative') => ({ verdict: 'approve', confidence: 0.99, rationale: 'The supplied product titles identify the claimed shopper job and differences.', relationship_kind, ...consumerCopyForKind(relationship_kind), shared_evidence: [{ anchor_fact: a.title, candidate_fact: b.title }] });
 
@@ -393,15 +393,20 @@ test.each([
 });
 
 
+// Distinct products (never variants) for which the builder makes the claim its evidence supports:
+// an alternative only when its own substitution checks pass, a complement for known different roles,
+// otherwise no edge (review 2026-10-09 P1-b).
 const assertRetainedPair = (a,b) => {
   expect(isSameFamilyVariant(a,b)).toBe(false);
   for(const relation of ['related_product','competitive_alternative']) {
     expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
   }
   const candidate={...b,similarity_score:0.95,category_use_case_match:0.9,source_refs:[{type:'catalog_products'}]};
+  const inferred=inferRelationship(a,b,candidate);
+  expect(['same_product_listing_or_size','same_family_variant']).not.toContain(inferred.utilityCompatibility?.reason);
   const built=buildEdgeForCandidate({anchor:a,candidate,nowIso:NOW});
+  if (inferred.relation_type==='rejected') { expect(built.edge).toBeNull(); return {relation_type:'rejected',reason:inferred.utilityCompatibility?.reason}; }
   expect(built.errors).toEqual([]);expect(built.edge).not.toBeNull();
-  expect(inferRelationship(a,b,candidate).relation_type).not.toBe('rejected');
   return built.edge;
 };
 
@@ -482,11 +487,13 @@ const decorativeRoles = [['Salon Collection False Eyelashes','false eyelashes'],
 const attachmentPairs = decorativeRoles.flatMap(([name,category])=>attachmentModes.map(([a,b])=>[name,category,a,b]));
 test.each(attachmentPairs)('attachment constraints remain meaningful choices: %s %s %s/%s', (name,category,aMode,bMode) => {
   const a=snapshot('House',`${name} - ${aMode}`,category);const b=snapshot('House',`${name} - ${bMode}`,category);
-  // Never a variant: the attachment mode is a meaningful choice. One shopper job (lashes or nails)
-  // makes it a same-brand alternative, never a complement; a complement claim is refused with that finding.
-  expect(assertRetainedPair(a,b).relation_type).toBe('competitive_alternative');
-  expect(validateRecommendationDecision(edge(a,b),decision(a,b,'complement'))).toMatchObject({
-    verdict:'reject', utility_rejection:'same_step_substitutes_are_not_complements', suggested_relation_type:'competitive_alternative'});
+  // Never a variant: the attachment mode is a meaningful choice. One shopper job (lashes or nails), but
+  // the set-composition guard ('Collection') refuses substitution, so no edge is claimed; a complement
+  // claim is refused as same-step without suggesting an alternative the builder would not propose.
+  expect(assertRetainedPair(a,b)).toEqual({relation_type:'rejected',reason:'same_job_not_substitutable'});
+  const checked=validateRecommendationDecision(edge(a,b),decision(a,b,'complement'));
+  expect(checked).toMatchObject({verdict:'reject', utility_rejection:'same_step_substitutes_are_not_complements'});
+  expect(checked).not.toHaveProperty('suggested_relation_type');
 });
 
 test.each(decorativeRoles.flatMap(([name,category])=>['Magnetic','No Glue','Glue Required','Self Adhesive'].map(mode=>[name,category,mode])))('same attachment mode still rejects decorative style siblings: %s %s %s', (name,category,mode) => {

@@ -18,7 +18,8 @@ const UNRESOLVED_REASON = 'complement_role_evidence_unresolved';
 
 function snapshotText(snapshot = {}) {
   const raw = snapshot.title || snapshot.name || snapshot.display_name || snapshot.product_name || '';
-  return String(typeof raw === 'string' ? raw : '').normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ').trim();
+  // Marks go before NFKC, which would turn "Brushampoo™" into "brushampootm".
+  return String(typeof raw === 'string' ? raw : '').replace(/[\u2122\u00ae\u00a9]/g, ' ').normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ').trim();
 }
 
 // Generic skincare forms: a sun cream or SPF serum is a sun-protection step, not a moisturizer step.
@@ -27,12 +28,25 @@ const FORM_ROLES = new Set(['cream', 'serum', 'essence', 'emulsion', 'ampoule', 
 // Routine roles the option-role vocabulary does not name. Sun protection is a routine step of its
 // own whatever its form ("Sun Cream", "Sun Stick"); a named cosmetic (BB cream, lip balm) with SPF
 // keeps its cosmetic role.
+// Text-named jobs that precede the option-role vocabulary, whose category fallback calls a fragranced
+// body product 'perfume' and whose tool rule calls a brush shampoo a 'brush'.
+const LEADING_ROLES = [
+  ['first_cleanser', /\b(?:makeup|make-up)\s*remover\b|\bmicellar\b|\bcleansing\s*(?:oil|balm|milk|water)\b|\b(?:oil|balm)\s*cleanser\b/],
+  ['remover', /\bremover\b/],
+  ['tool_cleaner', /\bbrushampoo\b|\bbrush\s*(?:shampoo|cleanser|cleaner|cleaning|soap)\b|\bcleaning\s*(?:mat|glove|pad)\b/],
+  ['deodorant', /\b(?:deodorant|antiperspirant)s?\b/],
+  ['body_wash', /\b(?:hand|body)\s*wash\b|\bshower\s*(?:gel|oil|cream)\b|\bbath\s*oil\b/],
+  ['body_moisturizer', /\b(?:body|hand|foot)\s*(?:lotion|cream|butter|balm|souffle|milk)\b/],
+  ['oil', /\b(?:body|hair|face|dry)\s*oil\b/],
+];
+
 function routineRole(snapshot = {}) {
   const value = snapshotText(snapshot);
+  const leading = LEADING_ROLES.find(([, pattern]) => pattern.test(value));
+  if (leading) return leading[0];
+  if (/\bbrush[\s_-]*clean/.test(String(snapshot.category || snapshot.product_type || '').toLowerCase())) return 'tool_cleaner';
   const role = optionRole(snapshot);
   if (role && !FORM_ROLES.has(role) && role !== 'cleanser') return role;
-  if (/\b(?:hand|body)\s*wash\b|\bshower\s*gel\b/.test(value)) return 'body_wash';
-  if (/\b(?:body|hand|foot)\s*(?:lotion|cream|butter|balm|souffle|milk)\b/.test(value)) return 'body_moisturizer';
   // A "deep cleansing shampoo" is a shampoo, not a face-cleansing step.
   if (/\bshampoos?\b/.test(value) && !/\bconditioners?\b/.test(value)) return 'shampoo';
   if (/\bconditioners?\b/.test(value) && !/\bshampoos?\b/.test(value)) return 'conditioner';
