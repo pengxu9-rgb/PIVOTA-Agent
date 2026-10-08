@@ -5496,8 +5496,9 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
           -- The currency of the layer that supplied the amount above, never another layer's.
           CASE
             WHEN price_amount IS NOT NULL THEN coalesce(price_currency, '')
-            WHEN seed_data->'snapshot'->>'price' IS NOT NULL THEN coalesce(seed_data->'snapshot'->>'currency', '')
-            ELSE coalesce(seed_data->>'currency', '')
+            WHEN seed_data->'snapshot'->>'price' IS NOT NULL
+              THEN coalesce(seed_data->'snapshot'->>'currency', seed_data->'snapshot'->>'price_currency', '')
+            ELSE coalesce(seed_data->>'currency', seed_data->>'price_currency', '')
           END AS price_currency,
           coalesce(
             seed_data->'snapshot'->>'pdp_description_raw',
@@ -44643,6 +44644,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
+          // Dynamic recall failed and no graph card survived: that is an outage, not "no similar
+          // products" (find_similar_products answers 503 in the same case).
+          if (!relatedProducts.length && relatedProductsEnvelope.metadata?.dynamic_recall_failed === true) {
+            relatedProductsEnvelope = {
+              ...relatedProductsEnvelope,
+              status: 'unavailable',
+              metadata: { ...relatedProductsEnvelope.metadata, similar_status: 'unavailable' },
+            };
+          }
         } else {
           relatedProductsEnvelope = {
             status: relatedProducts.length > 0 ? 'success' : 'empty',
@@ -45910,7 +45920,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           recommendationModuleData: recModule?.data || null,
         });
         const data =
-          hideEmptySimilarModule
+          hideEmptySimilarModule || (similarUnavailable && !relatedProducts.length)
             ? null
             : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope, {
                 servingCurrency: pdpServingCurrency,
