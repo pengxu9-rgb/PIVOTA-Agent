@@ -145,7 +145,14 @@ describe('reviewer keeps related_product == complement and records a same-job fi
         utility_rejection: 'same_step_substitutes_are_not_complements', suggested_relation_type: 'competitive_alternative',
         new_label_state: 'generated', applied: false });
       expect(result.summary.suggested_relation_type_counts).toEqual({ competitive_alternative: 1 });
-      expect(queryFn.mock.calls.some(([sql]) => /UPDATE relationship_candidate_labels/.test(sql))).toBe(false);
+      // No relabel and no state change. A write that only records reviewer memory
+      // (provenance.ai_review_last + reviewed_at, the negative-review memory) is allowed.
+      const updates = queryFn.mock.calls.map(([sql]) => String(sql)).filter((sql) => /UPDATE relationship_candidate_labels/.test(sql));
+      for (const sql of updates) {
+        const setClause = sql.slice(sql.search(/\bSET\b/), sql.search(/\bWHERE\b/));
+        expect(setClause).not.toMatch(/\b(label_state|relation_type|last_verified_at|expires_at)\s*=/);
+        expect(setClause).toMatch(/ai_review_last/);
+      }
     } finally {
       if (previousApply === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY;
       else process.env.RELGRAPH_AI_REVIEW_APPLY = previousApply;
