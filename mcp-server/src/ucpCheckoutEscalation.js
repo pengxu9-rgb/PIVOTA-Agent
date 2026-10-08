@@ -90,7 +90,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 // (Node resolves `src/services/*` against the repo-root package.json, which declares no `type`, so the
 // default interop import is the module's `module.exports` object.)
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
-import { judgeSellerUrl, reapExpectedMerchantDomain, sellerMismatchRefusal } from "./ucpExpectedSeller.js";
+import { judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -220,10 +220,10 @@ function hostOf(url) {
 // WHAT THE GATE DOES HERE. When the switch is on AND the backend is enforcing AND it says `browse_only` for
 // this merchant × market, this module does NOT answer with the storefront checkout. It returns `null` — which
 // is EXACTLY what it already returns for a row that is not eligible for a continue_url (`escalating === 0`,
-// the contracted/kernel-path case). Nothing new is invented: the caller falls through to the kernel path it
-// would have taken for any non-escalating cart, and an observed seed row is refused there today for want of
-// variant identity. The URL is never built into a response that is then edited; the decision is taken before
-// `buildEscalationCheckout` is called at all.
+// the contracted/kernel-path case) — and records the decline in the caller's `declines`, so callTool can refuse
+// the cart by name (`merchant_not_purchasable`, see refuseUnservedStorefrontCheckout) instead of handing an
+// observed seller's row to a kernel that cannot price it. The URL is never built into a response that is then
+// edited; the decision is taken before `buildEscalationCheckout` is called at all.
 //
 // ⚠️ THE DOC SAID NO MARKET REACHES THIS MODULE. That is true of `params` and FALSE of `ucpArgs`.
 // `commerceToolSurface.callTool` hands this function BOTH: `params` (post-allowlist — `QUOTE_KEYS` really has
@@ -418,7 +418,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -442,6 +442,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   const gateBudgetMs = () => doorBudgetMs - (gateClock() - doorStartedAt);
   // The REQUEST's market, from the raw UCP body. Null means no fact can be read: under enforcement, a decline.
   const buyerMarket = escalationBuyerMarket(ucpArgs);
+  // A gate decline still returns null (the contract above), but the caller must be able to tell it from "not an
+  // escalation cart": both used to fall through to the kernel, and only the second belongs there. `declines` is an
+  // optional out-param (like the Reap lane's `hints`); see refuseUnservedStorefrontCheckout below.
+  const declined = () => { if (Array.isArray(declines)) declines.push("merchant_not_purchasable"); return null; };
 
   if (opId === "create_checkout_session") {
     const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
@@ -489,7 +493,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
     // function already gives for every row that is not eligible for a continue_url. See the note above
     // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
-    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
+    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
@@ -524,7 +528,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // under ENFORCEMENT it is a decline (`unkeyable_enforced`) and the re-read falls through like the create
     // does — so arming the gate with escalation on needs a market carrier on this lane first (see
     // docs/merchant-purchasability-gate.md §8). An asymmetry here would be a purchase offered on no fact.
-    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return null;
+    if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
   }
 
@@ -540,4 +544,111 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   }
 
   return null;
+}
+
+// ---- the storefront rows nothing above served ------------------------------------------------------------------
+//
+// THE KERNEL CANNOT SELL A STOREFRONT ROW. Its one pricing engine needs a merchant connected to Pivota, and a row
+// with an escalation target is, by the classification above, a seller Pivota has no such relationship with. Before
+// this, a storefront row that escalation did not answer (the switch off, or the purchasability gate declining) fell
+// through to the kernel, where it was refused for want of variant identity or, past intake, came back from the
+// backend as a 422 the gateway maps to MERCHANT_UNAVAILABLE — `retriable: true`, "try again shortly", for a
+// checkout that can never succeed. Agents retried it.
+//
+// So callTool calls this AFTER every lane that can answer a storefront row (Reap, then escalation) and BEFORE intake
+// and the kernel. A cart with no storefront row returns undefined and takes the kernel path exactly as before; a cart
+// with one is refused here, terminally, by name:
+//   - `ucp_storefront_checkout_unavailable` (OPERATION_NOT_ALLOWED): this door does not check these items out. The
+//     detail names the items and their seller hosts, and — only while the purchasability gate is not armed — their
+//     storefront pages (the row's `external_redirect_url`, which the native product read publishes), so the agent
+//     can send the buyer there. Raised for a create, and for an update of a kernel session that names such a row.
+//   - `merchant_not_purchasable` (NO_MERCHANT_OFFER): the purchasability gate declined this seller for this market.
+//     No storefront page is handed out: the gate exists to stop recommending that checkout.
+// An escalation id this door did not answer is refused rather than sent to the kernel as an unknown session id:
+// `ucp_storefront_checkout_unavailable` with the switch off, `ucp_escalation_reread_unconfirmed` on a gate decline
+// (a re-read carries no market, so the decline says nothing about the seller).
+//
+// It reads through the SAME per-call memoizing executor view as the lanes before it, so a cart they already read is
+// not read again. No flag: it only replaces a refusal with a truthful one, and never opens anything.
+
+/**
+ * Refuse a UCP checkout op that carries storefront rows no lane served. Returns undefined when the kernel path should
+ * run. @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, declined?:boolean, timeoutMs?:number }} a
+ */
+export async function refuseUnservedStorefrontCheckout({ op, params, ctx, executor, declined = false, timeoutMs, env = process.env }) {
+  const opId = op && op.id;
+  const sessionId = str(own(params, "session_id"));
+  if (opId !== "create_checkout_session" && sessionId && decodeEscalationId(sessionId)) {
+    if (declined) {
+      // A decline on a RE-READ is not a fact about the seller: UCP `get_checkout` carries no market, so under
+      // enforcement every re-read is unkeyable and declines — including a checkout that passed the gate at create.
+      // Say what is true (no market to confirm against), not "this seller is not purchasable".
+      throw intakeRefusal("OPERATION_NOT_ALLOWED", "ucp_escalation_reread_unconfirmed",
+        "This storefront checkout cannot be re-confirmed here: get_checkout carries no buyer market to check the seller against. Retrying will not change this; use the continue_url from the create, or create a new checkout with checkout.context.address_country.",
+        {});
+    }
+    throw intakeRefusal("OPERATION_NOT_ALLOWED", "ucp_storefront_checkout_unavailable",
+      "This checkout completes on the seller's own storefront, and this door no longer answers it. Retrying will not change this; send the buyer to the product's storefront page.",
+      {});
+  }
+  // create, and update of a session that is not an escalation id: both carry the cart (`quote.items`), and the
+  // kernel would re-price whatever rows it names. No lane serves an update of a kernel session, so a storefront row
+  // in one is refused here whatever the escalation switch says.
+  if (opId !== "create_checkout_session" && opId !== "update_checkout_session") return undefined;
+  const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
+  const items = Array.isArray(quote.items)
+    ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)).map((it) => ({ ...it, product_id: str(it.product_id) }))
+    : [];
+  // The carts intake refuses on shape alone (empty, oversized, too many distinct products, a bad quantity) are left
+  // to intake, so they keep intake's own message and detail; a storefront row inside one is refused there too.
+  if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return undefined;
+  if (new Set(items.map((it) => it.product_id)).size > MAX_CART_DISTINCT_PRODUCTS) return undefined;
+  if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return undefined;
+  const rows = await readRows(items, executor, ctx, { timeoutMs });
+  const targets = new Map();
+  for (const [pid, row] of rows) {
+    const target = escalationTargetOf(row);
+    if (target) targets.set(pid, target);
+  }
+  if (targets.size === 0) return undefined; // kernel path (contracted rows)
+  // LINKS ONLY WHERE NO GATE COULD HAVE SAID NO. With the purchasability gate armed but escalation off, nothing
+  // asked the gate about this seller, so handing out its storefront link would recommend a checkout the gate may
+  // exist to stop (a PayPal-only till). Fail closed: hosts yes, links no.
+  const linksAllowed = !declined && !merchantPurchasability.isGateEnabled(env);
+  throw storefrontRefusal(declined, [...targets.keys()], targets, linksAllowed);
+}
+
+// THE SELLER'S HOST, NOT THE LINK'S. A row's storefront link may be Pivota's own attribution hop
+// (`https://api.pivota.cc/r?token=…`, see pivotaHopDestination), whose host names Pivota, not the seller. The hop's
+// `dest` is where the buyer lands, so that host is named; a hop that cannot be read, or any other Pivota host, names
+// nobody rather than naming Pivota as the seller. The link handed out stays the row's own (attribution intact).
+function sellerHostOf(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  const hop = pivotaHopDestination(parsed);
+  // One hop only, as judgeSellerUrl: a `dest` that is itself a Pivota host (another hop) names nobody.
+  const host = hop ? (hop.dest && /^https:\/\//i.test(hop.dest) ? hostOf(hop.dest) : null) : hostOf(url);
+  return host && !SELF_HOST_RE.test(host) ? host : null;
+}
+
+function storefrontRefusal(declined, productIds, targets, linksAllowed) {
+  const hosts = [...new Set([...targets.values()].map(sellerHostOf).filter(Boolean))];
+  const named = productIds.length ? ` (${productIds.join(", ")})` : "";
+  const where = hosts.length ? ` on ${hosts.join(", ")}` : "";
+  if (declined) {
+    return intakeRefusal("NO_MERCHANT_OFFER", "merchant_not_purchasable", [
+      `Purchase is not offered for these items${named}: their seller cannot currently be checked out by an agent in this market.`,
+      "This will not change on retry; offer the buyer alternatives.",
+    ].join(" "), compact({ storefront_items: productIds.length ? productIds : undefined, seller_hosts: hosts.length ? hosts : undefined }));
+  }
+  return intakeRefusal("OPERATION_NOT_ALLOWED", "ucp_storefront_checkout_unavailable", [
+    `These items${named} are sold on their seller's own storefront${where}, and this door does not check them out.`,
+    linksAllowed
+      ? "Retrying will not change this. Send the buyer to the storefront page in storefront_urls to buy there; items Pivota checks out go in their own checkout."
+      : "Retrying will not change this. The buyer can buy on the seller's own site; items Pivota checks out go in their own checkout.",
+  ].join(" "), compact({
+    storefront_items: productIds.length ? productIds : undefined,
+    seller_hosts: hosts.length ? hosts : undefined,
+    storefront_urls: linksAllowed && targets.size ? Object.fromEntries(targets) : undefined,
+  }));
 }

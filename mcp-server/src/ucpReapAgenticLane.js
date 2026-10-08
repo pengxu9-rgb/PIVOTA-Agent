@@ -34,14 +34,16 @@ const { readSelectionWitness, sameSelection } = selectionContract;
 //      escalation lane classifies with — not a second rule.
 //   2. REAP — this module, for a caller the rail can serve (agent API key + buyer user token) and a non-native
 //      row that is eligible (see `createReapCheckout`).
-//   3. STOREFRONT ESCALATION — ucpCheckoutEscalation.js, unchanged, when this lane returns null: not eligible,
-//      skipped by the purchasability gate, or REFUSED by the backend for ANY reason. The lane never refuses a
-//      create: a 400 is not proof of eligibility (the backend checks consent and address before the merchant),
-//      so a short buyer block only adds one informational message (`reap.available_with_consent`) to the
-//      storefront answer.
-//   4. The kernel path's existing answer, when escalation is off or declines — for an observed row that is the
-//      intake refusal it gives today. (There is no separate "referral" lane in this door; the buyer's other
-//      route is the offer link discovery already served.)
+//   3. STOREFRONT ESCALATION — ucpCheckoutEscalation.js, unchanged, when this lane returns null: the create did
+//      not select Reap (no `checkout.reap`), the row is not eligible, or the purchasability gate skipped it.
+//      A create that DID select Reap never falls through: a pause, a money or variant mismatch, or a backend
+//      refusal is refused by name (`reap_create_paused`, `ucp_reap_price_not_created`,
+//      `ucp_reap_variant_not_created`, `ucp_reap_create_refused`), and the door refuses a selected create this
+//      lane returned null for (`ucp_reap_create_not_available`) — one selected route, no alternate checkout.
+//   4. A storefront row neither lane served is refused by name (`ucp_storefront_checkout_unavailable`, or
+//      `merchant_not_purchasable` on a gate decline); only a cart with no storefront row reaches the kernel.
+//      (There is no separate "referral" lane in this door; the buyer's other route is the offer link discovery
+//      already served.)
 //   Why Reap before storefront escalation: both answer a row Pivota cannot charge, but Reap completes the
 //   purchase FOR the buyer at our catalog price with a card-only rail and an order reference, where the
 //   storefront link is a recommendation the buyer must finish alone (docs/merchant-purchasability-gate.md §8).
@@ -1745,6 +1747,16 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
   // backend proves the variant itself (the store's sole live variant, or one its proof names) before it opens
   // anything.
   if (selectedKey === undefined && cartLinkDirect && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) return skip("variant_unresolvable");
+
+  // THE CALLER SELECTED THIS ROUTE. `checkout.reap` is what selects Reap (it carries the expected seller and the
+  // displayed money every first create must bind). An eligible row on a create without it is an ordinary UCP
+  // checkout: Reap is not its route, so the lane steps aside and the storefront escalation answers, as documented
+  // (docs/reap-agentic-lane.md: "Native checkout operations outside the selected Reap route keep their existing
+  // route"). Before this, such a create fell into the pause and money checks below and was refused
+  // (`reap_create_paused` / `ucp_reap_price_not_created`), so arming the lane blocked the storefront answer for
+  // every agent that does not speak Pivota's vendor extension. Placed after the eligibility skips so each of
+  // those keeps its own log code.
+  if (own(own(ucpArgs, "checkout"), "reap") === undefined) return skip("route_not_selected");
 
   // This row is routed away from the native money lane. A deliberate pause
   // must be a refusal, never a null that falls through to another checkout.

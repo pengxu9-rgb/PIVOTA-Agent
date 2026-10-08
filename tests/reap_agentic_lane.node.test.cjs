@@ -381,10 +381,19 @@ test('switch OFF: create/get/update/complete are byte-identical to a door withou
 test('switch OFF snapshot: the pinned answers for the fixture offer', async (t) => {
   t.mock.method(Date, 'now', () => NOW);
   const m = await mods();
-  const { ucp, backend } = await build({ lane: true });
-  // Escalation off: the kernel path, exactly as before.
-  const kernel = await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: undefined }, () => ucp.callTool('create_checkout', createArgs(), SESSION));
-  assert.deepEqual(kernel, KERNEL_ON_UCP);
+  const { ucp, backend, executor } = await build({ lane: true });
+  // Escalation off: a storefront row is refused by name and terminally — never handed to the kernel, which cannot
+  // price a seller Pivota is not connected to (it answered a retriable MERCHANT_UNAVAILABLE).
+  const refused = errorOf(await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: undefined }, () => outcome(m, ucp.callTool('create_checkout', createArgs(), SESSION))));
+  assert.equal(refused.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(refused.retriable, false);
+  assert.deepEqual(refused.detail, {
+    reason: 'ucp_storefront_checkout_unavailable',
+    storefront_items: ['sig_reap_a'],
+    seller_hosts: ['brand.example'],
+    storefront_urls: { sig_reap_a: 'https://www.brand.example/products/standard-edp' },
+  });
+  assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false, 'the kernel never runs');
   // Escalation on: the storefront checkout, pinned byte for byte.
   const escalated = await withEnv({ [LANE_FLAG]: undefined, [ESCALATION_FLAG]: '1' }, () => ucp.callTool('create_checkout', createArgs(), SESSION));
   assert.equal(JSON.stringify(escalated), JSON.stringify({
@@ -1800,8 +1809,13 @@ test('Tier B DIRECT: the jsmbeauty.sg mirror row in the SG market -- SGD, the ex
 test('Tier B DIRECT needs BOTH dials: lane on + cart-link off skips an external-seed row exactly as before (0 POSTs)', async () => {
   for (const env of [ON, { ...ON, [CART_LINK_FLAG]: '0' }]) {
     const logger = fakeLogger();
-    const { out, backend } = await createReap(env, { logger, rows: CART_ROWS, args: { productId: JUDY_ROW.product_id,legacy:true } });
-    assert.deepEqual(out, KERNEL_ON_UCP, 'the kernel path answers, as before');
+    const { ucp, backend, m } = await build({ logger, rows: CART_ROWS });
+    const err = errorOf(await withEnv(env, () => outcome(m, ucp.callTool('create_checkout', createArgs({ productId: JUDY_ROW.product_id, legacy: true }), SESSION))));
+    // No lane served it (escalation is off here): refused by name, never the kernel. The row's link is Pivota's
+    // attribution hop, so the seller named is the hop's destination, and the link handed out is the hop itself.
+    assert.equal(err.detail.reason, 'ucp_storefront_checkout_unavailable', 'refused by name, not the kernel');
+    assert.deepEqual(err.detail.seller_hosts, ['judydoll.com']);
+    assert.equal(err.detail.storefront_urls[JUDY_ROW.product_id], JUDY_ROW.external_redirect_url);
     assert.equal(backend.calls.length, 0);
     assert.ok(logger.lines.some((l) => l.event === 'reap_agentic_lane' && l.code === 'not_shopify'), 'the same skip code as before');
   }
@@ -1859,7 +1873,10 @@ test('Tier B DIRECT is for EXTERNAL-SEED rows only: another non-Shopify row (Woo
     const row = { ...JUDY_ROW, product_id: pid, ...patch };
     if (row.platform === undefined) delete row.platform;
     const logger = fakeLogger();
-    const { backend } = await createReap(CODES_ON, { logger, rows: { [pid]: row }, args: { productId: pid,legacy:true } });
+    const ctx = await build({ logger, rows: { [pid]: row } });
+    const r = await withEnv(CODES_ON, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ productId: pid, legacy: true }), SESSION)));
+    assert.equal(errorOf(r).detail.reason, 'ucp_storefront_checkout_unavailable', pid);
+    const { backend } = ctx;
     assert.equal(backend.calls.length, 0, pid);
     assert.ok(logger.lines.some((l) => l.code === 'not_shopify'), pid);
   }
@@ -2197,7 +2214,7 @@ test('enrichment dial OFF (unset, "0", "off"): the live ext: rows are skipped ro
       const { backend, logger, r } = await enrichCreate(row, { ...CODES_ON, [ENRICH_FLAG]: flag },{legacy:true});
       assert.equal(backend.calls.length, 0, `${row.product_id} flag ${flag}`);
       assert.deepEqual(skipCodes(logger), ['row_key_unsupported'], `${row.product_id} flag ${flag}`);
-      assert.deepEqual(r, { ok: KERNEL_ON_UCP }, 'the kernel path answers, as before');
+      assert.equal(errorOf(r).detail.reason, 'ucp_storefront_checkout_unavailable', 'refused by name, never the kernel');
     }
   }
 });
@@ -2660,3 +2677,49 @@ for (const dispatch of [undefined, 'invalid', 'dispatch_started', 'dispatched', 
     assert.equal(message(ctx.out, 'reap.contact_reentry_required'), undefined);
   });
 }
+
+// =========================================================================================================
+// ROUTE SELECTION — `checkout.reap` selects Reap; a plain UCP create on an eligible row keeps its existing route
+// =========================================================================================================
+
+test('lane on, plain UCP create (no checkout.reap) on an ELIGIBLE row: the storefront answers, 0 POSTs, logged route_not_selected', async () => {
+  // Creates paused too: a pause only refuses a create that selected Reap.
+  for (const env of [{ ...ON, [ESCALATION_FLAG]: '1' }, { ...ON, [ESCALATION_FLAG]: '1', REAP_AGENTIC_CREATE_ENABLED: '0' }]) {
+    const logger = fakeLogger();
+    const { ucp, backend, executor, m } = await build({ logger });
+    const r = await withEnv(env, () => outcome(m, ucp.callTool('create_checkout', createArgs({ legacy: true }), SESSION)));
+    assert.equal(r.err, undefined, JSON.stringify(r.err));
+    assert.equal(r.ok.status, 'requires_escalation', JSON.stringify(env));
+    assert.equal(r.ok.continue_url, REAP_ROW.external_redirect_url);
+    assert.equal(backend.calls.length, 0, 'nothing is opened at Reap');
+    assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false, 'and the kernel never runs');
+    assert.deepEqual(skipCodes(logger), ['route_not_selected']);
+  }
+});
+
+test('lane on, plain UCP create, escalation OFF: refused by name (ucp_storefront_checkout_unavailable) — not ucp_reap_price_not_created, not the kernel', async () => {
+  const { ucp, backend, executor, m } = await build();
+  const err = errorOf(await withEnv(ON, () => outcome(m, ucp.callTool('create_checkout', createArgs({ legacy: true }), SESSION))));
+  assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(err.retriable, false);
+  assert.equal(err.detail.reason, 'ucp_storefront_checkout_unavailable');
+  assert.equal(backend.calls.length, 0);
+  assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+});
+
+test('a create that DID select Reap still never falls through: paused -> reap_create_paused; no displayed money -> ucp_reap_price_not_created', async () => {
+  const paused = await build();
+  const p = errorOf(await withEnv({ ...ON, [ESCALATION_FLAG]: '1', REAP_AGENTIC_CREATE_ENABLED: '0' },
+    () => outcome(paused.m, paused.ucp.callTool('create_checkout', createArgs(), SESSION))));
+  assert.equal(p.detail.reason, 'reap_create_paused');
+  // `checkout.reap` present (the expected seller only), money absent.
+  const noMoney = await build();
+  const args = createArgs({ legacy: true });
+  args.checkout.reap = { expected_merchant_domain: 'brand.example' };
+  const n = errorOf(await withEnv({ ...ON, [ESCALATION_FLAG]: '1' }, () => outcome(noMoney.m, noMoney.ucp.callTool('create_checkout', args, SESSION))));
+  assert.equal(n.detail.reason, 'ucp_reap_price_not_created');
+  for (const ctx of [paused, noMoney]) {
+    assert.equal(ctx.backend.calls.length, 0);
+    assert.equal(ctx.executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+  }
+});

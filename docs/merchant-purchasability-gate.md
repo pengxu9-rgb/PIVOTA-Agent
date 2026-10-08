@@ -691,12 +691,17 @@ The seam is the two lines where `continueUrl` is resolved, **before `buildEscala
 called at all** — the URL is never built into a response that is then edited. The `get_checkout_session`
 branch is gated identically. The UCP `get_checkout` body carries no `checkout.context`, so that lane
 is **always unkeyable**: unenforced it keeps the previous behaviour, and **under enforcement it
-declines** (`unkeyable_enforced`) and falls through to the kernel path exactly as a create decline
-does — a re-read of an `esc_` session then answers as any unknown session does.
+declines** (`unkeyable_enforced`) exactly as a create decline does. Since 2026-10-08 a decline is refused
+by name at the door — on create `NO_MERCHANT_OFFER` / `merchant_not_purchasable`, `retriable: false`, no
+storefront link; on a re-read `OPERATION_NOT_ALLOWED` / `ucp_escalation_reread_unconfirmed`, because a re-read
+carries no market and its decline says nothing about the seller — instead of falling through to the kernel path (which cannot price an observed seller and
+answered a retriable `MERCHANT_UNAVAILABLE`); see `refuseUnservedStorefrontCheckout` in
+`mcp-server/src/ucpCheckoutEscalation.js`.
 
 > ⚠️ **ARMING NOTE for this path.** With `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` on AND the gate armed
 > against an enforcing backend, a buyer who created an escalation checkout (with a market, passing the
-> gate) and then re-reads it gets the fall-through, not the checkout. That is the rule — no fact, no
+> gate) and then re-reads it gets a terminal `ucp_escalation_reread_unconfirmed` refusal (since 2026-10-08;
+> before, the fall-through), not the checkout. That is the rule — no fact, no
 > purchase offer — but it is a visible change for agents that poll. The fix is a market carrier on the
 > re-read (the market the session was created for, e.g. carried in the `esc_` id), which pivota-backend's
 > runbook also names; it is a follow-up, not part of this change. Escalation is off by default, so
