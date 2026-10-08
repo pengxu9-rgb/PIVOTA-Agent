@@ -50,7 +50,7 @@ describe('shared complement policy', () => {
   test.each([
     ['Sun Cream SPF 50', 'sunscreen'], ['Missha M Perfect Cover BB Cream SPF 42', 'bb_cream'], ['Hand Wash', 'body_wash'],
     ['Rosemary Scalp Deep Cleansing Shampoo', 'shampoo'], ['Hand Cream', 'body_moisturizer'], ['Chrome Peel Off Nail Polish', 'nail_polish'],
-    ['Glycolic Peeling Gel', 'exfoliant'], ['Acne Pimple Master Patch', 'patch'], ['Lip Color Matte', 'lipstick'], ['Pen Holder Clip', ''],
+    ['Glycolic Peeling Gel', 'exfoliant'], ['Acne Pimple Master Patch', 'patch'], ['Nutri-Define Cream Mask', 'mask'], ['Vita Niacinamide Dark Spot Serum Mask', 'mask'], ['Vita C Plus Spot Correcting Toner Pads', 'toner'], ['Lip Color Matte', 'lipstick'], ['Pen Holder Clip', ''],
   ])('routine role of %s is %s', (title, role) => expect(routineRole({ title })).toBe(role));
   test('kinds', () => {
     expect(classifyComplementPair({ title: 'Foam Cleanser' }, { title: 'Toner' }).kind).toBe('complement');

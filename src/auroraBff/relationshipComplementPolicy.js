@@ -39,13 +39,14 @@ function routineRole(snapshot = {}) {
   if (/\b(?:sunscreen|sun\s*(?:cream|milk|stick|serum|lotion|gel|essence|block)|sunblock)\b/.test(value) || /\bspf\s*\d+/.test(value)) {
     return 'sunscreen';
   }
+  // A "Cream Mask" or "Serum Mask" is a mask step; the form word names its texture.
+  if (/\b(?:sheet\s*)?masks?\b/.test(value)) return 'mask';
   if (role) return role;
   if (/\blip\s*colou?rs?\b/.test(value)) return 'lipstick';
   if (/\bnail\s*(?:polish|lacquer|colou?r)\b/.test(value)) return 'nail_polish';
   if (/\bpatch(?:es)?\b/.test(value)) return /\beye\b/.test(value) ? 'eye_patch' : 'patch';
   if (/\b(?:body|hair|face)?\s*oil\b/.test(value) && !/\bcleansing\b/.test(value)) return 'oil';
   if (/\bmist\b/.test(value)) return 'mist';
-  if (/\b(?:sheet\s*)?masks?\b/.test(value)) return 'mask';
   if (/\b(?:scrub|exfoliant|exfoliator)\b|\bpeel(?:ing)?\b(?![ -]?off)/.test(value)) return 'exfoliant';
   return '';
 }
