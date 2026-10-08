@@ -12,7 +12,9 @@ import assert from 'node:assert/strict';
 
 import { parseUcpItemId, encodeUcpVariantItemId, realVariantsOf, variantPriceOf } from '../src/ucpVariantIds.js';
 import { UCP_ESCALATION_FLAG, decodeEscalationId, tryEscalateUcpCheckout } from '../src/ucpCheckoutEscalation.js';
-import { MERCHANT_PRICING_FLAG } from '../src/ucpMerchantDoorPricing.js';
+import { MERCHANT_PRICING_FLAG, sellerVariantGidOf } from '../src/ucpMerchantDoorPricing.js';
+import { UCP_INPUT_SCHEMAS, UCP_TOOL_DESCRIPTIONS } from '../src/ucpArgumentAdapter.js';
+import { shapeUcpGetProductResponse } from '../src/ucpResponseShaper.js';
 import { createCommerceToolSurface, ucpDialectSurface, toToolError } from '../src/commerceToolSurface.js';
 
 const AGENT_META = { 'ucp-agent': { profile: 'https://agent.example/.well-known/ucp-agent' }, 'idempotency-key': 'idem-0001-variant' };
@@ -26,6 +28,9 @@ const CONTRACTED = Object.freeze({
 const STOREFRONT = Object.freeze({
   product_id: 'sig_lip', title: 'Lip Tint', price: 18, currency: 'USD',
   external_redirect_url: 'https://brand.example/products/lip-tint',
+  // Row-level identity that names a DIFFERENT variant (Rose): a chosen variant must never be carted by these.
+  source_variant_id: '44000000000001',
+  destination_url: 'https://brand.example/products/lip-tint?variant=44000000000001',
   variants: [
     { variant_id: 'v_rose', title: 'Rose', price: { current: { amount: 18, currency: 'USD' } }, source_variant_id: '44000000000001' },
     { variant_id: 'v_coral', title: 'Coral', price: { current: { amount: 21, currency: 'USD' } }, source_variant_id: '44000000000002' },
@@ -180,5 +185,66 @@ describe('storefront escalation and merchant-door pricing', () => {
     });
     assert.equal(out.messages[0].code, 'checkout.completes_on_seller_storefront');
     assert.deepEqual(calls, []);
+  });
+});
+
+describe('review of #2376', () => {
+  const ESC = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: undefined };
+  const pubShape = (row) => shapeUcpGetProductResponse({ product: row }, { params: {}, ucpArgs: {} });
+
+  test('the published item.id schema text says a variant can be chosen (agents read it)', () => {
+    const text = JSON.stringify(UCP_INPUT_SCHEMAS.create_checkout_session) + UCP_TOOL_DESCRIPTIONS.create_checkout_session;
+    assert.doesNotMatch(text, /cannot be checked out over\s+this dialect/);
+    assert.match(text, /product\.variants\[\]\.id/);
+  });
+
+  test('get_checkout re-proves the variant: an esc_ id naming a variant the row does not have is not a checkout', async () => {
+    await withEnv(ESC, async () => {
+      const ucp = surface(executorWith({ [STOREFRONT.product_id]: STOREFRONT }));
+      for (const vid of ['v_forged', 'v_removed']) {
+        const id = 'esc_' + Buffer.from(JSON.stringify({ v: 1, i: [[STOREFRONT.product_id, 1, vid]] })).toString('base64url');
+        const err = await rejected(ucp.callTool('get_checkout', { meta: AGENT_META, id }, SESSION));
+        assert.equal(err.code, 'QUOTE_NOT_FOUND', vid);
+        assert.equal(err.detail.reason, 'ucp_escalation_row_changed');
+      }
+    });
+  });
+
+  test('a $0 variant is not a price: it is published, and handed off, at the product price', async () => {
+    const row = { ...STOREFRONT, variants: [{ variant_id: 'v_zero', title: 'Zero', price: 0 }, { variant_id: 'v_coral', title: 'Coral', price: 21 }] };
+    const out = pubShape(row);
+    assert.deepEqual(out.product.variants.map((v) => v.price.amount), [1800, 2100]);
+    assert.equal(out.product.price_range.min.amount, 1800);
+    await withEnv(ESC, async () => {
+      const handoff = await surface(executorWith({ [row.product_id]: row })).callTool('create_checkout', body(encodeUcpVariantItemId(row.product_id, 'v_zero')), SESSION);
+      assert.equal(handoff.line_items[0].item.price, 1800);
+    });
+  });
+
+  test('ids checkout would refuse (a space, non-ASCII, over-long) are never published, and the envelope says the list is partial', () => {
+    const row = { ...STOREFRONT, variants: [{ variant_id: 'v_a', price: 1 }, { variant_id: 'v_b', price: 2 }, { variant_id: 'Shade 01', price: 3 }, { variant_id: 'café', price: 4 }, { variant_id: 'x'.repeat(257), price: 5 }] };
+    const out = pubShape(row);
+    assert.deepEqual(out.product.variants.map((v) => v.id), ['sig_lip::v::v_a', 'sig_lip::v::v_b']);
+    assert.equal(out.messages[0].code, 'variants.partially_published');
+    assert.match(out.messages[0].content, /5 purchasable variants; only 2/);
+    const one = pubShape({ ...row, variants: [{ variant_id: 'v_a', price: 1 }, { variant_id: 'Shade 01', price: 3 }] });
+    assert.equal(one.product.variants[0].id, 'sig_lip');
+    assert.match(one.messages[0].content, /fewer than two could be published/);
+  });
+
+  test('labels: option values when there is no title; a distinct title when there is neither', () => {
+    const out = pubShape({ ...STOREFRONT, variants: [
+      { variant_id: 'v_1', options: [{ name: 'Size', value: '30ml' }, { name: 'Finish', value: 'Matte' }] },
+      { variant_id: 'v_2' }, { variant_id: 'v_3' },
+    ] });
+    assert.deepEqual(out.product.variants.map((v) => v.title), ['Lip Tint — 30ml / Matte', 'Lip Tint — option 2', 'Lip Tint — option 3']);
+  });
+
+  test("the chosen variant's seller id: its own source id, else its own numeric id — never the row's, never a non-member's", () => {
+    assert.equal(sellerVariantGidOf(STOREFRONT, 'brand.example', 'v_coral'), GID('44000000000002'), 'not the row-level / URL Rose id');
+    const numeric = { ...STOREFRONT, variants: [{ variant_id: '44000000000009', title: 'A' }, { variant_id: '44000000000010', title: 'B' }] };
+    assert.equal(sellerVariantGidOf(numeric, 'brand.example', '44000000000010'), GID('44000000000010'));
+    assert.equal(sellerVariantGidOf(STOREFRONT, 'brand.example', 'v_nude'), null, 'no seller id of its own -> nothing, not the row id');
+    assert.equal(sellerVariantGidOf(STOREFRONT, 'brand.example', 'v_forged'), null, 'defence in depth: a non-member variant');
   });
 });

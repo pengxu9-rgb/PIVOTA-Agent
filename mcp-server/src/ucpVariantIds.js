@@ -71,6 +71,12 @@ export function realVariantsOf(row) {
   return out;
 }
 
+/** Can this variant id be carried on item.id and read back unchanged? (What get_product may publish.) */
+export function isPublishableVariantId(productId, variantId) {
+  const parsed = parseUcpItemId(encodeUcpVariantItemId(productId, variantId));
+  return Boolean(parsed && parsed.product_id === productId && parsed.variant_id === variantId);
+}
+
 /** The real variant of `row` whose id is `variantId`, or null. */
 export function findRealVariant(row, variantId) {
   const want = str(variantId);
@@ -92,7 +98,8 @@ export function variantPriceOf(variant, row) {
   const currency = (str(isPlainObject(raw) ? raw.currency : null) || str(variant.currency) || str(row && row.currency) || "").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency) || amount === undefined || amount === null || amount === "") return undefined;
   const minor = majorToIsoMinor(amount, currency);
-  return minor === undefined ? undefined : { amount: minor, currency };
+  // Zero or less is a placeholder, not a price (variant-level 0s are common in feeds): treated as stating none.
+  return minor === undefined || !(minor > 0) ? undefined : { amount: minor, currency };
 }
 
 /** A human label for a variant: its title, else its option values, else null. */

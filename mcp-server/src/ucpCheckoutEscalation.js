@@ -363,6 +363,11 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     // A CHOSEN variant shows its own catalog price when it states one, else the product's (the catalog's last
     // observed price for the product, as before); its label joins the title and its composite id is the line's.
     const variant = it.variant_id ? findRealVariant(row, it.variant_id) : null;
+    // A variant the row no longer has (removed since the id was minted, or an id nobody minted — esc_ ids are not
+    // signed) is not rendered at the product's price under the variant's id: there is no such checkout.
+    if (it.variant_id && !variant) {
+      throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
+    }
     const variantPrice = variant ? variantPriceOf(variant, row) : undefined;
     const price = variantPrice || priceOf(row);
     if (!price) {

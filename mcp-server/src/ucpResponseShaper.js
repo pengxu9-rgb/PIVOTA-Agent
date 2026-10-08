@@ -83,7 +83,7 @@
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { isRestatedProductId, variantIdsFromProductRead } from "../../safety-kernel/src/protocol/buyerIntake.js";
-import { encodeUcpVariantItemId, realVariantsOf, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
+import { encodeUcpVariantItemId, isPublishableVariantId, realVariantsOf, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -256,14 +256,19 @@ export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE, withVariants 
   if (withVariants) {
     const real = realVariantsOf(row);
     if (real.length > 1) {
-      const shaped = real.map(({ id: vid, variant: v }) => {
+      const shaped = real.map(({ id: vid, variant: v }, idx) => {
+        // Only an id checkout can take back unchanged is published (a space, a non-ASCII character, an over-long
+        // id would be refused as item.id): the door never advertises a choice it would refuse.
+        if (!isPublishableVariantId(id, vid)) return undefined;
         const own = variantPriceOf(v, row);
         const vPrice = own && own.currency === price.currency ? own : (own ? undefined : price);
         if (!vPrice) return undefined;
-        const label = variantLabelOf(v);
+        // A variant with no title or option values still gets a DISTINCT title, so a list of choices never shows
+        // two identical lines.
+        const label = variantLabelOf(v) || `option ${idx + 1}`;
         return compact({
           id: encodeUcpVariantItemId(id, vid),
-          title: label ? `${title} — ${label}` : title,
+          title: `${title} — ${label}`,
           description,
           price: vPrice,
           url,
@@ -444,7 +449,9 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
       type: "warning",
       code: "variants.partially_published",
       path: "$.product.variants",
-      content: `This product has ${variants} purchasable variants; ${product.variants.length === 1 ? "none could be published with a usable price, so only the product itself is listed and checkout will refuse rather than guess a variant" : `only ${product.variants.length} could be published with a usable price`}. Send a variant's id as item.id to choose it.`,
+      content: `This product has ${variants} purchasable variants; ${product.variants.length === 1
+        ? "fewer than two could be published with a usable price and an id checkout accepts, so only the product itself is listed and checkout will refuse rather than guess a variant"
+        : `only ${product.variants.length} could be published with a usable price and an id checkout accepts`}. Send a variant's id as item.id to choose it.`,
       content_type: "plain",
     });
   }

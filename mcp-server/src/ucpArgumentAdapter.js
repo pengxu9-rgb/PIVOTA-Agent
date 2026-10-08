@@ -106,8 +106,9 @@ import selectionContract from '../../src/services/reapSelectionWitness.js';
 //     This is the same position the ACP door is already in — Pivota's own ACP feed publishes `sig_*` product
 //     ids and NO variant identity, which is precisely why `createDefaultVariantResolver` exists — so the UCP
 //     dialect inherits that contract rather than inventing a second one. A product that resolves to more than
-//     one real variant is REFUSED, never guessed (buyerIntake rule 3), and a UCP caller has no field in which
-//     to name the variant it wanted. That bound is real and is stated in the tool description.
+//     one real variant is REFUSED, never guessed (buyerIntake rule 3) — unless the caller NAMED the variant:
+//     `item.id` may be `<product_id>::v::<variant_id>` as get_product publishes it (ucpVariantIds.js), split
+//     here into `product_id` + `variant_id`, and proven to be that product's at the door before any lane runs.
 //
 //  3. THE ADDRESS ARRIVES AS `fulfillment`, AND IT RIDES ON THE QUOTE. This note twice said the wrong thing,
 //     and each wrong version hid the same defect. It first said UCP "carries no shipping_address"; the live
@@ -229,11 +230,11 @@ function metaSchema({ idempotency }) {
 }
 
 const LINE_ITEM_ID_DESCRIPTION = [
-  "The Pivota `product_id` for this line (the id `get_product` answers about).",
-  "Pivota resolves the product's default variant server-side and REFUSES rather than guessing when that is",
-  "ambiguous — a variant id is never derived from a product id. The UCP line-item shape has no field in which",
-  "to name a specific variant, so a product with more than one purchasable variant cannot be checked out over",
-  "this dialect.",
+  "The Pivota `product_id` for this line (the id `get_product` answers about), or — to choose a size, shade or",
+  "other option — one of that product's variant ids exactly as `get_product` publishes it in",
+  "`product.variants[].id`. With a bare product id Pivota resolves the product's sole variant server-side and",
+  "REFUSES rather than guessing when there is more than one; a variant id is never derived from a product id,",
+  "and a variant the product does not have is refused.",
 ].join(" ");
 
 const LINE_ITEMS_SCHEMA = {
