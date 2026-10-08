@@ -54,14 +54,17 @@
 // mcp-server/test/ucpCheckoutEscalation.test.js pins these arrays with the same provenance.
 //
 // The `totals` are the catalog's LAST OBSERVED price for those items — an expectation the agent can check
-// against the storefront, stated as such in `messages`, never presented as a Pivota quote. `payment_handlers`
+// against the storefront, stated as such in `messages`, never presented as a Pivota quote. With
+// AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED on, the SELLER's own UCP door prices the cart instead when it can
+// (ucpMerchantDoorPricing.js, `buildSellerPricedCheckout`): the seller's lines, totals and cart continue_url, and
+// an `esc_` id (v2) that also carries the seller's cart id so a re-read asks the seller for the same cart. `payment_handlers`
 // is `{}`: Pivota collects no instrument here. `links` carries the one legal URL that resolves today
 // (https://pivota.cc/terms, measured 200 2026-08-18); a privacy-policy URL is added the moment one exists
 // (PIVOTA_PRIVACY_POLICY_URL) — publishing a guessed one would be the dead-URL defect this repo has already
 // shipped once.
 //
 // STATELESS BY DESIGN. The checkout `id` is `esc_` + base64url({v, i:[[product_id, qty]…]}) — product ids and
-// quantities ONLY, never buyer data. `get_checkout` on such an id re-reads the rows and re-answers; there is
+// quantities ONLY, never buyer data (a seller-priced id adds `c`, the seller's own cart id). `get_checkout` on such an id re-reads the rows and re-answers; there is
 // no session store because there is nothing to hold: no quote, no lock, no inventory, no charge. `update_` and
 // `complete_checkout` on such an id are refused with a curated message — an escalated checkout changes and
 // completes on the seller's storefront, and pretending otherwise here would advertise an operation this door
@@ -91,6 +94,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 // default interop import is the module's `module.exports` object.)
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
 import { judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
+import { priceOnMerchantDoor, isCarriableCartId } from "./ucpMerchantDoorPricing.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -132,18 +136,35 @@ export function escalationTargetOf(product) {
 
 // ---- id ----------------------------------------------------------------------------------------------------
 
-export function encodeEscalationId(items) {
+// A checkout the SELLER priced (ucpMerchantDoorPricing.js) also carries the seller's cart id (`v: 2`, `c`), so a
+// re-read asks the seller for THAT cart (`get_cart`) instead of building a new one on every poll. The cart id is
+// the seller's opaque handle, handed back only to the seller the re-read rows resolve to — never used to pick one.
+export function encodeEscalationId(items, cartId) {
   const i = items.map((it) => [it.product_id, it.quantity]);
-  return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify({ v: 1, i }), "utf8").toString("base64url");
+  const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId } : { v: 1, i };
+  return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
-export function decodeEscalationId(id) {
+function parseEscalationId(id) {
   if (typeof id !== "string" || !id.startsWith(ESCALATION_ID_PREFIX) || id.length > 4096) return null;
   let parsed;
   try {
     parsed = JSON.parse(Buffer.from(id.slice(ESCALATION_ID_PREFIX.length), "base64url").toString("utf8"));
   } catch { return null; }
-  if (!isPlainObject(parsed) || parsed.v !== 1 || !Array.isArray(parsed.i) || parsed.i.length === 0 || parsed.i.length > MAX_ESCALATION_ITEMS) return null;
+  if (!isPlainObject(parsed)) return null;
+  if (parsed.v === 2 ? !isCarriableCartId(parsed.c) : (parsed.v !== 1 || own(parsed, "c") !== undefined)) return null;
+  return parsed;
+}
+
+/** The seller cart id a seller-priced escalation id carries, or undefined. */
+export function escalationCartIdOf(id) {
+  const parsed = parseEscalationId(id);
+  return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.c : undefined;
+}
+
+export function decodeEscalationId(id) {
+  const parsed = parseEscalationId(id);
+  if (!parsed || !Array.isArray(parsed.i) || parsed.i.length === 0 || parsed.i.length > MAX_ESCALATION_ITEMS) return null;
   const items = [];
   for (const entry of parsed.i) {
     if (!Array.isArray(entry) || entry.length !== 2) return null;
@@ -403,6 +424,47 @@ export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, li
   });
 }
 
+/**
+ * The escalation checkout when the SELLER priced it (ucpMerchantDoorPricing.js): the seller's lines, totals,
+ * currency and cart continue_url, in the same shared envelope. Still `requires_escalation` — Pivota neither charges
+ * nor ships it; the buyer pays on the storefront. Seller message CODES ride as info messages; their text never does.
+ */
+export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env = process.env }) {
+  const host = sellerHost || hostOf(priced.continueUrl);
+  const messages = [
+    {
+      type: "info",
+      code: "checkout.priced_by_seller_storefront",
+      path: "$.continue_url",
+      content: [
+        `Priced by the seller's own storefront (${host}) in a cart built for this checkout; continue_url opens that cart.`,
+        "Pivota has no contract, payment or fulfillment relationship with this seller and does not charge or ship this checkout.",
+        "Shipping and tax not shown here are added on the storefront. This checkout cannot be updated or completed here; change items or pay on the storefront.",
+      ].join(" "),
+      content_type: "plain",
+    },
+    ...priced.sellerMessageCodes.map((code) => ({
+      type: "info",
+      code: "seller.storefront_message",
+      path: "$",
+      content: `The seller's storefront reported: ${code}`,
+      content_type: "plain",
+    })),
+  ];
+  return buildUcpCheckoutEnvelope({
+    id,
+    status: "requires_escalation",
+    continueUrl: priced.continueUrl,
+    currency: priced.currency,
+    lineItems: priced.lineItems,
+    totals: priced.totals,
+    buyerEmail,
+    expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
+    env,
+    messages,
+  });
+}
+
 function attestedEmailOrBody(attested, bodyValue) {
   const att = isPlainObject(attested) ? str(attested.attested_email) : null;
   if (att) return att;
@@ -418,7 +480,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, log }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -494,6 +556,14 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // function already gives for every row that is not eligible for a continue_url. See the note above
     // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
     if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
+    const buyerEmail = attestedEmailOrBody(attested, quote.customer_email);
+    // THE SELLER PRICES IT, when its door can (ucpMerchantDoorPricing.js; own switch, default OFF). Null = fall back
+    // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
+    // this door will not offer is never contacted.
+    const priced = await priceOnMerchantDoor({ items: normalized, rows, sellerHost: sellerHostOf(continueUrl), market: buyerMarket, env, merchantDoor, log });
+    if (priced) {
+      return buildSellerPricedCheckout({ id: encodeEscalationId(normalized, priced.cartId ?? undefined), priced, sellerHost: sellerHostOf(continueUrl), buyerEmail, now, env });
+    }
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
@@ -505,7 +575,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       // exists to stop (review of #2025). UNLIKE a Pivota quote, an email is OPTIONAL here — `buyer` is an
       // optional member of the checkout and the storefront collects its own — so nothing is refused for its
       // absence (resolveBuyerEmail would; this is the same precedence without the throw).
-      buyerEmail: attestedEmailOrBody(attested, quote.customer_email),
+      buyerEmail,
       now,
       env,
     });
@@ -529,6 +599,15 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // does — so arming the gate with escalation on needs a market carrier on this lane first (see
     // docs/merchant-purchasability-gate.md §8). An asymmetry here would be a purchase offered on no fact.
     if (!(await mayOfferStorefrontCheckout(targets[0], buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
+    // A seller-priced checkout is re-read from the SELLER's cart (`get_cart` on the id's cart), never re-created.
+    // The seller is the one the re-read rows resolve to; a cart the seller no longer answers for falls back to the
+    // catalog answer, which says so.
+    const cartId = escalationCartIdOf(sessionId);
+    if (cartId !== undefined) {
+      const sellerHost = sellerHostOf(targets[0]);
+      const priced = await priceOnMerchantDoor({ items: decoded, rows, sellerHost, market: buyerMarket, cartId, env, merchantDoor, log });
+      if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
+    }
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: targets[0], now, env });
   }
 

@@ -215,7 +215,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -384,7 +384,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
       }
       const escalationDeclines = [];
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines });
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
       if (escalated) {
