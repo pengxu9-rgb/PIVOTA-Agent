@@ -210,23 +210,42 @@ test('key source: redirects and non-200s are discovery failures; private JWKs ar
   assert.equal(r.reason, 'unknown_key');
 });
 
-test('key source: a stale key set is served for a bounded time while refreshes fail', async () => {
+test('key source: a failed refresh never evicts the last good set, and failures are not retried for 30s', async () => {
   const ed = keypair('ed25519');
   let nowS = T0;
   let up = true;
+  let fetches = 0;
   const { verifier } = makeVerifier({
     now: () => nowS * 1000,
-    routes: { [VISA_URL]: () => (up ? { status: 200, text: async () => JSON.stringify({ keys: [{ ...ed.publicJwk, kid: 'k' }] }) } : { status: 503, text: async () => '' }) },
+    routes: { [VISA_URL]: () => { fetches += 1; return up ? { status: 200, text: async () => JSON.stringify({ keys: [{ ...ed.publicJwk, kid: 'k' }] }) } : { status: 503, text: async () => '' }; } },
   });
   const tap = (n) => tapRequest({ privateKey: ed.privateKey, keyid: 'k', nonce: n, created: nowS, expires: nowS + 300 });
   assert.equal((await verifier.verifyRequest(tap('a'))).verified, true);
   up = false;
-  nowS += 11 * 60; // past the 10-minute TTL
-  const stale = await verifier.verifyRequest(tap('b'));
-  assert.equal(stale.verified, true, stale.reason);
-  nowS += 61 * 60; // past the 1-hour staleness bound
-  const gone = await verifier.verifyRequest(tap('c'));
-  assert.equal(gone.reason, 'key_source_unavailable');
+  nowS += 11 * 60; // past the 10-minute TTL: a refresh is attempted and fails
+  assert.equal((await verifier.verifyRequest(tap('b'))).verified, true);
+  assert.equal(fetches, 2);
+  nowS += 10; // inside the 30s negative window: no new fetch
+  assert.equal((await verifier.verifyRequest(tap('c'))).verified, true);
+  assert.equal(fetches, 2);
+  nowS += 5 * 3600; // a long outage: still the last good set
+  const late = await verifier.verifyRequest(tap('d'));
+  assert.equal(late.verified, true, late.reason);
+});
+
+test('key source: with nothing cached, a failure is remembered for 30s', async () => {
+  const ed = keypair('ed25519');
+  let nowS = T0;
+  let fetches = 0;
+  const { verifier } = makeVerifier({ now: () => nowS * 1000, routes: { [VISA_URL]: () => { fetches += 1; return { status: 503, text: async () => '' }; } } });
+  const tap = (n) => tapRequest({ privateKey: ed.privateKey, keyid: 'k', nonce: n, created: nowS, expires: nowS + 300 });
+  assert.equal((await verifier.verifyRequest(tap('a'))).reason, 'key_source_unavailable');
+  nowS += 10;
+  assert.equal((await verifier.verifyRequest(tap('b'))).reason, 'key_source_unavailable');
+  assert.equal(fetches, 1);
+  nowS += 31;
+  await verifier.verifyRequest(tap('c'));
+  assert.equal(fetches, 2);
 });
 
 // ---- Web Bot Auth -----------------------------------------------------------------------------------
@@ -531,4 +550,127 @@ test('loadKeySources: a Web Bot Auth origin means its well-known directory; repe
   const [s] = loadKeySources({ AGENT_SIGNATURE_TRUSTED_KEY_SOURCES_JSON: JSON.stringify([{ id: 'a', profile: 'web-bot-auth', url: 'https://agent.example' }]) });
   assert.equal(s.url, AGENT_DIR);
   assert.equal(resolveSignatureAgent(['other="https://b.example"', 'sig1="https://agent.example"'], 'sig1').identifier, AGENT_DIR);
+});
+
+// ---- review round 2 ---------------------------------------------------------------------------------
+
+test('WBA: the covered Signature-Agent member is the one used, even under another label (draft E.1.1)', async () => {
+  const ed = keypair('ed25519');
+  const tp = jwkThumbprint(ed.publicJwk);
+  const { verifier } = makeVerifier({ sources: [{ id: 'agent-example', profile: 'web-bot-auth', url: AGENT_DIR }], routes: { [AGENT_DIR]: { body: { keys: [ed.publicJwk] } } } });
+  const sign2 = (comps, agentHeader, memberLine) => {
+    const params = `(${comps});created=${T0};expires=${T0 + 600};keyid="${tp}";tag="web-bot-auth"`;
+    const base = [`"@authority": ${HOST}`, memberLine, `"@signature-params": ${params}`].join('\n');
+    const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
+    return { method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-agent': agentHeader, 'signature-input': `sig2=${params}`, signature: `sig2=:${sig}:` } };
+  };
+  // Label sig2 covering member agent2.
+  let r = await verifier.verifyRequest(sign2('"@authority" "signature-agent";key="agent2"', 'agent2="https://agent.example"', '"signature-agent";key="agent2": "https://agent.example"'));
+  assert.equal(r.verified, true, r.reason);
+  // Whole-field coverage of a one-member dictionary.
+  r = await verifier.verifyRequest(sign2('"@authority" "signature-agent"', 'agent2="https://agent.example"', '"signature-agent": agent2="https://agent.example"'));
+  assert.equal(r.verified, true, r.reason);
+  // Whole-field coverage of a two-member dictionary names nobody.
+  r = await verifier.verifyRequest(sign2('"@authority" "signature-agent"', 'a="https://agent.example", b="https://other.example"', '"signature-agent": a="https://agent.example", b="https://other.example"'));
+  assert.equal(r.reason, 'ambiguous_signature_agent');
+});
+
+test('WBA: a signature that covers neither @authority nor @target-uri is refused', async () => {
+  const ed = keypair('ed25519');
+  const tp = jwkThumbprint(ed.publicJwk);
+  const { verifier } = makeVerifier({ sources: [{ id: 'agent-example', profile: 'web-bot-auth', url: AGENT_DIR }], routes: { [AGENT_DIR]: { body: { keys: [ed.publicJwk] } } } });
+  const params = `("signature-agent";key="sig1");created=${T0};expires=${T0 + 600};keyid="${tp}";tag="web-bot-auth"`;
+  const base = `"signature-agent";key="sig1": "https://agent.example"\n"@signature-params": ${params}`;
+  const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
+  const r = await verifier.verifyRequest({ method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-agent': 'sig1="https://agent.example"', 'signature-input': `sig1=${params}`, signature: `sig1=:${sig}:` } });
+  assert.equal(r.reason, 'missing_required_component');
+});
+
+test('nonces are per key source, and a busy source cannot fill another source\'s store', async () => {
+  const a = keypair('ed25519');
+  const second = 'https://visa-secondary.example/jwks';
+  const { verifier } = makeVerifier({
+    sources: [{ id: 'visa', profile: 'visa-tap', url: VISA_URL }, { id: 'visa-2', profile: 'visa-tap', url: second }],
+    routes: { [VISA_URL]: { body: { keys: [{ ...a.publicJwk, kid: 'k' }] } }, [second]: { body: { keys: [{ ...a.publicJwk, kid: 'k2' }] } } },
+  });
+  assert.equal((await verifier.verifyRequest(tapRequest({ privateKey: a.privateKey, keyid: 'k', nonce: 'same' }))).verified, true);
+  // Same nonce under a different source is a different nonce.
+  const other = await verifier.verifyRequest(tapRequest({ privateKey: a.privateKey, keyid: 'k2', nonce: 'same' }));
+  assert.equal(other.verified, true, other.reason);
+});
+
+test('log hygiene: an attacker-chosen tag and keyid are bounded in the result', async () => {
+  const { verifier } = makeVerifier({ routes: {} });
+  const r = await verifier.verifyRequest({ method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-input': `s=("@authority");created=${T0};keyid="${'k'.repeat(5000)}";tag="${'t'.repeat(8000)}"`, signature: 's=:AAAA:' } });
+  assert.equal(r.reason, 'unsupported_tag');
+  assert.equal(r.tag.length, 64);
+  assert.equal(r.keyid.length, 100);
+});
+
+test('canonicalisation: default port stripped, @scheme from x-forwarded-proto, absent query is "?", absolute-form authority from the target', () => {
+  const comps = (list) => parseDictionary(`s=(${list});created=1`).get('s');
+  let built = buildSignatureBase(requestView({ method: 'GET', originalUrl: '/p', headers: { host: 'Commerce.MCP.pivota.cc:443', 'x-forwarded-proto': 'https' } }), comps('"@authority" "@scheme" "@query"'));
+  assert.deepEqual(built.base.split('\n').slice(0, 3), [`"@authority": ${HOST}`, '"@scheme": https', '"@query": ?']);
+  built = buildSignatureBase(requestView({ method: 'GET', originalUrl: '/p', headers: { host: 'h.test', 'x-forwarded-proto': 'http' } }), comps('"@scheme"'));
+  assert.equal(built.base.split('\n')[0], '"@scheme": http');
+  built = buildSignatureBase(requestView({ method: 'GET', originalUrl: 'https://Target.Example/a/../b?', headers: { host: 'ignored.example' } }), comps('"@authority" "@path" "@request-target"'));
+  assert.deepEqual(built.base.split('\n').slice(0, 3), ['"@authority": target.example', '"@path": /a/../b', '"@request-target": /a/../b?']);
+  assert.equal(buildSignatureBase(requestView({ method: 'GET', originalUrl: '/', headers: { host: 'h' } }), comps('"@path";key="x"')).reason, 'unsupported_component_parameter');
+});
+
+test('config: expected authorities are trimmed and lower-cased; failure from a known-tag label wins', async () => {
+  const ed = keypair('ed25519');
+  const v = createAgentSignatureVerifier({
+    env: { AGENT_SIGNATURE_EXPECTED_AUTHORITIES: '  Commerce.MCP.pivota.cc , x.example ' },
+    fetchImpl: fetchStub({ [VISA_URL]: { body: { keys: [{ ...ed.publicJwk, kid: 'k' }] } } }).impl,
+    nowMs: () => T0 * 1000,
+  });
+  assert.equal((await v.verifyRequest(tapRequest({ privateKey: ed.privateKey, keyid: 'k', nonce: 'cfg' }))).verified, true);
+  const { verifier } = makeVerifier({ routes: { [VISA_URL]: { body: { keys: [{ ...ed.publicJwk, kid: 'k' }] } } } });
+  const bad = tapRequest({ privateKey: ed.privateKey, keyid: 'nope', nonce: 'pref' });
+  const req = { ...bad, headers: { ...bad.headers, 'signature-input': `x=("@authority");created=${T0};keyid="x";tag="vendor-x", ${bad.headers['signature-input']}`, signature: `x=:AAAA:, ${bad.headers.signature}` } };
+  assert.equal((await verifier.verifyRequest(req)).reason, 'unknown_key');
+});
+
+test('importPublicJwk refuses RSA private (p) and symmetric (k) members', () => {
+  const rsa = keypair('rsa', { modulusLength: 2048 });
+  assert.equal(importPublicJwk({ ...rsa.publicJwk, p: 'x' }), null);
+  assert.equal(importPublicJwk({ ...rsa.publicJwk, k: 'x' }), null);
+});
+
+test('WBA: a signature covering several Signature-Agent members speaks for its own label\'s', async () => {
+  const ed = keypair('ed25519');
+  const tp = jwkThumbprint(ed.publicJwk);
+  const { verifier } = makeVerifier({ sources: [{ id: 'agent-example', profile: 'web-bot-auth', url: AGENT_DIR }], routes: { [AGENT_DIR]: { body: { keys: [ed.publicJwk] } } } });
+  const header = 'other="https://untrusted.example", sig1="https://agent.example"';
+  const params = `("@authority" "signature-agent";key="other" "signature-agent";key="sig1");created=${T0};expires=${T0 + 600};keyid="${tp}";tag="web-bot-auth"`;
+  const base = [`"@authority": ${HOST}`, '"signature-agent";key="other": "https://untrusted.example"', '"signature-agent";key="sig1": "https://agent.example"', `"@signature-params": ${params}`].join('\n');
+  const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
+  const r = await verifier.verifyRequest({ method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-agent': header, 'signature-input': `sig1=${params}`, signature: `sig1=:${sig}:` } });
+  assert.equal(r.verified, true, r.reason);
+  assert.equal(r.agent, 'agent-example');
+});
+
+test('default expected authorities include every host the doors are served on', async () => {
+  const ed = keypair('ed25519');
+  const { verifier } = makeVerifier({ routes: { [VISA_URL]: { body: { keys: [{ ...ed.publicJwk, kid: 'k' }] } } } });
+  for (const host of ['commerce.mcp.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc', 'ucp.pivota.cc']) {
+    const params = `("@authority" "@path");created=${T0};expires=${T0 + 300};keyid="k";alg="ed25519";nonce="${host}";tag="agent-browser-auth"`;
+    const base = `"@authority": ${host}\n"@path": /ucp/mcp\n"@signature-params": ${params}`;
+    const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
+    const r = await verifier.verifyRequest({ method: 'POST', originalUrl: '/ucp/mcp', headers: { host, 'signature-input': `sig2=${params}`, signature: `sig2=:${sig}:` } });
+    assert.equal(r.verified, true, `${host}: ${r.reason}`);
+  }
+});
+
+test('WBA: whole-field coverage reads every Signature-Agent line, so two lines are two members (ambiguous)', async () => {
+  const ed = keypair('ed25519');
+  const tp = jwkThumbprint(ed.publicJwk);
+  const { verifier } = makeVerifier({ sources: [{ id: 'agent-example', profile: 'web-bot-auth', url: AGENT_DIR }], routes: { [AGENT_DIR]: { body: { keys: [ed.publicJwk] } } } });
+  const lines = ['a="https://agent.example"', 'b="https://other.example"'];
+  const params = `("@authority" "signature-agent");created=${T0};expires=${T0 + 600};keyid="${tp}";tag="web-bot-auth"`;
+  const base = [`"@authority": ${HOST}`, `"signature-agent": ${lines.join(', ')}`, `"@signature-params": ${params}`].join('\n');
+  const sig = nodeCrypto.sign(null, Buffer.from(base), ed.privateKey).toString('base64');
+  const r = await verifier.verifyRequest({ method: 'GET', originalUrl: '/mcp', headers: { host: HOST, 'signature-agent': lines, 'signature-input': `s=${params}`, signature: `s=:${sig}:` } });
+  assert.equal(r.reason, 'ambiguous_signature_agent');
 });

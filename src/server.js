@@ -35621,8 +35621,15 @@ function shouldCaptureAcpRawBody(url) {
 // land on the request object, and the refusal answers from a constant. The route stays registered in the LATE
 // block, so the caller-identity access log still records WHO knocked on a cardholder-data door.
 function isAcpDelegatePaymentRequest(req) {
-  const u = req?.originalUrl || req?.url || '';
-  const pathOnly = String(u).split('?')[0].toLowerCase().replace(/\/+$/, '');
+  // The path the ROUTER will match: Express routes on parseurl's pathname, which for an absolute-form
+  // request-target (`POST http://host/acp/…/delegate_payment`, RFC 9112 §3.2.2) is the part after the
+  // authority. Comparing the raw target as-is (as this once did) let that spelling past this predicate, so
+  // express.json parsed a delegate_payment body into req.body. Case and trailing slashes are ignored for
+  // the same reason: the router ignores them.
+  let raw = String(req?.originalUrl || req?.url || '');
+  const abs = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(.*)$/i.exec(raw);
+  if (abs) raw = abs[1] || '/';
+  const pathOnly = raw.split('?')[0].toLowerCase().replace(/\/+$/, '');
   return pathOnly === `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`;
 }
 
@@ -35764,8 +35771,7 @@ app.use((req, res, next) => {
 // badly signed request reaches the door exactly as before. Any later use of the result (policy,
 // attribution, forwarding to the merchant) is its own change, gated on what observe mode measures.
 //
-// Unsigned requests cost nothing: no Signature-Input and no Signature header ⇒ next() immediately, no
-// log line. delegate_payment is excluded on purpose — that route reads nothing from the request
+// Unsigned requests cost nothing: no Signature-Input header ⇒ next() immediately, no log line. delegate_payment is excluded on purpose — that route reads nothing from the request
 // (see registerCommerceDelegatePaymentRefusalRoute), and this does not get to be the exception.
 let agentSignatureVerifier = null;
 function isAgentSignatureDoorPath(req) {

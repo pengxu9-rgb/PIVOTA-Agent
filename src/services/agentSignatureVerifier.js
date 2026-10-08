@@ -64,12 +64,11 @@ const DEFAULT_KEY_SOURCES = Object.freeze([
   Object.freeze({ id: 'visa', profile: PROFILE.VISA_TAP, url: 'https://mcp.visa.com/.well-known/jwks' }),
 ]);
 
-const DEFAULT_EXPECTED_AUTHORITIES = Object.freeze(['commerce.mcp.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc']);
+const DEFAULT_EXPECTED_AUTHORITIES = Object.freeze(['commerce.mcp.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc', 'ucp.pivota.cc']);
 
 const WBA_DIRECTORY_PATH = '/.well-known/http-message-signatures-directory';
 const WBA_MAX_WINDOW_S = 24 * 3600; // draft §5.2: "RECOMMENDED that expiry be no more than 24 hours"
 const TAP_MAX_WINDOW_S = 8 * 60; // TAP spec: created/expires no more than 8 minutes apart
-const TAP_NONCE_TTL_S = 8 * 60;
 const CLOCK_SKEW_S = 60;
 const MAX_LABELS = 4;
 
@@ -77,7 +76,6 @@ const MAX_LABELS = 4;
 const FETCH_TIMEOUT_MS = 1_000;
 const MAX_DIRECTORY_BYTES = 64 * 1024;
 const KEYS_TTL_MS = 10 * 60_000;
-const KEYS_MAX_STALENESS_MS = 60 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
 // An unknown keyid forces one refresh (key rotation), but no more often than this per source.
 const MIN_FORCED_REFRESH_GAP_MS = 60_000;
@@ -200,7 +198,7 @@ function createKeySourceCache({ fetchImpl, nowMs }) {
   }
 
   /**
-   * Keys for an allowlisted URL; serves a stale set for a bounded time when a refresh fails. `force`
+   * Keys for an allowlisted URL; serves the last good set (stale) when a refresh fails. `force`
    * (an unknown keyid — the agent may have rotated) refetches a fresh set, at most once a minute.
    */
   async function getKeys(url, { force = false } = {}) {
@@ -209,7 +207,7 @@ function createKeySourceCache({ fetchImpl, nowMs }) {
     const forced = force && entry.keys && now - entry.fetchedAt >= MIN_FORCED_REFRESH_GAP_MS;
     if (!forced && entry.keys && now - entry.fetchedAt < KEYS_TTL_MS) return { keys: entry.keys };
     if (entry.failedAt && now - entry.failedAt < NEGATIVE_TTL_MS) {
-      return entry.keys && now - entry.fetchedAt < KEYS_MAX_STALENESS_MS ? { keys: entry.keys, stale: true } : { reason: 'key_source_unavailable' };
+      return entry.keys ? { keys: entry.keys, stale: true } : { reason: 'key_source_unavailable' };
     }
     if (!entry.inflight) {
       entry.inflight = fetchKeys(url)
@@ -227,10 +225,10 @@ function createKeySourceCache({ fetchImpl, nowMs }) {
       cache.set(url, entry);
     }
     await entry.inflight;
-    const after = nowMs();
-    if (entry.keys && (entry.failedAt === undefined || after - entry.fetchedAt < KEYS_MAX_STALENESS_MS)) {
-      return { keys: entry.keys, stale: entry.failedAt !== undefined };
-    }
+    // A failed refresh never evicts the last good set (draft-ietf-webbotauth-httpsig-protocol: a directory
+    // that fails to resolve "MUST NOT evict a cached entry"); it is served, marked stale, until a successful
+    // fetch replaces it.
+    if (entry.keys) return { keys: entry.keys, stale: entry.failedAt !== undefined };
     return { reason: 'key_source_unavailable' };
   }
 
@@ -267,12 +265,40 @@ function createNonceStore({ nowMs, max = NONCE_STORE_MAX }) {
 // ---- Signature-Agent (Web Bot Auth) -------------------------------------------------------------------
 
 /**
- * Resolve the Signature-Agent member for `label` to the identifier URL the draft defines (§5.5): for
- * `directory` the origin's well-known URI, for `jwks_uri` the value without query or fragment. Accepts
- * the legacy bare-String form (§5.2.1) as a one-member dictionary keyed to the label.
+ * Which Signature-Agent member a signature speaks for: the one it COVERS (§5.2.2: never attribute a
+ * signature to a member it does not cover). Preference: `"signature-agent";key="<label>"`, then the only
+ * `;key` member it covers (the draft's own E.1.1 example signs label sig2 over member agent2), then — when
+ * it covers the whole field and the field has exactly one member (or is the legacy bare String) — that.
+ * @returns {{ memberKey?: string|null, reason?: string }}  memberKey null = the legacy whole-field form
+ */
+function coveredSignatureAgentMember(covered, label, rawHeader) {
+  const keyed = covered
+    .map((id) => /^"signature-agent";key="([^"\\]*)"$/.exec(id))
+    .filter(Boolean)
+    .map((m) => m[1]);
+  if (keyed.includes(label)) return { memberKey: label };
+  if (keyed.length === 1) return { memberKey: keyed[0] };
+  if (keyed.length > 1) return { reason: 'ambiguous_signature_agent' };
+  if (!covered.includes('"signature-agent"')) return { reason: 'signature_agent_not_covered' };
+  if (rawHeader === undefined) return { reason: 'missing_signature_agent' };
+  const text = String(Array.isArray(rawHeader) ? rawHeader.join(', ') : rawHeader).trim();
+  if (text.startsWith('"')) return { memberKey: null };
+  try {
+    const dict = parseDictionary(text);
+    if (dict.size === 1) return { memberKey: [...dict.keys()][0] };
+  } catch {
+    return { reason: 'malformed_signature_agent' };
+  }
+  return { reason: 'ambiguous_signature_agent' };
+}
+
+/**
+ * Resolve one Signature-Agent member to the identifier URL the draft defines (§5.5): for `directory` the
+ * origin's well-known URI, for `jwks_uri` the value without query or fragment. `memberKey` null reads the
+ * legacy bare-String form (§5.2.1); a String header is also accepted for any key, as the one member.
  * @returns {{ identifier?: string, legacy?: boolean, claimed?: string, reason?: string }}
  */
-function resolveSignatureAgent(rawHeader, label) {
+function resolveSignatureAgent(rawHeader, memberKey) {
   if (rawHeader === undefined) return { reason: 'missing_signature_agent' };
   const text = String(Array.isArray(rawHeader) ? rawHeader.join(', ') : rawHeader).trim();
   let member;
@@ -281,8 +307,8 @@ function resolveSignatureAgent(rawHeader, label) {
     if (text.startsWith('"')) {
       member = parseItem(text);
       legacy = true;
-    } else {
-      member = parseDictionary(text).get(label);
+    } else if (memberKey != null) {
+      member = parseDictionary(text).get(memberKey);
     }
   } catch {
     return { reason: 'malformed_signature_agent' };
@@ -331,14 +357,25 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
   const sources = loadKeySources(env, log);
   const expectedAuthorities = loadExpectedAuthorities(env);
   const keyCache = createKeySourceCache({ fetchImpl, nowMs });
-  const nonces = createNonceStore({ nowMs });
+  // One store per key source: a busy agent (Web Bot Auth nonces live up to 24h) can fill only its own.
+  const nonceStores = new Map();
+  const noncesFor = (id) => {
+    if (!nonceStores.has(id)) nonceStores.set(id, createNonceStore({ nowMs }));
+    return nonceStores.get(id);
+  };
 
   async function verifyLabel(req, view, label, inputMember, signatureDict) {
     const base = { label, profile: null, tag: null };
     const { params, reason: paramReason } = signatureParams(inputMember);
     if (paramReason) return { ...base, verified: false, reason: paramReason };
     const profile = Object.hasOwn(TAG_PROFILE, String(params.tag)) ? TAG_PROFILE[params.tag] : undefined;
-    const out = { ...base, profile: profile || null, tag: params.tag || null, keyid: params.keyid || null };
+    // tag and keyid are attacker-chosen strings that end up in logs: bounded here, once.
+    const out = {
+      ...base,
+      profile: profile || null,
+      tag: params.tag ? String(params.tag).slice(0, 64) : null,
+      keyid: params.keyid ? String(params.keyid).slice(0, 100) : null,
+    };
     if (!profile) return { ...out, verified: false, reason: 'unsupported_tag' };
 
     const sigMember = signatureDict.get(label);
@@ -365,11 +402,11 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
       if (!covers(covered, '"@authority"') && !covers(covered, '"@target-uri"')) return { ...out, verified: false, reason: 'missing_required_component' };
       const windowReason = checkWindow(params, WBA_MAX_WINDOW_S, nowS);
       if (windowReason) return { ...out, verified: false, reason: windowReason };
-      const agent = resolveSignatureAgent(view.headers['signature-agent'], label);
+      const rawAgent = view.headers['signature-agent'];
+      const pick = coveredSignatureAgentMember(covered, label, rawAgent);
+      if (pick.reason) return { ...out, verified: false, reason: pick.reason };
+      const agent = resolveSignatureAgent(rawAgent, pick.memberKey);
       if (agent.reason) return { ...out, verified: false, reason: agent.reason, claimed_agent: agent.claimed || null };
-      // §5.2.2: never attribute a signature to a Signature-Agent member it does not cover.
-      const memberId = agent.legacy ? '"signature-agent"' : `"signature-agent";key="${label}"`;
-      if (!covers(covered, memberId)) return { ...out, verified: false, reason: 'signature_agent_not_covered', claimed_agent: agent.claimed };
       const source = sources.find((s) => s.profile === PROFILE.WEB_BOT_AUTH && s.url === agent.identifier);
       if (source) candidates = [source];
       if (!source) return { ...out, verified: false, reason: 'untrusted_signature_agent', claimed_agent: agent.identifier.slice(0, 200) };
@@ -401,11 +438,11 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
 
     // Only a VERIFIED signature may consume a nonce — otherwise anyone could burn an agent's nonces.
     if (params.nonce) {
-      // Remember the nonce for as long as the signature itself can still verify (expires + skew), and
-      // for TAP never less than its 8-minute replay window.
-      const live = params.expires + CLOCK_SKEW_S - nowS;
-      const ttl = Math.max(profile === PROFILE.VISA_TAP ? TAP_NONCE_TTL_S : 1, live);
-      const claimed = nonces.claim([source.id, params.keyid, params.nonce], ttl);
+      // Remember the nonce for exactly as long as the signature itself can still verify (expires + skew).
+      // For TAP that is at least its 8-minute replay window whenever a replay could still verify; past
+      // expires + skew the signature fails as `expired` before the nonce is ever consulted.
+      const ttl = Math.max(1, params.expires + CLOCK_SKEW_S - nowS);
+      const claimed = noncesFor(source.id).claim([params.keyid, params.nonce], ttl);
       if (claimed !== 'ok') {
         return { ...out, verified: false, reason: claimed === 'replay' ? 'nonce_replay' : 'nonce_store_full', agent: source.id, alg: check.alg };
       }
@@ -459,7 +496,7 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
     }
   }
 
-  return { verifyRequest, sources, nonceStoreSize: nonces.size };
+  return { verifyRequest, sources };
 }
 
 module.exports = {
@@ -470,6 +507,7 @@ module.exports = {
   agentSignatureMode,
   loadKeySources,
   resolveSignatureAgent,
+  coveredSignatureAgentMember,
   createAgentSignatureVerifier,
   // exposed for tests
   _internal: { createNonceStore, createKeySourceCache, checkWindow, normalizeHttpsUrl },

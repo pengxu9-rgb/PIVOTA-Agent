@@ -151,18 +151,18 @@ function requestView(req) {
   }
   const scheme = String(headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim().toLowerCase();
   let authority = String(headers.host || '').trim().toLowerCase();
+  let target = String(req.originalUrl || req.url || '/');
+  // Absolute-form request-target (RFC 9112 §3.2.2): the authority is the TARGET's (Host is ignored) and the
+  // path/query are the raw characters after it — split by hand, not through WHATWG URL, which would
+  // rewrite them (dot-segments, percent-encoding) away from what the agent signed.
+  const abs = /^https?:\/\/([^/?#]*)(.*)$/i.exec(target);
+  if (abs) {
+    authority = abs[1].toLowerCase();
+    target = abs[2] || '/';
+    if (!target.startsWith('/')) target = `/${target}`;
+  }
   if ((scheme === 'https' && authority.endsWith(':443')) || (scheme === 'http' && authority.endsWith(':80'))) {
     authority = authority.replace(/:\d+$/, '');
-  }
-  let target = String(req.originalUrl || req.url || '/');
-  // Absolute-form request-target (RFC 9112 §3.2.2): the path and query are the URL's, not the whole string.
-  if (/^https?:\/\//i.test(target)) {
-    try {
-      const u = new URL(target);
-      target = `${u.pathname}${u.search || (target.endsWith('?') ? '?' : '')}`;
-    } catch {
-      target = '/';
-    }
   }
   const q = target.indexOf('?');
   const rawPath = q === -1 ? target : target.slice(0, q);

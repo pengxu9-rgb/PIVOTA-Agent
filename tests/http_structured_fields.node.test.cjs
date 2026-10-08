@@ -83,3 +83,7 @@ test('malformed inputs throw instead of parsing to something else', () => {
   }
   assert.throws(() => parseDictionary(undefined), StructuredFieldError);
 });
+
+test('a duplicated parameter keeps the later value (RFC 8941 §4.2.3.2)', () => {
+  assert.equal(serializeInnerList(parseDictionary('s=();a=1;a=2').get('s')), '();a=2');
+});

@@ -35,7 +35,7 @@ const fetchCalls = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
   fetchCalls.push(String(url));
-  if (String(url) === VISA_URL) return { status: 200, text: async () => JSON.stringify(JWKS) };
+  if (String(url) === VISA_URL) return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify(JWKS) };
   return realFetch(url, init);
 };
 test.after(() => { globalThis.fetch = realFetch; });
@@ -82,6 +82,76 @@ function post(path, headers = {}) {
     .send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
 }
 
+// ORDER MATTERS: the tests that assert "nothing was fetched" run before any signed request has warmed the
+// shared Visa key cache inside the app's verifier (node:test runs a file's tests in order).
+
+test('off (the default): nothing is verified, logged or fetched', async () => {
+  assert.equal(fetchCalls.length, 0, 'runs first, before any key fetch');
+  const before = fetchCalls.length;
+  const { entries } = await captureLogs(() => post('/ucp/mcp', tapHeaders('/ucp/mcp')));
+  assert.equal(sigEvents(entries).length, 0);
+  assert.equal(fetchCalls.length, before);
+});
+
+test('observe: delegate_payment and non-door paths are never inspected', async () => {
+  process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
+  try {
+    const before = fetchCalls.length;
+    const refusal = await captureLogs(() => post('/acp/agentic_commerce/delegate_payment', tapHeaders('/acp/agentic_commerce/delegate_payment')));
+    assert.equal(refusal.result.status, 501);
+    assert.equal(sigEvents(refusal.entries).length, 0);
+    const other = await captureLogs(() => supertest(app).get('/healthz').set('host', HOST).set(tapHeaders('/healthz')));
+    assert.equal(sigEvents(other.entries).length, 0);
+    assert.equal(fetchCalls.length, before);
+  } finally {
+    delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
+  }
+});
+
+test('observe: no spelling of the delegate_payment path is inspected (Express matches case- and slash-insensitively)', async () => {
+  process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
+  try {
+    for (const p of ['/acp/agentic_commerce/delegate_payment/', '/acp/agentic_commerce/Delegate_Payment', '/ACP/agentic_commerce/delegate_payment']) {
+      const { result, entries } = await captureLogs(() => post(p, tapHeaders(p)));
+      assert.equal(result.status, 501, p);
+      assert.equal(sigEvents(entries).length, 0, p);
+    }
+  } finally {
+    delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
+  }
+});
+
+test('observe: an absolute-form delegate_payment request is neither inspected nor body-parsed', async () => {
+  // Raw socket: supertest cannot send an absolute-form request-target (RFC 9112 §3.2.2).
+  const http = require('http');
+  process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.once('listening', resolve));
+  try {
+    const target = `http://${HOST}/acp/agentic_commerce/delegate_payment`;
+    const send = (body) => new Promise((resolve, reject) => {
+      const req = http.request({
+        host: '127.0.0.1',
+        port: server.address().port,
+        method: 'POST',
+        path: target,
+        headers: { host: HOST, 'content-type': 'application/json', ...tapHeaders('/acp/agentic_commerce/delegate_payment') },
+      }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      req.on('error', reject);
+      req.end(body);
+    });
+    const before = fetchCalls.length;
+    // Invalid JSON: a parser that ran would answer 400; the refusal answers 501 without reading it.
+    const { result, entries } = await captureLogs(() => send('{"number": "4242424242424242", '));
+    assert.equal(result, 501);
+    assert.equal(sigEvents(entries).length, 0);
+    assert.equal(fetchCalls.length, before);
+  } finally {
+    delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('observe: a signed /ucp/mcp request is verified and logged, and gets the same response as unsigned', async () => {
   process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
   try {
@@ -120,41 +190,6 @@ test('observe: a forged signature is logged as unverified and the request still 
     const [event] = sigEvents(forged.entries);
     assert.equal(event.verified, false);
     assert.equal(event.reason, 'bad_signature');
-  } finally {
-    delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
-  }
-});
-
-test('off (the default): nothing is verified, logged or fetched', async () => {
-  const before = fetchCalls.length;
-  const { entries } = await captureLogs(() => post('/ucp/mcp', tapHeaders('/ucp/mcp')));
-  assert.equal(sigEvents(entries).length, 0);
-  assert.equal(fetchCalls.length, before);
-});
-
-test('observe: delegate_payment and non-door paths are never inspected', async () => {
-  process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
-  try {
-    const before = fetchCalls.length;
-    const refusal = await captureLogs(() => post('/acp/agentic_commerce/delegate_payment', tapHeaders('/acp/agentic_commerce/delegate_payment')));
-    assert.equal(refusal.result.status, 501);
-    assert.equal(sigEvents(refusal.entries).length, 0);
-    const other = await captureLogs(() => supertest(app).get('/healthz').set('host', HOST).set(tapHeaders('/healthz')));
-    assert.equal(sigEvents(other.entries).length, 0);
-    assert.equal(fetchCalls.length, before);
-  } finally {
-    delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
-  }
-});
-
-test('observe: no spelling of the delegate_payment path is inspected (Express matches case- and slash-insensitively)', async () => {
-  process.env.AGENT_SIGNATURE_VERIFY_MODE = 'observe';
-  try {
-    for (const p of ['/acp/agentic_commerce/delegate_payment/', '/acp/agentic_commerce/Delegate_Payment', '/ACP/agentic_commerce/delegate_payment']) {
-      const { result, entries } = await captureLogs(() => post(p, tapHeaders(p)));
-      assert.equal(result.status, 501, p);
-      assert.equal(sigEvents(entries).length, 0, p);
-    }
   } finally {
     delete process.env.AGENT_SIGNATURE_VERIFY_MODE;
   }
