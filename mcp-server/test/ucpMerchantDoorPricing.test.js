@@ -490,3 +490,65 @@ describe('review of #2375', () => {
     assert.equal('context' in door.calls[1][2], false);
   });
 });
+
+describe('re-review of #2375', () => {
+  const base = (over = {}) => ({ items: [{ product_id: 'sig_seed_a', quantity: 2 }], rows: rows(SEED), sellerHost: 'comfortzone.us', market: 'US', env: ON, ...over });
+  const totalsDoor = (totals) => fakeDoor({ create: () => sellerCart({ totals }) });
+
+  test('discounts are NEGATIVE (UCP total.json) and shown; the total must be subtotal + the listed components', async () => {
+    const out = await priceOnMerchantDoor(base({ merchantDoor: totalsDoor([{ type: 'subtotal', amount: 25800 }, { type: 'discount', amount: -2000 }, { type: 'tax', amount: 500 }, { type: 'total', amount: 24300 }]) }));
+    assert.deepEqual(out.totals.map((t) => [t.type, t.amount]), [['subtotal', 25800], ['discount', -2000], ['tax', 500], ['total', 24300]]);
+    for (const [label, totals] of [
+      ['a positive discount (even when the sum balances)', [{ type: 'subtotal', amount: 25800 }, { type: 'discount', amount: 2000 }, { type: 'total', amount: 27800 }]],
+      ['a positive item discount (even when the sum balances)', [{ type: 'subtotal', amount: 25800 }, { type: 'items_discount', amount: 100 }, { type: 'total', amount: 25900 }]],
+      ['a negative tax', [{ type: 'subtotal', amount: 25800 }, { type: 'tax', amount: -1 }, { type: 'total', amount: 25799 }]],
+      ['a total nothing explains', [{ type: 'subtotal', amount: 25800 }, { type: 'total', amount: 5 }]],
+      ['a discount that drops out of the sum', [{ type: 'subtotal', amount: 25800 }, { type: 'discount', amount: -2000 }, { type: 'total', amount: 25800 }]],
+      ['an itemised (repeated) component', [{ type: 'subtotal', amount: 25800 }, { type: 'fulfillment', amount: 500 }, { type: 'fulfillment', amount: 300 }, { type: 'total', amount: 26600 }]],
+      ['an itemised component the total leaves out (never silently skipped)', [{ type: 'subtotal', amount: 25800 }, { type: 'fulfillment', amount: 500 }, { type: 'fulfillment', amount: 300 }, { type: 'total', amount: 25800 }]],
+      ['an unreadable component the total leaves out', [{ type: 'subtotal', amount: 25800 }, { type: 'fee', amount: '500' }, { type: 'total', amount: 25800 }]],
+      ['a fractional component', [{ type: 'subtotal', amount: 25800 }, { type: 'fee', amount: 0.5 }, { type: 'total', amount: 25800 }]],
+    ]) {
+      assert.equal(await priceOnMerchantDoor(base({ merchantDoor: totalsDoor(totals) })), null, label);
+    }
+  });
+
+  test('a cart with no id is not offered (every poll would disagree with the create)', async () => {
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: fakeDoor({ create: () => sellerCart({ id: null }) }) })), null);
+  });
+
+  test('a market restriction is NOT out of stock: it falls back', async () => {
+    const door = fakeDoor({ create: () => ({ ok: true, status: 200, error: { message: 'Product is not available for sale in this market' } }) });
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: door })), null);
+    const code = fakeDoor({ create: () => sellerCart({ messages: [{ type: 'error', code: 'not_available_for_sale' }] }) });
+    assert.equal(await priceOnMerchantDoor(base({ merchantDoor: code })), null);
+  });
+
+  test('carried attribution: unreserved values only (never a URL), length-capped, seller query byte-for-byte, fragment kept', () => {
+    const cart = 'https://s.example/cart/c/1?key=a:b~c&flag#frag';
+    const out = carryAttribution(cart, 'https://s.example/p?pvt_click_id=clk_1&pvt_return=https://evil.example/x&utm_x=a%2Fb&utm_long=' + 'a'.repeat(201));
+    assert.equal(out, 'https://s.example/cart/c/1?key=a:b~c&flag&pvt_click_id=clk_1#frag');
+    assert.equal(carryAttribution('https://s.example/cart/c/1', 'https://s.example/p?utm_source=pivota'), 'https://s.example/cart/c/1?utm_source=pivota');
+    assert.equal(carryAttribution('https://s.example/cart/c/1?', 'https://s.example/p?utm_source=pivota'), 'https://s.example/cart/c/1?utm_source=pivota');
+    assert.equal(carryAttribution('https://s.example/c', 'https://s.example/p?utm_source=' + 'a'.repeat(200)), 'https://s.example/c?utm_source=' + 'a'.repeat(200));
+  });
+
+  test("a re-read of a www store discovers on the storefront's own hostname too", async () => {
+    const row = { ...SEED, external_redirect_url: hopTo('https://www.comfortzone.us/products/vitamin-c-serum?pvt_click_id=clk_9') };
+    const door = fakeDoor();
+    const created = await tryEscalateUcpCheckout({ op: CREATE, params: createParams([row.product_id, 2]), ctx: {}, executor: executorWith({ [row.product_id]: row }), ucpArgs: ucpArgs('US'), env: ON, now: NOW, merchantDoor: door });
+    const again = await tryEscalateUcpCheckout({ op: GET, params: { session_id: created.id }, ctx: {}, executor: executorWith({ [row.product_id]: row }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
+    assert.deepEqual(door.calls.filter((c) => c[0] === 'discover').map((c) => c[1]), ['www.comfortzone.us', 'www.comfortzone.us']);
+    assert.equal(new URL(again.continue_url).searchParams.get('pvt_click_id'), 'clk_9', 'the re-read keeps the referral too');
+    assert.equal(again.continue_url, created.continue_url);
+    assert.ok(door.calls.some((c) => c[0] === 'get_cart'));
+  });
+
+  test('a seller host the id cannot carry is never offered a seller price (no unreadable id is minted)', async () => {
+    const row = { ...SEED, external_redirect_url: 'https://my_shop.example/products/x' };
+    const door = fakeDoor({ create: () => sellerCart({ continueUrl: 'https://my_shop.example/cart/c/1' }) });
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: createParams([row.product_id, 2]), ctx: {}, executor: executorWith({ [row.product_id]: row }), ucpArgs: ucpArgs('US'), env: ON, now: NOW, merchantDoor: door });
+    assert.equal(out.messages[0].code, 'checkout.completes_on_seller_storefront');
+    assert.ok(decodeEscalationId(out.id), 'the id handed out reads back');
+  });
+});

@@ -42,7 +42,8 @@ export const MERCHANT_PRICING_BUDGET_MS = 5000; // discovery (usually cached) + 
 const MERCHANT_CALL_TIMEOUT_MS = 3500;
 const MAX_SELLER_MESSAGE_CODES = 5;
 const MAX_CART_ID_LENGTH = 512;
-const SELLER_OUT_OF_STOCK_RE = /out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|insufficient inventory|not available for sale/i;
+// "not available for sale (in this market)" is a market restriction, not stock: it falls back, never OUT_OF_STOCK.
+const SELLER_OUT_OF_STOCK_RE = /out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|insufficient inventory/i;
 
 const { toVariantGid } = shopifyVariantResolver;
 const { classifyUcpFailure, FAILURE_REASON } = buyerAgentClientModule;
@@ -152,7 +153,7 @@ function sellerErrorCodes(payload) {
     .map((m) => (typeof m.code === "string" ? m.code.trim().toLowerCase() : ""));
 }
 
-const SELLER_OUT_OF_STOCK_CODE_RE = /^(out_of_stock|sold_out|insufficient_inventory|item_unavailable|not_available_for_sale)$/;
+const SELLER_OUT_OF_STOCK_CODE_RE = /^(out_of_stock|sold_out|insufficient_inventory)$/;
 
 function sellerMessageCodes(payload) {
   const messages = Array.isArray(own(payload, "messages")) ? own(payload, "messages") : [];
@@ -222,22 +223,35 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency }
   if (subtotal === null || total === null || !Number.isSafeInteger(sum) || subtotal !== sum) return null;
   const totals = [{ type: "subtotal", amount: subtotal, display_text: "Subtotal (priced by the seller's storefront)" }];
   let detailed = false;
-  for (const [type, label] of [["discount", "Discount"], ["items_discount", "Item discount"], ["fulfillment", "Shipping"], ["tax", "Tax"], ["fee", "Fee"]]) {
-    const amount = singleTotal(totalsRaw, type);
-    if (amount !== null) { totals.push({ type, amount, display_text: `${label} (priced by the seller's storefront)` }); detailed = true; }
+  let components = 0;
+  // UCP total.json: `discount` / `items_discount` amounts are NEGATIVE; the other components are not. A component of
+  // the wrong sign, or one this door cannot read as a single integer, is not a price to restate: fall back. And the
+  // seller's total must be its subtotal plus the components it listed — a total nothing explains is not shown.
+  for (const [type, label, negative] of [["discount", "Discount", true], ["items_discount", "Item discount", true], ["fulfillment", "Shipping", false], ["tax", "Tax", false], ["fee", "Fee", false]]) {
+    const hits = Array.isArray(totalsRaw) ? totalsRaw.filter((t) => isPlainObject(t) && String(t.type || "").trim().toLowerCase() === type) : [];
+    if (hits.length === 0) continue;
+    const amount = hits.length === 1 ? hits[0].amount : undefined;
+    if (!Number.isSafeInteger(amount) || (negative ? amount >= 0 : amount < 0)) return null;
+    components += amount;
+    totals.push({ type, amount, display_text: `${label} (priced by the seller's storefront)` });
+    detailed = true;
   }
+  if (total !== subtotal + components) return null;
   totals.push({
     type: "total",
     amount: total,
     display_text: detailed ? "Total (priced by the seller's storefront)" : "Total before the shipping and tax the storefront adds at checkout",
   });
+  // No cart id = no way to re-read THIS cart, so every later poll would answer with the catalog price: fall back
+  // now rather than answer one way on create and another on get.
   const cartId = str(own(payload, "id")) || str(own(payload, "cart_id"));
+  if (!isCarriableCartId(cartId)) return null;
   return {
     currency,
     continueUrl,
     lineItems,
     totals,
-    cartId: isCarriableCartId(cartId) ? cartId : null,
+    cartId,
     sellerMessageCodes: sellerMessageCodes(payload),
   };
 }
@@ -251,6 +265,9 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency }
 // `dest`, or the link itself) are therefore carried onto the cart URL, never overwriting a member the seller set.
 // The hop's own click record (the /r redirect) is NOT reproduced: minting a hop needs the backend's key.
 const TRACKING_KEY_RE = /^(utm_[a-z0-9_]{1,40}|pvt_[a-z0-9_]{1,40})$/i;
+// Unreserved characters only: a carried value can then never be a URL (no `:` or `/`), needs no encoding, and is
+// appended to the RAW query — the seller's own query string is left byte for byte as the seller wrote it.
+const TRACKING_VALUE_RE = /^[A-Za-z0-9._~-]{1,200}$/;
 
 export function carryAttribution(cartUrl, catalogLink) {
   let source;
@@ -260,15 +277,21 @@ export function carryAttribution(cartUrl, catalogLink) {
     source = hop ? (hop.dest ? new URL(hop.dest) : null) : parsed;
   } catch { source = null; }
   if (!source) return cartUrl;
-  let out;
-  try { out = new URL(cartUrl); } catch { return cartUrl; }
-  let changed = false;
+  let parsed;
+  try { parsed = new URL(cartUrl); } catch { return cartUrl; }
+  const pairs = [];
+  const seen = new Set();
   for (const [key, value] of source.searchParams.entries()) {
-    if (!TRACKING_KEY_RE.test(key) || out.searchParams.has(key) || value.length > 200) continue;
-    out.searchParams.append(key, value);
-    changed = true;
+    if (!TRACKING_KEY_RE.test(key) || !TRACKING_VALUE_RE.test(value) || parsed.searchParams.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    pairs.push(`${key}=${value}`);
   }
-  return changed ? out.toString() : cartUrl;
+  if (!pairs.length) return cartUrl;
+  const hashAt = cartUrl.indexOf("#");
+  const head = hashAt === -1 ? cartUrl : cartUrl.slice(0, hashAt);
+  const hash = hashAt === -1 ? "" : cartUrl.slice(hashAt);
+  const sep = !head.includes("?") ? "?" : (head.endsWith("?") || head.endsWith("&") ? "" : "&");
+  return `${head}${sep}${pairs.join("&")}${hash}`;
 }
 
 // ---- the door ----------------------------------------------------------------------------------------------------

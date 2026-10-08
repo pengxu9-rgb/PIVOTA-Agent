@@ -578,7 +578,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       expectedSeller, market: buyerMarket, env, merchantDoor, log,
     });
     if (priced) {
-      return buildSellerPricedCheckout({ id: encodeEscalationId(normalized, priced.cartId ?? undefined, sellerHost), priced, sellerHost, buyerEmail, now, env });
+      // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
+      // id: such a cart is not offered at all, and the catalog answer below is given instead.
+      const id = encodeEscalationId(normalized, priced.cartId, sellerHost);
+      if (escalationCartIdOf(id) === priced.cartId) {
+        return buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env });
+      }
     }
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
