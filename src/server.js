@@ -31599,6 +31599,7 @@ async function getCommerceConfirmationActionHandler() {
 // nothing serves it, UNKNOWN_PRODUCT_ID when it resolves to nothing at all.
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 const { describeCaller } = require('./services/callerIdentity');
+const { agentSignatureMode, createAgentSignatureVerifier } = require('./services/agentSignatureVerifier');
 const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
 const { decideAuroraSurfaceAccess, isAuroraSurfacePath } = require('./services/auroraSurfaceHostGuard');
 const { decideAuroraSurfaceAuth } = require('./services/auroraSurfaceAuth');
@@ -35738,11 +35739,93 @@ app.use((req, res, next) => {
       caller_ua: caller.ua,
       caller_origin: caller.origin,
       caller_authed: caller.authed,
+      // Present only when an agent signed the request and verification ran (agentSignatureMiddleware).
+      ...(req.agentSignature ? {
+        agent_sig_verified: req.agentSignature.verified,
+        agent_sig_agent: req.agentSignature.agent || null,
+        agent_sig_reason: req.agentSignature.reason,
+      } : {}),
       build_id: SERVICE_BUILD_ID,
       service_commit: SERVICE_GIT_SHA_SHORT,
     });
   });
   next();
+});
+
+// ---------------- Inbound agent signatures (Visa TAP / IETF Web Bot Auth) ----------------
+//
+// Visa's Trusted Agent Protocol and Mastercard's Agent Pay ask merchants — and whatever sits in front of
+// them — to recognise AI agents by an RFC 9421 signature on the request instead of by User-Agent. This
+// verifies those signatures on the commerce doors and records the result on req.agentSignature and in
+// the access log above (agentSignatureVerifier.js has the profiles and the allowlisted key sources).
+//
+// OBSERVE ONLY. AGENT_SIGNATURE_VERIFY_MODE=off (default) does nothing; =observe verifies and logs. In
+// no mode does this middleware change a response or refuse a request: an unsigned, unverifiable or
+// badly signed request reaches the door exactly as before. Any later use of the result (policy,
+// attribution, forwarding to the merchant) is its own change, gated on what observe mode measures.
+//
+// Unsigned requests cost nothing: no Signature-Input and no Signature header ⇒ next() immediately, no
+// log line. delegate_payment is excluded on purpose — that route reads nothing from the request
+// (see registerCommerceDelegatePaymentRefusalRoute), and this does not get to be the exception.
+let agentSignatureVerifier = null;
+function isAgentSignatureDoorPath(req) {
+  // Matched the way Express routes (case-insensitive, trailing slash ignored), so a door reached as
+  // `/UCP/mcp/` is still a door — and the delegate_payment exclusion uses the SAME matcher the body
+  // parser does, so no spelling of that path is inspected here either.
+  if (isAcpDelegatePaymentRequest(req)) return false;
+  const p = String(req.path || '').toLowerCase().replace(/\/+$/, '') || '/';
+  if (p === '/mcp' || p === '/ucp/mcp' || p.startsWith('/ucp/')) return true;
+  return p === COMMERCE_ACP_BASE_PATH || p.startsWith(`${COMMERCE_ACP_BASE_PATH}/`);
+}
+function agentSignatureBudgetMs() {
+  const n = Number.parseInt(process.env.AGENT_SIGNATURE_VERIFY_BUDGET_MS || '', 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 5000) : 1500;
+}
+app.use(async function agentSignatureMiddleware(req, res, next) {
+  const mode = agentSignatureMode();
+  if (mode === 'off' || !isAgentSignatureDoorPath(req)) return next();
+  // Signature-Input marks an RFC 9421 signature; a lone `Signature` header is the ACP adapter's HMAC.
+  if (req.headers['signature-input'] === undefined) return next();
+  // Express 4 does not catch a rejected async middleware: everything below runs inside try/finally so
+  // the request always continues, whatever happens here.
+  let timer;
+  try {
+    if (!agentSignatureVerifier) agentSignatureVerifier = createAgentSignatureVerifier({ log: logger });
+    const result = await Promise.race([
+      agentSignatureVerifier.verifyRequest(req),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ present: true, verified: false, reason: 'verification_timeout' }), agentSignatureBudgetMs());
+      }),
+    ]).catch(() => ({ present: true, verified: false, reason: 'verifier_error' }));
+    req.agentSignature = Object.freeze(result);
+    const caller = describeCaller(req);
+    logger.info(
+      {
+        event: 'agent_signature',
+        mode,
+        path: req.path,
+        method: req.method,
+        verified: result.verified,
+        reason: result.reason,
+        profile: result.profile || null,
+        tag: result.tag || null,
+        agent: result.agent || null,
+        // The Signature-Agent the request CLAIMED when we did not resolve it — a count of who is signing
+        // that we do not trust yet, never an identity (draft-ietf-webbotauth-httpsig-protocol §4.1).
+        claimed_agent: result.claimed_agent || null,
+        keyid: result.keyid ? String(result.keyid).slice(0, 100) : null,
+        alg: result.alg || null,
+        caller_class: caller.caller_class,
+        caller_ua: caller.ua,
+      },
+      'agent signature',
+    );
+  } catch {
+    // Never let verification or logging break the request; the access log still records the call.
+  } finally {
+    clearTimeout(timer);
+    next();
+  }
 });
 
 // ---------------- Aurora BFF surface: not served on the branded public hosts ----------------
