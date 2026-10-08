@@ -35,7 +35,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
-import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
+import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -382,7 +382,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       if (op.id === "create_checkout_session" && toolArgs.checkout?.reap !== undefined) {
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
       }
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
+      const escalationDeclines = [];
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
       if (escalated) {
@@ -390,6 +391,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           ? { ...escalated, messages: [...(Array.isArray(escalated.messages) ? escalated.messages : []), ...reapHints] }
           : escalated;
       }
+      // 3a-ii) A STOREFRONT ROW NO LANE SERVED IS REFUSED HERE, by name and terminally — never handed to the
+      //     kernel, which cannot price a seller Pivota has no connection to and answered a retriable
+      //     MERCHANT_UNAVAILABLE for it. A cart with no storefront row passes through untouched. See
+      //     refuseUnservedStorefrontCheckout in ucpCheckoutEscalation.js.
+      await refuseUnservedStorefrontCheckout({ op, params, ctx, executor: reads, declined: escalationDeclines.length > 0 });
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which

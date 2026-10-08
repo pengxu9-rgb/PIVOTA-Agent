@@ -681,6 +681,22 @@ escalation / kernel answers at once. Purchases already open keep progressing on 
 gateway switch off, `get_checkout` on a `reap_` id answers as an unknown id, so tell the partner
 before switching off mid-purchase.
 
+### Route selection: `checkout.reap` selects Reap (2026-10-08)
+
+`checkout.reap` is what selects this route. A create without it, on a row this lane would otherwise
+serve, is an ordinary UCP checkout: the lane skips it (`route_not_selected`, logged) and the storefront
+escalation answers, whether or not new Reap creates are paused. A create that does carry `checkout.reap`
+keeps the single-route rule below: a pause, a money or variant mismatch, or a backend refusal is refused by
+name and never falls through.
+
+When no lane serves a storefront row (escalation off, or the purchasability gate declining), the door refuses
+it by name instead of handing it to the kernel, which cannot price a seller Pivota is not connected to:
+`OPERATION_NOT_ALLOWED` / `ucp_storefront_checkout_unavailable` (`retriable: false`; the detail names the items,
+the seller hosts, and the storefront links the product read already publishes), or `NO_MERCHANT_OFFER` /
+`merchant_not_purchasable` on a gate decline (no link). Only a cart with no storefront row reaches the kernel.
+Older passages in this document that say a storefront row "falls through to the kernel path" describe the
+behaviour before this change.
+
 ### Original displayed money and immutable recovery
 
 New Reap first creates require paired `checkout.reap.expected_unit_price_minor` (positive safe integer) and `checkout.reap.expected_currency` (uppercase ISO-shaped currency). The UI captures the own-offer unit amount before asynchronous preparation for both sole and explicitly selected variants. These values constrain the buyer's original displayed money; they do not authorize pricing. The gateway requires current PDP/selected preparation agreement and forwards the unchanged pair to the backend, which compares it with its authoritative stored item before creating buyer, consent, key, purchase, click or provider state. A coherent `409 price_changed` returns `ucp_reap_price_not_created` on create only, with no alternate checkout.

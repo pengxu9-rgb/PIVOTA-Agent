@@ -691,8 +691,11 @@ The seam is the two lines where `continueUrl` is resolved, **before `buildEscala
 called at all** — the URL is never built into a response that is then edited. The `get_checkout_session`
 branch is gated identically. The UCP `get_checkout` body carries no `checkout.context`, so that lane
 is **always unkeyable**: unenforced it keeps the previous behaviour, and **under enforcement it
-declines** (`unkeyable_enforced`) and falls through to the kernel path exactly as a create decline
-does — a re-read of an `esc_` session then answers as any unknown session does.
+declines** (`unkeyable_enforced`) exactly as a create decline does. Since 2026-10-08 a decline on either
+op is refused by name at the door — `NO_MERCHANT_OFFER` / `merchant_not_purchasable`, `retriable: false`, no
+storefront link — instead of falling through to the kernel path (which cannot price an observed seller and
+answered a retriable `MERCHANT_UNAVAILABLE`); see `refuseUnservedStorefrontCheckout` in
+`mcp-server/src/ucpCheckoutEscalation.js`.
 
 > ⚠️ **ARMING NOTE for this path.** With `AGENT_CHECKOUT_UCP_ESCALATION_ENABLED` on AND the gate armed
 > against an enforcing backend, a buyer who created an escalation checkout (with a market, passing the

@@ -21,7 +21,7 @@ import {
   buildEscalationCheckout,
   tryEscalateUcpCheckout,
 } from '../src/ucpCheckoutEscalation.js';
-import { createCommerceToolSurface, ucpDialectSurface } from '../src/commerceToolSurface.js';
+import { createCommerceToolSurface, ucpDialectSurface, toToolError } from '../src/commerceToolSurface.js';
 
 // PROVENANCE: https://ucp.dev/2026-04-08/schemas/shopping/checkout.json + types (fetched 2026-08-18).
 const REQUIRED_CHECKOUT = ['ucp', 'id', 'line_items', 'status', 'currency', 'totals', 'links'];
@@ -375,15 +375,98 @@ describe('tryEscalateUcpCheckout', () => {
 describe('through createCommerceToolSurface on the UCP dialect', () => {
   const body = (id, qty = 1) => ({ meta: AGENT_META, checkout: { line_items: [{ item: { id }, quantity: qty }], buyer: { email: 'shopper@example.test' } } });
 
-  test('flag OFF: a seed cart takes the kernel path exactly as before (create_checkout_session reaches the executor)', async () => {
+  test('flag OFF: a seed cart is REFUSED by name and terminally — create_checkout_session never reaches the executor', async () => {
+    // It used to take the kernel path, which cannot price a seller Pivota is not connected to: past intake the
+    // backend answered 422, mapped to MERCHANT_UNAVAILABLE / retriable, so agents retried a checkout that could
+    // never succeed.
     const saved = process.env[UCP_ESCALATION_FLAG]; delete process.env[UCP_ESCALATION_FLAG];
     try {
       const executor = executorWith({ [SEED.product_id]: { ...SEED, purchase_grain: 'product', variants: [{ variant_id: SEED.product_id }] } });
       const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
-      const out = await ucp.callTool('create_checkout', body(SEED.product_id), SESSION);
-      assert.equal(out.session_id, 'q_kernel');
-      assert.ok(executor.seen.some((c) => c.op === 'create_checkout_session'));
+      const err = await rejected(ucp.callTool('create_checkout', body(SEED.product_id), SESSION));
+      assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+      assert.equal(err.retriable, false);
+      assert.deepEqual(err.detail.acp_detail, {
+        reason: 'ucp_storefront_checkout_unavailable',
+        storefront_items: [SEED.product_id],
+        seller_hosts: ['comfortzone.us'],
+        storefront_urls: { [SEED.product_id]: SEED.external_redirect_url },
+      });
+      assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+      assert.deepEqual(executor.seen.map((c) => c.op), ['get_product'], 'one read, nothing priced');
+      // And the agent sees it: terminal, with the curated message and the detail.
+      const wire = JSON.parse(toToolError(err).content[0].text).error;
+      assert.equal(wire.retriable, false);
+      assert.equal(wire.detail.reason, 'ucp_storefront_checkout_unavailable');
+      assert.match(wire.message, /Retrying will not change this/);
+      assert.match(wire.message, /comfortzone\.us/);
     } finally { if (saved !== undefined) process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  test('flag OFF: a CONTRACTED cart still takes the kernel path, byte-identical (the refusal only sees storefront rows)', async () => {
+    const saved = process.env[UCP_ESCALATION_FLAG]; delete process.env[UCP_ESCALATION_FLAG];
+    try {
+      const executor = executorWith({ [CONTRACTED.product_id]: CONTRACTED });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      const out = await ucp.callTool('create_checkout', body(CONTRACTED.product_id), SESSION);
+      assert.equal(out.session_id, 'q_kernel');
+      assert.equal(executor.seen.filter((c) => c.op === 'get_product').length, 1, 'read once, shared with the resolver');
+    } finally { if (saved !== undefined) process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  test('flag OFF: a MIXED cart is refused naming only the storefront items; nothing is priced', async () => {
+    const saved = process.env[UCP_ESCALATION_FLAG]; delete process.env[UCP_ESCALATION_FLAG];
+    try {
+      const executor = executorWith({ [SEED.product_id]: SEED, [CONTRACTED.product_id]: CONTRACTED });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      const err = await rejected(ucp.callTool('create_checkout', { meta: AGENT_META, checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 1 }, { item: { id: SEED.product_id }, quantity: 1 }], buyer: { email: 'shopper@example.test' } } }, SESSION));
+      assert.equal(err.detail.acp_detail.reason, 'ucp_storefront_checkout_unavailable');
+      assert.deepEqual(err.detail.acp_detail.storefront_items, [SEED.product_id]);
+      assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+    } finally { if (saved !== undefined) process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  test('flag OFF: get / update on an escalation id are refused by name — never sent to the kernel as an unknown session', async () => {
+    const saved = process.env[UCP_ESCALATION_FLAG]; delete process.env[UCP_ESCALATION_FLAG];
+    try {
+      const executor = executorWith({ [SEED.product_id]: SEED });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      const id = encodeEscalationId(items([SEED.product_id, 1]));
+      for (const [tool, args] of [['get_checkout', { meta: AGENT_META, id }], ['update_checkout', { meta: AGENT_META, id, checkout: { line_items: [{ item: { id: SEED.product_id }, quantity: 2 }] } }]]) {
+        const err = await rejected(ucp.callTool(tool, args, SESSION));
+        assert.equal(err.code, 'OPERATION_NOT_ALLOWED', tool);
+        assert.equal(err.retriable, false, tool);
+        assert.equal(err.detail.acp_detail.reason, 'ucp_storefront_checkout_unavailable', tool);
+      }
+      const kernelOps = executor.seen.map((c) => c.op).filter((op) => op !== 'get_product');
+      assert.deepEqual(kernelOps, [], 'no kernel op ran for an escalation id');
+    } finally { if (saved !== undefined) process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  test('flag ON + the purchasability gate declines: merchant_not_purchasable (NO_MERCHANT_OFFER), no storefront link handed out, no kernel', async () => {
+    const gate = await import('../../src/services/merchantPurchasabilityClient.js');
+    const client = gate.default.getMerchantPurchasabilityClient();
+    const savedFlag = process.env[UCP_ESCALATION_FLAG];
+    const savedGate = process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
+    const realOffer = client.shouldOfferPurchase;
+    process.env[UCP_ESCALATION_FLAG] = '1';
+    process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = '1';
+    client.shouldOfferPurchase = async () => ({ offer: false, source: 'test' });
+    try {
+      const executor = executorWith({ [SEED.product_id]: SEED });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      const err = await rejected(ucp.callTool('create_checkout', { ...body(SEED.product_id), checkout: { ...body(SEED.product_id).checkout, context: { address_country: 'US' } } }, SESSION));
+      assert.equal(err.code, 'NO_MERCHANT_OFFER');
+      assert.equal(err.retriable, false);
+      assert.equal(err.detail.acp_detail.reason, 'merchant_not_purchasable');
+      assert.equal(err.detail.acp_detail.storefront_urls, undefined, 'the gate exists to stop recommending that checkout');
+      assert.equal(JSON.stringify(err.detail).includes(SEED.external_redirect_url), false);
+      assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+    } finally {
+      client.shouldOfferPurchase = realOffer;
+      if (savedFlag === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = savedFlag;
+      if (savedGate === undefined) delete process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED; else process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = savedGate;
+    }
   });
 
   test('flag ON: a seed cart is answered with the escalation checkout and create_checkout_session is NEVER executed', async () => {
