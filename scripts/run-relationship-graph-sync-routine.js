@@ -184,6 +184,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
 
   return {
     cutoff,
+    // Stamped before the first step (renewal), so the routine's serving audit
+    // can tell the rows this run approved or renewed from older ones.
+    runStartedAt: now.toISOString(),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     outDir,
     summaryOut: resolvePathMaybeRelative(argValue(argv, 'summary-out') || path.join(outDir, 'sync_routine_summary.json'), cwd),
@@ -322,6 +325,30 @@ function serializableOptions(options = {}) {
   };
 }
 
+// The routine child's stderr only reaches this process as a tail, so its
+// legacy-suppression WARNING is re-emitted here, where the container's log
+// sink sees it, and kept in the summary/ledger next to the run's own numbers.
+function surfaceServingAuditScope(summary, routine = {}) {
+  const scope = routine && routine.serving_audit_scope;
+  if (!scope || typeof scope !== 'object') return;
+  summary.serving_audit_scope = scope;
+  const legacyRows = Number(scope.legacy_suppressed_rows) || 0;
+  if (!(legacyRows > 0)) return;
+  const message = `${legacyRows} legacy approved edges are suppressed by the serving guard `
+    + '(approved before this run; hidden at read time; not a failure of this run)';
+  summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+  if (!summary.warnings.includes(message)) summary.warnings.push(message);
+  process.stderr.write(`${JSON.stringify({
+    severity: 'WARNING',
+    run_id: summary.run_id,
+    message,
+    legacy_suppressed_rows: legacyRows,
+    legacy_suppressed_pct: scope.legacy_suppressed_pct,
+    legacy_suppressed_by_reason: scope.legacy_suppressed_by_reason,
+    run_suppressed_rows: scope.run_suppressed_rows,
+  })}\n`);
+}
+
 function buildSyncRoutineSteps(options = {}) {
   const node = process.execPath;
   const steps = [];
@@ -449,6 +476,7 @@ function buildSyncRoutineSteps(options = {}) {
     '--db-lock-heartbeat-ms',
     String(options.dbLockHeartbeatMs),
   ];
+  pushArg(routineArgs, 'run-started-at', options.runStartedAt);
   if (options.stepTimeoutMs) {
     routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
   } else {
@@ -632,6 +660,7 @@ async function runSyncRoutine(
       if (routinePath && fs.existsSync(routinePath)) {
         const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
+        surfaceServingAuditScope(summary, routine);
       }
     } catch (error) {
       summary.ok = false;

@@ -24,6 +24,11 @@ const DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES = 10;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const OUTPUT_TAIL_CHARS = 12000;
 const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
+// The serving audit attributes a row to this run when its last_verified_at is
+// at or after the run's start. last_verified_at is stamped by the database
+// clock and the run start by this process's clock; the allowance only widens
+// the run's side (more rows gated), never the legacy side.
+const RUN_SCOPE_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
 
 function normalizeString(value, max = 512) {
@@ -124,6 +129,9 @@ function usage() {
     'AI review excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
     'Use --max-serving-suppressed-pct and/or --max-serving-suppressed-rows to fail the job when runtime serving guards suppress too many approved edges.',
     'Use --fail-on-serving-suppression-reasons reason_a,reason_b to fail when any listed suppression reason appears.',
+    'Serving thresholds gate only the edges this run approved or renewed (last_verified_at at or after --run-started-at,',
+    'default: this process start): any such edge the guard suppresses fails the job. Older (legacy) suppressed edges are',
+    'reported as legacy_suppressed_* and logged at WARNING, but do not fail it — the read path already hides them.',
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
@@ -160,9 +168,14 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
   const reviewExcludeRelationTypes = normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000)
     || (allowDupeAiApproval ? '' : 'dupe');
   const stepTimeoutMs = parseStepTimeoutMs(argv);
+  const runStartedAtInput = normalizeString(argValue(argv, 'run-started-at'), 80);
+  if (runStartedAtInput && Number.isNaN(new Date(runStartedAtInput).getTime())) {
+    throw new Error(`invalid --run-started-at timestamp: ${runStartedAtInput}`);
+  }
 
   return {
     reviewMode,
+    runStartedAt: new Date(runStartedAtInput || now).toISOString(),
     cutoff,
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
@@ -234,6 +247,12 @@ function scriptPath(scriptName) {
 function pushArg(args, name, value) {
   if (value == null || value === '') return;
   args.push(`--${name}`, String(value));
+}
+
+function runScopeVerifiedSince(options = {}) {
+  const startedMs = new Date(options.runStartedAt || '').getTime();
+  if (!Number.isFinite(startedMs)) return '';
+  return new Date(startedMs - RUN_SCOPE_CLOCK_SKEW_MS).toISOString();
 }
 
 function buildRoutineSteps(options) {
@@ -360,6 +379,7 @@ function buildRoutineSteps(options) {
       artifacts.serving_audit,
     ];
     if (options.servingAuditLimit) pushArg(args, 'limit', options.servingAuditLimit);
+    pushArg(args, 'run-verified-since', runScopeVerifiedSince(options));
     steps.push({
       id: 'serving_guard_audit',
       command: node,
@@ -578,7 +598,86 @@ function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(resolvePathMaybeRelative(filePath), 'utf8'));
 }
 
+function hasRunScope(audit = {}) {
+  return Boolean(audit && audit.run_verified_since) && Number.isFinite(Number(audit.run_suppressed_rows));
+}
+
+// Run-scoped gate. The reviewer refuses to approve an edge the guard would
+// suppress and renewal skips one, so a suppressed edge this run wrote is a
+// defect, not drift: one is enough to fail. The fail-on reasons are reported by
+// name on the same rows. The whole-table row/percent budgets were a proxy for
+// "this run made serving worse"; measured on the whole table they also fire on
+// rows a later guard change re-classified, which is what failed 2026-10-02..08.
+function evaluateRunScopedServingAuditThresholds(audit, options = {}) {
+  const violations = [];
+  const runSuppressed = parseNumber(audit.run_suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const byRunReason = audit.run_suppressed_by_reason && typeof audit.run_suppressed_by_reason === 'object'
+    && !Array.isArray(audit.run_suppressed_by_reason)
+    ? Object.fromEntries(Object.entries(audit.run_suppressed_by_reason).map(([reason, count]) => [
+      normalizeKey(reason),
+      parseNumber(count, 0, { min: 0, max: Number.MAX_SAFE_INTEGER }),
+    ]))
+    : {};
+  if (runSuppressed > 0) {
+    violations.push({
+      metric: 'run_suppressed_rows',
+      observed: runSuppressed,
+      max: 0,
+      message: `serving guard suppresses ${runSuppressed} approved edges this run approved or renewed`,
+    });
+  }
+  for (const reason of Array.isArray(options.failOnServingSuppressionReasons)
+    ? options.failOnServingSuppressionReasons
+    : []) {
+    const normalizedReason = normalizeKey(reason);
+    const count = byRunReason[normalizedReason] || 0;
+    if (count > 0) {
+      violations.push({
+        metric: 'suppression_reason',
+        scope: 'run',
+        reason: normalizedReason,
+        observed: count,
+        max: 0,
+        message: `serving guard found ${count} approved edges this run wrote suppressed for ${normalizedReason}`,
+      });
+    }
+  }
+  return violations;
+}
+
+function servingAuditScopeSummary(audit = {}) {
+  if (!hasRunScope(audit)) return null;
+  const pick = (key, fallback) => (audit[key] == null ? fallback : audit[key]);
+  return {
+    run_verified_since: audit.run_verified_since,
+    run_total_rows: pick('run_total_rows', 0),
+    run_suppressed_rows: pick('run_suppressed_rows', 0),
+    run_suppressed_pct: pick('run_suppressed_pct', 0),
+    run_suppressed_by_reason: pick('run_suppressed_by_reason', {}),
+    run_suppressed_examples: pick('run_suppressed_examples', {}),
+    legacy_total_rows: pick('legacy_total_rows', 0),
+    legacy_suppressed_rows: pick('legacy_suppressed_rows', 0),
+    legacy_suppressed_pct: pick('legacy_suppressed_pct', 0),
+    legacy_suppressed_by_reason: pick('legacy_suppressed_by_reason', {}),
+    legacy_suppressed_examples: pick('legacy_suppressed_examples', {}),
+  };
+}
+
+function legacySuppressionWarning(scope) {
+  if (!scope || !(Number(scope.legacy_suppressed_rows) > 0)) return null;
+  return {
+    message: `${scope.legacy_suppressed_rows} legacy approved edges are suppressed by the serving guard `
+      + '(approved before this run; hidden at read time; not a failure of this run)',
+    legacy_suppressed_rows: scope.legacy_suppressed_rows,
+    legacy_suppressed_pct: scope.legacy_suppressed_pct,
+    legacy_suppressed_by_reason: scope.legacy_suppressed_by_reason,
+  };
+}
+
 function evaluateServingAuditThresholds(audit = {}, options = {}) {
+  // An artifact without the run split (an audit run without --run-verified-since) is
+  // gated on the whole table, as before: fail closed, never open.
+  if (hasRunScope(audit)) return evaluateRunScopedServingAuditThresholds(audit, options);
   const violations = [];
   const suppressedRows = parseNumber(audit.suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
   const suppressedPct = parseNumber(audit.suppressed_pct, 0, { min: 0, max: 100 });
@@ -711,6 +810,7 @@ function serializableOptions(options) {
     apply_review: options.applyReview,
     step_timeout_ms: options.stepTimeoutMs || null,
     serving_audit_timeout_ms: options.servingAuditTimeoutMs || null,
+    run_started_at: options.runStartedAt || null,
     skip_need_nodes: Boolean(options.skipNeedNodes),
     allow_dupe_ai_approval: options.allowDupeAiApproval,
     lock_dir: options.lockDir || null,
@@ -853,6 +953,30 @@ async function runRoutineJob(
         throw err;
       }
 
+      if (step.id === 'serving_guard_audit') {
+        // Reported whether or not thresholds are set: the legacy backlog is
+        // worth seeing even on runs that do not gate on it.
+        let scope = null;
+        try {
+          scope = servingAuditScopeSummary(readJsonFile(step.artifact));
+        } catch (_err) {
+          scope = null; // the threshold block below reports an unreadable artifact when it gates
+        }
+        if (scope) {
+          summary.serving_audit_scope = scope;
+          record.serving_audit_scope = {
+            run_suppressed_rows: scope.run_suppressed_rows,
+            legacy_suppressed_rows: scope.legacy_suppressed_rows,
+          };
+          const warning = legacySuppressionWarning(scope);
+          if (warning) {
+            summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+            summary.warnings.push(warning.message);
+            process.stderr.write(`${JSON.stringify({ severity: 'WARNING', run_id: runId, ...warning })}\n`);
+          }
+        }
+      }
+
       if (step.id === 'serving_guard_audit' && hasServingAuditThresholds(options)) {
         let audit;
         try {
@@ -992,12 +1116,14 @@ if (require.main === module) {
 
 module.exports = {
   APPLY_CONFIRM_TOKEN,
+  RUN_SCOPE_CLOCK_SKEW_MS,
   acquireRoutineLock,
   acquirePostgresAdvisoryLock,
   buildLockPath,
   buildRoutineSteps,
   postgresAdvisoryLockParts,
   evaluateServingAuditThresholds,
+  runScopeVerifiedSince,
   parseArgs,
   runCommand,
   runRoutineJob,
