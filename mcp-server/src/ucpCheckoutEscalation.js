@@ -95,6 +95,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
 import { judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId } from "./ucpMerchantDoorPricing.js";
+import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -144,7 +145,8 @@ export function escalationTargetOf(product) {
 // resolve to a DIFFERENT seller (the row was re-pointed, or the id was forged) must not hand seller A's cart id to
 // seller B. On a host mismatch the re-read does not call the seller at all and falls back to the catalog answer.
 export function encodeEscalationId(items, cartId, sellerHost) {
-  const i = items.map((it) => [it.product_id, it.quantity]);
+  // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
+  const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
@@ -179,10 +181,17 @@ export function decodeEscalationId(id) {
   if (!parsed || !Array.isArray(parsed.i) || parsed.i.length === 0 || parsed.i.length > MAX_ESCALATION_ITEMS) return null;
   const items = [];
   for (const entry of parsed.i) {
-    if (!Array.isArray(entry) || entry.length !== 2) return null;
-    const [product_id, quantity] = entry;
+    if (!Array.isArray(entry) || (entry.length !== 2 && entry.length !== 3)) return null;
+    const [product_id, quantity, variant_id] = entry;
     if (!str(product_id) || !Number.isSafeInteger(quantity) || quantity < 1) return null;
-    items.push({ product_id: product_id.trim(), quantity });
+    if (entry.length === 3) {
+      // The same rule as a line's item.id: the variant must survive a round trip through the composite id.
+      const reparsed = typeof variant_id === "string" ? parseUcpItemId(encodeUcpVariantItemId(product_id.trim(), variant_id)) : null;
+      if (!reparsed || reparsed.variant_id !== variant_id || reparsed.product_id !== product_id.trim()) return null;
+      items.push({ product_id: product_id.trim(), quantity, variant_id });
+    } else {
+      items.push({ product_id: product_id.trim(), quantity });
+    }
   }
   return items;
 }
@@ -351,7 +360,11 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
   let currency = null;
   items.forEach((it, idx) => {
     const row = rows.get(it.product_id);
-    const price = priceOf(row);
+    // A CHOSEN variant shows its own catalog price when it states one, else the product's (the catalog's last
+    // observed price for the product, as before); its label joins the title and its composite id is the line's.
+    const variant = it.variant_id ? findRealVariant(row, it.variant_id) : null;
+    const variantPrice = variant ? variantPriceOf(variant, row) : undefined;
+    const price = variantPrice || priceOf(row);
     if (!price) {
       throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "ucp_escalation_item_unpriced", dialect: "ucp", product_id: it.product_id });
     }
@@ -367,9 +380,16 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     }
     subtotal += lineTotal;
     const image = str(row.image_url) || (Array.isArray(row.images) ? str(row.images[0]) : null);
+    const baseTitle = str(row.title) || str(row.brand) || it.product_id;
+    const label = variant ? variantLabelOf(variant) : null;
     lineItems.push({
       id: `li_${idx + 1}`,
-      item: compact({ id: it.product_id, title: str(row.title) || str(row.brand) || it.product_id, price: price.amount, image_url: image }),
+      item: compact({
+        id: it.variant_id ? encodeUcpVariantItemId(it.product_id, it.variant_id) : it.product_id,
+        title: label ? `${baseTitle} — ${label}` : baseTitle,
+        price: price.amount,
+        image_url: image,
+      }),
       quantity: it.quantity,
       totals: [
         { type: "subtotal", amount: lineTotal },
@@ -551,7 +571,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         `Send one checkout per seller: ${[...hosts].join(", ")}.`,
       ].join(" "), { seller_hosts: [...hosts] });
     }
-    const normalized = items.map((it) => ({ product_id: it.product_id, quantity: it.quantity }));
+    const normalized = items.map((it) => (str(it.variant_id)
+      ? { product_id: it.product_id, quantity: it.quantity, variant_id: str(it.variant_id) }
+      : { product_id: it.product_id, quantity: it.quantity }));
     const continueUrl = targets.get(normalized[0].product_id);
     // THE EXPECTED SELLER, AGAIN, ON THE LINK ITSELF (docs/reap-agentic-lane.md §5.4). The door has already
     // refused a create whose rows are not that seller (ucpReapAgenticLane.js `assertExpectedSeller`); this is
@@ -763,4 +785,30 @@ function storefrontRefusal(declined, productIds, targets, linksAllowed) {
     seller_hosts: hosts.length ? hosts : undefined,
     storefront_urls: linksAllowed && targets.size ? Object.fromEntries(targets) : undefined,
   }));
+}
+
+// ---- a chosen variant must be one of the product's --------------------------------------------------------------
+//
+// A UCP line may name a variant (`<product_id>::v::<variant_id>`, ucpVariantIds.js). The adapter only splits the id;
+// HERE, before any lane runs, each named variant is proven to be one of that product's REAL variants on the same
+// (memoized) product read every lane uses. Without it a caller could put any string in `variant_id` and have it
+// carted at a seller, priced by the kernel, or stamped into an escalation id. Refused by name, terminally.
+
+/** Refuse a UCP create/update whose line names a variant the product does not have. */
+export async function assertChosenVariantsBelong({ params, ctx, executor, timeoutMs }) {
+  const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
+  const chosen = Array.isArray(quote.items)
+    ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id) && str(it.variant_id))
+    : [];
+  if (chosen.length === 0) return;
+  const rows = await readRows(chosen.map((it) => ({ product_id: str(it.product_id), quantity: 1 })), executor, ctx, { timeoutMs });
+  const unknown = chosen
+    .filter((it) => !findRealVariant(rows.get(str(it.product_id)), str(it.variant_id)))
+    .map((it) => encodeUcpVariantItemId(str(it.product_id), str(it.variant_id)));
+  if (unknown.length) {
+    throw intakeRefusal("QUOTE_REQUIRED", "ucp_variant_not_in_product", [
+      `These line items name a variant the product does not have: ${unknown.join(", ")}.`,
+      "Send a variant id exactly as get_product publishes it in product.variants[].id, or the product id.",
+    ].join(" "), { rejected_item_ids: unknown });
+  }
 }

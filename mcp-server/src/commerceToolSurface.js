@@ -35,7 +35,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
-import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout } from "./ucpCheckoutEscalation.js";
+import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -353,6 +353,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     of them would sell from, or send the buyer to, the SERVED row's seller. Fails closed on a row it
       //     cannot read or whose merchant it cannot read. A no-op without the member (and the adapter accepts the
       //     member only while the Reap lane is on), so every other create is untouched.
+      // 3a-00) A CHOSEN VARIANT IS ONE OF THE PRODUCT'S. A line naming `<product_id>::v::<variant_id>` is proven against
+      //     the same memoized read every lane uses, before any of them can cart, price or stamp it.
+      if ((op.id === "create_checkout_session" || op.id === "update_checkout_session") && !recoverOnly && !resumeOnly && !prepareOnly) {
+        await assertChosenVariantsBelong({ params, ctx, executor: reads });
+      }
       if (op.id === "create_checkout_session" && !recoverOnly && !resumeOnly) {
         await assertExpectedSeller({ ucpArgs: toolArgs, params, executor: reads, ctx });
       }

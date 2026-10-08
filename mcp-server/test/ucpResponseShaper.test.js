@@ -402,35 +402,48 @@ describe('get_product answers the spec get_product_response', () => {
     assert.equal(shape(ROW).product.id, ROW.pivota_signature_id);
   });
 
-  test('a row with several REAL variants still publishes ONE — and SAYS SO, because checkout cannot take a variant id yet', () => {
-    const out = shape({ product: DETAIL_ROW });
-    assert.equal(out.product.variants.length, 1);
-    assert.equal(out.product.variants[0].id, ROW.pivota_signature_id, 'never a per-variant id the checkout would refuse');
-    assert.equal(JSON.stringify(out).includes('v_30ml'), false, 'variant ids the door cannot accept are not advertised');
-    const w = out.messages.find((m) => m.code === 'variants.selection_not_supported');
-    assert.equal(w.type, 'warning');
-    assert.equal(w.path, '$.product.variants');
-    assert.match(w.content, /2 purchasable variants/);
-    assert.match(w.content, /only the product id is accepted as item\.id/);
-    // Variants that merely RESTATE the product id, or carry no id, are not "real" and earn no warning —
-    // by buyerIntake's OWN test (isRestatedProductId), which also discards the unscoped lane's fabricated
-    // `${product_id}-${n}` ids. The warning claims what checkout will do, so it must count what checkout counts.
+  test('a row with several REAL variants publishes EACH, with the id checkout accepts for exactly that variant', () => {
     const pid = ROW.pivota_signature_id;
-    const restated = { ...ROW, variants: [{ variant_id: pid }, { title: 'no id' }, { variant_id: 'v_only' }] };
-    assert.equal(shape({ product: restated }).messages, undefined, 'one real variant -> no warning');
-    assert.equal(shape({ product: { ...ROW, variants: [] } }).messages, undefined);
-    assert.equal(shape({ product: { ...ROW, variants: 'not an array' } }).messages, undefined);
-    // pdpBuilder fabrications: `${pid}-1`, `${pid}-2` are NOT real variants (checkout would refuse them as
-    // no identity), so they must not be announced as "2 purchasable variants".
-    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: `${pid}-2` }] } }).messages, undefined, 'fabricated ids are not variants');
-    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: 'v_real' }, { variant_id: 'v_real2' }] } }).messages[0].code, 'variants.selection_not_supported', 'two real among fabricated -> warning');
-    // Duplicate ids are ONE variant.
-    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: 'v_dup' }, { variant_id: 'v_dup' }, { id: 'v_dup' }] } }).messages, undefined, 'duplicates collapse');
-    // …and the count in the message is exact, not capped.
-    assert.match(shape({ product: { ...ROW, variants: [1, 2, 3, 4, 5].map((n) => ({ variant_id: `v_${n}` })) } }).messages[0].content, /5 purchasable variants/);
-    // The warning is a SPEC warning: type/code/content present, content_type in the enum.
-    assert.equal(w.content_type, 'plain');
-    assert.ok(['plain', 'markdown'].includes(w.content_type));
+    const out = shape({ product: DETAIL_ROW });
+    assert.deepEqual(out.product.variants.map((v) => v.id), [`${pid}::v::v_30ml`, `${pid}::v::v_50ml`]);
+    assert.deepEqual(out.product.variants.map((v) => v.price), [{ amount: 2599, currency: 'USD' }, { amount: 3999, currency: 'USD' }], "each variant's OWN price");
+    assert.deepEqual(out.product.variants.map((v) => v.title), ['Niacinamide Serum — 30ml', 'Niacinamide Serum — 50ml']);
+    assert.deepEqual(out.product.price_range, { min: { amount: 2599, currency: 'USD' }, max: { amount: 3999, currency: 'USD' } });
+    for (const v of out.product.variants) for (const k of ['id', 'title', 'description', 'price']) assert.ok(k in v, `variant missing ${k}`);
+    assert.equal(out.messages, undefined, 'a fully published choice needs no warning');
+    assert.equal(JSON.stringify(out).includes('merch_obs_'), false, 'still no internal merchant id');
+    // Variants that merely RESTATE the product id, carry no id, are fabricated (`${pid}-N`) or duplicated are not
+    // real — by buyerIntake's OWN readers — so they never become choices: the product stays the one variant.
+    const one = (variants) => shape({ product: { ...ROW, variants } });
+    for (const variants of [
+      [{ variant_id: pid }, { title: 'no id' }, { variant_id: 'v_only' }],
+      [],
+      [{ variant_id: `${pid}-1` }, { variant_id: `${pid}-2` }],
+      [{ variant_id: 'v_dup' }, { variant_id: 'v_dup' }, { id: 'v_dup' }],
+    ]) {
+      const o = one(variants);
+      assert.equal(o.product.variants.length, 1, JSON.stringify(variants));
+      assert.equal(o.product.variants[0].id, pid);
+      assert.equal(o.messages, undefined);
+    }
+    assert.equal(shape({ product: { ...ROW, variants: 'not an array' } }).product.variants[0].id, pid);
+    assert.deepEqual(one([{ variant_id: `${pid}-1` }, { variant_id: 'v_real' }, { variant_id: 'v_real2' }]).product.variants.map((v) => v.id), [`${pid}::v::v_real`, `${pid}::v::v_real2`], 'two real among fabricated');
+    assert.equal(one([1, 2, 3, 4, 5].map((n) => ({ variant_id: `v_${n}` }))).product.variants.length, 5, 'not capped');
+    // A variant with no price of its own shows the product's; one priced in ANOTHER currency is not published, and
+    // the envelope SAYS the list is partial.
+    assert.deepEqual(one([{ variant_id: 'v_a' }, { variant_id: 'v_b', price: 30 }]).product.variants.map((v) => v.price.amount), [2599, 3000]);
+    const partial = one([{ variant_id: 'v_a', price: 10 }, { variant_id: 'v_b', price: 20 }, { variant_id: 'v_c', price: { amount: 30, currency: 'EUR' } }]);
+    assert.deepEqual(partial.product.variants.map((v) => v.id), [`${pid}::v::v_a`, `${pid}::v::v_b`]);
+    assert.equal(partial.messages[0].code, 'variants.partially_published');
+    assert.match(partial.messages[0].content, /3 purchasable variants; only 2/);
+    assert.equal(partial.messages[0].content_type, 'plain');
+    const none = one([{ variant_id: 'v_a', price: { amount: 1, currency: 'EUR' } }, { variant_id: 'v_b', price: { amount: 2, currency: 'EUR' } }]);
+    assert.equal(none.product.variants[0].id, pid);
+    assert.match(none.messages[0].content, /checkout will refuse rather than guess/);
+    // Search keeps ONE variant per product (a list view), byte-identical to before — even for a row carrying variants.
+    assert.deepEqual(shapeUcpProduct(DETAIL_ROW).product.variants.map((v) => v.id), [pid]);
+    const listed = shapeUcpSearchResponse({ products: [DETAIL_ROW] }, { params: { payload: { search: {} } }, ucpArgs: { meta: AGENT_META, catalog: {} } });
+    assert.deepEqual(listed.products[0].variants.map((v) => v.id), [pid]);
   });
 
   test('not found is a REFUSAL, not a half-envelope: no row / no id -> UNKNOWN_PRODUCT_ID, unpriced -> NO_MERCHANT_OFFER, both terminal', () => {
@@ -498,8 +511,8 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     const ucp = ucpDialectSurface(native);
     const viaUcp = await ucp.callTool('get_product', { meta: AGENT_META, catalog: { id: ROW.pivota_signature_id } }, SESSION);
     assert.equal(viaUcp.ucp.version, UCP_RESPONSE_VERSION);
-    assert.equal(viaUcp.product.variants.length, 1);
-    assert.equal(viaUcp.messages[0].code, 'variants.selection_not_supported');
+    assert.deepEqual(viaUcp.product.variants.map((v) => v.id), [`${ROW.pivota_signature_id}::v::v_a`, `${ROW.pivota_signature_id}::v::v_b`]);
+    assert.equal(viaUcp.messages, undefined);
     const viaMcp = await native.callTool('get_product', { merchant_id: 'm', product_id: ROW.pivota_signature_id }, SESSION);
     assert.equal(viaMcp.ucp, undefined, 'native dialect not shaped');
     assert.equal(viaMcp.product.variants.length, 2, 'native keeps its real variants');
