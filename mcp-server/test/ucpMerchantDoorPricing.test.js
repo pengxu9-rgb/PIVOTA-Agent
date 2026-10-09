@@ -570,3 +570,56 @@ describe('review of #2380 — the handed-out link is the same on create and re-r
     assert.equal(again.continue_url, created.continue_url);
   });
 });
+
+// ---- the cart URL on the answering door's host (measured live on judydoll.com, 2026-10-09) ----------------------
+//
+// judydoll.com/.well-known/ucp names `https://judydoll-joygroup.myshopify.com/api/ucp/mcp`, and create_cart's
+// continue_url is `https://judydoll-joygroup.myshopify.com/cart/c/<token>?key=…`. A seller-host-only rule threw that
+// cart away as `cart_mismatch` — i.e. every Shopify store answering from its myshopify domain would fall back.
+
+describe('a Shopify door on its myshopify host', () => {
+  const DOOR = 'https://judydoll-joygroup.myshopify.com/api/ucp/mcp';
+  const JUDY = Object.freeze({
+    product_id: 'sig_6433c8107859a484fb72d14861e84690', title: 'Silky Matte Lip Ink', price: 9.99, currency: 'USD',
+    external_redirect_url: 'https://judydoll.com/products/silky-matte-lip-ink',
+    variants: [{ variant_id: 'v1', source_variant_id: '49819267301653' }],
+  });
+  // The live create_cart answer, shape for shape (2026-10-09), cart token and key replaced.
+  const liveCart = (continueUrl = 'https://judydoll-joygroup.myshopify.com/cart/c/TOKEN?key=KEY') => {
+    const payload = {
+      ucp: {}, id: 'gid://shopify/Cart/TOKEN?key=KEY', currency: 'USD', continue_url: continueUrl, expires_at: '2026-10-19T00:00:00Z', links: [], messages: [], fulfillment: {},
+      line_items: [{ id: 'li1', item: { id: GID('49819267301653'), title: 'Silky Matte Lip Ink - 07 BURGUNDY INK', price: 1399 }, quantity: 1,
+        totals: [{ type: 'subtotal', amount: 1399, display_text: 'Subtotal' }, { type: 'total', amount: 1399, display_text: 'Total' }] }],
+      totals: [{ type: 'subtotal', amount: 1399, display_text: 'Subtotal' }, { type: 'total', amount: 1399, display_text: 'Total' }],
+    };
+    return { ok: true, status: 200, response: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } };
+  };
+  const price = (create, extra = {}) => priceOnMerchantDoor({
+    items: [{ product_id: JUDY.product_id, quantity: 1 }], rows: rows(JUDY), sellerHost: 'judydoll.com', market: 'US', env: ON,
+    merchantDoor: fakeDoor({ endpoint: DOOR, create }), ...extra,
+  });
+
+  test("the live judydoll answer is accepted: the seller's $13.99, not the catalog's $9.99, and its myshopify cart URL", async () => {
+    const out = await price(() => liveCart());
+    assert.ok(out, 'priced');
+    assert.equal(out.lineItems[0].item.price, 1399);
+    assert.deepEqual(out.totals.map((t) => [t.type, t.amount]), [['subtotal', 1399], ['total', 1399]]);
+    assert.match(out.continueUrl, /^https:\/\/judydoll-joygroup\.myshopify\.com\/cart\/c\//);
+  });
+
+  test("ONLY the door's own host: another store's myshopify host, a subdomain of the door, userinfo or an embedded URL fall back", async () => {
+    for (const u of [
+      'https://someone-else.myshopify.com/cart/c/TOKEN?key=KEY',
+      'https://x.judydoll-joygroup.myshopify.com/cart/c/TOKEN',
+      'https://u:p@judydoll-joygroup.myshopify.com/cart/c/TOKEN',
+      'https://judydoll-joygroup.myshopify.com/cart?return_to=https://evil.example',
+      'http://judydoll-joygroup.myshopify.com/cart/c/TOKEN',
+    ]) assert.equal(await price(() => liveCart(u)), null, u);
+  });
+
+  test('with the platform-named expected seller, a cart on the door host is the seller (its own profile vouched for it)', async () => {
+    assert.ok(await price(() => liveCart(), { expectedSeller: 'judydoll.com' }));
+    // …while a cart on a host that is neither the door nor the expected seller still falls back
+    assert.equal(await price(() => liveCart('https://shop.judydoll.com/cart/c/T'), { expectedSeller: 'judydoll.com' }), null);
+  });
+});
