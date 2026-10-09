@@ -75,9 +75,11 @@ function writeJsonFile(filePath, payload) {
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/audit-relationship-graph-serving-guard.js [--market US|--all-markets] [--limit N] [--examples-per-reason N] [--query-retries N] [--out path]',
+    '  DATABASE_URL=... node scripts/audit-relationship-graph-serving-guard.js [--market US|--all-markets] [--limit N] [--examples-per-reason N] [--query-retries N] [--run-verified-since ISO] [--out path]',
     '',
     'Read-only audit. Loads active human_approved/ai_approved relationship_candidate_labels rows and applies the runtime serving guard.',
+    '--run-verified-since splits the result into run_* (last_verified_at at or after it: rows a run approved or renewed)',
+    'and legacy_* (everything older). The whole-table totals are reported either way.',
   ].join('\n');
 }
 
@@ -97,6 +99,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       min: 0,
       max: 30000,
     }),
+    runVerifiedSince: normalizeString(argValue(argv, 'run-verified-since'), 80),
     out: normalizeString(argValue(argv, 'out')),
   };
 }
@@ -250,7 +253,49 @@ function buildExample(edge, reasons) {
   };
 }
 
-function summarizeSuppressionRows(rows = [], { examplesPerReason = DEFAULT_EXAMPLES_PER_REASON, generatedAt = new Date().toISOString() } = {}) {
+// Every write path in the routine that can put a row in front of shoppers stamps
+// last_verified_at = now(): the reviewer's approval and the renewal step. So a
+// row verified at or after the run's start is a row this run approved or
+// renewed; everything older was approved by an earlier run. The split lets the
+// routine gate on its own writes without re-litigating rows a later guard
+// change made suppressed (the read path hides those already).
+function createScopeTally() {
+  return { total: 0, suppressed: 0, byReason: {}, examplesByReason: {} };
+}
+
+function bumpScopeTally(tally, edge, reasons, examplesPerReason) {
+  tally.total += 1;
+  if (!reasons.length) return;
+  tally.suppressed += 1;
+  for (const reason of reasons) {
+    tally.byReason[reason] = (tally.byReason[reason] || 0) + 1;
+    if (examplesPerReason <= 0) continue;
+    if (!tally.examplesByReason[reason]) tally.examplesByReason[reason] = [];
+    if (tally.examplesByReason[reason].length < examplesPerReason) {
+      tally.examplesByReason[reason].push(buildExample(edge, reasons));
+    }
+  }
+}
+
+function scopeFields(prefix, tally) {
+  return {
+    [`${prefix}_total_rows`]: tally.total,
+    [`${prefix}_suppressed_rows`]: tally.suppressed,
+    [`${prefix}_suppressed_pct`]: pct(tally.suppressed, tally.total),
+    [`${prefix}_suppressed_by_reason`]: sortCountObject(tally.byReason),
+    [`${prefix}_suppressed_examples`]: sortObjectKeys(tally.examplesByReason),
+  };
+}
+
+function summarizeSuppressionRows(rows = [], {
+  examplesPerReason = DEFAULT_EXAMPLES_PER_REASON,
+  generatedAt = new Date().toISOString(),
+  runVerifiedSince = '',
+} = {}) {
+  const runSinceMs = runVerifiedSince ? new Date(runVerifiedSince).getTime() : NaN;
+  const splitByRun = Number.isFinite(runSinceMs);
+  const runTally = createScopeTally();
+  const legacyTally = createScopeTally();
   const byReason = {};
   const byRelationType = {};
   const byLabelState = {};
@@ -265,6 +310,13 @@ function summarizeSuppressionRows(rows = [], { examplesPerReason = DEFAULT_EXAMP
     const suppressed = reasons.length > 0;
     if (suppressed) suppressedRows += 1;
     else safeRows += 1;
+    if (splitByRun) {
+      // A row without a parseable last_verified_at cannot be shown to be older
+      // than the run, so it is counted as the run's (fail closed).
+      const verifiedMs = new Date(edge.last_verified_at || '').getTime();
+      const inRun = !Number.isFinite(verifiedMs) || verifiedMs >= runSinceMs;
+      bumpScopeTally(inRun ? runTally : legacyTally, edge, reasons, examplesPerReason);
+    }
 
     bumpBucket(byRelationType, edge.relation_type, suppressed);
     bumpBucket(byLabelState, edge.label_state, suppressed);
@@ -293,6 +345,13 @@ function summarizeSuppressionRows(rows = [], { examplesPerReason = DEFAULT_EXAMP
     by_label_state: sortObjectKeys(byLabelState),
     by_relation_type_and_label_state: sortObjectKeys(byRelationTypeAndLabelState),
     examples_by_reason: sortObjectKeys(examplesByReason),
+    ...(splitByRun
+      ? {
+        run_verified_since: new Date(runSinceMs).toISOString(),
+        ...scopeFields('run', runTally),
+        ...scopeFields('legacy', legacyTally),
+      }
+      : {}),
   };
 }
 
@@ -305,6 +364,7 @@ async function runServingGuardAudit({
   queryRetries = DEFAULT_QUERY_RETRIES,
   queryRetryBackoffMs = DEFAULT_QUERY_RETRY_BACKOFF_MS,
   generatedAt = new Date().toISOString(),
+  runVerifiedSince = '',
 } = {}) {
   const { rows, retry } = await loadServedRelationshipRowsWithRetry({
     queryFn,
@@ -314,7 +374,7 @@ async function runServingGuardAudit({
     queryRetries,
     queryRetryBackoffMs,
   });
-  const summary = summarizeSuppressionRows(rows, { examplesPerReason, generatedAt });
+  const summary = summarizeSuppressionRows(rows, { examplesPerReason, generatedAt, runVerifiedSince });
   return {
     ...summary,
     query: {

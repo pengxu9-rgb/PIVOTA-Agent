@@ -56,6 +56,26 @@ function isRelationshipGraphSurfaceEnabled(surface = 'pdp_similar', env = proces
   return parseBooleanFlag(env?.AURORA_BFF_RELATIONSHIP_GRAPH_ALL_FEEDS_ENABLED) === true;
 }
 
+// The relation types the shopper "similar" surfaces serve. `related_product` is held by default: the
+// builder files every same-brand non-substitute pair there (prod 2026-10-08: 6,355 of 6,355 served
+// related_product edges are same-brand) while the reviewer treats it as a complement, so it is not yet
+// a relation a similar rail can stand behind. Every other type keeps being served. The variable
+// AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES (comma list) overrides; an explicit caller list
+// always wins. Other surfaces are unchanged.
+const SIMILAR_SURFACES = new Set(['pdp_similar', 'find_similar_products']);
+const DEFAULT_SIMILAR_RELATION_TYPES = Object.freeze(['dupe', 'competitive_alternative', 'niche_specialist']);
+const KNOWN_RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
+
+function resolveServingRelationTypes(surface, relationTypes, env = process.env) {
+  if (Array.isArray(relationTypes) && relationTypes.length) return relationTypes;
+  if (!SIMILAR_SURFACES.has(normalizeSurface(surface))) return relationTypes;
+  const configured = String(env?.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => KNOWN_RELATION_TYPES.has(value));
+  return configured.length ? Array.from(new Set(configured)) : [...DEFAULT_SIMILAR_RELATION_TYPES];
+}
+
 function buildRelationshipGraphFetchMetadata({
   surface,
   enabled,
@@ -173,7 +193,7 @@ async function fetchRelationshipGraphRecallForAnchor({
       anchorType: 'product',
       anchorRefs,
       market,
-      relationTypes,
+      relationTypes: resolveServingRelationTypes(normalizedSurface, relationTypes),
       limit: Math.max(1, Math.min(120, Number(limit) || 24)),
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
@@ -285,7 +305,7 @@ async function fetchRelationshipGraphRecallForAnchors({
       anchorType: 'product',
       anchorRefs,
       market,
-      relationTypes,
+      relationTypes: resolveServingRelationTypes(normalizedSurface, relationTypes),
       limit: Math.max(1, Math.min(120, Number(limit) || 24)),
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
@@ -422,6 +442,7 @@ module.exports = {
   fetchRelationshipGraphRecallForAnchors,
   mergeRelationshipGraphRecallItems,
   mapRelationshipGraphItemToDiscoveryProduct,
+  resolveServingRelationTypes,
   __internal: {
     buildRelationshipGraphFetchMetadata,
     fallbackRelationshipGraphDedupe,
