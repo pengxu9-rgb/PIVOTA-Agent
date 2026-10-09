@@ -4333,9 +4333,13 @@ async function fetchDiscoveryRecallStep({
     const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
       params: {
         ...(step?.query ? { query: step.query } : {}),
-        // The buyer's market, for the buyer-market fallback only: the backend then recalls THAT
-        // market's rows (its own currency), never USD rows across markets.
-        ...(step?.market ? { market: step.market } : {}),
+        // The buyer's SERVING market, for the buyer-market fallback only. NOT `market`: on the backend
+        // `market` is the storage PARTITION, and every SGD seed is filed under the US partition (the
+        // SG partition holds zero rows), so `market=SG` bound an empty partition and the fallback got
+        // nothing, live, 2026-10-09. `serving_market` is the buyer's market: the backend reads its
+        // served partitions and keeps only rows priced in that market's currency (pivota-backend GET
+        // /agent/v1/products/search, `serving_market`). An older backend ignores it: rows stay empty.
+        ...(step?.market ? { serving_market: step.market } : {}),
         in_stock_only: false,
         limit: step?.limit,
         offset: step?.offset,
@@ -13484,8 +13488,9 @@ async function applyBuyerMarketFallback({
     ...(rows.skipped ? { skipped: rows.skipped } : {}),
   };
   if (rows.products.length === 0) {
-    // Nothing in that market either: the page stays as built (the door's guard empties it) and says why.
-    return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false } } };
+    // Nothing in that market either: the page stays as built (the door's guard empties it) and says why,
+    // hop by hop (status, returned, latency, cache), so a live diagnosis needs no API key.
+    return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false, recall_summary: rows.recallSummary || [] } } };
   }
   const rebuilt = await buildOnce(payload, {
     ...options,
