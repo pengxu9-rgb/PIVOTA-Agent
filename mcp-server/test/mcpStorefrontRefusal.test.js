@@ -71,11 +71,13 @@ test('update_checkout_session is renamed the same way', async () => {
   assert.equal(err.detail?.acp_detail?.reason, 'ucp_storefront_checkout_unavailable');
 });
 
-test("the SCOPED read decides: a product whose canonical PDP is a storefront but which THIS merchant sells keeps the kernel's error", async () => {
+test("the SCOPED read decides: when the canonical PDP is a storefront but the quote merchant's own row is not, the kernel's error stands", async () => {
   const original = unavailable();
-  const executor = executorWith({ rows: { [SEED.product_id]: SEED, [`merchant_shop|${SEED.product_id}`]: { ...CONTRACTED, product_id: SEED.product_id } }, kernelError: original });
-  const err = await rejected(createCommerceToolSurface(executor, { cache: false }).callTool('create_checkout_session', createArgs('merchant_shop', SEED.product_id, '48930014462260'), SESSION));
+  const scopedNotStorefront = { ...SEED, external_redirect_url: undefined, purchase_route: 'internal_checkout' };
+  const executor = executorWith({ rows: { [SEED.product_id]: SEED, [`${SEED.merchant_id}|${SEED.product_id}`]: scopedNotStorefront }, kernelError: original });
+  const err = await rejected(createCommerceToolSurface(executor, { cache: false }).callTool('create_checkout_session', createArgs(SEED.merchant_id, SEED.product_id, '44012345678901'), SESSION));
   assert.equal(err, original, 'the very same error object, unchanged');
+  assert.ok(executor.seen.filter((c) => c.op === 'get_product').every((c) => c.params.payload.product.merchant_id === SEED.merchant_id));
 });
 
 test("contracted rows, a failed read, and every other kernel error keep the kernel's own error", async () => {
@@ -109,4 +111,54 @@ test('the UCP door is untouched by this path (it refuses storefront rows BEFORE 
     checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 1 }], buyer: { email: 'shopper@example.test' } },
   }, SESSION));
   assert.equal(err.code, 'MERCHANT_UNAVAILABLE', 'a contracted UCP row keeps the kernel error');
+});
+
+// ---- review of #2381: only a merchant Pivota does not transact --------------------------------------------------
+//
+// The backend's merchant-scoped product detail stamps a Pivota /r hop as `external_redirect_url` on a CONNECTED
+// Shopify merchant's products too (`_attach_connected_product_redirects`), with no `purchase_route` — so the row
+// alone reads as a storefront row. MERCHANT_UNAVAILABLE also covers timeouts, 5xx and kernel-internal reasons. A
+// transient failure for a merchant Pivota DOES transact must keep its retriable error.
+
+const CONNECTED_AS_BACKEND_EMITS = Object.freeze({
+  product_id: 'p_shop_1', title: 'Shop Serum', price: 20, currency: 'USD', merchant_id: 'merchant_shop', platform: 'shopify',
+  external_redirect_url: 'https://api.pivota.cc/r?token=eyJkZXN0IjoiaHR0cHM6Ly9jb250cmFjdGVkLWJyYW5kLm15c2hvcGlmeS5jb20vcHJvZHVjdHMveCJ9.c2ln',
+  variants: [{ variant_id: '48930014462260' }],
+});
+
+test('a CONNECTED merchant whose scoped row carries the backend-stamped hop keeps its retriable error — timeout, 5xx, kernel-internal', async () => {
+  for (const kernelError of [
+    new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'create_checkout_session', upstream_status: null }),
+    new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'create_checkout_session', upstream_status: 503 }),
+    new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'malformed_upstream_quote' }),
+  ]) {
+    const executor = executorWith({ rows: { [`merchant_shop|${CONNECTED_AS_BACKEND_EMITS.product_id}`]: CONNECTED_AS_BACKEND_EMITS }, kernelError });
+    const err = await rejected(createCommerceToolSurface(executor, { cache: false }).callTool('create_checkout_session', createArgs('merchant_shop', CONNECTED_AS_BACKEND_EMITS.product_id, '48930014462260'), SESSION));
+    assert.equal(err, kernelError, 'the kernel error, unchanged');
+    assert.equal(err.retriable, true);
+    assert.equal(executor.seen.some((c) => c.op === 'get_product'), false, 'not even read: the merchant is not seed supply');
+  }
+});
+
+test("the retired shared seed seller is seed supply too; a scoped read answering about ANOTHER merchant keeps the kernel's error", async () => {
+  const sentinel = 'external_seed';
+  const executor = executorWith({ rows: { [`${sentinel}|${SEED.product_id}`]: { ...SEED, merchant_id: sentinel } }, kernelError: unavailable() });
+  const err = await rejected(createCommerceToolSurface(executor, { cache: false }).callTool('create_checkout_session', createArgs(sentinel, SEED.product_id, '44012345678901'), SESSION));
+  assert.equal(err.detail?.acp_detail?.reason, 'ucp_storefront_checkout_unavailable');
+  // identity: the scoped read names a different merchant -> not believed -> the kernel's error stands
+  const original = unavailable();
+  const other = executorWith({ rows: { [`${SEED.merchant_id}|${SEED.product_id}`]: { ...SEED, merchant_id: 'merch_obs_someone_else' } }, kernelError: original });
+  const err2 = await rejected(createCommerceToolSurface(other, { cache: false }).callTool('create_checkout_session', createArgs(SEED.merchant_id, SEED.product_id, '44012345678901'), SESSION));
+  assert.equal(err2, original);
+});
+
+test('the UCP door makes NO extra read after a kernel failure (its storefront check runs before the kernel)', async () => {
+  const contracted = executorWith({ rows: { [CONTRACTED.product_id]: CONTRACTED }, kernelError: unavailable() });
+  await rejected(ucpDialectSurface(createCommerceToolSurface(contracted, { cache: false })).callTool('create_checkout', {
+    meta: { 'ucp-agent': { profile: 'https://agent.example/.well-known/ucp-agent' }, 'idempotency-key': 'idem-ucp-0002' },
+    checkout: { line_items: [{ item: { id: `${CONTRACTED.product_id}` }, quantity: 1 }], buyer: { email: 'shopper@example.test' } },
+  }, SESSION));
+  const ops = contracted.seen.map((c) => c.op);
+  assert.equal(ops.filter((o) => o === 'get_product').length, 1, 'one memoized read, none after the failure');
+  assert.equal(ops.at(-1), 'create_checkout_session');
 });
