@@ -952,8 +952,17 @@ async function main() {
           source: caseSpec.source || args.source,
           ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
           ...(args.evalMode ? { eval_mode: true } : {}),
-          // A case may name its own market (a non-US pack); the gate's market otherwise.
-          market: String(caseSpec.market || args.market || '').trim().toUpperCase() || args.market,
+          // A case may name its own market (a non-US pack) inside its `request_metadata`
+          // (normalizeCase keeps nothing else); the gate's market only when the case names none.
+          // Resolved AFTER the spread so the case's own value is never overwritten.
+          market:
+            String(
+              (caseSpec.request_metadata && typeof caseSpec.request_metadata === 'object'
+                ? caseSpec.request_metadata.market
+                : '') || '',
+            )
+              .trim()
+              .toUpperCase() || args.market,
           invoked_by: args.invokedBy,
         };
         const search = {

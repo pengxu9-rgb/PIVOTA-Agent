@@ -6,6 +6,7 @@ const { loadCopyPack } = require('./copyPacks');
 const { pickQuestion } = require('./questionBank');
 const { maybeGenerateCopy } = require('./modelRouter');
 const { validateCopyOverrides } = require('./validators');
+const { resolveBuyerRegion } = require('../auroraBff/buyerRegion');
 const { getState, saveState, mergeAnonToUser, applyEvents } = require('./session');
 const { ERROR_CODES } = require('./errors');
 const { detectAllowOOS, detectBeautyIntent } = require('./intent');
@@ -129,14 +130,15 @@ function introTextOutOfDomain({ message, locale }) {
   return 'This recommended catalog is mainly fashion-focused, so I cannot find makeup/skincare items (e.g., brushes) right now. Do you want to switch to fashion items, or do you want general brush-type guidance?';
 }
 
-// The buyer's market for the recall, from the caller's `buyer_region` / `market` ONLY. ISO-2 or
-// nothing: a locale is a language, not a market, and `'en-US'` never becomes US here. With nothing
-// declared the recall is SILENT (no `metadata.market`), which the purchasability gate reads as
-// "no claim" — the honest state for a caller that did not say where its buyer is.
+// The buyer's market for the recall, from the caller's `buyer_region` / `market` ONLY, through
+// ADR-024's one resolver and gated on its verdict: the region is used when regionSource is
+// 'explicit' (the caller sent a readable code) and NEVER when it is 'defaulted' — a locale is a
+// language, not a market, and `'en-US'` never becomes US here. With nothing declared the recall is
+// SILENT (no `metadata.market`), which the purchasability gate reads as "no claim".
 function buyerMarketFromRequestBody(body) {
   for (const raw of [body?.buyer_region, body?.market]) {
-    const code = String(raw || '').trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) return code;
+    const resolved = resolveBuyerRegion(raw);
+    if (resolved.regionSource === 'explicit') return resolved.region;
   }
   return null;
 }

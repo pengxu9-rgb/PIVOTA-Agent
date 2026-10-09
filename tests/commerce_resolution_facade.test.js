@@ -2627,10 +2627,11 @@ describe('cache-miss resolver fallback threads the outer buyer market', () => {
     resolverTimeoutMs: 900,
   };
 
-  test('search.market wins, then metadata.market; blank and non-string carriers are skipped', () => {
+  test('search.market wins, then metadata.market; blank, non-string and non-ISO-2 carriers are skipped; the code is normalised', () => {
     const runtime = createCommerceResolutionRuntime();
     expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: 'SG' }, metadata: { market: 'US' } }).queryParams.market).toBe('SG');
-    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: {}, metadata: { market: ' jp ' } }).queryParams.market).toBe('jp');
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: {}, metadata: { market: ' jp ' } }).queryParams.market).toBe('JP');
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: 'usa' }, metadata: { market: 'US' } }).queryParams.market).toBe('US');
     expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: '   ' }, metadata: { market: 'US' } }).queryParams.market).toBe('US');
     expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: 7 }, metadata: 'US' }).queryParams).not.toHaveProperty('market');
   });

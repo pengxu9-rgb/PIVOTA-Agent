@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { normalizeBuyerRegion } = require('../../../auroraBff/buyerRegion');
 const {
   INTERNAL_PRODUCTS_SEARCH_PATH,
   sanitizeInternalProductsSearchRequest,
@@ -461,13 +462,14 @@ function createCommerceResolutionRuntime(deps = {}) {
   }
 
   // The buyer market the OUTER request carried, in the door's own precedence (`search.market`
-  // first, then `metadata.market`), as a non-blank string or null. Shape only — the door and the
-  // backend validate the code; this never substitutes one.
+  // first, then `metadata.market`), as an ISO-2 code or null — through ADR-024's ONE normaliser
+  // (`auroraBff/buyerRegion.normalizeBuyerRegion`), so every re-invoke in this repo keys on the
+  // same shape; a carrier that is not a code is skipped, never substituted.
   function outerBuyerMarket(search, metadata) {
     for (const carrier of [search, metadata]) {
       const raw = carrier && typeof carrier === 'object' && !Array.isArray(carrier) ? carrier.market : undefined;
-      const text = typeof raw === 'string' ? raw.trim() : '';
-      if (text) return text;
+      const code = normalizeBuyerRegion(raw);
+      if (code) return code;
     }
     return null;
   }

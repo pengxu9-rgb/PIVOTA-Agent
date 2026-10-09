@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { ProductCategorySchema } = require('../schemas/productAttributesV0');
+const { normalizeBuyerRegion } = require('../../auroraBff/buyerRegion');
 
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
@@ -112,8 +113,7 @@ function explodeVariantsToSkus(product) {
 // buyer's (the look replicator serves JP and US packs), so it travels on the inner invoke as
 // `metadata.market`; a plan with no usable market sends none and the recall is silent.
 function buyerMarketForRecall(market) {
-  const code = String(market || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(code) ? code : null;
+  return normalizeBuyerRegion(market) || null;
 }
 
 async function getCandidates(input) {
