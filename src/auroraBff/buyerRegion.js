@@ -122,6 +122,21 @@ function buyerRegionFromContext(ctx) {
   return normalizeBuyerRegion(ctx.buyer_region) || DEFAULT_BUYER_REGION;
 }
 
+/**
+ * THE MARKET A RE-INVOKE MAY KEY ON, off a resolved context: the region ONLY when the caller said
+ * it (`buyer_region_source === 'explicit'`), else null. The defaulted US is a serving choice, not
+ * the buyer's market; keying a purchasability fact on it would answer a non-US buyer with the US
+ * fact. So a chat turn whose client sent no `buyer_region` re-invokes find_products_multi /
+ * offers.resolve SILENT (no `metadata.market`), which the gate reads as "no claim". Used by the
+ * shop_find_products skill, the beauty shared-truth invoke and the reco hybrid resolver — one
+ * rule, one function (2026-10-09).
+ */
+function explicitBuyerMarket(ctx) {
+  if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) return null;
+  if (ctx.buyer_region_source !== BUYER_REGION_SOURCE_EXPLICIT) return null;
+  return normalizeBuyerRegion(ctx.buyer_region) || null;
+}
+
 module.exports = {
   DEFAULT_BUYER_REGION,
   BUYER_REGION_SOURCE_EXPLICIT,
@@ -132,4 +147,5 @@ module.exports = {
   isRejectedBuyerRegionInput,
   currencyForBuyerRegion,
   buyerRegionFromContext,
+  explicitBuyerMarket,
 };

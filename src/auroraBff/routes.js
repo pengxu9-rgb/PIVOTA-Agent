@@ -422,6 +422,7 @@ const {
   isRejectedBuyerRegionInput,
   currencyForBuyerRegion,
   buyerRegionFromContext,
+  explicitBuyerMarket,
 } = require('./buyerRegion');
 const {
   buildServedPriceRegionCensus,
@@ -19860,6 +19861,8 @@ async function fetchAuroraBeautySharedTruthForChat({
           allow_orchestration_delegate: true,
           requested_projection: 'normalized_only',
           invoked_by: 'aurora_chat_shared_truth',
+          // The buyer's market ONLY when this chat turn said it (explicitBuyerMarket); else silent.
+          ...(explicitBuyerMarket(ctx) ? { market: explicitBuyerMarket(ctx) } : {}),
         },
       },
       {

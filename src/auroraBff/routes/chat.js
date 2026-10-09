@@ -5,6 +5,7 @@ const { buildPromptMetaForChatRequest, mergePromptMeta } = require('../../module
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
+const { resolveBuyerRegion, isRejectedBuyerRegionInput } = require('../buyerRegion');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
@@ -2422,6 +2423,26 @@ function buildSkillRequest(req) {
 
   const normalizedBodyParams = omitLegacyActionAliases(bodyParams);
 
+  // ADR-024 on the chat lane: the buyer's market is a REQUEST dimension. Resolved here, once,
+  // into {region, regionSource} so every skill reads the same answer; a skill keys a catalog call
+  // on it ONLY when the source is 'explicit' (buyerRegion.explicitBuyerMarket) — the defaulted US
+  // is a serving choice, not the buyer's market. Top-level `buyer_region` first (the reco
+  // contract), then `context.buyer_region`. An unreadable value defaults and is logged, never 400.
+  const rawBuyerRegion = body.buyer_region !== undefined ? body.buyer_region : bodyContext.buyer_region;
+  const resolvedBuyerRegion = resolveBuyerRegion(rawBuyerRegion);
+  if (isRejectedBuyerRegionInput(rawBuyerRegion)) {
+    req.log?.warn?.(
+      {
+        event: 'chat_buyer_region_rejected',
+        buyer_region_type: typeof rawBuyerRegion,
+        buyer_region_raw: String(rawBuyerRegion).slice(0, 16),
+        region: resolvedBuyerRegion.region,
+        region_source: resolvedBuyerRegion.regionSource,
+      },
+      'aurora bff: chat buyer_region unreadable, defaulting',
+    );
+  }
+
   return {
     skill_id: body.skill_id || null,
     skill_version: body.skill_version || '1.0.0',
@@ -2446,6 +2467,8 @@ function buildSkillRequest(req) {
       current_routine: currentRoutine,
       inventory: bodyContext.inventory || [],
       locale,
+      buyer_region: resolvedBuyerRegion.region,
+      buyer_region_source: resolvedBuyerRegion.regionSource,
       safety_flags: bodyContext.safety_flags || [],
     },
     thread_state: body.thread_state || req._threadState || {},
