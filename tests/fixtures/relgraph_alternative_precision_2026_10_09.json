@@ -1655,6 +1655,31 @@
      "beauty/skincare/treat/toner"
     ]
    }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "leave-in vs rinse-out conditioner on a Haircare shelf",
+   "served_as": "related_product",
+   "score_total": 0.769,
+   "anchor": {
+    "brand": "Lav Kids",
+    "name": "Add Moisturising Leave In Conditioner",
+    "category": "Haircare",
+    "category_taxonomy": [
+     "beauty/haircare",
+     "Haircare"
+    ]
+   },
+   "candidate": {
+    "brand": "Lav Kids",
+    "name": "Gentle Care Conditioner",
+    "category": "beauty/haircare",
+    "category_taxonomy": [
+     "beauty/haircare",
+     "Haircare"
+    ]
+   }
   }
  ]
 }

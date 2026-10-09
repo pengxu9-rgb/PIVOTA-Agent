@@ -165,8 +165,8 @@ describe('rule vocabulary on production-shaped products', () => {
   });
 });
 
-// The treatment vocabulary as a contract: every word names its groups. "<word> Serum" matches a
-// one-group serum of each of its groups and refuses a one-group serum of a group it does not name.
+// The treatment vocabulary as a contract: every word names exactly its groups. "<word> Serum" matches a
+// one-group serum of each of its groups and refuses a one-group serum of every group it does not name.
 describe('treatment vocabulary contract', () => {
   const { treatmentFunctionCompatibility } = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
   const serum = (name) => ({ name, title: name, category: 'serum', category_taxonomy: ['serum'] });
@@ -234,16 +234,16 @@ describe('treatment vocabulary contract', () => {
     ["peel", ["exfoliating"]],
     ["peeling", ["exfoliating"]],
     ["resurfacing", ["exfoliating"]],
-    ["retinol", ["retinoid","firming"]],
-    ["retinal", ["retinoid","firming"]],
-    ["retinoid", ["retinoid","firming"]],
-    ["retinoids", ["retinoid","firming"]],
-    ["bakuchiol", ["retinoid","firming"]],
-    ["peptide", ["peptide","firming"]],
-    ["peptides", ["peptide","firming"]],
-    ["collagen", ["peptide","firming"]],
-    ["matrixyl", ["peptide","firming"]],
-    ["argireline", ["peptide","firming"]],
+    ["retinol", ["firming"]],
+    ["retinal", ["firming"]],
+    ["retinoid", ["firming"]],
+    ["retinoids", ["firming"]],
+    ["bakuchiol", ["firming"]],
+    ["peptide", ["firming"]],
+    ["peptides", ["firming"]],
+    ["collagen", ["firming"]],
+    ["matrixyl", ["firming"]],
+    ["argireline", ["firming"]],
     ["salicylic", ["exfoliating","acne"]],
     ["bha", ["exfoliating","acne"]],
     ["aha", ["exfoliating"]],
@@ -252,7 +252,7 @@ describe('treatment vocabulary contract', () => {
     ["lactic", ["exfoliating"]],
     ["mandelic", ["exfoliating"]],
     ["gluconolactone", ["exfoliating"]],
-    ["azelaic", ["azelaic","acne"]],
+    ["azelaic", ["acne"]],
     ["hyaluronic", ["hydration"]],
     ["hyaluronics", ["hydration"]],
     ["hyaluron", ["hydration"]],
@@ -267,7 +267,7 @@ describe('treatment vocabulary contract', () => {
     ["tranexamic", ["brightening"]],
     ["kojic", ["brightening"]],
     ["glutathione", ["brightening"]],
-    ["niacinamide", ["niacinamide","brightening","acne"]],
+    ["niacinamide", ["brightening","acne"]],
     ["centella", ["calming"]],
     ["cica", ["calming"]],
     ["teca", ["calming"]],
@@ -285,8 +285,9 @@ describe('treatment vocabulary contract', () => {
     for (const group of groups.filter((g) => ONE_GROUP[g])) {
       expect(treatmentFunctionCompatibility(product, serum(ONE_GROUP[group]))).toMatchObject({ compatible: true });
     }
-    const other = Object.keys(ONE_GROUP).find((g) => !groups.includes(g));
-    expect(treatmentFunctionCompatibility(product, serum(ONE_GROUP[other]))).toMatchObject({ compatible: false, reason: 'treatment_function_mismatch' });
+    for (const other of Object.keys(ONE_GROUP).filter((g) => !groups.includes(g))) {
+      expect(treatmentFunctionCompatibility(product, serum(ONE_GROUP[other]))).toMatchObject({ compatible: false, reason: 'treatment_function_mismatch' });
+    }
   });
 });
 
@@ -398,4 +399,106 @@ describe('reviewer negative memory and this validator', () => {
     expect(isRememberedNegative(remembered('relgraph_review_validator.v1'), 'fp', { nowMs: NOW })).toBe(false);
     expect(isRememberedNegative(remembered(REVIEW_VALIDATOR_VERSION), 'fp', { nowMs: NOW })).toBe(true);
   });
+});
+
+// Review of #2382, round 2.
+describe('round-2 review: rule scope', () => {
+  const B = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
+  const { routineRole } = require('../src/auroraBff/relationshipComplementPolicy');
+  const p = (name, category = 'serum', extra = {}) => ({ name, title: name, category, category_taxonomy: [category], ...extra });
+
+  test.each([
+    // the leave-in rule runs whatever the shelf calls hair
+    ['Add Moisturising Leave In Conditioner', 'Haircare', 'Gentle Care Conditioner', 'beauty/haircare'],
+    ['Briogeo Leave-In Conditioner', 'conditioner', 'No.5 Bond Maintenance Conditioner', 'conditioner'],
+    ['Curl Defining Leave-in Cream', 'hair care', 'Curl Defining Rinse-Out Conditioner', 'hair care'],
+    // only the shelf says hair: "Haircare" is one word
+    ['Moisturising Leave In Cream', 'Haircare', 'Gentle Care Conditioner', 'beauty/haircare'],
+  ])('leave-in %s (%s) is not %s', (a, ac, b, bc) => {
+    expect(B.productJobCompatibility(p(a, ac), p(b, bc))).toMatchObject({ compatible: false, reason: 'hair_leave_in_mismatch' });
+    expect(B.productJobCompatibility(p(b, bc), p(a, ac))).toMatchObject({ compatible: false, reason: 'hair_leave_in_mismatch' });
+  });
+  test('two leave-ins, or a leave-in and a non-hair product, are not judged by the leave-in rule', () => {
+    expect(B.productJobCompatibility(p('Leave In Conditioner', 'Haircare'), p('Leave-In Detangling Spray', 'Haircare')).reason).not.toBe('hair_leave_in_mismatch');
+    expect(B.productJobCompatibility(p('Leave-On Exfoliant', 'skincare'), p('Leave In Mask', 'skincare')).reason).not.toBe('hair_leave_in_mismatch');
+  });
+  test.each([['Leave In Conditioner', true], ['Leave-In Conditioner', true], ['Leave-in Cream', true], ['Rinse Out Conditioner', false]])(
+    'isLeaveIn(%s) = %s', (name, expected) => expect(B.isLeaveIn(p(name, 'conditioner'))).toBe(expected));
+
+  test.each([
+    ['Mighty Patch Original 36 Pieces', {}, false],
+    ['Impress Press-On Nails 30 Pieces', {}, false],
+    ['Makeup Sponge 2 Pieces', {}, false],
+    ['Lip Liner — 2-Piece Pink', {}, false],
+    ['Mushroom Clips 2-Piece Clip', {}, true],
+    ['Eyeliner', { description: 'Includes a 2-piece applicator.' }, false],
+  ])('set: %s -> %s', (name, extra, expected) => {
+    expect(B.isSetLikeProduct({ name, title: name, category: 'beauty', ...extra })).toBe(expected);
+  });
+
+  test.each([
+    ['Expert Face Brush', { description: 'Dense brush to sculpt and contour.' }, []],
+    ['Contour Brush', {}, ['contour']],
+    ['Sculpting Bronzer Brush 195', {}, ['bronzer'].filter(() => false)],
+  ])('brush targets from the name only: %s', (name, extra, targets) => {
+    expect([...B.brushTargets({ name, title: name, ...extra })].sort()).toEqual(targets);
+  });
+  test.each([['E50 Large Fluff Brush', 'eye'], ['F80 Flat Kabuki Brush', 'face'], ['Large Fluff E50 Brush', ''], ['E5 Brush', ''], ['Pro Face Brush', '']])(
+    'brushCodeArea(%s) = %j', (name, area) => expect(B.brushCodeArea({ name, title: name })).toBe(area));
+
+  test.each([
+    // repeated words keep phrases: "Super C Vitamin C" still names vitamin c
+    ['Super C Vitamin C Serum', 'Retinol Serum', false],
+    // the first active is the first NAMED, not the first in the vocabulary
+    ['Serum with Hyaluronic Acid and Retinol', 'Retinol Serum', false],
+    // tails a lead stops at
+    ['Brightening Serum featuring Calming Botanicals', 'Calming Serum', false],
+    ['Brightening Serum - Calming Formula', 'Calming Serum', false],
+    ['Brightening Serum | Calming', 'Calming Serum', false],
+    ['Brightening Serum: Calming', 'Calming Serum', false],
+    // the eye flag reads the name, not the description; tonics and pads are never eye treatments
+    ['Firming Serum', 'Wrinkle Serum', true, { description: 'Apply around the eye area.' }],
+    ['Bright Eyes Brightening Tonic', 'Vitamin C Brightening Toner', true],
+    ['Bright Eyes Brightening Pads', 'Vitamin C Brightening Toner', true],
+    // excluded: lash, brow, primer and hair products named with a treatment form
+    ['Eyelash Enhancing Peptide Serum', 'Calming Serum', true],
+    ['Eyebrow Peptide Serum', 'Calming Serum', true],
+    ['Hydrating Priming Serum', 'Exfoliating Serum', true],
+    ['Ampoule Repair Shampoo', 'Hydrating Ampoule Shampoo', true],
+    ['Repair Ampoule Conditioner', 'Hydrating Ampoule Conditioner', true],
+  ])('%s || %s -> compatible %s', (a, b, compatible, extra = {}) => {
+    expect(B.treatmentFunctionCompatibility(p(a, 'serum', extra), p(b))).toMatchObject({ compatible });
+    expect(B.treatmentFunctionCompatibility(p(b), p(a, 'serum', extra))).toMatchObject({ compatible });
+  });
+
+  // each skincare shelf word admits a weak form; a makeup shelf does not
+  test.each(['skin', 'skincare', 'serum', 'serums', 'toner', 'toners', 'treat', 'treatment', 'essence', 'ampoule'])('shelf "%s" makes a weak form a treatment', (shelf) => {
+    // the shelf word sits above the leaf, so the leaf-category path cannot decide it
+    const category = `beauty/${shelf}/acids`;
+    expect(B.treatmentFunctionCompatibility(p('Glycolic Acid Solution', category), p('Hydrating Solution', category))).toMatchObject({ compatible: false });
+  });
+  test.each(['peel', 'solution', 'liquid', 'booster', 'concentrate', 'drops'])('weak form "%s" counts on a skincare shelf only', (form) => {
+    const word = form[0].toUpperCase() + form.slice(1);
+    expect(B.treatmentFunctionCompatibility(p(`Hydrating ${word}`, 'skincare'), p('Calming Serum'))).toMatchObject({ compatible: false });
+    expect(B.treatmentFunctionCompatibility(p(`Hydrating ${word}`, 'makeup/face'), p('Calming Serum'))).toMatchObject({ compatible: true });
+  });
+  test.each(['serum', 'essence', 'ampoule', 'toner', 'tonic', 'pad', 'pads', 'exfoliant'])('strong form "%s" counts on any shelf', (form) => {
+    const word = form[0].toUpperCase() + form.slice(1);
+    expect(B.treatmentFunctionCompatibility(p(`Hydrating ${word}`, 'beauty'), p('Calming Serum'))).toMatchObject({ compatible: false });
+  });
+
+  test.each([
+    ['Lip Balm (Pouch Included)', ''], ['Body Wash, Travel Case', ''], ['Hair Mask & Bonnet', ''], ['Body Wash — Holder', ''],
+    ['Silk Bonnet', 'hair_accessory'], ['Velvet Scrunchies', 'hair_accessory'], ['Satin Pillowcase', 'hair_accessory'], ['Satin Pillow Case', 'hair_accessory'],
+    ['Hair Ties', 'hair_accessory'], ['Spa Headband', 'hair_accessory'], ['Makeup Organizer', 'holder'], ['Makeup Organiser', 'holder'],
+    ['Bamboo Soap Dish', 'holder'], ['Safety Razor Stand™', 'holder'], ['Brush Caddy', 'holder'], ['Razor Cartridges', 'blade'], ['Brush Replacement Heads', 'blade'], ['Makeup Bag', 'bag'],
+  ])('accessoryKind(%s) = %j', (name, kind) => expect(B.accessoryKind({ name, title: name })).toBe(kind));
+
+  test.each([
+    ['Beard Scissors', 'beard_tool'], ['Scissors for Beard', 'beard_tool'], ['Beard Shaper', 'beard_tool'], ['Boar Brush for Beard', 'beard_tool'],
+    ['Beard Soap', 'beard_wash'], ['Beard Shampoo', 'shampoo'], ['Beard Cleanser', 'beard_wash'],
+    ['Lavender Bath Flakes', 'bath_soak'], ['Magnesium Salt Soak', 'bath_soak'], ['Bath Bombs', 'bath_soak'],
+  ])('routineRole(%s) = %j', (title, role) => expect(routineRole({ title, name: title })).toBe(role));
+  test.each([['Silk Hair Oil-Free Serum', 'hair_oil'], ['Oil Control Gel', 'oil'], ['Oil-Free Gel', 'oil'], ['Hair Oil Control Spray', 'hair_oil']])(
+    '%s is not %s', (title, role) => expect(routineRole({ title, name: title })).not.toBe(role));
 });

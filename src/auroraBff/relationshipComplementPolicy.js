@@ -49,7 +49,7 @@ const LEADING_ROLES = [
   // and a beard comb, a beard wash and a beard oil are three steps.
   ['bath_soak', /\bbath\s*(?:salts?|soaks?|bombs?|flakes)\b|\bsalt\s*soak\b/],
   ['beard_tool', /\bbeard\b.*\b(?:comb|brush|trimmer|scissors|shaper)s?\b|\b(?:comb|brush|trimmer|scissors|shaper)s?\b.*\bbeard\b/],
-  ['beard_wash', /\bbeard\s*(?:wash|shampoo|soap|cleanser)\b/],
+  ['beard_wash', /\bbeard\s*(?:wash|soap|cleanser)\b/],
   ['beard_care', /\bbeard\b/],
   // Oils for different areas are different jobs. "Oil-Free" and "Oil Control" are formula traits.
   ['face_oil', /\b(?:face|facial)\s*oil\b(?![\s-]*(?:free|control))/],
