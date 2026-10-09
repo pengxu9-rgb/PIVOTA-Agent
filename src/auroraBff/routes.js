@@ -422,6 +422,9 @@ const {
   isRejectedBuyerRegionInput,
   currencyForBuyerRegion,
   buyerRegionFromContext,
+  explicitBuyerMarket,
+  resolveBuyerRegionForBody,
+  normalizeBuyerRegion,
 } = require('./buyerRegion');
 const {
   buildServedPriceRegionCensus,
@@ -5919,6 +5922,12 @@ async function searchPivotaBackendProducts({
   merchantIds = [],
   externalSeedOnly = undefined,
   priceCeiling = null,
+  // The buyer's market for this catalog search, ONLY when the chat turn said it
+  // (buyerRegion.explicitBuyerMarket on the request ctx). Rides as `market` on the search door,
+  // which the gateway honours as the buyer market (FIND_PRODUCTS_BUYER_MARKET); absent, the
+  // search is silent and the purchasability gate makes no claim. This path was the largest live
+  // market-less emitter (source 'shopping-agent', 2026-10-09 census). Never defaulted here.
+  buyerMarket = null,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -6043,6 +6052,8 @@ async function searchPivotaBackendProducts({
   if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
   if (Number.isFinite(Number(queryTotal))) params.query_total = Math.max(1, Math.trunc(Number(queryTotal)));
   if (traceId) params.trace_id = String(traceId).trim();
+  const normalizedBuyerMarket = normalizeBuyerRegion(buyerMarket);
+  if (normalizedBuyerMarket) params.market = normalizedBuyerMarket;
   if (hasSemanticContract) {
     try {
       params.semantic_contract = JSON.stringify(semanticContract);
@@ -19860,6 +19871,8 @@ async function fetchAuroraBeautySharedTruthForChat({
           allow_orchestration_delegate: true,
           requested_projection: 'normalized_only',
           invoked_by: 'aurora_chat_shared_truth',
+          // The buyer's market ONLY when this chat turn said it (explicitBuyerMarket); else silent.
+          ...(explicitBuyerMarket(ctx) ? { market: explicitBuyerMarket(ctx) } : {}),
         },
       },
       {
@@ -81095,6 +81108,7 @@ async function collectExternalSeedPoolAlternatives({
         timeoutMs: 1100,
         minTimeoutMs: 220,
         mode: 'main_path',
+        buyerMarket: explicitBuyerMarket(ctx),
         allowExternalSeed: true,
         externalSeedStrategy: 'supplement_internal_first',
         fastMode: true,
@@ -97442,6 +97456,28 @@ function mountAuroraBffRoutes(app, { logger }) {
   const handleV1Chat = async (req, res) => {
     const parsed = V1ChatRequestSchema.safeParse(req.body || {});
     const ctx = buildRequestContext(req, parsed.success ? parsed.data : req.body || {});
+    // ADR-024 on the v1 chat lane: the buyer's market is a REQUEST dimension, resolved ONCE onto
+    // the ctx (as directRecoGenerateHandler does for reco) so the beauty shared-truth invoke below
+    // can key its catalog call on it — and only when the client said it (`explicitBuyerMarket`);
+    // the defaulted US is a serving choice, not the buyer's market. Never a 400: unreadable
+    // input defaults and is logged, with the raw value only when it is a string.
+    {
+      const buyerRegion = resolveBuyerRegionForBody(parsed.success ? parsed.data : req.body || {});
+      ctx.buyer_region = buyerRegion.region;
+      ctx.buyer_region_source = buyerRegion.regionSource;
+      if (buyerRegion.rejected) {
+        logger?.warn?.(
+          {
+            request_id: ctx.request_id,
+            event: 'chat_buyer_region_rejected',
+            ...buyerRegion.rejected,
+            region: ctx.buyer_region,
+            region_source: ctx.buyer_region_source,
+          },
+          'aurora bff: v1 chat buyer_region unreadable, defaulting',
+        );
+      }
+    }
     const templateCtx = {
       ...ctx,
       accept_language: String(req.get('Accept-Language') || req.get('accept-language') || '').trim(),
@@ -102269,6 +102305,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger,
               timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
               fastMode: true,
+              buyerMarket: explicitBuyerMarket(ctx),
             });
             products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
           } else {
@@ -105803,6 +105840,9 @@ const __internal = {
   isProductionLikeAuroraBffEnv,
   isTestLikeAuroraBffEnv,
   isAuroraBeautySharedTruthSelfBaseEnabled,
+  // The beauty shared-truth invoke, so a test can pin that it keys `metadata.market` on the v1
+  // chat turn's EXPLICIT buyer region and stays silent otherwise (2026-10-09).
+  fetchAuroraBeautySharedTruthForChat,
   // ADR-024 Phase 1. Exported so the buyer-region suite can drive the ceiling resolver directly:
   // its only production caller is isConcernFrameworkCandidateOverBudget, several hundred lines of
   // candidate scoring away, and a currency defect there is invisible through that seam.

@@ -242,6 +242,12 @@ const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
     query: z.string().min(1).optional(),
+    // ADR-024: the buyer's market, ISO-3166-1 alpha-2, as on RecoGenerateRequestSchema and for the
+    // same reason typed `any`: validation lives in resolveBuyerRegion, which treats an unreadable
+    // value as absent (regionSource 'defaulted'), never as a 400. Also accepted as
+    // `context.buyer_region`. Read by buildSkillRequest into context.buyer_region /
+    // buyer_region_source; the shop skill keys its catalog call on it ONLY when explicit.
+    buyer_region: z.any().optional(),
     profile: z.record(z.string(), z.any()).optional(),
     client_state: z
       .union([

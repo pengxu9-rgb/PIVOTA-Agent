@@ -212,3 +212,46 @@ describe('/recommend integration', () => {
     expect(upstreamScope.isDone()).toBe(false);
   });
 });
+
+describe('/recommend recall carries the buyer market only when the caller declared one', () => {
+  afterEach(() => nock.cleanAll());
+
+  test('a locale is a language, not a market: nothing declared, no metadata.market', async () => {
+    const responseBody = require('./samples/find_products_multi_sample.json');
+    let seen = null;
+    nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke', (body) => {
+        seen = body;
+        return true;
+      })
+      .reply(200, responseBody);
+    await request(app)
+      .post('/recommend')
+      .send({ trace_id: 't_mkt_0', creator_id: 'c1', anon_id: 'a_mkt_0', locale: 'en-US', message: 'cozy hoodie gift', events: [] })
+      .expect(200);
+    expect(seen.metadata.locale).toBe('en-US');
+    expect('market' in seen.metadata).toBe(false);
+    expect(seen.metadata.invoked_by).toBe('recommend.recall');
+  });
+
+  test('an explicit buyer_region travels as metadata.market, upper-cased; junk is dropped', async () => {
+    const responseBody = require('./samples/find_products_multi_sample.json');
+    const bodies = [];
+    nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke', (body) => {
+        bodies.push(body);
+        return true;
+      })
+      .times(3)
+      .reply(200, responseBody);
+    for (const [i, extra] of [[1, { buyer_region: 'sg' }], [2, { market: 'JP' }], [3, { buyer_region: 'USA', market: 'en-US' }]]) {
+      await request(app)
+        .post('/recommend')
+        .send({ trace_id: `t_mkt_${i}`, creator_id: 'c1', anon_id: `a_mkt_${i}`, locale: 'en-US', message: 'cozy hoodie gift', events: [], ...extra })
+        .expect(200);
+    }
+    expect(bodies[0].metadata.market).toBe('SG');
+    expect(bodies[1].metadata.market).toBe('JP');
+    expect('market' in bodies[2].metadata).toBe(false);
+  });
+});

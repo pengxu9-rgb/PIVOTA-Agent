@@ -333,3 +333,26 @@ describe('detectExplicitProductSearch template guards', () => {
     expect(detectExplicitProductSearch('ordinary')?.match_type).toBe('bare');
   });
 });
+
+describe('ShopFindProductsSkill keys the catalog call on the buyer market only when explicit', () => {
+  function makeSpySkill() {
+    const calls = [];
+    const skill = new ShopFindProductsSkill({
+      client: { findProductsMulti: async (args) => { calls.push(args); return { ok: true, products: [], metadata: {}, reason: 'no_candidates' }; } },
+    });
+    return { skill, calls };
+  }
+
+  test('an explicit buyer_region in the request context reaches the client as market', async () => {
+    const { skill, calls } = makeSpySkill();
+    await skill.execute({ params: { find_products_query: 'acropass' }, context: { buyer_region: 'sg', buyer_region_source: 'explicit' } });
+    expect(calls[0].market).toBe('SG');
+  });
+
+  test('a defaulted or absent region sends no market: the call stays silent', async () => {
+    const { skill, calls } = makeSpySkill();
+    await skill.execute({ params: { find_products_query: 'acropass' }, context: { buyer_region: 'US', buyer_region_source: 'defaulted' } });
+    await skill.execute({ params: { find_products_query: 'acropass' } });
+    expect(calls.map((c) => c.market)).toEqual([null, null]);
+  });
+});

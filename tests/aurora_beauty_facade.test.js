@@ -2662,6 +2662,9 @@ describe('Aurora beauty orchestration facade', () => {
       request: {
         built: true,
         search: { page: 1 },
+        // The outer request's metadata rides along (its buyer market threads into the re-invoke);
+        // this plan named none, so the resolver sees an empty one and re-invokes silent.
+        metadata: {},
         cacheQueryText: 'ipsa toner',
         inStockOnly: true,
         limit: 10,
@@ -3171,5 +3174,34 @@ describe('Aurora beauty orchestration facade', () => {
       delegation_plan: 'call_decisioning',
       next_layer: 'decisioning',
     });
+  });
+});
+
+describe('the guidance-only resolver fallback forwards the OUTER request metadata (2026-10-09)', () => {
+  test("the plan hands the outer metadata — and so its buyer market — to the resolver request builder", () => {
+    const seen = [];
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      shouldAttemptCacheMissResolverFallback: () => true,
+      buildCacheMissResolverFallbackRequest(params) {
+        seen.push(params);
+        return { built: true, market: params?.metadata?.market || null };
+      },
+    });
+    const plan = runtime.buildGuidanceOnlyCacheResolverFallbackPlan({
+      resolverFallbackEnabled: true,
+      isLookupQuery: true,
+      search: { page: 1 },
+      metadata: { source: 'shopping_agent', market: 'SG' },
+      cacheQueryText: 'ipsa toner',
+      inStockOnly: true,
+      limit: 10,
+      normalizedSeedStrategyForCache: 'unified_relevance',
+      checkoutToken: 'token_1',
+      source: 'aurora-bff',
+    });
+    expect(plan.shouldAttemptResolverFallback).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].metadata).toEqual({ source: 'shopping_agent', market: 'SG' });
+    expect(plan.request).toEqual({ built: true, market: 'SG' });
   });
 });

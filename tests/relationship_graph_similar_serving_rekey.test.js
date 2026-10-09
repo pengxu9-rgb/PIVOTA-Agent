@@ -90,13 +90,17 @@ const catalogRow = (id, overrides = {}) => ({
   ...overrides,
 });
 
-const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), recommend: null, sql: [] };
+const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), render: () => [], recommend: null, sql: [] };
 const defaultQuery = async (sql, params = []) => {
   const text = String(sql);
   state.sql.push({ text, params });
   if (text.includes('FROM product_relationship_edges')) {
     const wanted = Array.isArray(params[4]) ? params[4] : null;
     return { rows: state.edges.filter((edge) => !wanted || wanted.includes(edge.relation_type)) };
+  }
+  if (text.includes('similar_relationship_graph_renderability')) {
+    if (state.render === 'throw') throw new Error('render read exploded');
+    return { rows: state.render((params[0] || []).slice()) };
   }
   const ids = (params || []).flat().filter((value) => typeof value === 'string' && value.startsWith('ext_0000'));
   if (text.includes('FROM external_product_seeds') && !text.includes('pdp_identity_listing')) {
@@ -162,6 +166,7 @@ beforeEach(() => {
     edgeRow(5, 'niche_specialist'),
   ];
   state.catalog = (ids) => ids.map((id) => catalogRow(id));
+  state.render = () => [];
   state.recommend = null;
   state.sql = [];
   delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES;
@@ -381,6 +386,84 @@ describe('graph card money is one record\'s amount and currency', () => {
     }));
     const sources = await app._debug.fetchExternalSeedSimilarCardSourcesFromDb([candidateId(1)]);
     expect(sources.get(candidateId(1)).price).toBeNull();
+  });
+});
+
+describe('graph cards whose product page will not render are withheld', () => {
+  // Rows shaped like the renderability query: the PDP's own inputs, read live.
+  const gateRow = (sig, overrides = {}) => ({
+    pivota_signature_id: sig, merchant_id: 'merch_obs_x', platform: 'external_seed', source_system: 'external_product_seeds_mirror_v1',
+    source_product_id: 'ext_x', content_key: 'ck_x', product_key: 'pk_x', sync_status: 'live', pdp_lifecycle_stage: 'published',
+    source_active: true, pdp_seed_route_ok: true, serving_eligible: true, blocker_code: null, blocker_detail: null,
+    content_quality_score: 90, active_external_seed_source_match: true, mirror_seed_inactive: false, ...overrides,
+  });
+  const noUsOffer = { serving_eligible: false, blocker_code: 'no_us_offer' };
+  const served = (body) => body.products.filter((product) => product.relationship_edge_id).map((card) => card.relationship_edge_id).sort();
+  const all = ['prel_rekey_2', 'prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5'];
+
+  test('a signature with no row passing source, route and serving gate is withheld and counted', async () => {
+    // Prod 2026-10-09: sig_69612c2d… / sig_e72d8709… (no_us_offer) answered PRODUCT_NOT_SERVABLE.
+    state.render = () => [gateRow(sigOf(2), noUsOffer), gateRow(sigOf(3))];
+    const body = await findSimilar();
+    expect(served(body)).toEqual(['prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+    expect(body.metadata.relationship_graph_not_renderable_withheld_count).toBe(1);
+    const read = state.sql.find(({ text }) => text.includes('similar_relationship_graph_renderability'));
+    expect(read.params[0].sort()).toEqual([sigOf(2), sigOf(3), sigOf(4), sigOf(5)]);
+  });
+
+  test.each([
+    ['no resolvable content route (sampled PDPs answered 410)', { pdp_seed_route_ok: false }],
+    ['an excluded catalog source', { source_active: false }],
+    ['an inactive mirror seed (its content route does not resolve)', { pdp_seed_route_ok: false, active_external_seed_source_match: false }],
+    ['a shopify row (no measured route)', { platform: 'shopify', source_system: 'shopify', source_product_id: '8123' }],
+  ])('%s is withheld', async (_label, overrides) => {
+    state.render = () => [gateRow(sigOf(2), overrides)];
+    expect(served(await findSimilar())).toEqual(['prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+  });
+
+  test.each([
+    ['the newest active-source row is refused (an older one renders)', () => [
+      gateRow(sigOf(2), { updated_at: '2026-09-01T00:00:00Z' }), gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-10-01T00:00:00Z' })]],
+    ['the mirror row get_pdp_v2 picks is refused although a newer minted row passes', () => [
+      gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-09-01T00:00:00Z' }),
+      gateRow(sigOf(2), { source_system: 'catalog_enrichment_agent_v1', updated_at: '2026-10-01T00:00:00Z' })]],
+  ])('%s: the card follows the row get_pdp_v2 judges', async (_label, render) => {
+    state.render = render;
+    expect(served(await findSimilar())).toEqual(['prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+  });
+
+  test.each([
+    ['the newest active-source row renders (an older one is refused)', () => [
+      gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-09-01T00:00:00Z' }), gateRow(sigOf(2), { updated_at: '2026-10-01T00:00:00Z' })]],
+    ['an inactive-source row is skipped by the pick', () => [gateRow(sigOf(2), { source_active: false, updated_at: '2026-10-05T00:00:00Z' }),
+      gateRow(sigOf(2), { updated_at: '2026-10-01T00:00:00Z' })]],
+    ['a mirror row whose seed status is blank but whose route resolves', () => [gateRow(sigOf(2), { active_external_seed_source_match: false })]],
+    ['the published-but-unscored override', () => [gateRow(sigOf(2), { serving_eligible: false, blocker_code: 'not_scored',
+      blocker_detail: 'No quality snapshot found for this product', content_quality_score: null })]],
+    ['no catalog row at all', () => []],
+    ['a read error', 'throw'],
+  ])('%s keeps the card', async (_label, render) => {
+    state.render = render;
+    const body = await findSimilar();
+    expect(served(body)).toEqual(all);
+    expect(body.metadata.relationship_graph_not_renderable_withheld_count).toBe(0);
+  });
+
+  test('only relationship-graph cards with a sig_ link are checked; heuristic and pg_ cards are untouched', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [gateRow('sig_heuristic', noUsOffer), gateRow('sig_graph', noUsOffer)];
+    state.sql = [];
+    const heuristic = { product_id: 'sig_heuristic', pivota_signature_id: 'sig_heuristic', image_url: 'https://cdn.example.test/h.jpg', card_highlight: 'x' };
+    const family = { product_id: 'pg_catalog_family', source: 'relationship_graph', relationship_edge_id: 'edge_pg', image_url: 'https://cdn.example.test/p.jpg' };
+    const graph = { product_id: 'sig_graph', pivota_signature_id: 'sig_graph', source: 'relationship_graph', relationship_edge_id: 'edge_sig', image_url: 'https://cdn.example.test/g.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([heuristic, family, graph], { bypassCache: true });
+    const read = state.sql.find(({ text }) => text.includes('similar_relationship_graph_renderability'));
+    expect(read.params[0]).toEqual(['sig_graph']);
+    expect(out.find((p) => p.product_id === 'sig_graph').similar_render_status).toBe('not_renderable');
+    expect(out.find((p) => p.product_id === 'sig_heuristic').similar_render_status).toBeUndefined();
+    expect(out.find((p) => p.product_id === 'pg_catalog_family').similar_render_status).toBeUndefined();
+    expect(app._debug.filterPublicVisibleSimilarProducts(out, { servingCurrency: 'USD' }).map((p) => p.product_id))
+      .toEqual(['sig_heuristic', 'pg_catalog_family']);
   });
 });
 

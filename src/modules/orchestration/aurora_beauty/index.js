@@ -2115,6 +2115,8 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     resolverFallbackEnabled = false,
     isLookupQuery = false,
     search,
+    // The outer request's metadata: its buyer market rides into the resolver's re-invoke.
+    metadata = {},
     cacheQueryText,
     inStockOnly,
     limit,
@@ -2133,6 +2135,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       request: shouldAttemptResolverFallback
         ? buildCacheMissResolverFallbackRequestImpl({
             search,
+            metadata,
             cacheQueryText,
             inStockOnly,
             limit,
