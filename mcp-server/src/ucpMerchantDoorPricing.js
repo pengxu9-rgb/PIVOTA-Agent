@@ -36,7 +36,7 @@ import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
 import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { encodeUcpVariantItemId, findRealVariant } from "./ucpVariantIds.js";
+import { encodeUcpVariantItemId, findRealVariant, realVariantsOf } from "./ucpVariantIds.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
 export const MERCHANT_PRICING_BUDGET_MS = 5000; // discovery (usually cached) + one cart call
@@ -115,6 +115,28 @@ function onSellerHost(url, sellerHost) {
  * what the product read already carries. `sellerHost` is the storefront host the escalation resolved (a Pivota
  * attribution hop already decoded to its destination).
  */
+// A variant's OWN id as the product read carries it — `variant_id` (else `id`) — as a Shopify variant gid, or null.
+// THE READ'S SHAPE, not a fixture's: pdpBuilder.buildVariants emits `variant_id` / `sku_id` and never
+// `source_variant_id` / `variant_gid` (measured 2026-10-09, variant census). An id that restates the PRODUCT is
+// refused (a row with no variant list gets one made up from the product's own id). NOT distinguishable on the read: a
+// seed variant with no id falls back to its `sku`, and the builder copies the id into `sku_id` either way, so a numeric
+// barcode can arrive here looking like a Shopify id. That is accepted knowingly: the seller answers "variant not
+// found" (fall back), and readSellerCart only prices a cart whose line is EXACTLY the gid asked for — a wrong item
+// would need a barcode equal to another variant id in the same store, and the buyer still sees the cart before paying.
+function ownVariantIdGid(v, row) {
+  for (const key of ["variant_id", "id"]) {
+    const raw = own(v, key);
+    const id = typeof raw === "string" ? raw.trim() : (Number.isSafeInteger(raw) && raw > 0 ? String(raw) : "");
+    if (!id) continue;
+    for (const k of ["product_id", "pivota_signature_id", "external_product_id", "source_product_id", "shopify_product_id"]) {
+      const pid = own(row, k);
+      if (pid !== undefined && pid !== null && String(pid).trim() === id) return null;
+    }
+    return toVariantGid(id);
+  }
+  return null;
+}
+
 export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
   if (!isPlainObject(row)) return null;
   // A variant the BUYER CHOSE (already proven one of this product's real variants at the door): its own seller id —
@@ -123,11 +145,11 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
   if (chosenVariantId !== undefined && chosenVariantId !== null) {
     const v = findRealVariant(row, chosenVariantId);
     if (!v) return null;
-    for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid"), own(v, "variant_id"), own(v, "id")]) {
+    for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid")]) {
       const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
       if (gid) return gid;
     }
-    return null;
+    return ownVariantIdGid(v, row);
   }
   const variants = Array.isArray(own(row, "variants")) ? own(row, "variants").filter(isPlainObject) : [];
   if (variants.length > 1) return null; // the buyer's choice is not carried on this door: never guess
@@ -137,7 +159,15 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
     const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
     if (gid) return gid;
   }
-  if (!sellerHost) return null;
+  // THE SOLE VARIANT'S OWN ID, as the live read carries it (see ownVariantIdGid) — only when it is a REAL variant by
+  // checkout's own count (a restated product id never is). A seller-host URL's `variant=` naming a DIFFERENT variant
+  // makes the row ambiguous: neither is guessed.
+  let soleGid = null;
+  if (variants.length === 1) {
+    const real = realVariantsOf(row);
+    if (real.length === 1 && real[0].variant === variants[0]) soleGid = ownVariantIdGid(variants[0], row);
+  }
+  if (!sellerHost) return soleGid;
   const found = new Set();
   for (const key of ["destination_url", "canonical_url", "url"]) {
     const url = str(own(row, key));
@@ -146,7 +176,10 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
     const values = parsed.searchParams.getAll("variant");
     if (values.length === 1 && /^\d{1,20}$/.test(values[0])) found.add(values[0]);
   }
-  return found.size === 1 ? toVariantGid([...found][0]) : null;
+  const urlGid = found.size === 1 ? toVariantGid([...found][0]) : null;
+  if (found.size > 1) return null;
+  if (soleGid && urlGid && soleGid !== urlGid) return null; // the read and the link name different variants
+  return soleGid || urlGid;
 }
 
 // ---- the seller's answer ---------------------------------------------------------------------------------------
