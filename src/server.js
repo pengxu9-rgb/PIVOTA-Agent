@@ -362,8 +362,18 @@ const marketTelemetry = require('./services/marketTelemetry');
 const {
   enforceServingCurrency,
   filterProductsToServingCurrency,
+  requestedMarketOf,
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
+
+// THE BUYER MARKET RIDES INTO THE DISCOVERY FEED (discoveryFeed.applyBuyerMarketFallback), read by
+// the SAME function the serving-currency guard judges the outgoing body with, so the feed and the
+// guard never disagree on which market a page is for. Absent when the request names none: the feed
+// stays byte-identical.
+function withDiscoveryBuyerMarket(discoveryPayload, requestPayload, metadata) {
+  const market = requestedMarketOf(requestPayload, metadata);
+  return market ? { ...discoveryPayload, buyer_market: market } : discoveryPayload;
+}
 const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -42166,7 +42176,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { brandNames: publicBrandScopeNames },
         );
       try {
-        const discoveryResponse = await getDiscoveryFeed(discoveryPayload);
+        const discoveryResponse = await getDiscoveryFeed(withDiscoveryBuyerMarket(discoveryPayload, effectivePayload, metadata));
         const bridgeResponse = buildFindProductsMultiDiscoveryBridgeResponse({
           discoveryResponse,
           search: publicBeautySearch,
@@ -42303,7 +42313,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   if (operation === 'get_discovery_feed') {
     try {
-      const discoveryResponse = await getDiscoveryFeed(effectivePayload);
+      const discoveryResponse = await getDiscoveryFeed(withDiscoveryBuyerMarket(effectivePayload, effectivePayload, metadata));
       return res.status(200).json(discoveryResponse);
     } catch (err) {
       if (err instanceof DiscoveryCatalogUnavailableError) {
