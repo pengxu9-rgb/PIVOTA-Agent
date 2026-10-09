@@ -104,3 +104,29 @@ test('end to end on a real-built row: create_cart is sent the sole variant gid, 
   assert.deepEqual(calls[0].lineItems, [{ item: { id: GID('44012345678971') }, quantity: 1 }]);
   assert.ok(out, 'priced');
 });
+
+test('two storefront links naming DIFFERENT variants: neither is guessed, even when the read agrees with one', () => {
+  const row = seed('h', { url: 'https://brand-h.com/products/x?variant=44012345678901', variants: [{ id: '44012345678901', price: '10.00' }] });
+  row.canonical_url = 'https://brand-h.com/products/x?variant=44012345678902';
+  assert.equal(sellerVariantGidOf(liveRead(row), 'brand-h.com'), null);
+});
+
+test('an id is taken WHOLE: bare digits or exactly a Shopify variant gid — never a gid fished out of a longer string', () => {
+  const p = liveRead(seed('i', { url: 'https://brand-i.com/products/x', variants: [{ id: '44012345678901', price: '10.00' }] }));
+  const withId = (id) => ({ ...p, variants: [{ ...p.variants[0], variant_id: id, sku_id: id }] });
+  assert.equal(sellerVariantGidOf(withId('gid://shopify/ProductVariant/44012345678901'), 'brand-i.com'), GID('44012345678901'));
+  assert.equal(sellerVariantGidOf(withId('https://evil.example/?gid://shopify/ProductVariant/44012345678901'), 'brand-i.com'), null);
+  assert.equal(sellerVariantGidOf(withId('SKU-44012345678901'), 'brand-i.com'), null);
+  assert.equal(sellerVariantGidOf(withId('12345'), 'brand-i.com'), null, 'too short to be a Shopify id');
+});
+
+test("the CHOSEN-variant path reads the same way: its own variant_id only (no fallback to id), never a restated product id", () => {
+  const base = { product_id: 'p_x', pivota_signature_id: 'sig_0123456789abcdef0123456789abcdef', currency: 'USD', price: 10 };
+  // A non-Shopify variant_id does not fall through to a Shopify-shaped `id`: the read's id field is variant_id.
+  const row = { ...base, variants: [{ variant_id: 'v_red', id: '44012345678901' }, { variant_id: 'v_blue', id: '44012345678902' }] };
+  assert.equal(sellerVariantGidOf(row, 'brand.example', 'v_red'), null);
+  // A chosen variant whose id restates the product's own id is not a seller id, even beside a sig identity.
+  const restated = { ...base, product_id: '8012345678901', variants: [{ variant_id: '8012345678901' }, { variant_id: '44012345678903' }] };
+  assert.equal(sellerVariantGidOf(restated, 'brand.example', '8012345678901'), null);
+  assert.equal(sellerVariantGidOf(restated, 'brand.example', '44012345678903'), GID('44012345678903'));
+});

@@ -132,6 +132,10 @@ function ownVariantIdGid(v, row) {
       const pid = own(row, k);
       if (pid !== undefined && pid !== null && String(pid).trim() === id) return null;
     }
+    // THE WHOLE STRING is the id: bare digits, or exactly a Shopify variant gid. `toVariantGid` alone matches a gid
+    // ANYWHERE in a string (`https://x/?gid://shopify/ProductVariant/1…`), and an id read off the product is not a
+    // place to fish one out of.
+    if (!/^\d{6,}$/.test(id) && !/^gid:\/\/shopify\/ProductVariant\/\d+$/i.test(id)) return null;
     return toVariantGid(id);
   }
   return null;
