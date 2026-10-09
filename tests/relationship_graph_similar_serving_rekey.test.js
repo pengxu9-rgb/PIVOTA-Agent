@@ -90,7 +90,7 @@ const catalogRow = (id, overrides = {}) => ({
   ...overrides,
 });
 
-const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), recommend: null, sql: [] };
+const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), render: () => [], recommend: null, sql: [] };
 const defaultQuery = async (sql, params = []) => {
   const text = String(sql);
   state.sql.push({ text, params });
@@ -101,6 +101,10 @@ const defaultQuery = async (sql, params = []) => {
   const ids = (params || []).flat().filter((value) => typeof value === 'string' && value.startsWith('ext_0000'));
   if (text.includes('FROM external_product_seeds') && !text.includes('pdp_identity_listing')) {
     return { rows: ids.map(seedRow) };
+  }
+  if (text.includes('pdp_will_render') && text.includes('FROM catalog_products')) {
+    if (state.render === 'throw') throw new Error('render read exploded');
+    return { rows: state.render((params[0] || []).slice()) };
   }
   if (text.includes('FROM catalog_products') && text.includes('source_product_id = ANY')) {
     // Re-keyed data: no row is still under the sentinel merchant.
@@ -162,6 +166,7 @@ beforeEach(() => {
     edgeRow(5, 'niche_specialist'),
   ];
   state.catalog = (ids) => ids.map((id) => catalogRow(id));
+  state.render = () => [];
   state.recommend = null;
   state.sql = [];
   delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES;
@@ -381,6 +386,56 @@ describe('graph card money is one record\'s amount and currency', () => {
     }));
     const sources = await app._debug.fetchExternalSeedSimilarCardSourcesFromDb([candidateId(1)]);
     expect(sources.get(candidateId(1)).price).toBeNull();
+  });
+});
+
+describe('graph cards whose product page will not render are withheld', () => {
+  const DAY = 864e5;
+  const fresh = new Date(Date.now() - DAY).toISOString();
+  const stale = new Date(Date.now() - 30 * DAY).toISOString();
+  const renderRow = (sig, willRender, computedAt = fresh) => ({ pivota_signature_id: sig, pdp_will_render: willRender, pdp_will_render_computed_at: computedAt });
+  const served = (body) => body.products.filter((product) => product.relationship_edge_id).map((card) => card.relationship_edge_id).sort();
+
+  test('a signature whose every row is a fresh not-renderable verdict is filtered', async () => {
+    // Prod 2026-10-09: sig_69612c2d…, sig_e72d8709… (no_us_offer) and sig_6698aecb… (inactive seed)
+    // each had one fresh pdp_will_render=false row and answered PRODUCT_NOT_SERVABLE.
+    state.render = () => [renderRow(sigOf(2), false), renderRow(sigOf(3), true)];
+    const body = await findSimilar();
+    expect(served(body)).toEqual(['prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+    expect(body.metadata.public_external_id_filtered_count).toBe(1);
+    const read = state.sql.find(({ text }) => text.includes('pdp_will_render'));
+    expect(read.params[0].sort()).toEqual([sigOf(2), sigOf(3), sigOf(4), sigOf(5)]);
+  });
+
+  test('a stale or unchecked verdict, a renderable sibling row, or a read error keeps the card', async () => {
+    for (const render of [
+      () => [renderRow(sigOf(2), false, stale)],
+      () => [renderRow(sigOf(2), null)],
+      () => [renderRow(sigOf(2), false), renderRow(sigOf(2), true)],
+      'throw',
+    ]) {
+      state.render = render;
+      state.sql = [];
+      const body = await findSimilar();
+      expect(served(body)).toEqual(['prel_rekey_2', 'prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+    }
+  });
+
+  test('only relationship-graph cards with a sig_ link are checked; heuristic and pg_ cards are untouched', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [renderRow('sig_heuristic', false), renderRow('sig_graph', false)];
+    state.sql = [];
+    const heuristic = { product_id: 'sig_heuristic', pivota_signature_id: 'sig_heuristic', image_url: 'https://cdn.example.test/h.jpg', card_highlight: 'x' };
+    const family = { product_id: 'pg_catalog_family', source: 'relationship_graph', relationship_edge_id: 'edge_pg', image_url: 'https://cdn.example.test/p.jpg' };
+    const graph = { product_id: 'sig_graph', pivota_signature_id: 'sig_graph', source: 'relationship_graph', relationship_edge_id: 'edge_sig', image_url: 'https://cdn.example.test/g.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([heuristic, family, graph], { bypassCache: true });
+    const read = state.sql.find(({ text }) => text.includes('pdp_will_render'));
+    expect(read.params[0]).toEqual(['sig_graph']);
+    expect(out.find((p) => p.product_id === 'sig_graph').similar_render_status).toBe('not_renderable');
+    expect(out.find((p) => p.product_id === 'sig_heuristic').similar_render_status).toBeUndefined();
+    expect(out.find((p) => p.product_id === 'pg_catalog_family').similar_render_status).toBeUndefined();
+    expect(app._debug.filterPublicVisibleSimilarProducts(out, { servingCurrency: 'USD' }).map((p) => p.product_id))
+      .toEqual(['sig_heuristic', 'pg_catalog_family']);
   });
 });
 

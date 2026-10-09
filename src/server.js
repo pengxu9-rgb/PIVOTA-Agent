@@ -470,6 +470,7 @@ const {
 } = require('./services/RecommendationEngine');
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
+const { pageFreshness } = require('./services/relationshipGraphFreshness');
 const {
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
@@ -28501,7 +28502,69 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
   };
 }
 
+// A relationship-graph card links to agent.pivota.cc/products/<sig>. Prod 2026-10-09: 625 of the
+// 2,522 served graph candidates with a catalog row had only fresh pdp_will_render=false rows
+// (suppressed / no_us_offer / inactive seed), so their cards opened a 404. The validator's own
+// verdict decides, read the way relationshipGraphFreshness.pageFreshness reads it: a card is
+// withheld only when EVERY row for its signature is a fresh not-renderable verdict. A stale or
+// missing stamp, a renderable row, a read error, or a pg_ family link (resolved by the group lane)
+// keeps the card, as before.
+async function markUnrenderableRelationshipGraphCards(products) {
+  const list = Array.isArray(products) ? products : [];
+  if (!process.env.DATABASE_URL) return list;
+  const sigIds = Array.from(new Set(
+    list
+      .filter((product) => isRelationshipGraphSimilarProduct(product))
+      .map((product) => firstNonEmptyString(product?.product_id))
+      .filter((productId) => isPivotaSignatureProductId(productId)),
+  ));
+  if (!sigIds.length) return list;
+  let rows;
+  try {
+    const result = await query(
+      `
+        SELECT pivota_signature_id, pdp_will_render, pdp_will_render_computed_at
+        FROM catalog_products
+        WHERE pivota_signature_id = ANY($1::text[])
+      `,
+      [sigIds],
+    );
+    rows = Array.isArray(result?.rows) ? result.rows : [];
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), count: sigIds.length },
+      'similar relationship graph renderability read failed; keeping cards',
+    );
+    return list;
+  }
+  const verdictsBySig = new Map();
+  const now = new Date();
+  for (const row of rows) {
+    const sigId = firstNonEmptyString(row?.pivota_signature_id);
+    if (!sigId) continue;
+    if (!verdictsBySig.has(sigId)) verdictsBySig.set(sigId, []);
+    verdictsBySig.get(sigId).push(pageFreshness(row, now));
+  }
+  const unrenderable = new Set(
+    Array.from(verdictsBySig)
+      .filter(([, verdicts]) => verdicts.length > 0 && verdicts.every((verdict) => verdict === 'fresh_not_renderable'))
+      .map(([sigId]) => sigId),
+  );
+  if (!unrenderable.size) return list;
+  return list.map((product) =>
+    isRelationshipGraphSimilarProduct(product) && unrenderable.has(firstNonEmptyString(product?.product_id))
+      ? { ...product, similar_render_status: 'not_renderable' }
+      : product,
+  );
+}
+
 async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options = {}) {
+  return markUnrenderableRelationshipGraphCards(
+    await hydrateVisibleSimilarProductSigIdsFromCatalogBase(products, options),
+  );
+}
+
+async function hydrateVisibleSimilarProductSigIdsFromCatalogBase(products, options = {}) {
   const promoted = promoteVisibleSimilarProductSigIds(products);
   if (!process.env.DATABASE_URL || !promoted.length) return promoted;
   const cacheKey = options?.bypassCache ? '' : buildVisibleSimilarSigHydrationCacheKey(promoted);
@@ -28682,6 +28745,7 @@ function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) 
   const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
+    if (product.similar_render_status === 'not_renderable') return false;
     const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
     if (!externalSeedIds.length) return true;
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
