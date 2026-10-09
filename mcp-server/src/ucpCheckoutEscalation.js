@@ -230,8 +230,9 @@ async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESO
   try {
     results = await withDeadline(
       mapWithConcurrency(ids, VARIANT_RESOLUTION_CONCURRENCY, async (product_id) => {
-        // SCOPED to a merchant when the caller named one (the native door's quote always does): the row as THAT
-        // merchant sells it — the same read the checkout resolver performs — never another seller's PDP.
+        // SCOPED to a merchant when the caller named one (the native door's quote always does) — the same read the
+        // checkout resolver performs. For a seed-supply merchant the gateway dispatcher answers it from the canonical
+        // unscoped detail; assertProductIdentity (product id, and merchant id when the row names one) is the guard.
         const product = merchantId ? { product_id, merchant_id: merchantId } : { product_id };
         const result = await executor.execute("get_product", { payload: { product } }, { ...ctx, signal: controller.signal });
         assertProductIdentity(result, product_id, merchantId);

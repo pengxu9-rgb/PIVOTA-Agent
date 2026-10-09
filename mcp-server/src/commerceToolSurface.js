@@ -425,7 +425,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         //     seller Pivota is not connected to, and that failure arrives as a RETRIABLE MERCHANT_UNAVAILABLE —
         //     "try again shortly" for a checkout that can never succeed. Asked AFTER the failure, not before, so a
         //     checkout that prices pays no extra read (an explicit variant_id still costs none). The quote always
-        //     names a merchant, so each row is read AS THAT MERCHANT SELLS IT; only a row that read classifies as a
+        //     names a merchant, so each row is read with that merchant scope (for a seed-supply merchant the gateway
+        //     dispatcher reroutes the scoped read to the canonical unscoped detail, src/server.js get_product, and
+        //     assertProductIdentity is the guard that the row is that product); only a row that read classifies as a
         //     storefront row turns the failure into the terminal `ucp_storefront_checkout_unavailable`. A read that
         //     fails, or a cart of contracted rows, rethrows the kernel's own error unchanged. (The UCP door refuses
         //     such rows BEFORE the kernel, step 3a-ii.)

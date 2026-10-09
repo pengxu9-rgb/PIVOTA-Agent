@@ -71,7 +71,9 @@ test('update_checkout_session is renamed the same way', async () => {
   assert.equal(err.detail?.acp_detail?.reason, 'ucp_storefront_checkout_unavailable');
 });
 
-test("the SCOPED read decides: when the canonical PDP is a storefront but the quote merchant's own row is not, the kernel's error stands", async () => {
+// (In production a seed merchant's scoped read is rerouted to the canonical detail; this pins only that the door
+// classifies the row the SCOPED request returns, whatever the executor answers it with.)
+test("the scoped request's row decides: when it is not a storefront row, the kernel's error stands", async () => {
   const original = unavailable();
   const scopedNotStorefront = { ...SEED, external_redirect_url: undefined, purchase_route: 'internal_checkout' };
   const executor = executorWith({ rows: { [SEED.product_id]: SEED, [`${SEED.merchant_id}|${SEED.product_id}`]: scopedNotStorefront }, kernelError: original });
