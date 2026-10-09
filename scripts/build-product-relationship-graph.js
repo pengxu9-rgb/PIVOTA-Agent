@@ -6,6 +6,7 @@ const path = require('node:path');
 const { parseTargetRecallOptions } = require('./lib/relationship-graph-target-recall-options');
 const { loadProductRelationshipGraphTargetRecall, normalizeTargetRecallOptions } = require('../src/auroraBff/productRelationshipGraphTargetRecall');
 const { withoutRelationshipPairContext } = require('../src/auroraBff/relationshipCandidatePairContext');
+const { compareProductIdentity, RELATIONS: IDENTITY } = require('../src/auroraBff/relationshipProductIdentity');
 
 const { closePool, query, withClient } = require('../src/db');
 const {
@@ -319,14 +320,6 @@ function normalizeScalarString(value, max = 512) {
   return normalizeString(value, max);
 }
 
-function pickFirstScalarString(...values) {
-  for (const value of values) {
-    const text = normalizeScalarString(value);
-    if (text) return text;
-  }
-  return '';
-}
-
 function snapshotEvidenceText(snapshot = {}) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
   return [
@@ -366,130 +359,15 @@ function normalizeIdentityText(value, max = 512) {
     .trim();
 }
 
-function normalizeIdentityToken(value, minLength = 6) {
-  const raw = normalizeScalarString(value, 512);
-  const text = raw ? normalizeIdentityText(stripRelationshipPrefix(raw), 512) : '';
-  if (!text || text.length < minLength) return '';
-  return text;
-}
-
-function normalizeRefIdentityToken(value) {
-  return normalizeIdentityToken(value, 4);
-}
-
-function snapshotIdentityTokens(snapshot = {}, ref = '') {
-  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return new Set();
-  return new Set([
-    ref,
-    snapshot.product_ref,
-    snapshot.productRef,
-    snapshot.product_id,
-    snapshot.productId,
-    snapshot.external_product_id,
-    snapshot.externalProductId,
-    snapshot.source_product_id,
-    snapshot.sourceProductId,
-    snapshot.pivota_signature_id,
-    snapshot.pivotaSignatureId,
-    snapshot.sig_id,
-    snapshot.sigId,
-    snapshot.sku_id,
-    snapshot.skuId,
-    snapshot.content_key,
-    snapshot.contentKey,
-    snapshot.product_key,
-    snapshot.productKey,
-    snapshot.id,
-    snapshot.url,
-    snapshot.canonical_url,
-    snapshot.canonicalUrl,
-    snapshot.destination_url,
-    snapshot.destinationUrl,
-    snapshot.pdp_url,
-    snapshot.pdpUrl,
-  ].map((value) => normalizeIdentityToken(value)).filter(Boolean));
-}
-
-function hasSharedIdentityToken(left, right) {
-  if (!left.size || !right.size) return false;
-  for (const token of left) {
-    if (right.has(token)) return true;
-  }
-  return false;
-}
-
-function normalizedSnapshotBrand(snapshot = {}) {
-  return normalizeIdentityText(pickFirstScalarString(
-    snapshot.brand,
-    snapshot.brand_name,
-    snapshot.brandName,
-    snapshot.vendor,
-    snapshot.brand_id,
-    snapshot.brandId,
-  ), 160);
-}
-
-function normalizedSnapshotTitle(snapshot = {}) {
-  return normalizeIdentityText(pickFirstScalarString(
-    snapshot.name,
-    snapshot.title,
-    snapshot.display_name,
-    snapshot.displayName,
-    snapshot.product_name,
-    snapshot.productName,
-  ), 512);
-}
-
-function normalizedSnapshotVariant(snapshot = {}) {
-  return normalizeIdentityText(pickFirstScalarString(
-    snapshot.variant_title,
-    snapshot.variantTitle,
-    snapshot.variant_detail_label,
-    snapshot.variantDetailLabel,
-    snapshot.sku_title,
-    snapshot.skuTitle,
-  ), 256);
-}
-
+// Identity has one owner (relationshipProductIdentity): equal refs / ids / content keys / URLs, then
+// the shared title rules. A variant is rejected here too, so it never reaches review.
 function sameProductPrefilterReasons(edge = {}) {
-  const anchorRef = normalizeLower(edge.anchor_ref, 512);
-  const candidateRef = normalizeLower(edge.candidate_product_ref, 512);
-  if (anchorRef && candidateRef && anchorRef === candidateRef) return ['same_product_identity'];
-
-  const anchorBareRef = normalizeRefIdentityToken(edge.anchor_ref);
-  const candidateBareRef = normalizeRefIdentityToken(edge.candidate_product_ref);
-  if (anchorBareRef && candidateBareRef && anchorBareRef === candidateBareRef) {
-    return ['same_product_identity'];
-  }
-
-  const anchorSnapshot = edge.anchor_snapshot || {};
-  const candidateSnapshot = edge.candidate_snapshot || {};
-  if (hasSharedIdentityToken(
-    snapshotIdentityTokens(anchorSnapshot, edge.anchor_ref),
-    snapshotIdentityTokens(candidateSnapshot, edge.candidate_product_ref),
-  )) {
-    return ['same_product_identity'];
-  }
-
-  const anchorBrand = normalizedSnapshotBrand(anchorSnapshot);
-  const candidateBrand = normalizedSnapshotBrand(candidateSnapshot);
-  const anchorTitle = normalizedSnapshotTitle(anchorSnapshot);
-  const candidateTitle = normalizedSnapshotTitle(candidateSnapshot);
-  const anchorVariant = normalizedSnapshotVariant(anchorSnapshot);
-  const candidateVariant = normalizedSnapshotVariant(candidateSnapshot);
-  const variantsConflict = Boolean(anchorVariant && candidateVariant && anchorVariant !== candidateVariant);
-  if (
-    anchorBrand &&
-    candidateBrand &&
-    anchorBrand === candidateBrand &&
-    anchorTitle &&
-    candidateTitle &&
-    anchorTitle === candidateTitle &&
-    anchorTitle.length >= 8 &&
-    !variantsConflict
-  ) {
-    return ['same_product_identity'];
-  }
+  const identity = compareProductIdentity(edge.anchor_snapshot || {}, edge.candidate_snapshot || {}, {
+    anchorRef: edge.anchor_ref,
+    candidateRef: edge.candidate_product_ref,
+  });
+  if (identity.relation === IDENTITY.SAME_PRODUCT) return ['same_product_identity'];
+  if (identity.relation === IDENTITY.SAME_FAMILY_VARIANT) return ['same_family_variant'];
   return [];
 }
 

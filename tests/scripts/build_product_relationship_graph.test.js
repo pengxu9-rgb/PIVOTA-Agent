@@ -261,7 +261,7 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     });
   });
 
-  test('variant mismatch prevents brand-title identity rejection', () => {
+  test('one title with two structured shades is a variant, rejected before review', () => {
     const r = classifyEdgeForPrefilter({
       edge: edge({
         relation_type: 'related_product',
@@ -280,7 +280,11 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
       anchorAttrs: attrs(),
       candidateAttrs: attrs(),
     });
-    expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['same_family_variant'],
+      bucket: 'rejected',
+    });
   });
 
   test('unavailable candidate rejects structural generated alternatives before review', () => {

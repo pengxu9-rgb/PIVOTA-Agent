@@ -1,4 +1,6 @@
-const { isSameFamilyVariant, optionRole } = require('./relationshipPairPolicy');
+const { optionRole } = require('./relationshipPairPolicy');
+const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
+const { classifyComplementPair, routineRole } = require('./relationshipComplementPolicy');
 const {
   DUPE_MIN_SCORE_TOTAL,
   coerceRelationshipEdge,
@@ -1515,26 +1517,35 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       useCaseAlignment,
     };
   }
-  if (sameBrand && relationshipInternals.isSameProductAcrossListingsOrSizes(
-    snapshotNameText(anchorSnapshot), snapshotNameText(candidateSnapshot), anchorBrand)) {
-    return {relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+  // Identity has one owner. Any brand may list the same product; a variant is never a recommendation.
+  const identity = compareProductIdentity(anchorSnapshot, candidateSnapshot);
+  if (identity.relation === IDENTITY.SAME_PRODUCT) {
+    return {relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio, identity,
       utilityCompatibility: {compatible: false, reason: 'same_product_listing_or_size'}};
   }
-  if (sameBrand && isSameFamilyVariant(anchorSnapshot, candidateSnapshot)) {
-    return { relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio,
+  if (identity.relation === IDENTITY.SAME_FAMILY_VARIANT) {
+    return { relation_type: 'rejected', categoryScore, ingredientScore, scoreTotal, priceRatio, identity,
       utilityCompatibility: { compatible: false, reason: 'same_family_variant' } };
   }
   if (sameBrand) {
-    // Same-brand distinct-line substitutes must be queryable by get_alternatives.
-    // Different steps/areas may be complements; only the reviewer can approve
-    // that utility, so candidate inference does not claim they should be used together.
-    const aRole = optionRole(anchorSnapshot); const bRole = optionRole(candidateSnapshot);
+    // related_product means complement, and the reviewer judges it with the same policy:
+    // a same-brand pair for one shopper job is a competitive_alternative; known, different
+    // routine roles make a related_product candidate; anything else claims no relation.
+    const aRole = routineRole(anchorSnapshot); const bRole = routineRole(candidateSnapshot);
     const sameRole = !aRole || !bRole || aRole === bRole;
     const substitutable = sameRole && setCompatibility.compatible && formCompatibility.compatible &&
       jobCompatibility.compatible && leafCompatibility.compatible && useCaseAlignment.aligned && categoryScore >= 0.55;
-    return { relation_type: substitutable ? 'competitive_alternative' : 'related_product',
-      categoryScore, ingredientScore, scoreTotal, priceRatio, setCompatibility,
-      formCompatibility, jobCompatibility, leafCompatibility, useCaseAlignment };
+    const routineRelation = classifyComplementPair(anchorSnapshot, candidateSnapshot, { substitutable });
+    const metrics = { categoryScore, ingredientScore, scoreTotal, priceRatio, identity, setCompatibility,
+      formCompatibility, jobCompatibility, leafCompatibility, useCaseAlignment, routineRelation };
+    // An alternative needs the builder's own substitution evidence, not only a shared role word.
+    if (substitutable) return { relation_type: 'competitive_alternative', ...metrics };
+    if (routineRelation.kind === 'same_job') {
+      return { relation_type: 'rejected', ...metrics, utilityCompatibility: { compatible: false, reason: 'same_job_not_substitutable' } };
+    }
+    if (routineRelation.kind === 'complement') return { relation_type: 'related_product', ...metrics };
+    return { relation_type: 'rejected', ...metrics,
+      utilityCompatibility: { compatible: false, reason: 'related_product_without_complement_roles' } };
   }
   if (!setCompatibility.compatible) {
     return {

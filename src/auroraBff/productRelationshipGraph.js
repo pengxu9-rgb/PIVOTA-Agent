@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { isSameFamilyVariant } = require('./relationshipPairPolicy');
+const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
@@ -245,15 +245,6 @@ function hasVariantSuffix(title) {
   return /\s(?:\u2014|-)\s/.test(String(title || ''));
 }
 
-function relationshipBaseTitle(title) {
-  return normalizeLower(title, 300)
-    .replace(/\s+(?:\u2014|-)\s+.*$/, '')
-    .replace(/\s+\[[^\]]+\]\s*/g, ' ')
-    .replace(/\s+\([^)]*\)\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function relationshipFamilyTitle(title) {
   return normalizeLower(title, 300)
     .replace(/#[0-9]{2,3}\b/g, ' ')
@@ -266,29 +257,17 @@ function relationshipFamilyTitle(title) {
     .trim();
 }
 
-// Preserve product-name words, formulation, strength and SPF. Only explicit listing
-// sizes are stripped on both sides. Descriptive tails require an otherwise exact
-// shorter title; two different tails (including scents/styles) never become equal.
-function sameProductListingTitle(title, brand) {
-  const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return normalizeLower(title, 600)
-    .replace(new RegExp(`^\\[${escapedBrand}\\]\\s*`), '')
-    .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz|grams?|g|litres?|liters?)\b/g, ' ')
-    .replace(/\b(?:mini|travel\s+size|full\s+size|refill)\b/g, ' ')
-    .replace(/[()]/g, ' ')
-    .replace(/\s+/g, ' ').replace(/\s*[-–—|,]\s*$/, '').trim();
+// Thin wrapper kept for importers: same product (any listing or size) per the shared identity
+// contract. Brand equality is the contract's own normalised comparison, not this caller's.
+function isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, brand) {
+  return compareProductIdentity({ brand, title: anchorTitle }, { brand, title: candidateTitle }).relation === IDENTITY.SAME_PRODUCT;
 }
 
-function isSameProductAcrossListingsOrSizes(anchorTitle, candidateTitle, brand) {
-  const a = sameProductListingTitle(anchorTitle, brand);
-  const b = sameProductListingTitle(candidateTitle, brand);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const [short, long] = a.length < b.length ? [a, b] : [b, a];
-  if (!long.startsWith(short)) return false;
-  // A comma or spaced dash is a listing-description separator, not a generic
-  // word prefix. Never strip these tails independently on both sides.
-  return /^(?: for\s+|,\s+| [-–—]\s+)\S/.test(long.slice(short.length));
+function identitySuppressionReason(edge) {
+  const identity = compareProductIdentity(edge.anchor_snapshot, edge.candidate_snapshot);
+  if (identity.relation === IDENTITY.SAME_PRODUCT) return 'same_product_across_listings_or_sizes';
+  if (identity.relation === IDENTITY.SAME_FAMILY_VARIANT) return 'same_family_variant';
+  return '';
 }
 
 function isComplexionSkuTitle(title) {
@@ -529,7 +508,7 @@ function validateRelationshipEdge(input = {}, options = {}) {
   if (edge.relation_type === 'dupe' || edge.relation_type === 'competitive_alternative') {
     if (!anchorBrand || !candidateBrand) errors.push(`${edge.relation_type}_brand_missing`);
     if (sameBrand && edge.relation_type === 'dupe') errors.push('dupe_same_brand_blocked');
-    if (sameBrand && edge.relation_type === 'competitive_alternative' && isSameFamilyVariant(edge.anchor_snapshot, edge.candidate_snapshot)) {
+    if (sameBrand && edge.relation_type === 'competitive_alternative' && identitySuppressionReason(edge)) {
       errors.push('competitive_alternative_same_family_variant');
     }
     if (hasOnPageSource(edge)) errors.push(`${edge.relation_type}_on_page_source_blocked`);
@@ -602,17 +581,11 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
     reasons.push('ai_approved_dupe_quarantined');
   }
 
-  if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type) &&
-      extractBrand(edge.anchor_snapshot) && extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot) &&
-      isSameProductAcrossListingsOrSizes(extractProductTitle(edge.anchor_snapshot), extractProductTitle(edge.candidate_snapshot), extractBrand(edge.anchor_snapshot))) {
-    reasons.push(`${edge.relation_type}_same_product_across_listings_or_sizes`);
-  }
-
-  // A recommendation is not a variant picker. Preserve human decisions, but hide
-  // AI-approved same-line style/shade options on both recommendation lanes.
-  if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type) &&
-      isSameFamilyVariant(edge.anchor_snapshot, edge.candidate_snapshot)) {
-    reasons.push(`${edge.relation_type}_same_family_variant`);
+  // A recommendation is neither another listing of the anchor nor a variant picker. Preserve human
+  // decisions; hide AI-approved same products and same-line options on both recommendation lanes.
+  if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type)) {
+    const identityReason = identitySuppressionReason(edge);
+    if (identityReason) reasons.push(`${edge.relation_type}_${identityReason}`);
   }
 
   if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {

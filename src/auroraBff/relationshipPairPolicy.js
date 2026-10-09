@@ -68,113 +68,16 @@ function optionRole(snapshot = {}) {
   }
   return '';
 }
-const FORM_OR_FORMULA = /\b(?:liquid|powder|cream|gel|balm|stick|mousse|cushion|pencil|pen|oil|mist|spray|solid|loose|pressed|hydrating|long[ -]?wear|radiant|radiance|intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b|\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+/;
-function variantCore(snapshot = {}) {
-  const value = normalizedTitle(snapshot)
-    .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz|grams?|g|litres?|liters?)\b/g, ' ')
-    .replace(/\s*#[^#]*$/, '').replace(/\s+/g, ' ').trim();
-  const parts = value.split(/\s+-\s*|\s*[,|]\s*/);
-  const role = optionRole(snapshot);
-  const productPart = (part) => {
-    const partRole = optionRole({title:part});
-    // Decorative lash/nail option names can also be cosmetic shade nouns such
-    // as 'Blush'. Only their actual product job makes such a segment substantive.
-    if (['lashes','nails'].includes(role)) return partRole === role;
-    return Boolean(partRole) || FORM_OR_FORMULA.test(part);
-  };
-  // A generic collection head is not a product identity. Retain substantive
-  // tails rather than treating different products/formulas as collection options.
-  // In lash/nail listings, descriptive option segments can surround the shared
-  // product noun, so compare the head plus all product-bearing segments.
-  const productParts = parts.slice(1).filter(productPart);
-  if (!productPart(parts[0]) && !productParts.length && /[,|]/.test(value) &&
-      !/^(?:shade|colou?r|style|scent|flavou?r)\s*:/i.test(text(snapshot.variant_title || snapshot.variant_detail_label))) return value;
-  return [parts[0], ...productParts].join(' | ').replace(/\s+/g, ' ').trim();
-}
-function decorativeStructure(snapshot = {}) {
-  const role = optionRole(snapshot);
-  if (!['lashes','nails'].includes(role)) return {markers:[],unresolved:false};
-  let remaining = normalizedTitle(snapshot);
-  const markers = [];
-  const consume = (pattern, marker) => {
-    remaining = remaining.replace(pattern, (match) => {
-      const values = typeof marker === 'function' ? marker(match) : [marker];
-      markers.push(...values);
-      return ' ';
-    });
-  };
-  // Resolve negatives before positives, so 'non-magnetic' is not magnetic and
-  // 'no glue required' cannot simultaneously require glue. Synonyms share modes.
-  consume(/\b(?:non[ -]?magnetic|(?:not|no)[ -]?magnetic|without[ -]?magnets?)\b/g,'attachment:non_magnetic');
-  consume(/\b(?:magnetic|magnets?)\b/g,'attachment:magnetic');
-  consume(/\b(?:no[ -]?glue(?:[ -]?(?:is[ -]?)?(?:required|needed|necessary))?|(?:does[ -]?not|doesn['’]?t|not)[ -]?(?:require|need)[ -]?(?:(?:lash|nail)[ -]?)?glue|without[ -]?(?:(?:lash|nail)[ -]?)?glue|glue[ -]?(?:is[ -]?)?not[ -]?(?:required|needed|necessary)|glue[ -]?free|glueless|self[ -]?adhesive|pre[ -]?glued|pre[ -]?applied[ -]?adhesive|adhesive[ -]?tabs|stick[ -]?on)\b/g,'attachment:self_adhesive');
-  consume(/\b(?:glue[ -]?(?:on|required|needed)|requires?[ -]?(?:(?:nail|lash)[ -]?)?glue|with[ -]?(?:(?:nail|lash)[ -]?)?glue)\b/g,'attachment:glue_required');
-  consume(/\badhesive\b/g,'attachment:adhesive_unspecified');
-  if (role === 'lashes') {
-    consume(/\b(?:no|non|not|without)[ -]?(?:strip|individual|cluster)(?:[ -]?lashes?)?\b/g, (match) => [`construction:non_${match.match(/strip|individual|cluster/)[0]}`]);
-    consume(/\b(?:(?:no|non|not|without)[ -]?(?:human[ -]?hair|mink|silk|synthetic(?:[ -]?fib(?:er|re)s?)?)|(?:human[ -]?hair|mink|silk|synthetic(?:[ -]?fib(?:er|re)s?)?)[ -]?free)\b/g, (match) => [`material:excluded_${match.match(/human[ -]?hair|mink|silk|synthetic/)[0].replace(/[ -]/g,'_')}`]);
-    for (const [kind,pattern] of [
-      ['strip',/\bstrip(?:[ -]?lashes?)?\b/g],
-      ['individual',/\bindividual(?:[ -]?lashes?)?\b/g],
-      ['cluster',/\b(?:cluster(?:[ -]?lashes?)?|lash[ -]?clusters?)\b/g],
-      ['extension',/\bextensions?\b/g],
-    ]) consume(pattern,`construction:${kind}`);
-    consume(/\b(?:synthetic(?:[ -]?fib(?:er|re)s?)?|artificial(?:[ -]?fib(?:er|re)s?)?|faux[ -]?(?:mink|silk))\b/g,'material:synthetic');
-    consume(/\bhuman[ -]?hair\b/g,'material:human_hair');
-    consume(/\bmink\b/g,'material:mink');
-    consume(/\bsilk\b/g,'material:silk');
-  }
-  if (role === 'nails') {
-    consume(/\b(?:no[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing))(?:[ -]?(?:is[ -]?)?(?:required|needed|necessary))?|(?:does[ -]?not|doesn['’]?t|not)[ -]?(?:need|require)[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing))|(?:lamp|light)[ -]?free|air[ -]?dry(?:ing)?)\b/g,'curing:no_light');
-    consume(/\b(?:(?:(?:uv|led)[ -]?)?cur(?:e|ing)[ -]?(?:required|needed)|(?:uv|led)[ -]?(?:lamp|light)(?:[ -]?(?:required|needed))?|(?:requires?|needs?)[ -]?(?:(?:uv|led)[ -]?)?(?:lamp|light|cur(?:e|ing)))\b/g, (match) => {
-      const light = match.match(/uv|led/)?.[0];
-      return light ? ['curing:light_required',`curing_light:${light}`] : ['curing:required_unspecified'];
-    });
-  }
-  // Unknown functional declarations must not vanish into the ornamental tail.
-  // Fail variant identity closed until that constraint can be classified.
-  const unresolved = /\b(?:attachment|application|adhesion|adhesive|glue|magnetic|fib(?:er|re)s?|material|hair|synthetic|mink|silk|strip|individual|cluster|curing|cure|lamp|uv|led|requires?|required|needed|technology|system)\b/.test(remaining);
-  return {markers:[...new Set(markers)].sort(),unresolved};
-}
-function formulaMarkers(snapshot = {}) {
-  const value = normalizedTitle(snapshot);
-  const markers = value.match(/\b\d+(?:\.\d+)?\s*%|\bspf\s*\d+|\b(?:intense|waterproof|washable|tubing|retinol|retinal|aha|bha|fragrance[ -]?free|oil[ -]?free)\b/g) || [];
-  // Attachment is a shopper constraint, independently of decorative style names.
-  markers.push(...decorativeStructure(snapshot).markers);
-  // Finish is meaningful for complexion/lip products. A lash collection's named
-  // 'Glow Up' style remains an option, not a different cosmetic formulation.
-  if (['powder', 'setting_powder', 'foundation', 'blush', 'bronzer', 'contour', 'lipstick', 'lip_gloss'].includes(optionRole(snapshot))) {
-    markers.push(...(value.match(/\b(?:matte|glow|dewy|satin|shimmer|luminous)\b/g) || []));
-  }
-  return markers.sort().join('|');
-}
-function hasExplicitVariant(snapshot = {}) {
-  if (/#/.test(normalizedTitle(snapshot))) return true;
-  const role = optionRole(snapshot);
-  // In these product roles a named shade, lash/nail style or lip-mask flavour is
-  // an option. Other separator tails need structured option evidence.
-  if (['lashes', 'nails', 'lip_mask', ...COSMETIC_ROLES.map(([name]) => name)].includes(role)) return /\s+-\s*|[,|]/.test(normalizedTitle(snapshot));
-  return /^(?:shade|colou?r|style|scent|flavou?r)\s*:/i.test(text(snapshot.variant_title || snapshot.variant_detail_label));
-}
+// Product identity (same product / same-family variant) has ONE owner:
+// relationshipProductIdentity.compareProductIdentity. These names stay as thin
+// wrappers for existing importers; the module is required lazily because it
+// builds on the role vocabulary above.
+function identity() { return require('./relationshipProductIdentity'); }
 function isSameFamilyVariant(anchor = {}, candidate = {}) {
-  const aBrand = brand(anchor);
-  if (!aBrand || aBrand !== brand(candidate)) return false;
-  const aTitle = normalizedTitle(anchor);
-  const bTitle = normalizedTitle(candidate);
-  if (!aTitle || !bTitle || title(anchor) === title(candidate)) return false;
-  const aRole = optionRole(anchor); const bRole = optionRole(candidate);
-  // An option marker or shared line cannot establish variant identity when the
-  // actual product jobs are unresolved. Unknown/unknown is not a matching job.
-  if (!aRole || !bRole || aRole !== bRole) return false;
-  if (decorativeStructure(anchor).unresolved || decorativeStructure(candidate).unresolved) return false;
-  if (formulaMarkers(anchor) !== formulaMarkers(candidate)) return false;
-  const aCore = variantCore(anchor);
-  const bCore = variantCore(candidate);
-  // An explicit shared variant parent is useful only with the same product core;
-  // a parent/line identifier alone must never suppress routine complements.
-  return Boolean(aCore && aCore === bCore && aCore.split(/\s+/).length >= 2 &&
-    (hasExplicitVariant(anchor) || hasExplicitVariant(candidate)));
+  return identity().compareProductIdentity(anchor, candidate).relation === 'same_family_variant';
 }
+function variantCore(snapshot = {}) { return identity().variantCore(snapshot); }
+function decorativeStructure(snapshot = {}) { return identity().decorativeStructure(snapshot); }
 function sharedSpecificNameWords(anchor = {}, candidate = {}) {
   const stop = new Set(['the', 'and', 'for', 'with', ...brand(anchor).split(/\W+/), ...brand(candidate).split(/\W+/)]);
   const words = (snapshot) => new Set(normalizedTitle(snapshot).split(/[^a-z0-9]+/).filter((word) => word.length > 2 && !stop.has(word)));
@@ -182,4 +85,4 @@ function sharedSpecificNameWords(anchor = {}, candidate = {}) {
   return [...a].filter((word) => b.has(word));
 }
 
-module.exports = { isSameFamilyVariant, variantCore, brand, title, sharedSpecificNameWords, optionRole, decorativeStructure };
+module.exports = { isSameFamilyVariant, variantCore, brand, title, normalizedTitle, COSMETIC_ROLES, sharedSpecificNameWords, optionRole, decorativeStructure };

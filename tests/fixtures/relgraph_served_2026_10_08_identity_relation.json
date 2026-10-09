@@ -1,0 +1,763 @@
+{
+ "source": "served_edges_2026-10-08 export (US beauty, approved, unexpired); brand/name/category only",
+ "identity": [
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Murad",
+    "name": "Retinol Youth Renewal Serum Larger Size",
+    "category": "beauty/skincare/treat/treatment"
+   },
+   "candidate": {
+    "brand": "Murad",
+    "name": "Retinol Youth Renewal Serum Travel Size",
+    "category": ""
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Lav Kids",
+    "name": "WH | Gentle Care Shampoo",
+    "category": "Haircare"
+   },
+   "candidate": {
+    "brand": "Lav Kids",
+    "name": "Gentle Care Shampoo",
+    "category": "beauty/haircare"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "COSRX",
+    "name": "The Alpha-Arbutin 2 Discoloration Care Serum",
+    "category": "beauty/skincare/treat/serum"
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Alpha-Arbutin 2 Discoloration Care Serum",
+    "category": "beauty/skincare/treat/serum"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "human_approved",
+   "anchor": {
+    "brand": "Round Lab",
+    "name": "[DEAL] Birch Moisturizing Cleanser",
+    "category": "Cleanser"
+   },
+   "candidate": {
+    "brand": "Round Lab",
+    "name": "Birch Moisturizing Cleanser",
+    "category": "Cleanser"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "La Savonnerie du Pilon du Roy",
+    "name": "Savon liquide de Marseille Argan 1 L",
+    "category": "Beauty Product"
+   },
+   "candidate": {
+    "brand": "La Savonnerie du Pilon du Roy",
+    "name": "Savon liquide de Marseille Argan 500 ml",
+    "category": "Beauty Product"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "ETUDE",
+    "name": "SoonJung pH 5.5 Relief Toner",
+    "category": "toner"
+   },
+   "candidate": {
+    "brand": "ETUDE",
+    "name": "Etude SoonJung pH 5.5 Relief Toner",
+    "category": "toner"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "COSRX",
+    "name": "[COSRX] Full Fit Propolis Synergy Toner 50ml | 150ml",
+    "category": "toner"
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Cosrx Full Fit Propolis Synergy Toner (150ml)",
+    "category": "toner"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Tower 28",
+    "name": "MakeWaves® Mini Mascara",
+    "category": "mascara"
+   },
+   "candidate": {
+    "brand": "Tower 28",
+    "name": "MakeWaves Mascara",
+    "category": "mascara"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Beauty of Joseon",
+    "name": "Beauty of Joseon Ginseng Essence Water",
+    "category": "Essence"
+   },
+   "candidate": {
+    "brand": "Beauty of Joseon",
+    "name": "Ginseng Essence Water",
+    "category": "Essence"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Dear Barber",
+    "name": "Fibre 100ml - Barber",
+    "category": "Beauty Product"
+   },
+   "candidate": {
+    "brand": "Dear Barber",
+    "name": "Fibre 20ml",
+    "category": "beauty"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Summer Fridays",
+    "name": "Body Butter Balm Pink Guava Travel Size",
+    "category": "care"
+   },
+   "candidate": {
+    "brand": "Summer Fridays",
+    "name": "Body Butter Balm Pink Guava",
+    "category": "care"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Retinol 0.5% in Squalane, Intermediate Retinol Serum",
+    "category": "Serum"
+   },
+   "candidate": {
+    "brand": "the ordinary",
+    "name": "Retinol 0.5% in Squalane",
+    "category": "beauty/skincare/serum"
+   }
+  },
+  {
+   "expected": "same_product",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Multi-Active Delivery Essence",
+    "category": "beauty/skincare/treat/serum"
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "Multi-Active Delivery Essence for Hydration",
+    "category": "beauty/skincare/treat/serum"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Falscara",
+    "name": "Falscara Extra Drama Volume Wisps 18mm - 3-Pack",
+    "category": "false-lashes"
+   },
+   "candidate": {
+    "brand": "Falscara",
+    "name": "Falscara Extra Drama Volume Wisps 16mm - 3-Pack",
+    "category": "false-lashes"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Morphe",
+    "name": "Mini Bake & Set Setting Powder",
+    "category": "powder"
+   },
+   "candidate": {
+    "brand": "Morphe",
+    "name": "Jumbo Bake & Set Setting Powder - Translucent",
+    "category": "powder"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Mini Killawatt Freestyle Highlighter — Moscow Mule",
+    "category": "beauty/makeup/face/highlighter"
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Killawatt Freestyle Highlighter — Trophy Wife",
+    "category": "beauty/makeup/face/highlighter"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "human_approved",
+   "anchor": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen MN230",
+    "category": "beauty/skincare/sun/sunscreen"
+   },
+   "candidate": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen DP320",
+    "category": "beauty/skincare/sun/sunscreen"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "human_approved",
+   "anchor": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen",
+    "category": "beauty/skincare/sun/sunscreen"
+   },
+   "candidate": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen MY210",
+    "category": "beauty/skincare/sun/sunscreen"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Missha M Perfect Cover BB Cream #23 Natural Beige",
+    "category": "foundation"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Missha M Perfect Cover BB Cream #27 Honey Beige",
+    "category": "foundation"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "KISS",
+    "name": "Kiss Halloween 'Full Moon Fantasy' False Eyelashes, Decorated - Sparkle Siren | 1 Pair, Strip Lashes, 16mm",
+    "category": "false-lashes"
+   },
+   "candidate": {
+    "brand": "KISS",
+    "name": "Kiss Halloween 'Full Moon Fantasy' False Eyelashes, Light Volume - Darkest Delights | 1 Pair, Strip Lashes, 14mm",
+    "category": "false-lashes"
+   }
+  },
+  {
+   "expected": "same_family_variant",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Stila Cosmetics",
+    "name": "Huge™ Extreme Lash Mascara - Intense Black",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "Stila Cosmetics",
+    "name": "Mini HUGE™ Extreme Lash Mascara",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "MAKE UP FOR EVER",
+    "name": "Rouge Artist For Ever Matte",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "MAKE UP FOR EVER",
+    "name": "Rouge Artist For Ever",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "TIRTIR Global",
+    "name": "Milk Skin Toner Light",
+    "category": "beauty/skincare/treat/toner"
+   },
+   "candidate": {
+    "brand": "TIRTIR Global",
+    "name": "Milk Skin Toner",
+    "category": "beauty/skincare/treat/toner"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "TIRTIR Global",
+    "name": "Ceramic Cream",
+    "category": "beauty/skincare/moisturize/cream"
+   },
+   "candidate": {
+    "brand": "TIRTIR Global",
+    "name": "Ceramic Cream Light",
+    "category": "beauty/skincare/moisturize/cream"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Missha Super Off Cleansing Oil [Dust Off]",
+    "category": "cleanser"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Missha Super Off Cleansing Oil [Dryness Off]",
+    "category": "cleanser"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "CODE GLOKOLOR",
+    "name": "Code Glokolor Fix-On Primer Hydro 30ml",
+    "category": "primer"
+   },
+   "candidate": {
+    "brand": "CODE GLOKOLOR",
+    "name": "CODE GLOKOLOR Fix-On Primer 30ml",
+    "category": "primer"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Black Orchid Eau de Parfum",
+    "category": "beauty/fragrance/perfume"
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Black Orchid Eau de Toilette",
+    "category": ""
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Supergoop!",
+    "name": "PLAY Everyday Lotion SPF 50",
+    "category": "beauty/skincare/sun/sunscreen"
+   },
+   "candidate": {
+    "brand": "Supergoop!",
+    "name": "PLAY Everyday Lotion SPF 30",
+    "category": "beauty/skincare/sun/sunscreen"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "human_approved",
+   "anchor": {
+    "brand": "Round Lab",
+    "name": "Birch Moisturizing Toner Pad",
+    "category": "Toner"
+   },
+   "candidate": {
+    "brand": "Round Lab",
+    "name": "Birch Moisturizing Toner",
+    "category": "beauty/skincare/toner"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "[THE ORDINARY] Retinol 0.2% in Squalane 30ml",
+    "category": "serum"
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "[THE ORDINARY] Retinol 0.5% in Squalane 30ml",
+    "category": "serum"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Moroccanoil",
+    "name": "Moroccanoil Treatment Purple",
+    "category": "Beauty Set"
+   },
+   "candidate": {
+    "brand": "Moroccanoil",
+    "name": "Moroccanoil Treatment Light",
+    "category": "complexion"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "human_approved",
+   "anchor": {
+    "brand": "Haruharu Wonder",
+    "name": "10 Hyaluronic Cream",
+    "category": "beauty/skincare/moisturize/cream"
+   },
+   "candidate": {
+    "brand": "Haruharu Wonder",
+    "name": "10 Hyaluronic Cream (Unscented)",
+    "category": "beauty/skincare/moisturize/cream"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Banila co",
+    "name": "[BANILA CO] Clean It Zero Cleansing Balm Revitalizing 100ml",
+    "category": "cleanser"
+   },
+   "candidate": {
+    "brand": "Banila co",
+    "name": "[BANILA CO] Clean It Zero Cleansing Balm Purifying 100ml",
+    "category": "cleanser"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Missha Cho Gong Jin Youngan jin Emulsion",
+    "category": "cream"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Missha Cho Gong Jin Youngan jin Cream",
+    "category": "cream"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Stila Cosmetics",
+    "name": "Stay All Day® Liquid Lipstick Shimmer & Sheer",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "Stila Cosmetics",
+    "name": "Stay All Day® Liquid Lipstick",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected": "distinct",
+   "label_state": "ai_approved",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Time Revolution The First Essence 5X",
+    "category": "skincare"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Time Revolution The First Essence Enriched",
+    "category": "skincare"
+   }
+  }
+ ],
+ "relations": [
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Vita C Plus Spot Correcting Sleeping Pack Cream",
+    "category": "skincare"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Vita C Plus Spot Correcting Toner Pads",
+    "category": "skincare"
+   }
+  },
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Architecture Soft Matte Blurring Foundation",
+    "category": "beauty/makeup/face/foundation"
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Traceless Soft Matte Concealer",
+    "category": "beauty/makeup/face/concealer"
+   }
+  },
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Peppermint & Ginger Cooling Care Shampoo 500ml",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Argan Oil Repair Conditioner 500ml",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Lip Pencil",
+    "category": "Lip Liner"
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Lip Color Matte",
+    "category": "Lipstick"
+   }
+  },
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Missha",
+    "name": "Cell Renew Snail Foaming Cleanser",
+    "category": "skincare"
+   },
+   "candidate": {
+    "brand": "Missha",
+    "name": "Cell Renew Snail Mucin Vitamin C Toner",
+    "category": "skincare"
+   }
+  },
+  {
+   "expected_relation": "related_product",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tarte Cosmetics",
+    "name": "maneater™ foundation stick brush",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "Tarte Cosmetics",
+    "name": "maneater™ foundation stick",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected_relation": "competitive_alternative",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Himalaya Pinksalt Shampoo 500ml",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Cherry Blossom Moisture Shampoo 500ml",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Rosemary and Sea Salt Scalp Deep Cleansing Shampoo 500ml",
+    "category": "makeup"
+   },
+   "candidate": {
+    "brand": "ORGANIST",
+    "name": "[ORGANIST] Cherry Blossom Moisture Shampoo 500ml",
+    "category": "makeup"
+   }
+  },
+  {
+   "expected_relation": "competitive_alternative",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Lip Color Matte",
+    "category": "Lipstick"
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Soleil Neige Ultra-Shine Lip Color",
+    "category": "Lipstick"
+   }
+  },
+  {
+   "expected_relation": "competitive_alternative",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Shade and Illuminate Concealer",
+    "category": "beauty/makeup/face/concealer"
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Traceless Soft Matte Concealer",
+    "category": "beauty/makeup/face/concealer"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Tuscan Leather Eau de Parfum",
+    "category": ""
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Ombré Leather Parfum",
+    "category": "beauty/fragrance/perfume"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Clear Fit Master Patch",
+    "category": "beauty/skincare/acne-patch"
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Acne Pimple Master Patch",
+    "category": "beauty/skincare/treat/treatment"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Tower 28",
+    "name": "MakeWaves® Mini Mascara",
+    "category": "mascara"
+   },
+   "candidate": {
+    "brand": "Tower 28",
+    "name": "MakeWaves Mascara",
+    "category": "mascara"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen MN230",
+    "category": "beauty/skincare/sun/sunscreen"
+   },
+   "candidate": {
+    "brand": "Beauty of Joseon",
+    "name": "Daily Tinted Fluid Sunscreen MP200",
+    "category": "beauty/skincare/sun/sunscreen"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "The Three Question Journal - Exclusive",
+    "category": "Beauty Product"
+   },
+   "candidate": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "Pen Holder Clip",
+    "category": "Beauty Product"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "Mindful Affirmations - Original",
+    "category": "Beauty Product"
+   },
+   "candidate": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "Mindful Display Stand",
+    "category": "Beauty Product"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "Notes to Mindfulness Journal (Downloadable) - Digital Version Linen",
+    "category": "Beauty Product"
+   },
+   "candidate": {
+    "brand": "INTELLIGENT CHANGE",
+    "name": "Affirmations Worksheet",
+    "category": "Beauty Product"
+   }
+  },
+  {
+   "expected_relation": "rejected",
+   "served_as": "related_product",
+   "anchor": {
+    "brand": "NuBest",
+    "name": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+    "category": "Wellness Supplement"
+   },
+   "candidate": {
+    "brand": "NuBest",
+    "name": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+    "category": "Wellness Supplement"
+   }
+  }
+ ]
+}
