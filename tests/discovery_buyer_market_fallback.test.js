@@ -9,10 +9,17 @@
 // transport); the transport hop is pinned below over a mocked axios.
 
 jest.mock('axios');
+// The card-mode build below runs the real pipeline with injected candidates; the browse count reads the
+// database, which answers nothing here.
+jest.mock('../src/db', () => ({ query: jest.fn(async () => ({ rows: [] })) }));
 const axios = require('axios');
 
 const { _internals } = require('../src/services/discoveryFeed');
-const { applyBuyerMarketFallback, fetchBuyerMarketSearchRows, resolveDiscoveryBuyerMarket, BUYER_MARKET_FALLBACK_REASON } = _internals;
+const {
+  applyBuyerMarketFallback, fetchBuyerMarketSearchRows, resolveDiscoveryBuyerMarket, resolveDiscoveryCardCurrency,
+  buildDiscoveryFeedOnce, resetBuyerMarketPoolCacheForTest, resetProductsSearchBreaker, isProductsSearchBreakerOpen,
+  BUYER_MARKET_FALLBACK_REASON,
+} = _internals;
 
 const usd = (id, price = 24) => ({ merchant_id: 'external_seed', product_id: `sig_${id}`, title: `USD ${id}`, currency: 'USD', price });
 const sgd = (id, price = 31) => ({ merchant_id: 'external_seed', product_id: `sig_${id}`, title: `SGD ${id}`, currency: 'SGD', price });
@@ -99,6 +106,7 @@ describe('applyBuyerMarketFallback: the rule', () => {
     expect(h.calls.build[0].payload).toEqual({ ...BROWSE, buyer_market: 'sg' });
     expect(out.products.map((p) => p.currency)).toEqual(['SGD', 'SGD', 'SGD']);
     expect(out.total).toBe(3); // the market's pool, not the USD corpus count
+    expect(out.metadata.corpus_total_count).toBe(3);
     expect(out.metadata).toEqual(expect.objectContaining({
       candidate_source: 'buyer_market_products_search',
       fallback_triggered: true,
@@ -134,18 +142,111 @@ describe('applyBuyerMarketFallback: the rule', () => {
   });
 });
 
+describe('resolveDiscoveryCardCurrency and the card build', () => {
+  test('the card currency is the row\'s RESOLVED currency, USD only when the row says nothing', () => {
+    expect(resolveDiscoveryCardCurrency({ price: 31, price_currency: 'SGD' })).toBe('SGD');
+    expect(resolveDiscoveryCardCurrency({ price: { amount: 31, currency: 'sgd' } })).toBe('SGD');
+    expect(resolveDiscoveryCardCurrency({ price: 31, currency: 'JPY' })).toBe('JPY');
+    expect(resolveDiscoveryCardCurrency({ price: 31, currency_code: 'gbp' })).toBe('GBP');
+    // No amount to pair with: the written currency still names what the card is priced in.
+    expect(resolveDiscoveryCardCurrency({ price_currency: 'SGD' })).toBe('SGD');
+    expect(resolveDiscoveryCardCurrency({ currency: 'jpy' })).toBe('JPY');
+    expect(resolveDiscoveryCardCurrency({ price: 31 })).toBe('USD');
+    expect(resolveDiscoveryCardCurrency({ title: 'no price' })).toBe('USD');
+  });
+
+  test('browse_products card mode labels an SGD row SGD (price_currency only, and a price object), so the guard keeps it', async () => {
+    const rows = [
+      { merchant_id: 'external_seed', product_id: 'sig_a', title: 'A', price: 31, price_currency: 'SGD', image_url: 'https://x/a.jpg', status: 'active', inventory_quantity: 3 },
+      { merchant_id: 'external_seed', product_id: 'sig_b', title: 'B', price: { amount: 42, currency: 'SGD' }, image_url: 'https://x/b.jpg', status: 'active', inventory_quantity: 3 },
+    ];
+    const out = await buildDiscoveryFeedOnce({ ...BROWSE, response_detail: 'card', buyer_market: 'SG' }, { candidateProducts: rows.map((r) => ({ ...r, __discovery_provider: 'products_search' })) });
+    const byId = Object.fromEntries(out.products.map((p) => [p.product_id, p]));
+    expect(Object.keys(byId).sort()).toEqual(['sig_a', 'sig_b']);
+    expect(byId.sig_a.currency).toBe('SGD');
+    expect(byId.sig_b.currency).toBe('SGD');
+    // And the door's own rule keeps both for an SGD buyer.
+    const { enforceServingCurrency } = require('../src/services/servingCurrencyGuard');
+    const guarded = enforceServingCurrency({ operation: 'get_discovery_feed', payload: {}, metadata: { market: 'SG' }, body: out });
+    expect(guarded.products).toHaveLength(2);
+    expect(guarded.metadata.serving_currency_guard).toBeUndefined();
+  });
+});
+
 describe('fetchBuyerMarketSearchRows: the hop', () => {
   const REQUEST = { surface: 'browse_products', query: { text: '' }, request_id: 'req_1' };
   const prev = {};
   beforeEach(() => {
-    for (const k of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'DISCOVERY_COLD_START_QUERY_BASKET']) prev[k] = process.env[k];
+    for (const k of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'DISCOVERY_COLD_START_QUERY_BASKET', 'DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS']) prev[k] = process.env[k];
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-token';
     process.env.DISCOVERY_COLD_START_QUERY_BASKET = 'serum|sunscreen|lip gloss|shampoo|toner|mask';
+    process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS = '1500';
     axios.get.mockReset();
+    resetBuyerMarketPoolCacheForTest();
+    resetProductsSearchBreaker();
   });
   afterEach(() => {
     for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    resetBuyerMarketPoolCacheForTest();
+    resetProductsSearchBreaker();
+  });
+
+  test('the hops run IN PARALLEL, each clamped to the one fallback budget', async () => {
+    const pending = [];
+    axios.get.mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+    const run = fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pending).toHaveLength(4); // all four in flight before any answered
+    for (const [, config] of axios.get.mock.calls) expect(config.timeout).toBeLessThanOrEqual(1500);
+    for (const resolve of pending) resolve({ status: 200, data: { products: [sgd('p')] } });
+    const out = await run;
+    expect(out.products).toHaveLength(1);
+    expect(out.cached).toBe(false);
+  });
+
+  test('a market\'s pool is cached: the next page pays no hop; an answered-EMPTY pool is cached too', async () => {
+    axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
+    const first = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    const second = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    expect(second.cached).toBe(true);
+    expect(second.products).toEqual(first.products);
+    expect(second.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_cache', cache_hit: true, market: 'SG' }));
+    // Another market, another pool.
+    await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'JP', servingCurrency: 'JPY', limit: 24 });
+    expect(axios.get).toHaveBeenCalledTimes(8);
+    // Answered empty (the upstream said so): negative-cached for its own TTL (30 s), no hop on the
+    // next page even 5 s later -- and gone after the TTL.
+    axios.get.mockResolvedValue({ status: 200, data: { products: [] } });
+    let clock = 1_000_000;
+    const now = () => clock;
+    const empty = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
+    expect(empty.products).toEqual([]);
+    expect(axios.get).toHaveBeenCalledTimes(12);
+    clock += 5000;
+    const emptyAgain = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
+    expect(emptyAgain.cached).toBe(true);
+    expect(axios.get).toHaveBeenCalledTimes(12);
+    clock += 30001;
+    const afterTtl = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
+    expect(afterTtl.cached).toBe(false);
+    expect(axios.get).toHaveBeenCalledTimes(16);
+  });
+
+  test('an all-failed round is not an answer: not cached, and it FEEDS the breaker, which the next call RESPECTS', async () => {
+    axios.get.mockRejectedValue(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+    const failed = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(failed.products).toEqual([]);
+    expect(failed.recallSummary.every((s) => s.failure_reason === 'request_error:ECONNRESET')).toBe(true);
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    // Four failures passed the breaker's threshold (3): open.
+    expect(isProductsSearchBreakerOpen()).toBe(true);
+    const skipped = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(skipped).toEqual(expect.objectContaining({ products: [], skipped: 'products_search_circuit_open' }));
+    // Nothing new was paid beyond the lane's own probe (at most one request).
+    expect(axios.get.mock.calls.length).toBeLessThanOrEqual(5);
   });
 
   test('one GET per cold-start query (capped at 4), keyed on the market; rows merged, and kept only in the serving currency', async () => {

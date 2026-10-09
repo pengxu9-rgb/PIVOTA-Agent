@@ -6,6 +6,7 @@ const { query } = require('../db');
 const { parseMarketList } = require('./servedMarkets');
 const { resolveServingCurrency } = require('./buyerMarket');
 const { filterProductsToServingCurrency } = require('./servingCurrencyGuard');
+const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
   observeDiscoveryCandidateCount,
@@ -11960,6 +11961,16 @@ function resolveDiscoveryVisibleProductId(raw = {}, candidate = {}) {
   return String(raw.product_id || raw.id || candidate.productId || '').trim();
 }
 
+/** The currency a card is priced in: resolved from the row like the guard does; 'USD' only when the row says nothing. */
+function resolveDiscoveryCardCurrency(raw) {
+  const priced = resolveCanonicalSearchProductPrice(raw);
+  if (priced && priced.currency) return priced.currency;
+  const nested = raw && raw.price && typeof raw.price === 'object' && !Array.isArray(raw.price) ? raw.price.currency : null;
+  const written = [raw && raw.currency, raw && raw.currency_code, raw && raw.price_currency, raw && raw.priceCurrency, nested]
+    .find((value) => value !== null && value !== undefined && String(value).trim() !== '');
+  return written ? String(written).trim().toUpperCase() : 'USD';
+}
+
 function formatDiscoveryResponseProduct(candidate, request = null) {
   const { __discovery_provider, ...raw } = candidate.raw || {};
   const visibleProductId = resolveDiscoveryVisibleProductId(raw, candidate);
@@ -12028,7 +12039,11 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(Array.isArray(raw.group_members) ? { group_members: raw.group_members } : {}),
       title: title || candidate.productId,
       price,
-      currency: raw.currency || 'USD',
+      // The row's RESOLVED currency (the same reader the serving-currency guard and the shopping-agent
+      // price contract use: currency / currency_code / price_currency, a nested price object, offers,
+      // variants). `raw.currency || 'USD'` labelled a row carrying only price_currency:'SGD' as USD -- the
+      // guard then dropped it -- and an SGD price object as "USD" on the card.
+      currency: resolveDiscoveryCardCurrency(raw),
       ...(imageUrl ? { image_url: imageUrl } : {}),
       ...(brand ? { brand } : {}),
       ...(category ? { category } : {}),
@@ -13328,6 +13343,43 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
 // ---------------------------------------------------------------------------------------------
 const BUYER_MARKET_FALLBACK_REASON = 'buyer_market_currency_empty';
 const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
+const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
+
+/** ONE wall-clock budget for the whole fallback: the hops run in parallel, each clamped to it. */
+function getBuyerMarketFallbackBudgetMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS, 1800, 300, 5000);
+}
+/** A market's pool is re-read this often (positive). */
+function getBuyerMarketPoolCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 60000, 1000, 600000);
+}
+/** ... and an EMPTY pool this often (negative): SG with no rows must not pay the hops on every page. */
+function getBuyerMarketPoolNegativeCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 30000, 1000, 600000);
+}
+
+// market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
+// Paging within a market reads this: page 2 of SG is the same pool, not four more hops.
+const buyerMarketPoolCache = new Map();
+function buyerMarketPoolCacheKey({ market, queryText, limit }) {
+  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase(), limit: Number(limit) || 0 });
+}
+function readBuyerMarketPoolCache(key, now = Date.now()) {
+  const entry = buyerMarketPoolCache.get(key);
+  if (!entry) return null;
+  if (now - entry.storedAt > entry.ttlMs) { buyerMarketPoolCache.delete(key); return null; }
+  return entry;
+}
+function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
+  if (buyerMarketPoolCache.size >= BUYER_MARKET_POOL_CACHE_MAX_ENTRIES) {
+    const oldest = buyerMarketPoolCache.keys().next().value;
+    if (oldest !== undefined) buyerMarketPoolCache.delete(oldest);
+  }
+  buyerMarketPoolCache.set(key, { ...value, storedAt: now });
+}
+function resetBuyerMarketPoolCacheForTest() {
+  buyerMarketPoolCache.clear();
+}
 
 /** The page has at least one row the buyer's currency allows (the guard's own rule for this surface). */
 function hasRowsInServingCurrency(products, servingCurrency) {
@@ -13338,7 +13390,21 @@ function hasRowsInServingCurrency(products, servingCurrency) {
  * That market's own rows: one products_search hop per cold-start query (or the page's own query
  * text), keyed on the market, merged, and KEPT ONLY WHEN PRICED IN THE MARKET'S CURRENCY.
  */
-async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep } = {}) {
+async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
+  const queryText = String(request?.query?.text || '').trim();
+  const safeLimit = clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH);
+  const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
+  const cached = readBuyerMarketPoolCache(cacheKey, now());
+  if (cached) {
+    return {
+      products: cached.products,
+      recallSummary: [
+        { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: cached.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - cached.storedAt) },
+      ],
+      skipped: null,
+      cached: true,
+    };
+  }
   const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
   const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
   const baseUrl = baseUrlConfig.value;
@@ -13347,22 +13413,40 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, li
     return { products: [], recallSummary: [], skipped: !baseUrl ? 'products_search_base_url_unset' : 'products_search_api_key_unset' };
   }
   const requestHeaders = { 'X-Agent-API-Key': apiKey, 'X-API-Key': apiKey, Authorization: `Bearer ${apiKey}` };
-  const queryText = String(request?.query?.text || '').trim();
   const queries = (queryText ? [queryText] : getDiscoveryColdStartQueries()).slice(0, BUYER_MARKET_FALLBACK_MAX_QUERIES);
-  const safeLimit = clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH);
+  const steps = queries.map((text, index) => ({ label: `buyer_market_pool_${index + 1}`, query: text, limit: safeLimit, offset: 0, market }));
+  // THE SAME BREAKER AS THE MAIN products_search LANE: open means the upstream is down, so no hop is
+  // paid (the lane's probe decides when it is back); every answer below feeds it like the lane's do.
+  if (isProductsSearchBreakerOpen()) {
+    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders });
+    return { products: [], recallSummary: [], skipped: 'products_search_circuit_open' };
+  }
+  // IN PARALLEL, UNDER ONE BUDGET. Sequential hops on the 6.5 s default cost ~26 s for four; a page
+  // waits for the slowest hop only, and that hop is clamped to the budget.
+  const timeoutMs = computeDiscoveryStepTimeoutMs(getBuyerMarketFallbackBudgetMs());
+  const results = await Promise.all(steps.map((step) =>
+    Promise.resolve()
+      .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
+      .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } })),
+  ));
   const merged = new Map();
   const recallSummary = [];
-  for (const [index, text] of queries.entries()) {
-    const step = { label: `buyer_market_pool_${index + 1}`, query: text, limit: safeLimit, offset: 0, market };
-    // eslint-disable-next-line no-await-in-loop
-    const result = await fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search' });
+  for (const result of results) {
+    recordProductsSearchResult(result);
     recallSummary.push({ ...result.summary, market });
     for (const product of filterProductsToServingCurrency(result.products, servingCurrency)) {
       const key = buildDiscoveryProviderMergeKey(product) || `${merged.size}:${Math.random()}`;
       if (!merged.has(key)) merged.set(key, product);
     }
   }
-  return { products: [...merged.values()], recallSummary, skipped: null };
+  const products = [...merged.values()];
+  // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the hops on every
+  // page. An all-failed round (every hop timed out or errored) is not an answer and is not cached.
+  const answered = results.some((result) => result && result.success === true);
+  if (answered) {
+    writeBuyerMarketPoolCache(cacheKey, { products, recallSummary, ttlMs: products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
+  }
+  return { products, recallSummary, skipped: null, cached: false };
 }
 
 /**
@@ -13413,10 +13497,12 @@ async function applyBuyerMarketFallback({
     : (Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0);
   return {
     ...rebuilt,
-    // The page is now this market's pool, so the total is that pool, not the USD corpus count.
+    // The page is now this market's pool, so the totals are that pool, not the USD corpus count.
     total: eligible,
     metadata: {
       ...rebuiltMetadata,
+      corpus_total_count: eligible,
+      ...(Object.prototype.hasOwnProperty.call(rebuiltMetadata, 'runtime_corpus_count') ? { runtime_corpus_count: eligible } : {}),
       candidate_source: 'buyer_market_products_search',
       fallback_triggered: true,
       fallback_reason: BUYER_MARKET_FALLBACK_REASON,
@@ -13443,7 +13529,10 @@ module.exports = {
     applyBuyerMarketFallback,
     fetchBuyerMarketSearchRows,
     resolveDiscoveryBuyerMarket,
+    resolveDiscoveryCardCurrency,
     buildDiscoveryFeedOnce,
+    resetBuyerMarketPoolCacheForTest,
+    isProductsSearchBreakerOpen,
     BUYER_MARKET_FALLBACK_REASON,
     // The phase timer is exported so a test can drive it with a fake clock: the
     // property that matters is that the phases PARTITION the total, which cannot

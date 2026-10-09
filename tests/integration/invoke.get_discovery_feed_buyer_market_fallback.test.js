@@ -14,6 +14,7 @@ process.env.API_MODE = 'LIVE';
 const nock = require('nock');
 const request = require('supertest');
 const app = require('../../src/server');
+const { _internals: feedInternals } = require('../../src/services/discoveryFeed');
 
 const usdRows = [
   { merchant_id: 'm1', product_id: 'alpha_serum', title: 'Alpha Repair Serum', brand: 'Alpha', category: 'Skincare', product_type: 'Serum', inventory_quantity: 12, status: 'active', price: 24, currency: 'USD' },
@@ -54,6 +55,7 @@ function mockCatalog() {
 }
 
 describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', () => {
+  beforeEach(() => { feedInternals.resetBuyerMarketPoolCacheForTest(); feedInternals.resetProductsSearchBreaker(); });
   afterEach(() => nock.cleanAll());
 
   test('metadata.market=SG: the USD page is rebuilt from the backend\'s SG rows, and the door drops nothing', async () => {
@@ -87,6 +89,16 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
   test('metadata.market=US: the deployment\'s own market, untouched', async () => {
     const hops = mockCatalog();
     const res = await request(app).post('/agent/shop/v1/invoke').send(invokeBody('US')).expect(200);
+    expect(res.body.products.map((p) => p.currency)).toEqual(res.body.products.map(() => 'USD'));
+    expect(res.body.metadata.buyer_market_fallback).toBeUndefined();
+    expect(hops.some((p) => 'market' in p)).toBe(false);
+  });
+
+  test('a buyer_market the CLIENT wrote into the payload is scrubbed: no market on any hop, no fallback stamp', async () => {
+    const hops = mockCatalog();
+    const body = invokeBody(null);
+    body.payload.buyer_market = 'SG';
+    const res = await request(app).post('/agent/shop/v1/invoke').send(body).expect(200);
     expect(res.body.products.map((p) => p.currency)).toEqual(res.body.products.map(() => 'USD'));
     expect(res.body.metadata.buyer_market_fallback).toBeUndefined();
     expect(hops.some((p) => 'market' in p)).toBe(false);
