@@ -362,8 +362,23 @@ const marketTelemetry = require('./services/marketTelemetry');
 const {
   enforceServingCurrency,
   filterProductsToServingCurrency,
+  requestedMarketOf,
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
+
+// THE BUYER MARKET RIDES INTO THE DISCOVERY FEED (discoveryFeed.applyBuyerMarketFallback), read by
+// the SAME function the serving-currency guard judges the outgoing body with, so the feed and the
+// guard never disagree on which market a page is for. Absent when the request names none: the feed
+// stays byte-identical.
+// A `buyer_market` the CLIENT wrote into the discovery payload is dropped: the door's own reader is
+// the only source (otherwise an anonymous caller could force the fallback's hops on every request
+// while the guard, reading silence as US, empties the page anyway).
+function withDiscoveryBuyerMarket(discoveryPayload, requestPayload, metadata) {
+  const market = requestedMarketOf(requestPayload, metadata);
+  const source = discoveryPayload && typeof discoveryPayload === 'object' && !Array.isArray(discoveryPayload) ? discoveryPayload : {};
+  const { buyer_market: _clientBuyerMarket, buyerMarket: _clientBuyerMarketCamel, ...rest } = source;
+  return market ? { ...rest, buyer_market: market } : rest;
+}
 const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -42195,7 +42210,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { brandNames: publicBrandScopeNames },
         );
       try {
-        const discoveryResponse = await getDiscoveryFeed(discoveryPayload);
+        // No buyer-market fallback on the search bridge: find_products_multi binds its own currency and
+        // must not pay the fallback's hops; the payload is still scrubbed of a client-written buyer_market.
+        const discoveryResponse = await getDiscoveryFeed(withDiscoveryBuyerMarket(discoveryPayload));
         const bridgeResponse = buildFindProductsMultiDiscoveryBridgeResponse({
           discoveryResponse,
           search: publicBeautySearch,
@@ -42332,7 +42349,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   if (operation === 'get_discovery_feed') {
     try {
-      const discoveryResponse = await getDiscoveryFeed(effectivePayload);
+      const discoveryResponse = await getDiscoveryFeed(withDiscoveryBuyerMarket(effectivePayload, effectivePayload, metadata));
       return res.status(200).json(discoveryResponse);
     } catch (err) {
       if (err instanceof DiscoveryCatalogUnavailableError) {
