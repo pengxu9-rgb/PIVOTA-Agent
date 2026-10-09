@@ -13347,6 +13347,13 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
 // ---------------------------------------------------------------------------------------------
 const BUYER_MARKET_FALLBACK_REASON = 'buyer_market_currency_empty';
 const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
+// ONE HOP IS ONE PAGE OF THE BACKEND'S SEARCH, AT MOST. The backend's SDK route, under its gateway
+// search proxy (AGENT_BEAUTY_SEARCH_VIA_GATEWAY, on in prod), refuses `limit > 100` or an offset that
+// is not a multiple of the limit with HTTP 422 `gateway_pagination_unsupported` -- before any search
+// runs. The first cut sent the browse candidate limit (120) and every hop was 422, read as "0 rows"
+// (live 2026-10-09, 12:22Z onwards). The main products_search lane never asks for more than a page
+// (PRODUCTS_SEARCH_PAGE_SIZE) per step; the fallback asks for the same, at offset 0.
+const BUYER_MARKET_HOP_LIMIT = PRODUCTS_SEARCH_PAGE_SIZE;
 const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
 
 /** ONE wall-clock budget for the whole fallback: the hops run in parallel, each clamped to it. */
@@ -13396,7 +13403,7 @@ function hasRowsInServingCurrency(products, servingCurrency) {
  */
 async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
   const queryText = String(request?.query?.text || '').trim();
-  const safeLimit = clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = Math.min(clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH), BUYER_MARKET_HOP_LIMIT);
   const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
   const cached = readBuyerMarketPoolCache(cacheKey, now());
   if (cached) {

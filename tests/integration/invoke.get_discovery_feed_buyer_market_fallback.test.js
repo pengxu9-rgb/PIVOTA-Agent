@@ -73,6 +73,12 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
     expect(res.body.metadata.serving_currency_guard).toBeUndefined();
     expect(hops.some((p) => p.serving_market === 'SG')).toBe(true);
     expect(hops.filter((p) => p.serving_market === 'SG').every((p) => String(p.query || '').trim().length > 0)).toBe(true);
+    // THE BACKEND PROXY'S PAGINATION CONTRACT, pinned on the wire: limit <= 100 and offset a multiple of it
+    // (its SDK route answers 422 gateway_pagination_unsupported otherwise, before any search runs).
+    for (const p of hops.filter((h) => h.serving_market === 'SG')) {
+      expect(Number(p.limit)).toBeLessThanOrEqual(100);
+      expect(Number(p.offset) % Number(p.limit)).toBe(0);
+    }
     // No hop ever names the storage partition; the first build's hops carried no market at all.
     expect(hops.some((p) => 'market' in p)).toBe(false);
     expect(hops.some((p) => !('serving_market' in p))).toBe(true);

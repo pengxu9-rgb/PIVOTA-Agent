@@ -23844,8 +23844,16 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   // door ignored a field its own invoke door honours. Forwarded verbatim (the door parses it)
   // and ONLY under Stage 0a: without the flag, a named SG binds the empty partition, and
   // plumbing it would turn today's mixed page into zero.
+  // `serving_market` is accepted as the same thing (`market` wins when both are sent): the backend's
+  // SDK search route proxies its callers' GETs back to THIS door with the query string intact
+  // (AGENT_BEAUTY_SEARCH_VIA_GATEWAY), and the discovery feed's buyer-market fallback hop names the
+  // buyer's market as `serving_market` -- the backend's own word for "the market the buyer is served
+  // in" as opposed to `market`, its storage partition. On this door `search.market` IS the buyer's
+  // serving market (the deployment's partitions, the buyer's currency), so the alias is exact.
   if (isBuyerMarketEnabled()) {
-    const buyerMarket = String(firstQueryParamValue(query.market) || '').trim();
+    const buyerMarket = String(
+      firstQueryParamValue(query.market) || firstQueryParamValue(query.serving_market) || '',
+    ).trim();
     if (buyerMarket) search.market = buyerMarket;
   }
 
