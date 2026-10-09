@@ -8,9 +8,12 @@
  * `enrichOfferCommerceMetadata` stamps `merchant_checkout_url` — a direct "check out
  * here" link — onto EVERY served offer, one layer earlier than the warm handoff and
  * without passing through it at all. A handoff URL is still a recommendation: a page
- * that sends a shopper to a checkout which cannot take their card wastes the same trip
- * whether we call it a purchase, a handoff or a link (docs/merchant-purchasability-gate.md
- * §8, the flowerbeauty.com incident).
+ * that sends a shopper to a checkout they cannot complete wastes the same trip whether
+ * we call it a purchase, a handoff or a link (docs/merchant-purchasability-gate.md §8,
+ * the flowerbeauty.com incident: a checkout priced at USD 8.00 against our USD 14.95).
+ * Since client rule 7 (2026-10-09) this seam asks the HUMAN question
+ * (`human_handoff_tier`): a PayPal-only checkout a person can pay on is NOT declined
+ * here — that class is the headless card rail's refusal, not this link's.
  *
  * So the same switch (`MERCHANT_PURCHASABILITY_GATE_ENABLED`, default OFF) and the same
  * `shouldOfferPurchase` — the SAME process singleton and therefore the same bounded cache

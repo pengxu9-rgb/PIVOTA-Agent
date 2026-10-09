@@ -23,6 +23,13 @@
 // that URL (the spec's guidance) or lets its agent complete there with its own credential is the platform's
 // decision and the platform's compliance question, not this door's.
 //
+// WHAT THE PURCHASABILITY GATE ADMITS HERE (client rule 7, 2026-10-09). This door asks the HUMAN question
+// (`RAIL.human` -> the backend's `human_handoff_tier`): a storefront a person can pay on, with whatever it
+// takes -- including a PayPal-only or wallet-only checkout (NO_CARD_PAYMENT), which the card rail refuses.
+// So a platform that lets its agent complete here with its OWN tokenized card (VIC) may be handed a
+// `continue_url` that card cannot pay; that is the platform's decision above, and Pivota's money is never on
+// the line. The one answer this door never hands out is a storefront NO human can complete.
+//
 // WHY THIS IS NOT "just build offer-grain pricing in the backend". Review of #2024 traced the backend: its one
 // pricing engine is Shopify Storefront Cart, and a UCP quote reaches it without a merchant_id. Building a
 // second engine to price rows Pivota cannot then charge or ship would manufacture quotes that cannot be
