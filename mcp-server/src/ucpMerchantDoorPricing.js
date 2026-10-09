@@ -499,7 +499,11 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     const choice = sellerVariantChoiceOf(rows.get(it.product_id), sellerHost, it.variant_id);
     const gid = choice.gid;
     if (!gid) { emit(log, "info", { outcome: "fallback", reason: "variant_unresolved", seller_host: sellerHost }); return null; }
-    if (choice.source === "sole_variant_id") derived.push(rows.get(it.product_id));
+    // A "choice" of the ONLY real variant is not a choice: get_product publishes no variant list for such a product,
+    // but its sole variant id is visible elsewhere (variants[0].variant_id on the native door / PDP), so
+    // `<pid>::v::<sole id>` passes the door's membership check. It is checked exactly as a derived id is.
+    const row = rows.get(it.product_id);
+    if (choice.source === "sole_variant_id" || (choice.source === "chosen" && realVariantsOf(row).length === 1)) derived.push(row);
     if (wanted.some((w) => w.gid === gid)) { emit(log, "info", { outcome: "fallback", reason: "duplicate_variant", seller_host: sellerHost }); return null; }
     wanted.push({ product_id: it.product_id, quantity: it.quantity, gid, ...(it.variant_id ? { variant_id: it.variant_id } : {}) });
   }
@@ -509,13 +513,16 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     emit(log, "warn", { outcome: "fallback", reason: "door_unavailable", seller_host: sellerHost, message: err && err.message });
     return null;
   }
-  // A DERIVED sole-variant id is checked against the catalog BEFORE any seller is contacted (refuseDerivedSoleVariant).
-  for (const row of derived) {
-    const refusal = await refuseDerivedSoleVariant(row, d);
-    if (refusal) { emit(log, "info", { outcome: "fallback", reason: refusal, seller_host: sellerHost }); return null; }
-  }
+  // The budget covers the catalog check too (it is part of this door's work), so the clock starts before it.
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
+  // A DERIVED sole-variant id is checked against the catalog BEFORE any seller is contacted (refuseDerivedSoleVariant),
+  // inside the budget: a lookup that does not answer in time is a refusal (fail closed), like any other.
+  for (const row of derived) {
+    const settled = await withBudget(refuseDerivedSoleVariant(row, d), left());
+    const refusal = settled && settled.timedOut ? "catalog_variant_count_timeout" : settled;
+    if (refusal) { emit(log, "info", { outcome: "fallback", reason: refusal, seller_host: sellerHost }); return null; }
+  }
 
   let endpoint;
   try {

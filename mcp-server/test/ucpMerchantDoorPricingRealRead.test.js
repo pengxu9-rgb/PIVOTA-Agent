@@ -186,19 +186,55 @@ test('FAILS CLOSED: no product_key, a failed lookup, a non-count answer, or a do
   assert.equal(await priceRow(soleRow(), noLookup), null, 'a door without the lookup');
 });
 
-test('only a DERIVED id is checked: a link naming the variant, or a buyer choice, prices without the lookup', async () => {
+test('only a DERIVED id is checked: a link naming the variant, or a choice among SEVERAL real variants, prices without the lookup', async () => {
   const linked = stamped(seed('k', { url: 'https://brand-k.com/products/x?variant=44012345678981', variants: [{ id: '44012345678981', price: '20.00' }] }));
   assert.equal(sellerVariantChoiceOf(linked, 'brand-k.com').source, 'url');
   const d1 = doorWith(5);
   assert.ok(await priceRow(linked, d1));
   assert.deepEqual(d1.calls.count, [], 'no lookup for an explicit link');
-  const multi = { ...stamped(seed('k', { url: 'https://brand-k.com/products/x', variants: [{ id: '44012345678981', title: 'A', option1: 'A', price: '20.00' }, { id: '44012345678982', title: 'B', option1: 'B', price: '20.00' }] })) };
+  // A product the PDP builder EXPOSES as two real variants (an option axis with values) — built by the real producers.
+  const multi = { ...liveRead({
+    id: 's11', external_product_id: 'ext_kkkkkkkkkkkkkkkkkkkkkkkk', destination_url: 'https://brand-k.com/products/serum',
+    seed_data: { title: 'Serum', options: [{ name: 'Size', values: ['30 ml', '50 ml'] }], snapshot: { variants: [
+      { id: '44012345678961', title: '30 ml', option_name: 'Size', option_value: '30 ml', option1: '30 ml', price: '20.00' },
+      { id: '44012345678962', title: '50 ml', option_name: 'Size', option_value: '50 ml', option1: '50 ml', price: '30.00' },
+    ] } },
+  }), product_key: KEY };
   const real = realVariantsOf(multi);
-  if (real.length > 1) {
-    const d2 = doorWith(5);
-    assert.ok(await priceRow(multi, d2, real[1].id));
-    assert.deepEqual(d2.calls.count, [], 'no lookup for a buyer choice');
-  }
+  assert.equal(real.length, 2, 'the fixture really exposes two real variants');
+  const d2 = doorWith(5);
+  const out = await priceOnMerchantDoor({
+    items: [{ product_id: multi.product_id, quantity: 1, variant_id: real[1].id }], rows: new Map([[multi.product_id, multi]]),
+    sellerHost: 'brand-k.com', market: 'US', env: { [MERCHANT_PRICING_FLAG]: '1' }, merchantDoor: d2,
+  });
+  assert.ok(out, 'priced');
+  assert.deepEqual(d2.calls.count, [], 'no lookup for a real choice among several variants');
+  assert.deepEqual(d2.calls.cart[0].lineItems, [{ item: { id: GID('44012345678962') }, quantity: 1 }]);
+});
+
+test("a 'choice' of the ONLY real variant (<pid>::v::<sole id>) is counted like a derived id — the bypass is closed", async () => {
+  const p = soleRow();
+  assert.equal(realVariantsOf(p).length, 1);
+  const soleId = realVariantsOf(p)[0].id;
+  assert.equal(sellerVariantChoiceOf(p, 'brand-k.com', soleId).source, 'chosen');
+  const refused = doorWith(5);
+  assert.equal(await priceRow(p, refused, soleId), null, 'catalog knows several -> not priced');
+  assert.deepEqual(refused.calls.count, [KEY]);
+  assert.deepEqual(refused.calls.cart, [], 'no seller contacted');
+  const allowed = doorWith(1);
+  assert.ok(await priceRow(p, allowed, soleId), 'catalog knows one -> priced');
+});
+
+test('the catalog check runs inside the budget: a lookup that never answers is a refusal, not a hang', async () => {
+  const hanging = { ...doorWith(1), catalogShopifyVariantCount: () => new Promise(() => {}) };
+  const t0 = Date.now();
+  const out = await priceOnMerchantDoor({
+    items: [{ product_id: soleRow().product_id, quantity: 1 }], rows: new Map([[soleRow().product_id, soleRow()]]),
+    sellerHost: 'brand-k.com', market: 'US', env: { [MERCHANT_PRICING_FLAG]: '1' }, merchantDoor: hanging, budgetMs: 60,
+  });
+  assert.equal(out, null);
+  assert.ok(Date.now() - t0 < 1000);
+  assert.deepEqual(hanging.calls.cart, []);
 });
 
 test("the default door counts with the census's own SQL, keyed by product_key, within a budget; a string count parses", async () => {
