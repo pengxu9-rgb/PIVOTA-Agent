@@ -53,7 +53,9 @@ const RUBRIC_VERSION = 'v4';
 // Bump when the deterministic side of a verdict changes (validateRecommendationDecision,
 // the consumer-copy contract, the approval gates): a remembered negative verdict is only
 // reused under the same validator, model and rubric that produced it.
-const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v1';
+// v2: inferRelationship's treatment-function, accessory, set, brush and routine-role rules (#2382) refuse
+// some pairs v1 approved and admit complements v1 refused, so no v1 negative verdict is reused.
+const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;

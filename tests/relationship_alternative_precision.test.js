@@ -385,3 +385,17 @@ describe('treatment exclusions, each pinned by a conflicting claim', () => {
     expect(treatmentFunctionCompatibility(p(name, category), p(partner, partner.includes('Blush') ? category : 'serum'))).toMatchObject({ compatible: true });
   });
 });
+
+// The structural rules above are the deterministic side of the reviewer's verdict: a negative verdict
+// remembered under the validator that predates them is reviewed again, not reused.
+describe('reviewer negative memory and this validator', () => {
+  const { isRememberedNegative, REVIEW_VALIDATOR_VERSION, RUBRIC_VERSION } = require('../scripts/review-relationship-candidate-labels');
+  const NOW = Date.parse('2026-10-09T12:00:00Z');
+  const remembered = (validatorVersion) => ({ provenance: { ai_review_last: { verdict: 'reject', pair_fingerprint: 'fp', model: null,
+    reviewer: 'x', rubric: RUBRIC_VERSION, validator_version: validatorVersion, reviewed_at: '2026-10-09T00:00:00Z' } } });
+  test('a v1 rejection is not reused; one from this validator is', () => {
+    expect(REVIEW_VALIDATOR_VERSION).not.toBe('relgraph_review_validator.v1');
+    expect(isRememberedNegative(remembered('relgraph_review_validator.v1'), 'fp', { nowMs: NOW })).toBe(false);
+    expect(isRememberedNegative(remembered(REVIEW_VALIDATOR_VERSION), 'fp', { nowMs: NOW })).toBe(true);
+  });
+});
