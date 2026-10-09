@@ -132,6 +132,8 @@ describe('applyBuyerMarketFallback: the rule', () => {
     expect(h.buildOnce).not.toHaveBeenCalled();
     expect(out.products).toEqual(response.products);
     expect(out.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ market: 'SG', applied: false, rows: 0, curated_rows_dropped: 1 }));
+    // The hops ride on the applied:false stamp too: a live diagnosis needs no API key.
+    expect(out.metadata.buyer_market_fallback.recall_summary).toEqual([{ label: 'buyer_market_pool_1', market: 'SG', returned: 0 }]);
     expect(out.metadata.fallback_triggered).toBe(false);
   });
 
@@ -258,7 +260,9 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     expect(axios.get).toHaveBeenCalledTimes(4);
     for (const [url, config] of axios.get.mock.calls) {
       expect(url).toBe('http://catalog.test/agent/v1/products/search');
-      expect(config.params).toEqual(expect.objectContaining({ market: 'SG', in_stock_only: false, limit: 60, offset: 0 }));
+      // SERVING market, never the storage partition: `market=SG` binds the empty SG partition on the backend.
+      expect(config.params).toEqual(expect.objectContaining({ serving_market: 'SG', in_stock_only: false, limit: 60, offset: 0 }));
+      expect(config.params).not.toHaveProperty('market');
       expect(config.headers['X-Agent-API-Key']).toBe('test-token');
     }
     expect(axios.get.mock.calls.map(([, c]) => c.params.query)).toEqual(['serum', 'sunscreen', 'lip gloss', 'shampoo']);
