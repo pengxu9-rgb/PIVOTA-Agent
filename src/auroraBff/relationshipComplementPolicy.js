@@ -16,10 +16,15 @@ const { optionRole } = require('./relationshipPairPolicy');
 const SAME_JOB_REASON = 'same_step_substitutes_are_not_complements';
 const UNRESOLVED_REASON = 'complement_role_evidence_unresolved';
 
-function snapshotText(snapshot = {}) {
+// A tail after an em dash (U+2014) is the shade ("Lip Liner — Thugz Blush Too"), not the product's job.
+function productName(snapshot = {}) {
   const raw = snapshot.title || snapshot.name || snapshot.display_name || snapshot.product_name || '';
+  return String(typeof raw === 'string' ? raw : '').split(/\s+\u2014\s+/)[0];
+}
+
+function snapshotText(snapshot = {}) {
   // Marks go before NFKC, which would turn "Brushampoo™" into "brushampootm".
-  return String(typeof raw === 'string' ? raw : '').replace(/[\u2122\u00ae\u00a9]/g, ' ').normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ').trim();
+  return productName(snapshot).replace(/[\u2122\u00ae\u00a9]/g, ' ').normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ').trim();
 }
 
 // Generic skincare forms: a sun cream or SPF serum is a sun-protection step, not a moisturizer step.
@@ -40,10 +45,16 @@ const LEADING_ROLES = [
   ['deodorant', /\b(?:deodorant|antiperspirant)s?\b/],
   ['body_wash', /\b(?:hand|body)\s*wash\b|\bshower\s*(?:gel|oil|cream)\b|\bbath\s*oil\b/],
   ['body_moisturizer', /\b(?:body|hand|foot)\s*(?:lotion|cream|butter|balm|souffle|milk)\b/],
-  // Oils for different areas are different jobs.
-  ['face_oil', /\b(?:face|facial)\s*oil\b/],
-  ['hair_oil', /\b(?:hair|scalp)\s*oil\b/],
-  ['body_oil', /\b(?:body|dry)\s*oil\b/],
+  // A soak is a bath step; a beard product is grooming, never the perfume its scent is named after,
+  // and a beard comb, a beard wash and a beard oil are three steps.
+  ['bath_soak', /\bbath\s*(?:salts?|soaks?|bombs?|flakes)\b|\bsalt\s*soak\b/],
+  ['beard_tool', /\bbeard\b.*\b(?:comb|brush|trimmer|scissors|shaper)s?\b|\b(?:comb|brush|trimmer|scissors|shaper)s?\b.*\bbeard\b/],
+  ['beard_wash', /\bbeard\s*(?:wash|soap|cleanser)\b/],
+  ['beard_care', /\bbeard\b/],
+  // Oils for different areas are different jobs. "Oil-Free" and "Oil Control" are formula traits.
+  ['face_oil', /\b(?:face|facial)\s*oil\b(?![\s-]*(?:free|control))/],
+  ['hair_oil', /\b(?:hair|scalp)\s*oil\b(?![\s-]*(?:free|control))/],
+  ['body_oil', /\b(?:body|dry)\s*oil\b(?![\s-]*(?:free|control))/],
 ];
 
 function routineRole(snapshot = {}) {
@@ -51,7 +62,8 @@ function routineRole(snapshot = {}) {
   const leading = LEADING_ROLES.find(([, pattern]) => pattern.test(value));
   if (leading) return leading[0];
   if (/\bbrush[\s_-]*clean/.test(String(snapshot.category || snapshot.product_type || '').toLowerCase())) return 'tool_cleaner';
-  const role = optionRole(snapshot);
+  const product = productName(snapshot);
+  const role = optionRole(product ? { ...snapshot, title: product, name: product } : snapshot);
   if (role && !FORM_ROLES.has(role) && role !== 'cleanser') return role;
   if (/\b(?:sunscreen|sun\s*(?:cream|milk|stick|serum|lotion|gel|essence|block)|sunblock)\b/.test(value) || /\bspf\s*\d+/.test(value)) {
     return 'sunscreen';
@@ -62,9 +74,9 @@ function routineRole(snapshot = {}) {
   if (/\blip\s*colou?rs?\b/.test(value)) return 'lipstick';
   if (/\bnail\s*(?:polish|lacquer|colou?r)\b/.test(value)) return 'nail_polish';
   if (/\bpatch(?:es)?\b/.test(value)) return /\beye\b/.test(value) ? 'eye_patch' : 'patch';
-  if (/\b(?:body|hair|face)?\s*oil\b/.test(value) && !/\bcleansing\b/.test(value)) return 'oil';
+  if (/\b(?:body|hair|face)?\s*oil\b(?![\s-]*(?:free|control))/.test(value) && !/\bcleansing\b/.test(value)) return 'oil';
   if (/\bmist\b/.test(value)) return 'mist';
-  if (/\b(?:scrub|exfoliant|exfoliator)\b|\bpeel(?:ing)?\b(?![ -]?off)/.test(value)) return 'exfoliant';
+  if (/\b(?:scrub(?:s|stick)?|exfoliant|exfoliator)\b|\bpeel(?:ing)?\b(?![ -]?off)/.test(value)) return 'exfoliant';
   return '';
 }
 

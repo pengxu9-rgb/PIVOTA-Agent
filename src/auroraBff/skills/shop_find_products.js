@@ -12,6 +12,7 @@ const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
 
 const BaseSkill = require('./BaseSkill');
 const shopGatewayClient = require('../clients/shopGatewayClient');
+const { explicitBuyerMarket } = require('../buyerRegion');
 const { understandShoppingQuery } = require('../../findProductsMulti/queryUnderstanding');
 const { extractIntentRuleBased } = require('../../findProductsMulti/intent');
 
@@ -138,6 +139,8 @@ class ShopFindProductsSkill extends BaseSkill {
       inStockOnly: false,
       minPrice: priceConstraint?.min,
       maxPrice: priceConstraint?.max,
+      // The buyer's market ONLY when the chat request said it; a defaulted region sends none.
+      market: explicitBuyerMarket(request && request.context),
     });
     const mappedRows = (Array.isArray(result && result.products) ? result.products : [])
       .map(toRecommendationRow)

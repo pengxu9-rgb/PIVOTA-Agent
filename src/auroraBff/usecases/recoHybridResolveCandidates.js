@@ -65,6 +65,7 @@ const SKINCARE_ALLOW_CJK_RE = /\b(洁面|洗面奶|化妆水|爽肤水|精华|�
 // allow-excuse, and hard-rejected "CeraVe Daily Moisturizing Lotion, Fragrance-Free" -- 11 of 193
 // live catalog rows, eight of them for advertising that they contain no fragrance.
 const { resolveRecoStepDomain, maskNonCategoryQualifiers } = require('../recoTargetStep');
+const { explicitBuyerMarket } = require('../buyerRegion');
 
 const NON_BEAUTY_FATAL_ASCII_RE = /\b(brush|applicator|blender|tool|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i;
 const WRONG_CATEGORY_FATAL_ASCII_RE = /\b(eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume)\b/i;
@@ -1069,7 +1070,9 @@ function buildSearchQueries(seed, { targetStep, targetIngredient, concerns = [] 
   ], 8);
 }
 
-async function defaultResolveProduct({ query, lang, hints }) {
+// `market`: the buyer's market ONLY when the request said it (buyerRegion.explicitBuyerMarket);
+// null sends none and the offers.resolve call is silent, so the backend's cart gate makes no claim.
+async function defaultResolveProduct({ query, lang, hints, market = null }) {
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { ok: false, reason: 'pivota_backend_not_configured', transient: false, product: null };
   }
@@ -1105,7 +1108,9 @@ async function defaultResolveProduct({ query, lang, hints }) {
               ...(query ? { query } : {}),
             },
             ...(query ? { query } : {}),
+            ...(market ? { market } : {}),
           },
+          metadata: { invoked_by: 'reco_hybrid.resolve_product' },
         },
         {
           headers: buildPivotaHeaders(),
@@ -1360,11 +1365,12 @@ function seedSeemsCompatible(seed, { targetStep }) {
   );
 }
 
-async function resolveExactMatch(seed, { lang, resolveProduct, targetStep }) {
+async function resolveExactMatch(seed, { lang, resolveProduct, targetStep, market = null }) {
   for (const query of buildResolveQueries(seed)) {
     const result = await resolveProduct({
       query,
       lang,
+      market,
       hints: {
         ...(seed.brand ? { brand: seed.brand } : {}),
         ...(seed.name ? { title: seed.name } : {}),
@@ -1420,6 +1426,8 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
     ...(Array.isArray(request?.context?.profile?.goals) ? request.context.profile.goals : []),
   ]);
   const resolveProduct = typeof deps?.resolveProduct === 'function' ? deps.resolveProduct : defaultResolveProduct;
+  // The buyer's market for the resolve, ONLY when the request's context says it explicitly.
+  const buyerMarket = explicitBuyerMarket(request?.context);
   const searchProducts = typeof deps?.searchProducts === 'function' ? deps.searchProducts : defaultSearchProducts;
   const rawSeeds = Array.isArray(candidateOutput?.products) ? candidateOutput.products : [];
   const seeds = rawSeeds
@@ -1439,7 +1447,7 @@ async function runRecoHybridResolveCandidates({ request, candidateOutput, logger
     let exact = null;
     let exactTransientFailure = false;
     try {
-      const resolved = await resolveExactMatch(seed, { lang, resolveProduct, targetStep });
+      const resolved = await resolveExactMatch(seed, { lang, resolveProduct, targetStep, market: buyerMarket });
       exact = resolved.product;
       exactTransientFailure = resolved.transientFailure;
     } catch (error) {

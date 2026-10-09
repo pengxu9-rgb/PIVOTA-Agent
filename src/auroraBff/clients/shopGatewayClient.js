@@ -45,6 +45,11 @@ function extractProducts(body) {
  * @param {number} [opts.minPrice]
  * @param {number} [opts.maxPrice]
  * @param {string} [opts.catalogSurface='beauty']
+ * @param {string|null} [opts.market]  the buyer's market, ISO-2, ONLY when the chat request said
+ *                                     it (buyerRegion.explicitBuyerMarket); null/absent sends none
+ *                                     and the call is silent — the purchasability gate then makes
+ *                                     no claim, which is right for a buyer whose market we do
+ *                                     not know. Never defaulted here.
  * @param {object} [opts.deps]          { axios } injectable for tests
  */
 async function findProductsMulti({
@@ -54,6 +59,7 @@ async function findProductsMulti({
   minPrice,
   maxPrice,
   catalogSurface = 'beauty',
+  market = null,
   deps = {},
 } = {}) {
   const http = deps.axios || axios;
@@ -82,6 +88,7 @@ async function findProductsMulti({
       catalog_surface: catalogSurface,
       requested_projection: 'normalized_only',
       invoked_by: 'chat.shop_find_products',
+      ...(typeof market === 'string' && /^[A-Z]{2}$/.test(market) ? { market } : {}),
     },
   };
 
