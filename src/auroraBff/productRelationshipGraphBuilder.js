@@ -351,6 +351,7 @@ const SET_MARKER_TOKENS = new Set([
   'essentials',
   'faves',
   'kit',
+  'piece',
   'set',
   'trio',
 ]);
@@ -467,8 +468,101 @@ const BRUSH_TARGET_TOKENS = {
   foundation: ['foundation', 'kabuki'],
   blush: ['blush', 'cheek'],
   powder: ['powder'],
-  highlighter: ['highlighter', 'highlight'],
+  highlighter: ['highlighter', 'highlight', 'strobing', 'fan'],
 };
+
+// A brush code names its area where the title does not: Sigma "E50 Large Fluff" is an eye brush,
+// "F42 Strobing Fan" a face brush. Only read when both sides are brushes.
+function brushCodeArea(snapshot = {}) {
+  const match = normalizeLower(snapshotNameText(snapshot), 240).match(/^\s*([ef])\d{2,3}\b/);
+  return match ? (match[1] === 'e' ? 'eye' : 'face') : '';
+}
+
+// Accessories and spare parts are not the products they serve: a razor stand is not refill blades,
+// hair clips are not a bath set, a satin scarf is not a curl routine. Read from the name only, with
+// a shade / variant tail after an em dash and any "+ / with" add-on removed ("Sunscreen + Collector's
+// Case" is a sunscreen). A refill of a cosmetic is that cosmetic.
+const ACCESSORY_KINDS = [
+  ['blade', /\bblades?\b|\bcartridges?\b|\breplacement\s+heads?\b/],
+  ['holder', /\b(?:stand|holder|organi[sz]er|caddy|soap\s+dish)\b/],
+  ['hair_accessory', /\b(?:hair\s+)?clips?\b|\bscrunchies?\b|\bheadbands?\b|\bbonnets?\b|\bscarf\b|\bpillow\s?case\b|\bhair\s+ties?\b/],
+  ['bag', /\b(?:bag|pouch|case)\b/],
+];
+
+function accessoryKind(snapshot = {}) {
+  const name = normalizeLower(snapshotNameText(snapshot), 512).split(/\s+—\s+|\s+(?:\+|with|&)\s+/)[0];
+  const hit = ACCESSORY_KINDS.find(([, pattern]) => pattern.test(name));
+  return hit ? hit[0] : '';
+}
+
+// What a skincare treatment (serum, ampoule, essence, toner, pad, peel) is FOR. Shelf tags and
+// descriptions name every benefit; the product's own name names its job. Its lead is the claim words
+// before any "with / for / + / dash" tail ("Hydrating Barrier Face Serum" leads with both), else its
+// first claim, together with its first active ("Alpha Arbutin 2% + HA" leads with arbutin, not the
+// HA tail). Two treatments are one shopper job only when each one's lead is among
+// the other's functions: Retinol vs Marine Hyaluronics, HA + B5 vs Alpha Arbutin + HA and a BHA
+// liquid vs a moisture pad are different jobs; two salicylic serums, two azelaic serums, or a
+// brightening toner vs a hyalu-cica brightening toner are one.
+const TREATMENT_CLAIM_FUNCTIONS = [
+  [['acne', 'blemish', 'blemishes', 'breakout', 'breakouts', 'pore', 'pores', 'poreless', 'poremizing', 'clarifying', 'whitehead',
+    'whiteheads', 'blackhead', 'blackheads', 'sebum', 'oil control', 'clear'], ['acne']],
+  [['hydrating', 'hydration', 'hydrate', 'moisture', 'moisturizing', 'moisturising'], ['hydration']],
+  [['brightening', 'bright', 'glow', 'radiance', 'radiant', 'dark spot', 'dark spots', 'hyperpigmentation', 'dullness', 'illuminating'],
+    ['brightening']],
+  [['calming', 'soothing', 'relief', 'redness', 'sensitive'], ['calming']],
+  [['barrier', 'repair', 'repairing', 'restore', 'restoring', 'recovery'], ['barrier']],
+  [['firming', 'lifting', 'wrinkle', 'wrinkles', 'anti wrinkle', 'anti aging', 'anti ageing', 'age defying', 'elasticity'], ['firming']],
+  [['exfoliating', 'exfoliant', 'exfoliation', 'peel', 'peeling', 'resurfacing'], ['exfoliating']],
+];
+const TREATMENT_ACTIVE_FUNCTIONS = [
+  [['retinol', 'retinal', 'retinoid', 'retinoids', 'bakuchiol'], ['retinoid', 'firming']],
+  [['peptide', 'peptides', 'collagen', 'matrixyl', 'argireline'], ['peptide', 'firming']],
+  [['salicylic', 'bha'], ['exfoliating', 'acne']],
+  [['aha', 'pha', 'glycolic', 'lactic', 'mandelic', 'gluconolactone'], ['exfoliating']],
+  [['azelaic'], ['azelaic', 'acne']],
+  [['hyaluronic', 'hyaluronics', 'hyaluron', 'hyalu', 'ha', 'b5', 'panthenol'], ['hydration']],
+  [['vitamin c', 'vita c', 'ascorbic', 'arbutin', 'tranexamic', 'kojic', 'glutathione'], ['brightening']],
+  [['niacinamide'], ['niacinamide', 'brightening']],
+  [['centella', 'cica', 'teca', 'madecassoside', 'heartleaf'], ['calming']],
+  [['ceramide', 'ceramides', 'pdrn'], ['barrier']],
+  [['tea tree', 'zinc'], ['acne']],
+];
+const TREATMENT_FORM_PATTERN = /\b(?:serum|essence|ampoule|toner|tonic|pads?|peel|exfoliant|solution|liquid|booster|concentrate|drops)\b/;
+const TREATMENT_EXCLUDED_PATTERN = /\b(?:sun|spf|sunscreen|lip|lips|lipstick|body|foundation|concealer|eyeliner|mascara|cleanser|cleansing|micellar|wash|soap)\b/;
+
+const TREATMENT_NAME_TAIL = /\s+(?:with|for|featuring)\s+|\s*\+\s*|\s+[-\u2013\u2014]\s+|[,(:|]/;
+
+function treatmentFunctionProfile(snapshot = {}) {
+  const raw = normalizeLower(snapshotNameText(snapshot), 512).replace(/^\s*\[[^\]]*\]\s*/, '');
+  const spaced = (text) => ` ${normalizeTokens(text).join(' ')} `;
+  const name = spaced(raw); const head = spaced(raw.split(TREATMENT_NAME_TAIL)[0]);
+  const leaf = normalizeCategoryValue(leafCategoryValue(snapshot));
+  // A hair or scalp serum is out of scope; a squalane "for skin and hair" is still a skin treatment.
+  const hairOnly = /\b(?:hair|scalp)\b/.test(name) && !/\b(?:skin|face|facial)\b/.test(name);
+  const isTreatment = (TREATMENT_FORM_PATTERN.test(name) || /^(?:serum|toner|essence|ampoule)s?$/.test(leaf)) &&
+    !TREATMENT_EXCLUDED_PATTERN.test(name) && !hairOnly;
+  if (!isTreatment) return null;
+  const eye = hasEyeOrLashArea({ name: snapshotNameText(snapshot) });
+  const ordered = (table, text = name) => table.flatMap(([words, groups]) => words.map((word) => [text.indexOf(` ${word} `), groups]))
+    .filter(([at]) => at !== -1).sort((x, y) => x[0] - y[0]).map(([, groups]) => groups);
+  const claims = ordered(TREATMENT_CLAIM_FUNCTIONS); const actives = ordered(TREATMENT_ACTIVE_FUNCTIONS);
+  const headClaims = ordered(TREATMENT_CLAIM_FUNCTIONS, head);
+  const leadClaims = headClaims.length ? headClaims.flat() : claims[0] || [];
+  return { eye, lead: [...leadClaims, ...(actives[0] || [])], functions: new Set([...claims, ...actives].flat()) };
+}
+
+function treatmentFunctionCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
+  const anchor = treatmentFunctionProfile(anchorSnapshot);
+  const candidate = treatmentFunctionProfile(candidateSnapshot);
+  if (!anchor || !candidate) return { compatible: true, reason: '' };
+  // An eye serum is not a face serum, whatever both claim.
+  if (anchor.eye !== candidate.eye) return { compatible: false, reason: 'treatment_area_mismatch', shared_groups: [] };
+  // A name with no function word fails open.
+  if (!anchor.functions.size || !candidate.functions.size) return { compatible: true, reason: '' };
+  const leadIn = (lead, functions) => lead.some((group) => functions.has(group));
+  if (leadIn(anchor.lead, candidate.functions) && leadIn(candidate.lead, anchor.functions)) return { compatible: true, reason: '' };
+  return { compatible: false, reason: 'treatment_function_mismatch', shared_groups: [] };
+}
 
 const OUT_OF_SCOPE_MERCH_TOKENS = new Set([
   'apparel',
@@ -706,13 +800,20 @@ function productFormCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
       return { compatible: false, reason: 'tool_topical_form_mismatch' };
     }
   }
+  const anchorAccessory = accessoryKind(anchorSnapshot);
+  const candidateAccessory = accessoryKind(candidateSnapshot);
+  if ((anchorAccessory || candidateAccessory) && anchorAccessory !== candidateAccessory) {
+    return { compatible: false, reason: 'accessory_product_mismatch' };
+  }
 
   const bothBrushes = anchorTokens.has('brush') && candidateTokens.has('brush');
   if (bothBrushes) {
-    const anchorEye = hasAnyToken(anchorTokens, EYE_AREA_TOKENS);
-    const candidateEye = hasAnyToken(candidateTokens, EYE_AREA_TOKENS);
-    const anchorFaceBody = hasAnyToken(anchorTokens, FACE_BODY_AREA_TOKENS);
-    const candidateFaceBody = hasAnyToken(candidateTokens, FACE_BODY_AREA_TOKENS);
+    const anchorCode = brushCodeArea(anchorSnapshot);
+    const candidateCode = brushCodeArea(candidateSnapshot);
+    const anchorEye = hasAnyToken(anchorTokens, EYE_AREA_TOKENS) || anchorCode === 'eye';
+    const candidateEye = hasAnyToken(candidateTokens, EYE_AREA_TOKENS) || candidateCode === 'eye';
+    const anchorFaceBody = hasAnyToken(anchorTokens, FACE_BODY_AREA_TOKENS) || anchorCode === 'face';
+    const candidateFaceBody = hasAnyToken(candidateTokens, FACE_BODY_AREA_TOKENS) || candidateCode === 'face';
     if ((anchorEye && candidateFaceBody && !candidateEye) || (candidateEye && anchorFaceBody && !anchorEye)) {
       return { compatible: false, reason: 'brush_application_area_mismatch' };
     }
@@ -875,6 +976,11 @@ function productJobCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
       }
     }
   }
+
+  // Runs whatever the category says: the served serums and toners carry leaf categories ("serum",
+  // "beauty/skincare/treat/toner"), never the literal "skincare" the effect rule above needs.
+  const treatment = treatmentFunctionCompatibility(anchorSnapshot, candidateSnapshot);
+  if (!treatment.compatible) return treatment;
 
   return { compatible: true, reason: '', shared_groups: [] };
 }
