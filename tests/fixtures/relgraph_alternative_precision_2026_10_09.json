@@ -1,0 +1,1685 @@
+{
+ "source": "served_edges_2026-10-08.json (9,478 servable prod edges); exact exported brand/name/category/taxonomy",
+ "cases": [
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "pore exfoliating liquid vs hydrating pad",
+   "served_as": "related_product",
+   "score_total": 0.7512,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Two in One Poreless Power Liquid",
+    "category": "Toner",
+    "category_taxonomy": [
+     "beauty/skincare/toner",
+     "Toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "One Step Moisture Up Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "AHA/BHA exfoliating toner vs peptide lifting pad",
+   "served_as": "related_product",
+   "score_total": 0.7289,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Refresh ABC Daily Toner (AHA BHA Vitamin C)",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "One Step Original Peptide Collagen Lifting Glow Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "hydrating glow pad vs azelaic clarifying toner",
+   "served_as": "related_product",
+   "score_total": 0.7297,
+   "anchor": {
+    "brand": "Anua",
+    "name": "PDRN 100 Hyaluronic Acid Glow Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Anua",
+    "name": "Azelaic 3 Cica Skin Clarifying Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "retinoid vs hydration",
+   "served_as": "related_product",
+   "score_total": 0.828,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "[THE ORDINARY] Retinol 0.2% in Squalane 30ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "[THE ORDINARY] Marine Hyaluronics 30ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "hydration vs brightening; the +HA tail is not the job",
+   "served_as": "related_product",
+   "score_total": 0.7373,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Hyaluronic Acid 2% + B5 (Original Formulation)",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "Alpha Arbutin 2% + HA",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "barrier serum vs azelaic treatment; shared shelf tags are not the job",
+   "served_as": "related_product",
+   "score_total": 0.7482,
+   "anchor": {
+    "brand": "Naturium",
+    "name": "Barrier Bounce Serum",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum",
+     "exfoliating toner step",
+     "exfoliating_toner_step",
+     "hydration",
+     "firmness",
+     "radiance"
+    ]
+   },
+   "candidate": {
+    "brand": "Naturium",
+    "name": "Azelaic Acid Derivative Complex 10%",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum",
+     "exfoliating toner step",
+     "exfoliating_toner_step",
+     "hydration",
+     "firmness",
+     "radiance"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "pore ampoule vs soothing ampoule",
+   "served_as": "related_product",
+   "score_total": 0.7704,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Poremizing Fresh Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "SKIN1004",
+    "name": "Centella Teca Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "lip balm vs lip scrub",
+   "served_as": "related_product",
+   "score_total": 0.8024,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Pro Kiss'r Lip-Loving Scrubstick",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "lip comfort",
+     "lip_comfort"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "lip oil vs lip scrub",
+   "served_as": "related_product",
+   "score_total": 0.8025,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Fenty Treatz Hydrating + Strengthening Lip Oil — Cacao",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Pro Kiss'r Lip-Loving Scrubstick",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "lip comfort",
+     "lip_comfort"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "bath soak vs massage oil",
+   "served_as": "related_product",
+   "score_total": 0.783,
+   "anchor": {
+    "brand": "Lizush",
+    "name": "CBD Grapefruit Natural Bath Salt Soak with CBD. Made with Dead sea, Epsom and Himalayan salts (THC free)",
+    "category": "body care",
+    "category_taxonomy": [
+     "body care",
+     "body routine",
+     "body_routine",
+     "aromatherapy"
+    ]
+   },
+   "candidate": {
+    "brand": "Lizush",
+    "name": "Aromatherapy Eucalyptus Massage Oil, Natural Relaxing Body Massage Oil",
+    "category": "body care",
+    "category_taxonomy": [
+     "body care",
+     "body routine",
+     "body_routine",
+     "aromatherapy"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "beard oil vs perfume",
+   "served_as": "related_product",
+   "score_total": 0.8415,
+   "anchor": {
+    "brand": "Tomford Beauty",
+    "name": "Oud Wood Conditioning Beard Oil",
+    "category": "fragrance",
+    "category_taxonomy": [
+     "fragrance",
+     "warm fragrance profiles",
+     "warm_fragrance_profiles"
+    ]
+   },
+   "candidate": {
+    "brand": "Tomford Beauty",
+    "name": "Oud Wood Eau de Parfum",
+    "category": "fragrance",
+    "category_taxonomy": [
+     "fragrance",
+     "warm fragrance profiles",
+     "warm_fragrance_profiles",
+     "floral fragrance profiles",
+     "floral_fragrance_profiles"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "bath products vs hair clips",
+   "served_as": "related_product",
+   "score_total": 0.826,
+   "anchor": {
+    "brand": "Missnella",
+    "name": "Lav Kids Bath Time Trio",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   },
+   "candidate": {
+    "brand": "Missnella",
+    "name": "Lav Kids Hair Clips Duo",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "style refresh",
+     "style_refresh"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "razor stand vs refill blades",
+   "served_as": "related_product",
+   "score_total": 0.8379,
+   "anchor": {
+    "brand": "Upcircle Beauty",
+    "name": "Safety Razor Stand",
+    "category": "body care tool",
+    "category_taxonomy": [
+     "body care tool",
+     "shaving routine",
+     "shaving_routine",
+     "refillable body-care tools",
+     "refillable_body_care_tools",
+     "plastic-free body care",
+     "plastic_free_body_care"
+    ]
+   },
+   "candidate": {
+    "brand": "Upcircle Beauty",
+    "name": "Refill Safety Razor Blades – Pack Of 10",
+    "category": "body care tool",
+    "category_taxonomy": [
+     "body care tool",
+     "shaving routine",
+     "shaving_routine",
+     "refillable body-care tools",
+     "refillable_body_care_tools"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "refill blades vs razor",
+   "served_as": "related_product",
+   "score_total": 0.8379,
+   "anchor": {
+    "brand": "Upcircle Beauty",
+    "name": "Refill Safety Razor Blades – Pack Of 10",
+    "category": "body care tool",
+    "category_taxonomy": [
+     "body care tool",
+     "shaving routine",
+     "shaving_routine",
+     "refillable body-care tools",
+     "refillable_body_care_tools"
+    ]
+   },
+   "candidate": {
+    "brand": "Upcircle Beauty",
+    "name": "Plastic-Free Safety Razor",
+    "category": "body care tool",
+    "category_taxonomy": [
+     "body care tool",
+     "shaving routine",
+     "shaving_routine",
+     "refillable body-care tools",
+     "refillable_body_care_tools",
+     "plastic-free body care",
+     "plastic_free_body_care"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "hair routine vs satin scarf",
+   "served_as": "related_product",
+   "score_total": 0.7755,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "The Rich Curls 3-Piece Curl-Defining Routine",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Fenty Hair Satin Scarf",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "style refresh",
+     "style_refresh"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "highlight fan brush vs foundation kabuki",
+   "served_as": "related_product",
+   "score_total": 0.7577,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "F42 Strobing Fan™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F83 Curved Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "E (eye) brush vs F (face) brush",
+   "served_as": "related_product",
+   "score_total": 0.7744,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "E50 Large Fluff Brush - Classic",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F42 Strobing Fan™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "highlight fan brush vs foundation kabuki",
+   "served_as": "related_product",
+   "score_total": 0.7589,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "F42 Strobing Fan™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F80 Flat Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "set_single",
+   "expected": "not_alternative",
+   "why": "5-piece vault vs one gloss",
+   "served_as": "related_product",
+   "score_total": 0.8202,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Build Your Own 5-Piece Lip Gloss Vault",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "shine finish",
+     "shine_finish",
+     "matte finish",
+     "matte_finish"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Gloss Bomb Universal Lip Luminizer — Fu$$y",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort",
+     "shine finish",
+     "shine_finish"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two perfumes",
+   "served_as": "related_product",
+   "score_total": 0.755,
+   "anchor": {
+    "brand": "Tom Ford Beauty",
+    "name": "Tobacco Vanille Eau de Parfum",
+    "category": "beauty/fragrance/perfume",
+    "category_taxonomy": [
+     "beauty/fragrance/perfume"
+    ]
+   },
+   "candidate": {
+    "brand": "Tom Ford Beauty",
+    "name": "Black Orchid Eau de Toilette",
+    "category": "beauty/fragrance/perfume",
+    "category_taxonomy": [
+     "beauty/fragrance/perfume"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two face cleansers",
+   "served_as": "competitive_alternative",
+   "score_total": 0.8314,
+   "anchor": {
+    "brand": "Clinique",
+    "name": "All About Clean Liquid Facial Soap Cleanser - Mild - 6.7 oz",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   },
+   "candidate": {
+    "brand": "Clinique",
+    "name": "All About Clean Foaming Face Cleanser with Hyaluronic Acid",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two kabuki foundation brushes",
+   "served_as": "related_product",
+   "score_total": 0.7829,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "F80 Air Flat Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F83 Curved Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two eye blending brushes",
+   "served_as": "competitive_alternative",
+   "score_total": 0.8255,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "E40 Tapered Blending Brush",
+    "category": "tool",
+    "category_taxonomy": [
+     "tool",
+     "Brush shoppers",
+     "brush_shoppers",
+     "Official-source comparison",
+     "official_source_comparison"
+    ]
+   },
+   "candidate": {
+    "brand": "Kylie Cosmetics",
+    "name": "Eyeshadow All-Over Blending Brush 07",
+    "category": "tool",
+    "category_taxonomy": [
+     "tool",
+     "Brush shoppers",
+     "brush_shoppers",
+     "Official-source comparison",
+     "official_source_comparison"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two acne serums",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7954,
+   "anchor": {
+    "brand": "Cos de BAHA",
+    "name": "only Salicylic Acid 2% Exfoliant Facial Serum with Niacinamide - BHA for Peel, Acne Spot Treatment, Pore Cleaner, Pore Refining, Resurfacing, + Alcohol Free, 1 Fl Oz (30ml)",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Cos de BAHA",
+    "name": "Alcohol Free Acne Treatment Intensive Facial Serum with Azelaic acid 5%, Niacinamide 10%, Salicylic Acid, Retinol, Tea Tree - Fast & Efficient Cystic Acne, Age-Defying Formula 1oz (30ml)",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two salicylic serums",
+   "served_as": "related_product",
+   "score_total": 0.8356,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two retinoids",
+   "served_as": "related_product",
+   "score_total": 0.771,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Granactive Retinoid 2% Emulsion for Wrinkles and Uneven Texture",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   },
+   "candidate": {
+    "brand": "the ordinary",
+    "name": "Granactive Retinoid 5% in Squalane",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two acid exfoliating toners",
+   "served_as": "related_product",
+   "score_total": 0.7616,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Refresh ABC Daily Toner (AHA BHA Vitamin C)",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "AHA 7 Whitehead Power Liquid",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two brightening toners",
+   "served_as": "related_product",
+   "score_total": 0.7885,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Tone Brightening Boosting Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Skin1004",
+    "name": "Hyalu-Cica Brightening Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner",
+     "beauty/skincare/toner",
+     "Toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two moisturizers; claims do not split creams",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7581,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Hyalu-Cica Moisture Cream",
+    "category": "Moisturizer",
+    "category_taxonomy": [
+     "beauty/skincare/moisturizer",
+     "Moisturizer"
+    ]
+   },
+   "candidate": {
+    "brand": "Round Lab",
+    "name": "Pine Calming Cica Lotion",
+    "category": "Moisturizer",
+    "category_taxonomy": [
+     "beauty/skincare/moisturizer",
+     "Moisturizer"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two lip balms; actives do not split balms",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7874,
+   "anchor": {
+    "brand": "Esmi",
+    "name": "Hydrating Hyaluronic Lip Balm",
+    "category": "balm",
+    "category_taxonomy": [
+     "balm"
+    ]
+   },
+   "candidate": {
+    "brand": "Esmi",
+    "name": "Plumping Peptide Lip Balm",
+    "category": "balm",
+    "category_taxonomy": [
+     "balm"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "a refill is the product, not an accessory",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7825,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 6",
+    "category": "sunscreen",
+    "category_taxonomy": [
+     "sunscreen",
+     "exfoliating toner step",
+     "exfoliating_toner_step",
+     "hydration",
+     "firmness",
+     "radiance"
+    ]
+   },
+   "candidate": {
+    "brand": "Naturium",
+    "name": "Dew-Glow Moisturizer SPF 50",
+    "category": "sunscreen",
+    "category_taxonomy": [
+     "sunscreen",
+     "exfoliating toner step",
+     "exfoliating_toner_step",
+     "hydration",
+     "firmness",
+     "radiance"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two face sunscreens",
+   "served_as": "competitive_alternative",
+   "score_total": 0.8676,
+   "anchor": {
+    "brand": "La Roche-Posay",
+    "name": "Anthelios Ultra Light Fluid Face Sunscreen SPF 60",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   },
+   "candidate": {
+    "brand": "La Roche-Posay",
+    "name": "Anthelios Mineral Ultra-Light Face Sunscreen Fluid SPF 50",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two lip balms",
+   "served_as": "competitive_alternative",
+   "score_total": 0.8387,
+   "anchor": {
+    "brand": "Upcircle Beauty",
+    "name": "Lip Balm Bauble",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort"
+    ]
+   },
+   "candidate": {
+    "brand": "Naturium",
+    "name": "Phyto-Glow Lip Balm Peach",
+    "category": "lip treatment",
+    "category_taxonomy": [
+     "lip treatment",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort",
+     "shine finish",
+     "shine_finish"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two anti-dandruff shampoos",
+   "served_as": "related_product",
+   "score_total": 0.8539,
+   "anchor": {
+    "brand": "Head & Shoulders",
+    "name": "Tea Tree Oil Anti-Dandruff Shampoo, 24/7 Dandruff Protection, with Zinc Pyrithione",
+    "category": "shampoo",
+    "category_taxonomy": [
+     "shampoo"
+    ]
+   },
+   "candidate": {
+    "brand": "Head & Shoulders",
+    "name": "Classic Clean Anti-Dandruff Shampoo, 24/7 Dandruff Protection, Zinc Pyrithione",
+    "category": "shampoo",
+    "category_taxonomy": [
+     "shampoo"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two soothing ampoules",
+   "served_as": "related_product",
+   "score_total": 0.7572,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Probio-Cica Intensive Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "SKIN1004",
+    "name": "Tea-Trica Relief Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "retinoid vs plain squalane; \"for skin and hair\" is still skin",
+   "served_as": "related_product",
+   "score_total": 0.7556,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Granactive Retinoid 5% in Squalane",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "100% Plant-Derived Squalane for Skin and Hair Hydration",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "face vitamin C serum vs eye serum",
+   "served_as": "related_product",
+   "score_total": 0.7573,
+   "anchor": {
+    "brand": "Beekman 1802",
+    "name": "Golden Booster Amla Berry Vitamin C Brightening Serum - 0.5 oz",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   },
+   "candidate": {
+    "brand": "Beekman 1802",
+    "name": "Dewy Eyed Illuminating & Depuffing Eye Serum - 0.5 oz",
+    "category": "beauty",
+    "category_taxonomy": [
+     "beauty"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "glutathione brightening vs pore serum",
+   "served_as": "related_product",
+   "score_total": 0.7889,
+   "anchor": {
+    "brand": "JUNGSAEMMOOL",
+    "name": "BeginS by JUNG SAEM MOOL Pink Guava Glutathione Trace Serum (5ml Trace Cream included)",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   },
+   "candidate": {
+    "brand": "JUNGSAEMMOOL",
+    "name": "Begins by JUNG SAEM MOOL Pore Perfecting Serum 30ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two azelaic serums; a calming claim does not split them",
+   "served_as": "competitive_alternative",
+   "score_total": 0.8148,
+   "anchor": {
+    "brand": "TIRTIR Global",
+    "name": "Azelaic Acid 12% Serum",
+    "category": "beauty/skincare/treat/treatment",
+    "category_taxonomy": [
+     "beauty/skincare/treat/treatment"
+    ]
+   },
+   "candidate": {
+    "brand": "Medicube",
+    "name": "Azelaic Acid 16 Calming Serum",
+    "category": "beauty/skincare/treat/treatment",
+    "category_taxonomy": [
+     "beauty/skincare/treat/treatment"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two AHA exfoliating toners",
+   "served_as": "competitive_alternative",
+   "score_total": 0.728,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Glycolic Acid 7% Exfoliating Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "AHA 7 Whitehead Power Liquid",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "same heartleaf soothing line, pad vs toner",
+   "served_as": "related_product",
+   "score_total": 0.802,
+   "anchor": {
+    "brand": "Anua",
+    "name": "[ANUA] Heartleaf 77% Clear Pad 160ml",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Anua",
+    "name": "[ANUA] Heartleaf 77% Soothing Toner 250ml | 500ml",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "same PDRN HA line, toner vs pad",
+   "served_as": "related_product",
+   "score_total": 0.8032,
+   "anchor": {
+    "brand": "Anua",
+    "name": "PDRN 100 Hyaluronic Acid Booster Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Anua",
+    "name": "PDRN 100 Hyaluronic Acid Glow Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "a sunscreen sold with a case is a sunscreen",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7364,
+   "anchor": {
+    "brand": "INNBEAUTY PROJECT",
+    "name": "Mineral Sun Glow SPF",
+    "category": "beauty/skincare/sunscreen",
+    "category_taxonomy": [
+     "beauty/skincare/sunscreen"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Arcane Hydra Vizor Mystery Box Moisturizer Sunscreen + Collector's Case",
+    "category": "beauty/skincare/sun/sunscreen",
+    "category_taxonomy": [
+     "beauty/skincare/sun/sunscreen"
+    ]
+   }
+  },
+  {
+   "family": "set_single",
+   "expected": "not_alternative",
+   "why": "one leave-in vs a 3-piece routine",
+   "served_as": "related_product",
+   "score_total": 0.8027,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "The Water Boi Reparative Leave-In Detangling Conditioner Spray",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "heat styling prep",
+     "heat_styling_prep",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "The Rich Curls 3-Piece Curl-Defining Routine",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "a toner named for no function fails open",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7445,
+   "anchor": {
+    "brand": "Round Lab",
+    "name": "1025 Dokdo Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Medicube",
+    "name": "AGE-R Glutathione Glow Milk Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "arbutin and niacinamide serums are both brightening",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7503,
+   "anchor": {
+    "brand": "Beauty of Joseon",
+    "name": "Glow Deep Serum : Rice + Alpha-Arbutin",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum",
+     "Serum"
+    ]
+   },
+   "candidate": {
+    "brand": "The Inkey List",
+    "name": "10% Niacinamide Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two centella ampoules; \"Hyalu-Cica\" leads with both actives",
+   "served_as": "related_product",
+   "score_total": 0.7759,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Centella Ampoule",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Skin1004",
+    "name": "Hyalu-Cica First Ampoule",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "BHA clear pad vs AHA/BHA daily toner",
+   "served_as": "related_product",
+   "score_total": 0.7306,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "One Step Original Clear Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Refresh ABC Daily Toner (AHA BHA Vitamin C)",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two Hydrium hydrating ampoules",
+   "served_as": "related_product",
+   "score_total": 0.7803,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Hydrium Centella Aqua Soothing Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Hydrium Triple Hyaluronic Moisture Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "retinol ampoule vs night repair ampoule",
+   "served_as": "related_product",
+   "score_total": 0.8022,
+   "anchor": {
+    "brand": "MISSHA",
+    "name": "MISSHA Time Revolution Retinol 500 Shot Ampoule 10ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   },
+   "candidate": {
+    "brand": "MISSHA",
+    "name": "MISSHA Time Revolution Night Repair Ampoule 5X 70ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "pore serum vs niacinamide booster",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7351,
+   "anchor": {
+    "brand": "INNBEAUTY PROJECT",
+    "name": "Pore Refine",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Paula's Choice",
+    "name": "10% Niacinamide Booster",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two cica toners (human_approved)",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7567,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Cloudy Mist",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Medicube",
+    "name": "Exosome Cica Calming Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two hyaluronic serums (human_approved)",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7479,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Blue Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Anua",
+    "name": "PDRN Hyaluronic Acid Capsule 100 Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two vitamin C serums",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7583,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Multi-Antioxidant Radiance Serum with Vitamin C and Ginseng",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Refresh AHA/BHA Vitamin C Booster Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two anti-wrinkle serums; tail claims count when the head has none",
+   "served_as": "related_product",
+   "score_total": 0.7891,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Multi-Peptide + Copper Peptides 1% for Wrinkles and Skin Elasticity",
+    "category": "Serum",
+    "category_taxonomy": [
+     "Serum",
+     "skincare"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "GF 15% Serum for Visible Skin Repair and Wrinkles",
+    "category": "Serum",
+    "category_taxonomy": [
+     "Serum",
+     "skincare"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "B5 is a hydrating active",
+   "served_as": "competitive_alternative",
+   "score_total": 0.729,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Cloudy Mist",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "COSRX 5 PDRN B5 Vital Soothing Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "same PDRN line, pad vs toner",
+   "served_as": "related_product",
+   "score_total": 0.8129,
+   "anchor": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] PDRN Pink Collagen Toning Gel Toner Pad 120ml (70 Pads)",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] PDRN Pink Niacinamide Milky Toner 150ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two sun serums are sunscreens, not treatments",
+   "served_as": "related_product",
+   "score_total": 0.8429,
+   "anchor": {
+    "brand": "VELY VELY",
+    "name": "[VELY VELY] Vitamin Dark Spot Tone-up Sun Serum SPF 50+ PA++++ 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "VELY VELY",
+    "name": "[VELY VELY] Collagen Sun Serum SPF 50+ PA++++  30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "succinic (acne) vs retinol",
+   "served_as": "related_product",
+   "score_total": 0.8231,
+   "anchor": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] Red Succinic Acid Serum 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] Deep Vita A Retinol Serum 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "rinse-out deep conditioner vs leave-in spray",
+   "served_as": "related_product",
+   "score_total": 0.8155,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "The Richer One Moisture Repair Deep Conditioner",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "The Water Boi Reparative Leave-In Detangling Conditioner Spray",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "heat styling prep",
+     "heat_styling_prep",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "contour brush vs foundation kabuki",
+   "served_as": "related_product",
+   "score_total": 0.7614,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "F11 Soft Sculpt Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F80 Flat Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "a powder pouch is not a powder",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7606,
+   "anchor": {
+    "brand": "Rare Beauty",
+    "name": "Powder Pouch",
+    "category": "beauty/makeup/face/powder",
+    "category_taxonomy": [
+     "beauty/makeup/face/powder"
+    ]
+   },
+   "candidate": {
+    "brand": "Jurlique",
+    "name": "Rose Silk Finishing Powder",
+    "category": "beauty/makeup/face/powder",
+    "category_taxonomy": [
+     "beauty/makeup/face/powder"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "a gloss holder is not a gloss",
+   "served_as": "related_product",
+   "score_total": 0.84,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Fuzzy Gloss Bomb Holder",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "refillable lip color",
+     "refillable_lip_color",
+     "color payoff",
+     "color_payoff",
+     "shine finish",
+     "shine_finish"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Gloss Bomb Universal Lip Luminizer — Fu$$y",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort",
+     "shine finish",
+     "shine_finish"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "tea tree blemish pad vs hydrating tonic",
+   "served_as": "related_product",
+   "score_total": 0.7784,
+   "anchor": {
+    "brand": "THE FACE SHOP",
+    "name": "THE FACE SHOP Tea Tree Toner 70 Pads",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   },
+   "candidate": {
+    "brand": "THE FACE SHOP",
+    "name": "THE FACE SHOP The Therapy Hydrating Tonic Treatment 150ml",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "moisture pad vs BHA clear pad",
+   "served_as": "related_product",
+   "score_total": 0.799,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "One Step Moisture Up Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "One Step Original Clear Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "leave-in vs rinse-out conditioner on a Haircare shelf",
+   "served_as": "related_product",
+   "score_total": 0.769,
+   "anchor": {
+    "brand": "Lav Kids",
+    "name": "Add Moisturising Leave In Conditioner",
+    "category": "Haircare",
+    "category_taxonomy": [
+     "beauty/haircare",
+     "Haircare"
+    ]
+   },
+   "candidate": {
+    "brand": "Lav Kids",
+    "name": "Gentle Care Conditioner",
+    "category": "beauty/haircare",
+    "category_taxonomy": [
+     "beauty/haircare",
+     "Haircare"
+    ]
+   }
+  }
+ ]
+}
