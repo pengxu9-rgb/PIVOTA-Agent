@@ -33,6 +33,7 @@
  * - below 0.55: reject or keep generated unless the relation is clearly valid.
  */
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -49,6 +50,10 @@ const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/re
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
+// Bump when the deterministic side of a verdict changes (validateRecommendationDecision,
+// the consumer-copy contract, the approval gates): a remembered negative verdict is only
+// reused under the same validator, model and rubric that produced it.
+const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v1';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
@@ -65,6 +70,21 @@ const RETRYABLE_REVIEW_ERROR_CODES = new Set(['LLM_SCHEMA_INVALID', 'LLM_TIMEOUT
 // batch would otherwise turn silently into `error` rows behind a passing job.
 const TRANSPORT_REVIEW_ERROR_CODES = new Set(['LLM_TIMEOUT', 'LLM_REQUEST_FAILED']);
 const DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS = 8;
+// Negative review memory. A single-mode reject / uncertain / low_confidence
+// verdict leaves the row `generated`; without a record of it, every rebuild
+// (which bumps updated_at) and every Cloud Run retry of the same night re-pays
+// the LLM for the same pair. The verdict is kept in provenance.ai_review_last
+// (no schema change) with a fingerprint of what the reviewer was shown, and the
+// selection skips the pair while the fingerprint matches and the verdict is
+// younger than RELGRAPH_REVIEW_NEGATIVE_TTL_DAYS. Transport/provider errors
+// carry no verdict and are never remembered.
+const NEGATIVE_MEMORY_VERDICTS = new Set(['reject', 'uncertain', 'low_confidence']);
+const DEFAULT_NEGATIVE_REVIEW_TTL_DAYS = 30;
+const MAX_NEGATIVE_REVIEW_TTL_DAYS = 365;
+// Remembered rows are paged past so they do not eat the review limit; this caps
+// how far past them one run looks (pages of --limit rows).
+const NEGATIVE_MEMORY_MAX_SCAN_PAGES = 20;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const VerdictSchema = z.object({
   verdict: z.enum(['approve', 'reject', 'uncertain']),
@@ -103,6 +123,9 @@ function usage() {
     'Rows the serving guard would suppress once approved are never approved: they move to needs_evidence',
     '(reason flag serving_guard:<reason>) without an LLM call. Exception: --allow-dupe-ai-approval overrides',
     'the guard\'s blanket ai_approved dupe quarantine, so dupes approved under it are still hidden at serving.',
+    'Single-mode --apply remembers reject/uncertain/low_confidence verdicts in provenance.ai_review_last (label_state',
+    'stays generated); the selection skips a pair whose remembered verdict has the same evidence fingerprint and is',
+    `younger than RELGRAPH_REVIEW_NEGATIVE_TTL_DAYS (default ${DEFAULT_NEGATIVE_REVIEW_TTL_DAYS}; 0 disables the skip).`,
   ].join('\n');
 }
 
@@ -553,6 +576,7 @@ async function fetchCandidates({
   anchorRefs = [],
   relationTypes = [],
   excludeRelationTypes = [],
+  offset = 0,
   queryFn = query,
 }) {
   const params = [cutoff, minScore, limit];
@@ -580,6 +604,12 @@ async function fetchCandidates({
     params.push(excludedRelationTypes);
     excludeRelationTypesSql = `AND NOT (relation_type = ANY($${params.length}::text[]))`;
   }
+  let offsetSql = '';
+  const normalizedOffset = Math.trunc(parseNumber(offset, 0, { min: 0, max: Number.MAX_SAFE_INTEGER }));
+  if (normalizedOffset > 0) {
+    params.push(normalizedOffset);
+    offsetSql = `\n      OFFSET $${params.length}::int`;
+  }
 
   const res = await queryFn(
     `
@@ -599,7 +629,7 @@ async function fetchCandidates({
         ${relationTypesSql}
         ${excludeRelationTypesSql}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
-      LIMIT $3::int
+      LIMIT $3::int${offsetSql}
     `,
     params,
   );
@@ -629,6 +659,7 @@ async function fetchSupplementsForRows(rows, queryFn = query) {
         WHERE product_key = ANY($1::text[])
            OR source_product_id = ANY($1::text[])
            OR pivota_signature_id = ANY($1::text[])
+        ORDER BY product_key, source_product_id
       `,
       [keys],
     ).catch((err) => {
@@ -643,6 +674,7 @@ async function fetchSupplementsForRows(rows, queryFn = query) {
         FROM external_product_seeds
         WHERE id = ANY($1::text[])
            OR external_product_id = ANY($1::text[])
+        ORDER BY id
       `,
       [keys],
     ).catch((err) => {
@@ -654,6 +686,7 @@ async function fetchSupplementsForRows(rows, queryFn = query) {
         SELECT *
         FROM product_beauty_attributes
         WHERE product_key = ANY($1::text[])
+        ORDER BY product_key
       `,
       [keys],
     ).catch((err) => {
@@ -674,23 +707,35 @@ async function fetchSupplementsForRows(rows, queryFn = query) {
     return existing;
   }
 
+  // One ref can match several rows: a signature is shared by every seller that
+  // lists the product. Which one the reviewer sees must not depend on row order
+  // (a price sweep touching one seller would otherwise flip the prompt and the
+  // pair fingerprint): the row matched on its own key wins, then the lowest
+  // key.
+  const chosen = new Map();
+  function assign(key, field, row, matchRank, sortKey) {
+    const supplement = ensureSupplement(key);
+    if (!supplement) return;
+    const ranks = chosen.get(supplement) || {};
+    const previous = ranks[field];
+    if (previous && (previous[0] < matchRank || (previous[0] === matchRank && previous[1] <= sortKey))) return;
+    ranks[field] = [matchRank, sortKey];
+    chosen.set(supplement, ranks);
+    supplement[field] = row;
+  }
   for (const row of catalogRes.rows || []) {
-    const targets = [row.product_key, row.source_product_id, row.pivota_signature_id].filter(Boolean);
-    for (const key of targets) {
-      const supplement = ensureSupplement(key);
-      if (supplement) supplement.catalog = row;
-    }
+    const sortKey = `${row.product_key || ''}\u0000${row.source_product_id || ''}`;
+    [row.product_key, row.source_product_id, row.pivota_signature_id].forEach((key, matchRank) => {
+      if (key) assign(key, 'catalog', row, matchRank, sortKey);
+    });
   }
   for (const row of seedRes.rows || []) {
-    const targets = [row.id, row.external_product_id].filter(Boolean);
-    for (const key of targets) {
-      const supplement = ensureSupplement(key);
-      if (supplement) supplement.external_seed = row;
-    }
+    [row.id, row.external_product_id].forEach((key, matchRank) => {
+      if (key) assign(key, 'external_seed', row, matchRank, String(row.id || ''));
+    });
   }
   for (const row of attrsRes.rows || []) {
-    const supplement = ensureSupplement(row.product_key);
-    if (supplement) supplement.beauty_attrs = row;
+    if (row.product_key) assign(row.product_key, 'beauty_attrs', row, 0, String(row.product_key));
   }
 
   return supplements;
@@ -739,6 +784,179 @@ function buildReviewPrompt(evidence, { factualQuotes = false } = {}) {
     'Candidate evidence JSON:',
     JSON.stringify(evidence, null, 2),
   ].join('\n');
+}
+
+function negativeReviewTtlDays(env = process.env) {
+  return parseNumber(env.RELGRAPH_REVIEW_NEGATIVE_TTL_DAYS, DEFAULT_NEGATIVE_REVIEW_TTL_DAYS, {
+    min: 0,
+    max: MAX_NEGATIVE_REVIEW_TTL_DAYS,
+  });
+}
+
+function canonicalJsonValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])]));
+  }
+  return value;
+}
+
+// Bookkeeping timestamps: *_at / *At / *_until keys anywhere in the evidence.
+// The sources stamp them from the product row (source_refs[].observed_at,
+// ingredient_evidence[].observed_at and price_evidence.observed_at all fall back
+// to the row's updated_at; intel freshness.generated_at to the intel run), so
+// they move whenever any job touches a row, with no change to what it says.
+const BOOKKEEPING_TIMESTAMP_KEY = /(?:_at|At|_until)$/;
+
+function withoutBookkeepingTimestamps(value) {
+  if (Array.isArray(value)) return value.map(withoutBookkeepingTimestamps);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value)
+      .filter((key) => !BOOKKEEPING_TIMESTAMP_KEY.test(key))
+      .map((key) => [key, withoutBookkeepingTimestamps(value[key])]));
+  }
+  return value;
+}
+
+// The fingerprint is the reviewer prompt itself, built from the evidence the
+// model is shown (relation_type, both snapshots, scores, why/tradeoffs/
+// watchouts, source_refs, price evidence, curated pair evidence and the
+// catalog / seed / beauty-attribute supplements) with object keys sorted. Any
+// change to what the model would read — including the rubric text — re-opens
+// the pair, except bookkeeping timestamps (above): the affected-products
+// selector picks anchors precisely because their updated_at moved, so keeping
+// those stamps would make nearly every remembered pair look new the next night.
+// A dupe keeps price_evidence.observed_at: its verdict depends on price
+// freshness.
+function reviewPairFingerprint(evidence = {}) {
+  const material = withoutBookkeepingTimestamps({ ...asObject(evidence), id: undefined });
+  delete material.id;
+  if (normalizeString(material.relation_type, 80).toLowerCase() === 'dupe') {
+    const observedAt = asObject(asObject(evidence).price_evidence).observed_at;
+    if (observedAt != null) material.price_evidence = { ...asObject(material.price_evidence), observed_at: observedAt };
+  }
+  const prompt = buildReviewPrompt(canonicalJsonValue(material));
+  return crypto.createHash('sha256').update(prompt).digest('hex');
+}
+
+function negativeRationaleCode(decision = {}) {
+  const raw = decision.verdict === 'low_confidence'
+    ? 'below_min_approval_confidence'
+    : decision.utility_rejection || `model_${decision.verdict}_${decision.relationship_kind || 'none'}`;
+  return normalizeString(raw, 80).toLowerCase().replace(/[^a-z0-9_:-]+/g, '_');
+}
+
+function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewedAt, minApprovalConfidence = null } = {}) {
+  return {
+    verdict: decision.verdict,
+    confidence: Number.isFinite(Number(decision.confidence)) ? Number(Number(decision.confidence).toFixed(4)) : null,
+    rationale_code: negativeRationaleCode(decision),
+    relationship_kind: normalizeString(decision.relationship_kind, 40) || null,
+    model: normalizeString(model, 120) || null,
+    reviewer: REVIEWER_ID,
+    rubric: RUBRIC_VERSION,
+    validator_version: REVIEW_VALIDATOR_VERSION,
+    // A low_confidence verdict is only final for the floor it missed.
+    ...(decision.verdict === 'low_confidence' && Number.isFinite(Number(minApprovalConfidence))
+      ? { min_approval_confidence: Number(minApprovalConfidence) }
+      : {}),
+    reviewed_at: reviewedAt,
+    pair_fingerprint: fingerprint,
+  };
+}
+
+function isRememberedNegative(row, fingerprint, {
+  ttlDays = DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
+  nowMs = Date.now(),
+  minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE,
+  model = null,
+} = {}) {
+  if (!(ttlDays > 0) || !fingerprint) return false;
+  const memo = asObject(asObject(row && row.provenance).ai_review_last);
+  if (!NEGATIVE_MEMORY_VERDICTS.has(memo.verdict)) return false;
+  if (memo.pair_fingerprint !== fingerprint) return false;
+  // Another model, validator or rubric may well decide differently; an unknown
+  // current model never matches a recorded one.
+  if ((memo.model || null) !== (normalizeString(model, 120) || null)) return false;
+  if (memo.validator_version !== REVIEW_VALIDATOR_VERSION || memo.rubric !== RUBRIC_VERSION) return false;
+  if (memo.verdict === 'low_confidence' && Number.isFinite(Number(memo.min_approval_confidence))
+      && minApprovalConfidence < Number(memo.min_approval_confidence)) {
+    return false;
+  }
+  const reviewedMs = new Date(memo.reviewed_at || '').getTime();
+  // A verdict stamped in the future (clock trouble) is not trusted beyond a day.
+  if (!Number.isFinite(reviewedMs) || reviewedMs > nowMs + DAY_MS) return false;
+  return nowMs - reviewedMs < ttlDays * DAY_MS;
+}
+
+// Leaves label_state, updated_at and everything the reviewer reads untouched:
+// the row is still a generated candidate, only now with its last verdict. The
+// fingerprint makes the record self-checking — if the row has changed since,
+// the next selection computes a different one and reviews it again.
+async function rememberNegativeVerdict(row, memo, queryFn = query) {
+  const res = await queryFn(
+    `
+      UPDATE relationship_candidate_labels
+      SET
+        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review_last}', $2::jsonb, true),
+        reviewed_at = $3::timestamptz
+      WHERE id = $1
+        AND label_state = 'generated'
+      RETURNING id
+    `,
+    [row.id, JSON.stringify(memo), memo.reviewed_at],
+  );
+  return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
+}
+
+// Pages through fetchCandidates in its own order until `limit` rows that are not
+// remembered negatives are found. Evidence (with supplements) is built here,
+// once, and handed to the reviewer, so the fingerprint stored with a verdict is
+// computed from exactly the evidence that verdict was given on.
+async function selectReviewCandidates({
+  limit,
+  fetchOptions = {},
+  queryFn = query,
+  memory = null,
+  supplementsFn = fetchSupplementsForRows,
+}) {
+  const rows = [];
+  const prepared = new Map();
+  const skippedIds = [];
+  const seen = new Set();
+  let scanned = 0;
+  let offset = 0;
+  let truncated = false;
+  const maxScan = limit * NEGATIVE_MEMORY_MAX_SCAN_PAGES;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    const page = await fetchCandidates({ ...fetchOptions, limit, offset, queryFn });
+    offset += page.length;
+    const fresh = page.filter((row) => row && row.id && !seen.has(row.id));
+    for (const row of fresh) seen.add(row.id);
+    scanned += fresh.length;
+    if (fresh.length) {
+      // eslint-disable-next-line no-await-in-loop
+      const supplements = await supplementsFn(fresh, queryFn);
+      for (const row of fresh) {
+        if (rows.length >= limit) break;
+        const evidence = buildEvidence(row, supplements);
+        const fingerprint = reviewPairFingerprint(evidence);
+        if (memory && isRememberedNegative(row, fingerprint, memory)) {
+          skippedIds.push(row.id);
+          continue;
+        }
+        rows.push(row);
+        prepared.set(row.id, { evidence, fingerprint });
+      }
+    }
+    if (!memory || rows.length >= limit || page.length < limit || fresh.length === 0) break;
+    if (offset >= maxScan) {
+      truncated = true;
+      break;
+    }
+  }
+  return { rows, prepared, skippedIds, scanned, truncated };
 }
 
 function reviewErrorCode(err) {
@@ -1164,6 +1382,8 @@ async function runReview({
   provider = null,
   reviewMode = process.env.RELGRAPH_AI_REVIEW_MODE || 'single',
   consensusProviders = null,
+  negativeTtlDays = negativeReviewTtlDays(),
+  clock = () => Date.now(),
 } = {}) {
   if (apply && process.env.RELGRAPH_AI_REVIEW_APPLY !== '1') {
     throw new Error('--apply requested but RELGRAPH_AI_REVIEW_APPLY=1 is not set');
@@ -1194,21 +1414,45 @@ async function runReview({
   const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
   // FAIL CLOSED: if a scope was requested but resolved to empty, review NOTHING — never silently fall
   // back to the global top-N backlog (which, in --apply mode, would approve unrelated candidates).
-  const rows =
-    anchorScopeRequested && anchorRefs.length === 0
-      ? []
-      : await fetchCandidates({
-          cutoff,
-          minScore,
-          limit,
-          ids,
-          anchorRefs,
-          relationTypes: includedRelationTypes,
-          excludeRelationTypes: excludedRelationTypes,
-          queryFn,
-        });
-  const supplements = consensus ? new Map() : await fetchSupplementsForRows(rows, queryFn);
+  const fetchOptions = {
+    cutoff,
+    minScore,
+    ids,
+    anchorRefs,
+    relationTypes: includedRelationTypes,
+    excludeRelationTypes: excludedRelationTypes,
+  };
+  // Negative memory is a single-mode mechanism: consensus records its own
+  // dispositions (needs_evidence), and a single-model verdict must not stop
+  // the cross-provider reviewer from looking at a pair.
+  const memoryTtlDays = consensus ? 0 : parseNumber(negativeTtlDays, DEFAULT_NEGATIVE_REVIEW_TTL_DAYS, {
+    min: 0,
+    max: MAX_NEGATIVE_REVIEW_TTL_DAYS,
+  });
   const verdictReplay = readVerdictsFile(verdictsFile);
+  // The skip compares the model that gave a verdict with the one about to
+  // review, so in single mode the provider is resolved before selection. If it
+  // cannot be built (missing config), nothing is skipped and the same error is
+  // raised below once there is a row to review — as before.
+  let singleProvider = consensus || verdictReplay ? null : provider;
+  if (!singleProvider && !consensus && !verdictReplay && memoryTtlDays > 0) {
+    try {
+      singleProvider = createProviderFromEnv('relationship_graph_ai_review');
+    } catch (_err) {
+      singleProvider = null;
+    }
+  }
+  const currentModel = (singleProvider && singleProvider.__meta && singleProvider.__meta.model) || null;
+  const memory = memoryTtlDays > 0
+    ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
+    : null;
+  let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
+  if (!(anchorScopeRequested && anchorRefs.length === 0)) {
+    selection = consensus
+      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit, queryFn }) }
+      : await selectReviewCandidates({ limit, fetchOptions, queryFn, memory });
+  }
+  const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
   if (independentProviders && (independentProviders.length !== 2 ||
       !validReviewerIdentity(independentProviders[0].__meta, 'openai') ||
@@ -1217,15 +1461,18 @@ async function runReview({
   }
   const llmProvider = consensus || verdictReplay || rows.length === 0
     ? null
-    : (provider || createProviderFromEnv('relationship_graph_ai_review'));
+    : (singleProvider || createProviderFromEnv('relationship_graph_ai_review'));
 
   const decisions = [];
+  let negativeMemoryRecordedCount = 0;
+  let negativeMemoryWriteErrors = 0;
   let appliedCount = 0;
   let guardBlockedAppliedCount = 0;
   let consensusDispositionAppliedCount = 0;
   const lines = [];
   async function reviewRow(row, index) {
-    const evidence = buildEvidence(row, consensus ? new Map() : supplements);
+    const prepared = selection.prepared.get(row.id) || null;
+    const evidence = prepared ? prepared.evidence : buildEvidence(row, new Map());
     // eslint-disable-next-line no-await-in-loop
     let decision = null;
     const guardReasons = servingGuardReasonsIfApproved(row, { allowDupeAiApproval });
@@ -1271,6 +1518,32 @@ async function runReview({
       appliedRow = await applyConsensusDisposition(row, decision, queryFn);
       if (appliedRow) consensusDispositionAppliedCount += 1;
     }
+    let negativeMemoryRecorded = false;
+    // Only a verdict this model just gave is remembered: not a replayed file
+    // (no model to attribute it to) and never a provider/transport error.
+    if (apply && !consensus && !verdictReplay && prepared && NEGATIVE_MEMORY_VERDICTS.has(decision.verdict)) {
+      // The memory is a cost saver, not part of the verdict: a failed write is
+      // counted and the review carries on (the pair is simply reviewed again).
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const remembered = await rememberNegativeVerdict(row, buildNegativeReviewMemo(decision, {
+          fingerprint: prepared.fingerprint,
+          // Known limit (pre-existing): a provider built with a fallback reports
+          // the PRIMARY provider's __meta, so a verdict the fallback model gave
+          // is recorded under the primary model's name.
+          model: llmProvider && llmProvider.__meta && llmProvider.__meta.model,
+          reviewedAt: new Date(clock()).toISOString(),
+          minApprovalConfidence: confidenceFloor,
+        }), queryFn);
+        if (remembered) {
+          negativeMemoryRecorded = true;
+          negativeMemoryRecordedCount += 1;
+        }
+      } catch (err) {
+        negativeMemoryWriteErrors += 1;
+        process.stderr.write(`relationship graph AI review: negative memory write failed for ${row.id}: ${normalizeString(err && err.message, 300)}\n`);
+      }
+    }
     const outputRow = {
       id: row.id,
       anchor_ref: row.anchor_ref,
@@ -1293,6 +1566,7 @@ async function runReview({
       old_label_state: 'generated',
       new_label_state: targetLabelState(decision.verdict),
       applied: Boolean(appliedRow),
+      ...(negativeMemoryRecorded ? { negative_memory_recorded: true } : {}),
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
     };
@@ -1416,6 +1690,12 @@ async function runReview({
     consensus_disposition_applied_count: consensusDispositionAppliedCount,
     applied_count: appliedCount + guardBlockedAppliedCount + consensusDispositionAppliedCount,
     approval_rate: Number(approvalRate.toFixed(4)),
+    negative_memory_ttl_days: memoryTtlDays,
+    negative_memory_scanned_count: selection.scanned,
+    negative_memory_skipped_count: selection.skippedIds.length,
+    negative_memory_scan_truncated: Boolean(selection.truncated),
+    negative_memory_recorded_count: negativeMemoryRecordedCount,
+    negative_memory_write_errors: negativeMemoryWriteErrors,
     reviewer: consensus ? 'gpt-gemini-consensus' : REVIEWER_ID,
     rubric: RUBRIC_VERSION,
   };
@@ -1471,6 +1751,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
+  REVIEW_VALIDATOR_VERSION,
   MIN_AI_APPROVAL_CONFIDENCE,
   REVIEWER_ID,
   RUBRIC_VERSION,
@@ -1489,9 +1771,15 @@ module.exports = {
   createConsensusProviders,
   reviewWithConsensus,
   consensusCas,
+  buildNegativeReviewMemo,
   fetchCandidates,
   fetchSupplementsForRows,
+  isRememberedNegative,
+  negativeReviewTtlDays,
   parseArgs,
+  rememberNegativeVerdict,
+  reviewPairFingerprint,
+  selectReviewCandidates,
   runReview,
   servingGuardReasonsIfApproved,
 };

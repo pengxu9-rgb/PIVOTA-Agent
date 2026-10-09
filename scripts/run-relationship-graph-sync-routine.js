@@ -9,7 +9,10 @@ const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics }
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
-const { APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN } = require('./run-relationship-graph-routine-job');
+const {
+  APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN,
+  legacySuppressionWarning,
+} = require('./run-relationship-graph-routine-job');
 const {
   APPLY_CONFIRM_TOKEN: RENEWAL_CONFIRM_TOKEN,
   DEFAULT_WINDOW_DAYS: DEFAULT_RENEWAL_WINDOW_DAYS,
@@ -181,9 +184,17 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     : path.join(outDir, 'affected-products.json');
   const syncOut = resolvePathMaybeRelative(argValue(argv, 'sync-out') || path.join(outDir, 'catalog_sync.json'), cwd);
   const routineOutDir = resolvePathMaybeRelative(argValue(argv, 'routine-out-dir') || path.join(outDir, 'routine'), cwd);
+  const runStartedAtInput = normalizeString(argValue(argv, 'run-started-at'), 80);
+  if (runStartedAtInput && Number.isNaN(new Date(runStartedAtInput).getTime())) {
+    throw new Error(`invalid --run-started-at timestamp: ${runStartedAtInput}`);
+  }
 
   return {
     cutoff,
+    // Stamped before the first step (renewal), so the routine's serving audit
+    // can tell the rows this run approved or renewed from older ones. The cron
+    // passes an earlier start on a Cloud Run retry; see its runScopeStartedAt.
+    runStartedAt: new Date(runStartedAtInput || now).toISOString(),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     outDir,
     summaryOut: resolvePathMaybeRelative(argValue(argv, 'summary-out') || path.join(outDir, 'sync_routine_summary.json'), cwd),
@@ -242,6 +253,16 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       argValue(argv, 'fail-on-serving-suppression-reasons'),
       DEFAULT_FAIL_REASONS,
     ),
+    // Unset: the routine's own legacy-ceiling defaults apply.
+    maxLegacySuppressedPct: parseNumber(argValue(argv, 'max-legacy-suppressed-pct'), null, { min: 0, max: 100 }),
+    maxLegacySuppressedRows: parseNumber(argValue(argv, 'max-legacy-suppressed-rows'), null, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
+    minLegacyRowsForPct: parseNumber(argValue(argv, 'min-legacy-rows-for-pct'), null, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
     dbLock: !hasFlag(argv, 'no-db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key'), 500),
     lockStaleAfterMinutes: parseNumber(
@@ -320,6 +341,25 @@ function serializableOptions(options = {}) {
     run_trigger: options.runTrigger || null,
     run_ledger_fail_closed: Boolean(options.runLedgerFailClosed),
   };
+}
+
+// The routine child's stderr only reaches this process as a tail, so its
+// legacy-suppression WARNING is re-emitted here, where the container's log
+// sink sees it, and kept in the summary/ledger next to the run's own numbers.
+function surfaceServingAuditScope(summary, routine = {}) {
+  const scope = routine && routine.serving_audit_scope;
+  if (!scope || typeof scope !== 'object') return;
+  summary.serving_audit_scope = scope;
+  const warning = legacySuppressionWarning(scope);
+  if (!warning) return;
+  summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+  if (!summary.warnings.includes(warning.message)) summary.warnings.push(warning.message);
+  process.stderr.write(`${JSON.stringify({
+    severity: 'WARNING',
+    run_id: summary.run_id,
+    ...warning,
+    run_suppressed_rows: scope.run_suppressed_rows,
+  })}\n`);
 }
 
 function buildSyncRoutineSteps(options = {}) {
@@ -449,6 +489,10 @@ function buildSyncRoutineSteps(options = {}) {
     '--db-lock-heartbeat-ms',
     String(options.dbLockHeartbeatMs),
   ];
+  pushArg(routineArgs, 'run-started-at', options.runStartedAt);
+  pushArg(routineArgs, 'max-legacy-suppressed-pct', options.maxLegacySuppressedPct);
+  pushArg(routineArgs, 'max-legacy-suppressed-rows', options.maxLegacySuppressedRows);
+  pushArg(routineArgs, 'min-legacy-rows-for-pct', options.minLegacyRowsForPct);
   if (options.stepTimeoutMs) {
     routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
   } else {
@@ -632,6 +676,7 @@ async function runSyncRoutine(
       if (routinePath && fs.existsSync(routinePath)) {
         const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
+        surfaceServingAuditScope(summary, routine);
       }
     } catch (error) {
       summary.ok = false;
