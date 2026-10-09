@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { ProductCategorySchema } = require('../schemas/productAttributesV0');
+const { normalizeBuyerRegion } = require('../../auroraBff/buyerRegion');
 
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
@@ -108,13 +109,21 @@ function explodeVariantsToSkus(product) {
   return [product];
 }
 
+// The kit's market as a buyer market for the recall: ISO-2 or nothing. The plan's `market` is the
+// buyer's (the look replicator serves JP and US packs), so it travels on the inner invoke as
+// `metadata.market`; a plan with no usable market sends none and the recall is silent.
+function buyerMarketForRecall(market) {
+  return normalizeBuyerRegion(market) || null;
+}
+
 async function getCandidates(input) {
   const { lookSpec } = input;
   const limitPerCategory = input.limitPerCategory ?? 80;
+  const buyerMarket = buyerMarketForRecall(input.market);
 
   const fetcher =
     input.fetcher ??
-    (async ({ query, limit }) => {
+    (async ({ query, limit, market }) => {
       assertRealCatalogRuntimeConfigured();
 
       const payload = {
@@ -131,7 +140,11 @@ async function getCandidates(input) {
           },
           metadata: {},
         },
-        metadata: { source: 'layer3-kit' },
+        metadata: {
+          source: 'layer3-kit',
+          invoked_by: 'layer3.getCandidates',
+          ...(market ? { market } : {}),
+        },
       };
 
       const resp = await axios.post(`${PIVOTA_API_BASE}/agent/shop/v1/invoke`, payload, {
@@ -150,7 +163,7 @@ async function getCandidates(input) {
     categories.map(async (category) => {
       try {
         const query = buildQueryForCategory(category, lookSpec);
-        const products = await fetcher({ query, limit: limitPerCategory });
+        const products = await fetcher({ query, limit: limitPerCategory, market: buyerMarket });
         const expanded = products.flatMap((p) => explodeVariantsToSkus(p));
         const filtered = expanded.filter((p) => matchesCategory(category, p));
         results[category] = filtered.slice(0, limitPerCategory);

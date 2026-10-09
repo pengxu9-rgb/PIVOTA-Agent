@@ -27,6 +27,9 @@ function parseArgs(argv) {
     authToken: envAuthToken,
     agentApiKey: envAgentApiKey,
     source: process.env.SEARCH_MATRIX_SOURCE || 'search',
+    // The market this check exercises, declared — see search_stability_matrix.js.
+    market: String(process.env.SEARCH_MATRIX_MARKET || 'US').trim().toUpperCase(),
+    invokedBy: process.env.SEARCH_MATRIX_INVOKED_BY || 'ci:check_budget_fx_freshness',
     query: process.env.BUDGET_FX_PREFLIGHT_QUERY || 'vitamin c serum under €30',
     timeoutMs: Number(process.env.BUDGET_FX_PREFLIGHT_TIMEOUT_MS || 20000),
   };
@@ -117,6 +120,9 @@ async function main() {
       },
       metadata: {
         source: args.source,
+        // The market this check exercises, declared (see search_stability_matrix.js).
+        market: args.market,
+        invoked_by: args.invokedBy,
       },
     },
     args.timeoutMs,

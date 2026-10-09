@@ -65,6 +65,10 @@ describe('Celestial commerce-core production smoke wrapper', () => {
       }
 
       expect(body?.metadata?.source).toBe('shopping_agent');
+      // A gate is a synthetic buyer: it declares the market it tests and who it is, so prod's
+      // census can tell it from a shopper (2026-10-09: the market-less majority was this matrix).
+      expect(body?.metadata?.market).toBe('US');
+      expect(body?.metadata?.invoked_by).toBe('ci:search_stability_matrix');
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       res.end(

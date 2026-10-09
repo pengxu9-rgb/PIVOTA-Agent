@@ -30,6 +30,14 @@ function parseArgs(argv) {
     outDir: process.env.SEARCH_MATRIX_OUT_DIR || 'reports',
     queryFile: process.env.SEARCH_MATRIX_QUERY_FILE || '',
     source: process.env.SEARCH_MATRIX_SOURCE || 'shopping_agent',
+    // THE MARKET THIS GATE TESTS. A gate is a synthetic buyer; a silent request is the one shape
+    // the purchasability gate declines on principle (no market, no cart), and a gate that stays
+    // silent both measures the wrong thing and reads in the census as a market-less buyer
+    // (2026-10-09: the market-less majority of prod find_products_multi was this matrix).
+    // Declared, never inferred: the gate exercises the US catalogue unless told otherwise.
+    market: String(process.env.SEARCH_MATRIX_MARKET || 'US').trim().toUpperCase(),
+    // Who this is, beside `source` (which the door keys behaviour on and must stay a profile).
+    invokedBy: process.env.SEARCH_MATRIX_INVOKED_BY || 'ci:search_stability_matrix',
     evalMode:
       String(process.env.SEARCH_MATRIX_EVAL_MODE || '').trim().toLowerCase() === 'true',
     evalHeader: process.env.SEARCH_MATRIX_EVAL_HEADER || 'X-Eval',
@@ -944,6 +952,18 @@ async function main() {
           source: caseSpec.source || args.source,
           ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
           ...(args.evalMode ? { eval_mode: true } : {}),
+          // A case may name its own market (a non-US pack) inside its `request_metadata`
+          // (normalizeCase keeps nothing else); the gate's market only when the case names none.
+          // Resolved AFTER the spread so the case's own value is never overwritten.
+          market:
+            String(
+              (caseSpec.request_metadata && typeof caseSpec.request_metadata === 'object'
+                ? caseSpec.request_metadata.market
+                : '') || '',
+            )
+              .trim()
+              .toUpperCase() || args.market,
+          invoked_by: args.invokedBy,
         };
         const search = {
           ...(caseSpec.request_search && typeof caseSpec.request_search === 'object'
