@@ -654,7 +654,11 @@ one cache, one `enforced` rule and one fail-open rule for the whole gateway.
 
 Rail per path (rule 7): paths 1, 2, 3 and 3′ hand a cart to a **human** (`RAIL.human`,
 `human_handoff_tier`); the Reap agentic lane (`mcp-server/src/ucpReapAgenticLane.js`, through the
-same `mayOfferPurchaseForDomain`) charges a **card** (`RAIL.card`, `tier`).
+same `mayOfferPurchaseForDomain`) charges a **card** (`RAIL.card`, `tier`). Note on path 2: the
+human rail admits a PayPal-only / wallet-only storefront (`NO_CARD_PAYMENT`), so a platform that lets
+its agent complete the escalation with its own tokenized card (VIC) may be handed a `continue_url`
+that card cannot pay. That is the platform's decision (the header of `ucpCheckoutEscalation.js`);
+Pivota's money is never on the line, and the door never hands out a storefront no human can complete.
 
 | # | path | what it offers | market source | fallback when `offer === false` |
 |---|---|---|---|---|
