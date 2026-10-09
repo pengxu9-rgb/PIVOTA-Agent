@@ -104,7 +104,7 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 // found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
 import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId } from "./ucpMerchantDoorPricing.js";
+import { priceOnMerchantDoor, isCarriableCartId, sellerVariantGidOf } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
@@ -119,6 +119,13 @@ const MAX_ESCALATION_ITEMS = 50;
 // built a cart for these variants, so the products exist.
 export const DEAD_PAGE_CHECK_FLAG = "AGENT_CHECKOUT_UCP_DEAD_PAGE_CHECK_ENABLED";
 export const DEAD_PAGE_CHECK_BUDGET_MS = 1500;
+// THE VARIANT POLICY (default OFF, read per call): on the same page read, a line whose seller variant the store's own
+// page no longer lists is not handed out as if it were sold. A variant the BUYER chose is refused by name when the
+// seller's door also said `variant_invalid`; otherwise the stale `variant=` is dropped from a direct continue_url and
+// the checkout warns that the catalog's option and price may not apply. A gone page refuses as the dead-page check does. Triggered by the PAGE, not only by
+// the seller door's `variant_invalid`: a re-read never asks the door, and create and re-read must hand out the same
+// link. The door's structured `variant_invalid` is always logged as a refresh hint, switch or no switch.
+export const VARIANT_POLICY_FLAG = "AGENT_CHECKOUT_UCP_VARIANT_GONE_POLICY_ENABLED";
 const TERMS_URL = "https://pivota.cc/terms"; // measured 200, "Terms of Service | Pivota", 2026-08-18
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -383,7 +390,7 @@ function priceOf(row) {
  * Build the spec checkout for an already-classified, same-seller cart. Pure.
  * @param {{ id:string, items:{product_id,quantity}[], rows:Map, continueUrl:string, buyerEmail?:string, now:number, env?:object }} a
  */
-export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env }) {
+export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [] }) {
   const lineItems = [];
   let subtotal = 0;
   let currency = null;
@@ -459,6 +466,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
         ].join(" "),
         content_type: "plain",
       },
+      ...extraMessages,
     ],
   });
 }
@@ -639,9 +647,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
     // this door will not offer is never contacted.
     const sellerHost = sellerHostOf(continueUrl);
+    const doorSignals = [];
     const priced = await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
-      expectedSeller, market: buyerMarket, env, merchantDoor, log,
+      expectedSeller, market: buyerMarket, env, merchantDoor, log, signals: doorSignals,
     });
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
@@ -651,14 +660,16 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         return buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env });
       }
     }
-    await refuseGoneStorefrontPages({
-      items: normalized, links: normalized.map((it) => targets.get(it.product_id)), env, storefrontPage, log,
+    const checked = await checkStorefrontPages({
+      items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
+      env, storefrontPage, log, doorSignals,
     });
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
       rows,
-      continueUrl,
+      continueUrl: checked.continueUrl,
+      extraMessages: checked.messages,
       // ATTESTED WINS, exactly as intake rule 1: the verified session's email displaces any body value, and a
       // body value is only ever echoed after normalizeEmail. `buyer.email` is what a platform pre-fills on
       // the storefront, so a body-supplied address displacing a signed-in buyer's is the misdirection rule 1
@@ -708,8 +719,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       });
       if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
     }
-    await refuseGoneStorefrontPages({ items: decoded, links: targets, env, storefrontPage, log });
-    return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: link, now, env });
+    const checked = await checkStorefrontPages({ items: decoded, links: targets, rows, continueUrl: link, env, storefrontPage, log });
+    return buildEscalationCheckout({
+      id: sessionId, items: decoded, rows, continueUrl: checked.continueUrl, now, env, extraMessages: checked.messages,
+    });
   }
 
   if (opId === "update_checkout_session" || opId === "complete_checkout_session") {
@@ -827,30 +840,119 @@ function emitPageCheck(log, level, detail) {
   }
 }
 
+export function variantPolicyEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[VARIANT_POLICY_FLAG]) || "").trim());
+}
+
+/** The numeric seller variant id a line will land on: the row's own seller variant, else the link's one `variant=`. */
+function landingVariantOf(row, link, landing, chosenVariantId) {
+  const gid = sellerVariantGidOf(row, sellerHostOf(link), chosenVariantId);
+  const fromGid = gid ? (String(gid).match(/(\d+)$/) || [])[1] : null;
+  if (fromGid || chosenVariantId) return fromGid || null;
+  try {
+    const values = new URL(landing).searchParams.getAll("variant");
+    return values.length === 1 && /^\d{1,20}$/.test(values[0]) ? values[0] : null;
+  } catch { return null; }
+}
+
+/** The link with its `variant=` removed, when it is a DIRECT link to one of these product pages; else unchanged. */
+function withoutStaleVariant(link, landings) {
+  if (isReadablePivotaHop(link)) return link; // a signed hop's destination cannot be edited here
+  const page = storefrontProductPageModule.productPageOf(link);
+  if (!page || !landings.some((l) => { const p = storefrontProductPageModule.productPageOf(l); return p && p.jsonUrl === page.jsonUrl; })) return link;
+  const url = new URL(link);
+  if (!url.searchParams.has("variant")) return link;
+  url.searchParams.delete("variant");
+  return url.toString();
+}
+
 /**
- * Refuse a catalog-priced storefront checkout whose product page the store says is gone. `links[i]` is the row link
- * for `items[i]`. Reads run in parallel, each bounded by DEAD_PAGE_CHECK_BUDGET_MS; only `gone` refuses.
+ * The storefront page check on a catalog-priced checkout (create and re-read alike). `links[i]` is the row link for
+ * `items[i]`. Returns the continue_url to hand out and any messages to add; throws a named refusal. With both
+ * switches OFF it reads nothing and returns `continueUrl` unchanged (a door `variant_invalid` is still logged).
  */
-async function refuseGoneStorefrontPages({ items, links, env, storefrontPage, log }) {
-  if (!deadPageCheckEnabled(env)) return;
+async function checkStorefrontPages({ items, links, rows, continueUrl, env, storefrontPage, log, doorSignals = [] }) {
+  const unchanged = { continueUrl, messages: [] };
+  const doorSaid = doorSignals.some((sig) => sig && sig.reason === "variant_invalid");
+  const checkPages = deadPageCheckEnabled(env);
+  const checkVariants = variantPolicyEnabled(env);
+  if (!checkPages && !checkVariants) {
+    if (doorSaid) emitPageCheck(log, "info", { outcome: "not_checked", reason: "door_variant_invalid", product_ids: items.map((it) => it.product_id) });
+    return unchanged;
+  }
   const read = typeof storefrontPage === "function"
     ? storefrontPage
     : (url) => storefrontProductPageModule.readStorefrontProductPage(url, { timeoutMs: DEAD_PAGE_CHECK_BUDGET_MS });
-  const pages = await Promise.all(items.map(async (it, idx) => {
+  const lines = await Promise.all(items.map(async (it, idx) => {
     const landing = landingUrlOf(links[idx]);
     if (!landing) return null;
-    try { return { product_id: it.product_id, page: await read(landing) }; } catch { return null; }
+    try { return { it, link: links[idx], landing, page: await read(landing) }; } catch { return null; }
   }));
-  const gone = pages.filter((p) => p && p.page && p.page.state === "gone");
-  if (gone.length === 0) return;
-  const productIds = [...new Set(gone.map((p) => p.product_id))];
-  const hosts = [...new Set(gone.map((p) => p.page.host).filter(Boolean))];
-  emitPageCheck(log, "info", {
-    outcome: "refused", reason: "storefront_product_gone", seller_hosts: hosts, product_ids: productIds,
-    // The refresh hint: which store handles to re-verify. No buyer data.
-    handles: gone.map((p) => p.page.handle).filter(Boolean),
-  });
-  throw goneRefusal(productIds, hosts);
+
+  const gone = lines.filter((l) => l && l.page && l.page.state === "gone");
+  if (gone.length) {
+    const productIds = [...new Set(gone.map((l) => l.it.product_id))];
+    const hosts = [...new Set(gone.map((l) => l.page.host).filter(Boolean))];
+    emitPageCheck(log, "info", {
+      outcome: "refused", reason: "storefront_product_gone", door_variant_invalid: doorSaid,
+      seller_hosts: hosts, product_ids: productIds,
+      // The refresh hint: which store handles to re-verify. No buyer data.
+      handles: gone.map((l) => l.page.handle).filter(Boolean),
+    });
+    throw goneRefusal(productIds, hosts);
+  }
+  if (!checkVariants) {
+    if (doorSaid) emitPageCheck(log, "info", { outcome: "not_checked", reason: "door_variant_invalid", product_ids: items.map((it) => it.product_id) });
+    return unchanged;
+  }
+
+  const chosenGone = [];
+  const impliedGone = [];
+  for (const l of lines) {
+    if (!l || !l.page || l.page.state !== "live" || !(l.page.variantIds instanceof Set)) continue;
+    const variant = landingVariantOf(rows.get(l.it.product_id), l.link, l.landing, l.it.variant_id);
+    if (!variant || l.page.variantIds.has(variant)) continue;
+    // A CHOSEN variant is refused only on TWO witnesses: the store's page does not list it AND the seller's own door
+    // said `variant_invalid`. The page alone cannot tell a discontinued option from a catalog that stored a barcode
+    // where the variant id belongs (see ucpMerchantDoorPricing ownVariantIdGid), and a refusal there would stop the sale
+    // of a product the store does sell; such a line gets the warning instead.
+    (l.it.variant_id && doorSaid ? chosenGone : impliedGone).push({ ...l, variant });
+  }
+  const stale = [...chosenGone, ...impliedGone];
+  if (stale.length || doorSaid) {
+    emitPageCheck(log, "info", {
+      outcome: chosenGone.length ? "refused" : (stale.length ? "variant_dropped" : "variant_listed"),
+      reason: stale.length ? "storefront_variant_gone" : "door_variant_invalid",
+      door_variant_invalid: doorSaid,
+      seller_hosts: [...new Set(lines.filter(Boolean).map((l) => l.page && l.page.host).filter(Boolean))],
+      product_ids: (stale.length ? stale.map((l) => l.it.product_id) : items.map((it) => it.product_id)),
+      // The refresh hint: the store handle and the variant id the catalog still names.
+      stale_variants: stale.map((l) => ({ handle: l.page.handle, variant: l.variant })),
+    });
+  }
+  if (chosenGone.length) {
+    const ids = chosenGone.map((l) => encodeUcpVariantItemId(l.it.product_id, l.it.variant_id));
+    const hosts = [...new Set(chosenGone.map((l) => l.page.host).filter(Boolean))];
+    throw intakeRefusal("NO_MERCHANT_OFFER", "ucp_storefront_variant_gone", [
+      `The seller's storefront${hosts.length ? ` (${hosts.join(", ")})` : ""} no longer sells the chosen option of these items: ${ids.join(", ")}.`,
+      "This will not change on retry; offer the buyer the product's other options or alternatives.",
+    ].join(" "), compact({ storefront_items: ids, seller_hosts: hosts.length ? hosts : undefined }));
+  }
+  if (!impliedGone.length) return unchanged;
+  const productIds = [...new Set(impliedGone.map((l) => l.it.product_id))];
+  return {
+    continueUrl: withoutStaleVariant(continueUrl, impliedGone.map((l) => l.landing)),
+    messages: [{
+      type: "warning",
+      code: "checkout.storefront_variant_not_listed",
+      path: "$.continue_url",
+      content: [
+        `The seller's storefront no longer lists the option the catalog names for: ${productIds.join(", ")}.`,
+        "continue_url opens the product page, where the buyer picks from the options the seller sells now; the catalog price above may not apply to them.",
+      ].join(" "),
+      content_type: "plain",
+    }],
+  };
 }
 
 function goneRefusal(productIds, hosts) {

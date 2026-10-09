@@ -485,8 +485,11 @@ function emit(log, level, detail) {
  * @param {{ items:{product_id:string, quantity:number}[], rows:Map, sellerHost:string|null, market?:string|null,
  *           cartId?:string, env?:object, merchantDoor?:object, budgetMs?:number, log?:object }} a
  *   `cartId` set = a RE-READ of a cart this door built (get_checkout): `get_cart`, never a new cart.
+ *   `signals` (optional out-param array): what the seller SAID while this door fell back, for the caller to act on.
+ *   Today one signal: `{ reason: "variant_invalid", lines }` — the seller's own door answered a create_cart with a
+ *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
@@ -559,6 +562,16 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     const soldOut = structured && reason === FAILURE_REASON.OUT_OF_STOCK && SELLER_OUT_OF_STOCK_RE.test(String(errorText ?? ""));
     emit(log, "info", { outcome: soldOut ? "refused" : "fallback", reason, seller_host: sellerHost });
     if (soldOut) throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
+    // THE SELLER SAYS IT DOES NOT KNOW THIS VARIANT. Same strictness as out-of-stock: only a structured 2xx tool
+    // error (the shared classifier reads free text, and an HTML "Page not found" once classified as variant_invalid).
+    // Not proof the PRODUCT is gone, so it is reported, never acted on here; a cart-level error names no line, so
+    // every line goes back. A re-read (`get_cart`) is not a claim about a variant.
+    if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
+      signals.push({
+        reason: "variant_invalid",
+        lines: wanted.map((w) => ({ product_id: w.product_id, gid: w.gid, chosen: Boolean(w.variant_id) })),
+      });
+    }
     return null;
   }
   const payload = unwrapPayload(result);
