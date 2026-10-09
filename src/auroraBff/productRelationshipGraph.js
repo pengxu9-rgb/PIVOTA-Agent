@@ -1933,7 +1933,18 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         reason_flags = EXCLUDED.reason_flags,
         prefilter_reasons = EXCLUDED.prefilter_reasons,
         source_report = EXCLUDED.source_report,
-        provenance = EXCLUDED.provenance,
+        -- The reviewer's last negative verdict (and the evidence fingerprint it
+        -- was given on) lives in provenance.ai_review_last. A rebuild replaces
+        -- provenance; carry that one key over unless the new provenance sets
+        -- its own, or every nightly rebuild would erase the memory and the
+        -- reviewer would re-pay for the same rejected pairs.
+        provenance = CASE
+          WHEN relationship_candidate_labels.provenance ? 'ai_review_last'
+            AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_last')
+          THEN COALESCE(EXCLUDED.provenance, '{}'::jsonb)
+            || jsonb_build_object('ai_review_last', relationship_candidate_labels.provenance -> 'ai_review_last')
+          ELSE EXCLUDED.provenance
+        END,
         reviewed_at = EXCLUDED.reviewed_at,
         last_verified_at = EXCLUDED.last_verified_at,
         expires_at = EXCLUDED.expires_at,

@@ -19,11 +19,33 @@ const DEFAULT_LIMIT = 200;
 const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_REVIEW_MIN_SCORE = 0;
 const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
+// Legacy ceiling. Legacy suppressed edges (approved before this run) do not fail
+// the run, but a guard change that suddenly hides a large slice of the graph
+// must not be just a WARNING. Production on 2026-10-08: ~108 of 9,478 (1.1%).
+const DEFAULT_MAX_LEGACY_SUPPRESSED_PCT = 10;
+const DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS = 1500;
+// A percent of a small legacy table is noise (5 of 40 is 12.5%): the percent
+// ceiling waits for this many legacy edges; the row ceiling always applies.
+const DEFAULT_MIN_LEGACY_ROWS_FOR_PCT = 500;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
 const DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES = 10;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const OUTPUT_TAIL_CHARS = 12000;
 const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
+// The serving audit attributes a row to this run when its last_verified_at is
+// at or after the run's start. last_verified_at is stamped by the database
+// clock and the run start by this process's clock; the allowance only widens
+// the run's side (more rows gated), never the legacy side.
+//
+// Known limit: the scope is one run. A Cloud Run retry of a failed task scopes
+// back over the failed attempt (see runScopeStartedAt in the cron), but a
+// MANUAL re-run started fresh (task attempt 0) after a failed night treats that
+// night's writes as legacy: an unsafe edge the failed run approved is then only
+// reported (legacy_suppressed_*, WARNING) and counted against the legacy
+// ceiling, not failed again. After a run fails on run_suppressed_rows, fix or
+// quarantine those edges before re-running; or pass --run-started-at with the
+// failed run's start to keep them in scope.
+const RUN_SCOPE_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
 
 function normalizeString(value, max = 512) {
@@ -124,6 +146,12 @@ function usage() {
     'AI review excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
     'Use --max-serving-suppressed-pct and/or --max-serving-suppressed-rows to fail the job when runtime serving guards suppress too many approved edges.',
     'Use --fail-on-serving-suppression-reasons reason_a,reason_b to fail when any listed suppression reason appears.',
+    'Serving thresholds gate only the edges this run approved or renewed (last_verified_at at or after --run-started-at,',
+    'default: this process start): any such edge the guard suppresses fails the job. Older (legacy) suppressed edges are',
+    'reported as legacy_suppressed_* and logged at WARNING, but do not fail it — the read path already hides them —',
+    `unless they exceed --max-legacy-suppressed-pct (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_PCT}, of legacy edges) or`,
+    `--max-legacy-suppressed-rows (default ${DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS}); the percent applies only from`,
+    `--min-legacy-rows-for-pct legacy edges (default ${DEFAULT_MIN_LEGACY_ROWS_FOR_PCT}). Either ceiling alone enables the gate.`,
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
@@ -160,9 +188,14 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
   const reviewExcludeRelationTypes = normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000)
     || (allowDupeAiApproval ? '' : 'dupe');
   const stepTimeoutMs = parseStepTimeoutMs(argv);
+  const runStartedAtInput = normalizeString(argValue(argv, 'run-started-at'), 80);
+  if (runStartedAtInput && Number.isNaN(new Date(runStartedAtInput).getTime())) {
+    throw new Error(`invalid --run-started-at timestamp: ${runStartedAtInput}`);
+  }
 
   return {
     reviewMode,
+    runStartedAt: new Date(runStartedAtInput || now).toISOString(),
     cutoff,
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
@@ -191,6 +224,18 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
       max: Number.MAX_SAFE_INTEGER,
     }),
     failOnServingSuppressionReasons: parseDelimitedList(argValue(argv, 'fail-on-serving-suppression-reasons')),
+    maxLegacySuppressedPct: parseNumber(argValue(argv, 'max-legacy-suppressed-pct'), DEFAULT_MAX_LEGACY_SUPPRESSED_PCT, {
+      min: 0,
+      max: 100,
+    }),
+    maxLegacySuppressedRows: parseNumber(argValue(argv, 'max-legacy-suppressed-rows'), DEFAULT_MAX_LEGACY_SUPPRESSED_ROWS, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
+    minLegacyRowsForPct: parseNumber(argValue(argv, 'min-legacy-rows-for-pct'), DEFAULT_MIN_LEGACY_ROWS_FOR_PCT, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    }),
     affectedRefs: normalizeString(argValue(argv, 'affected-refs'), 2000),
     affectedRefsFile: normalizeString(argValue(argv, 'affected-refs-file'), 2000),
     affectedProductsFile: normalizeString(argValue(argv, 'affected-products-file'), 2000),
@@ -234,6 +279,12 @@ function scriptPath(scriptName) {
 function pushArg(args, name, value) {
   if (value == null || value === '') return;
   args.push(`--${name}`, String(value));
+}
+
+function runScopeVerifiedSince(options = {}) {
+  const startedMs = new Date(options.runStartedAt || '').getTime();
+  if (!Number.isFinite(startedMs)) return '';
+  return new Date(startedMs - RUN_SCOPE_CLOCK_SKEW_MS).toISOString();
 }
 
 function buildRoutineSteps(options) {
@@ -360,6 +411,7 @@ function buildRoutineSteps(options) {
       artifacts.serving_audit,
     ];
     if (options.servingAuditLimit) pushArg(args, 'limit', options.servingAuditLimit);
+    pushArg(args, 'run-verified-since', runScopeVerifiedSince(options));
     steps.push({
       id: 'serving_guard_audit',
       command: node,
@@ -570,6 +622,8 @@ function hasServingAuditThresholds(options = {}) {
   return (
     options.maxServingSuppressedPct != null ||
     options.maxServingSuppressedRows != null ||
+    options.maxLegacySuppressedPct != null ||
+    options.maxLegacySuppressedRows != null ||
     (Array.isArray(options.failOnServingSuppressionReasons) && options.failOnServingSuppressionReasons.length > 0)
   );
 }
@@ -578,7 +632,107 @@ function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(resolvePathMaybeRelative(filePath), 'utf8'));
 }
 
+function hasRunScope(audit = {}) {
+  return Boolean(audit && audit.run_verified_since) && Number.isFinite(Number(audit.run_suppressed_rows));
+}
+
+// Run-scoped gate. The reviewer refuses to approve an edge the guard would
+// suppress and renewal skips one, so a suppressed edge this run wrote is a
+// defect, not drift: one is enough to fail. The fail-on reasons are reported by
+// name on the same rows. The whole-table row/percent budgets were a proxy for
+// "this run made serving worse"; measured on the whole table they also fire on
+// rows a later guard change re-classified, which is what failed 2026-10-02..08.
+function evaluateRunScopedServingAuditThresholds(audit, options = {}) {
+  const violations = [];
+  const runSuppressed = parseNumber(audit.run_suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const byRunReason = audit.run_suppressed_by_reason && typeof audit.run_suppressed_by_reason === 'object'
+    && !Array.isArray(audit.run_suppressed_by_reason)
+    ? Object.fromEntries(Object.entries(audit.run_suppressed_by_reason).map(([reason, count]) => [
+      normalizeKey(reason),
+      parseNumber(count, 0, { min: 0, max: Number.MAX_SAFE_INTEGER }),
+    ]))
+    : {};
+  if (runSuppressed > 0) {
+    violations.push({
+      metric: 'run_suppressed_rows',
+      observed: runSuppressed,
+      max: 0,
+      message: `serving guard suppresses ${runSuppressed} approved edges this run approved or renewed`,
+    });
+  }
+  for (const reason of Array.isArray(options.failOnServingSuppressionReasons)
+    ? options.failOnServingSuppressionReasons
+    : []) {
+    const normalizedReason = normalizeKey(reason);
+    const count = byRunReason[normalizedReason] || 0;
+    if (count > 0) {
+      violations.push({
+        metric: 'suppression_reason',
+        scope: 'run',
+        reason: normalizedReason,
+        observed: count,
+        max: 0,
+        message: `serving guard found ${count} approved edges this run wrote suppressed for ${normalizedReason}`,
+      });
+    }
+  }
+  const legacyRows = parseNumber(audit.legacy_suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const legacyPct = parseNumber(audit.legacy_suppressed_pct, 0, { min: 0, max: 100 });
+  const legacyTotal = parseNumber(audit.legacy_total_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const minLegacyRowsForPct = options.minLegacyRowsForPct == null ? 0 : options.minLegacyRowsForPct;
+  if (options.maxLegacySuppressedRows != null && legacyRows > options.maxLegacySuppressedRows) {
+    violations.push({
+      metric: 'legacy_suppressed_rows',
+      observed: legacyRows,
+      max: options.maxLegacySuppressedRows,
+      message: `serving guard suppresses ${legacyRows} legacy approved edges, above the legacy ceiling ${options.maxLegacySuppressedRows}`,
+    });
+  }
+  if (options.maxLegacySuppressedPct != null && legacyTotal >= minLegacyRowsForPct
+      && legacyPct > options.maxLegacySuppressedPct) {
+    violations.push({
+      metric: 'legacy_suppressed_pct',
+      observed: legacyPct,
+      max: options.maxLegacySuppressedPct,
+      message: `serving guard suppresses ${legacyPct}% of legacy approved edges, above the legacy ceiling ${options.maxLegacySuppressedPct}%`,
+    });
+  }
+  return violations;
+}
+
+function servingAuditScopeSummary(audit = {}) {
+  if (!hasRunScope(audit)) return null;
+  const pick = (key, fallback) => (audit[key] == null ? fallback : audit[key]);
+  return {
+    run_verified_since: audit.run_verified_since,
+    run_total_rows: pick('run_total_rows', 0),
+    run_suppressed_rows: pick('run_suppressed_rows', 0),
+    run_suppressed_pct: pick('run_suppressed_pct', 0),
+    run_suppressed_by_reason: pick('run_suppressed_by_reason', {}),
+    run_suppressed_examples: pick('run_suppressed_examples', {}),
+    legacy_total_rows: pick('legacy_total_rows', 0),
+    legacy_suppressed_rows: pick('legacy_suppressed_rows', 0),
+    legacy_suppressed_pct: pick('legacy_suppressed_pct', 0),
+    legacy_suppressed_by_reason: pick('legacy_suppressed_by_reason', {}),
+    legacy_suppressed_examples: pick('legacy_suppressed_examples', {}),
+  };
+}
+
+function legacySuppressionWarning(scope) {
+  if (!scope || !(Number(scope.legacy_suppressed_rows) > 0)) return null;
+  return {
+    message: `${scope.legacy_suppressed_rows} legacy approved edges are suppressed by the serving guard `
+      + '(approved before this run; hidden at read time; not a failure of this run)',
+    legacy_suppressed_rows: scope.legacy_suppressed_rows,
+    legacy_suppressed_pct: scope.legacy_suppressed_pct,
+    legacy_suppressed_by_reason: scope.legacy_suppressed_by_reason,
+  };
+}
+
 function evaluateServingAuditThresholds(audit = {}, options = {}) {
+  // An artifact without the run split (an audit run without --run-verified-since) is
+  // gated on the whole table, as before: fail closed, never open.
+  if (hasRunScope(audit)) return evaluateRunScopedServingAuditThresholds(audit, options);
   const violations = [];
   const suppressedRows = parseNumber(audit.suppressed_rows, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
   const suppressedPct = parseNumber(audit.suppressed_pct, 0, { min: 0, max: 100 });
@@ -700,6 +854,9 @@ function serializableOptions(options) {
     max_serving_suppressed_pct: options.maxServingSuppressedPct,
     max_serving_suppressed_rows: options.maxServingSuppressedRows,
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
+    max_legacy_suppressed_pct: options.maxLegacySuppressedPct == null ? null : options.maxLegacySuppressedPct,
+    max_legacy_suppressed_rows: options.maxLegacySuppressedRows == null ? null : options.maxLegacySuppressedRows,
+    min_legacy_rows_for_pct: options.minLegacyRowsForPct == null ? null : options.minLegacyRowsForPct,
     affected_refs: options.affectedRefs || null,
     affected_refs_file: options.affectedRefsFile || null,
     affected_products_file: options.affectedProductsFile || null,
@@ -711,6 +868,7 @@ function serializableOptions(options) {
     apply_review: options.applyReview,
     step_timeout_ms: options.stepTimeoutMs || null,
     serving_audit_timeout_ms: options.servingAuditTimeoutMs || null,
+    run_started_at: options.runStartedAt || null,
     skip_need_nodes: Boolean(options.skipNeedNodes),
     allow_dupe_ai_approval: options.allowDupeAiApproval,
     lock_dir: options.lockDir || null,
@@ -853,6 +1011,30 @@ async function runRoutineJob(
         throw err;
       }
 
+      if (step.id === 'serving_guard_audit') {
+        // Reported whether or not thresholds are set: the legacy backlog is
+        // worth seeing even on runs that do not gate on it.
+        let scope = null;
+        try {
+          scope = servingAuditScopeSummary(readJsonFile(step.artifact));
+        } catch (_err) {
+          scope = null; // the threshold block below reports an unreadable artifact when it gates
+        }
+        if (scope) {
+          summary.serving_audit_scope = scope;
+          record.serving_audit_scope = {
+            run_suppressed_rows: scope.run_suppressed_rows,
+            legacy_suppressed_rows: scope.legacy_suppressed_rows,
+          };
+          const warning = legacySuppressionWarning(scope);
+          if (warning) {
+            summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+            summary.warnings.push(warning.message);
+            process.stderr.write(`${JSON.stringify({ severity: 'WARNING', run_id: runId, ...warning })}\n`);
+          }
+        }
+      }
+
       if (step.id === 'serving_guard_audit' && hasServingAuditThresholds(options)) {
         let audit;
         try {
@@ -992,12 +1174,15 @@ if (require.main === module) {
 
 module.exports = {
   APPLY_CONFIRM_TOKEN,
+  RUN_SCOPE_CLOCK_SKEW_MS,
   acquireRoutineLock,
   acquirePostgresAdvisoryLock,
   buildLockPath,
   buildRoutineSteps,
   postgresAdvisoryLockParts,
   evaluateServingAuditThresholds,
+  legacySuppressionWarning,
+  runScopeVerifiedSince,
   parseArgs,
   runCommand,
   runRoutineJob,
