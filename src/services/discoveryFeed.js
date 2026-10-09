@@ -5,7 +5,7 @@ const { query } = require('../db');
 // THE BUYER'S MARKET, AND THE CURRENCY ITS PAGE MUST BE IN (applyBuyerMarketFallback below).
 const { parseMarketList } = require('./servedMarkets');
 const { resolveServingCurrency } = require('./buyerMarket');
-const { filterProductsToServingCurrency } = require('./servingCurrencyGuard');
+const { filterProductsToServingCurrency, isPricedInServingCurrency } = require('./servingCurrencyGuard');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
@@ -13337,9 +13337,9 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
 //
 // THE RULE. When a request names a market whose currency is not the deployment's, and the page the
 // feed built has NO row in that currency, the feed is rebuilt from THAT market's own products_search
-// rows (`GET /agent/v1/products/search?market=SG`, the backend recalling its SG partition), filtered
-// to the market's currency before they enter ranking -- never USD rows across markets, and never a
-// row whose currency cannot be read. The door's guard still runs on what leaves; this makes it a
+// rows (`GET /agent/v1/products/search?serving_market=SG`), kept only when sellable and priced in
+// the market's currency before they enter ranking -- never USD rows across markets, never an
+// unpriced row, never one that is out of stock. The door's guard still runs on what leaves; this makes it a
 // no-op rather than the thing that empties the page. A silent request, the deployment's own market,
 // or a market the gateway cannot price (null currency: the guard serves nothing, by design) leave
 // the feed byte-identical. A market joins agent-ui's SERVED_MARKETS only once this fallback is
@@ -13356,17 +13356,29 @@ const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
 const BUYER_MARKET_HOP_LIMIT = PRODUCTS_SEARCH_PAGE_SIZE;
 const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
 
-/** ONE wall-clock budget for the whole fallback: the hops run in parallel, each clamped to it. */
+/**
+ * How long ONE PAGE waits for the round of hops. It is NOT the hops' timeout: the two broad
+ * cold-start queries ('beauty skincare serum', 'barrier moisturizer') take 2.6-7.3 s at the REST door
+ * (Cloud Run, 2026-10-09 14:16-14:21Z, every market) and they are the ones that hold the market's
+ * pool (SG: 108 and 56 SGD rows). Clamping the hop to this budget timed both out on every page,
+ * served SG the 4 rows the narrow queries found, and fed the breaker two 'timeout's per page.
+ * Now the hops run under the lane's own timeout, the page takes what has answered when this
+ * elapses, and the round finishes in the background into the pool cache.
+ */
 function getBuyerMarketFallbackBudgetMs() {
   return clampInt(process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS, 1800, 300, 5000);
 }
-/** A market's pool is re-read this often (positive). */
+/**
+ * A market's pool is re-read this often (positive) -- served STALE meanwhile and refreshed in the
+ * background, so no page after the first pays a cold round. Minutes: a round costs the primary
+ * ~15 s of query time, per instance.
+ */
 function getBuyerMarketPoolCacheTtlMs() {
-  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 60000, 1000, 600000);
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 600000, 1000, 3600000);
 }
-/** ... and an EMPTY pool this often (negative): SG with no rows must not pay the hops on every page. */
+/** ... and an EMPTY pool this often (negative): GB with no rows must not pay the round on every page. */
 function getBuyerMarketPoolNegativeCacheTtlMs() {
-  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 30000, 1000, 600000);
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 120000, 1000, 3600000);
 }
 
 // market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
@@ -13375,11 +13387,18 @@ const buyerMarketPoolCache = new Map();
 function buyerMarketPoolCacheKey({ market, queryText, limit }) {
   return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase(), limit: Number(limit) || 0 });
 }
+// An entry past its TTL is still returned, marked stale: the page is served from it while a fresh
+// round runs in the background (one per key at a time; `buyerMarketRoundsInFlight`).
 function readBuyerMarketPoolCache(key, now = Date.now()) {
   const entry = buyerMarketPoolCache.get(key);
   if (!entry) return null;
-  if (now - entry.storedAt > entry.ttlMs) { buyerMarketPoolCache.delete(key); return null; }
-  return entry;
+  return { ...entry, stale: now - entry.storedAt > entry.ttlMs };
+}
+// key -> the Promise of the round that is filling or refreshing that pool.
+const buyerMarketRoundsInFlight = new Map();
+/** Test seam: every round still running (a page returned before its slow hops answered). */
+function awaitBuyerMarketRoundsForTest() {
+  return Promise.all([...buyerMarketRoundsInFlight.values()]).then(() => undefined);
 }
 function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
   if (buyerMarketPoolCache.size >= BUYER_MARKET_POOL_CACHE_MAX_ENTRIES) {
@@ -13390,6 +13409,21 @@ function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
 }
 function resetBuyerMarketPoolCacheForTest() {
   buyerMarketPoolCache.clear();
+  buyerMarketRoundsInFlight.clear();
+}
+
+/**
+ * What the pool admits: a row the normaliser would keep (sellable: active, not out of stock) AND
+ * priced in the market's currency. The hop asks `in_stock_only=false` like the main lane and the
+ * normaliser drops out-of-stock rows later; counting them as `rows` stamped applied:true on a page
+ * that then served nothing (GB, SG 'niacinamide serum', live 2026-10-09). An unpriced row is a card
+ * with no price on a page whose every price is foreign (JP: 3 of 9 cards).
+ */
+function isBuyerMarketPoolRow(product, servingCurrency) {
+  return isCandidateSellable(product) && isPricedInServingCurrency(product, servingCurrency);
+}
+function filterBuyerMarketPoolRows(products, servingCurrency) {
+  return (Array.isArray(products) ? products : []).filter((product) => isBuyerMarketPoolRow(product, servingCurrency));
 }
 
 /** The page has at least one row the buyer's currency allows (the guard's own rule for this surface). */
@@ -13406,21 +13440,22 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, li
   const safeLimit = Math.min(clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH), BUYER_MARKET_HOP_LIMIT);
   const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
   const cached = readBuyerMarketPoolCache(cacheKey, now());
-  if (cached) {
-    return {
-      products: cached.products,
-      recallSummary: [
-        { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: cached.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - cached.storedAt) },
-      ],
-      skipped: null,
-      cached: true,
-    };
-  }
+  const cacheAnswer = (entry) => ({
+    products: entry.products,
+    recallSummary: [
+      { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: entry.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - entry.storedAt), ...(entry.stale ? { stale: true } : {}) },
+    ],
+    skipped: null,
+    cached: true,
+    ...(entry.stale ? { stale: true } : {}),
+  });
+  if (cached && !cached.stale) return cacheAnswer(cached);
   const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
   const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
   const baseUrl = baseUrlConfig.value;
   const apiKey = apiKeyConfig.value;
   if (!baseUrl || !apiKey) {
+    if (cached) return cacheAnswer(cached);
     return { products: [], recallSummary: [], skipped: !baseUrl ? 'products_search_base_url_unset' : 'products_search_api_key_unset' };
   }
   const requestHeaders = { 'X-Agent-API-Key': apiKey, 'X-API-Key': apiKey, Authorization: `Bearer ${apiKey}` };
@@ -13430,34 +13465,73 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, li
   // paid (the lane's probe decides when it is back); every answer below feeds it like the lane's do.
   if (isProductsSearchBreakerOpen()) {
     if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders });
+    if (cached) return cacheAnswer(cached);
     return { products: [], recallSummary: [], skipped: 'products_search_circuit_open' };
   }
-  // IN PARALLEL, UNDER ONE BUDGET. Sequential hops on the 6.5 s default cost ~26 s for four; a page
-  // waits for the slowest hop only, and that hop is clamped to the budget.
-  const timeoutMs = computeDiscoveryStepTimeoutMs(getBuyerMarketFallbackBudgetMs());
-  const results = await Promise.all(steps.map((step) =>
-    Promise.resolve()
-      .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
-      .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } })),
-  ));
+
+  // THE ROUND: the hops in parallel, each under the lane's own products_search timeout (6.5 s by
+  // default) -- not the page budget. It runs to completion whether or not the page waited for it,
+  // feeds the breaker with what the hops really did, and writes the pool cache. One round per key.
+  let round = buyerMarketRoundsInFlight.get(cacheKey);
+  let settled = round ? round.settled : null;
+  if (!round) {
+    settled = new Array(steps.length).fill(null);
+    const timeoutMs = getDiscoveryProductsSearchTimeoutMs();
+    const hops = steps.map((step, index) =>
+      Promise.resolve()
+        .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
+        .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } }))
+        .then((result) => { settled[index] = result; return result; }),
+    );
+    round = Promise.all(hops).then((results) => {
+      for (const result of results) recordProductsSearchResult(result);
+      const pool = mergeBuyerMarketPool(results, { market, servingCurrency });
+      // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the round on
+      // every page. An all-failed round (every hop timed out or errored) is not an answer: not cached.
+      if (results.some((result) => result && result.success === true)) {
+        writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: pool.products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
+      }
+      return pool;
+    }).finally(() => {
+      if (buyerMarketRoundsInFlight.get(cacheKey) === round) buyerMarketRoundsInFlight.delete(cacheKey);
+    });
+    round.settled = settled;
+    buyerMarketRoundsInFlight.set(cacheKey, round);
+  }
+  // A stale pool is served NOW; the round above refreshes it for the next page.
+  if (cached) return cacheAnswer(cached);
+
+  // THE PAGE waits the budget, then takes what has answered. A hop still running is stamped pending
+  // (status null, no rows); it lands in the cache when it answers, for the next page.
+  let budgetTimer = null;
+  const budget = new Promise((resolve) => { budgetTimer = setTimeout(() => resolve('budget'), getBuyerMarketFallbackBudgetMs()); });
+  const outcome = await Promise.race([round.then(() => 'done', () => 'done'), budget]);
+  if (budgetTimer) clearTimeout(budgetTimer);
+  if (outcome === 'done') {
+    const pool = await round;
+    return { ...pool, skipped: null, cached: false };
+  }
+  const budgetMs = getBuyerMarketFallbackBudgetMs();
+  const partial = mergeBuyerMarketPool(settled.map((result, index) => result || {
+    success: false,
+    products: [],
+    summary: { provider: 'products_search', label: steps[index].label, query: steps[index].query, offset: 0, limit: safeLimit, status: null, returned: 0, latency_ms: budgetMs, cache_hit: false, failure_reason: 'pending', pending: true },
+  }), { market, servingCurrency });
+  return { ...partial, skipped: null, cached: false, hops_pending: settled.filter((result) => !result).length };
+}
+
+/** The round's rows, merged across hops, KEPT ONLY WHEN SELLABLE AND PRICED IN THE MARKET'S CURRENCY. */
+function mergeBuyerMarketPool(results, { market, servingCurrency }) {
   const merged = new Map();
   const recallSummary = [];
   for (const result of results) {
-    recordProductsSearchResult(result);
     recallSummary.push({ ...result.summary, market });
-    for (const product of filterProductsToServingCurrency(result.products, servingCurrency)) {
+    for (const product of filterBuyerMarketPoolRows(result.products, servingCurrency)) {
       const key = buildDiscoveryProviderMergeKey(product) || `${merged.size}:${Math.random()}`;
       if (!merged.has(key)) merged.set(key, product);
     }
   }
-  const products = [...merged.values()];
-  // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the hops on every
-  // page. An all-failed round (every hop timed out or errored) is not an answer and is not cached.
-  const answered = results.some((result) => result && result.success === true);
-  if (answered) {
-    writeBuyerMarketPoolCache(cacheKey, { products, recallSummary, ttlMs: products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
-  }
-  return { products, recallSummary, skipped: null, cached: false };
+  return { products: [...merged.values()], recallSummary };
 }
 
 /**
@@ -13493,6 +13567,8 @@ async function applyBuyerMarketFallback({
     curated_rows_dropped: products.length,
     rows: rows.products.length,
     ...(rows.skipped ? { skipped: rows.skipped } : {}),
+    ...(rows.stale ? { stale: true } : {}),
+    ...(Number(rows.hops_pending) > 0 ? { hops_pending: Number(rows.hops_pending) } : {}),
   };
   if (rows.products.length === 0) {
     // Nothing in that market either: the page stays as built (the door's guard empties it) and says why,
@@ -13520,7 +13596,9 @@ async function applyBuyerMarketFallback({
       fallback_reason: BUYER_MARKET_FALLBACK_REASON,
       route_health: { ...(rebuiltMetadata.route_health || {}), fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON },
       search_decision: { ...(rebuiltMetadata.search_decision || {}), fallback_triggered: true },
-      buyer_market_fallback: { ...stamp, applied: true, recall_summary: rows.recallSummary },
+      // `served`: what the rebuilt page shows. `rows` is the pool; the ranker and a page's own
+      // query filter can leave fewer, and a reader must not take applied:true for "cards shown".
+      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, recall_summary: rows.recallSummary },
     },
   };
 }
@@ -13544,6 +13622,8 @@ module.exports = {
     resolveDiscoveryCardCurrency,
     buildDiscoveryFeedOnce,
     resetBuyerMarketPoolCacheForTest,
+    awaitBuyerMarketRoundsForTest,
+    isBuyerMarketPoolRow,
     isProductsSearchBreakerOpen,
     BUYER_MARKET_FALLBACK_REASON,
     // The phase timer is exported so a test can drive it with a fake clock: the

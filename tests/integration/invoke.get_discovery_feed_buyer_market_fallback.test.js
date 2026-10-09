@@ -68,7 +68,7 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
       candidate_source: 'buyer_market_products_search',
       fallback_triggered: true,
       fallback_reason: 'buyer_market_currency_empty',
-      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true }),
+      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true, rows: 2, served: 2 }),
     }));
     expect(res.body.metadata.serving_currency_guard).toBeUndefined();
     expect(hops.some((p) => p.serving_market === 'SG')).toBe(true);
