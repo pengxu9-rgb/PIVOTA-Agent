@@ -27,13 +27,44 @@ const SEAMS = [
   { file: 'mcp-server/src/ucpReapAgenticLane.js', call: /const offer = await mayOfferPurchaseForDomain\([\s\S]*?\);/, rail: 'merchantPurchasability.RAIL.card' },
 ];
 
-test('each seam names its rail, literally, inside the gate call', () => {
+test('each seam names its rail, literally, inside EVERY gate call in its file', () => {
   for (const seam of SEAMS) {
     const src = read(seam.file);
-    const m = src.match(seam.call);
-    assert.ok(m, `${seam.file}: the gate call was not found (the seam moved: update this pin)`);
-    assert.ok(m[0].includes(seam.rail), `${seam.file}: the gate call must name ${seam.rail}:\n${m[0]}`);
+    const calls = [...src.matchAll(new RegExp(seam.call.source, 'g'))];
+    assert.ok(calls.length >= 1, `${seam.file}: the gate call was not found (the seam moved: update this pin)`);
+    for (const m of calls) {
+      assert.ok(m[0].includes(seam.rail), `${seam.file}: every gate call must name ${seam.rail}:\n${m[0]}`);
+    }
+    // And no OTHER invocation of the gate hides in the file under a spelling the pin above does not match.
+    const invocations = src.match(/(await gate\(|await shouldOfferPurchaseFn\(|(?<!function )mayOfferPurchaseForDomain\(\s*[^)\s]|\.shouldOfferPurchase\()/g) || [];
+    // `.shouldOfferPurchase(` appears once per seam as the default-gate arrow (`(args) => client.shouldOfferPurchase(args)`), a
+    // pass-through that names no rail of its own; every other invocation must be one of the pinned calls.
+    const passThroughs = (src.match(/\(args\) => [\w.()]*\.shouldOfferPurchase\(args\)/g) || []).length;
+    // The shared helper's own forwarding call (`rail: normalizeRail(rail)`) is pinned by the test below, not here.
+    const forwarders = (src.match(/await gate\(\{[\s\S]*?\}\);/g) || []).filter((b) => b.includes('normalizeRail(rail)')).length;
+    assert.equal(invocations.length - passThroughs - forwarders, calls.length,
+      `${seam.file}: ${invocations.length - passThroughs - forwarders} gate invocations but ${calls.length} pinned calls`);
   }
+});
+
+test('the module-level shouldOfferPurchase wrapper forwards its args verbatim (the rail rides through) and no production seam calls it', () => {
+  const client = read('src/services/merchantPurchasabilityClient.js');
+  assert.match(client, /async function shouldOfferPurchase\(args, deps\) \{\n  return getMerchantPurchasabilityClient\(deps\)\.shouldOfferPurchase\(args \|\| \{\}\);/);
+  const roots = ['src', 'mcp-server/src'];
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(path.join(REPO, dir), { withFileTypes: true })) {
+      const rel = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(rel);
+      else if (/\.(js|cjs|mjs)$/.test(entry.name) && rel !== 'src/services/merchantPurchasabilityClient.js') {
+        const src = read(rel);
+        // A destructured import of the wrapper, or a bare call to it, would reach the gate with no rail.
+        if (/\bshouldOfferPurchase\b[^(]*=\s*require\(|\{[^}]*\bshouldOfferPurchase\b[^}]*\}\s*=\s*require\(|merchantPurchasability\.shouldOfferPurchase\(/.test(src)) offenders.push(rel);
+      }
+    }
+  };
+  roots.forEach(walk);
+  assert.deepEqual(offenders, [], 'a seam reaches the gate through the module-level wrapper: name its rail at the call');
 });
 
 test('the shared mcp-server helper forwards the rail it was handed, normalised, and nothing else decides it', () => {

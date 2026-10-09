@@ -1210,6 +1210,7 @@ test('rule 7 / parseFact: human_handoff_tier is read by EQUALITY, and anything e
   assert.equal(parseFact(CARD_ONLY).human_handoff_tier, 'browse_only');
   assert.equal(parseFact({ ...NO_CARD, human_handoff_tier: ' purchase ' }).human_handoff_tier, 'purchase');
   for (const [label, value] of [['absent', undefined], ['null', null], ['unknown string', 'browse_only_pending'],
+    ['upper-case (no case-folding, exactly as `tier`)', 'PURCHASE'], ['mixed case', 'Browse_Only'],
     ['boolean', true], ['number', 1], ['object', {}]]) {
     const fact = parseFact({ ...FACT_BROWSE_ONLY, human_handoff_tier: value });
     assert.ok(fact, `${label}: the fact still parses (the card rail must not fail open over the human field)`);
