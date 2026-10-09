@@ -259,3 +259,47 @@ test('a non-tools/call MCP method logs no tools/call line', async () => {
   await settle();
   assert.equal(linesFor('mcp tools/call complete').length, 0);
 });
+
+// ---- the caller-declared surface (2026-10-09) ----
+//
+// Pivota's own UI, its CI gates and its loopback self-calls share one service key, so the auth
+// fields above cannot tell them apart. `metadata.source` and `metadata.invoked_by` are what the
+// caller DECLARED; logged verbatim (bounded) so a census of market-less find_products_multi
+// traffic reads the surface off the line instead of joining IP ranges to request logs.
+
+test('the completion line carries the caller-declared source and invoked_by, bounded', async () => {
+  captured.length = 0;
+  introspectAs('agent_minds');
+  await supertest(app)
+    .post('/agent/shop/v1/invoke')
+    .set('X-Agent-API-Key', AGENT_KEY)
+    .set('X-Forwarded-For', '203.0.113.9')
+    .send({
+      operation: 'no_such_operation',
+      payload: {},
+      metadata: { source: 'shopping_agent', invoked_by: `ci:${'x'.repeat(200)}` },
+    });
+  await settle();
+  nock.cleanAll();
+  const [line] = linesFor('invoke request complete');
+  assert.ok(line, 'the completion line is logged');
+  assert.equal(line.request_source, 'shopping_agent');
+  assert.equal(line.invoked_by.length, 65, 'capped at 64 chars plus the ellipsis');
+  assert.ok(line.invoked_by.startsWith('ci:xxx'));
+});
+
+test('a caller that declares no surface logs no surface keys at all', async () => {
+  captured.length = 0;
+  introspectAs('agent_minds');
+  await supertest(app)
+    .post('/agent/shop/v1/invoke')
+    .set('X-Agent-API-Key', AGENT_KEY)
+    .set('X-Forwarded-For', '203.0.113.9')
+    .send({ operation: 'no_such_operation', payload: {}, metadata: { source: '   ', invoked_by: 7 } });
+  await settle();
+  nock.cleanAll();
+  const [line] = linesFor('invoke request complete');
+  assert.ok(line, 'the completion line is logged');
+  assert.equal('request_source' in line, false, 'blank is absent, not null');
+  assert.equal('invoked_by' in line, false, 'a non-string is absent, not stringified');
+});

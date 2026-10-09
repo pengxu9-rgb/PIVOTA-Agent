@@ -45,6 +45,7 @@
 
 const {
   MIN_GATE_BUDGET_MS,
+  RAIL,
   isGateEnabled,
   getMerchantPurchasabilityClient,
   selectBuyerMarket,
@@ -590,6 +591,11 @@ async function resolveOfferPurchasabilityDecisions(offers, options = {}) {
           domain: domains[index],
           market: options.market,
           budgetMs: remainingMs,
+          // A stamped checkout link or a seed cart is followed by a PERSON who pays on the merchant's
+          // own checkout, so the question is the human one (`human_handoff_tier`, client rule 7).
+          // Read on `tier`, this seam stripped the cart of every NO_CARD_PAYMENT merchant — the majority
+          // of negative cart seeds (pivota-backend #2411) — for a card rail it never uses.
+          rail: RAIL.human,
         });
       } catch {
         decision = null; // fail open: the client does not throw, and a future one must not either
