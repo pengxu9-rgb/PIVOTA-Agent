@@ -28512,15 +28512,29 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
 // inputs, read live rather than from the reconciler's lagging pdp_will_render stamp (2 sampled rows
 // stamped false answered 200): the active-source predicate, the content route
 // (pdpRenderability.pdpRouteResolvableFromRow), and get_pdp_v2's serving gate
-// (normalizePdpServingEligibilityRow + shouldAllowPublishedPdpMissingQualitySnapshot). A card is
-// withheld only when NO catalog row for its signature passes all three. No row, a read error,
+// (normalizePdpServingEligibilityRow + shouldAllowPublishedPdpMissingQualitySnapshot), applied to
+// the row get_pdp_v2 itself would pick for the signature. No row, a read error,
 // heuristic cards and pg_ family links (resolved by the group lane) keep the card, as before.
 function isRenderableRelationshipGraphCatalogRow(row) {
-  if (!row || row.source_active !== true) return false;
+  if (!row) return false;
   if (pdpRouteResolvableFromRow(row) !== true) return false;
-  if (row.mirror_seed_inactive === true) return false;
   const eligibility = normalizePdpServingEligibilityRow(row);
   return eligibility.serving_eligible === true || shouldAllowPublishedPdpMissingQualitySnapshot(eligibility);
+}
+
+function pickRelationshipGraphPdpResolverRow(rows) {
+  const time = (value) => {
+    const ms = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(ms) ? ms : -Infinity;
+  };
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.source_active === true)
+    .sort((a, b) => {
+      const mirror = (row) => (row.source_system === 'external_product_seeds_mirror_v1' ? 0 : 1);
+      if (mirror(a) !== mirror(b)) return mirror(a) - mirror(b);
+      if (time(a.updated_at) !== time(b.updated_at)) return time(b.updated_at) - time(a.updated_at);
+      return String(a.product_key || '').localeCompare(String(b.product_key || ''));
+    })[0] || null;
 }
 
 async function markUnrenderableRelationshipGraphCards(products) {
@@ -28556,8 +28570,7 @@ async function markUnrenderableRelationshipGraphCards(products) {
           ips.blocker_detail,
           ips.content_quality_score,
           eps_active_seed.external_product_id IS NOT NULL AS active_external_seed_source_match,
-          (cp.source_system = 'external_product_seeds_mirror_v1'
-            AND eps_active_seed.external_product_id IS NULL) AS mirror_seed_inactive
+          cp.updated_at
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN index_pipeline_state ips ON ips.content_key = cp.content_key
@@ -28577,15 +28590,21 @@ async function markUnrenderableRelationshipGraphCards(products) {
     );
     return list;
   }
-  const renderableBySig = new Map();
+  // get_pdp_v2 judges ONE row per signature: among active-source rows, the mirror row first, then
+  // the newest, then the lowest product_key (fetchPdpServingEligibilityFromDb's ORDER BY). The card
+  // follows that row's verdict; a signature with no active-source row renders nowhere.
+  const rowsBySig = new Map();
   for (const row of rows) {
     const sigId = firstNonEmptyString(row?.pivota_signature_id);
     if (!sigId) continue;
-    renderableBySig.set(sigId, renderableBySig.get(sigId) === true || isRenderableRelationshipGraphCatalogRow(row));
+    if (!rowsBySig.has(sigId)) rowsBySig.set(sigId, []);
+    rowsBySig.get(sigId).push(row);
   }
-  const unrenderable = new Set(
-    Array.from(renderableBySig).filter(([, renderable]) => renderable === false).map(([sigId]) => sigId),
-  );
+  const unrenderable = new Set();
+  for (const [sigId, sigRows] of rowsBySig) {
+    const picked = pickRelationshipGraphPdpResolverRow(sigRows);
+    if (!picked || !isRenderableRelationshipGraphCatalogRow(picked)) unrenderable.add(sigId);
+  }
   if (!unrenderable.size) return list;
   return list.map((product) =>
     isRelationshipGraphSimilarProduct(product) && unrenderable.has(firstNonEmptyString(product?.product_id))

@@ -414,7 +414,7 @@ describe('graph cards whose product page will not render are withheld', () => {
   test.each([
     ['no resolvable content route (sampled PDPs answered 410)', { pdp_seed_route_ok: false }],
     ['an excluded catalog source', { source_active: false }],
-    ['an inactive mirror seed', { mirror_seed_inactive: true, active_external_seed_source_match: false }],
+    ['an inactive mirror seed (its content route does not resolve)', { pdp_seed_route_ok: false, active_external_seed_source_match: false }],
     ['a shopify row (no measured route)', { platform: 'shopify', source_system: 'shopify', source_product_id: '8123' }],
   ])('%s is withheld', async (_label, overrides) => {
     state.render = () => [gateRow(sigOf(2), overrides)];
@@ -422,8 +422,22 @@ describe('graph cards whose product page will not render are withheld', () => {
   });
 
   test.each([
-    ['one renderable row among refused ones', () => [gateRow(sigOf(2), noUsOffer), gateRow(sigOf(2))]],
-    ['a renderable row listed before a refused one', () => [gateRow(sigOf(2)), gateRow(sigOf(2), noUsOffer)]],
+    ['the newest active-source row is refused (an older one renders)', () => [
+      gateRow(sigOf(2), { updated_at: '2026-09-01T00:00:00Z' }), gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-10-01T00:00:00Z' })]],
+    ['the mirror row get_pdp_v2 picks is refused although a newer minted row passes', () => [
+      gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-09-01T00:00:00Z' }),
+      gateRow(sigOf(2), { source_system: 'catalog_enrichment_agent_v1', updated_at: '2026-10-01T00:00:00Z' })]],
+  ])('%s: the card follows the row get_pdp_v2 judges', async (_label, render) => {
+    state.render = render;
+    expect(served(await findSimilar())).toEqual(['prel_rekey_3', 'prel_rekey_4', 'prel_rekey_5']);
+  });
+
+  test.each([
+    ['the newest active-source row renders (an older one is refused)', () => [
+      gateRow(sigOf(2), { ...noUsOffer, updated_at: '2026-09-01T00:00:00Z' }), gateRow(sigOf(2), { updated_at: '2026-10-01T00:00:00Z' })]],
+    ['an inactive-source row is skipped by the pick', () => [gateRow(sigOf(2), { source_active: false, updated_at: '2026-10-05T00:00:00Z' }),
+      gateRow(sigOf(2), { updated_at: '2026-10-01T00:00:00Z' })]],
+    ['a mirror row whose seed status is blank but whose route resolves', () => [gateRow(sigOf(2), { active_external_seed_source_match: false })]],
     ['the published-but-unscored override', () => [gateRow(sigOf(2), { serving_eligible: false, blocker_code: 'not_scored',
       blocker_detail: 'No quality snapshot found for this product', content_quality_score: null })]],
     ['no catalog row at all', () => []],
