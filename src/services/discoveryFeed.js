@@ -2,6 +2,11 @@ const { buildCanonicalOwnOfferSellerSql } = require('./canonicalOwnOfferSellerSq
 const axios = require('axios');
 const logger = require('../logger');
 const { query } = require('../db');
+// THE BUYER'S MARKET, AND THE CURRENCY ITS PAGE MUST BE IN (applyBuyerMarketFallback below).
+const { parseMarketList } = require('./servedMarkets');
+const { resolveServingCurrency } = require('./buyerMarket');
+const { filterProductsToServingCurrency } = require('./servingCurrencyGuard');
+const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
   observeDiscoveryCandidateCount,
@@ -3078,7 +3083,17 @@ function normalizeDiscoveryRequest(input = {}) {
     cursor,
     debug,
     response_detail: responseDetail,
+    // The buyer's market, when the door named one (`buyer_market`, stamped by the invoke door from
+    // the same reader the serving-currency guard uses). Null = silent = the deployment's own market.
+    buyer_market: resolveDiscoveryBuyerMarket(source),
   };
+}
+
+/** ONE ISO-2 market the request names, else null. A list or a locale is not a market. */
+function resolveDiscoveryBuyerMarket(source) {
+  const raw = source && typeof source === 'object' ? (source.buyer_market ?? source.buyerMarket) : null;
+  const named = parseMarketList(raw, null);
+  return named.length === 1 ? named[0] : null;
 }
 
 function buildAnchorFeatures(view) {
@@ -4318,6 +4333,9 @@ async function fetchDiscoveryRecallStep({
     const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
       params: {
         ...(step?.query ? { query: step.query } : {}),
+        // The buyer's market, for the buyer-market fallback only: the backend then recalls THAT
+        // market's rows (its own currency), never USD rows across markets.
+        ...(step?.market ? { market: step.market } : {}),
         in_stock_only: false,
         limit: step?.limit,
         offset: step?.offset,
@@ -11943,6 +11961,16 @@ function resolveDiscoveryVisibleProductId(raw = {}, candidate = {}) {
   return String(raw.product_id || raw.id || candidate.productId || '').trim();
 }
 
+/** The currency a card is priced in: resolved from the row like the guard does; 'USD' only when the row says nothing. */
+function resolveDiscoveryCardCurrency(raw) {
+  const priced = resolveCanonicalSearchProductPrice(raw);
+  if (priced && priced.currency) return priced.currency;
+  const nested = raw && raw.price && typeof raw.price === 'object' && !Array.isArray(raw.price) ? raw.price.currency : null;
+  const written = [raw && raw.currency, raw && raw.currency_code, raw && raw.price_currency, raw && raw.priceCurrency, nested]
+    .find((value) => value !== null && value !== undefined && String(value).trim() !== '');
+  return written ? String(written).trim().toUpperCase() : 'USD';
+}
+
 function formatDiscoveryResponseProduct(candidate, request = null) {
   const { __discovery_provider, ...raw } = candidate.raw || {};
   const visibleProductId = resolveDiscoveryVisibleProductId(raw, candidate);
@@ -12011,7 +12039,11 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(Array.isArray(raw.group_members) ? { group_members: raw.group_members } : {}),
       title: title || candidate.productId,
       price,
-      currency: raw.currency || 'USD',
+      // The row's RESOLVED currency (the same reader the serving-currency guard and the shopping-agent
+      // price contract use: currency / currency_code / price_currency, a nested price object, offers,
+      // variants). `raw.currency || 'USD'` labelled a row carrying only price_currency:'SGD' as USD -- the
+      // guard then dropped it -- and an SGD price object as "USD" on the card.
+      currency: resolveDiscoveryCardCurrency(raw),
       ...(imageUrl ? { image_url: imageUrl } : {}),
       ...(brand ? { brand } : {}),
       ...(category ? { category } : {}),
@@ -12566,7 +12598,7 @@ function createDiscoveryPhaseTimer(now = Date.now) {
   };
 }
 
-async function getDiscoveryFeed(payload = {}, options = {}) {
+async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
   const startedAt = Date.now();
   const phaseTimer = createDiscoveryPhaseTimer();
   let request = null;
@@ -13290,6 +13322,202 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BUYER-MARKET FALLBACK (Peng, 2026-10-09; "(c)").
+//
+// The curated feed (canonical_sig / curated_head) is the DEPLOYMENT's market: every row is USD.
+// The hour agent-ui #415 keyed Singapore-located buyers to SG, the invoke door's serving-currency
+// guard dropped all 24 rows of every page (correctly: an SGD buyer must not see USD prices) and
+// agent.pivota.cc/products read "No products found" for every buyer outside the US. The same for
+// all 11 non-US priceable markets, measured through the real door.
+//
+// THE RULE. When a request names a market whose currency is not the deployment's, and the page the
+// feed built has NO row in that currency, the feed is rebuilt from THAT market's own products_search
+// rows (`GET /agent/v1/products/search?market=SG`, the backend recalling its SG partition), filtered
+// to the market's currency before they enter ranking -- never USD rows across markets, and never a
+// row whose currency cannot be read. The door's guard still runs on what leaves; this makes it a
+// no-op rather than the thing that empties the page. A silent request, the deployment's own market,
+// or a market the gateway cannot price (null currency: the guard serves nothing, by design) leave
+// the feed byte-identical. A market joins agent-ui's SERVED_MARKETS only once this fallback is
+// measured to fill its feed.
+// ---------------------------------------------------------------------------------------------
+const BUYER_MARKET_FALLBACK_REASON = 'buyer_market_currency_empty';
+const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
+const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
+
+/** ONE wall-clock budget for the whole fallback: the hops run in parallel, each clamped to it. */
+function getBuyerMarketFallbackBudgetMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS, 1800, 300, 5000);
+}
+/** A market's pool is re-read this often (positive). */
+function getBuyerMarketPoolCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 60000, 1000, 600000);
+}
+/** ... and an EMPTY pool this often (negative): SG with no rows must not pay the hops on every page. */
+function getBuyerMarketPoolNegativeCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 30000, 1000, 600000);
+}
+
+// market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
+// Paging within a market reads this: page 2 of SG is the same pool, not four more hops.
+const buyerMarketPoolCache = new Map();
+function buyerMarketPoolCacheKey({ market, queryText, limit }) {
+  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase(), limit: Number(limit) || 0 });
+}
+function readBuyerMarketPoolCache(key, now = Date.now()) {
+  const entry = buyerMarketPoolCache.get(key);
+  if (!entry) return null;
+  if (now - entry.storedAt > entry.ttlMs) { buyerMarketPoolCache.delete(key); return null; }
+  return entry;
+}
+function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
+  if (buyerMarketPoolCache.size >= BUYER_MARKET_POOL_CACHE_MAX_ENTRIES) {
+    const oldest = buyerMarketPoolCache.keys().next().value;
+    if (oldest !== undefined) buyerMarketPoolCache.delete(oldest);
+  }
+  buyerMarketPoolCache.set(key, { ...value, storedAt: now });
+}
+function resetBuyerMarketPoolCacheForTest() {
+  buyerMarketPoolCache.clear();
+}
+
+/** The page has at least one row the buyer's currency allows (the guard's own rule for this surface). */
+function hasRowsInServingCurrency(products, servingCurrency) {
+  return filterProductsToServingCurrency(products, servingCurrency).length > 0;
+}
+
+/**
+ * That market's own rows: one products_search hop per cold-start query (or the page's own query
+ * text), keyed on the market, merged, and KEPT ONLY WHEN PRICED IN THE MARKET'S CURRENCY.
+ */
+async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
+  const queryText = String(request?.query?.text || '').trim();
+  const safeLimit = clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH);
+  const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
+  const cached = readBuyerMarketPoolCache(cacheKey, now());
+  if (cached) {
+    return {
+      products: cached.products,
+      recallSummary: [
+        { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: cached.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - cached.storedAt) },
+      ],
+      skipped: null,
+      cached: true,
+    };
+  }
+  const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
+  const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
+  const baseUrl = baseUrlConfig.value;
+  const apiKey = apiKeyConfig.value;
+  if (!baseUrl || !apiKey) {
+    return { products: [], recallSummary: [], skipped: !baseUrl ? 'products_search_base_url_unset' : 'products_search_api_key_unset' };
+  }
+  const requestHeaders = { 'X-Agent-API-Key': apiKey, 'X-API-Key': apiKey, Authorization: `Bearer ${apiKey}` };
+  const queries = (queryText ? [queryText] : getDiscoveryColdStartQueries()).slice(0, BUYER_MARKET_FALLBACK_MAX_QUERIES);
+  const steps = queries.map((text, index) => ({ label: `buyer_market_pool_${index + 1}`, query: text, limit: safeLimit, offset: 0, market }));
+  // THE SAME BREAKER AS THE MAIN products_search LANE: open means the upstream is down, so no hop is
+  // paid (the lane's probe decides when it is back); every answer below feeds it like the lane's do.
+  if (isProductsSearchBreakerOpen()) {
+    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders });
+    return { products: [], recallSummary: [], skipped: 'products_search_circuit_open' };
+  }
+  // IN PARALLEL, UNDER ONE BUDGET. Sequential hops on the 6.5 s default cost ~26 s for four; a page
+  // waits for the slowest hop only, and that hop is clamped to the budget.
+  const timeoutMs = computeDiscoveryStepTimeoutMs(getBuyerMarketFallbackBudgetMs());
+  const results = await Promise.all(steps.map((step) =>
+    Promise.resolve()
+      .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
+      .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } })),
+  ));
+  const merged = new Map();
+  const recallSummary = [];
+  for (const result of results) {
+    recordProductsSearchResult(result);
+    recallSummary.push({ ...result.summary, market });
+    for (const product of filterProductsToServingCurrency(result.products, servingCurrency)) {
+      const key = buildDiscoveryProviderMergeKey(product) || `${merged.size}:${Math.random()}`;
+      if (!merged.has(key)) merged.set(key, product);
+    }
+  }
+  const products = [...merged.values()];
+  // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the hops on every
+  // page. An all-failed round (every hop timed out or errored) is not an answer and is not cached.
+  const answered = results.some((result) => result && result.success === true);
+  if (answered) {
+    writeBuyerMarketPoolCache(cacheKey, { products, recallSummary, ttlMs: products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
+  }
+  return { products, recallSummary, skipped: null, cached: false };
+}
+
+/**
+ * The feed as built, or -- for a keyed market with no row in its currency -- the feed rebuilt from
+ * that market's own rows. `buildOnce` and `fetchRows` are injectable so the rule can be tested
+ * without a database or a transport.
+ */
+async function applyBuyerMarketFallback({
+  response,
+  payload,
+  options = {},
+  buildOnce = buildDiscoveryFeedOnce,
+  fetchRows = fetchBuyerMarketSearchRows,
+} = {}) {
+  const source = payload && typeof payload.discovery === 'object' ? { ...payload.discovery, ...payload } : payload;
+  const market = resolveDiscoveryBuyerMarket(source);
+  if (!market) return response;
+  const servingCurrency = resolveServingCurrency(market);
+  const deploymentCurrency = resolveServingCurrency('');
+  // The deployment's own market (the curated feed IS that market's), or one nothing is priced for
+  // (null: the door serves nothing, by design): unchanged.
+  if (!servingCurrency || servingCurrency === deploymentCurrency) return response;
+  const products = Array.isArray(response?.products) ? response.products : [];
+  if (hasRowsInServingCurrency(products, servingCurrency)) return response;
+
+  const request = normalizeDiscoveryRequest(payload);
+  const limit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
+  const rows = await fetchRows({ request, market, servingCurrency, limit });
+  const stamp = {
+    market,
+    serving_currency: servingCurrency,
+    reason: BUYER_MARKET_FALLBACK_REASON,
+    curated_rows_dropped: products.length,
+    rows: rows.products.length,
+    ...(rows.skipped ? { skipped: rows.skipped } : {}),
+  };
+  if (rows.products.length === 0) {
+    // Nothing in that market either: the page stays as built (the door's guard empties it) and says why.
+    return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false } } };
+  }
+  const rebuilt = await buildOnce(payload, {
+    ...options,
+    candidateProducts: annotateProviderProducts('products_search', rows.products),
+  });
+  const rebuiltMetadata = rebuilt?.metadata || {};
+  const eligible = Number.isFinite(Number(rebuiltMetadata.eligible_pool_count))
+    ? Number(rebuiltMetadata.eligible_pool_count)
+    : (Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0);
+  return {
+    ...rebuilt,
+    // The page is now this market's pool, so the totals are that pool, not the USD corpus count.
+    total: eligible,
+    metadata: {
+      ...rebuiltMetadata,
+      corpus_total_count: eligible,
+      ...(Object.prototype.hasOwnProperty.call(rebuiltMetadata, 'runtime_corpus_count') ? { runtime_corpus_count: eligible } : {}),
+      candidate_source: 'buyer_market_products_search',
+      fallback_triggered: true,
+      fallback_reason: BUYER_MARKET_FALLBACK_REASON,
+      route_health: { ...(rebuiltMetadata.route_health || {}), fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON },
+      search_decision: { ...(rebuiltMetadata.search_decision || {}), fallback_triggered: true },
+      buyer_market_fallback: { ...stamp, applied: true, recall_summary: rows.recallSummary },
+    },
+  };
+}
+
+async function getDiscoveryFeed(payload = {}, options = {}) {
+  const response = await buildDiscoveryFeedOnce(payload, options);
+  return applyBuyerMarketFallback({ response, payload, options });
+}
+
 module.exports = {
   DiscoveryCatalogUnavailableError,
   DiscoveryValidationError,
@@ -13297,6 +13525,15 @@ module.exports = {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
+    // The buyer-market fallback, with its collaborators injectable (no database, no transport).
+    applyBuyerMarketFallback,
+    fetchBuyerMarketSearchRows,
+    resolveDiscoveryBuyerMarket,
+    resolveDiscoveryCardCurrency,
+    buildDiscoveryFeedOnce,
+    resetBuyerMarketPoolCacheForTest,
+    isProductsSearchBreakerOpen,
+    BUYER_MARKET_FALLBACK_REASON,
     // The phase timer is exported so a test can drive it with a fake clock: the
     // property that matters is that the phases PARTITION the total, which cannot
     // be asserted against a real clock without flaking.
