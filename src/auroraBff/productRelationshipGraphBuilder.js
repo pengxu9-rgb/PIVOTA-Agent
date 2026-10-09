@@ -351,7 +351,6 @@ const SET_MARKER_TOKENS = new Set([
   'essentials',
   'faves',
   'kit',
-  'piece',
   'set',
   'trio',
 ]);
@@ -468,7 +467,8 @@ const BRUSH_TARGET_TOKENS = {
   foundation: ['foundation', 'kabuki'],
   blush: ['blush', 'cheek'],
   powder: ['powder'],
-  highlighter: ['highlighter', 'highlight', 'strobing', 'fan'],
+  highlighter: ['highlighter', 'highlight'],
+  contour: ['contour', 'sculpt'],
 };
 
 // A brush code names its area where the title does not: Sigma "E50 Large Fluff" is an eye brush,
@@ -478,39 +478,57 @@ function brushCodeArea(snapshot = {}) {
   return match ? (match[1] === 'e' ? 'eye' : 'face') : '';
 }
 
+// Brush targets, plus a strobing or fan brush named as one: a highlighter brush. The name only; a
+// description's "fan favorite" is not a fan brush.
+function brushTargets(snapshot = {}, tokens = rawProductTokens(snapshot)) {
+  const targets = tokenGroups(tokens, BRUSH_TARGET_TOKENS);
+  if (/\bstrobing\b|\bfan\s+brush\b/.test(normalizeLower(snapshotNameText(snapshot), 240).replace(/[\u2122\u00ae]/g, ''))) {
+    targets.add('highlighter');
+  }
+  return targets;
+}
+
 // Accessories and spare parts are not the products they serve: a razor stand is not refill blades,
-// hair clips are not a bath set, a satin scarf is not a curl routine. Read from the name only, with
-// a shade / variant tail after an em dash and any "+ / with" add-on removed ("Sunscreen + Collector's
-// Case" is a sunscreen). A refill of a cosmetic is that cosmetic.
+// hair clips are not a bath set, a satin scarf is not a curl routine. Read from the name head only:
+// a shade tail after an em dash, an "+ / with / &" add-on and a "( ... )" or ", ..." pack note are
+// removed ("Sunscreen + Collector's Case" is a sunscreen, "Body Wash (Case of 12)" a body wash). A
+// stand is the head noun only ("Razor Stand", not "Stand Out Mascara"); clip-in hair is not a clip.
+// A refill of a cosmetic is that cosmetic.
 const ACCESSORY_KINDS = [
   ['blade', /\bblades?\b|\bcartridges?\b|\breplacement\s+heads?\b/],
-  ['holder', /\b(?:stand|holder|organi[sz]er|caddy|soap\s+dish)\b/],
-  ['hair_accessory', /\b(?:hair\s+)?clips?\b|\bscrunchies?\b|\bheadbands?\b|\bbonnets?\b|\bscarf\b|\bpillow\s?case\b|\bhair\s+ties?\b/],
-  ['bag', /\b(?:bag|pouch|case)\b/],
+  ['holder', /\b(?:holder|organi[sz]er|caddy|soap\s+dish)\b|\bstand$/],
+  ['hair_accessory', /\bclips?\b(?![- ]?ins?\b)|\bscrunchies?\b|\bheadbands?\b|\bbonnets?\b|\bscarf\b|\bpillow\s?case\b|\bhair\s+ties?\b/],
+  ['bag', /\b(?:bag|pouch)\b|\bcase\b(?!\s+of\b)/],
 ];
 
 function accessoryKind(snapshot = {}) {
-  const name = normalizeLower(snapshotNameText(snapshot), 512).split(/\s+—\s+|\s+(?:\+|with|&)\s+/)[0];
+  const name = normalizeLower(snapshotNameText(snapshot), 512).replace(/[\u2122\u00ae]/g, '')
+    .split(/\s+\u2014\s+|\s+(?:\+|with|&)\s+|\s*[(,]/)[0].trim();
   const hit = ACCESSORY_KINDS.find(([, pattern]) => pattern.test(name));
   return hit ? hit[0] : '';
 }
 
-// What a skincare treatment (serum, ampoule, essence, toner, pad, peel) is FOR. Shelf tags and
-// descriptions name every benefit; the product's own name names its job. Its lead is the claim words
-// before any "with / for / + / dash" tail ("Hydrating Barrier Face Serum" leads with both), else its
-// first claim, together with its first active ("Alpha Arbutin 2% + HA" leads with arbutin, not the
-// HA tail). Two treatments are one shopper job only when each one's lead is among
-// the other's functions: Retinol vs Marine Hyaluronics, HA + B5 vs Alpha Arbutin + HA and a BHA
-// liquid vs a moisture pad are different jobs; two salicylic serums, two azelaic serums, or a
-// brightening toner vs a hyalu-cica brightening toner are one.
+// What a skincare treatment is FOR. Shelf tags and descriptions name every benefit; the product's own
+// name names its job. Its lead is the claim words in the name head (before a "with / for / + / dash /
+// comma / bracket" tail), else every claim in the name, together with the actives in the head, else
+// its first active ("Alpha Arbutin 2% + HA" leads with arbutin, not the HA tail; "Hyalu-Cica" with both).
+// Two treatments are one shopper job only when each one's lead is among the other's functions:
+// Retinol vs Marine Hyaluronics, HA + B5 vs Alpha Arbutin + HA and a BHA liquid vs a moisture pad are
+// different jobs; two salicylic serums, two azelaic serums, or a brightening toner vs a hyalu-cica
+// brightening toner are one. Naming order is meaning: "Vitamin C + HA Serum" is a vitamin C serum.
 const TREATMENT_CLAIM_FUNCTIONS = [
-  [['acne', 'blemish', 'blemishes', 'breakout', 'breakouts', 'pore', 'pores', 'poreless', 'poremizing', 'clarifying', 'whitehead',
-    'whiteheads', 'blackhead', 'blackheads', 'sebum', 'oil control', 'clear'], ['acne']],
-  [['hydrating', 'hydration', 'hydrate', 'moisture', 'moisturizing', 'moisturising'], ['hydration']],
+  [['acne', 'blemish', 'blemishes', 'breakout', 'breakouts', 'pore', 'pores', 'poreless', 'poremizing', 'whitehead',
+    'whiteheads', 'blackhead', 'blackheads', 'sebum', 'oil control'], ['acne']],
+  // A clear / clarifying pad or toner is an exfoliating blemish step (COSRX Clear Pad is a BHA pad).
+  [['clear', 'clarifying'], ['acne', 'exfoliating']],
+  [['hydrating', 'hydration', 'hydrate', 'moisture', 'moisturizing', 'moisturising', 'aqua'], ['hydration']],
   [['brightening', 'bright', 'glow', 'radiance', 'radiant', 'dark spot', 'dark spots', 'hyperpigmentation', 'dullness', 'illuminating'],
     ['brightening']],
   [['calming', 'soothing', 'relief', 'redness', 'sensitive'], ['calming']],
-  [['barrier', 'repair', 'repairing', 'restore', 'restoring', 'recovery'], ['barrier']],
+  [['barrier', 'repair', 'repairing', 'restore', 'restoring'], ['barrier']],
+  // Night repair and recovery treatments are the anti-ageing night step (Advanced Night Repair,
+  // Midnight Recovery, Age Recovery).
+  [['night repair', 'recovery'], ['barrier', 'firming']],
   [['firming', 'lifting', 'wrinkle', 'wrinkles', 'anti wrinkle', 'anti aging', 'anti ageing', 'age defying', 'elasticity'], ['firming']],
   [['exfoliating', 'exfoliant', 'exfoliation', 'peel', 'peeling', 'resurfacing'], ['exfoliating']],
 ];
@@ -522,33 +540,51 @@ const TREATMENT_ACTIVE_FUNCTIONS = [
   [['azelaic'], ['azelaic', 'acne']],
   [['hyaluronic', 'hyaluronics', 'hyaluron', 'hyalu', 'ha', 'b5', 'panthenol'], ['hydration']],
   [['vitamin c', 'vita c', 'ascorbic', 'arbutin', 'tranexamic', 'kojic', 'glutathione'], ['brightening']],
-  [['niacinamide'], ['niacinamide', 'brightening']],
+  // Niacinamide is sold for tone and for pores.
+  [['niacinamide'], ['niacinamide', 'brightening', 'acne']],
   [['centella', 'cica', 'teca', 'madecassoside', 'heartleaf'], ['calming']],
   [['ceramide', 'ceramides', 'pdrn'], ['barrier']],
-  [['tea tree', 'zinc'], ['acne']],
+  [['tea tree', 'zinc', 'succinic'], ['acne']],
 ];
-const TREATMENT_FORM_PATTERN = /\b(?:serum|essence|ampoule|toner|tonic|pads?|peel|exfoliant|solution|liquid|booster|concentrate|drops)\b/;
-const TREATMENT_EXCLUDED_PATTERN = /\b(?:sun|spf|sunscreen|lip|lips|lipstick|body|foundation|concealer|eyeliner|mascara|cleanser|cleansing|micellar|wash|soap)\b/;
+// Skincare treatment forms. The weak forms also name makeup and nail products ("Liquid Blush",
+// "Peel Off Polish", "Self-Tan Drops") and count only on a skincare shelf; makeup shelves say "face"
+// too ("makeup/face/blush"), so face is not a skincare shelf word.
+const TREATMENT_FORM_PATTERN = /\b(?:serum|essence|ampoule|toner|tonic|pads?|exfoliant)\b/;
+const TREATMENT_WEAK_FORM_PATTERN = /\b(?:peel|solution|liquid|booster|concentrate|drops)\b/;
+const TREATMENT_SKINCARE_SHELF = /\b(?:skin|skincare|serum|serums|toner|toners|treat|treatment|essence|ampoule)\b/;
+// Products named with a strong treatment form that are not skincare treatments, each seen in served
+// titles ("Sun Serum", "Serum Body Wash", "Lip Serum", "Serum Foundation", "Tinted Serum", "Lash and Brow
+// Serum", "Ampoule Highlighter", "Essence Setting Powder", "Self-tanning Serum") or named the same way
+// ("Primer Serum", "Nail Serum", "Self Tan Serum").
+const TREATMENT_EXCLUDED_PATTERN = new RegExp(`\\b(?:${[
+  'sun', 'spf', 'uv', 'sunscreen', 'body', 'cleanser', 'cleansing', 'wash', 'lip', 'foundation', 'concealer', 'cc', 'tinted',
+  'primer', 'powder', 'highlighter', 'brow', 'lash', 'nail', 'tan', 'tanning',
+].join('|')})\\b`);
 
 const TREATMENT_NAME_TAIL = /\s+(?:with|for|featuring)\s+|\s*\+\s*|\s+[-\u2013\u2014]\s+|[,(:|]/;
 
 function treatmentFunctionProfile(snapshot = {}) {
-  const raw = normalizeLower(snapshotNameText(snapshot), 512).replace(/^\s*\[[^\]]*\]\s*/, '');
+  // The bracketed brand prefix and a shade tail after an em dash ("Eyeliner \u2014 Bachelor Pad") are not the product.
+  const raw = normalizeLower(snapshotNameText(snapshot), 512).replace(/^\s*\[[^\]]*\]\s*/, '').split(/\s+\u2014\s+/)[0];
   const spaced = (text) => ` ${normalizeTokens(text).join(' ')} `;
   const name = spaced(raw); const head = spaced(raw.split(TREATMENT_NAME_TAIL)[0]);
   const leaf = normalizeCategoryValue(leafCategoryValue(snapshot));
+  const shelf = normalizeTokens([snapshot.category, ...(Array.isArray(snapshot.category_taxonomy) ? snapshot.category_taxonomy : [])]).join(' ');
   // A hair or scalp serum is out of scope; a squalane "for skin and hair" is still a skin treatment.
   const hairOnly = /\b(?:hair|scalp)\b/.test(name) && !/\b(?:skin|face|facial)\b/.test(name);
-  const isTreatment = (TREATMENT_FORM_PATTERN.test(name) || /^(?:serum|toner|essence|ampoule)s?$/.test(leaf)) &&
-    !TREATMENT_EXCLUDED_PATTERN.test(name) && !hairOnly;
-  if (!isTreatment) return null;
-  const eye = hasEyeOrLashArea({ name: snapshotNameText(snapshot) });
+  const form = TREATMENT_FORM_PATTERN.test(name) || /^(?:serum|toner|essence|ampoule)s?$/.test(leaf) ||
+    (TREATMENT_WEAK_FORM_PATTERN.test(name) && TREATMENT_SKINCARE_SHELF.test(` ${shelf} `));
+  if (!form || TREATMENT_EXCLUDED_PATTERN.test(name) || hairOnly) return null;
+  // An eye treatment names the eye area and not the face ("Face & Eye Serum" is a face serum); no
+  // toner or pad is an eye treatment ("Bright Eyes Toner" is a line name).
+  const eye = hasEyeOrLashArea({ name: snapshotNameText(snapshot) }) && !/\b(?:face|facial|toner|tonic|pads?)\b/.test(name);
   const ordered = (table, text = name) => table.flatMap(([words, groups]) => words.map((word) => [text.indexOf(` ${word} `), groups]))
     .filter(([at]) => at !== -1).sort((x, y) => x[0] - y[0]).map(([, groups]) => groups);
   const claims = ordered(TREATMENT_CLAIM_FUNCTIONS); const actives = ordered(TREATMENT_ACTIVE_FUNCTIONS);
-  const headClaims = ordered(TREATMENT_CLAIM_FUNCTIONS, head);
-  const leadClaims = headClaims.length ? headClaims.flat() : claims[0] || [];
-  return { eye, lead: [...leadClaims, ...(actives[0] || [])], functions: new Set([...claims, ...actives].flat()) };
+  const headClaims = ordered(TREATMENT_CLAIM_FUNCTIONS, head); const headActives = ordered(TREATMENT_ACTIVE_FUNCTIONS, head);
+  const leadClaims = (headClaims.length ? headClaims : claims).flat();
+  const leadActives = headActives.length ? headActives.flat() : actives[0] || [];
+  return { eye, lead: [...leadClaims, ...leadActives], functions: new Set([...claims, ...actives].flat()) };
 }
 
 function treatmentFunctionCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
@@ -688,10 +724,16 @@ function symmetricDifference(left, right) {
   return out;
 }
 
+// "3-Piece Routine" is a set; read from the name before any shade tail, never from a description
+// ("one-piece applicator") or a shade ("Piece of Cake").
+function namesPieceCount(snapshot = {}) {
+  return /\b\d+\s*-?\s*pieces?\b/.test(normalizeLower(snapshotNameText(snapshot), 512).split(/\s+\u2014\s+/)[0]);
+}
+
 function isSetLikeProduct(snapshot = {}) {
   const category = normalizeCategoryValue(snapshot.category);
   if (category === 'set' || category === 'makeup set') return true;
-  return tokenSetHasAny(rawProductTokens(snapshot), SET_MARKER_TOKENS);
+  return tokenSetHasAny(rawProductTokens(snapshot), SET_MARKER_TOKENS) || namesPieceCount(snapshot);
 }
 
 function isHighSignalSetLikeProduct(snapshot = {}) {
@@ -930,8 +972,8 @@ function productJobCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
 
   const bothBrushes = anchorTokens.has('brush') && candidateTokens.has('brush');
   if (bothBrushes) {
-    const anchorTargets = tokenGroups(anchorTokens, BRUSH_TARGET_TOKENS);
-    const candidateTargets = tokenGroups(candidateTokens, BRUSH_TARGET_TOKENS);
+    const anchorTargets = brushTargets(anchorSnapshot, anchorTokens);
+    const candidateTargets = brushTargets(candidateSnapshot, candidateTokens);
     if (anchorTargets.size && candidateTargets.size) {
       const shared = sharedGroups(anchorTargets, candidateTargets);
       if (!shared.length) {
@@ -956,6 +998,11 @@ function productJobCompatibility(anchorSnapshot = {}, candidateSnapshot = {}) {
   const anchorHairCare = anchorCategory === 'hair_care' || anchorTokens.has('hair');
   const candidateHairCare = candidateCategory === 'hair_care' || candidateTokens.has('hair');
   if (anchorHairCare && candidateHairCare) {
+    // A leave-in is not the rinse-out step it is named after ("Leave-In Conditioner" vs a conditioner).
+    if (/\bleave[\s-]*in\b/.test(normalizeLower(snapshotNameText(anchorSnapshot), 240)) !==
+      /\bleave[\s-]*in\b/.test(normalizeLower(snapshotNameText(candidateSnapshot), 240))) {
+      return { compatible: false, reason: 'hair_leave_in_mismatch', shared_groups: [] };
+    }
     const anchorHairForms = tokenGroups(anchorTokens, HAIR_FORM_JOB_TOKENS);
     const candidateHairForms = tokenGroups(candidateTokens, HAIR_FORM_JOB_TOKENS);
     if (anchorHairForms.size && candidateHairForms.size) {
@@ -2142,5 +2189,9 @@ module.exports = {
     snapshotLeafProfile,
     needCandidateCompatibility,
     isOutOfScopeBeautyProduct,
+    treatmentFunctionCompatibility,
+    accessoryKind,
+    isSetLikeProduct,
+    brushTargets,
   },
 };

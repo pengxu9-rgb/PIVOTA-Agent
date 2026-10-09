@@ -76,3 +76,312 @@ describe('routine roles read the product, not its shade or formula traits (real 
     expect(routineRole({ title, name: title })).toBe(role);
   });
 });
+
+// Review of #2382: production snapshots carry descriptions and makeup / nail titles the 2026-10-08 export
+// does not, so these rules are pinned on the shapes the builder will see.
+describe('rule vocabulary on production-shaped products', () => {
+  const { treatmentFunctionCompatibility, accessoryKind, isSetLikeProduct, brushTargets } = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
+  const { routineRole } = require('../src/auroraBff/relationshipComplementPolicy');
+  const p = (name, category = 'serum', extra = {}) => ({ name, title: name, category, category_taxonomy: [category], ...extra });
+
+  test.each([
+    // makeup, nail and self-tan products that share treatment form words are not treatments
+    ['Stay All Day® Waterproof Liquid Eye Liner', 'Perfect Strokes Matte Liquid Liner - Black', 'eye makeup'],
+    ['Soft Pinch Dewy Hydrating Liquid Blush', 'Cheeks Out Radiant Liquid Blush', 'blush'],
+    ['Glitter & Glow Liquid Eye Shadow', 'Hydrating Liquid Eyeshadow', 'eyeshadow'],
+    ['Miracle Hyaluronic Tinted Serum', 'Radiant Glow Tinted Serum', 'foundation'],
+    ['Hydrating Peel Off Nail Polish', 'Glow Peel Off Nail Polish', 'nail polish'],
+    ['The Face Illuminating Self-Tan Drops', 'Hydrating Self-Tanning Drops', 'self tanner'],
+    ['Curel Moisturizing UV Essence', 'Tone Up UV Brightening Essence', 'essence'],
+    // a weak form word off a skincare shelf is not a treatment
+    ['Lactic Acid Solution', 'Hyaluronic Acid Solution', 'nail care'],
+    // the eye flag: a face-and-eye serum is a face serum, a toner is never an eye treatment
+    ['Benefiance Wrinkle Smoothing Eye and Face Serum', 'Regenerist Micro-Sculpting Wrinkle Serum', 'serum'],
+    ['Bright Eyes Brightening Toner', 'Vitamin C Brightening Toner', 'toner'],
+    // night repair / recovery are the anti-ageing night step
+    ['Advanced Night Repair Synchronized Multi-Recovery Complex', 'Regenerist Retinol 24 Max Night Serum', 'serum'],
+    ['Midnight Recovery Concentrate', 'Clinical 1% Retinol Treatment', 'serum'],
+    // naming order is meaning: a hyaluronic serum with vitamin C is still a hyaluronic serum
+    ['Hyaluronic Acid + Vitamin C Serum', 'Hyaluronic Acid Serum', 'serum'],
+    // a treatment named for no function fails open
+    ['Ferment Essence', 'Retinol 0.5% Serum', 'serum'],
+  ])('compatible: %s || %s', (a, b, category) => {
+    expect(treatmentFunctionCompatibility(p(a, category), p(b, category))).toMatchObject({ compatible: true });
+    expect(treatmentFunctionCompatibility(p(b, category), p(a, category))).toMatchObject({ compatible: true });
+  });
+
+  test.each([
+    ['Lactic Acid Solution', 'Hyaluronic Acid Solution', 'skincare', 'treatment_function_mismatch'],
+    ['Vitamin C + Hyaluronic Acid Serum', 'Hyaluronic Acid Serum', 'serum', 'treatment_function_mismatch'],
+    ['Multi-Peptide Eye Serum', 'Multi-Peptide Serum', 'serum', 'treatment_area_mismatch'],
+    ['Mandelic Acid 10% Serum', 'Centella Calming Serum', 'serum', 'treatment_function_mismatch'],
+  ])('refused: %s || %s (%s)', (a, b, category, reason) => {
+    expect(treatmentFunctionCompatibility(p(a, category), p(b, category))).toMatchObject({ compatible: false, reason });
+    expect(treatmentFunctionCompatibility(p(b, category), p(a, category))).toMatchObject({ compatible: false, reason });
+  });
+
+  test.each([
+    ['Safety Razor Stand', 'holder'],
+    ['Stand Out Volumizing Mascara', ''],
+    ['Fuzzy Gloss Bomb Holder', 'holder'],
+    ['Refill Safety Razor Blades – Pack Of 10', 'blade'],
+    ['Lav Kids Hair Clips Duo', 'hair_accessory'],
+    ['Clip-In Hair Extensions', ''],
+    ['Fenty Hair Satin Scarf', 'hair_accessory'],
+    ['Powder Pouch', 'bag'],
+    ['Fenty Icon The Case Semi-Matte Refillable Lipstick — Metallic Nude', 'bag'],
+    ['Body Wash 12 fl oz (Case of 12)', ''],
+    ["Arcane Hydra Vizor Mystery Box Moisturizer Sunscreen + Collector's Case", ''],
+  ])('accessoryKind(%s) = %j', (name, kind) => {
+    expect(accessoryKind({ name, title: name })).toBe(kind);
+  });
+
+  test.each([
+    ['The Rich Curls 3-Piece Curl-Defining Routine', {}, true],
+    ['Liquid Eyeliner', { description: 'One-piece felt tip applicator for precise lines.' }, false],
+    ['Gloss Bomb Universal Lip Luminizer — Piece of Cake', {}, false],
+    ['Clip-In Bangs Hair Piece', {}, false],
+  ])('set: %s -> %s', (name, extra, expected) => {
+    expect(isSetLikeProduct({ name, title: name, category: 'makeup', ...extra })).toBe(expected);
+  });
+
+  test.each([
+    ['F42 Strobing Fan™ Brush', {}, ['highlighter']],
+    ['Fan Brush', {}, ['highlighter']],
+    ['Angled Blush Brush', { description: 'Our fan favorite brush for blush.' }, ['blush']],
+    ['F11 Soft Sculpt Brush', {}, ['contour']],
+  ])('brush targets: %s', (name, extra, targets) => {
+    expect([...brushTargets({ name, title: name, ...extra })].sort()).toEqual(targets);
+  });
+
+  test.each([
+    ['Beard Comb', 'beard_tool'],
+    ['Beard Trimmer', 'beard_tool'],
+    ['Beard Wash', 'beard_wash'],
+    ['BEARD PACK', 'beard_care'],
+    ['Silicone Body Scrubber', ''],
+  ])('routineRole(%s) = %j', (title, role) => {
+    expect(routineRole({ title, name: title })).toBe(role);
+  });
+});
+
+// The treatment vocabulary as a contract: every word names its groups. "<word> Serum" matches a
+// one-group serum of each of its groups and refuses a one-group serum of a group it does not name.
+describe('treatment vocabulary contract', () => {
+  const { treatmentFunctionCompatibility } = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
+  const serum = (name) => ({ name, title: name, category: 'serum', category_taxonomy: ['serum'] });
+  const ONE_GROUP = { acne: 'Acne Serum', exfoliating: 'Exfoliating Serum', hydration: 'Hydrating Serum', brightening: 'Brightening Serum',
+    calming: 'Calming Serum', barrier: 'Barrier Serum', firming: 'Firming Serum' };
+  const VOCABULARY = [
+    ["acne", ["acne"]],
+    ["blemish", ["acne"]],
+    ["blemishes", ["acne"]],
+    ["breakout", ["acne"]],
+    ["breakouts", ["acne"]],
+    ["pore", ["acne"]],
+    ["pores", ["acne"]],
+    ["poreless", ["acne"]],
+    ["poremizing", ["acne"]],
+    ["whitehead", ["acne"]],
+    ["whiteheads", ["acne"]],
+    ["blackhead", ["acne"]],
+    ["blackheads", ["acne"]],
+    ["sebum", ["acne"]],
+    ["oil control", ["acne"]],
+    ["clear", ["acne","exfoliating"]],
+    ["clarifying", ["acne","exfoliating"]],
+    ["hydrating", ["hydration"]],
+    ["hydration", ["hydration"]],
+    ["hydrate", ["hydration"]],
+    ["moisture", ["hydration"]],
+    ["moisturizing", ["hydration"]],
+    ["moisturising", ["hydration"]],
+    ["aqua", ["hydration"]],
+    ["brightening", ["brightening"]],
+    ["bright", ["brightening"]],
+    ["glow", ["brightening"]],
+    ["radiance", ["brightening"]],
+    ["radiant", ["brightening"]],
+    ["dark spot", ["brightening"]],
+    ["dark spots", ["brightening"]],
+    ["hyperpigmentation", ["brightening"]],
+    ["dullness", ["brightening"]],
+    ["illuminating", ["brightening"]],
+    ["calming", ["calming"]],
+    ["soothing", ["calming"]],
+    ["relief", ["calming"]],
+    ["redness", ["calming"]],
+    ["sensitive", ["calming"]],
+    ["barrier", ["barrier"]],
+    ["repair", ["barrier"]],
+    ["repairing", ["barrier"]],
+    ["restore", ["barrier"]],
+    ["restoring", ["barrier"]],
+    ["night repair", ["barrier","firming"]],
+    ["recovery", ["barrier","firming"]],
+    ["firming", ["firming"]],
+    ["lifting", ["firming"]],
+    ["wrinkle", ["firming"]],
+    ["wrinkles", ["firming"]],
+    ["anti wrinkle", ["firming"]],
+    ["anti aging", ["firming"]],
+    ["anti ageing", ["firming"]],
+    ["age defying", ["firming"]],
+    ["elasticity", ["firming"]],
+    ["exfoliating", ["exfoliating"]],
+    ["exfoliant", ["exfoliating"]],
+    ["exfoliation", ["exfoliating"]],
+    ["peel", ["exfoliating"]],
+    ["peeling", ["exfoliating"]],
+    ["resurfacing", ["exfoliating"]],
+    ["retinol", ["retinoid","firming"]],
+    ["retinal", ["retinoid","firming"]],
+    ["retinoid", ["retinoid","firming"]],
+    ["retinoids", ["retinoid","firming"]],
+    ["bakuchiol", ["retinoid","firming"]],
+    ["peptide", ["peptide","firming"]],
+    ["peptides", ["peptide","firming"]],
+    ["collagen", ["peptide","firming"]],
+    ["matrixyl", ["peptide","firming"]],
+    ["argireline", ["peptide","firming"]],
+    ["salicylic", ["exfoliating","acne"]],
+    ["bha", ["exfoliating","acne"]],
+    ["aha", ["exfoliating"]],
+    ["pha", ["exfoliating"]],
+    ["glycolic", ["exfoliating"]],
+    ["lactic", ["exfoliating"]],
+    ["mandelic", ["exfoliating"]],
+    ["gluconolactone", ["exfoliating"]],
+    ["azelaic", ["azelaic","acne"]],
+    ["hyaluronic", ["hydration"]],
+    ["hyaluronics", ["hydration"]],
+    ["hyaluron", ["hydration"]],
+    ["hyalu", ["hydration"]],
+    ["ha", ["hydration"]],
+    ["b5", ["hydration"]],
+    ["panthenol", ["hydration"]],
+    ["vitamin c", ["brightening"]],
+    ["vita c", ["brightening"]],
+    ["ascorbic", ["brightening"]],
+    ["arbutin", ["brightening"]],
+    ["tranexamic", ["brightening"]],
+    ["kojic", ["brightening"]],
+    ["glutathione", ["brightening"]],
+    ["niacinamide", ["niacinamide","brightening","acne"]],
+    ["centella", ["calming"]],
+    ["cica", ["calming"]],
+    ["teca", ["calming"]],
+    ["madecassoside", ["calming"]],
+    ["heartleaf", ["calming"]],
+    ["ceramide", ["barrier"]],
+    ["ceramides", ["barrier"]],
+    ["pdrn", ["barrier"]],
+    ["tea tree", ["acne"]],
+    ["zinc", ["acne"]],
+    ["succinic", ["acne"]],
+  ];
+  test.each(VOCABULARY)('%s -> %j', (word, groups) => {
+    const product = serum(`${word.replace(/(^|\s)\w/g, (c) => c.toUpperCase())} Serum`);
+    for (const group of groups.filter((g) => ONE_GROUP[g])) {
+      expect(treatmentFunctionCompatibility(product, serum(ONE_GROUP[group]))).toMatchObject({ compatible: true });
+    }
+    const other = Object.keys(ONE_GROUP).find((g) => !groups.includes(g));
+    expect(treatmentFunctionCompatibility(product, serum(ONE_GROUP[other]))).toMatchObject({ compatible: false, reason: 'treatment_function_mismatch' });
+  });
+});
+
+describe('treatment rule structure', () => {
+  const { treatmentFunctionCompatibility, accessoryKind, brushTargets } = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
+  const { routineRole } = require('../src/auroraBff/relationshipComplementPolicy');
+  const p = (name, category = 'serum') => ({ name, title: name, category, category_taxonomy: [category] });
+  test.each([
+    // a "for" tail is not the lead: a brightening serum for sensitive skin is not a calming serum
+    ['Brightening Serum for Sensitive Skin', 'Calming Serum', 'serum'],
+    // the bracketed brand is not the product ("Body" in a brand does not exclude a face serum)
+    ['[THE BODY SHOP] Vitamin C Glow Serum', 'Retinol Serum', 'serum'],
+    // pads are a treatment form on any shelf
+    ['Glycolic Acid Pads', 'Hydrating Collagen Pads', 'skin care'],
+  ])('refused: %s || %s', (a, b, category) => {
+    expect(treatmentFunctionCompatibility(p(a, category), p(b, category))).toMatchObject({ compatible: false });
+  });
+  test.each([
+    // a scalp serum is out of the treatment rule's scope
+    ['Hydrating Scalp Serum', 'Brightening Serum'],
+    // a shade tail is not the product: "Bachelor Pad" is an eyeliner shade
+    ['Flypencil Longwear Pencil Eyeliner — Bachelor Pad', 'Glow Serum', 'eye makeup'],
+    ['Flypencil Longwear Pencil Eyeliner — Bright Pad', 'Calming Serum', 'eye makeup'],
+    // makeup and body products named with a treatment form, from served titles
+    ['Glaze Craze Tinted Lip Serum', 'Exfoliating Serum'],
+    ['True Skin Serum Foundation', 'Exfoliating Serum'],
+    ['Get Real Serum Concealer', 'Exfoliating Serum'],
+    ['CC color-correcting tinted serum', 'Exfoliating Serum'],
+    ['My Glow Ampoule Highlighter', 'Exfoliating Serum'],
+    ['Shiseido Essence Skin Setting Powder', 'Exfoliating Serum'],
+    ['Multi-Peptide Lash and Brow Serum for Thicker, Fuller Looking Lashes & Brows', 'Exfoliating Serum'],
+    ['Moon Boost Eyebrow and Lash Serum', 'Exfoliating Serum'],
+    ['Self-tanning serum', 'Exfoliating Serum'],
+    ['BLEU body serum', 'Exfoliating Serum'],
+    ['The Purifier Niacinamide Serum Body Wash', 'Exfoliating Serum'],
+    ['Glow Tonic Cleansing Gel', 'Exfoliating Serum'],
+    ['The Daily Duo Mini Cleanser + Toner Serum Duo', 'Exfoliating Serum'],
+    ['[VELY VELY] Yuja C Sun Serum SPF 50+ PA++++ 30ml', 'Exfoliating Serum'],
+    ['Hyalu-Cica Water-Fit Sun Serum UV', 'Exfoliating Serum'],
+    ['Better Screen UV Serum Sunscreen SPF 50+ - 1.7 oz', 'Exfoliating Serum'],
+    ['City Sunscreen Serum SPF 30', 'Exfoliating Serum'],
+    // the same shapes named, not yet seen served
+    ['Hydrating Primer Serum', 'Exfoliating Serum'],
+    ['Nail and Cuticle Repair Serum', 'Exfoliating Serum'],
+    ['Glow Self Tan Serum', 'Exfoliating Serum'],
+  ])('not a treatment, so not compared: %s || %s', (a, b, category = 'serum') => {
+    expect(treatmentFunctionCompatibility(p(a, category), p(b))).toMatchObject({ compatible: true });
+  });
+  test.each([
+    ['Lip Balm (Pouch Included)', ''],
+    ['Body Wash 12 fl oz Case of 12', ''],
+  ])('accessoryKind(%s) = %j', (name, kind) => expect(accessoryKind({ name, title: name })).toBe(kind));
+  test('a fan favorite is not a fan brush', () => {
+    expect([...brushTargets({ name: 'Fan Favorite Kabuki Brush', title: 'Fan Favorite Kabuki Brush' })]).toEqual(['foundation']);
+  });
+  test.each([
+    ['Daily Oil-Free Face Oil Control Gel', 'face_oil'],
+    ['Clear Body Oil-Free Lotion', 'body_oil'],
+    ['Oil-Free Acne Wash', 'oil'],
+    ["Pro Filt'r Foundation — Beard", 'beard_care'],
+  ])('%s is not %s', (title, role) => expect(routineRole({ title, name: title })).not.toBe(role));
+});
+
+// Each excluded word, on a name that WOULD conflict if it were read as a treatment: the exclusion is
+// what keeps the pair out of the treatment rule.
+describe('treatment exclusions, each pinned by a conflicting claim', () => {
+  const { treatmentFunctionCompatibility } = require('../src/auroraBff/productRelationshipGraphBuilder').__internal;
+  const p = (name, category) => ({ name, title: name, category, category_taxonomy: [category] });
+  test.each([
+    // served titles
+    ['SKIN1004 Probio-Cica Glow Sun Ampoule', 'sunscreen', 'Exfoliating Serum'],
+    ['Curel Moisturizing UV Essence 50g', 'sunscreen', 'Exfoliating Serum'],
+    ['[AIDA]  Propolis Calming Ampoule Gel Cleanser 100ml', 'makeup', 'Exfoliating Serum'],
+    ['Glow Tonic Cleansing Gel', 'skincare', 'Exfoliating Serum'],
+    ['COSRX RED RICE INOSITOL Exfoliating Care Pore Wash-Off Peel Serum', 'beauty/skincare/cleanse/cleanser', 'Calming Serum'],
+    ['PHA 5% Exfoliating Lip Serum', 'Lip Treatment', 'Calming Serum'],
+    ['Miracle Hyaluronic Tinted Serum', 'foundation', 'Exfoliating Serum'],
+    ['Brightening Micro Powder Exfoliant', 'Powder Exfoliant', 'Calming Serum'],
+    ['My Glow Ampoule Highlighter', 'Highlighter', 'Exfoliating Serum'],
+    // the same shapes, named
+    ['Vitamin C Serum SPF 30', 'serum', 'Calming Serum'],
+    ['Hydrating Sunscreen Serum', 'serum', 'Exfoliating Serum'],
+    ['Brightening Body Serum', 'body care', 'Calming Serum'],
+    ['Hydrating Serum Foundation', 'makeup', 'Exfoliating Serum'],
+    ['Brightening Serum Concealer', 'makeup', 'Calming Serum'],
+    ['CC Brightening Serum', 'makeup', 'Calming Serum'],
+    ['Peptide Brow Serum', 'brow', 'Calming Serum'],
+    ['Peptide Lash Serum', 'lash', 'Calming Serum'],
+    ['Hydrating Self-Tanning Serum', 'self tanner', 'Exfoliating Serum'],
+    ['Hydrating Primer Serum', 'primer', 'Exfoliating Serum'],
+    ['Strengthening Peptide Nail Serum', 'nail care', 'Calming Serum'],
+    ['Glow Self Tan Serum', 'self tanner', 'Calming Serum'],
+    // a makeup shelf names the face: a liquid blush is not a skincare liquid
+    ['Soft Pinch Dewy Hydrating Liquid Blush', 'beauty/makeup/face/blush', 'Radiant Liquid Blush'],
+  ])('%s (%s) is not compared with %s', (name, category, partner) => {
+    expect(treatmentFunctionCompatibility(p(name, category), p(partner, partner.includes('Blush') ? category : 'serum'))).toMatchObject({ compatible: true });
+  });
+});

@@ -1188,6 +1188,473 @@
      "beauty/skincare/treat/serum"
     ]
    }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two centella ampoules; \"Hyalu-Cica\" leads with both actives",
+   "served_as": "related_product",
+   "score_total": 0.7759,
+   "anchor": {
+    "brand": "Skin1004",
+    "name": "Centella Ampoule",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Skin1004",
+    "name": "Hyalu-Cica First Ampoule",
+    "category": "Serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum",
+     "Serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "BHA clear pad vs AHA/BHA daily toner",
+   "served_as": "related_product",
+   "score_total": 0.7306,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "One Step Original Clear Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Refresh ABC Daily Toner (AHA BHA Vitamin C)",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two Hydrium hydrating ampoules",
+   "served_as": "related_product",
+   "score_total": 0.7803,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "Hydrium Centella Aqua Soothing Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Hydrium Triple Hyaluronic Moisture Ampoule",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "retinol ampoule vs night repair ampoule",
+   "served_as": "related_product",
+   "score_total": 0.8022,
+   "anchor": {
+    "brand": "MISSHA",
+    "name": "MISSHA Time Revolution Retinol 500 Shot Ampoule 10ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   },
+   "candidate": {
+    "brand": "MISSHA",
+    "name": "MISSHA Time Revolution Night Repair Ampoule 5X 70ml",
+    "category": "serum",
+    "category_taxonomy": [
+     "serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "pore serum vs niacinamide booster",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7351,
+   "anchor": {
+    "brand": "INNBEAUTY PROJECT",
+    "name": "Pore Refine",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Paula's Choice",
+    "name": "10% Niacinamide Booster",
+    "category": "beauty/skincare/serum",
+    "category_taxonomy": [
+     "beauty/skincare/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two cica toners (human_approved)",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7567,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Cloudy Mist",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "Medicube",
+    "name": "Exosome Cica Calming Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two hyaluronic serums (human_approved)",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7479,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Blue Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "Anua",
+    "name": "PDRN Hyaluronic Acid Capsule 100 Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two vitamin C serums",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7583,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Multi-Antioxidant Radiance Serum with Vitamin C and Ginseng",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "Refresh AHA/BHA Vitamin C Booster Serum",
+    "category": "beauty/skincare/treat/serum",
+    "category_taxonomy": [
+     "beauty/skincare/treat/serum"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two anti-wrinkle serums; tail claims count when the head has none",
+   "served_as": "related_product",
+   "score_total": 0.7891,
+   "anchor": {
+    "brand": "The Ordinary",
+    "name": "Multi-Peptide + Copper Peptides 1% for Wrinkles and Skin Elasticity",
+    "category": "Serum",
+    "category_taxonomy": [
+     "Serum",
+     "skincare"
+    ]
+   },
+   "candidate": {
+    "brand": "The Ordinary",
+    "name": "GF 15% Serum for Visible Skin Repair and Wrinkles",
+    "category": "Serum",
+    "category_taxonomy": [
+     "Serum",
+     "skincare"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "B5 is a hydrating active",
+   "served_as": "competitive_alternative",
+   "score_total": 0.729,
+   "anchor": {
+    "brand": "SKIN1004",
+    "name": "Hyalu-Cica Cloudy Mist",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "COSRX 5 PDRN B5 Vital Soothing Toner",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "same PDRN line, pad vs toner",
+   "served_as": "related_product",
+   "score_total": 0.8129,
+   "anchor": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] PDRN Pink Collagen Toning Gel Toner Pad 120ml (70 Pads)",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] PDRN Pink Niacinamide Milky Toner 150ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "guard",
+   "expected": "competitive_alternative",
+   "why": "two sun serums are sunscreens, not treatments",
+   "served_as": "related_product",
+   "score_total": 0.8429,
+   "anchor": {
+    "brand": "VELY VELY",
+    "name": "[VELY VELY] Vitamin Dark Spot Tone-up Sun Serum SPF 50+ PA++++ 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "VELY VELY",
+    "name": "[VELY VELY] Collagen Sun Serum SPF 50+ PA++++  30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "succinic (acne) vs retinol",
+   "served_as": "related_product",
+   "score_total": 0.8231,
+   "anchor": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] Red Succinic Acid Serum 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   },
+   "candidate": {
+    "brand": "MEDICUBE",
+    "name": "[MEDICUBE] Deep Vita A Retinol Serum 30ml",
+    "category": "makeup",
+    "category_taxonomy": [
+     "makeup"
+    ]
+   }
+  },
+  {
+   "family": "routine_step",
+   "expected": "not_alternative",
+   "why": "rinse-out deep conditioner vs leave-in spray",
+   "served_as": "related_product",
+   "score_total": 0.8155,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "The Richer One Moisture Repair Deep Conditioner",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "The Water Boi Reparative Leave-In Detangling Conditioner Spray",
+    "category": "hair care",
+    "category_taxonomy": [
+     "hair care",
+     "frizz control",
+     "frizz_control",
+     "heat styling prep",
+     "heat_styling_prep",
+     "hair hydration",
+     "hair_hydration",
+     "style refresh",
+     "style_refresh"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "contour brush vs foundation kabuki",
+   "served_as": "related_product",
+   "score_total": 0.7614,
+   "anchor": {
+    "brand": "Sigma Beauty",
+    "name": "F11 Soft Sculpt Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   },
+   "candidate": {
+    "brand": "Sigma Beauty",
+    "name": "F80 Flat Kabuki™ Brush",
+    "category": "beauty/tools/brush",
+    "category_taxonomy": [
+     "beauty/tools/brush"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "a powder pouch is not a powder",
+   "served_as": "competitive_alternative",
+   "score_total": 0.7606,
+   "anchor": {
+    "brand": "Rare Beauty",
+    "name": "Powder Pouch",
+    "category": "beauty/makeup/face/powder",
+    "category_taxonomy": [
+     "beauty/makeup/face/powder"
+    ]
+   },
+   "candidate": {
+    "brand": "Jurlique",
+    "name": "Rose Silk Finishing Powder",
+    "category": "beauty/makeup/face/powder",
+    "category_taxonomy": [
+     "beauty/makeup/face/powder"
+    ]
+   }
+  },
+  {
+   "family": "accessory",
+   "expected": "not_alternative",
+   "why": "a gloss holder is not a gloss",
+   "served_as": "related_product",
+   "score_total": 0.84,
+   "anchor": {
+    "brand": "Fenty Beauty",
+    "name": "Fuzzy Gloss Bomb Holder",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "refillable lip color",
+     "refillable_lip_color",
+     "color payoff",
+     "color_payoff",
+     "shine finish",
+     "shine_finish"
+    ]
+   },
+   "candidate": {
+    "brand": "Fenty Beauty",
+    "name": "Gloss Bomb Universal Lip Luminizer — Fu$$y",
+    "category": "lip color",
+    "category_taxonomy": [
+     "lip color",
+     "color payoff",
+     "color_payoff",
+     "lip comfort",
+     "lip_comfort",
+     "shine finish",
+     "shine_finish"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "tea tree blemish pad vs hydrating tonic",
+   "served_as": "related_product",
+   "score_total": 0.7784,
+   "anchor": {
+    "brand": "THE FACE SHOP",
+    "name": "THE FACE SHOP Tea Tree Toner 70 Pads",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   },
+   "candidate": {
+    "brand": "THE FACE SHOP",
+    "name": "THE FACE SHOP The Therapy Hydrating Tonic Treatment 150ml",
+    "category": "toner",
+    "category_taxonomy": [
+     "toner"
+    ]
+   }
+  },
+  {
+   "family": "treatment_function",
+   "expected": "not_alternative",
+   "why": "moisture pad vs BHA clear pad",
+   "served_as": "related_product",
+   "score_total": 0.799,
+   "anchor": {
+    "brand": "COSRX",
+    "name": "One Step Moisture Up Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   },
+   "candidate": {
+    "brand": "COSRX",
+    "name": "One Step Original Clear Pad",
+    "category": "beauty/skincare/treat/toner",
+    "category_taxonomy": [
+     "beauty/skincare/treat/toner"
+    ]
+   }
   }
  ]
 }
