@@ -422,7 +422,7 @@ test('the token is in no serialisable structure: not the provider, not the fact 
   // how one merchant's read ends up serialised next to an Authorization value.
   const dumped = JSON.stringify([...(client._cache.__keys ? [] : [])]) + JSON.stringify(client._cache);
   assert.equal(dumped.includes('onlyinaclosure'), false);
-  assert.equal(JSON.stringify(client._cache.get(`${MERCHANT} US`)), JSON.stringify(FACT_PURCHASE));
+  assert.equal(JSON.stringify(client._cache.get(`${MERCHANT} US`)), JSON.stringify({ ...FACT_PURCHASE, human_handoff_tier: null })); // rule 7: the allow-listed shape, null when absent
 });
 
 // ---- 6. isolation: the new deps must FORK the singleton ---------------------------------------------------

@@ -25,6 +25,7 @@
 const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
 const {
   getMerchantPurchasabilityClient,
+  RAIL: PURCHASABILITY_RAIL,
   createMerchantPurchasabilityClient,
 } = require('./merchantPurchasabilityClient');
 const defaultWarmHandoffMetrics = require('../observability/ucpWarmHandoffMetrics');
@@ -362,8 +363,10 @@ function createWarmHandoffService(deps = {}) {
     // fact, for every merchant at once. Below the client's floor the gate is skipped
     // outright. Same shape as `buildPreview`'s `previewRemainingMs` further down.
     const gateBudgetMs = totalBudgetMs - (now() - startedAt);
+    // A warm cart is handed to a PERSON who pays on the merchant's own checkout: the human question
+    // (`human_handoff_tier`, client rule 7), never the headless card rail's `tier`.
     const gateDecision = await shouldOfferPurchaseFn({
-      domain: brandLabel, market: params.market, budgetMs: gateBudgetMs,
+      domain: brandLabel, market: params.market, budgetMs: gateBudgetMs, rail: PURCHASABILITY_RAIL.human,
     });
     if (gateDecision && gateDecision.offer === false) {
       note('warn', 'ucp_warm_handoff_merchant_not_purchasable', {

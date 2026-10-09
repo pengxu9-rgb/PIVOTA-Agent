@@ -1816,12 +1816,15 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     : (args) => merchantPurchasability.getMerchantPurchasabilityClient().shouldOfferPurchase(args);
   const gateEnabled = merchantPurchasability.isGateEnabled(env);
   const budgetLeft = doorBudgetMs - (gateClock() - startedAt);
+  // THE CARD RAIL'S QUESTION (client rule 7): Pivota charges the buyer's card here, so the checkout must take a
+  // card — `tier`, never `human_handoff_tier`, which also admits NO_CARD_PAYMENT merchants a human can pay.
   const offer = await mayOfferPurchaseForDomain(
     merchantDomain,
     escalationBuyerMarket(ucpArgs),
     gate,
     gateEnabled,
     Math.min(Math.max(0, budgetLeft), ESCALATION_GATE_MAX_MS),
+    merchantPurchasability.RAIL.card,
   );
   if (!offer) return skip("purchasability_declined");
 

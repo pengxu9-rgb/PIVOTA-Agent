@@ -24,6 +24,9 @@ const {
   parseFact,
   decide,
   createMerchantPurchasabilityClient,
+  RAIL,
+  normalizeRail,
+  tierForRail,
 } = require('../src/services/merchantPurchasabilityClient');
 
 const { createWarmHandoffService } = require('../src/services/ucpWarmHandoff');
@@ -226,7 +229,7 @@ test('decide(): `tier` is consulted ONLY when enforced === true', () => {
 
 test('parseFact(): tier is compared by EQUALITY, and a non-boolean `enforced` is malformed', () => {
   assert.deepEqual(parseFact({ tier: 'purchase', enforced: true, sweep_enabled: false }),
-    { tier: 'purchase', enforced: true, sweep_enabled: false });
+    { tier: 'purchase', enforced: true, sweep_enabled: false, human_handoff_tier: null });
   // A loose compare (startsWith / includes / truthiness) would admit each of these.
   for (const tier of ['browse_only_pending', 'purchase_blocked', 'BROWSE_ONLY', 'browse', '', 'purchases']) {
     assert.equal(parseFact({ tier, enforced: true }), null, tier);
@@ -1192,6 +1195,105 @@ test('DECISION TABLE: every row, pinned', async () => {
     assert.deepEqual(got.decision, expected, label);
     assert.equal(got.calls, calls, `${label}: backend reads`);
   }
+});
+
+// =========================================================================================================
+// RULE 7 — two questions, two fields, one read (pivota-backend #2411)
+// =========================================================================================================
+
+const NO_CARD = { tier: 'browse_only', human_handoff_tier: 'purchase', enforced: true, sweep_enabled: true };
+const CARD_ONLY = { tier: 'purchase', human_handoff_tier: 'browse_only', enforced: true, sweep_enabled: true };
+const BOTH_NO = { tier: 'browse_only', human_handoff_tier: 'browse_only', enforced: true, sweep_enabled: true };
+
+test('rule 7 / parseFact: human_handoff_tier is read by EQUALITY, and anything else is ABSENT (null), never malformed', () => {
+  assert.equal(parseFact(NO_CARD).human_handoff_tier, 'purchase');
+  assert.equal(parseFact(CARD_ONLY).human_handoff_tier, 'browse_only');
+  assert.equal(parseFact({ ...NO_CARD, human_handoff_tier: ' purchase ' }).human_handoff_tier, 'purchase');
+  for (const [label, value] of [['absent', undefined], ['null', null], ['unknown string', 'browse_only_pending'],
+    ['boolean', true], ['number', 1], ['object', {}]]) {
+    const fact = parseFact({ ...FACT_BROWSE_ONLY, human_handoff_tier: value });
+    assert.ok(fact, `${label}: the fact still parses (the card rail must not fail open over the human field)`);
+    assert.equal(fact.human_handoff_tier, null, label);
+    assert.equal(fact.tier, 'browse_only', label);
+  }
+});
+
+test('rule 7 / normalizeRail: ONLY the literal `human` is the human rail; everything else is the card rail', () => {
+  assert.equal(normalizeRail('human'), RAIL.human);
+  for (const value of [undefined, null, 'card', 'HUMAN', ' human', 'Human', 1, true, {}, 'headless']) {
+    assert.equal(normalizeRail(value), RAIL.card, String(value));
+  }
+});
+
+test('rule 7 / decide(fact, rail): the human rail acts on human_handoff_tier, the card rail on tier, and no rail is the card rail', () => {
+  // NO_CARD_PAYMENT: a human can pay (PayPal, wallets); the headless card rail cannot.
+  assert.deepEqual(decide(NO_CARD, RAIL.human), { offer: true, source: SOURCE.gate });
+  assert.deepEqual(decide(NO_CARD, RAIL.card), { offer: false, source: SOURCE.gate });
+  assert.deepEqual(decide(NO_CARD), { offer: false, source: SOURCE.gate }, 'unnamed = card');
+  assert.deepEqual(decide(NO_CARD, 'anything'), { offer: false, source: SOURCE.gate }, 'unknown = card');
+  // The other way round is a fact too: whatever the backend says, each rail reads its own field.
+  assert.deepEqual(decide(CARD_ONLY, RAIL.human), { offer: false, source: SOURCE.gate });
+  assert.deepEqual(decide(CARD_ONLY, RAIL.card), { offer: true, source: SOURCE.gate });
+  assert.deepEqual(decide(BOTH_NO, RAIL.human), { offer: false, source: SOURCE.gate });
+  // A backend before #2411 (no human field): the human rail reads `tier`, exactly as before.
+  assert.deepEqual(decide(parseFact(FACT_BROWSE_ONLY), RAIL.human), { offer: false, source: SOURCE.gate });
+  assert.deepEqual(decide(parseFact(FACT_PURCHASE), RAIL.human), { offer: true, source: SOURCE.gate });
+  // enforced=false and a failed read are rail-blind: the previous behaviour for both.
+  for (const rail of [RAIL.human, RAIL.card, undefined]) {
+    assert.deepEqual(decide({ ...NO_CARD, enforced: false }, rail), { offer: true, source: SOURCE.previous });
+    assert.deepEqual(decide(null, rail), { offer: true, source: SOURCE.failed });
+  }
+});
+
+test('rule 7 / tierForRail: the field each rail acts on', () => {
+  const f = parseFact(NO_CARD);
+  assert.equal(tierForRail(f, RAIL.human), 'purchase');
+  assert.equal(tierForRail(f, RAIL.card), 'browse_only');
+  assert.equal(tierForRail(f, undefined), 'browse_only');
+  assert.equal(tierForRail(parseFact(FACT_PURCHASE), RAIL.human), 'purchase', 'absent human field: tier');
+  assert.equal(tierForRail(parseFact(FACT_BROWSE_ONLY), RAIL.human), 'browse_only', 'absent human field: tier');
+});
+
+test('rule 7 / shouldOfferPurchase: ONE read serves BOTH rails from one cache entry; the log names the rail and both tiers', async () => {
+  const backend = fakeBackend(NO_CARD);
+  const logger = fakeLogger();
+  const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger });
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT, market: 'US', rail: RAIL.human }), { offer: true, source: 'gate' });
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT, market: 'US', rail: RAIL.card }), { offer: false, source: 'gate' });
+  assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT, market: 'US' }), { offer: false, source: 'gate' }, 'unnamed = card');
+  assert.equal(backend.calls.length, 1, 'the fact carries both answers: one read, one cache entry');
+  const declined = logger.lines.filter((l) => l.event === 'merchant_purchasability_browse_only');
+  assert.ok(declined.length >= 1);
+  assert.equal(declined[0].rail, 'card');
+  assert.equal(declined[0].tier, 'browse_only');
+  assert.equal(declined[0].human_handoff_tier, 'purchase');
+  // The URL still carries exactly domain and market: the rail is NOT a wire value.
+  assert.deepEqual([...new URL(backend.calls[0].url).searchParams.keys()].sort(), ['domain', 'market']);
+});
+
+test('rule 7 / shouldOfferPurchase: an UNKEYABLE request under enforcement declines on BOTH rails (no fact, no answer)', async () => {
+  for (const rail of [RAIL.human, RAIL.card]) {
+    const backend = fakeBackend(NO_CARD);
+    const client = createMerchantPurchasabilityClient({ env: gateEnv(), fetchImpl: backend.fetchImpl, logger: fakeLogger() });
+    assert.deepEqual(await client.shouldOfferPurchase({ domain: MERCHANT, rail }),
+      { offer: false, source: 'unkeyable_enforced', reason: REASON_MARKET_UNKNOWN }, rail);
+  }
+});
+
+test('rule 7 / warm handoff (seam 1): a NO_CARD_PAYMENT merchant KEEPS its warm cart — the cart is handed to a human', async () => {
+  const backend = fakeBackend(NO_CARD);
+  const logger = fakeLogger();
+  const { service, merchant } = warmService({ env: gateEnv(), backend, logger });
+  const handoff = await service.resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+  assert.deepEqual(handoff, PINNED_HANDOFF, 'byte-identical to the purchase answer');
+  assert.equal(merchant.calls.createCart.length, 1);
+  assert.equal(backend.calls.length, 1, 'the gate was consulted');
+  assert.ok(!logger.lines.some((l) => l.event === 'ucp_warm_handoff_merchant_not_purchasable'));
+  // And a merchant NO human can pay is still declined through the same seam.
+  const no = fakeBackend(BOTH_NO);
+  const declined = await warmService({ env: gateEnv(), backend: no, logger: fakeLogger() }).service
+    .resolveWarmHandoff({ brandDomain: MERCHANT, variantGid: VARIANT, market: 'US' });
+  assert.equal(declined, null);
 });
 
 test('decideUnkeyable: ONLY a literal `true` refuses — unknown is never enforced', () => {

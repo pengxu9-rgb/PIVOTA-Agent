@@ -14,6 +14,20 @@
 which `prioritizeOffersResolveResponse` calls).
 One switch, one `shouldOfferPurchase`, one process singleton, one bounded cache. §8 is the table.
 
+**Two questions, two fields, one read (2026-10-09, pivota-backend #2411).** The ops route answers
+`tier` for the **headless card rail** (Reap: Pivota charges the card, so the checkout must take a
+card) and `human_handoff_tier` for a **cart handed to a human** (a warm cart, an escalation
+`continue_url`, a stamped checkout link: the buyer pays on the merchant's own checkout with whatever
+it takes). They differ on `NO_CARD_PAYMENT`: 643 of 839 negative cart seeds on 2026-10-09 were
+offsite card providers (PayPal, Shop Pay wallets) a human completes without noticing, so a human
+seam reading `tier` declined the majority of its carts for nothing. Every seam names its `rail`
+(`RAIL.human` for seams 1, 2 and 3; `RAIL.card` for the Reap agentic lane); the client acts on
+`human_handoff_tier` for the human rail **when the answer carries it** and on `tier` otherwise (a
+backend before #2411), so an older backend reads exactly as before. An unnamed rail is the card
+rail, the stricter answer. One fact serves both: same read, same cache entry.
+`tests/merchant_purchasability_rail_sites.node.test.cjs` pins the rail each seam names and that no
+seam exists that it does not know about.
+
 This rail ships **dark**, behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` (default OFF). With the
 switch off nothing is asked of the backend and the warm-handoff lane is byte-identical to before
 this PR — pinned, not asserted, by the snapshot test in the suite above.
@@ -342,6 +356,7 @@ widens `require_admin_or_key` to anything.
 | `GET /ops/merchant-purchasability?domain=&market=` | `buildFactUrl` — exactly two query values, asserted by a test that greps the wire for buyer-ish tokens |
 | `GET /ops/merchant-purchasability?domain=` (no market — backend #2352) | `buildEnforcementProbeUrl` — ONE query value; read only for `enforced`, and only from the `reason: market_unknown` shape (`parseEnforcementProbe`) |
 | act on `tier` **only** when `enforced === true` | `decide()` |
+| the human rail acts on `human_handoff_tier` when present, else `tier`; the card rail on `tier`; unnamed = card | `tierForRail()`, `normalizeRail()`, called from `decide(fact, rail)` |
 | cache ≤ 5 min per (domain, market), bounded | `MAX_TTL_MS` + `createTtlCache({ maxEntries: 500 })` |
 | **fail OPEN** on transport error / timeout / non-200 / malformed | every `catch` and every `return null` in `fetchFact` |
 | log loudly on `sweep_enabled=false && enforced=true` | `noteMisorderedArming` — `error` level, once per 5 min per merchant |
@@ -358,9 +373,13 @@ widens `require_admin_or_key` to anything.
 
 ### The decision table
 
-`shouldOfferPurchase({ domain, market, budgetMs })` answers `{ offer, source }`, plus `reason` on an
+`shouldOfferPurchase({ domain, market, budgetMs, rail })` answers `{ offer, source }`, plus `reason` on an
 unkeyable request. Every row is pinned in `tests/merchant_purchasability_gate.node.test.cjs`
-("DECISION TABLE: every row, pinned").
+("DECISION TABLE: every row, pinned"). The two `gate` rows below read **the rail's field**: `tier`
+for `rail: card` (and unnamed), `human_handoff_tier` for `rail: human` when the answer carries it,
+else `tier`. So a `NO_CARD_PAYMENT` merchant (`tier: browse_only, human_handoff_tier: purchase`)
+is `offer: true` on the human rail and `offer: false` on the card rail from the same read ("rule 7"
+tests in the same file). Every other row is rail-blind.
 
 | request | backend | `offer` | `source` | `reason` |
 |---|---|---|---|---|
@@ -632,6 +651,10 @@ Gated: **all three** of this gateway's purchase-offering paths for observed merc
 `offers.resolve` door of path 3, which is not (correction below the table).** All three run
 behind `MERCHANT_PURCHASABILITY_GATE_ENABLED` and through the same `shouldOfferPurchase`, so there is
 one cache, one `enforced` rule and one fail-open rule for the whole gateway.
+
+Rail per path (rule 7): paths 1, 2, 3 and 3′ hand a cart to a **human** (`RAIL.human`,
+`human_handoff_tier`); the Reap agentic lane (`mcp-server/src/ucpReapAgenticLane.js`, through the
+same `mayOfferPurchaseForDomain`) charges a **card** (`RAIL.card`, `tier`).
 
 | # | path | what it offers | market source | fallback when `offer === false` |
 |---|---|---|---|---|
