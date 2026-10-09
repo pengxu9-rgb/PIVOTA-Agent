@@ -15,6 +15,7 @@
 //   - Results are sanitized: tokens / ap2_state / client secrets / PANs are scrubbed, while the data the
 //     agent legitimately needs (status, requires_action redirect/qr/instructions, ids, amounts) is preserved.
 
+import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
@@ -416,7 +417,38 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
-      const result = await executor.execute(op.id, params, ctx);
+      let result;
+      try {
+        result = await executor.execute(op.id, params, ctx);
+      } catch (err) {
+        // 4a) THE NATIVE DOOR'S STOREFRONT ROWS, named only once the kernel has failed. The kernel cannot price a
+        //     seller Pivota is not connected to, and that failure arrives as a RETRIABLE MERCHANT_UNAVAILABLE —
+        //     "try again shortly" for a checkout that can never succeed. Asked AFTER the failure, not before, so a
+        //     checkout that prices pays no extra read (an explicit variant_id still costs none). The quote always
+        //     names a merchant, so each row is read with that merchant scope (for a seed-supply merchant the gateway
+        //     dispatcher reroutes the scoped read to the canonical unscoped detail, src/server.js get_product, and
+        //     assertProductIdentity is the guard that the row is that product); only a row that read classifies as a
+        //     storefront row turns the failure into the terminal `ucp_storefront_checkout_unavailable`. A read that
+        //     fails, or a cart of contracted rows, rethrows the kernel's own error unchanged. (The UCP door refuses
+        //     such rows BEFORE the kernel, step 3a-ii.)
+        //     ⚠️ ONLY FOR A MERCHANT PIVOTA DOES NOT TRANSACT. A row classification alone is NOT enough here: the
+        //     backend's merchant-scoped product detail stamps a Pivota `/r` hop as `external_redirect_url` on a
+        //     CONNECTED Shopify merchant's products too (`_attach_connected_product_redirects`), so such a row reads
+        //     as a storefront row — and MERCHANT_UNAVAILABLE also covers timeouts, 5xx and kernel-internal reasons.
+        //     Renaming those would turn a retry that would succeed into "abandon the order". So the quote's merchant
+        //     must ALSO be external-seed supply (an observed seller, or the retired shared seed seller — ADR-009's
+        //     one id test, `isExternalSeedSupplyMerchantId`): a seller whose checkout no retry can ever price.
+        const quote = isPlainObject(params.quote) ? params.quote : {};
+        if (dialect === TOOL_DIALECTS.mcp && err?.code === "MERCHANT_UNAVAILABLE"
+          && (op.id === "create_checkout_session" || op.id === "update_checkout_session")
+          && externalSeedLane.isExternalSeedSupplyMerchantId(quote.merchant_id)) {
+          await refuseUnservedStorefrontCheckout({
+            op, params, ctx, executor, failOpen: true,
+            merchantId: nonEmpty(quote.merchant_id) ? quote.merchant_id.trim() : undefined,
+          });
+        }
+        throw err;
+      }
       // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so
       //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
       //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a

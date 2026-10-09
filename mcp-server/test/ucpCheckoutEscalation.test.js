@@ -627,3 +627,124 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
     });
   });
 });
+
+// ---- the seller behind a Pivota attribution hop ---------------------------------------------------------------
+//
+// A stamped row's link is Pivota's own hop (`https://api.pivota.cc/r?token=…`), whose destination is the seller.
+// Judging "one seller per checkout", the purchasability gate's domain, or the seller named to the buyer by the
+// LINK's host made every hop row the same seller: api.pivota.cc.
+
+describe('sellers behind Pivota attribution hops', () => {
+  const hopTo = (dest) => `https://api.pivota.cc/r?token=${Buffer.from(JSON.stringify({ dest }), 'utf8').toString('base64url')}.c2ln`;
+  const hopRow = (product_id, dest) => ({ ...SEED, product_id, external_redirect_url: hopTo(dest) });
+  const create = (rowsById, pairs, extra = {}) => tryEscalateUcpCheckout({
+    op: CREATE, params: params(items(...pairs)), ctx: {}, executor: executorWith(rowsById), ucpArgs: {}, env: ON, now: NOW, ...extra,
+  });
+
+  test('two hop rows to DIFFERENT sellers cannot share a checkout — named by seller, never as api.pivota.cc', async () => {
+    const a = hopRow('sig_hop_a', 'https://www.comfortzone.us/products/a');
+    const b = hopRow('sig_hop_b', 'https://us.nuxe.com/products/b');
+    const err = await rejected(create({ [a.product_id]: a, [b.product_id]: b }, [[a.product_id, 1], [b.product_id, 1]]));
+    assert.equal(err.detail.acp_detail.reason, 'ucp_multi_seller_escalation');
+    assert.deepEqual(err.detail.acp_detail.seller_hosts.sort(), ['comfortzone.us', 'us.nuxe.com']);
+    assert.doesNotMatch(err.detail.acp_message, /pivota\.cc/);
+    assert.match(err.detail.acp_message, /Send one checkout per seller: (comfortzone\.us, us\.nuxe\.com|us\.nuxe\.com, comfortzone\.us)\./);
+  });
+
+  test('hop rows to the SAME seller (www or not, hop or direct link) share one checkout, which names the seller', async () => {
+    const a = hopRow('sig_hop_a', 'https://www.comfortzone.us/products/a');
+    const b = hopRow('sig_hop_b', 'https://comfortzone.us/products/b');
+    const c = { ...SEED, product_id: 'sig_direct_c', external_redirect_url: 'https://comfortzone.us/products/c' };
+    const out = await create({ [a.product_id]: a, [b.product_id]: b, [c.product_id]: c }, [[a.product_id, 1], [b.product_id, 1], [c.product_id, 1]]);
+    assert.equal(out.status, 'requires_escalation');
+    assert.equal(out.line_items.length, 3);
+    assert.match(out.messages[0].content, /\(comfortzone\.us\)/);
+    assert.doesNotMatch(out.messages[0].content, /pivota\.cc/);
+  });
+
+  test('in a cart of several products, a row whose seller cannot be read is refused, not assumed to match', async () => {
+    const a = hopRow('sig_hop_a', 'https://comfortzone.us/products/a');
+    const bad = { ...SEED, product_id: 'sig_bad', external_redirect_url: 'https://api.pivota.cc/r?token=not-a-token' };
+    const err = await rejected(create({ [a.product_id]: a, [bad.product_id]: bad }, [[a.product_id, 1], [bad.product_id, 1]]));
+    assert.equal(err.detail.acp_detail.reason, 'ucp_multi_seller_escalation');
+    assert.deepEqual(err.detail.acp_detail.unconfirmed_seller_items, ['sig_bad']);
+    assert.deepEqual(err.detail.acp_detail.seller_hosts, ['comfortzone.us']);
+    // …while a single such row still escalates exactly as before (there is nothing to share a checkout with).
+    const alone = await create({ [bad.product_id]: bad }, [[bad.product_id, 1]]);
+    assert.equal(alone.status, 'requires_escalation');
+    assert.equal(alone.continue_url, bad.external_redirect_url);
+  });
+
+  test("the purchasability gate is asked about the hop's SELLER, not api.pivota.cc", async () => {
+    const a = hopRow('sig_hop_a', 'https://www.comfortzone.us/products/a');
+    const asked = [];
+    await create({ [a.product_id]: a }, [[a.product_id, 1]], {
+      env: { ...ON, MERCHANT_PURCHASABILITY_GATE_ENABLED: '1' },
+      shouldOfferPurchase: async (q) => { asked.push(q.domain); return { offer: true, source: 'gate' }; },
+    });
+    assert.deepEqual(asked, ['comfortzone.us']);
+  });
+});
+
+describe('review of #2380', () => {
+  const hopTo = (dest) => `https://api.pivota.cc/r?token=${Buffer.from(JSON.stringify({ dest }), 'utf8').toString('base64url')}.c2ln`;
+  const hopRow = (product_id, dest) => ({ ...SEED, product_id, external_redirect_url: hopTo(dest) });
+  const create = (rowsById, pairs, extra = {}) => tryEscalateUcpCheckout({
+    op: CREATE, params: params(items(...pairs)), ctx: {}, executor: executorWith(rowsById), ucpArgs: {}, env: ON, now: NOW, ...extra,
+  });
+
+  test("a direct link and a hop to the same seller: the HOP is handed out, whatever the line order (Pivota's referral kept)", async () => {
+    const direct = { ...SEED, product_id: 'sig_direct', external_redirect_url: 'https://comfortzone.us/products/d' };
+    const hop = hopRow('sig_hop', 'https://comfortzone.us/products/h?utm_source=pivota&pvt_click_id=clk_1');
+    for (const order of [[[direct.product_id, 1], [hop.product_id, 1]], [[hop.product_id, 1], [direct.product_id, 1]]]) {
+      const rowsById = { [direct.product_id]: direct, [hop.product_id]: hop };
+      const out = await create(rowsById, order);
+      assert.equal(out.continue_url, hop.external_redirect_url, JSON.stringify(order));
+      // …and a re-read hands out the SAME link (never the direct one).
+      const again = await tryEscalateUcpCheckout({ op: GET, params: { session_id: out.id }, ctx: {}, executor: executorWith(rowsById), ucpArgs: {}, env: ON, now: NOW });
+      assert.equal(again.continue_url, out.continue_url, `re-read ${JSON.stringify(order)}`);
+    }
+  });
+
+  test('a redirector inside the destination names NO seller: two such rows never share a checkout; one alone never names the redirector', async () => {
+    const via = (pid, seller) => hopRow(pid, `https://click.linksynergy.com/deeplink?id=x&murl=${encodeURIComponent(`https://www.${seller}/p`)}`);
+    const a = via('sig_ls_a', 'sephora.com');
+    const b = via('sig_ls_b', 'ulta.com');
+    const err = await rejected(create({ [a.product_id]: a, [b.product_id]: b }, [[a.product_id, 1], [b.product_id, 1]]));
+    assert.equal(err.detail.acp_detail.reason, 'ucp_multi_seller_escalation');
+    assert.deepEqual(err.detail.acp_detail.unconfirmed_seller_items.sort(), ['sig_ls_a', 'sig_ls_b']);
+    const direct = { ...SEED, product_id: 'sig_ls_direct', external_redirect_url: 'https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fwww.ulta.com%2Fp' };
+    const asked = [];
+    const alone = await create({ [direct.product_id]: direct }, [[direct.product_id, 1]], {
+      env: { ...ON, MERCHANT_PURCHASABILITY_GATE_ENABLED: '1' },
+      shouldOfferPurchase: async (q) => { asked.push(q.domain); return { offer: true, source: 'gate' }; },
+    });
+    assert.equal(alone.status, 'requires_escalation');
+    assert.doesNotMatch(alone.messages[0].content, /linksynergy/);
+    assert.deepEqual(asked, [null], 'the gate is asked about no domain, not the redirector');
+  });
+
+  test('an unreadable hop names nobody: not in the message, not to the gate', async () => {
+    const bad = { ...SEED, product_id: 'sig_bad', external_redirect_url: 'https://api.pivota.cc/r?token=not-a-token' };
+    const asked = [];
+    const out = await create({ [bad.product_id]: bad }, [[bad.product_id, 1]], {
+      env: { ...ON, MERCHANT_PURCHASABILITY_GATE_ENABLED: '1' },
+      shouldOfferPurchase: async (q) => { asked.push(q.domain); return { offer: true, source: 'gate' }; },
+    });
+    assert.doesNotMatch(out.messages[0].content, /pivota\.cc/);
+    assert.match(out.messages[0].content, /seller's own storefront \(continue_url\)/);
+    assert.deepEqual(asked, [null]);
+  });
+
+  test('get_checkout re-checks one seller: rows that now resolve to two sellers are not a checkout', async () => {
+    const a = hopRow('sig_hop_a', 'https://comfortzone.us/products/a');
+    const b = hopRow('sig_hop_b', 'https://us.nuxe.com/products/b');
+    const id = encodeEscalationId(items([a.product_id, 1], [b.product_id, 1]));
+    const err = await rejected(tryEscalateUcpCheckout({ op: GET, params: { session_id: id }, ctx: {}, executor: executorWith({ [a.product_id]: a, [b.product_id]: b }), ucpArgs: {}, env: ON, now: NOW }));
+    assert.equal(err.code, 'QUOTE_NOT_FOUND');
+    assert.equal(err.detail.reason, 'ucp_escalation_row_changed');
+    const same = hopRow('sig_hop_c', 'https://www.comfortzone.us/products/c');
+    const ok = await tryEscalateUcpCheckout({ op: GET, params: { session_id: encodeEscalationId(items([a.product_id, 1], [same.product_id, 1])) }, ctx: {}, executor: executorWith({ [a.product_id]: a, [same.product_id]: same }), ucpArgs: {}, env: ON, now: NOW });
+    assert.equal(ok.line_items.length, 2);
+  });
+});
