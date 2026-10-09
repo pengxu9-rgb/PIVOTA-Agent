@@ -142,26 +142,38 @@ function ownVariantIdGid(v, row) {
 }
 
 export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
-  if (!isPlainObject(row)) return null;
+  return sellerVariantChoiceOf(row, sellerHost, chosenVariantId).gid;
+}
+
+/**
+ * The seller variant gid AND where it came from: `chosen` (the buyer picked it), `row_id` (a row-level or sole-variant
+ * seller id field), `url` (a seller-host link's `variant=`, possibly agreeing with the read), or `sole_variant_id` (the
+ * read's single variant's own id with no link naming it — a DERIVED id, see refuseDerivedSoleVariant). `{gid: null}`
+ * when there is none.
+ */
+export function sellerVariantChoiceOf(row, sellerHost, chosenVariantId) {
+  const none = { gid: null, source: null };
+  if (!isPlainObject(row)) return none;
   // A variant the BUYER CHOSE (already proven one of this product's real variants at the door): its own seller id —
   // `source_variant_id` / `variant_gid`, else its id when that is itself a Shopify variant id. Nothing else: the
   // row-level id or a URL's `variant=` may name a different variant.
   if (chosenVariantId !== undefined && chosenVariantId !== null) {
     const v = findRealVariant(row, chosenVariantId);
-    if (!v) return null;
+    if (!v) return none;
     for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid")]) {
       const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
-      if (gid) return gid;
+      if (gid) return { gid, source: "chosen" };
     }
-    return ownVariantIdGid(v, row);
+    const own_ = ownVariantIdGid(v, row);
+    return own_ ? { gid: own_, source: "chosen" } : none;
   }
   const variants = Array.isArray(own(row, "variants")) ? own(row, "variants").filter(isPlainObject) : [];
-  if (variants.length > 1) return null; // the buyer's choice is not carried on this door: never guess
+  if (variants.length > 1) return none; // the buyer's choice is not carried on this door: never guess
   const fromIds = [own(row, "source_variant_id"), own(row, "variant_gid")];
   if (variants.length === 1) fromIds.push(own(variants[0], "source_variant_id"), own(variants[0], "variant_gid"));
   for (const raw of fromIds) {
     const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
-    if (gid) return gid;
+    if (gid) return { gid, source: "row_id" };
   }
   // THE SOLE VARIANT'S OWN ID, as the live read carries it (see ownVariantIdGid) — only when it is a REAL variant by
   // checkout's own count (a restated product id never is). A seller-host URL's `variant=` naming a DIFFERENT variant
@@ -171,7 +183,7 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
     const real = realVariantsOf(row);
     if (real.length === 1 && real[0].variant === variants[0]) soleGid = ownVariantIdGid(variants[0], row);
   }
-  if (!sellerHost) return soleGid;
+  if (!sellerHost) return soleGid ? { gid: soleGid, source: "sole_variant_id" } : none;
   const found = new Set();
   for (const key of ["destination_url", "canonical_url", "url"]) {
     const url = str(own(row, key));
@@ -181,9 +193,50 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
     if (values.length === 1 && /^\d{1,20}$/.test(values[0])) found.add(values[0]);
   }
   const urlGid = found.size === 1 ? toVariantGid([...found][0]) : null;
-  if (found.size > 1) return null;
-  if (soleGid && urlGid && soleGid !== urlGid) return null; // the read and the link name different variants
-  return soleGid || urlGid;
+  if (found.size > 1) return none;
+  if (soleGid && urlGid && soleGid !== urlGid) return none; // the read and the link name different variants
+  if (urlGid) return { gid: urlGid, source: "url" };
+  return soleGid ? { gid: soleGid, source: "sole_variant_id" } : none;
+}
+
+// ---- a derived sole-variant id is refused when the catalog knows several Shopify variants ------------------------
+//
+// OWNER DECISION 2026-10-09 (via the PR controller): the read can show ONE variant for a product whose catalog_skus
+// hold SEVERAL distinct Shopify variant ids (the variant census found 43 serving rows). Pricing the read's single
+// variant there would cart one shade of several on no buyer choice, so such a product must not be merchant-priced
+// and must not get a derived sole-variant id. Applies ONLY to `sole_variant_id` (no seller link names the variant);
+// a buyer's choice, a seller id field, or a link's own `variant=` is explicit, not derived.
+//
+// The count is the census's own definition: distinct `source_variant_id` that is Shopify-shaped (6+ digits, a variant
+// gid, or SHOPIFY-<n>), over the product's UNSUPPRESSED catalog_skus rows, keyed by the read's `product_key` (stamped by
+// the catalog identity layer, src/server.js applyCatalogIdentityToPdpProduct). One indexed count
+// (idx_catalog_skus_product_key), bounded by a budget. FAILS CLOSED: no product_key, a timeout or an error means the
+// product is not merchant-priced (the decision is "must not"), never that the check is skipped.
+export const CATALOG_SHOPIFY_VARIANT_COUNT_SQL = `
+SELECT count(DISTINCT s.source_variant_id) FILTER (
+         WHERE s.source_variant_id ~ '^[0-9]{6,}$'
+            OR s.source_variant_id ~* 'gid://shopify/ProductVariant/[0-9]+'
+            OR s.source_variant_id ~* '^SHOPIFY-[0-9]{6,}$')::int AS shop_ids
+  FROM catalog_skus s
+ WHERE s.product_key = $1
+   AND s.suppressed_at IS NULL
+   AND s.suppression_reason IS NULL`;
+const CATALOG_COUNT_BUDGET_MS = 800;
+
+function productKeyOfRow(row) {
+  const key = str(own(row, "product_key")) || str(own(row, "catalog_product_key"));
+  return key && key.length <= 512 && !/[\u0000-\u001f\u007f]/.test(key) ? key : null;
+}
+
+/** null when a derived sole-variant id may be used; otherwise the fallback reason. */
+async function refuseDerivedSoleVariant(row, door) {
+  if (typeof door.catalogShopifyVariantCount !== "function") return "catalog_variant_count_unavailable";
+  const productKey = productKeyOfRow(row);
+  if (!productKey) return "catalog_variant_count_no_product_key";
+  let count;
+  try { count = await door.catalogShopifyVariantCount(productKey); } catch { return "catalog_variant_count_unavailable"; }
+  if (!Number.isSafeInteger(count) || count < 0) return "catalog_variant_count_unavailable";
+  return count > 1 ? "catalog_several_shopify_variants" : null;
 }
 
 // ---- the seller's answer ---------------------------------------------------------------------------------------
@@ -389,7 +442,7 @@ function withBudget(promise, ms) {
  * The seller door, built once per process: ONE buyer-agent client and ONE bounded, TTL'd endpoint-discovery cache
  * (the warm-handoff service's), so every checkout for a seller reuses one discovery. Tests inject their own.
  */
-export function createMerchantDoor({ client, discover, logger } = {}) {
+export function createMerchantDoor({ client, discover, logger, catalogQuery } = {}) {
   const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1 });
   const service = discover ? null : warmHandoffModule.createWarmHandoffService({ client: realClient, logger: logger || null });
   return {
@@ -400,6 +453,15 @@ export function createMerchantDoor({ client, discover, logger } = {}) {
     },
     createCart: (endpoint, args) => realClient.createCart(endpoint, args),
     getCart: (endpoint, cartId) => realClient.callTool(endpoint, "get_cart", { id: cartId }, { retry: true }),
+    async catalogShopifyVariantCount(productKey) {
+      const run = catalogQuery || (async (text, params, opts) => {
+        const db = (await import("../../src/db/index.js")).default;
+        return db.queryWithBudget(text, params, opts);
+      });
+      const res = await run(CATALOG_SHOPIFY_VARIANT_COUNT_SQL, [productKey], { timeoutMs: CATALOG_COUNT_BUDGET_MS });
+      const value = res && Array.isArray(res.rows) && res.rows[0] ? res.rows[0].shop_ids : undefined;
+      return Number.isSafeInteger(value) ? value : (typeof value === "string" && /^\d+$/.test(value) ? Number(value) : null);
+    },
   };
 }
 
@@ -432,9 +494,12 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   const expectedCurrency = currencies.size === 1 ? [...currencies][0] : null;
   if (!expectedCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
   const wanted = [];
+  const derived = [];
   for (const it of items) {
-    const gid = sellerVariantGidOf(rows.get(it.product_id), sellerHost, it.variant_id);
+    const choice = sellerVariantChoiceOf(rows.get(it.product_id), sellerHost, it.variant_id);
+    const gid = choice.gid;
     if (!gid) { emit(log, "info", { outcome: "fallback", reason: "variant_unresolved", seller_host: sellerHost }); return null; }
+    if (choice.source === "sole_variant_id") derived.push(rows.get(it.product_id));
     if (wanted.some((w) => w.gid === gid)) { emit(log, "info", { outcome: "fallback", reason: "duplicate_variant", seller_host: sellerHost }); return null; }
     wanted.push({ product_id: it.product_id, quantity: it.quantity, gid, ...(it.variant_id ? { variant_id: it.variant_id } : {}) });
   }
@@ -443,6 +508,11 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   try { d = door(merchantDoor, doorFactory); } catch (err) {
     emit(log, "warn", { outcome: "fallback", reason: "door_unavailable", seller_host: sellerHost, message: err && err.message });
     return null;
+  }
+  // A DERIVED sole-variant id is checked against the catalog BEFORE any seller is contacted (refuseDerivedSoleVariant).
+  for (const row of derived) {
+    const refusal = await refuseDerivedSoleVariant(row, d);
+    if (refusal) { emit(log, "info", { outcome: "fallback", reason: refusal, seller_host: sellerHost }); return null; }
   }
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
