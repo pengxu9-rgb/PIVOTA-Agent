@@ -137,6 +137,28 @@ function explicitBuyerMarket(ctx) {
   return normalizeBuyerRegion(ctx.buyer_region) || null;
 }
 
+/**
+ * THE ONE READ of a request body's buyer region, for every door that resolves it onto a ctx (the
+ * chat lanes, the reco lane): top-level `buyer_region` first (the partner contract), then
+ * `context.buyer_region`. Returns the resolved pair plus a `rejected` record for the log — and
+ * that record NEVER stringifies a non-string: `String({toString: 1})` throws, and a thrown log
+ * line was turning a malformed field into a failed turn.
+ */
+function resolveBuyerRegionForBody(body) {
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const b = obj(body);
+  const ctx = b ? obj(b.context) : null;
+  const raw = b && b.buyer_region !== undefined ? b.buyer_region : ctx ? ctx.buyer_region : undefined;
+  const resolved = resolveBuyerRegion(raw);
+  const rejected = isRejectedBuyerRegionInput(raw)
+    ? {
+        buyer_region_type: typeof raw,
+        ...(typeof raw === 'string' ? { buyer_region_raw: raw.slice(0, 16) } : {}),
+      }
+    : null;
+  return { region: resolved.region, regionSource: resolved.regionSource, rejected };
+}
+
 module.exports = {
   DEFAULT_BUYER_REGION,
   BUYER_REGION_SOURCE_EXPLICIT,
@@ -148,4 +170,5 @@ module.exports = {
   currencyForBuyerRegion,
   buyerRegionFromContext,
   explicitBuyerMarket,
+  resolveBuyerRegionForBody,
 };

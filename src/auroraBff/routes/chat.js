@@ -5,7 +5,7 @@ const { buildPromptMetaForChatRequest, mergePromptMeta } = require('../../module
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
-const { resolveBuyerRegion, isRejectedBuyerRegionInput } = require('../buyerRegion');
+const { resolveBuyerRegionForBody } = require('../buyerRegion');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
@@ -2428,14 +2428,12 @@ function buildSkillRequest(req) {
   // on it ONLY when the source is 'explicit' (buyerRegion.explicitBuyerMarket) — the defaulted US
   // is a serving choice, not the buyer's market. Top-level `buyer_region` first (the reco
   // contract), then `context.buyer_region`. An unreadable value defaults and is logged, never 400.
-  const rawBuyerRegion = body.buyer_region !== undefined ? body.buyer_region : bodyContext.buyer_region;
-  const resolvedBuyerRegion = resolveBuyerRegion(rawBuyerRegion);
-  if (isRejectedBuyerRegionInput(rawBuyerRegion)) {
+  const resolvedBuyerRegion = resolveBuyerRegionForBody(body);
+  if (resolvedBuyerRegion.rejected) {
     req.log?.warn?.(
       {
         event: 'chat_buyer_region_rejected',
-        buyer_region_type: typeof rawBuyerRegion,
-        buyer_region_raw: String(rawBuyerRegion).slice(0, 16),
+        ...resolvedBuyerRegion.rejected,
         region: resolvedBuyerRegion.region,
         region_source: resolvedBuyerRegion.regionSource,
       },
