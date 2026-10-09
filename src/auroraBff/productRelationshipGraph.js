@@ -9,6 +9,7 @@ const {
 const { refKeyMatchSql, productGroupRefKeyMatchSql } = require('../services/relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
 const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
+const { EXTERNAL_SEED_PLATFORM } = require('../services/pdpRenderability');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
 const familyIdentityKey =
@@ -349,6 +350,35 @@ function getPriceRatio(edge) {
 function getCandidatePrice(edge) {
   const price = isPlainObject(edge.price_evidence) ? edge.price_evidence : {};
   return toNumberOrNull(price.candidate_price_amount ?? price.candidatePriceAmount ?? extractPrice(edge.candidate_snapshot));
+}
+
+function snapshotMoneyPair(snapshot) {
+  if (!isPlainObject(snapshot)) return { amount: null, currency: null };
+  return readPriceWithCurrency(
+    [[snapshot, 'price'], [snapshot, 'price_amount'], [snapshot, 'priceAmount'], [snapshot, 'sale_price'], [snapshot, 'salePrice']],
+    toNumberOrNull,
+  );
+}
+
+// The candidate's amount with the currency named by the SAME record, or null. A served card quotes
+// a price only as that pair: prod 2026-10-08 had 4,770 priced external-seed candidate snapshots and 85
+// with a currency, and a bare amount is dropped whole by the buyer-currency guard. With no pair here
+// the card stays unpriced and card enrichment may supply a complete pair from the seed record.
+function getCandidateMoneyPair(edge, snapshots = []) {
+  const price = isPlainObject(edge.price_evidence) ? edge.price_evidence : {};
+  const evidenceAmount = toNumberOrNull(price.candidate_price_amount ?? price.candidatePriceAmount);
+  const evidenceCurrency = normalizeCurrencyCode(price.candidate_price_currency ?? price.candidatePriceCurrency);
+  if (evidenceAmount != null && evidenceCurrency) {
+    return evidenceAmount > 0 ? { amount: evidenceAmount, currency: evidenceCurrency } : null;
+  }
+  for (const snapshot of snapshots) {
+    const { amount, currency } = snapshotMoneyPair(snapshot);
+    if (amount == null) continue;
+    // An evidence amount without its currency borrows one only from a snapshot quoting that same amount.
+    if (evidenceAmount != null && amount !== evidenceAmount) return null;
+    return amount > 0 && currency ? { amount, currency } : null;
+  }
+  return null;
 }
 
 function getPriceObservedAt(edge) {
@@ -1235,9 +1265,10 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
   const name = extractProductName(snap);
   const reason = pickFirstString(edge.why_candidate.summary, edge.display_label, edge.relation_type);
-  const price = isCollapsedEdge
-    ? getCandidatePrice(edge) ?? toNumberOrNull(snap.price ?? snap.price_amount ?? snap.priceAmount)
-    : getCandidatePrice(edge);
+  const money = getCandidateMoneyPair(
+    edge,
+    isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot],
+  );
   return {
     product_id: productId,
     external_product_id: productId,
@@ -1247,7 +1278,7 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     ...(snap.category ? { category: normalizeString(snap.category, 240) } : {}),
     ...(url ? { url, canonical_url: url } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
-    ...(price != null ? { price } : {}),
+    ...(money ? { price: money.amount, currency: money.currency } : {}),
     source: 'relationship_graph',
     recommendation_source: 'relationship_graph',
     ...(reason ? { reason, recommendation_reason: reason } : {}),
@@ -1492,15 +1523,18 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
           SELECT DISTINCT pgm.product_group_id
           FROM product_group_members pgm
           JOIN anchor_keys ak ON ak.k = pgm.platform_product_id
-          WHERE pgm.merchant_id = $2
-            AND pgm.platform = $3
+          WHERE pgm.platform = $2
             AND pgm.product_group_id IS NOT NULL
         )
         SELECT DISTINCT pgm.platform_product_id AS sibling
         FROM product_group_members pgm
         JOIN groups g ON g.product_group_id = pgm.product_group_id
+        LIMIT 100
       `,
-      [extKeys, EXTERNAL_SEED_MERCHANT_ID, EXTERNAL_SEED_MERCHANT_ID],
+      // Keyed by the seed lane (platform): ADR-009 re-keyed external-seed group members onto their
+      // observed sellers, so the old sentinel-merchant predicate matched no member at all. Bounded:
+      // the largest external-seed group in prod (2026-10-09) has 45 members.
+      [extKeys, EXTERNAL_SEED_PLATFORM],
     );
     const seen = new Set(refs.map((r) => String(r).toLowerCase()));
     for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {

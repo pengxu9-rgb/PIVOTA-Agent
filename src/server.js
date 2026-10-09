@@ -469,6 +469,7 @@ const {
   hydrateRecommendationItemsWithReviewedProductIntel,
 } = require('./services/RecommendationEngine');
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
+const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
 const {
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
@@ -5492,7 +5493,13 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
             ''
           ) AS image_url,
           coalesce(price_amount::text, seed_data->'snapshot'->>'price', seed_data->>'price', '') AS price_amount,
-          coalesce(price_currency, seed_data->'snapshot'->>'currency', seed_data->>'currency', '') AS price_currency,
+          -- The currency of the layer that supplied the amount above, never another layer's.
+          CASE
+            WHEN price_amount IS NOT NULL THEN coalesce(price_currency, '')
+            WHEN seed_data->'snapshot'->>'price' IS NOT NULL
+              THEN coalesce(seed_data->'snapshot'->>'currency', seed_data->'snapshot'->>'price_currency', '')
+            ELSE coalesce(seed_data->>'currency', seed_data->>'price_currency', '')
+          END AS price_currency,
           coalesce(
             seed_data->'snapshot'->>'pdp_description_raw',
             seed_data->>'pdp_description_raw',
@@ -5540,6 +5547,9 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         ? row.pdp_details_sections
         : [];
       const priceAmount = Number(row?.price_amount);
+      // A blank seed currency names none; stamping 'USD' here made an unknown-currency seed look
+      // priced in the buyer's currency to every guard downstream.
+      const priceCurrency = String(firstNonEmptyString(row?.price_currency) || '').trim().toUpperCase();
       const hydratedSource = {
         product_id: publicProductId || externalProductId,
         ...(CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED
@@ -5553,10 +5563,10 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         product_type: firstNonEmptyString(row?.product_type),
         title: firstNonEmptyString(row?.title),
         image_url: firstNonEmptyString(row?.image_url),
-        price: Number.isFinite(priceAmount) && priceAmount > 0
+        price: Number.isFinite(priceAmount) && priceAmount > 0 && /^[A-Z]{3}$/.test(priceCurrency)
           ? {
               amount: priceAmount,
-              currency: firstNonEmptyString(row?.price_currency, 'USD'),
+              currency: priceCurrency,
             }
           : null,
         description: firstNonEmptyString(row?.description),
@@ -26801,16 +26811,42 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
 async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
-    const rec = await recommendPdpProducts(args);
+    // The graph read runs beside the heuristic, not after it: awaiting the heuristic first spent the
+    // shared similar budget before the graph was asked, and a heuristic throw skipped the graph
+    // entirely. A heuristic failure is still raised when the graph has nothing to serve.
+    const graphTask = isPdpRelationshipGraphServingEnabled()
+      ? fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+          market: args?.pdp_product?.market || 'US',
+          limit: Number(args?.k) || 24,
+        }).catch((err) => {
+          logger.warn(
+            { err: err?.message || String(err) },
+            'relationship graph similar read failed; serving dynamic recall only',
+          );
+          return null;
+        })
+      : null;
+    const [recResult, graphRecall] = await Promise.all([
+      recommendPdpProducts(args).then(
+        (value) => ({ ok: true, value }),
+        (error) => ({ ok: false, error }),
+      ),
+      graphTask,
+    ]);
+    const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
+    if (!recResult.ok && !graphItems.length) throw recResult.error;
+    if (!recResult.ok) {
+      logger.warn(
+        { err: recResult.error?.message || String(recResult.error) },
+        'pdp similar dynamic recall failed; serving relationship graph items only',
+      );
+    }
+    const rec = recResult.ok ? recResult.value : { status: 'empty', items: [], metadata: {} };
     const items = Array.isArray(rec?.items) ? rec.items : [];
     let curated = [];
     let relationshipGraphMeta;
-    if (isPdpRelationshipGraphServingEnabled()) {
-      const graphRecall = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
-        market: args?.pdp_product?.market || 'US',
-        limit: Number(args?.k) || 24,
-      });
-      curated = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
+    if (graphRecall) {
+      curated = graphItems;
       if (graphRecall?.metadata?.enabled) {
         relationshipGraphMeta = {
           relationship_graph_enabled: true,
@@ -26854,6 +26890,9 @@ async function fetchSimilarProductsDeduped(args = {}) {
       metadata: {
         ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
         ...(relationshipGraphMeta || {}),
+        // Graph-only items after a recall failure are not a healthy answer: callers keep the outage
+        // visible, and find_similar_products still answers 503 when no graph card survives its filters.
+        ...(recResult.ok ? {} : { dynamic_recall_failed: true }),
       },
       ...(rec?.debug ? { debug: rec.debug } : {}),
       ...(rec?.cache ? { cache: rec.cache } : {}),
@@ -27508,6 +27547,34 @@ function writeVisibleSimilarSigHydrationCache(cacheKey, products = [], nowMs = D
   }
 }
 
+// A positive finite number, a plain decimal string, or a thousands-grouped one ('1,234.56').
+// '12,50' could be a decimal comma or a thousands separator, so it is no amount at all.
+function parseSimilarCardMoneyAmount(value) {
+  if (isPlainObject(value)) return parseSimilarCardMoneyAmount(value.amount ?? value.value ?? value.price);
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(text)) return null;
+  const amount = Number(text.replace(/,/g, ''));
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+// The card's amount with the currency named by the SAME record, or null when either is missing.
+function readSimilarCardMoneyPair(record) {
+  if (!isPlainObject(record)) return null;
+  const { amount, currency } = readPriceWithCurrency(
+    [[record, 'price'], [record, 'price_amount'], [record, 'priceAmount']],
+    parseSimilarCardMoneyAmount,
+  );
+  return amount != null && currency ? { amount, currency } : null;
+}
+
+function quotesSimilarCardAmount(record) {
+  return isPlainObject(record) && [record.price, record.price_amount, record.priceAmount].some(
+    (value) => value != null && value !== '',
+  );
+}
+
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
@@ -27530,8 +27597,21 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
     Array.isArray(detail.images) ? detail.images[0] : null,
     Array.isArray(detail.image_urls) ? detail.image_urls[0] : null,
   );
-  if (!next.price && detail.price) next.price = detail.price;
-  if (!next.currency && detail.currency) next.currency = detail.currency;
+  // Money moves as one record's amount AND currency. A card holding an amount with no currency (a
+  // relationship-graph snapshot price) used to keep that amount and borrow nothing, because the seed
+  // source carries its currency inside price{}; the currency guard then dropped the card. A card
+  // without a complete pair of its own takes the detail's complete pair whole, never half of it.
+  if (!readSimilarCardMoneyPair(next)) {
+    const detailMoney = readSimilarCardMoneyPair(detail);
+    if (detailMoney) {
+      next.price = isPlainObject(detail.price) ? { ...detail.price } : detailMoney.amount;
+      next.currency = detailMoney.currency;
+    } else if (isRelationshipGraphSimilarProduct(next) && quotesSimilarCardAmount(next)) {
+      // A graph amount whose currency no record names is not a price; serve the card unpriced.
+      delete next.price;
+      delete next.currency;
+    }
+  }
   if (!next.shopping_card && detail.shopping_card && typeof detail.shopping_card === 'object') {
     next.shopping_card = detail.shopping_card;
   }
@@ -27575,8 +27655,16 @@ function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = nul
       !isSellerOnlySimilarCardEvidence(item) &&
       !isNonFormulaMerchSimilarCandidateForBeautyBase(item, baseProduct),
   );
-  const highlightReady = displayable.filter((item) => hasSimilarCardPresentation(item));
-  const candidatePool = highlightReady.length >= targetCount ? highlightReady : displayable;
+  // A reviewed relationship-graph card is not a heuristic candidate competing on card copy: its
+  // relation was reviewed, so four highlighted heuristic cards must not evict it. The highlight
+  // threshold is decided on heuristic cards alone, so a graph card neither is evicted nor shrinks
+  // the heuristic pool; every displayable graph card is kept in its original position.
+  const heuristicDisplayable = displayable.filter((item) => !isRelationshipGraphSimilarProduct(item));
+  const highlightReady = heuristicDisplayable.filter((item) => hasSimilarCardPresentation(item));
+  const heuristicPool = new Set(highlightReady.length >= targetCount ? highlightReady : heuristicDisplayable);
+  const candidatePool = displayable.filter(
+    (item) => isRelationshipGraphSimilarProduct(item) || heuristicPool.has(item),
+  );
   const baseCategory = normalizeSimilarCategoryForDisplay(
     baseProduct?.category ||
       baseProduct?.product_type ||
@@ -28437,6 +28525,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
 
   const catalogBySourceProductId = new Map();
   const sigBySourceProductId = new Map();
+  const ambiguousSourceProductIds = new Set();
   try {
     const result = await query(
       `
@@ -28454,10 +28543,10 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
           category_path,
           image_url,
           canonical_url,
-          product_payload
+          product_payload,
+          sync_status
         FROM catalog_products
-        WHERE merchant_id = $1
-          AND platform = $1
+        WHERE platform = $1
           AND source_product_id = ANY($2::text[])
           AND pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
         ORDER BY
@@ -28465,16 +28554,39 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
           updated_at DESC NULLS LAST,
           product_key ASC
       `,
-      [EXTERNAL_SEED_MERCHANT_ID, unresolvedExternalIds],
+      // Keyed by the seed LANE (platform), not the sentinel merchant: ADR-009 re-keyed every
+      // external-seed catalog row onto its observed seller (prod 2026-10-08: 0 of 27,655 rows still
+      // under the sentinel), so a sentinel-keyed lookup resolved none of the 1,499 external-seed
+      // relationship-graph candidates and the public filter dropped every one of them.
+      [EXTERNAL_SEED_PLATFORM, unresolvedExternalIds],
     );
+    const rowsBySourceProductId = new Map();
     for (const row of result?.rows || []) {
       const sourceProductId = firstNonEmptyString(row.source_product_id);
       const sigId = firstNonEmptyString(row.pivota_signature_id);
-      if (sourceProductId && /^sig[_:]/i.test(sigId)) {
-        sigBySourceProductId.set(sourceProductId, sigId);
-        if (!catalogBySourceProductId.has(sourceProductId)) {
-          catalogBySourceProductId.set(sourceProductId, row);
-        }
+      if (!sourceProductId || !/^sig[_:]/i.test(sigId)) continue;
+      if (!rowsBySourceProductId.has(sourceProductId)) rowsBySourceProductId.set(sourceProductId, []);
+      rowsBySourceProductId.get(sourceProductId).push(row);
+    }
+    // A source id that two sellers list under different signatures names no one public product;
+    // it stays unresolved (and is filtered) rather than being served under whichever row sorted first.
+    // Only live rows decide when any exist: an archived listing elsewhere does not make it ambiguous.
+    const sigsBySourceProductId = new Map();
+    for (const [sourceProductId, rows] of rowsBySourceProductId) {
+      const liveRows = rows.filter((row) => String(row.sync_status || '').trim() === 'live');
+      const decidingRows = liveRows.length ? liveRows : rows;
+      sigsBySourceProductId.set(
+        sourceProductId,
+        new Set(decidingRows.map((row) => firstNonEmptyString(row.pivota_signature_id))),
+      );
+      catalogBySourceProductId.set(sourceProductId, decidingRows[0]);
+    }
+    for (const [sourceProductId, sigIds] of sigsBySourceProductId) {
+      if (sigIds.size === 1) {
+        sigBySourceProductId.set(sourceProductId, [...sigIds][0]);
+      } else {
+        catalogBySourceProductId.delete(sourceProductId);
+        ambiguousSourceProductIds.add(sourceProductId);
       }
     }
   } catch (err) {
@@ -28487,7 +28599,9 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options =
     );
   }
 
-  const identityFallbackIds = unresolvedExternalIds.filter((productId) => !sigBySourceProductId.has(productId));
+  const identityFallbackIds = unresolvedExternalIds.filter(
+    (productId) => !sigBySourceProductId.has(productId) && !ambiguousSourceProductIds.has(productId),
+  );
   if (identityFallbackIds.length > 0) {
     try {
       const identityResult = await query(
@@ -44530,6 +44644,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
+          // Dynamic recall failed and no graph card survived: that is an outage, not "no similar
+          // products" (find_similar_products answers 503 in the same case).
+          if (!relatedProducts.length && relatedProductsEnvelope.metadata?.dynamic_recall_failed === true) {
+            relatedProductsEnvelope = {
+              ...relatedProductsEnvelope,
+              status: 'unavailable',
+              metadata: { ...relatedProductsEnvelope.metadata, similar_status: 'unavailable' },
+            };
+          }
         } else {
           relatedProductsEnvelope = {
             status: relatedProducts.length > 0 ? 'success' : 'empty',
@@ -45797,7 +45920,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           recommendationModuleData: recModule?.data || null,
         });
         const data =
-          hideEmptySimilarModule
+          hideEmptySimilarModule || (similarUnavailable && !relatedProducts.length)
             ? null
             : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope, {
                 servingCurrency: pdpServingCurrency,
@@ -48605,6 +48728,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               servingCurrency: similarServingCurrency,
             });
             const products = publicSimilarCandidates.slice(0, limit);
+            if (!products.length && rec?.metadata?.dynamic_recall_failed === true) {
+              throw new Error('dynamic recall failed and no relationship graph card survived the filters');
+            }
             directRouteTimingMs.public_filter = Date.now() - publicFilterStartedAt;
             directRouteTimingMs.total = Date.now() - directRouteStartedAt;
             const publicExternalIdFilteredCount = Math.max(
@@ -51961,6 +52087,9 @@ module.exports._debug = {
   collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
+  mergeSimilarCardEnrichment,
+  readSimilarCardMoneyPair,
+  fetchSimilarProductsDeduped,
   getSimilarCardEnrichmentMetadata,
   shouldEnrichSimilarCard,
   shouldHydrateSimilarCardFromOfficialSeed,

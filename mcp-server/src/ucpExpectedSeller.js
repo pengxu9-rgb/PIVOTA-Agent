@@ -92,7 +92,7 @@ export function reapExpectedMerchantDomain(ucpArgs) {
 const TRACKING_PARAM_RE = /^(ref|utm_[a-z0-9_]*)$/i;
 
 /** Does this URL carry ANOTHER URL (an affiliate / redirector hop: `?murl=https://…`, `/r/https://…`)? */
-function carriesAnotherUrl(parsed) {
+export function carriesAnotherUrl(parsed) {
   for (const [key, value] of parsed.searchParams.entries()) {
     if (TRACKING_PARAM_RE.test(key)) continue;
     if (/^\s*(https?:)?\/\//i.test(value) || /^\s*https?%3a/i.test(value)) return true;

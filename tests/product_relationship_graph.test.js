@@ -296,12 +296,17 @@ describe('product relationship graph store helpers', () => {
       title: 'Barrier Serum Alternative',
       brand: 'Value Brand',
       url: 'https://example.test/candidate',
-      price: 80,
       source: 'relationship_graph',
       recommendation_source: 'relationship_graph',
       relationship_type: 'dupe',
     });
     expect(item.relationship_edge_id).toBeTruthy();
+    // The fixture's 80 names no currency in any record, so the card quotes no price.
+    expect(item.price).toBeUndefined();
+    expect(item.currency).toBeUndefined();
+    const edge = approvedDupe();
+    edge.price_evidence = { ...edge.price_evidence, candidate_price_currency: 'USD' };
+    expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 80, currency: 'USD' });
   });
 
   test('relationshipEdgeToSimilarItem keeps original url/product_id precedence for flag-off raw edges', () => {
