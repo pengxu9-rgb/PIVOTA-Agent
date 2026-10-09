@@ -90,13 +90,16 @@ const catalogRow = (id, overrides = {}) => ({
   ...overrides,
 });
 
-const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), render: () => [], recommend: null, sql: [] };
+const state = { edges: [], catalog: (ids) => ids.map((id) => catalogRow(id)), render: () => [], groups: () => [], recommend: null, sql: [] };
 const defaultQuery = async (sql, params = []) => {
   const text = String(sql);
   state.sql.push({ text, params });
   if (text.includes('FROM product_relationship_edges')) {
     const wanted = Array.isArray(params[4]) ? params[4] : null;
     return { rows: state.edges.filter((edge) => !wanted || wanted.includes(edge.relation_type)) };
+  }
+  if (text.includes('product_group_subject_signature_batch')) {
+    return { rows: state.groups((params[0] || []).slice()) };
   }
   if (text.includes('similar_relationship_graph_renderability')) {
     if (state.render === 'throw') throw new Error('render read exploded');
@@ -167,6 +170,7 @@ beforeEach(() => {
   ];
   state.catalog = (ids) => ids.map((id) => catalogRow(id));
   state.render = () => [];
+  state.groups = () => [];
   state.recommend = null;
   state.sql = [];
   delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES;
@@ -449,21 +453,69 @@ describe('graph cards whose product page will not render are withheld', () => {
     expect(body.metadata.relationship_graph_not_renderable_withheld_count).toBe(0);
   });
 
-  test('only relationship-graph cards with a sig_ link are checked; heuristic and pg_ cards are untouched', async () => {
+  test('heuristic cards are untouched; a pg_ graph card follows the signature its group resolves to', async () => {
     const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
-    state.render = () => [gateRow('sig_heuristic', noUsOffer), gateRow('sig_graph', noUsOffer)];
+    const sigFamily = 'sig_familylive';
+    state.render = (sigs) => [gateRow('sig_heuristic', noUsOffer), gateRow('sig_graph', noUsOffer), gateRow(sigFamily)]
+      .filter((row) => sigs.includes(row.pivota_signature_id));
+    // get_pdp_v2 renders /products/pg_… through the group's canonical member signature
+    // (resolveProductGroupSubjectSignatureId). pg_catalog_dead resolves to the dead sig_graph;
+    // pg_catalog_none has no signed active member (no rows), so get_pdp_v2 falls back to the group lane
+    // and the card stays; pg_catalog_family renders.
+    const member = (groupId, sig) => ({ requested_group_id: groupId, product_key: `pk_${groupId}`, merchant_id: 'merch_obs_x',
+      platform: 'external_seed', source_product_id: `ext_${groupId}`, pivota_signature_id: sig, is_primary: true, member_rank: 1 });
+    state.groups = (groupIds) => [member('pg_catalog_family', sigFamily), member('pg_catalog_dead', 'sig_graph')]
+      .filter((row) => groupIds.includes(row.requested_group_id));
     state.sql = [];
     const heuristic = { product_id: 'sig_heuristic', pivota_signature_id: 'sig_heuristic', image_url: 'https://cdn.example.test/h.jpg', card_highlight: 'x' };
-    const family = { product_id: 'pg_catalog_family', source: 'relationship_graph', relationship_edge_id: 'edge_pg', image_url: 'https://cdn.example.test/p.jpg' };
+    const pgCard = (id) => ({ product_id: id, source: 'relationship_graph', relationship_edge_id: `edge_${id}`, image_url: 'https://cdn.example.test/p.jpg' });
     const graph = { product_id: 'sig_graph', pivota_signature_id: 'sig_graph', source: 'relationship_graph', relationship_edge_id: 'edge_sig', image_url: 'https://cdn.example.test/g.jpg' };
-    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([heuristic, family, graph], { bypassCache: true });
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog(
+      [heuristic, pgCard('pg_catalog_family'), pgCard('pg_catalog_dead'), pgCard('pg_catalog_none'), graph],
+      { bypassCache: true },
+    );
+    const groupRead = state.sql.filter(({ text }) => text.includes('product_group_subject_signature_batch'));
+    expect(groupRead).toHaveLength(1);
+    expect(groupRead[0].params[0].slice().sort()).toEqual(['pg_catalog_dead', 'pg_catalog_family', 'pg_catalog_none']);
     const read = state.sql.find(({ text }) => text.includes('similar_relationship_graph_renderability'));
-    expect(read.params[0]).toEqual(['sig_graph']);
-    expect(out.find((p) => p.product_id === 'sig_graph').similar_render_status).toBe('not_renderable');
-    expect(out.find((p) => p.product_id === 'sig_heuristic').similar_render_status).toBeUndefined();
-    expect(out.find((p) => p.product_id === 'pg_catalog_family').similar_render_status).toBeUndefined();
+    expect(read.params[0].slice().sort()).toEqual(['sig_familylive', 'sig_graph']);
+    const status = (id) => out.find((p) => p.product_id === id).similar_render_status;
+    expect(status('sig_graph')).toBe('not_renderable');
+    expect(status('pg_catalog_dead')).toBe('not_renderable');
+    expect(status('pg_catalog_none')).toBeUndefined();
+    expect(status('pg_catalog_family')).toBeUndefined();
+    expect(status('sig_heuristic')).toBeUndefined();
     expect(app._debug.filterPublicVisibleSimilarProducts(out, { servingCurrency: 'USD' }).map((p) => p.product_id))
-      .toEqual(['sig_heuristic', 'pg_catalog_family']);
+      .toEqual(['sig_heuristic', 'pg_catalog_family', 'pg_catalog_none']);
+  });
+
+  test('a rail of only pg_ cards is judged: one resolving to a dead signature is withheld', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [gateRow('sig_dead', noUsOffer)];
+    state.groups = () => [{ requested_group_id: 'pg_catalog_only', product_key: 'pk_only', merchant_id: 'merch_obs_x',
+      platform: 'external_seed', source_product_id: 'ext_only', pivota_signature_id: 'sig_dead', is_primary: true, member_rank: 1 }];
+    const card = { product_id: 'pg_catalog_only', source: 'relationship_graph', relationship_edge_id: 'edge_only', image_url: 'https://cdn.example.test/p.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([card], { bypassCache: true });
+    expect(out[0].similar_render_status).toBe('not_renderable');
+  });
+
+  test('a missing-relation error on the group read keeps every pg_ card (it is not "no group renders")', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [gateRow('sig_dead', noUsOffer)];
+    state.groups = () => { throw new Error('relation "product_group_members" does not exist'); };
+    const card = { product_id: 'pg_catalog_gone', source: 'relationship_graph', relationship_edge_id: 'edge_gone', image_url: 'https://cdn.example.test/p.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([card], { bypassCache: true });
+    expect(out[0].similar_render_status).toBeUndefined();
+  });
+
+  test('a pg_ card whose resolved signature has no catalog row is kept, like a sig_ card without one', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [];
+    state.groups = () => [{ requested_group_id: 'pg_catalog_norow', product_key: 'pk_norow', merchant_id: 'merch_obs_x',
+      platform: 'external_seed', source_product_id: 'ext_norow', pivota_signature_id: 'sig_norow', is_primary: true, member_rank: 1 }];
+    const card = { product_id: 'pg_catalog_norow', source: 'relationship_graph', relationship_edge_id: 'edge_norow', image_url: 'https://cdn.example.test/p.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([card], { bypassCache: true });
+    expect(out[0].similar_render_status).toBeUndefined();
   });
 });
 
