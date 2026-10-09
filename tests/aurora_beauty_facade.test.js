@@ -2662,6 +2662,9 @@ describe('Aurora beauty orchestration facade', () => {
       request: {
         built: true,
         search: { page: 1 },
+        // The outer request's metadata rides along (its buyer market threads into the re-invoke);
+        // this plan named none, so the resolver sees an empty one and re-invokes silent.
+        metadata: {},
         cacheQueryText: 'ipsa toner',
         inStockOnly: true,
         limit: 10,

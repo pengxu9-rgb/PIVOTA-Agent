@@ -34,6 +34,9 @@ function parseArgs(argv) {
     agentApiKey: envAgentApiKey,
     query: process.env.WARM_RUNTIME_QUERY || 'serum',
     source: process.env.WARM_RUNTIME_SOURCE || 'search',
+    // The market this check exercises, declared — see search_stability_matrix.js.
+    market: String(process.env.WARM_RUNTIME_MARKET || 'US').trim().toUpperCase(),
+    invokedBy: process.env.WARM_RUNTIME_INVOKED_BY || 'ci:warm_find_products_multi_runtime',
     attempts: Math.max(1, Number(process.env.WARM_RUNTIME_ATTEMPTS || 2) || 2),
     delayMs: Math.max(0, Number(process.env.WARM_RUNTIME_DELAY_MS || 3000) || 3000),
     timeoutMs: Math.max(1000, Number(process.env.WARM_RUNTIME_TIMEOUT_MS || 25000) || 25000),
@@ -49,6 +52,7 @@ function parseArgs(argv) {
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--query' && next) args.query = String(next);
     if (token === '--source' && next) args.source = String(next);
+    if (token === '--market' && next) args.market = String(next).trim().toUpperCase();
     if (token === '--attempts' && next) args.attempts = Math.max(1, Number(next) || 1);
     if (token === '--delay-ms' && next) args.delayMs = Math.max(0, Number(next) || 0);
     if (token === '--timeout-ms' && next) args.timeoutMs = Math.max(1000, Number(next) || 1000);
@@ -93,6 +97,9 @@ async function main() {
           },
           metadata: {
             source: args.source,
+            // The market this warm-up exercises, declared (see search_stability_matrix.js).
+            market: args.market,
+            invoked_by: args.invokedBy,
           },
         },
         {

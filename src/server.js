@@ -39,6 +39,30 @@ const {
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields } = require('./attribution/callerLogFields');
+
+// The caller-declared surface, for the completion log only. Both values are what the request body
+// said, bounded, and absent (not null-padded) when the caller said nothing, so a line from a
+// caller that declares nothing is byte-identical to one logged before these fields existed.
+const REQUEST_SOURCE_LOG_MAX_CHARS = 64;
+function requestSourceLogFields(req) {
+  const metadata =
+    req?.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
+      ? req.body.metadata
+      : null;
+  if (!metadata) return {};
+  const cap = (value) => {
+    if (typeof value !== 'string') return null;
+    const text = value.trim();
+    if (!text) return null;
+    return text.length > REQUEST_SOURCE_LOG_MAX_CHARS ? `${text.slice(0, REQUEST_SOURCE_LOG_MAX_CHARS)}…` : text;
+  };
+  const requestSource = cap(metadata.source);
+  const invokedBy = cap(metadata.invoked_by);
+  return {
+    ...(requestSource ? { request_source: requestSource } : {}),
+    ...(invokedBy ? { invoked_by: invokedBy } : {}),
+  };
+}
 const { isExternalSeedRow } = require('./externalSeedIdentity');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
@@ -40633,6 +40657,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // The agent this request resolved to, not just which key it presented: Pivota's own UI and this
         // gateway's loopback self-calls share one key. See src/attribution/callerLogFields.js.
         ...callerLogFields(req),
+        // WHICH SURFACE built this call, as the caller declared it. `metadata.source` is the
+        // source profile the door already keys behaviour on; `invoked_by` is the finer label
+        // agent-ui and the CI gates stamp (`chat.shop_find_products`, `ci:...`). Pivota's own
+        // services and the CI gates share one service key, so without these two a census of
+        // market-less find_products_multi traffic had to join IP ranges to request logs
+        // (2026-10-09: the market-less majority was CI runners, not buyers). Capped, never
+        // free text at length.
+        ...requestSourceLogFields(req),
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),

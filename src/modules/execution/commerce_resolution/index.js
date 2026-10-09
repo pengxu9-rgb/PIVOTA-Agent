@@ -460,8 +460,26 @@ function createCommerceResolutionRuntime(deps = {}) {
     );
   }
 
+  // The buyer market the OUTER request carried, in the door's own precedence (`search.market`
+  // first, then `metadata.market`), as a non-blank string or null. Shape only — the door and the
+  // backend validate the code; this never substitutes one.
+  function outerBuyerMarket(search, metadata) {
+    for (const carrier of [search, metadata]) {
+      const raw = carrier && typeof carrier === 'object' && !Array.isArray(carrier) ? carrier.market : undefined;
+      const text = typeof raw === 'string' ? raw.trim() : '';
+      if (text) return text;
+    }
+    return null;
+  }
+
   function buildCacheMissResolverFallbackRequest({
     search = {},
+    // The outer request's metadata, for ONE field: its buyer market. The resolver re-invokes
+    // find_products_multi on the buyer's behalf, and an inner call that drops the market the outer
+    // request named turns a keyed buyer into a silent one downstream (the purchasability gate then
+    // declines every cart). Threaded as the outer request carried it — `search.market`, then
+    // `metadata.market` — and NEVER filled in: an outer request with no market re-invokes silent.
+    metadata = {},
     cacheQueryText = '',
     inStockOnly = true,
     limit = 20,
@@ -474,10 +492,12 @@ function createCommerceResolutionRuntime(deps = {}) {
     const queryText = String(cacheQueryText || '').trim();
     const priceMin = search.price_min ?? search.min_price;
     const priceMax = search.price_max ?? search.max_price;
+    const outerMarket = outerBuyerMarket(search, metadata);
 
     return {
       queryParams: {
         query: queryText,
+        ...(outerMarket ? { market: outerMarket } : {}),
         ...(search.category ? { category: search.category } : {}),
         ...(priceMin != null ? { min_price: priceMin } : {}),
         ...(priceMax != null ? { max_price: priceMax } : {}),
@@ -1802,6 +1822,9 @@ function createCommerceResolutionRuntime(deps = {}) {
             metadata: {
               source: requestSourceValue,
               ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
+              // The outer buyer market, so the inner invoke is keyed exactly as the outer one was.
+              ...(outerBuyerMarket(searchPayload, null) ? { market: outerBuyerMarket(searchPayload, null) } : {}),
+              invoked_by: 'commerce_resolution.proxy_fallback',
               trigger_reason: triggerReason || 'unknown',
               proxy_fallback_source: 'agent_search_proxy_fallback',
               proxy_fallback_attempt: Number(attemptNo || 1),

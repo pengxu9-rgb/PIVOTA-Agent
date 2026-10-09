@@ -2607,3 +2607,81 @@ describe('Commerce resolution facade', () => {
     });
   });
 });
+
+// ── the resolver re-invoke carries the OUTER request's buyer market (2026-10-09) ──────────────
+//
+// A re-invoke that drops the market the outer request named turns a keyed buyer into a silent
+// one downstream: the purchasability gate then declines every cart on the inner result. The
+// market is threaded exactly as the outer request carried it and NEVER filled in — an outer
+// request with no market re-invokes silent. (Measured 2026-10-09: the market-less majority of
+// prod find_products_multi was CI and the gateway's own re-invokes, not buyers.)
+
+describe('cache-miss resolver fallback threads the outer buyer market', () => {
+  const base = {
+    cacheQueryText: 'repair serum',
+    inStockOnly: true,
+    limit: 12,
+    normalizedSeedStrategyForCache: '',
+    checkoutToken: null,
+    source: 'shopping_agent',
+    resolverTimeoutMs: 900,
+  };
+
+  test('search.market wins, then metadata.market; blank and non-string carriers are skipped', () => {
+    const runtime = createCommerceResolutionRuntime();
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: 'SG' }, metadata: { market: 'US' } }).queryParams.market).toBe('SG');
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: {}, metadata: { market: ' jp ' } }).queryParams.market).toBe('jp');
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: '   ' }, metadata: { market: 'US' } }).queryParams.market).toBe('US');
+    expect(runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { market: 7 }, metadata: 'US' }).queryParams).not.toHaveProperty('market');
+  });
+
+  test('an outer request with no market re-invokes silent: no market key at all', () => {
+    const runtime = createCommerceResolutionRuntime();
+    const out = runtime.buildCacheMissResolverFallbackRequest({ ...base, search: { category: 'skincare' } });
+    expect(out.queryParams).not.toHaveProperty('market');
+    expect(out.queryParams).toEqual(expect.objectContaining({ query: 'repair serum', category: 'skincare' }));
+  });
+
+  test('the inner invoke POST carries the market as metadata.market, beside invoked_by; none when absent', async () => {
+    const seen = [];
+    const runtime = createCommerceResolutionRuntime({
+      getProxySearchApiBase: () => 'http://search.test',
+      buildFindProductsMultiPayloadFromQuery: (q) => ({
+        search: { query: q.query, ...(q.market ? { market: q.market } : {}) },
+        metadata: { source: 'shopping_agent' },
+      }),
+      httpRequest: async (config) => {
+        seen.push(config);
+        return { status: 200, data: { products: [], metadata: {} } };
+      },
+      normalizeAgentProductsListResponse: (r) => r,
+    });
+    await runtime.queryFindProductsMultiFallback({
+      queryParams: { query: 'repair serum', market: 'SG' },
+      reason: 'primary_request_failed',
+      requestSource: 'shopping_agent',
+      timeoutMs: 500,
+    });
+    const keyed = seen.filter((c) => c.method === 'POST');
+    expect(keyed.length).toBeGreaterThan(0);
+    for (const c of keyed) {
+      expect(c.data.metadata.market).toBe('SG');
+      expect(c.data.metadata.invoked_by).toBe('commerce_resolution.proxy_fallback');
+      expect(c.data.payload.search.market).toBe('SG');
+    }
+
+    seen.length = 0;
+    await runtime.queryFindProductsMultiFallback({
+      queryParams: { query: 'repair serum' },
+      reason: 'primary_request_failed',
+      requestSource: 'shopping_agent',
+      timeoutMs: 500,
+    });
+    const silent = seen.filter((c) => c.method === 'POST');
+    expect(silent.length).toBeGreaterThan(0);
+    for (const c of silent) {
+      expect(c.data.metadata).not.toHaveProperty('market');
+      expect(c.data.payload.search).not.toHaveProperty('market');
+    }
+  });
+});
