@@ -623,3 +623,26 @@ describe('a Shopify door on its myshopify host', () => {
     assert.equal(await price(() => liveCart('https://shop.judydoll.com/cart/c/T'), { expectedSeller: 'judydoll.com' }), null);
   });
 });
+
+describe('review of #2383 — only a single-tenant door host counts', () => {
+  const ROW = Object.freeze({ ...SEED, product_id: 'sig_mt', external_redirect_url: 'https://alphabeauty.net/products/x' });
+  const cartAt = (continueUrl) => () => sellerCart({ continueUrl });
+  const price = (endpoint, create, extra = {}) => priceOnMerchantDoor({
+    items: [{ product_id: ROW.product_id, quantity: 2 }], rows: rows(ROW), sellerHost: 'alphabeauty.net', market: 'US', env: ON,
+    merchantDoor: fakeDoor({ endpoint, create }), ...extra,
+  });
+
+  test("a SHARED multi-tenant door host (wixapis) proves nothing: another site's URL on it falls back, expected seller or not", async () => {
+    const door = 'https://www.wixapis.com/ecom/ucp/94d8aaaa/mcp';
+    for (const u of ['https://www.wixapis.com/ecom/ucp/feed9a5b/anything', 'https://www.wixapis.com/redirect?t=opaque']) {
+      assert.equal(await price(door, cartAt(u)), null, u);
+      assert.equal(await price(door, cartAt(u), { expectedSeller: 'alphabeauty.net' }), null, `${u} (expected seller)`);
+    }
+    assert.ok(await price(door, cartAt('https://alphabeauty.net/cart/c/1')), "the seller's own host still prices");
+  });
+
+  test("a door on a Pivota host never vouches for a URL on it; an http endpoint never yields a door host", async () => {
+    assert.equal(await price('https://api.pivota.cc/ucp/mcp', cartAt('https://api.pivota.cc/r?token=opaque')), null);
+    assert.equal(await price('http://judydoll-joygroup.myshopify.com/api/ucp/mcp', cartAt('https://judydoll-joygroup.myshopify.com/cart/c/1')), null);
+  });
+});

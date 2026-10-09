@@ -35,7 +35,7 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
-import { judgeSellerUrl, pivotaHopDestination } from "./ucpExpectedSeller.js";
+import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { encodeUcpVariantItemId, findRealVariant } from "./ucpVariantIds.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
@@ -82,13 +82,22 @@ function carriesAnotherUrl(parsed) {
   return false;
 }
 
+// ONLY A SINGLE-TENANT DOOR HOST IS "THE SELLER". A Shopify store's UCP door lives on its OWN `<store>.myshopify.com`
+// (measured: judydoll), so a cart URL there is that store's. Other platforms serve every merchant from ONE shared host
+// — Wix sellers advertise `https://www.wixapis.com/ecom/ucp/<siteId>/mcp` (Pivota's own probe data) — where a URL on
+// the door host may be any site's, so the door host proves nothing and such carts stay on the seller-host rule.
+// Pivota's own hosts never qualify (the /r hop is judgeSellerUrl's to decode or refuse).
+const SINGLE_TENANT_DOOR_HOST_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
 /** An https URL exactly on the answering UCP door's host (no subdomain widening), with the same refusals. */
 function onDoorHost(url, doorHost) {
   if (!doorHost) return null;
+  const door = String(doorHost).toLowerCase();
+  if (!SINGLE_TENANT_DOOR_HOST_RE.test(door) || SELF_HOST_RE.test(door)) return null;
   let parsed;
   try { parsed = new URL(url); } catch { return null; }
   if (parsed.protocol !== "https:" || parsed.username || parsed.password || carriesAnotherUrl(parsed)) return null;
-  return parsed.hostname.toLowerCase() === String(doorHost).toLowerCase() ? parsed : null;
+  return parsed.hostname.toLowerCase() === door ? parsed : null;
 }
 
 function onSellerHost(url, sellerHost) {
