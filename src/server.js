@@ -349,6 +349,7 @@ const {
 const {
   resolveCanonicalCatalogEntityGroup,
   resolveProductGroupSubjectSignatureId,
+  resolveProductGroupSubjectSignatureIds,
   resolveMerchantScopedSourceProductId,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
@@ -28513,8 +28514,12 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
 // stamped false answered 200): the active-source predicate, the content route
 // (pdpRenderability.pdpRouteResolvableFromRow), and get_pdp_v2's serving gate
 // (normalizePdpServingEligibilityRow + shouldAllowPublishedPdpMissingQualitySnapshot), applied to
-// the row get_pdp_v2 itself would pick for the signature. No row, a read error,
-// heuristic cards and pg_ family links (resolved by the group lane) keep the card, as before.
+// the row get_pdp_v2 itself would pick for the signature. A pg_ family link is judged the way
+// get_pdp_v2 answers /products/pg_…: through the signature its group resolves to
+// (resolveProductGroupSubjectSignatureIds, the batched resolveProductGroupSubjectSignatureId), and a
+// group with no signed active member is withheld. Prod 2026-10-09 after #2385: pg_catalog_cee9c01345d182ee
+// still served and answered 404 external_seed_not_active. A read error, heuristic cards and pg_ cards
+// while PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED is off (the group lane then answers) keep the card.
 function isRenderableRelationshipGraphCatalogRow(row) {
   if (!row) return false;
   if (pdpRouteResolvableFromRow(row) !== true) return false;
@@ -28540,16 +28545,33 @@ function pickRelationshipGraphPdpResolverRow(rows) {
 async function markUnrenderableRelationshipGraphCards(products) {
   const list = Array.isArray(products) ? products : [];
   if (!process.env.DATABASE_URL) return list;
-  const sigIds = Array.from(new Set(
-    list
-      .filter((product) => isRelationshipGraphSimilarProduct(product))
-      .map((product) => firstNonEmptyString(product?.product_id))
-      .filter((productId) => isPivotaSignatureProductId(productId)),
-  ));
-  if (!sigIds.length) return list;
-  let rows;
+  const graphCardIds = list
+    .filter((product) => isRelationshipGraphSimilarProduct(product))
+    .map((product) => firstNonEmptyString(product?.product_id))
+    .filter(Boolean);
+  const groupIds = PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED
+    ? Array.from(new Set(graphCardIds.filter((productId) => /^pg_/i.test(productId))))
+    : [];
+  let groupSigIds = new Map();
+  if (groupIds.length) {
+    try {
+      groupSigIds = await resolveProductGroupSubjectSignatureIds({ productGroupIds: groupIds, queryFn: query });
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), count: groupIds.length },
+        'similar relationship graph pg_ subject read failed; keeping pg_ cards',
+      );
+      groupSigIds = new Map();
+    }
+  }
+  const sigIds = Array.from(new Set([
+    ...graphCardIds.filter((productId) => isPivotaSignatureProductId(productId)),
+    ...Array.from(groupSigIds.values()).filter((sigId) => isPivotaSignatureProductId(sigId)),
+  ]));
+  if (!sigIds.length && !groupSigIds.size) return list;
+  let rows = [];
   try {
-    const result = await query(
+    const result = sigIds.length ? await query(
       `
         SELECT /* similar_relationship_graph_renderability */
           cp.pivota_signature_id,
@@ -28581,7 +28603,7 @@ async function markUnrenderableRelationshipGraphCards(products) {
         WHERE cp.pivota_signature_id = ANY($1::text[])
       `,
       [sigIds],
-    );
+    ) : null;
     rows = Array.isArray(result?.rows) ? result.rows : [];
   } catch (err) {
     logger.warn(
@@ -28604,6 +28626,11 @@ async function markUnrenderableRelationshipGraphCards(products) {
   for (const [sigId, sigRows] of rowsBySig) {
     const picked = pickRelationshipGraphPdpResolverRow(sigRows);
     if (!picked || !isRenderableRelationshipGraphCatalogRow(picked)) unrenderable.add(sigId);
+  }
+  // A pg_ card follows the verdict of the signature its group resolves to; a group with no signed
+  // active member has no signature to render through.
+  for (const [groupId, sigId] of groupSigIds) {
+    if (!sigId || unrenderable.has(sigId)) unrenderable.add(groupId);
   }
   if (!unrenderable.size) return list;
   return list.map((product) =>

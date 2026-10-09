@@ -697,6 +697,23 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
   return out;
 }
 
+// One ranking for both group reads below (the single-target resolver and the pg_ subject batch), so the
+// row a pg_ card is judged by can never drift from the row get_pdp_v2 renders for that pg_ id.
+const CANONICAL_GROUP_RANK_SQL = `
+        CASE WHEN pgm.is_primary = true THEN 0 ELSE 1 END,
+        CASE cp.pdp_lifecycle_stage
+          WHEN 'published' THEN 0
+          WHEN 'validated' THEN 1
+          WHEN 'candidate' THEN 2
+          WHEN 'draft' THEN 3
+          ELSE 9
+        END,
+        cp.pivota_signature_minted_at ASC NULLS LAST,
+        cp.updated_at DESC NULLS LAST`;
+const CANONICAL_GROUP_MEMBER_ORDER_SQL = `${CANONICAL_GROUP_RANK_SQL},
+        cp.product_key ASC`;
+const CANONICAL_GROUP_MEMBER_LIMIT = 100;
+
 async function resolveCanonicalCatalogEntityGroup(args = {}) {
   const queryFn = args.queryFn || args.query || defaultQuery;
   if (!process.env.DATABASE_URL || typeof queryFn !== 'function') return null;
@@ -770,16 +787,7 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
         AND ${activeCatalogProductSourceWhere('cp', 'cm')}
       ORDER BY
         ${targetOrder.length ? `${targetOrder.join(',')},` : ''}
-        CASE WHEN pgm.is_primary = true THEN 0 ELSE 1 END,
-        CASE cp.pdp_lifecycle_stage
-          WHEN 'published' THEN 0
-          WHEN 'validated' THEN 1
-          WHEN 'candidate' THEN 2
-          WHEN 'draft' THEN 3
-          ELSE 9
-        END,
-        cp.pivota_signature_minted_at ASC NULLS LAST,
-        cp.updated_at DESC NULLS LAST
+        ${CANONICAL_GROUP_RANK_SQL}
       LIMIT 1
     ),
     -- The group's members, gathered through three INDEXED lookups instead of one OR across three
@@ -853,18 +861,8 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       AND cp.pivota_signature_id IS NOT NULL
       AND ${activeCatalogProductSourceWhere('cp', 'cm')}
     ORDER BY
-      CASE WHEN pgm.is_primary = true THEN 0 ELSE 1 END,
-      CASE cp.pdp_lifecycle_stage
-        WHEN 'published' THEN 0
-        WHEN 'validated' THEN 1
-        WHEN 'candidate' THEN 2
-        WHEN 'draft' THEN 3
-        ELSE 9
-      END,
-      cp.pivota_signature_minted_at ASC NULLS LAST,
-      cp.updated_at DESC NULLS LAST,
-      cp.product_key ASC
-    LIMIT 100
+      ${CANONICAL_GROUP_MEMBER_ORDER_SQL}
+    LIMIT ${CANONICAL_GROUP_MEMBER_LIMIT}
   `;
 
   try {
@@ -904,6 +902,127 @@ async function resolveProductGroupSubjectSignatureId({ productGroupId, queryFn }
   const group = await resolveCanonicalCatalogEntityGroup({ productGroupId: groupId, queryFn });
   const sigId = asString(group?.canonical_product_ref?.pivota_signature_id);
   return isSigId(sigId) ? sigId : null;
+}
+
+// Many pg_ groups -> the signature each one's PDP renders through, in ONE statement.
+//
+// A relationship-graph card whose public id is a pg_ group links to /products/pg_…, and get_pdp_v2
+// answers that route through resolveProductGroupSubjectSignatureId above: the group's canonical sig,
+// then the signature lane. Prod 2026-10-09: pg_catalog_cee9c01345d182ee served as a similar card and
+// answered 404 external_seed_not_active, because the sig its group resolves to belongs to an inactive
+// seed. To judge a rail of up to a dozen pg_ cards without a dozen copies of the single-group statement
+// (each with its per-row offer_count LATERAL, which this question does not need), this runs the same
+// target pick, the same three membership lookups, the same active-source gate, the same member ranking
+// and LIMIT per group, then hands each group's rows to the same buildCanonicalCatalogGroup. Same answer
+// as calling resolveProductGroupSubjectSignatureId per group (pinned on PostgreSQL by
+// tests/integration/catalog_entity_group_subject_batch_postgres.test.js).
+//
+// Returns Map<group id as given, sig | null>; null = no signed active member, where get_pdp_v2 has no
+// signature to render through. Errors propagate.
+async function resolveProductGroupSubjectSignatureIds({ productGroupIds, queryFn } = {}) {
+  const runQuery = queryFn || defaultQuery;
+  const groupIds = Array.from(
+    new Set((Array.isArray(productGroupIds) ? productGroupIds : []).map(asString).filter((id) => /^pg_/i.test(id))),
+  );
+  const resolved = new Map(groupIds.map((groupId) => [groupId, null]));
+  if (!groupIds.length || !process.env.DATABASE_URL || typeof runQuery !== 'function') return resolved;
+  const sql = `
+    ${CANONICAL_ENTITY_GROUP_SQL_TAG} /* product_group_subject_signature_batch */
+    WITH requested AS (
+      SELECT DISTINCT requested_group_id FROM unnest($1::text[]) AS raw(requested_group_id)
+    ),
+    target AS (
+      SELECT requested.requested_group_id, picked.*
+      FROM requested
+      CROSS JOIN LATERAL (
+        SELECT
+          cp.content_key,
+          cp.product_key,
+          pgm.product_group_id
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN product_group_members pgm
+          ON pgm.merchant_id = cp.merchant_id
+         AND pgm.platform = cp.platform
+         AND pgm.platform_product_id = cp.source_product_id
+        WHERE pgm.product_group_id = requested.requested_group_id
+          AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+        ORDER BY
+          ${CANONICAL_GROUP_RANK_SQL}
+        LIMIT 1
+      ) picked
+    ),
+    candidate_keys AS (
+      SELECT target.requested_group_id, same_content.product_key
+      FROM target
+      JOIN catalog_products same_content ON same_content.content_key = target.content_key
+      WHERE target.content_key IS NOT NULL
+      UNION
+      SELECT target.requested_group_id, same_group_product.product_key
+      FROM target
+      JOIN product_group_members same_group ON same_group.product_group_id = target.product_group_id
+      JOIN catalog_products same_group_product
+        ON same_group_product.merchant_id = same_group.merchant_id
+       AND same_group_product.platform = same_group.platform
+       AND same_group_product.source_product_id = same_group.platform_product_id
+      WHERE target.product_group_id IS NOT NULL
+      UNION
+      SELECT target.requested_group_id, target.product_key
+      FROM target
+      WHERE target.product_key IS NOT NULL
+    ),
+    ranked AS (
+      SELECT
+        candidate_keys.requested_group_id,
+        cp.product_key,
+        cp.merchant_id,
+        cp.platform,
+        cp.source_product_id,
+        cp.pdp_lifecycle_stage,
+        cp.pivota_signature_id,
+        cp.pivota_signature_minted_at,
+        cp.content_key,
+        pgm.product_group_id AS internal_product_group_id,
+        COALESCE(pgm.is_primary, false) AS is_primary,
+        row_number() OVER (
+          PARTITION BY candidate_keys.requested_group_id
+          ORDER BY
+            ${CANONICAL_GROUP_MEMBER_ORDER_SQL}
+        ) AS member_rank
+      FROM candidate_keys
+      JOIN catalog_products cp ON cp.product_key = candidate_keys.product_key
+      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+      LEFT JOIN product_group_members pgm
+        ON pgm.merchant_id = cp.merchant_id
+       AND pgm.platform = cp.platform
+       AND pgm.platform_product_id = cp.source_product_id
+      WHERE cp.pivota_signature_id IS NOT NULL
+        AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+    )
+    SELECT *
+    FROM ranked
+    WHERE member_rank <= ${CANONICAL_GROUP_MEMBER_LIMIT}
+    ORDER BY requested_group_id, member_rank
+  `;
+  let rows;
+  try {
+    rows = normalizeRows(await runQuery(sql, [groupIds]));
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return resolved;
+    throw err;
+  }
+  const rowsByGroup = new Map();
+  for (const row of rows) {
+    const groupId = asString(row.requested_group_id);
+    if (!rowsByGroup.has(groupId)) rowsByGroup.set(groupId, []);
+    rowsByGroup.get(groupId).push(row);
+  }
+  for (const [groupId, groupRows] of rowsByGroup) {
+    if (!resolved.has(groupId)) continue;
+    const sigId = asString(buildCanonicalCatalogGroup(groupRows)?.canonical_product_ref?.pivota_signature_id);
+    resolved.set(groupId, isSigId(sigId) ? sigId : null);
+  }
+  return resolved;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1150,6 +1269,7 @@ async function applyCanonicalAnchorRefs(products, { queryFn } = {}) {
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
   resolveProductGroupSubjectSignatureId,
+  resolveProductGroupSubjectSignatureIds,
   resolveMerchantScopedSourceProductId,
   resolveRelationshipGraphRefsToCanonicalEntities,
   resolveAnchorIdentityForRelationshipGraph,
