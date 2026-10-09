@@ -416,7 +416,28 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
-      const result = await executor.execute(op.id, params, ctx);
+      let result;
+      try {
+        result = await executor.execute(op.id, params, ctx);
+      } catch (err) {
+        // 4a) THE NATIVE DOOR'S STOREFRONT ROWS, named only once the kernel has failed. The kernel cannot price a
+        //     seller Pivota is not connected to, and that failure arrives as a RETRIABLE MERCHANT_UNAVAILABLE —
+        //     "try again shortly" for a checkout that can never succeed. Asked AFTER the failure, not before, so a
+        //     checkout that prices pays no extra read (an explicit variant_id still costs none). The quote always
+        //     names a merchant, so each row is read AS THAT MERCHANT SELLS IT; only a row that read classifies as a
+        //     storefront row turns the failure into the terminal `ucp_storefront_checkout_unavailable`. A read that
+        //     fails, or a cart of contracted rows, rethrows the kernel's own error unchanged. (The UCP door refuses
+        //     such rows BEFORE the kernel, step 3a-ii.)
+        if (dialect === TOOL_DIALECTS.mcp && err?.code === "MERCHANT_UNAVAILABLE"
+          && (op.id === "create_checkout_session" || op.id === "update_checkout_session")) {
+          const quote = isPlainObject(params.quote) ? params.quote : {};
+          await refuseUnservedStorefrontCheckout({
+            op, params, ctx, executor, failOpen: true,
+            merchantId: nonEmpty(quote.merchant_id) ? quote.merchant_id.trim() : undefined,
+          });
+        }
+        throw err;
+      }
       // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so
       //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
       //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a

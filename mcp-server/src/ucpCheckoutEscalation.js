@@ -219,7 +219,7 @@ export async function readCheckoutRows(items, executor, ctx, opts) {
   return readRows(items, executor, ctx, opts);
 }
 
-async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS } = {}) {
+async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS, merchantId } = {}) {
   const ids = [...new Set(items.map((it) => it.product_id))];
   if (ids.length > MAX_CART_DISTINCT_PRODUCTS) {
     throw intakeRefusal("QUOTE_REQUIRED", "acp_cart_too_many_products",
@@ -230,8 +230,11 @@ async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESO
   try {
     results = await withDeadline(
       mapWithConcurrency(ids, VARIANT_RESOLUTION_CONCURRENCY, async (product_id) => {
-        const result = await executor.execute("get_product", { payload: { product: { product_id } } }, { ...ctx, signal: controller.signal });
-        assertProductIdentity(result, product_id, undefined);
+        // SCOPED to a merchant when the caller named one (the native door's quote always does): the row as THAT
+        // merchant sells it — the same read the checkout resolver performs — never another seller's PDP.
+        const product = merchantId ? { product_id, merchant_id: merchantId } : { product_id };
+        const result = await executor.execute("get_product", { payload: { product } }, { ...ctx, signal: controller.signal });
+        assertProductIdentity(result, product_id, merchantId);
         return isPlainObject(own(result, "product")) ? own(result, "product") : result;
       }, controller),
       timeoutMs,
@@ -705,7 +708,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
  * Refuse a UCP checkout op that carries storefront rows no lane served. Returns undefined when the kernel path should
  * run. @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, declined?:boolean, timeoutMs?:number }} a
  */
-export async function refuseUnservedStorefrontCheckout({ op, params, ctx, executor, declined = false, timeoutMs, env = process.env }) {
+export async function refuseUnservedStorefrontCheckout({ op, params, ctx, executor, declined = false, timeoutMs, env = process.env, merchantId, failOpen = false }) {
   const opId = op && op.id;
   const sessionId = str(own(params, "session_id"));
   if (opId !== "create_checkout_session" && sessionId && decodeEscalationId(sessionId)) {
@@ -734,7 +737,15 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return undefined;
   if (new Set(items.map((it) => it.product_id)).size > MAX_CART_DISTINCT_PRODUCTS) return undefined;
   if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return undefined;
-  const rows = await readRows(items, executor, ctx, { timeoutMs });
+  // `failOpen` (the native door): a read that fails is NOT this check's refusal to give — that door's checkout ran
+  // without this read before, so only a POSITIVE storefront classification refuses; anything else proceeds as it did.
+  let rows;
+  try {
+    rows = await readRows(items, executor, ctx, { timeoutMs, merchantId });
+  } catch (err) {
+    if (failOpen) return undefined;
+    throw err;
+  }
   const targets = new Map();
   for (const [pid, row] of rows) {
     const target = escalationTargetOf(row);
