@@ -32,12 +32,25 @@
  *      since #2352 answers a market-less call with 200 `{tier: browse_only,
  *      reason: market_unknown, enforced, sweep_enabled}`             -> fetchEnforcement
  *
+ *   7. TWO QUESTIONS, TWO FIELDS, ONE READ (pivota-backend #2411). The route answers
+ *      `tier` for the HEADLESS CARD RAIL (Reap: Pivota charges the card, so the checkout
+ *      must take a card) and `human_handoff_tier` for a CART HANDED TO A HUMAN (a warm
+ *      cart, an escalation continue_url, a stamped checkout link: the buyer pays on the
+ *      merchant's own checkout with whatever it takes). They differ on NO_CARD_PAYMENT —
+ *      643 of 839 negative cart seeds on 2026-10-09 were offsite card providers (PayPal,
+ *      Shop Pay wallets) a human completes without noticing — so a human seam that read
+ *      `tier` declined the majority of its carts for nothing. Every caller names its
+ *      `rail` (`RAIL.human` / `RAIL.card`); a human seam acts on `human_handoff_tier`
+ *      when the answer carries it and on `tier` when it does not (a backend before
+ *      #2411), so an older backend reads exactly as before.           -> decide(fact, rail)
+ *
  * THE DECISION TABLE (docs/merchant-purchasability-gate.md §5 carries the same one, and
  * tests/merchant_purchasability_gate.node.test.cjs pins every row):
  *
  *   switch off                               -> offer  source 'disabled'
  *   budget below the floor                   -> offer  source 'skipped_budget'
- *   keyable, backend answered, enforced      -> tier   source 'gate'
+ *   keyable, backend answered, enforced      -> tier   source 'gate'   (rail card: `tier`;
+ *                                               rail human: `human_handoff_tier`, else `tier`)
  *   keyable, backend answered, not enforced  -> offer  source 'previous'
  *   keyable, no usable answer                -> offer  source 'failed'
  *   unkeyable, enforced=false                -> offer  source 'unkeyable_unenforced'
@@ -185,6 +198,18 @@ const MIN_GATE_BUDGET_MS = 300;
 
 const TIER_PURCHASE = 'purchase';
 const TIER_BROWSE_ONLY = 'browse_only';
+
+/**
+ * WHICH QUESTION a caller is asking (rule 7). `human`: the cart is handed to a person who pays on
+ * the merchant's own checkout (`human_handoff_tier`). `card`: Pivota's headless rail charges a card
+ * (`tier`). Anything that is not exactly `'human'` is the card rail — the stricter answer and the
+ * one every caller got before this field existed, so an unnamed rail cannot widen a decision.
+ */
+const RAIL = Object.freeze({ human: 'human', card: 'card' });
+
+function normalizeRail(value) {
+  return value === RAIL.human ? RAIL.human : RAIL.card;
+}
 
 /**
  * The backend's `reason` on a market-less ops answer (pivota-backend #2352,
@@ -392,6 +417,11 @@ function parseEnforcementProbe(body) {
  * Not `startsWith`, not `includes`, not a truthiness test: a loose compare is how
  * a future `browse_only_pending` would read as browse-only (or a
  * `purchase_blocked` as purchase) without anyone choosing that.
+ *
+ * `human_handoff_tier` (rule 7) is read the same way, and is `null` when the answer does
+ * not carry one of the two strings: a backend before pivota-backend #2411 omits it, and
+ * a value this client does not know is treated as ABSENT, not as a malformed fact — the
+ * card rail's answer must not fail open because the human field grew a value.
  */
 function parseFact(body) {
   if (!isPlainObject(body)) return null;
@@ -399,18 +429,33 @@ function parseFact(body) {
   if (tier !== TIER_PURCHASE && tier !== TIER_BROWSE_ONLY) return null;
   if (typeof body.enforced !== 'boolean') return null;
   const sweepEnabled = typeof body.sweep_enabled === 'boolean' ? body.sweep_enabled : null;
-  return { tier, enforced: body.enforced, sweep_enabled: sweepEnabled };
+  const humanRaw = typeof body.human_handoff_tier === 'string' ? body.human_handoff_tier.trim() : null;
+  const humanHandoffTier = humanRaw === TIER_PURCHASE || humanRaw === TIER_BROWSE_ONLY ? humanRaw : null;
+  return { tier, enforced: body.enforced, sweep_enabled: sweepEnabled, human_handoff_tier: humanHandoffTier };
 }
 
 /**
- * The decision, as a pure function of a parsed fact. Separated from the fetch so
- * the rule can be tested without a transport, and so there is exactly one place
- * where `enforced` gates `tier`.
+ * THE FIELD A RAIL ACTS ON (rule 7): the human rail reads `human_handoff_tier` when the
+ * answer carries it, and falls back to `tier` when it does not; the card rail reads `tier`.
+ * Returns the tier string, so the caller's equality test is the same for both rails.
  */
-function decide(fact) {
+function tierForRail(fact, rail) {
+  if (normalizeRail(rail) === RAIL.human && fact.human_handoff_tier !== null && fact.human_handoff_tier !== undefined) {
+    return fact.human_handoff_tier;
+  }
+  return fact.tier;
+}
+
+/**
+ * The decision, as a pure function of a parsed fact and the caller's rail. Separated
+ * from the fetch so the rule can be tested without a transport, and so there is exactly
+ * one place where `enforced` gates the tier, and one place (`tierForRail`) where the
+ * rail picks which tier that is. No `rail` is the card rail (`normalizeRail`).
+ */
+function decide(fact, rail) {
   if (!fact) return { offer: true, source: SOURCE.failed };
   if (fact.enforced !== true) return { offer: true, source: SOURCE.previous };
-  return { offer: fact.tier !== TIER_BROWSE_ONLY, source: SOURCE.gate };
+  return { offer: tierForRail(fact, rail) !== TIER_BROWSE_ONLY, source: SOURCE.gate };
 }
 
 /**
@@ -902,11 +947,16 @@ function createMerchantPurchasabilityClient(deps = {}) {
    * there so a log or a metric can tell "the gate said no" apart from "we never asked".
    * The full table is in the header of this file.
    *
-   * @param {{ domain: string, market: string, budgetMs?: number }} args
+   * `rail` (rule 7) says which question this is: `RAIL.human` for a cart a person completes on
+   * the merchant's checkout, `RAIL.card` (and anything unnamed) for the headless card rail. One
+   * read and one cache entry serve both: the fact carries both answers.
+   *
+   * @param {{ domain: string, market: string, budgetMs?: number, rail?: string }} args
    * @returns {Promise<{ offer: boolean, source: string, reason?: string }>}
    */
-  async function shouldOfferPurchase({ domain, market, budgetMs } = {}) {
+  async function shouldOfferPurchase({ domain, market, budgetMs, rail } = {}) {
     if (!isGateEnabled(env)) return { offer: true, source: SOURCE.disabled };
+    const normalizedRail = normalizeRail(rail);
 
     // THE BUDGET FLOOR. A caller on a wall-clock budget (the click lane runs on 2000 ms
     // inside the backend's 2.5 s `wait_for`) hands us what is LEFT. Below the floor there is
@@ -935,7 +985,7 @@ function createMerchantPurchasabilityClient(deps = {}) {
     }
 
     const fact = await fetchFact(normalizedDomain, normalizedMarket, budgetMs);
-    const decision = decide(fact);
+    const decision = decide(fact, normalizedRail);
 
     if (decision.source === SOURCE.previous) {
       noteOnce('info', 'merchant_purchasability_not_enforced', `${normalizedDomain}\u0000${normalizedMarket}`, {
@@ -949,8 +999,13 @@ function createMerchantPurchasabilityClient(deps = {}) {
       note('warn', 'merchant_purchasability_browse_only', {
         domain: normalizedDomain,
         market: normalizedMarket,
+        rail: normalizedRail,
         tier: fact.tier,
-        detail: 'no fresh positive card-payment fact for this merchant in this market; purchase not offered.',
+        human_handoff_tier: fact.human_handoff_tier,
+        detail: normalizedRail === RAIL.human
+          ? 'no fresh fact that a human can complete this merchant\'s checkout in this market '
+            + '(or a backend before #2411, read on `tier`); cart not offered.'
+          : 'no fresh positive card-payment fact for this merchant in this market; purchase not offered.',
       });
     }
 
@@ -1066,6 +1121,9 @@ module.exports = {
   MAX_TTL_MS,
   TIER_PURCHASE,
   TIER_BROWSE_ONLY,
+  RAIL,
+  normalizeRail,
+  tierForRail,
   SOURCE,
   isGateEnabled,
   normalizeDomain,

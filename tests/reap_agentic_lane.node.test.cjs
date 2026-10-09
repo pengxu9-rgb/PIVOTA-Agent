@@ -1065,6 +1065,30 @@ test('the purchasability gate: declined -> skipped (no POST); asked with the dom
   assert.equal(off.backend.calls.length, 1);
 });
 
+test('rule 7: the Reap lane is the CARD rail — a NO_CARD_PAYMENT merchant (human can pay, card cannot) is declined, and the seam names rail=card', async () => {
+  const m = await mods();
+  const NO_CARD = { tier: 'browse_only', human_handoff_tier: 'purchase', enforced: true, sweep_enabled: true };
+  const env = { [LANE_FLAG]: '1', [BASE_URL_ENV]: 'https://ops.example', [OPS_TOKEN_ENV]: 'admin-jwt-fixture', [GATE_FLAG_ENV]: '1' };
+  const gateClient = createMerchantPurchasabilityClient({
+    env,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => NO_CARD }),
+    logger: fakeLogger(),
+  });
+  const seen = [];
+  const shouldOfferPurchase = (a) => { seen.push(a); return gateClient.shouldOfferPurchase(a); };
+  const backend = fakeBackend();
+  const ctx = await build({ backend });
+  const res = await m.lane.tryReapAgenticCheckout({
+    op: { id: 'create_checkout_session' },
+    params: { idempotency_key: 'idem-reap-0007', quote: { items: [{ product_id: REAP_ROW.product_id, quantity: 1 }], customer_email: EMAIL } },
+    ctx: SESSION, executor: recordingExecutor(ROWS, m.errors), ucpArgs: createArgs({reap:{}}), client: ctx.client, env, shouldOfferPurchase,
+  });
+  assert.equal(res, null, 'skipped: the card rail reads `tier`, and a human-payable checkout is not a card-payable one');
+  assert.equal(backend.calls.length, 0, 'no purchase opened');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].rail, 'card');
+});
+
 test('the purchasability gate, UNKEYABLE: no market + ENFORCED takes the SAME declined branch (skipped, no POST); unenforced or unknown is unchanged', async () => {
   // The Reap lane consumes the gate through the escalation module's `mayOfferPurchaseForDomain`, so an
   // `unkeyable_enforced` answer (`offer: false`) must land on the very `purchasability_declined` skip a
