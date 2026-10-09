@@ -275,6 +275,16 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     expect(out.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', market: 'SG', status: 200, returned: 4 }));
   });
 
+  test('a hop asks for at most ONE page (60) at offset 0, whatever the candidate limit: the backend proxy 422s above 100', async () => {
+    axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
+    await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 120 });
+    for (const [, config] of axios.get.mock.calls) {
+      expect(config.params.limit).toBe(60);
+      expect(config.params.offset).toBe(0);
+      expect(config.params.limit).toBeLessThanOrEqual(100);
+    }
+  });
+
   test("the page's own query text replaces the cold-start basket", async () => {
     axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
     await fetchBuyerMarketSearchRows({ request: { ...REQUEST, query: { text: 'vitamin c serum' } }, market: 'SG', servingCurrency: 'SGD', limit: 24 });
