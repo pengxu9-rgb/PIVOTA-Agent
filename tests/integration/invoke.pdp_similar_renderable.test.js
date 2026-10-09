@@ -61,8 +61,8 @@ function buildBottleProduct() {
 const DEAD_SIG = 'sig_0000000000000000000000000000dead';
 const LIVE_SIG = 'sig_00000000000000000000000000000a11';
 // pg_ family cards render through the signature their group resolves to (get_pdp_v2's product_group
-// subject lane): a group resolving to a dead sig, a group with no signed active member, and a group
-// resolving to a live sig.
+// subject lane): a group resolving to a dead sig, a group with no signed active member (get_pdp_v2 falls
+// back to the group lane, which this gate cannot judge, so the card stays), and one resolving to a live sig.
 const GROUP_LIVE_SIG = 'sig_00000000000000000000000000000b22';
 const PG_DEAD = 'pg_catalog_00000000000dead';
 const PG_EMPTY = 'pg_catalog_0000000000empty';
@@ -189,12 +189,12 @@ async function fetchSimilar(baseUrl) {
 }
 
 describeIfRuntimeDeps('get_pdp_v2 similar withholds graph cards whose product page will not render', () => {
-  test('dead sig_ and pg_ cards are absent and counted; the renderable ones are served', async () => {
+  test('dead sig_ and pg_ cards are absent and counted; the renderable and unjudgeable ones are served', async () => {
     const { server, baseUrl } = await startServer();
     try {
       const { ids, withheld } = await fetchSimilar(baseUrl);
-      expect(ids).toEqual(['prel_live', 'prel_pg_live']);
-      expect(withheld).toBe(3);
+      expect(ids).toEqual(['prel_live', 'prel_pg_empty', 'prel_pg_live']);
+      expect(withheld).toBe(2);
       expect(dbCalls.some((sql) => sql.includes('similar_relationship_graph_renderability'))).toBe(true);
       expect(dbCalls.filter((sql) => sql.includes('product_group_subject_signature_batch'))).toHaveLength(1);
     } finally {

@@ -28516,10 +28516,12 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
 // (normalizePdpServingEligibilityRow + shouldAllowPublishedPdpMissingQualitySnapshot), applied to
 // the row get_pdp_v2 itself would pick for the signature. A pg_ family link is judged the way
 // get_pdp_v2 answers /products/pg_…: through the signature its group resolves to
-// (resolveProductGroupSubjectSignatureIds, the batched resolveProductGroupSubjectSignatureId), and a
-// group with no signed active member is withheld. Prod 2026-10-09 after #2385: pg_catalog_cee9c01345d182ee
-// still served and answered 404 external_seed_not_active. A read error, heuristic cards and pg_ cards
-// while PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED is off (the group lane then answers) keep the card.
+// (resolveProductGroupSubjectSignatureIds, the batched resolveProductGroupSubjectSignatureId). Prod
+// 2026-10-09 after #2385: of 167 served pg_ graph cards, 10 answered 404/500 (pg_catalog_cee9c01345d182ee:
+// external_seed_not_active) and all 10 resolve to a signature this gate refuses. A group that resolves to
+// NO signature keeps the card: get_pdp_v2 then falls back to the group lane (upstream members), which
+// rendered 4 of 40 sampled such groups (229 of 22,238 groups resolve to none). A read error, heuristic
+// cards and pg_ cards while PDP_PRODUCT_GROUP_SUBJECT_VIA_SIGNATURE_ENABLED is off keep the card.
 function isRenderableRelationshipGraphCatalogRow(row) {
   if (!row) return false;
   if (pdpRouteResolvableFromRow(row) !== true) return false;
@@ -28627,10 +28629,10 @@ async function markUnrenderableRelationshipGraphCards(products) {
     const picked = pickRelationshipGraphPdpResolverRow(sigRows);
     if (!picked || !isRenderableRelationshipGraphCatalogRow(picked)) unrenderable.add(sigId);
   }
-  // A pg_ card follows the verdict of the signature its group resolves to; a group with no signed
-  // active member has no signature to render through.
+  // A pg_ card follows the verdict of the signature its group resolves to. No signature: the group
+  // lane answers instead, and this gate cannot judge it, so the card stays (see above).
   for (const [groupId, sigId] of groupSigIds) {
-    if (!sigId || unrenderable.has(sigId)) unrenderable.add(groupId);
+    if (sigId && unrenderable.has(sigId)) unrenderable.add(groupId);
   }
   if (!unrenderable.size) return list;
   return list.map((product) =>

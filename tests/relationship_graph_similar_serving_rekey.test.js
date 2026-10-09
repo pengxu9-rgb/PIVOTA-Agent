@@ -460,7 +460,8 @@ describe('graph cards whose product page will not render are withheld', () => {
       .filter((row) => sigs.includes(row.pivota_signature_id));
     // get_pdp_v2 renders /products/pg_… through the group's canonical member signature
     // (resolveProductGroupSubjectSignatureId). pg_catalog_dead resolves to the dead sig_graph;
-    // pg_catalog_none has no signed active member (no rows); pg_catalog_family renders.
+    // pg_catalog_none has no signed active member (no rows), so get_pdp_v2 falls back to the group lane
+    // and the card stays; pg_catalog_family renders.
     const member = (groupId, sig) => ({ requested_group_id: groupId, product_key: `pk_${groupId}`, merchant_id: 'merch_obs_x',
       platform: 'external_seed', source_product_id: `ext_${groupId}`, pivota_signature_id: sig, is_primary: true, member_rank: 1 });
     state.groups = (groupIds) => [member('pg_catalog_family', sigFamily), member('pg_catalog_dead', 'sig_graph')]
@@ -481,11 +482,30 @@ describe('graph cards whose product page will not render are withheld', () => {
     const status = (id) => out.find((p) => p.product_id === id).similar_render_status;
     expect(status('sig_graph')).toBe('not_renderable');
     expect(status('pg_catalog_dead')).toBe('not_renderable');
-    expect(status('pg_catalog_none')).toBe('not_renderable');
+    expect(status('pg_catalog_none')).toBeUndefined();
     expect(status('pg_catalog_family')).toBeUndefined();
     expect(status('sig_heuristic')).toBeUndefined();
     expect(app._debug.filterPublicVisibleSimilarProducts(out, { servingCurrency: 'USD' }).map((p) => p.product_id))
-      .toEqual(['sig_heuristic', 'pg_catalog_family']);
+      .toEqual(['sig_heuristic', 'pg_catalog_family', 'pg_catalog_none']);
+  });
+
+  test('a rail of only pg_ cards is judged: one resolving to a dead signature is withheld', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [gateRow('sig_dead', noUsOffer)];
+    state.groups = () => [{ requested_group_id: 'pg_catalog_only', product_key: 'pk_only', merchant_id: 'merch_obs_x',
+      platform: 'external_seed', source_product_id: 'ext_only', pivota_signature_id: 'sig_dead', is_primary: true, member_rank: 1 }];
+    const card = { product_id: 'pg_catalog_only', source: 'relationship_graph', relationship_edge_id: 'edge_only', image_url: 'https://cdn.example.test/p.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([card], { bypassCache: true });
+    expect(out[0].similar_render_status).toBe('not_renderable');
+  });
+
+  test('a missing-relation error on the group read keeps every pg_ card (it is not "no group renders")', async () => {
+    const { hydrateVisibleSimilarProductSigIdsFromCatalog } = app._debug;
+    state.render = () => [gateRow('sig_dead', noUsOffer)];
+    state.groups = () => { throw new Error('relation "product_group_members" does not exist'); };
+    const card = { product_id: 'pg_catalog_gone', source: 'relationship_graph', relationship_edge_id: 'edge_gone', image_url: 'https://cdn.example.test/p.jpg' };
+    const out = await hydrateVisibleSimilarProductSigIdsFromCatalog([card], { bypassCache: true });
+    expect(out[0].similar_render_status).toBeUndefined();
   });
 
   test('a pg_ card whose resolved signature has no catalog row is kept, like a sig_ card without one', async () => {

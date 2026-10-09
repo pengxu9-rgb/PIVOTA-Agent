@@ -533,3 +533,32 @@ describe('resolveProductGroupSubjectSignatureId', () => {
     ).rejects.toThrow('connection terminated');
   });
 });
+
+describe('resolveProductGroupSubjectSignatureIds', () => {
+  const ORIGINAL_ENV = process.env;
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+  });
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  test('orders each group by the statement rank, not by transport order', async () => {
+    const { resolveProductGroupSubjectSignatureIds } = require('../../src/services/catalogEntityResolution');
+    const row = (key, sig, rank) => ({ requested_group_id: 'pg_g', product_key: key, merchant_id: `m_${key}`, platform: 'external_seed',
+      source_product_id: `src_${key}`, pivota_signature_id: sig, is_primary: true, pdp_lifecycle_stage: 'published', member_rank: rank });
+    const queryFn = jest.fn(async () => ({ rows: [row('b', 'sig_second', 2), row('a', 'sig_first', 1)] }));
+    const resolved = await resolveProductGroupSubjectSignatureIds({ productGroupIds: ['pg_g', 'pg_none'], queryFn });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(Object.fromEntries(resolved)).toEqual({ pg_g: 'sig_first', pg_none: null });
+  });
+
+  test('every error propagates, a missing relation included, so the caller keeps its cards', async () => {
+    const { resolveProductGroupSubjectSignatureIds } = require('../../src/services/catalogEntityResolution');
+    for (const message of ['relation "product_group_members" does not exist', 'statement timeout']) {
+      const queryFn = jest.fn(async () => { throw new Error(message); });
+      await expect(resolveProductGroupSubjectSignatureIds({ productGroupIds: ['pg_g'], queryFn })).rejects.toThrow(message);
+    }
+  });
+});

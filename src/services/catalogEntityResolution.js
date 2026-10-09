@@ -917,8 +917,9 @@ async function resolveProductGroupSubjectSignatureId({ productGroupId, queryFn }
 // as calling resolveProductGroupSubjectSignatureId per group (pinned on PostgreSQL by
 // tests/integration/catalog_entity_group_subject_batch_postgres.test.js).
 //
-// Returns Map<group id as given, sig | null>; null = no signed active member, where get_pdp_v2 has no
-// signature to render through. Errors propagate.
+// Returns Map<group id as given, sig | null>; null = no signed active member, where get_pdp_v2 keeps
+// its group lane. Every error propagates, a missing relation included: an all-null answer
+// would read as "no group renders" and withhold every pg_ card, where the caller's catch keeps them.
 async function resolveProductGroupSubjectSignatureIds({ productGroupIds, queryFn } = {}) {
   const runQuery = queryFn || defaultQuery;
   const groupIds = Array.from(
@@ -1004,13 +1005,7 @@ async function resolveProductGroupSubjectSignatureIds({ productGroupIds, queryFn
     WHERE member_rank <= ${CANONICAL_GROUP_MEMBER_LIMIT}
     ORDER BY requested_group_id, member_rank
   `;
-  let rows;
-  try {
-    rows = normalizeRows(await runQuery(sql, [groupIds]));
-  } catch (err) {
-    if (looksLikeRelationMissing(err)) return resolved;
-    throw err;
-  }
+  const rows = normalizeRows(await runQuery(sql, [groupIds]));
   const rowsByGroup = new Map();
   for (const row of rows) {
     const groupId = asString(row.requested_group_id);
@@ -1019,6 +1014,9 @@ async function resolveProductGroupSubjectSignatureIds({ productGroupIds, queryFn
   }
   for (const [groupId, groupRows] of rowsByGroup) {
     if (!resolved.has(groupId)) continue;
+    // buildCanonicalCatalogGroup reads row ORDER (members.find(is_primary)), so order by the rank the
+    // statement computed rather than trusting the transport order.
+    groupRows.sort((left, right) => Number(left.member_rank) - Number(right.member_rank));
     const sigId = asString(buildCanonicalCatalogGroup(groupRows)?.canonical_product_ref?.pivota_signature_id);
     resolved.set(groupId, isSigId(sigId) ? sigId : null);
   }

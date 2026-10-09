@@ -100,6 +100,10 @@ suite('pg_ subject signature batch on PostgreSQL', () => {
     // draft q2 was updated later.
     await product({ key: 'q1', group: 'pg_two_primaries', primary: true, content: 'ck_q', updated: '2025-01-01' });
     await product({ key: 'q2', group: 'pg_qx', primary: true, content: 'ck_q', stage: 'draft', merchant: 'merch_obs_b', updated: '2026-06-01' });
+    // pg_full_tie: two primaries (z2 is another group's primary, joined by content_key) tied on stage,
+    // mint and update time; product_key breaks the tie, so z1 is the subject although z2 was written first.
+    await product({ key: 'z2', group: 'pg_zx', primary: true, content: 'ck_z', merchant: 'merch_obs_b' });
+    await product({ key: 'z1', group: 'pg_full_tie', primary: true, content: 'ck_z' });
     // pg_wide: 103 tied members; updated_at descends as product_key ascends, so the SQL cap keeps the
     // 100 newest and drops w000..w002, which the JS comparator (product_key) would otherwise pick.
     for (let i = 0; i < 103; i += 1) {
@@ -136,6 +140,7 @@ suite('pg_ subject signature batch on PostgreSQL', () => {
     'pg_target_rank',
     'pg_unsigned_primary',
     'pg_two_primaries',
+    'pg_full_tie',
     'pg_wide',
     'pg_missing',
   ];
@@ -179,6 +184,7 @@ suite('pg_ subject signature batch on PostgreSQL', () => {
     expect(batch.get('pg_target_rank')).toBe(await sigOf('r1'));
     expect(batch.get('pg_unsigned_primary')).toBe(await sigOf('v2'));
     expect(batch.get('pg_two_primaries')).toBe(await sigOf('q1'));
+    expect(batch.get('pg_full_tie')).toBe(await sigOf('z1'));
     expect(batch.get('pg_wide')).toBe(await sigOf('w003'));
     expect(batch.get('pg_missing')).toBeNull();
   });
