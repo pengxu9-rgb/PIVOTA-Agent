@@ -139,7 +139,12 @@ const {
 // The renderability predicate this repo already owns. Reused verbatim to
 // validate an ELECTED canonical sig rather than restated — a fourth hand-kept
 // copy of it is how the surfaces would drift apart again.
-const { seedRoutedLaneSql, seedRouteResolvesSql, isSeedRoutedLane } = require('./services/pdpRenderability');
+const {
+  seedRoutedLaneSql,
+  seedRouteResolvesSql,
+  isSeedRoutedLane,
+  pdpRouteResolvableFromRow,
+} = require('./services/pdpRenderability');
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
@@ -470,7 +475,6 @@ const {
 } = require('./services/RecommendationEngine');
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
-const { pageFreshness } = require('./services/relationshipGraphFreshness');
 const {
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
@@ -28502,13 +28506,23 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
   };
 }
 
-// A relationship-graph card links to agent.pivota.cc/products/<sig>. Prod 2026-10-09: 625 of the
-// 2,522 served graph candidates with a catalog row had only fresh pdp_will_render=false rows
-// (suppressed / no_us_offer / inactive seed), so their cards opened a 404. The validator's own
-// verdict decides, read the way relationshipGraphFreshness.pageFreshness reads it: a card is
-// withheld only when EVERY row for its signature is a fresh not-renderable verdict. A stale or
-// missing stamp, a renderable row, a read error, or a pg_ family link (resolved by the group lane)
-// keeps the card, as before.
+// A relationship-graph card links to agent.pivota.cc/products/<sig>. Prod 2026-10-09: 623 of the
+// 2,525 served graph candidates with a catalog row could not render (sampled PDPs answered 404/410:
+// suppressed, no_us_offer, no resolvable content route). The card is checked with the PDP's own
+// inputs, read live rather than from the reconciler's lagging pdp_will_render stamp (2 sampled rows
+// stamped false answered 200): the active-source predicate, the content route
+// (pdpRenderability.pdpRouteResolvableFromRow), and get_pdp_v2's serving gate
+// (normalizePdpServingEligibilityRow + shouldAllowPublishedPdpMissingQualitySnapshot). A card is
+// withheld only when NO catalog row for its signature passes all three. No row, a read error,
+// heuristic cards and pg_ family links (resolved by the group lane) keep the card, as before.
+function isRenderableRelationshipGraphCatalogRow(row) {
+  if (!row || row.source_active !== true) return false;
+  if (pdpRouteResolvableFromRow(row) !== true) return false;
+  if (row.mirror_seed_inactive === true) return false;
+  const eligibility = normalizePdpServingEligibilityRow(row);
+  return eligibility.serving_eligible === true || shouldAllowPublishedPdpMissingQualitySnapshot(eligibility);
+}
+
 async function markUnrenderableRelationshipGraphCards(products) {
   const list = Array.isArray(products) ? products : [];
   if (!process.env.DATABASE_URL) return list;
@@ -28523,9 +28537,35 @@ async function markUnrenderableRelationshipGraphCards(products) {
   try {
     const result = await query(
       `
-        SELECT pivota_signature_id, pdp_will_render, pdp_will_render_computed_at
-        FROM catalog_products
-        WHERE pivota_signature_id = ANY($1::text[])
+        SELECT /* similar_relationship_graph_renderability */
+          cp.pivota_signature_id,
+          cp.merchant_id,
+          cp.platform,
+          cp.source_system,
+          cp.source_product_id,
+          cp.content_key,
+          cp.product_key,
+          cp.sync_status,
+          cp.pdp_lifecycle_stage,
+          ${activeCatalogProductSourceWhere('cp', 'cm')} AS source_active,
+          ${seedRouteResolvesSql('cp')} AS pdp_seed_route_ok,
+          ips.serving_eligible,
+          ips.readiness_tier,
+          ips.pipeline_stage,
+          ips.blocker_code,
+          ips.blocker_detail,
+          ips.content_quality_score,
+          eps_active_seed.external_product_id IS NOT NULL AS active_external_seed_source_match,
+          (cp.source_system = 'external_product_seeds_mirror_v1'
+            AND eps_active_seed.external_product_id IS NULL) AS mirror_seed_inactive
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN index_pipeline_state ips ON ips.content_key = cp.content_key
+        LEFT JOIN external_product_seeds eps_active_seed
+          ON cp.source_system = 'external_product_seeds_mirror_v1'
+         AND eps_active_seed.status = 'active'
+         AND eps_active_seed.external_product_id = cp.source_product_id
+        WHERE cp.pivota_signature_id = ANY($1::text[])
       `,
       [sigIds],
     );
@@ -28537,18 +28577,14 @@ async function markUnrenderableRelationshipGraphCards(products) {
     );
     return list;
   }
-  const verdictsBySig = new Map();
-  const now = new Date();
+  const renderableBySig = new Map();
   for (const row of rows) {
     const sigId = firstNonEmptyString(row?.pivota_signature_id);
     if (!sigId) continue;
-    if (!verdictsBySig.has(sigId)) verdictsBySig.set(sigId, []);
-    verdictsBySig.get(sigId).push(pageFreshness(row, now));
+    renderableBySig.set(sigId, renderableBySig.get(sigId) === true || isRenderableRelationshipGraphCatalogRow(row));
   }
   const unrenderable = new Set(
-    Array.from(verdictsBySig)
-      .filter(([, verdicts]) => verdicts.length > 0 && verdicts.every((verdict) => verdict === 'fresh_not_renderable'))
-      .map(([sigId]) => sigId),
+    Array.from(renderableBySig).filter(([, renderable]) => renderable === false).map(([sigId]) => sigId),
   );
   if (!unrenderable.size) return list;
   return list.map((product) =>
@@ -28556,6 +28592,12 @@ async function markUnrenderableRelationshipGraphCards(products) {
       ? { ...product, similar_render_status: 'not_renderable' }
       : product,
   );
+}
+
+function countUnrenderableRelationshipGraphCards(products) {
+  return (Array.isArray(products) ? products : []).filter(
+    (product) => product?.similar_render_status === 'not_renderable',
+  ).length;
 }
 
 async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options = {}) {
@@ -44701,6 +44743,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
+              relationship_graph_not_renderable_withheld_count:
+                countUnrenderableRelationshipGraphCards(hydratedSimilarCandidates),
               component_ref_candidate_count: componentSimilarCandidates.length,
               component_ref_scope_applied: false,
               component_ref_scope_dropped_count: 0,
@@ -44738,6 +44782,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
+              relationship_graph_not_renderable_withheld_count:
+                countUnrenderableRelationshipGraphCards(hydratedSimilarCandidates),
               component_ref_candidate_count: componentSimilarCandidates.length,
               component_ref_scope_applied: false,
               component_ref_scope_dropped_count: 0,
@@ -48867,6 +48913,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 card_highlight_missing_count: cardHighlightMissingCount,
                 card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
                 public_external_id_filtered_count: publicExternalIdFilteredCount,
+                relationship_graph_not_renderable_withheld_count:
+                  countUnrenderableRelationshipGraphCards(hydratedSimilarCandidates),
                 card_image_missing_count: cardImageMissingCount,
               },
               total: products.length,
