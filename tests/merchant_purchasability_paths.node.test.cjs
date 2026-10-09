@@ -66,6 +66,10 @@ function offEnv(extra = {}) {
 const PURCHASE = { tier: 'purchase', enforced: true, sweep_enabled: true };
 const BROWSE_ONLY = { tier: 'browse_only', enforced: true, sweep_enabled: true };
 const NOT_ENFORCED = { tier: 'browse_only', enforced: false, sweep_enabled: true };
+/** pivota-backend #2411: no card gateway (the rail refuses) but a human can pay on the checkout. */
+const NO_CARD = { tier: 'browse_only', human_handoff_tier: 'purchase', enforced: true, sweep_enabled: true };
+/** Neither a card nor a human can complete this checkout. */
+const BOTH_NO = { tier: 'browse_only', human_handoff_tier: 'browse_only', enforced: true, sweep_enabled: true };
 
 /** pivota-backend #2352's answer to `GET /ops/merchant-purchasability?domain=<d>` with no market. */
 function marketUnknownAnswer(domain, keyedBody) {
@@ -427,6 +431,50 @@ test('path3/offers: SWITCH OFF is byte-identical, and the gate is never consulte
   // THE SNAPSHOT: the whole annotated array, against the un-gated function.
   assert.deepEqual(gated, annotateOffersWithCommerceMetadata(offers));
   assert.equal(gated[0].merchant_checkout_url, `https://${MERCHANT}/products/o1`);
+});
+
+test('rule 7 / path2/escalation: a NO_CARD_PAYMENT merchant still gets its continue_url (a human pays on the storefront); BOTH_NO is declined', async () => {
+  const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+  const kept = await runEscalation({ env, ucpArgs: ucpCreateArgs(), shouldOfferPurchase: realGate({ env, backend: fakeBackend(NO_CARD), logger: fakeLogger() }) });
+  assert.equal(kept.status, 'requires_escalation');
+  assert.equal(kept.continue_url, MERCHANT_URL);
+  const declined = await runEscalation({ env, ucpArgs: ucpCreateArgs(), shouldOfferPurchase: realGate({ env, backend: fakeBackend(BOTH_NO), logger: fakeLogger() }) });
+  assert.equal(declined, null);
+});
+
+test('rule 7 / path2/escalation: the seam names the HUMAN rail on every gate call', async () => {
+  const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
+  const seen = [];
+  const spy = async (args) => { seen.push(args); return { offer: true, source: 'gate' }; };
+  await runEscalation({ env, ucpArgs: ucpCreateArgs(), shouldOfferPurchase: spy });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].rail, 'human');
+  assert.equal(seen[0].domain, MERCHANT, 'the seller host, www stripped');
+});
+
+test('rule 7 / path3/offers: a NO_CARD_PAYMENT merchant KEEPS merchant_checkout_url (a human follows the link); BOTH_NO loses it', async () => {
+  const env = gateEnv();
+  const offers = [offer('o1', MERCHANT)];
+  const kept = await annotateOffersWithCommerceMetadataGated(offers, {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend: fakeBackend(NO_CARD), logger: fakeLogger() }),
+  });
+  assert.deepEqual(kept, annotateOffersWithCommerceMetadata(offers), 'byte-identical to the ungated stamp');
+  assert.equal(kept[0].merchant_checkout_url, `https://${MERCHANT}/products/o1`);
+  const declined = await annotateOffersWithCommerceMetadataGated(offers, {
+    env, market: MARKET, shouldOfferPurchase: realGate({ env, backend: fakeBackend(BOTH_NO), logger: fakeLogger() }),
+  });
+  assert.ok(!Object.prototype.hasOwnProperty.call(declined[0], 'merchant_checkout_url'));
+});
+
+test('rule 7 / path3/offers: the seam names the HUMAN rail on every gate call', async () => {
+  const env = gateEnv();
+  const seen = [];
+  const spy = async (args) => { seen.push(args); return { offer: true, source: 'gate' }; };
+  await annotateOffersWithCommerceMetadataGated([offer('o1', MERCHANT), offer('o2', 'example-shop.test')], {
+    env, market: MARKET, shouldOfferPurchase: spy,
+  });
+  assert.equal(seen.length, 2);
+  for (const args of seen) assert.equal(args.rail, 'human', JSON.stringify(args));
 });
 
 test('path3/offers: ON + enforced + browse_only leaves merchant_checkout_url UNSET and KEEPS the offer', async () => {

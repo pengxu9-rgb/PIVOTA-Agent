@@ -312,7 +312,8 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
   // about Pivota's own host is asking about nobody. A link whose seller cannot be read keeps the previous key.
   // A link whose seller cannot be read is asked about NO domain (the gate's own unkeyable path: a decline only once
   // the backend is KNOWN to enforce, the previous behaviour otherwise) — never about api.pivota.cc or a redirector.
-  return mayOfferPurchaseForDomain(sellerHostOf(continueUrl), market, gate, gateEnabled, budgetMs);
+  // The continue_url is followed by a PERSON who pays on the storefront: the human question (client rule 7).
+  return mayOfferPurchaseForDomain(sellerHostOf(continueUrl), market, gate, gateEnabled, budgetMs, merchantPurchasability.RAIL.human);
 }
 
 /**
@@ -321,7 +322,7 @@ async function mayOfferStorefrontCheckout(continueUrl, market, gate, gateEnabled
  * (ucpReapAgenticLane.js) consults the gate exactly as this lane does — same switch, same singleton client,
  * same fail-open rule, same budget clamp — rather than growing a second copy of the rule.
  */
-export async function mayOfferPurchaseForDomain(domain, market, gate, gateEnabled, budgetMs) {
+export async function mayOfferPurchaseForDomain(domain, market, gate, gateEnabled, budgetMs, rail) {
   if (!gateEnabled) return true;
   // The DOMAIN is the storefront host, never the full continue_url: the ops query carries a merchant domain
   // and a two-letter market and nothing else. A path or query string from the storefront URL would be a
@@ -341,6 +342,9 @@ export async function mayOfferPurchaseForDomain(domain, market, gate, gateEnable
       // capped again by this door's own ceiling, and below the client's floor the gate is SKIPPED
       // (`source: 'skipped_budget'`, previous behaviour) rather than attempted and timed out.
       budgetMs: Math.min(Math.max(0, budgetMs), ESCALATION_GATE_MAX_MS),
+      // WHICH QUESTION (client rule 7): the escalation lane hands a human a storefront (`RAIL.human`); the
+      // Reap lane charges a card headlessly (`RAIL.card`). Unnamed is the card rail, the stricter answer.
+      rail: merchantPurchasability.normalizeRail(rail),
     });
   } catch {
     return true;
