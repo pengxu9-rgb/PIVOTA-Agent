@@ -35,7 +35,7 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
-import { judgeSellerUrl, pivotaHopDestination } from "./ucpExpectedSeller.js";
+import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { encodeUcpVariantItemId, findRealVariant } from "./ucpVariantIds.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
@@ -80,6 +80,24 @@ function carriesAnotherUrl(parsed) {
     if (/^\s*(https?:)?\/\//i.test(value) || /^\s*https?%3a/i.test(value)) return true;
   }
   return false;
+}
+
+// ONLY A SINGLE-TENANT DOOR HOST IS "THE SELLER". A Shopify store's UCP door lives on its OWN `<store>.myshopify.com`
+// (measured: judydoll), so a cart URL there is that store's. Other platforms serve every merchant from ONE shared host
+// — Wix sellers advertise `https://www.wixapis.com/ecom/ucp/<siteId>/mcp` (Pivota's own probe data) — where a URL on
+// the door host may be any site's, so the door host proves nothing and such carts stay on the seller-host rule.
+// Pivota's own hosts never qualify (the /r hop is judgeSellerUrl's to decode or refuse).
+const SINGLE_TENANT_DOOR_HOST_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
+/** An https URL exactly on the answering UCP door's host (no subdomain widening), with the same refusals. */
+function onDoorHost(url, doorHost) {
+  if (!doorHost) return null;
+  const door = String(doorHost).toLowerCase();
+  if (!SINGLE_TENANT_DOOR_HOST_RE.test(door) || SELF_HOST_RE.test(door)) return null;
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || carriesAnotherUrl(parsed)) return null;
+  return parsed.hostname.toLowerCase() === door ? parsed : null;
 }
 
 function onSellerHost(url, sellerHost) {
@@ -187,7 +205,7 @@ function sellerMessageCodes(payload) {
  * @param {{product_id:string, quantity:number, gid:string}[]} wanted
  * @param {string} sellerHost
  */
-export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency } = {}) {
+export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost } = {}) {
   if (!isPlainObject(payload)) return null;
   // A cart the seller itself flags with an ERROR message is not a price to show (out of stock is handled by the
   // caller, from the same messages, before this is reached).
@@ -198,7 +216,12 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency }
   // geo-defaulted storefront, a market the request did not name) is not the price this buyer was shown.
   if (expectedCurrency && currency !== expectedCurrency) return null;
   const continueUrl = str(own(payload, "continue_url")) || str(own(payload, "checkout_url"));
-  if (!continueUrl || !onSellerHost(continueUrl, sellerHost)) return null;
+  // On the seller's host (or a subdomain), OR exactly on the host of the UCP door that answered. Measured on
+  // judydoll.com 2026-10-09: its /.well-known/ucp names `judydoll-joygroup.myshopify.com/api/ucp/mcp`, and the cart's
+  // continue_url is on that myshopify host — Shopify stores answer from their myshopify domain, so a seller-host-only
+  // rule discarded every such cart. The door host is vouched for by the seller's OWN profile (discovery refuses
+  // redirects), so it is the seller too; the same userinfo / embedded-URL refusals apply.
+  if (!continueUrl || !(onSellerHost(continueUrl, sellerHost) || onDoorHost(continueUrl, doorHost))) return null;
   const lines = Array.isArray(own(payload, "line_items")) ? own(payload, "line_items") : null;
   if (!lines || lines.length !== wanted.length) return null;
 
@@ -430,11 +453,16 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     emit(log, "info", { outcome: "refused", reason: FAILURE_REASON.OUT_OF_STOCK, seller_host: sellerHost });
     throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
   }
-  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency });
+  let doorHost = null;
+  try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
+  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost });
   if (!read) { emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost }); return null; }
   // THE ONE VALUE HANDED TO THE BUYER, judged as the lane judges its own link: when the platform named the seller it
   // showed (`checkout.reap.expected_merchant_domain`), a cart URL that is not provably that seller falls back.
-  if (expectedSeller !== undefined && !judgeSellerUrl(expectedSeller, read.continueUrl).ok) {
+  // A cart URL on the answering door's own host was vouched for by the seller's profile, discovered from the seller
+  // host the lane already judged against the expected seller; only a URL on any OTHER host is judged here.
+  const onDoor = Boolean(onDoorHost(read.continueUrl, doorHost));
+  if (expectedSeller !== undefined && !onDoor && !judgeSellerUrl(expectedSeller, read.continueUrl).ok) {
     emit(log, "info", { outcome: "fallback", reason: "continue_url_not_expected_seller", seller_host: sellerHost });
     return null;
   }
