@@ -388,6 +388,11 @@ function createReapAgenticPurchaseClient(deps = {}) {
 
 module.exports = {
   KIND,
+  // Shared with src/services/agentPurchaseReadClient.js (the rail-neutral read): ONE reading of the
+  // backend's error envelope and of its credential headers, not two that could drift.
+  canonicalBackendReasonCode,
+  headerValue,
+  parseJson,
   PURCHASES_PATH,
   PURCHASE_ID_RE,
   DEFAULT_TIMEOUT_MS,

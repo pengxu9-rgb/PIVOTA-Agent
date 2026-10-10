@@ -30351,6 +30351,40 @@ function merchantVariantSourcingBrands() {
 //
 // Always constructed; the lane reads REAP_AGENTIC_LANE_ENABLED per call, so the switch is live, not frozen at
 // surface-construction time. `deps.fetchImpl` exists for tests only.
+// The rail-neutral purchase read behind get_order for `pp_` ids (pivota-backend payment orchestration P0,
+// docs/agent_purchases_routes.md). Built once; the dial is read per call in buildReadAgentPurchase, so it is
+// live. Same auth rule as the Reap client: the CALLER's agent key and buyer token, never the internal key.
+function buildAgentPurchaseReadClient(log, deps = {}) {
+  const { createAgentPurchaseReadClient } = require('./services/agentPurchaseReadClient');
+  return createAgentPurchaseReadClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => buildInvokeUpstreamAuthHeaders({ allowInternalFallback: false, forwardBuyerRef: false }),
+    logger: log,
+  });
+}
+
+function isAgentPurchaseOrderReadEnabled() {
+  // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
+  const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
+// The executor's `readAgentPurchase`: null (= not handled, kernel path) while the dial is off.
+//
+// The backend read is owned by the agent whose API key this request carries (the per-request auth context),
+// and the executor's ctx was derived from the same request. Asserted, not assumed: if both name an agent and
+// they differ, refuse before any request rather than read under an identity the ctx did not verify.
+function buildReadAgentPurchase(client) {
+  return async (purchaseId, ctx) => {
+    if (!isAgentPurchaseOrderReadEnabled()) return null;
+    const requestAgent = String(getInvokeAuthContext()?.agent_id || '').trim();
+    const ctxAgent = String(ctx?.agent_id || '').trim();
+    if (requestAgent && ctxAgent && requestAgent !== ctxAgent) return { kind: 'identity_mismatch' };
+    return client.getPurchase(purchaseId);
+  };
+}
+
 function buildReapAgenticPurchaseClient(log, deps = {}) {
   const { createReapAgenticPurchaseClient } = require('./services/reapAgenticPurchaseClient');
   return createReapAgenticPurchaseClient({
@@ -31795,6 +31829,8 @@ async function getCommerceRemoteMcpAdapter() {
         verifyPaymentAuthorization,
         hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
         localReads,
+        // get_order for a rail purchase (`pp_…`); dark unless AGENT_PURCHASE_ORDER_READ_ENABLED.
+        readAgentPurchase: buildReadAgentPurchase(buildAgentPurchaseReadClient(logger)),
         // AP2: checkout sessions carry the merchant-signed Checkout JWT a wallet hashes into
         // its mandate. Best-effort inside the executor; a mint failure logs here and costs
         // only AP2 (which then fails closed at verification), never the session.
@@ -52467,6 +52503,9 @@ module.exports._debug = {
     // Tests only: the Reap lane's client as production builds it, and a way to run it inside the per-request
     // auth context the UCP door's tools/call runs in (tests/reap_agentic_lane.node.test.cjs).
     buildReapAgenticPurchaseClient,
+    buildAgentPurchaseReadClient,
+    buildReadAgentPurchase,
+    isAgentPurchaseOrderReadEnabled,
     privateBackendHop,
     getAgentIdentityIssuerRegistry,
     runInInvokeAuthContextForTest: (store, fn) => INVOKE_AUTH_CONTEXT.run(store, fn),
