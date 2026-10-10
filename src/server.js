@@ -26724,6 +26724,18 @@ async function fetchReviewSummaryCached(args = {}) {
 function isPdpRelationshipGraphServingEnabled() {
   return isRelationshipGraphSurfaceEnabled('pdp_similar');
 }
+
+// The similar rails (get_pdp_v2 similar module, find_similar_products, the legacy PDP
+// recommendations) are served by the relationship graph ONLY: reviewed alternative edges. The
+// dynamic recall lanes (L1 same brand+leaf+price, L2E, L3 leaf+price, L3E external leaf) are not
+// shown. Prod 2026-10-10, 45 sampled PDPs: those lanes filled 12 rails with category filler - four
+// different foundation PDPs showed the same 12 shades of one Fenty tint stick, three lipsticks the
+// same Fenty gloss stick, a shampoo a curl cream. A product without reviewed edges shows an empty
+// rail; a graph read that fails is an outage (503 / unavailable), never silently empty. Read per
+// call so the kill switch (=false restores graph + dynamic recall) needs no code change.
+function isPdpSimilarGraphOnlyEnabled() {
+  return parseBooleanEnv(process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED, true);
+}
 const SIMILAR_FAMILY_DEDUPE_ENABLED =
   String(process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED || '').trim().toLowerCase() === 'true';
 
@@ -26864,9 +26876,63 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
   };
 }
 
+async function fetchGraphOnlySimilarProducts(args = {}) {
+  const k = Number(args?.k);
+  const base = {
+    similar_main_route: 'relationship_graph',
+    dynamic_recall_skipped: true,
+    dynamic_recall_skipped_reason: 'similar_graph_only',
+    low_confidence: false,
+    low_confidence_reason_codes: [],
+  };
+  if (!isPdpRelationshipGraphServingEnabled()) {
+    return {
+      status: 'empty',
+      strategy: 'relationship_graph',
+      items: [],
+      metadata: { ...base, similar_status: 'empty', relationship_graph_enabled: false },
+    };
+  }
+  // No catch: a throw is the main route failing, and the callers' outage handling answers it.
+  const graphRecall = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+    market: args?.pdp_product?.market || 'US',
+    limit: Number.isFinite(k) && k > 0 ? k : 24,
+  });
+  const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
+  // A read the graph itself reports as unavailable (no database, missing schema, timeout) is the main
+  // route failing: raise it like a thrown read, so both surfaces answer it as an outage.
+  if (graphRecall?.metadata?.read_status === 'unavailable' && !graphItems.length) {
+    const err = new Error(`relationship graph similar read unavailable: ${graphRecall?.metadata?.read_reason || 'unknown'}`);
+    err.code = 'SIMILAR_MAINLINE_UNAVAILABLE';
+    throw err;
+  }
+  const familyDedupeContext = SIMILAR_FAMILY_DEDUPE_ENABLED && graphItems.length
+    ? await resolveSimilarFamilyDedupeContext({ anchorProduct: args?.pdp_product || {}, items: graphItems, queryFn: query })
+    : { anchorFamilyKey: '', resolutionMap: null };
+  let items = SIMILAR_FAMILY_DEDUPE_ENABLED
+    ? dedupeSimilarCandidatesByFamily(graphItems, familyDedupeContext)
+    : dedupeSimilarCandidatesByMerchantProductId(graphItems);
+  if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
+  return {
+    status: items.length ? 'success' : 'empty',
+    strategy: 'relationship_graph',
+    items,
+    metadata: {
+      ...base,
+      similar_status: items.length ? 'ready' : 'empty',
+      relationship_graph_enabled: true,
+      relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+      ...relationshipGraphReadMetadata(graphRecall?.metadata),
+      relationship_graph_curated_count: graphItems.length,
+      relationship_graph_served_count: countRelationshipGraphSimilarProducts(items),
+    },
+  };
+}
+
 async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
+    if (isPdpSimilarGraphOnlyEnabled()) return fetchGraphOnlySimilarProducts(args);
     // The graph read runs beside the heuristic, not after it: awaiting the heuristic first spent the
     // shared similar budget before the graph was asked, and a heuristic throw skipped the graph
     // entirely. A heuristic failure is still raised when the graph has nothing to serve.
@@ -46667,7 +46733,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.options?.bypass_cache === true;
         const componentSimilarCandidates = collectPdpComponentSimilarCandidates(product);
         try {
-          const rec = await recommendPdpProducts({
+          const rec = await (isPdpSimilarGraphOnlyEnabled() ? fetchSimilarProductsDeduped : recommendPdpProducts)({
             pdp_product: product,
             k: payload.recommendations?.limit || 6,
             locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
@@ -52295,6 +52361,8 @@ module.exports._debug = {
   filterPublicVisibleSimilarProducts,
   dedupeSimilarCandidatesByMerchantProductId,
   dedupeSimilarCandidatesByFamily,
+  fetchGraphOnlySimilarProducts,
+  isPdpSimilarGraphOnlyEnabled,
   shapeItemForFamilyKey,
   normalizeSimilarFamilyResolutionRef,
   getSimilarFamilyItemResolutionRef,
@@ -52315,6 +52383,8 @@ module.exports._debug = {
   mergeSimilarCardEnrichment,
   readSimilarCardMoneyPair,
   fetchSimilarProductsDeduped,
+  fetchGraphOnlySimilarProducts,
+  isPdpSimilarGraphOnlyEnabled,
   getSimilarCardEnrichmentMetadata,
   shouldEnrichSimilarCard,
   shouldHydrateSimilarCardFromOfficialSeed,
