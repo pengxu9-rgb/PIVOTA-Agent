@@ -31667,12 +31667,17 @@ async function getCommerceRemoteMcpAdapter() {
         // `offers[]` is already in offerToSignal shape; mapOffersResolveResponse normalizes the envelope.
         // Single-offer products yield best_offer + an empty competition set (no fabricated competition).
         get_offers: makeGetOffers({
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 product: { product_id, merchant_id },
                 limit: Math.min(Math.max(Number(limit) || 10, 1), 30),
                 commerceSurface: 'agent_api',
+                // The buyer market the caller STATED (makeGetOffers.getOffersBuyerMarket: ISO-2, priceable,
+                // never defaulted). The backend's offers.resolve keys its cart-minting gate on it
+                // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
+                // its cart; absent, the payload is byte-identical to before and the answer referral-only.
+                ...(market ? { market } : {}),
               }),
               product_group_id || null,
             ),

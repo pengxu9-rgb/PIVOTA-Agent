@@ -623,7 +623,7 @@ function toParams(op, toolArgs) {
     case "get_alternatives":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
-      return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "limit"]) };
+      return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "market", "limit"]) };
     case "get_intel":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
     case "recommend_products":
@@ -908,6 +908,7 @@ const INPUT_SCHEMAS = Object.freeze({
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
       product_group_id: { type: "string" }, currency: { type: "string" },
+      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market. Absent, no market is claimed and offers come back referral-only." },
       limit: { type: "integer", minimum: 1, maximum: 10 },
     },
   },

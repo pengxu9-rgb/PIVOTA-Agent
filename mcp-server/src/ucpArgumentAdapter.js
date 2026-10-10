@@ -1419,7 +1419,8 @@ const GET_OFFERS_DESCRIPTION = [
   "`{ meta, insights: { id } }` with the Pivota product id NESTED under `insights`. Read-only. Returns",
   "`{ subject, best_offer, signals[], metadata }` — real competition only when it exists; a single-offer product",
   "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
-  "`insights.limit` (1..10).",
+  "`insights.market` (the buyer's market, ISO-3166-1 alpha-2, only when known: offers and their cart links are",
+  "then decided for that market; absent, no market is claimed), `insights.limit` (1..10).",
 ].join(" ");
 
 const GET_INTEL_DESCRIPTION = [
@@ -2060,6 +2061,7 @@ const SPECS = Object.freeze({
           properties: {
             id: { type: "string", description: "The Pivota product id (from search_catalog / get_product)." },
             currency: { type: "string", description: "ISO 4217 currency preference for the comparison." },
+            market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2, only when known." },
             limit: { type: "integer", minimum: 1, maximum: 10 },
           },
         },
@@ -2067,10 +2069,11 @@ const SPECS = Object.freeze({
     },
     map(args) {
       const code = INSIGHTS_REFUSAL_CODE;
-      const insights = readInsightsEnvelope(args, code, "get_offers", ["id", "currency", "limit"]);
+      const insights = readInsightsEnvelope(args, code, "get_offers", ["id", "currency", "market", "limit"]);
       return pruneUndefinedArgs({
         product_id: insights.id,
         currency: readOptionalString(insights.raw, "currency"),
+        market: readOptionalString(insights.raw, "market"),
         limit: readOptionalInteger(insights.raw, "limit", 1, 10),
       });
     },
