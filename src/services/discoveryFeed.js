@@ -13358,6 +13358,9 @@ const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
 // (live 2026-10-09, 12:22Z onwards). The main products_search lane never asks for more than a page
 // (PRODUCTS_SEARCH_PAGE_SIZE) per step; the fallback asks for the same, at offset 0.
 const BUYER_MARKET_HOP_LIMIT = PRODUCTS_SEARCH_PAGE_SIZE;
+// ... and ALWAYS that page, whatever the page's own candidate limit (24-120 by page shape and buyer
+// history): the pool is the market's, not the page's, so one pool per market x query text serves
+// every page shape, and the warm at boot (below) fills the key every first page reads.
 const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
 
 /**
@@ -13400,8 +13403,8 @@ function getBuyerMarketPoolMaxStaleMs() {
 // market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
 // Paging within a market reads this: page 2 of SG is the same pool, not four more hops.
 const buyerMarketPoolCache = new Map();
-function buyerMarketPoolCacheKey({ market, queryText, limit }) {
-  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase(), limit: Number(limit) || 0 });
+function buyerMarketPoolCacheKey({ market, queryText }) {
+  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase() });
 }
 // An entry past its TTL is still returned, marked stale: the page is served from it while a fresh
 // round runs in the background (one per key at a time; `buyerMarketRoundsInFlight`).
@@ -13424,6 +13427,66 @@ function buyerMarketBreakerFor(market) {
 /** Test seam. */
 function isBuyerMarketBreakerOpen(market) {
   return isProductsSearchBreakerOpen(buyerMarketBreakerFor(market));
+}
+
+// ---------------------------------------------------------------------------------------------
+// WARM AT BOOT (Peng 2026-10-10, "(c)"). The pool cache is per instance, so a cold instance's first
+// non-US page holds only the narrow hops' rows for a few seconds (SG live after #2397: 4 cards, then
+// 20 from a 97-row pool). For the markets in DISCOVERY_BUYER_MARKET_WARM_MARKETS (ISO-2, empty by
+// default; set SG when SG is a served candidate) one round runs at instance start, ONE MARKET AT A
+// TIME (a round costs the primary ~15 s of query time; the next market's starts when this one's
+// round has completed), with the storefront's cold-start browse shape -- the same key its first
+// page reads. A market the gateway cannot price, or the deployment's own, has nothing to warm.
+// Never throws, never blocks boot (server.js schedules it after listen).
+// ---------------------------------------------------------------------------------------------
+function getBuyerMarketWarmMarkets(env = process.env) {
+  const seen = new Set();
+  for (const raw of String(env.DISCOVERY_BUYER_MARKET_WARM_MARKETS || '').split(/[|,\s]+/)) {
+    const code = String(raw || '').trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(code)) seen.add(code);
+  }
+  return [...seen];
+}
+function getBuyerMarketWarmDelayMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_DELAY_MS, 3000, 0, 600000);
+}
+const BUYER_MARKET_WARM_PAYLOAD = Object.freeze({
+  surface: 'browse_products', page: 1, page_size: 24, limit: 24,
+  context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] },
+});
+async function warmBuyerMarketPools({ markets = getBuyerMarketWarmMarkets(), now = Date.now, fetchRows = fetchBuyerMarketSearchRows, log = logger } = {}) {
+  const deploymentCurrency = resolveServingCurrency('');
+  const request = normalizeDiscoveryRequest(BUYER_MARKET_WARM_PAYLOAD);
+  const outcomes = [];
+  for (const market of markets) {
+    const servingCurrency = resolveServingCurrency(market);
+    if (!servingCurrency || servingCurrency === deploymentCurrency) {
+      outcomes.push({ market, skipped: !servingCurrency ? 'unpriceable' : 'deployment_market' });
+      continue;
+    }
+    const startedAt = now();
+    try {
+      const rows = await fetchRows({ request, market, servingCurrency, now });
+      // The page-budget return can leave hops running: wait for the round, so the next market's
+      // does not overlap it on the primary.
+      await Promise.all([...buyerMarketRoundsInFlight.values()]);
+      const entry = readBuyerMarketPoolCache(buyerMarketPoolCacheKey({ market, queryText: '' }), now());
+      const outcome = {
+        market,
+        rows: entry ? entry.products.length : (Array.isArray(rows?.products) ? rows.products.length : 0),
+        cached: Boolean(entry),
+        ...(rows?.skipped ? { skipped: rows.skipped } : {}),
+        latency_ms: Math.max(0, now() - startedAt),
+      };
+      outcomes.push(outcome);
+      log.info(outcome, 'discovery buyer-market pool warmed');
+    } catch (err) {
+      const outcome = { market, error: err?.message || String(err) };
+      outcomes.push(outcome);
+      log.warn(outcome, 'discovery buyer-market pool warm failed');
+    }
+  }
+  return outcomes;
 }
 /** Test seam: every round still running (a page returned before its slow hops answered). */
 function awaitBuyerMarketRoundsForTest() {
@@ -13475,10 +13538,10 @@ function hasRowsInServingCurrency(products, servingCurrency) {
  * That market's own rows: one products_search hop per cold-start query (or the page's own query
  * text), keyed on the market, merged, and KEPT ONLY WHEN PRICED IN THE MARKET'S CURRENCY.
  */
-async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
+async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
   const queryText = String(request?.query?.text || '').trim();
-  const safeLimit = Math.min(clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH), BUYER_MARKET_HOP_LIMIT);
-  const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
+  const safeLimit = BUYER_MARKET_HOP_LIMIT;
+  const cacheKey = buyerMarketPoolCacheKey({ market, queryText });
   const cached = readBuyerMarketPoolCache(cacheKey, now());
   const cacheAnswer = (entry) => ({
     products: entry.products,
@@ -13610,8 +13673,7 @@ async function applyBuyerMarketFallback({
   if (hasRowsInServingCurrency(products, servingCurrency)) return response;
 
   const request = normalizeDiscoveryRequest(payload);
-  const limit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
-  const rows = await fetchRows({ request, market, servingCurrency, limit });
+  const rows = await fetchRows({ request, market, servingCurrency });
   const stamp = {
     market,
     serving_currency: servingCurrency,
@@ -13669,6 +13731,9 @@ module.exports = {
   buildDiscoveryProfile,
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
+  getBuyerMarketWarmMarkets,
+  getBuyerMarketWarmDelayMs,
+  warmBuyerMarketPools,
   _internals: {
     // The buyer-market fallback, with its collaborators injectable (no database, no transport).
     applyBuyerMarketFallback,
