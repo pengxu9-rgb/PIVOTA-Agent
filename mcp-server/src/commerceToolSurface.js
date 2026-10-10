@@ -453,7 +453,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
       //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a
       //    redirect-named field is NOT a payment handoff and is scrubbed aggressively.
-      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+      //    A rail purchase read by get_order (marked by the executor's mapper with a registry Symbol, which no
+      //    JSON upstream body can carry, from the backend's owner-scoped read) carries the rail's buyer step (`next_action.action_url`,
+      //    `detail.hosted_url`), already vetted by the backend against the rail's https host allowlist; it
+      //    is the same kind of handoff a checkout op returns, so it is preserved the same way.
+      const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
+        && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
+      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
     };
 
     // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything

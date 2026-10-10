@@ -105,8 +105,26 @@ test('no caller key or no buyer token: unauthenticated and NO request', async ()
   }
 });
 
-test('only a well-formed pp_ id is ever sent', async () => {
-  for (const id of ['rp_0123456789abcdef01234567', 'pp_short', 'pp_0123456789ABCDEF01234567', `${PID}/../x`, '', null]) {
+test('an rp_ id is accepted when the body names it as rail_purchase_id, and the answer still carries a pp_ id', async () => {
+  const RID = 'rp_0123456789abcdef01234567';
+  const { c, backend } = client({ status: 200, body: PURCHASE });
+  assert.deepEqual(await c.getPurchase(RID), { kind: 'accepted', purchase: PURCHASE });
+  assert.equal(backend.calls[0].url.endsWith(`/${RID}`), true);
+  const other = client({ status: 200, body: { ...PURCHASE, rail_purchase_id: 'rp_ffffffffffffffffffffffff' } });
+  assert.deepEqual(await other.c.getPurchase(RID), { kind: 'unavailable', code: 'malformed' });
+  const noPp = client({ status: 200, body: { ...PURCHASE, purchase_id: RID } });
+  assert.deepEqual(await noPp.c.getPurchase(RID), { kind: 'unavailable', code: 'malformed' }, 'purchase_id must be a pp_ id');
+});
+
+test('the client and the executor match the same ids (no drift)', async () => {
+  const { AGENT_PURCHASE_ID_RE } = require('../src/services/agentPurchaseReadClient');
+  const executor = await import('../safety-kernel/src/protocol/canonicalExecutor.js');
+  assert.equal(AGENT_PURCHASE_ID_RE.source, executor.AGENT_PURCHASE_ID_RE.source);
+  assert.equal(AGENT_PURCHASE_ID_RE.flags, executor.AGENT_PURCHASE_ID_RE.flags);
+});
+
+test('only a well-formed pp_/rp_ id is ever sent', async () => {
+  for (const id of ['xp_0123456789abcdef01234567', 'pp_short', 'pp_0123456789ABCDEF01234567', `${PID}/../x`, '', null]) {
     const { c, backend } = client({ status: 200, body: PURCHASE });
     assert.deepEqual(await c.getPurchase(id), { kind: 'not_found', code: 'invalid_id' });
     assert.equal(backend.calls.length, 0);
@@ -125,8 +143,10 @@ test('logs carry no id, header or body', async () => {
 
 // ── production wiring (src/server.js) ─────────────────────────────────────────────────────────────
 
-test('server wiring: caller headers only, never the internal key; the dial gates the read per call', async () => {
-  process.env.PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || 'internal-key-fixture';
+test('server wiring: caller headers only, never the internal key; the dial gates the read per call', async (t) => {
+  const priorKey = process.env.PIVOTA_API_KEY;
+  t.after(() => { if (priorKey === undefined) delete process.env.PIVOTA_API_KEY; else process.env.PIVOTA_API_KEY = priorKey; });
+  process.env.PIVOTA_API_KEY = priorKey || 'internal-key-fixture';
   const server = require('../src/server');
   const strict = server._debug.__agentCheckoutStrict;
   const backend = fakeBackend({ status: 200, body: PURCHASE });
@@ -151,6 +171,14 @@ test('server wiring: caller headers only, never the internal key; the dial gates
     const noKey = await strict.runInInvokeAuthContextForTest({ agent_user_jwt: USER_JWT }, () => read(PID));
     assert.equal(noKey.kind, 'unauthenticated', 'no caller key -> no request, NOT the internal key');
     assert.equal(backend.calls.length, 1);
+
+    const mismatch = await strict.runInInvokeAuthContextForTest(
+      { api_key: API_KEY, agent_user_jwt: USER_JWT, agent_id: 'agent_a' }, () => read(PID, { agent_id: 'agent_b' }));
+    assert.deepEqual(mismatch, { kind: 'identity_mismatch' }, 'ctx and request name different agents -> refuse');
+    assert.equal(backend.calls.length, 1, 'no request on a mismatch');
+    const same = await strict.runInInvokeAuthContextForTest(
+      { api_key: API_KEY, agent_user_jwt: USER_JWT, agent_id: 'agent_a' }, () => read(PID, { agent_id: 'agent_a' }));
+    assert.equal(same.kind, 'accepted');
   } finally {
     if (prior === undefined) delete process.env.AGENT_PURCHASE_ORDER_READ_ENABLED;
     else process.env.AGENT_PURCHASE_ORDER_READ_ENABLED = prior;

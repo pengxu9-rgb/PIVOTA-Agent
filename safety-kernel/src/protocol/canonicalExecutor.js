@@ -105,8 +105,15 @@ function refusalFor(opId) {
  *   mintAp2CheckoutJwt?: (input:{checkout_session_id:string, expires_at?:string}) => Promise<string>|string,
  * }} deps
  */
-// The backend's rail-neutral purchase id (pivota-backend db/agent_purchase_ledger.py).
-const AGENT_PURCHASE_ID_RE = /^pp_[0-9a-f]{24}$/;
+// A rail purchase id: the backend's rail-neutral `pp_` id (pivota-backend db/agent_purchase_ledger.py) or a
+// Reap `rp_` id, which the backend read accepts too. Identical to src/services/agentPurchaseReadClient.js
+// (a test holds the two together).
+export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp)_[0-9a-f]{24}$/;
+
+// Marks a get_order result that THIS mapper built from the backend's rail purchase read. A Symbol (registry key,
+// so the tool surface can read it without importing this module) cannot arrive in any JSON upstream body, so a
+// kernel order result can never claim it; the surface preserves buyer handoff URLs only on marked results.
+export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseResult');
 
 /**
  * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
@@ -120,17 +127,33 @@ function agentPurchaseOrder(orderId, answered) {
   switch (answered.kind) {
     case 'accepted': {
       const purchase = answered.purchase;
-      return { ...purchase, order_id: purchase.purchase_id, status: purchase.state, source: 'agent_purchase' };
+      const out = { ...purchase, order_id: purchase.purchase_id, status: purchase.state, source: 'agent_purchase' };
+      // `next_action.url` is re-keyed `action_url`, a key the result sanitizer recognises as a buyer handoff:
+      // under a plain `url` key the approval link would have its query scrubbed and the buyer could not act.
+      if (isPlainObjectValue(purchase.next_action)) {
+        const { url, ...rest } = purchase.next_action;
+        out.next_action = typeof url === 'string' ? { ...rest, action_url: url } : rest;
+      }
+      Object.defineProperty(out, AGENT_PURCHASE_RESULT, { value: true, enumerable: false });
+      return out;
     }
     case 'not_found':
       throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id: orderId });
     case 'unauthenticated':
-      throw new PivotaCommerceError('USER_AUTH_REQUIRED', { op: 'get_order', reason: 'missing_caller_credentials' });
+      // The rail read needs the calling agent's API key and the buyer's token. A door that authenticates
+      // differently (MCP OAuth, a checkout token) has no such key: that is not "sign in again" (which would
+      // loop), it is a read this door cannot make.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'agent_api_key_required' });
+    case 'identity_mismatch':
+      throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
     default:
-      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', {
-        reason: 'agent_purchase_read_unavailable', code: answered.code ?? 'unavailable',
-      });
+      // No backend detail: "unavailable" must say nothing about the purchase or about the backend's dials.
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'agent_purchase_read_unavailable' });
   }
+}
+
+function isPlainObjectValue(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 export function createCanonicalExecutor({
@@ -279,7 +302,7 @@ export function createCanonicalExecutor({
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
-        // A RAIL PURCHASE (`pp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
+        // A RAIL PURCHASE (`pp_…`/`rp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
         // ownership proof below cannot answer it. The backend's read is owner-scoped in SQL on the calling
         // agent AND buyer (the caller's own credentials, never the internal key), which is the same proof.
         // `readAgentPurchase` returns null when it does not handle the id (its dial is off): then the id

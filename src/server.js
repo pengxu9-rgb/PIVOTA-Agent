@@ -30371,8 +30371,18 @@ function isAgentPurchaseOrderReadEnabled() {
 }
 
 // The executor's `readAgentPurchase`: null (= not handled, kernel path) while the dial is off.
+//
+// The backend read is owned by the agent whose API key this request carries (the per-request auth context),
+// and the executor's ctx was derived from the same request. Asserted, not assumed: if both name an agent and
+// they differ, refuse before any request rather than read under an identity the ctx did not verify.
 function buildReadAgentPurchase(client) {
-  return async (purchaseId) => (isAgentPurchaseOrderReadEnabled() ? client.getPurchase(purchaseId) : null);
+  return async (purchaseId, ctx) => {
+    if (!isAgentPurchaseOrderReadEnabled()) return null;
+    const requestAgent = String(getInvokeAuthContext()?.agent_id || '').trim();
+    const ctxAgent = String(ctx?.agent_id || '').trim();
+    if (requestAgent && ctxAgent && requestAgent !== ctxAgent) return { kind: 'identity_mismatch' };
+    return client.getPurchase(purchaseId);
+  };
 }
 
 function buildReapAgenticPurchaseClient(log, deps = {}) {
