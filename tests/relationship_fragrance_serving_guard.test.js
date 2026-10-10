@@ -45,6 +45,18 @@ describe('fragrance serving guard', () => {
     expect(fragranceReasons(edge(br540, cloud))).toEqual(['competitive_alternative_fragrance_no_shared_scent_family']);
     expect(fragranceReasons(edge(br540, amberCloud))).toEqual([]);
   });
+  test('a cologne shelf or a retail bucket is not a non-fragrance category (review r2)', () => {
+    const noForm = (category) => snap('product:sig_r8', 'Creed', 'Aventus', category, { description: 'pineapple, birch and musk' });
+    const edp = snap('product:sig_s9', 'Maison X', 'Bois Eau de Parfum', 'fragrance', { description: 'birch and cedar' });
+    for (const category of ['colognes', "men's", 'women', 'unisex', 'luxury']) {
+      expect([category, fragranceReasons(edge(noForm(category), edp))]).toEqual([category, []]);
+    }
+    expect(fragranceReasons(edge(noForm('moisturizer'), edp))).toEqual(['competitive_alternative_fragrance_category_mismatch']);
+  });
+  test('a skincare claim on a fragrance shelf is a positive non-perfume signal (prod: salicylic body spray)', () => {
+    const spray = snap('product:sig_t0', 'Naturium', 'Salicylic Acid Body Spray 2%', 'fragrance', { description: 'clears body breakouts' });
+    expect(fragranceReasons(edge(spray, oudEdp))).toEqual(['competitive_alternative_fragrance_category_mismatch']);
+  });
   test('home fragrance items are not perfumes (wax melt, linen spray, car freshener)', () => {
     const melt = snap('product:sig_n4', 'Bath & Body Works', 'Vanilla Bean Wax Melt', 'home fragrance');
     const candle = snap('product:sig_o5', 'Bath & Body Works', 'Vanilla Bean 3-Wick Candle', 'home fragrance');

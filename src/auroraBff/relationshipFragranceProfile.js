@@ -53,6 +53,9 @@ function lastIndexOf(pattern, value) {
   return last;
 }
 
+// One vocabulary for 'this category is a fragrance shelf' (review: 'colognes' read as non-fragrance).
+const FRAGRANCE_CATEGORY = /\b(?:fragrances?|perfumes?|parfums?|colognes?|scents?)\b/;
+
 function isFragranceProduct(snapshot = {}) {
   // Both names: the evidence shows the model `name || title`, so classify on what either says.
   const names = [text(snapshot.title), text(snapshot.name), text(snapshot.display_name)].filter((value) => value.trim());
@@ -60,7 +63,7 @@ function isFragranceProduct(snapshot = {}) {
   const all = names.join(' ');
   if (FRAGRANCE_FREE.test(all) || FRAGRANCE_FREE.test(category)) return false;
   if (PERFUME_OIL_OR_BALM.test(all)) return true;
-  const fragranceShelf = /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+  const fragranceShelf = FRAGRANCE_CATEGORY.test(category);
   if (ROLL_ON.test(all) && !STRONG_FORM.test(all)) return fragranceShelf && !ROLL_ON_OTHER_JOB.test(all);
   // The product noun comes last: 'Bubble Bath Eau de Toilette' and 'Milk Eau de Parfum' are perfumes
   // named after a scent; 'Eau de Parfum Hand Cream' and 'Rose Extrait Face Oil' are not perfumes.
@@ -159,13 +162,14 @@ function quotedFromScentText(product, quote) {
 // 'Baccarat Rouge 540' under category 'other' has no perfume signal. Only a positive non-perfume
 // signal (another product form, a skincare claim, or a named non-fragrance category) is a mismatch;
 // an unknown side is judged by scent like a perfume.
-const UNINFORMATIVE_CATEGORY = /^(?:|other|others|beauty|general|misc|miscellaneous|unknown|uncategori[sz]ed|gift|gifts|gift sets?|new|sale)$/;
+// Retail buckets say who it is for, not what it is.
+const UNINFORMATIVE_CATEGORY = /^(?:|other|others|beauty|general|misc|miscellaneous|unknown|uncategori[sz]ed|gift|gifts|gift sets?|new|sale|women|womens|men|mens|unisex|luxury|bestsellers?|best sellers?)$/;
 function positivelyNotPerfume(snapshot = {}) {
   const names = `${text(snapshot.title)} ${text(snapshot.name)} ${text(snapshot.display_name)}`;
   const category = text(snapshot.category || snapshot.product_type).replace(/[_/-]+/g, ' ').trim();
   if (NON_PERFUME_FORM.test(names) || SKINCARE_FUNCTION.test(names) || FRAGRANCE_FREE.test(names)) return true;
   if (WEAK_FORM.test(names) && MIST_FUNCTION.test(names)) return true;
-  return !UNINFORMATIVE_CATEGORY.test(category) && !/\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+  return !UNINFORMATIVE_CATEGORY.test(category.replace(/['’]/g, '')) && !FRAGRANCE_CATEGORY.test(category);
 }
 
 // The verdict for one claimed alternative between two products, given the reviewer's quoted pairs.
