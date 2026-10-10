@@ -39,6 +39,37 @@ const FORM_RULES = [
 ];
 
 const CANONICAL_OWN_BRAND_SQL = "coalesce(nullif(trim(p.brand), ''), p.product_payload->>'brand', p.product_payload->>'vendor', p.product_payload#>>'{seed_data,brand}')";
+
+// THE STORED FOLD (PIVOTA-Agent #2404; pivota-backend #2549, migration 260). catalog_products carries
+// the row's own name already folded by `identitySql`'s twin in the database (one function,
+// `catalog_products_identity_fold`, stamped by a trigger on every write):
+//   own_name_norm = fold(title, product_type, payload canonical_title, payload canonical_name)
+//                   -- what `ownName` below folds per row, per query, detoasting product_payload on
+//                   -- every category row (1.04 s of a 1.85 s browse on prod, 2026-10-10);
+//   name_norm     = fold(title, product_type)
+//                   -- what the carrier CTE folds over the whole table (a 0.40 s Seq Scan), and what
+//                   -- migration 261's trigram index covers.
+// Flag CANONICAL_CATALOG_STORED_NAME_NORM=on (default off), read per call by the CALLER
+// (canonicalCatalogSearch), which also runs the fold-drift probe (storedNameNormProbe.js: the stored
+// function must equal identitySql on a sample set, re-checked every 10 min) and hands this builder
+// the verdict as `storedNameNorm`. A failed or missing probe reads as OFF. When on:
+//   * the own-name predicates read `coalesce(p.own_name_norm, <today's expression>)`: a stamped row
+//     costs one column read (COALESCE evaluates only the arguments it needs); an unstamped row
+//     (NULL) is folded exactly as today;
+//   * the multi-product set exclusion reads `coalesce(p.name_norm, <today's expression>)` the same way;
+//   * the carrier CTE reads `np.name_norm` DIRECTLY -- LIKE prefilter and regex -- so the trigram
+//     index serves it; a NULL there is invisible to the carrier count. That is why the flag is
+//     flipped only after the backfill's verify query reads zero unstamped rows and the trigger is
+//     in place (rollout step 3 on #2404); with the flag off nothing here changes by one byte.
+// The binds are the same in the same order either way, so a statement built with the flag on
+// differs from today's only in which text the fold is read from -- and the two texts are equal by
+// the backend's trigger (pinned there against this very expression).
+const STORED_NAME_NORM_FLAG = 'CANONICAL_CATALOG_STORED_NAME_NORM';
+function storedNameNormEnabled(env = process.env) {
+  return /^(1|true|on|yes)$/i.test(String(env[STORED_NAME_NORM_FLAG] || '').trim());
+}
+const OWN_NAME_INPUTS_SQL = "concat_ws(' ', p.title, p.product_type, p.product_payload->>'canonical_title', p.product_payload->>'canonical_name')";
+const CARRIER_NAME_INPUTS_SQL = "concat_ws(' ', p.title, p.product_type)";
 function normalizedBrandIdentitySql(expression) {
   return `regexp_replace(${identitySql(expression)}, ' ', '', 'g')`;
 }
@@ -80,11 +111,13 @@ function buildBrandIdentityPredicate(brand, expression, params) {
   return `(md5(${ownBrand}) = ANY($${params.length}::text[]) AND ${ownBrand} = ANY(${fullBind}::text[]))`;
 }
 
-function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere }) {
+function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere, storedNameNorm = false }) {
   if (contract?.target_domain !== 'beauty') return { where: defaultWhere, brandWhere: defaultBrandWhere };
   const hard = contract.hard_constraints || {};
   const bind = (value) => { params.push(value); return `$${params.length}`; };
-  const ownName = identitySql("concat_ws(' ', p.title, p.product_type, p.product_payload->>'canonical_title', p.product_payload->>'canonical_name')");
+  const stored = storedNameNorm === true;
+  const ownNameExpression = identitySql(OWN_NAME_INPUTS_SQL);
+  const ownName = stored ? `coalesce(p.own_name_norm, ${ownNameExpression})` : ownNameExpression;
   let brandWhere = defaultBrandWhere;
   if (hard.brand) {
     brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, CANONICAL_OWN_BRAND_SQL, params)}`;
@@ -150,6 +183,13 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       const likeBinds = nameTokens.map((token) => bind(`%${likeEscape(token)}%`));
       const regexBind = bind(`^${nameTokens.map((token) => `(?=.*(^| )${reEscape(token)}($| ))`).join('')}`);
       const carriesAll = (alias) => {
+        if (stored) {
+          // The stored fold, read directly: both LIKEs are index conditions on migration 261's
+          // trigram index, and the regex runs on the rows they leave. (A coalesce here would be
+          // correct for NULL rows and would cost the index; see STORED_NAME_NORM_FLAG above.)
+          const prefilter = likeBinds.map((b) => `${alias}.name_norm LIKE ${b}`).join(' AND ');
+          return `(CASE WHEN ${prefilter} THEN ${alias}.name_norm ~ ${regexBind} ELSE FALSE END)`;
+        }
         const columns = `concat_ws(' ', ${alias}.title, ${alias}.product_type)`;
         const rawName = `lower(translate(replace(replace(${columns}, '·', ''), '•', ''), '${IDENTITY_ACCENTED}', '${IDENTITY_FOLDED}'))`;
         const prefilter = likeBinds.map((b) => `${rawName} LIKE ${b}`).join(' AND ');
@@ -187,7 +227,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       // serves the twin pack.
       const setExclusion = queryWantsMultiProductSet(contract.effective_query) || queryNamesMultiProduct(contract.effective_query)
         ? 'TRUE'
-        : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind(MULTI_PRODUCT_NAME_PATTERN)})
+        : `NOT (${stored ? `coalesce(p.name_norm, ${identitySql(CARRIER_NAME_INPUTS_SQL)})` : identitySql(CARRIER_NAME_INPUTS_SQL)} ~ ${bind(MULTI_PRODUCT_NAME_PATTERN)})
           AND lower(coalesce(p.category_path, '')) NOT LIKE 'beauty/sets%'
           AND lower(COALESCE(p.product_payload->>'external_seed_product_family', p.product_payload->>'product_family', p.product_payload->'external_seed_product_kind'->>'family', '')) <> 'set_or_collection'`;
       // TWO HALVES, ONE JOB EACH:
@@ -235,4 +275,9 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidence };
 }
-module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL };
+module.exports = {
+  buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL,
+  // The stored-fold read (#2404) and the expression it stands in for, for the tests that pin equality.
+  storedNameNormEnabled, STORED_NAME_NORM_FLAG, identitySql, OWN_NAME_INPUTS_SQL, CARRIER_NAME_INPUTS_SQL,
+  IDENTITY_ACCENTED, IDENTITY_FOLDED,
+};

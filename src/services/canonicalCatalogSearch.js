@@ -58,7 +58,8 @@
 
 'use strict';
 
-const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
+const { buildCanonicalSearchQualitySql, storedNameNormEnabled } = require('./canonicalSearchQualitySql');
+const { storedFoldVerified } = require('./storedNameNormProbe');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
@@ -1607,8 +1608,12 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
+  // The stored own-name fold (#2404) is read only when the flag is on AND the database's fold
+  // function provably equals identitySql on the probe's sample set (storedNameNormProbe: cached per
+  // process, re-checked every 10 min, fail-closed to today's expression). Flag off: no probe, no change.
+  const storedNameNorm = storedNameNormEnabled() ? await storedFoldVerified(pgQuery) : false;
   const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
-    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
+    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere, storedNameNorm });
   // Same idiom as `$2::text IS NOT NULL`: keep a typed, always-true reference to
   // every text-arm bind the contract's WHERE no longer contains. Params cannot be
   // removed instead — later binds (brand identity, offer scope) are numbered after them.
