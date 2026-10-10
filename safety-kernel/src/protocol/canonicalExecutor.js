@@ -105,6 +105,34 @@ function refusalFor(opId) {
  *   mintAp2CheckoutJwt?: (input:{checkout_session_id:string, expires_at?:string}) => Promise<string>|string,
  * }} deps
  */
+// The backend's rail-neutral purchase id (pivota-backend db/agent_purchase_ledger.py).
+const AGENT_PURCHASE_ID_RE = /^pp_[0-9a-f]{24}$/;
+
+/**
+ * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
+ * `{ kind, purchase?, code? }` (src/services/agentPurchaseReadClient.js).
+ *
+ * not_found is QUOTE_NOT_FOUND / order_not_found: the SAME answer an untracked kernel order gets, so
+ * the two id spaces cannot be told apart by probing. unavailable is retriable and says nothing about
+ * the purchase; it must never read as "gone", or an agent would start a second purchase.
+ */
+function agentPurchaseOrder(orderId, answered) {
+  switch (answered.kind) {
+    case 'accepted': {
+      const purchase = answered.purchase;
+      return { ...purchase, order_id: purchase.purchase_id, status: purchase.state, source: 'agent_purchase' };
+    }
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id: orderId });
+    case 'unauthenticated':
+      throw new PivotaCommerceError('USER_AUTH_REQUIRED', { op: 'get_order', reason: 'missing_caller_credentials' });
+    default:
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', {
+        reason: 'agent_purchase_read_unavailable', code: answered.code ?? 'unavailable',
+      });
+  }
+}
+
 export function createCanonicalExecutor({
   kernel,
   upstream,
@@ -114,6 +142,7 @@ export function createCanonicalExecutor({
   submitDelegatedPayment,
   mintAp2CheckoutJwt,
   delegatedTokenHandoffEnabled = false,
+  readAgentPurchase,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
@@ -250,6 +279,15 @@ export function createCanonicalExecutor({
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
+        // A RAIL PURCHASE (`pp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
+        // ownership proof below cannot answer it. The backend's read is owner-scoped in SQL on the calling
+        // agent AND buyer (the caller's own credentials, never the internal key), which is the same proof.
+        // `readAgentPurchase` returns null when it does not handle the id (its dial is off): then the id
+        // falls through to the kernel path exactly as before this lane existed.
+        if (typeof readAgentPurchase === 'function' && AGENT_PURCHASE_ID_RE.test(params.order_id)) {
+          const answered = await readAgentPurchase(params.order_id, ctx);
+          if (answered != null) return agentPurchaseOrder(params.order_id, answered);
+        }
         // Fail CLOSED (Codex P0): prove kernel ownership before any read. _requireOrder throws
         // QUOTE_NOT_FOUND (untracked) or STATE_LINKAGE_MISMATCH (cross-user/session) — both propagate, so a
         // verified user can never read an order the kernel does not know to be theirs (no fail-open on an
