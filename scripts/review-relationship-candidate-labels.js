@@ -175,7 +175,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const ids = parseInlineIds(argValue(argv, 'ids'));
   // Passing --ids at all asks for an id scope, even if its value is missing or empty: that must review
   // nothing, never fall through to the global backlog (with --apply that would approve unrelated rows).
-  const idsScopeRequested = argv.includes('--ids') || Boolean(idsFile);
+  const idsScopeRequested = argv.includes('--ids') || argv.includes('--ids-file') || Boolean(idsFile);
   // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
   // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
   const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();

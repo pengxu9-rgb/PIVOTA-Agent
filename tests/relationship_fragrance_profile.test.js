@@ -42,6 +42,8 @@ describe('isFragranceProduct', () => {
     [product('Maison X', 'Shower Fresh Eau de Parfum', 'fragrance')],
     [product('Maison X', 'Gel Eau de Toilette', 'fragrance')],
     [product('Maison X', 'Vanilla Musk Oil Rollerball', 'fragrance')],
+    [product('Maison X', 'Santal Roll-On', 'fragrance')],
+    [product('Tom Ford Beauty', 'Soleil Blanc All Over Body Spray', 'fragrance')],
     [product('Maison X', 'Amber Solid Perfume Balm', 'fragrance')],
   ].map(([p]) => [p.title, p]))('%s is a fragrance', (_title, p) => expect(isFragranceProduct(p)).toBe(true));
 
@@ -68,6 +70,13 @@ describe('isFragranceProduct', () => {
     [product('Ouai', 'Farewell Frizz Heat Protectant Hair Mist', 'hair')],
     [product('Sol de Janeiro', 'Unscented Hydrating Body Mist', 'body care')],
     [product('Maison X', 'Hydrating Toner', 'Fragrance-Free Skincare')],
+    // Roll-ons with another job, and skincare actives on a fragrance shelf (review r3, prod audit).
+    [product('Dove', 'Antiperspirant Deodorant Roll-On', 'deodorant')],
+    [product('Maison X', 'Caffeine Eye Serum Rollerball', 'fragrance')],
+    [product('Maison X', 'Tea Tree Spot Roll-On', 'skincare')],
+    [product('Maison X', 'Vanilla Roll-On', 'body care')],
+    [product('Naturium', 'Salicylic Acid Body Spray 2%', 'fragrance')],
+    [product('Murad', 'Clarifying Body Spray', 'fragrance')],
   ].map(([p]) => [p.title, p]))('%s is not a fragrance', (_title, p) => expect(isFragranceProduct(p)).toBe(false));
 
   test('the name the model was shown counts even when title differs', () => {
@@ -109,6 +118,8 @@ describe('scentFamilies', () => {
       expect([quote, families(quote)]).toEqual([quote, []]);
     }
     expect(families('notes of amber and coconut')).toEqual(['amber', 'fruity']);
+    expect(families('a coconut milk accord')).toEqual(['fruity']);
+    expect(families('a rose blush accord')).toEqual(['floral']);
   });
   test('a note inside a longer word is not that note', () => {
     expect(scentFamilies('with rosemary leaf').has('floral')).toBe(false);

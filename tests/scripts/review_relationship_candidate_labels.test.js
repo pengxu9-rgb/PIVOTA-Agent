@@ -852,6 +852,9 @@ describe('--ids pins label ids inline (no file needed in a job container)', () =
       expect(summary.reviewed_count).toBe(0);
     }
     expect(() => parseArgs(['--cutoff', '2026-01-01T00:00:00Z', '--ids=prel_a,prel_b'])).toThrow(/separate value/);
+    for (const argv of [['--ids-file', ''], ['--ids-file', '--apply']]) {
+      expect([argv, parseArgs(['--cutoff', '2026-01-01T00:00:00Z', ...argv]).idsScopeRequested]).toEqual([argv, true]);
+    }
   });
   test('pinned ids are never truncated by the default limit', async () => {
     const ids = Array.from({ length: 1000 }, (_, i) => `prel_${i}`);
@@ -860,6 +863,13 @@ describe('--ids pins label ids inline (no file needed in a job container)', () =
     const select = queryFn.mock.calls.find(([sql]) => /label_state = 'generated'/.test(sql));
     expect(select[1]).toContain(1000);
     expect(summary).toMatchObject({ limit: 1000, ids_filter_count: 1000, ids_scope_requested: true, ids_not_selected_count: 1000 });
+  });
+  test('pinned ids lift the limit in consensus mode too', async () => {
+    const ids = Array.from({ length: 600 }, (_, i) => `prel_${i}`);
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await runReview({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 250, ids, reviewMode: 'consensus', queryFn });
+    const select = queryFn.mock.calls.find(([sql]) => /label_state = 'generated'/.test(sql));
+    expect(select[1]).toContain(600);
   });
   test('--ids and --ids-file are merged', async () => {
     const fs = require('fs'); const os = require('os'); const path = require('path');

@@ -37,7 +37,14 @@ const MIST_FUNCTION = /\b(?:spf|sunscreen|sun|uv|protectant|protection|heat|sett
 // all as 'perfume'). A title naming another product form is that form, even next to 'eau de parfum'
 // ('Eau de Parfum Hand Cream'), except the perfume forms that are themselves oils or balms.
 const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|butters?|milks?|candles?|washe?s?|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lips?|serums?|cleansers?|diffusers?|sachets?|masks?|polish|sanitiz\w*|foams?|bath|bombs?|room sprays?|home sprays?|incense|after ?shave|shower)\b/;
-const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b|\b(?:oil )?roll(?:er ?ball|-on| on)\b/;
+const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b/;
+// A roll-on is a perfume only on a fragrance shelf and without another job (review r3: deodorant,
+// eye-serum and spot roll-ons are not perfumes).
+const ROLL_ON = /\broll(?:er ?ball|-on| on)\b/;
+const ROLL_ON_OTHER_JOB = /\b(?:deodorants?|antiperspirants?|serums?|eyes?|under[ -]eye|spots?|acne|blemish\w*|caffeine|tea tree|lip|lips|treatment|essential oil)\b/;
+// Skincare actives and claims on a fragrance shelf mean a skincare product (prod: Naturium Salicylic
+// Acid Body Spray 2% <-> Murad Clarifying Body Spray, a real acne-spray alternative).
+const SKINCARE_FUNCTION = /\b(?:salicylic|glycolic|lactic|mandelic|azelaic|acids?|retinol|retinal|niacinamide|vitamin c|spf|sunscreen|acne|clarifying|blemish\w*|exfoliat\w*|deodorants?|antiperspirants?|brightening|anti[ -]aging)\b/;
 
 function lastIndexOf(pattern, value) {
   const global = new RegExp(pattern.source, 'g');
@@ -53,6 +60,8 @@ function isFragranceProduct(snapshot = {}) {
   const all = names.join(' ');
   if (FRAGRANCE_FREE.test(all) || FRAGRANCE_FREE.test(category)) return false;
   if (PERFUME_OIL_OR_BALM.test(all)) return true;
+  const fragranceShelf = /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+  if (ROLL_ON.test(all) && !STRONG_FORM.test(all)) return fragranceShelf && !ROLL_ON_OTHER_JOB.test(all);
   // The product noun comes last: 'Bubble Bath Eau de Toilette' and 'Milk Eau de Parfum' are perfumes
   // named after a scent; 'Eau de Parfum Hand Cream' and 'Rose Extrait Face Oil' are not perfumes.
   const strongLast = names.some((name) => {
@@ -60,9 +69,9 @@ function isFragranceProduct(snapshot = {}) {
     return strong >= 0 && lastIndexOf(NON_PERFUME_FORM, name) < strong;
   });
   if (strongLast) return true;
-  if (NON_PERFUME_FORM.test(all)) return false;
+  if (NON_PERFUME_FORM.test(all) || SKINCARE_FUNCTION.test(all)) return false;
   if (WEAK_FORM.test(all)) return !MIST_FUNCTION.test(all);
-  return /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+  return fragranceShelf;
 }
 
 // --- Which scent families does a text name? -----------------------------------------------------
@@ -94,7 +103,7 @@ const FAMILY_PATTERNS = Object.entries(SCENT_FAMILIES).map(([family, notes]) => 
 const SHELF_PROFILE_TAG = /\b(?:floral|warm)[ _]fragrance[ _]profiles?\b/g;
 // Packaging colours and carrier oils share words with notes: 'amber glass bottle', 'rose gold cap',
 // 'mint green box', 'fractionated coconut oil', 'sweet almond oil' are not scents (review r2).
-const NON_SCENT_PHRASE = /\b(?:amber|rose|mint|lavender|peach|cherry|lilac|violet)[ -](?:glass|gold|green|jars?|bottles?|vials?|tint(?:ed)?|colou?r(?:ed)?|caps?|packaging|boxe?s?|pink|blush)\b|\b(?:fractionated |sweet )?(?:coconut|almond|apricot(?: kernel)?|jojoba|grapeseed|vanilla planifolia fruit)[ -](?:oil|butter|milk|extract)s?\b/g;
+const NON_SCENT_PHRASE = /\b(?:amber|rose|mint|lavender|peach|cherry|lilac|violet)[ -](?:glass|gold|green|jars?|bottles?|vials?|tint(?:ed)?|colou?r(?:ed)?|caps?|packaging|boxe?s?|pink)\b|\b(?:fractionated |sweet )?(?:coconut|almond|apricot(?: kernel)?|jojoba|grapeseed|vanilla planifolia fruit)[ -](?:oil|butter|extract)s?\b/g;
 
 function scentFamilies(value) {
   const haystack = text(value).replace(SHELF_PROFILE_TAG, ' ').replace(NON_SCENT_PHRASE, ' ');
