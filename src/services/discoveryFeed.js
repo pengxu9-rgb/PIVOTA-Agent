@@ -13395,6 +13395,17 @@ function getBuyerMarketPoolNegativeCacheTtlMs() {
 function getBuyerMarketPoolPartialCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_PARTIAL_TTL_MS, 120000, 1000, 3600000);
 }
+/**
+ * The timeout of ONE HOP of a fallback round. No page waits on a round beyond its 1.8 s budget (the
+ * round completes in the background, or at boot), so this is not the live lane's 6.5 s: the broad
+ * category_browse queries take 2.5-7.3 s alone and longer when four instances warm at once (live
+ * 2026-10-10, gateway-00250: 5 of 6 warmed instances held only the narrow hops' 4 rows). A hop
+ * that needs 12 s is a slow hop, not a failed one; a down upstream still fails every hop and feeds
+ * the market's breaker, only later.
+ */
+function getBuyerMarketHopTimeoutMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_HOP_TIMEOUT_MS, 15000, 1000, 60000);
+}
 /** Past this age an entry is not served even stale: a breaker-open hour must not serve hours-old prices and stock. */
 function getBuyerMarketPoolMaxStaleMs() {
   return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_MAX_STALE_MS, 3600000, 1000, 86400000);
@@ -13450,11 +13461,28 @@ function getBuyerMarketWarmMarkets(env = process.env) {
 function getBuyerMarketWarmDelayMs() {
   return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_DELAY_MS, 3000, 0, 600000);
 }
+/** Instances start together after a deploy; a random share of this keeps their broad hops off the primary at the same instant. */
+function getBuyerMarketWarmJitterMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_JITTER_MS, 10000, 0, 600000);
+}
+function resolveBuyerMarketWarmStartDelayMs({ random = Math.random } = {}) {
+  const r = Number(random());
+  const share = Number.isFinite(r) ? Math.min(Math.max(r, 0), 1) : 0;
+  return getBuyerMarketWarmDelayMs() + Math.floor(share * getBuyerMarketWarmJitterMs());
+}
+/** A PARTIAL warm (a hop timed out) is tried again, this many rounds in all ... */
+function getBuyerMarketWarmAttempts() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_ATTEMPTS, 4, 1, 20);
+}
+/** ... this long after the partial one, doubling each time. */
+function getBuyerMarketWarmRetryMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_RETRY_MS, 20000, 100, 600000);
+}
 const BUYER_MARKET_WARM_PAYLOAD = Object.freeze({
   surface: 'browse_products', page: 1, page_size: 24, limit: 24,
   context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] },
 });
-async function warmBuyerMarketPools({ markets = getBuyerMarketWarmMarkets(), now = Date.now, fetchRows = fetchBuyerMarketSearchRows, log = logger } = {}) {
+async function warmBuyerMarketPools({ markets = getBuyerMarketWarmMarkets(), now = Date.now, fetchRows = fetchBuyerMarketSearchRows, log = logger, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const deploymentCurrency = resolveServingCurrency('');
   const request = normalizeDiscoveryRequest(BUYER_MARKET_WARM_PAYLOAD);
   const outcomes = [];
@@ -13466,15 +13494,30 @@ async function warmBuyerMarketPools({ markets = getBuyerMarketWarmMarkets(), now
     }
     const startedAt = now();
     try {
-      const rows = await fetchRows({ request, market, servingCurrency, now });
-      // The page-budget return can leave hops running: wait for the round, so the next market's
-      // does not overlap it on the primary.
-      await Promise.all([...buyerMarketRoundsInFlight.values()]);
-      const entry = readBuyerMarketPoolCache(buyerMarketPoolCacheKey({ market, queryText: '' }), now());
+      // A warm is FULL only when every hop answered. A partial round (a broad hop timed out: live
+      // 2026-10-10, 5 of 6 instances) is cached for the short partial TTL and tried again after a
+      // backoff, up to the attempt cap, so the instance does not serve the narrow hops' 4 rows as
+      // "the pool" for its first minutes.
+      const attempts = getBuyerMarketWarmAttempts();
+      let rows = null;
+      let entry = null;
+      let attempt = 0;
+      let waitMs = getBuyerMarketWarmRetryMs();
+      for (attempt = 1; attempt <= attempts; attempt += 1) {
+        if (attempt > 1) { await sleep(waitMs); waitMs *= 2; }
+        rows = await fetchRows({ request, market, servingCurrency, now, refresh: attempt > 1 });
+        // The page-budget return can leave hops running: wait for the round, so the next round or
+        // the next market's does not overlap it on the primary.
+        await Promise.all([...buyerMarketRoundsInFlight.values()]);
+        entry = readBuyerMarketPoolCache(buyerMarketPoolCacheKey({ market, queryText: '' }), now());
+        if (rows?.skipped || (entry && entry.complete !== false)) break;
+      }
       const outcome = {
         market,
         rows: entry ? entry.products.length : (Array.isArray(rows?.products) ? rows.products.length : 0),
         cached: Boolean(entry),
+        complete: Boolean(entry && entry.complete !== false),
+        attempts: Math.min(attempt, attempts),
         ...(rows?.skipped ? { skipped: rows.skipped } : {}),
         latency_ms: Math.max(0, now() - startedAt),
       };
@@ -13538,10 +13581,12 @@ function hasRowsInServingCurrency(products, servingCurrency) {
  * That market's own rows: one products_search hop per cold-start query (or the page's own query
  * text), keyed on the market, merged, and KEPT ONLY WHEN PRICED IN THE MARKET'S CURRENCY.
  */
-async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
+async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now, refresh = false } = {}) {
   const queryText = String(request?.query?.text || '').trim();
   const safeLimit = BUYER_MARKET_HOP_LIMIT;
   const cacheKey = buyerMarketPoolCacheKey({ market, queryText });
+  // `refresh`: the warm's retry of a PARTIAL pool. A fresh entry is not an answer then; a round runs
+  // (or the one in flight is joined) and the page-shaped return below reports it.
   const cached = readBuyerMarketPoolCache(cacheKey, now());
   const cacheAnswer = (entry) => ({
     products: entry.products,
@@ -13550,9 +13595,10 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fe
     ],
     skipped: null,
     cached: true,
+    complete: entry.complete !== false,
     ...(entry.stale ? { stale: true } : {}),
   });
-  if (cached && !cached.stale) return cacheAnswer(cached);
+  if (cached && !cached.stale && !refresh) return cacheAnswer(cached);
   const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
   const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
   const baseUrl = baseUrlConfig.value;
@@ -13581,7 +13627,7 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fe
   let settled = round ? round.settled : null;
   if (!round) {
     settled = new Array(steps.length).fill(null);
-    const timeoutMs = getDiscoveryProductsSearchTimeoutMs();
+    const timeoutMs = getBuyerMarketHopTimeoutMs();
     const hops = steps.map((step, index) =>
       Promise.resolve()
         .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
@@ -13596,7 +13642,8 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fe
       // soon (partial TTL), and NO rows is not "the market is empty" -- not cached. All failed: not
       // an answer, not cached.
       const succeeded = results.filter((result) => result && result.success === true).length;
-      if (succeeded === results.length) {
+      pool.complete = succeeded === results.length;
+      if (pool.complete) {
         writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: pool.products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
       } else if (succeeded > 0 && pool.products.length > 0) {
         writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: getBuyerMarketPoolPartialCacheTtlMs() }, now());
@@ -13606,15 +13653,16 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fe
       // The round is unobserved when the page did not wait for it (budget, stale refresh); a throw
       // here would be an unhandled rejection, and the process has no handler for those.
       logger.warn({ err: err?.message || String(err), market }, 'discovery buyer-market pool round failed');
-      return { products: [], recallSummary: [] };
+      return { products: [], recallSummary: [], complete: false };
     }).finally(() => {
       if (buyerMarketRoundsInFlight.get(cacheKey) === round) buyerMarketRoundsInFlight.delete(cacheKey);
     });
     round.settled = settled;
     buyerMarketRoundsInFlight.set(cacheKey, round);
   }
-  // A stale pool is served NOW; the round above refreshes it for the next page.
-  if (cached) return cacheAnswer(cached);
+  // A stale pool is served NOW; the round above refreshes it for the next page. (A `refresh` caller
+  // wants the round's own answer and waits below.)
+  if (cached && !refresh) return cacheAnswer(cached);
 
   // THE PAGE waits the budget, then takes what has answered. A hop still running is stamped pending
   // (status null, no rows); it lands in the cache when it answers, for the next page.
@@ -13632,7 +13680,7 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fe
     products: [],
     summary: { provider: 'products_search', label: steps[index].label, query: steps[index].query, offset: 0, limit: safeLimit, status: null, returned: 0, latency_ms: budgetMs, cache_hit: false, failure_reason: 'pending', pending: true },
   }), { market, servingCurrency });
-  return { ...partial, skipped: null, cached: false, hops_pending: settled.filter((result) => !result).length };
+  return { ...partial, complete: false, skipped: null, cached: false, hops_pending: settled.filter((result) => !result).length };
 }
 
 /** The round's rows, merged across hops, KEPT ONLY WHEN SELLABLE AND PRICED IN THE MARKET'S CURRENCY. */
@@ -13733,6 +13781,7 @@ module.exports = {
   getDiscoveryFeed,
   getBuyerMarketWarmMarkets,
   getBuyerMarketWarmDelayMs,
+  resolveBuyerMarketWarmStartDelayMs,
   warmBuyerMarketPools,
   _internals: {
     // The buyer-market fallback, with its collaborators injectable (no database, no transport).
