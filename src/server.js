@@ -16510,6 +16510,9 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
           ? 'bronzer'
           : categoryPathPrefix.startsWith('beauty/makeup/face/highlighter/')
             ? 'highlighter'
+            : categoryPathPrefix.startsWith('beauty/makeup/face/setting-spray/')
+              // the externalSeedProducts label "Setting Spray"; only reached with SEARCH_SETTING_SPRAY_CATEGORY_ROUTE on
+              ? 'setting spray'
             : categoryPathPrefix.startsWith('beauty/makeup/face/powder/')
               ? 'powder'
               : categoryPathPrefix.startsWith('beauty/makeup/face/concealer/')
@@ -16597,6 +16600,9 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
     (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/false-lashes/')) {
     ['false lashes', 'lashes', 'lash glue', 'lash adhesive', 'falsies'].forEach(push);
+  } else if (prefix.startsWith('beauty/makeup/face/setting-spray/')) {
+    // Only reached with SEARCH_SETTING_SPRAY_CATEGORY_ROUTE on.
+    ['setting spray', 'setting mist', 'makeup fixer', 'fixing spray', 'mist & fix'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
@@ -21486,6 +21492,12 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
+  }
+  if (prefix.startsWith('beauty/makeup/face/setting-spray')) {
+    // A path-less row must name a setting spray: the generic face test below would admit any
+    // foundation or powder into a setting-spray browse, and a hair fixing spray is not one.
+    return /\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b|定妆喷雾|定妝噴霧/i.test(text)
+      && !/\bhair/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/face/blush') || prefix.startsWith('beauty/makeup/cheek')) {
     return /\b(blush|blusher|cheek\s*(?:color|colour|tint|stain|balm)?|liquid\s*blush|cream\s*blush|powder\s*blush|luminizer|highlighter)\b|腮红|腮紅/i.test(text);

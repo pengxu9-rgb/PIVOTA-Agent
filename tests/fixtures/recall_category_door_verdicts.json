@@ -1,6 +1,6 @@
 {
  "generated_from": "pivota-backend services/category_path_aliases.has_category_door",
- "leaf_count": 72,
+ "leaf_count": 78,
  "prod_paths": [
   {
    "path": "beauty/makeup",
@@ -198,7 +198,7 @@
    "path": "beauty/makeup/nails/nail-polish",
    "rows": 54,
    "serving": 37,
-   "door": false
+   "door": true
   },
   {
    "path": "beauty/makeup/eye/eyeliner",
@@ -426,7 +426,7 @@
    "path": "beauty/makeup/nails/nail-stickers",
    "rows": 5,
    "serving": 0,
-   "door": false
+   "door": true
   },
   {
    "path": "electronics/audio/earbuds_wireless",
@@ -642,7 +642,7 @@
    "path": "beauty/makeup/nails/nail-polish-remover",
    "rows": 2,
    "serving": 1,
-   "door": false
+   "door": true
   },
   {
    "path": "beauty/bodycare/body-wash",
@@ -762,7 +762,7 @@
    "path": "beauty/makeup/nails/cuticle-oil",
    "rows": 1,
    "serving": 1,
-   "door": false
+   "door": true
   },
   {
    "path": "beauty/makeup/eyes/lashes",

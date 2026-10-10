@@ -63,6 +63,10 @@ const CANONICAL_CATEGORY_PATHS = Object.freeze({
   concealer: 'beauty/makeup/face/concealer',
   foundation: 'beauty/makeup/face/foundation',
   powder: 'beauty/makeup/face/powder',
+  // Setting spray (2026-10-10, pivota-backend#2547): a makeup leaf, not a toner. It was a declared
+  // gap there; setting mists had been filed on tone/toner through the bare "mist". Four segments
+  // under face/, so recall's existing face door reaches it.
+  setting_spray: 'beauty/makeup/face/setting-spray',
   eyeshadow: 'beauty/makeup/eye/eyeshadow',
   mascara: 'beauty/makeup/eye/mascara',
   brow: 'beauty/makeup/eye/brow',
@@ -115,6 +119,8 @@ const CATEGORY_PATH_ALIASES = Object.freeze({
   'beauty/makeup/cheek/highlighter': CANONICAL_CATEGORY_PATHS.highlighter,
   'beauty/makeup/cheek/bronzer': CANONICAL_CATEGORY_PATHS.bronzer,
   'beauty/makeup/brush': CANONICAL_CATEGORY_PATHS.brush,
+  // the backend's former gap spelling (pivota-backend services/category_path_aliases.py)
+  'beauty/makeup/setting-spray': CANONICAL_CATEGORY_PATHS.setting_spray,
 
   // hair: the beauty/hair/* spelling folds into beauty/haircare/*
   'beauty/hair/shampoo': CANONICAL_CATEGORY_PATHS.shampoo,
