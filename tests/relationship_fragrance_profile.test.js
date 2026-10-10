@@ -108,6 +108,8 @@ describe('scentFamilies', () => {
   test('the two shelf taxonomy tags are not notes (prod tags Oud Wood EDP floral); other text is kept', () => {
     expect(families('floral fragrance profiles')).toEqual([]);
     expect(families('floral_fragrance_profiles')).toEqual([]);
+    expect(families('fresh citrus profiles')).toEqual([]);
+    expect(families('fresh_citrus_profiles')).toEqual([]);
     expect(families('warm fragrance profiles, floral fragrance profiles')).toEqual([]);
     expect(families('floral fragrance profiles; notes of jasmine')).toEqual(['floral']);
     expect(families('a jasmine fragrance profile')).toEqual(['floral']);
@@ -183,6 +185,13 @@ describe('fragranceAlternativeRejection', () => {
     const oudLotion = product('Tomford Beauty', 'Oud Wood Hand and Body Moisturizer', 'fragrance');
     expect(fragranceAlternativeRejection(oudEdp, oudLotion, [{ anchor_fact: 'Oud Wood', candidate_fact: 'Oud Wood' }]))
       .toBe('fragrance_category_mismatch');
+  });
+  test('a perfume with no perfume signal is held to the scent rule, not refused as a mismatch', () => {
+    const br540 = product('Maison Francis Kurkdjian', 'Baccarat Rouge 540', 'other', { description: 'saffron, amberwood and fir resin' });
+    const cloud = product('Ariana Grande', 'Cloud Eau de Parfum', 'fragrance', { description: 'amber and musk' });
+    expect(fragranceAlternativeRejection(br540, cloud, [{ anchor_fact: 'Baccarat Rouge 540', candidate_fact: 'Cloud Eau de Parfum' }]))
+      .toBe('fragrance_scent_profile_unmatched');
+    expect(fragranceAlternativeRejection(br540, cloud, [{ anchor_fact: 'fir resin', candidate_fact: 'amber and musk' }])).toBeNull();
   });
   test('two non-fragrance products are not this rule\'s question', () => {
     const fentyGel = product('Fenty Beauty', 'Instant Reset Brightening Overnight Recovery Gel-Cream', 'skincare');

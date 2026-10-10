@@ -36,7 +36,7 @@ const MIST_FUNCTION = /\b(?:spf|sunscreen|sun|uv|protectant|protection|heat|sett
 // Moisturizer, Shimmering Body Oil and candles under it (relationshipPairPolicy.optionRole reads them
 // all as 'perfume'). A title naming another product form is that form, even next to 'eau de parfum'
 // ('Eau de Parfum Hand Cream'), except the perfume forms that are themselves oils or balms.
-const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|butters?|milks?|candles?|washe?s?|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lips?|serums?|cleansers?|diffusers?|sachets?|masks?|polish|sanitiz\w*|foams?|bath|bombs?|room sprays?|home sprays?|incense|after ?shave|shower)\b/;
+const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|butters?|milks?|candles?|washe?s?|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lips?|serums?|cleansers?|diffusers?|sachets?|masks?|polish|sanitiz\w*|foams?|bath|bombs?|room sprays?|home sprays?|linen sprays?|pillow sprays?|car (?:fresheners?|diffusers?)|air fresheners?|fresheners?|wax melts?|melts|incense|after ?shave|shower)\b/;
 const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b/;
 // A roll-on is a perfume only on a fragrance shelf and without another job (review r3: deodorant,
 // eye-serum and spot roll-ons are not perfumes).
@@ -53,6 +53,9 @@ function lastIndexOf(pattern, value) {
   return last;
 }
 
+// One vocabulary for 'this category is a fragrance shelf' (review: 'colognes' read as non-fragrance).
+const FRAGRANCE_CATEGORY = /\b(?:fragrances?|perfumes?|parfums?|colognes?|scents?)\b/;
+
 function isFragranceProduct(snapshot = {}) {
   // Both names: the evidence shows the model `name || title`, so classify on what either says.
   const names = [text(snapshot.title), text(snapshot.name), text(snapshot.display_name)].filter((value) => value.trim());
@@ -60,7 +63,7 @@ function isFragranceProduct(snapshot = {}) {
   const all = names.join(' ');
   if (FRAGRANCE_FREE.test(all) || FRAGRANCE_FREE.test(category)) return false;
   if (PERFUME_OIL_OR_BALM.test(all)) return true;
-  const fragranceShelf = /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+  const fragranceShelf = FRAGRANCE_CATEGORY.test(category);
   if (ROLL_ON.test(all) && !STRONG_FORM.test(all)) return fragranceShelf && !ROLL_ON_OTHER_JOB.test(all);
   // The product noun comes last: 'Bubble Bath Eau de Toilette' and 'Milk Eau de Parfum' are perfumes
   // named after a scent; 'Eau de Parfum Hand Cream' and 'Rose Extrait Face Oil' are not perfumes.
@@ -98,9 +101,11 @@ const FAMILY_PATTERNS = Object.entries(SCENT_FAMILIES).map(([family, notes]) => 
   family,
   new RegExp(`(?:^|[^${LETTER}])(?:${notes.map((note) => escapeRegExp(note).replace(/ /g, '[ -]')).join('|')})(?:e?s)?(?![${LETTER}])`),
 ]);
-// The two shelf taxonomy tags prod uses are merchandising buckets, not notes (prod tags Tom Ford Oud
-// Wood Eau de Parfum 'floral'). Only those exact tags are removed; 'a jasmine fragrance profile' stays.
-const SHELF_PROFILE_TAG = /\b(?:floral|warm)[ _]fragrance[ _]profiles?\b/g;
+// Shelf taxonomy / best_for tags are merchandising buckets, not notes: prod tags Tom Ford Oud Wood
+// Eau de Parfum 'floral fragrance profiles' and Oud Minerale 'fresh citrus profiles' (91 live rows
+// carry that one). The tags are always PLURAL '<word> [<word>] profiles'; singular prose such as
+// 'a jasmine fragrance profile' is kept.
+const SHELF_PROFILE_TAG = /\b[a-z]+[ _](?:[a-z]+[ _])?profiles\b/g;
 // Packaging colours and carrier oils share words with notes: 'amber glass bottle', 'rose gold cap',
 // 'mint green box', 'fractionated coconut oil', 'sweet almond oil' are not scents (review r2).
 const NON_SCENT_PHRASE = /\b(?:amber|rose|mint|lavender|peach|cherry|lilac|violet)[ -](?:glass|gold|green|jars?|bottles?|vials?|tint(?:ed)?|colou?r(?:ed)?|caps?|packaging|boxe?s?|pink)\b|\b(?:fractionated |sweet )?(?:coconut|almond|apricot(?: kernel)?|jojoba|grapeseed|vanilla planifolia fruit)[ -](?:oil|butter|extract)s?\b/g;
@@ -129,11 +134,19 @@ function scentTexts(product = {}) {
   const catalog = product.catalog || {};
   const seed = product.external_seed || {};
   const attrs = product.beauty_attrs || {};
-  const list = (value) => (Array.isArray(value) ? value : value == null ? [] : [value]);
+  // A raw edge snapshot (serving guard) keeps intel under product_intel.product_intel_core; the
+  // reviewer's evidence object has already flattened it.
+  const core = (product.product_intel && product.product_intel.product_intel_core) || {};
+  // Published intel rows are objects ({headline, body} / {tag, label}); flattened evidence is strings.
+  const list = (value) => (Array.isArray(value) ? value : value == null ? [] : [value]).flatMap((row) => (
+    row && typeof row === 'object' ? [row.headline, row.body, row.label, row.tag, row.text] : [row]
+  ));
+  const whatItIs = core.what_it_is && typeof core.what_it_is === 'object' ? core.what_it_is.body : core.what_it_is;
   return [
     withoutBrand(product.title), withoutBrand(product.name), withoutBrand(catalog.title), withoutBrand(seed.title),
-    text(product.description), text(seed.description), text(catalog.description),
+    text(product.description), text(product.intel_text), text(seed.description), text(catalog.description),
     ...list(product.why_it_stands_out).map(text), ...list(product.best_for).map(text),
+    ...list(core.why_it_stands_out).map(text), ...list(core.best_for).map(text), text(whatItIs),
     text(attrs.scent_family),
   ].filter((value) => value.trim());
 }
@@ -143,6 +156,20 @@ function quotedFromScentText(product, quote) {
   if (!needle) return false;
   const pattern = new RegExp(`(?:^|[^${LETTER}0-9])${escapeRegExp(needle).replace(/ /g, '\\s+')}(?![${LETTER}0-9])`);
   return scentTexts(product).some((value) => pattern.test(value));
+}
+
+// A side that is not RECOGNISED as a perfume is not thereby something else: a perfume listed as
+// 'Baccarat Rouge 540' under category 'other' has no perfume signal. Only a positive non-perfume
+// signal (another product form, a skincare claim, or a named non-fragrance category) is a mismatch;
+// an unknown side is judged by scent like a perfume.
+// Retail buckets say who it is for, not what it is.
+const UNINFORMATIVE_CATEGORY = /^(?:|other|others|beauty|general|misc|miscellaneous|unknown|uncategori[sz]ed|gift|gifts|gift sets?|new|sale|women|womens|men|mens|unisex|luxury|bestsellers?|best sellers?)$/;
+function positivelyNotPerfume(snapshot = {}) {
+  const names = `${text(snapshot.title)} ${text(snapshot.name)} ${text(snapshot.display_name)}`;
+  const category = text(snapshot.category || snapshot.product_type).replace(/[_/-]+/g, ' ').trim();
+  if (NON_PERFUME_FORM.test(names) || SKINCARE_FUNCTION.test(names) || FRAGRANCE_FREE.test(names)) return true;
+  if (WEAK_FORM.test(names) && MIST_FUNCTION.test(names)) return true;
+  return !UNINFORMATIVE_CATEGORY.test(category.replace(/['’]/g, '')) && !FRAGRANCE_CATEGORY.test(category);
 }
 
 // The verdict for one claimed alternative between two products, given the reviewer's quoted pairs.
@@ -156,7 +183,9 @@ function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = [],
   const anchorFragrance = isFragranceProduct(anchor);
   const candidateFragrance = isFragranceProduct(candidate);
   if (!anchorFragrance && !candidateFragrance) return null;
-  if (anchorFragrance !== candidateFragrance) return 'fragrance_category_mismatch';
+  if (anchorFragrance !== candidateFragrance && positivelyNotPerfume(anchorFragrance ? candidate : anchor)) {
+    return 'fragrance_category_mismatch';
+  }
   const anchorFacts = facts.anchor || anchor;
   const candidateFacts = facts.candidate || candidate;
   const matched = (Array.isArray(quotes) ? quotes : []).some((quote) => {
@@ -168,7 +197,30 @@ function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = [],
   return matched ? null : 'fragrance_scent_profile_unmatched';
 }
 
+// Read-time / audit verdict on an already-approved edge, from its snapshots alone (no reviewer
+// quotes): a fragrance against a non-fragrance, or two fragrances whose own scent text names no
+// common family. Lenient by design - it hides what no text could justify, while the reviewer rule
+// (fragranceAlternativeRejection) is the strict gate on new approvals.
+// Prod 2026-10-10: 23 of 176 live ai_approved fragrance alternatives (Prada Amber <-> Ariana Grande
+// Ari, Tom Ford Oud Minerale <-> PixiFig, five perfumes <-> a note-less Dior Addict listing).
+function fragranceServingSuppressionReason(anchor = {}, candidate = {}) {
+  const anchorFragrance = isFragranceProduct(anchor);
+  const candidateFragrance = isFragranceProduct(candidate);
+  if (!anchorFragrance && !candidateFragrance) return '';
+  if (anchorFragrance !== candidateFragrance && positivelyNotPerfume(anchorFragrance ? candidate : anchor)) {
+    return 'fragrance_category_mismatch';
+  }
+  const familiesOf = (product) => {
+    const families = new Set();
+    for (const value of scentTexts(product)) for (const family of scentFamilies(value)) families.add(family);
+    return families;
+  };
+  const anchorFamilies = familiesOf(anchor);
+  return [...familiesOf(candidate)].some((family) => anchorFamilies.has(family)) ? '' : 'fragrance_no_shared_scent_family';
+}
+
 module.exports = {
+  fragranceServingSuppressionReason,
   isFragranceProduct,
   scentFamilies,
   quotedFromScentText,
