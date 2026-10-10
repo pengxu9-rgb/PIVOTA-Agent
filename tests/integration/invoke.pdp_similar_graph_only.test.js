@@ -60,7 +60,16 @@ const fillerCard = { product_id: FILLER_SIG, pivota_signature_id: FILLER_SIG, me
   image_url: 'https://cdn.example.test/f.jpg', card_highlight: 'Same category', price: 20, currency: 'USD', source: 'external',
   reason: 'L3E:external:external_leaf_category' };
 
-async function startServer({ graph = 'items', graphOnly } = {}) {
+const manyCards = Array.from({ length: 8 }, (_, i) => ({ ...graphCard, product_id: `sig_0000000000000000000000000000c${String(i).padStart(3, '0')}`,
+  pivota_signature_id: `sig_0000000000000000000000000000c${String(i).padStart(3, '0')}`, title: `Steel Bottle ${i}`, relationship_edge_id: `prel_many_${i}` }));
+// A graph card the public surfaces must not show: an external-seed id with no public signature, priced in JPY.
+const leakCard = { product_id: 'ext_leak_candidate', external_product_id: 'ext_leak_candidate', merchant_id: 'external_seed', title: 'Leaky Bottle',
+  image_url: 'https://cdn.example.test/l.jpg', card_highlight: 'x', price: 3000, currency: 'JPY', source: 'relationship_graph',
+  recommendation_source: 'relationship_graph', relationship_edge_id: 'prel_leak', relationship_type: 'competitive_alternative' };
+let graphAnchors = [];
+
+async function startServer({ graph = 'items', graphOnly, graphSurface = true } = {}) {
+  graphAnchors = [];
   jest.resetModules();
   nock.cleanAll();
   recommendCalls = [];
@@ -68,7 +77,7 @@ async function startServer({ graph = 'items', graphOnly } = {}) {
   process.env.API_MODE = 'REAL';
   process.env.PIVOTA_API_BASE = API_BASE;
   process.env.PIVOTA_API_KEY = 'ak_live_0000000000000000000000000000000000000000000000000000000000000000';
-  process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED = 'true';
+  process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED = graphSurface ? 'true' : 'false';
   if (graphOnly === undefined) delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
   else process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = graphOnly ? 'true' : 'false';
   delete process.env.DATABASE_URL;
@@ -90,7 +99,10 @@ async function startServer({ graph = 'items', graphOnly } = {}) {
   const actualRecall = jest.requireActual('../../src/services/relationshipGraphRecall');
   jest.doMock('../../src/services/relationshipGraphRecall', () => ({
     ...actualRecall,
-    fetchRelationshipGraphRecallForAnchor: jest.fn(async () => {
+    fetchRelationshipGraphRecallForAnchor: jest.fn(async ({ anchorProduct }) => {
+      graphAnchors.push(anchorProduct);
+      if (graph === 'many') return { edges: [], items: manyCards, metadata: { enabled: true, edge_count: 8, item_count: 8, read_status: 'ready', read_reason: null } };
+      if (graph === 'leak') return { edges: [], items: [graphCard, leakCard], metadata: { enabled: true, edge_count: 2, item_count: 2, read_status: 'ready', read_reason: null } };
       if (graph === 'throw') throw new Error('graph read exploded');
       if (graph === 'unavailable') return { edges: [], items: [], metadata: { enabled: true, edge_count: 0, item_count: 0, read_status: 'unavailable', read_reason: 'read_failed' } };
       if (graph === 'empty') return { edges: [], items: [], metadata: { enabled: true, edge_count: 0, item_count: 0, read_status: 'empty', read_reason: 'no_eligible_edges' } };
@@ -187,6 +199,73 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
       expect(text).toContain(GRAPH_SIG);
       expect(text).not.toContain(FILLER_SIG);
       expect(recommendCalls).toHaveLength(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('"load more" pages through the graph: exclude_items skips the cards already shown', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'many' });
+    try {
+      const post = (payload) => fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
+      const page1 = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, options: { cache_bypass: true } } });
+      expect(page1.products).toHaveLength(3);
+      const shown = page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id }));
+      const page2 = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, exclude_items: shown, options: { cache_bypass: true } } });
+      expect(page2.products).toHaveLength(3);
+      expect(page2.products.map((p) => p.product_id).filter((id) => shown.some((s) => s.product_id === id))).toEqual([]);
+      // Pages end when the graph is exhausted: 8 edges, pages of 3 -> 3, 3, 2.
+      const shown2 = [...shown, ...page2.products.map((p) => ({ product_id: p.product_id }))];
+      const page3 = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, exclude_items: shown2, options: { cache_bypass: true } } });
+      expect(page3.products).toHaveLength(2);
+      // A shown card re-labelled with its seller of record (not the edge snapshot's) still excludes it.
+      const reSold = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 8, exclude_items: [{ product_id: manyCards[1].product_id, merchant_id: 'merch_obs_seller' }], options: { cache_bypass: true } } });
+      expect(reSold.products.map((p) => p.product_id)).not.toContain(manyCards[1].product_id);
+      // A title-only exclusion works too (recall's rule).
+      const byTitle = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 8, exclude_items: [{ title: 'Steel Bottle 0', brand: 'Pivota Test' }], options: { cache_bypass: true } } });
+      expect(byTitle.products.map((p) => p.title)).not.toContain('Steel Bottle 0');
+      expect(recommendCalls).toHaveLength(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('the legacy get_pdp recommendations drop graph cards without a public id or in another currency', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'leak' });
+    try {
+      const response = await fetch(`${baseUrl}/agent/shop/v1/invoke`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation: 'get_pdp', payload: { product: { merchant_id: MERCHANT_ID, product_id: PRODUCT_ID }, include: ['recommendations'] } }),
+      });
+      const text = await response.text();
+      expect(response.status).toBe(200);
+      expect(text).toContain(GRAPH_SIG);
+      expect(text).not.toContain('ext_leak_candidate');
+      expect(text).not.toContain('JPY');
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('a disabled graph surface is an empty rail labelled with its reason, never filler', async () => {
+    const { server, baseUrl } = await startServer({ graphSurface: false });
+    try {
+      const { findResponse, findBody } = await bothSurfaces(baseUrl);
+      expect(findResponse.status).toBe(200);
+      expect(findBody.products).toEqual([]);
+      expect(findBody.metadata).toMatchObject({ empty_reason: 'relationship_graph_surface_disabled', relationship_graph_enabled: false });
+      expect(recommendCalls).toHaveLength(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('the graph read is anchored on the requested product', async () => {
+    const { server, baseUrl } = await startServer();
+    try {
+      await bothSurfaces(baseUrl);
+      expect(graphAnchors.length).toBeGreaterThan(0);
+      for (const anchor of graphAnchors) expect(anchor).toEqual(expect.objectContaining({ product_id: PRODUCT_ID, merchant_id: MERCHANT_ID }));
     } finally {
       await stopServer(server);
     }

@@ -513,6 +513,7 @@ try {
 const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
   recommend: recommendPdpProducts,
+  filterExcludedRecommendationCandidates,
   getCacheStats: getPdpRecsCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
 } = require('./services/RecommendationEngine');
@@ -26876,6 +26877,28 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
   };
 }
 
+const GRAPH_SIMILAR_ID_KEYS = ['product_id', 'id', 'pivota_signature_id', 'external_product_id', 'source_product_id', 'canonical_entity_id', 'product_group_id'];
+function excludeShownGraphSimilarItems(items, options = {}, anchor = null) {
+  const shown = Array.isArray(options?.exclude_items)
+    ? options.exclude_items
+    : Array.isArray(options?.exclude_ids)
+      ? options.exclude_ids.map((productId) => ({ product_id: productId }))
+      : [];
+  const ids = new Set();
+  for (const item of [...shown, anchor]) {
+    if (!item || typeof item !== 'object') continue;
+    for (const key of GRAPH_SIMILAR_ID_KEYS) {
+      const value = firstNonEmptyString(item[key]);
+      if (value) ids.add(value.toLowerCase());
+    }
+  }
+  if (!ids.size) return items;
+  return (Array.isArray(items) ? items : []).filter((item) => !GRAPH_SIMILAR_ID_KEYS.some((key) => {
+    const value = firstNonEmptyString(item?.[key]);
+    return Boolean(value) && ids.has(value.toLowerCase());
+  }));
+}
+
 async function fetchGraphOnlySimilarProducts(args = {}) {
   const k = Number(args?.k);
   const base = {
@@ -26886,11 +26909,13 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
     low_confidence_reason_codes: [],
   };
   if (!isPdpRelationshipGraphServingEnabled()) {
+    // An operator turned the graph surface off while the rails are graph-only: say so loudly.
+    logger.warn({ event: 'similar_graph_only_surface_disabled' }, 'similar rails are graph-only but the relationship graph pdp_similar surface is disabled; serving empty rails');
     return {
       status: 'empty',
       strategy: 'relationship_graph',
       items: [],
-      metadata: { ...base, similar_status: 'empty', relationship_graph_enabled: false },
+      metadata: { ...base, similar_status: 'empty', relationship_graph_enabled: false, empty_reason: 'relationship_graph_surface_disabled' },
     };
   }
   // No catch: a throw is the main route failing, and the callers' outage handling answers it.
@@ -26912,6 +26937,16 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
   let items = SIMILAR_FAMILY_DEDUPE_ENABLED
     ? dedupeSimilarCandidatesByFamily(graphItems, familyDedupeContext)
     : dedupeSimilarCandidatesByMerchantProductId(graphItems);
+  // "Load more" sends the cards already shown as exclude_items; recall used to honour them, and
+  // without them every page would repeat page one. Recall's rule (merchant-scoped ids, titles) applies,
+  // plus a merchant-blind id match: a graph card is a canonical cross-seller product, and the shown
+  // card's seller rarely equals the edge snapshot's.
+  const graphOptions = args?.options && typeof args.options === 'object' ? args.options : {};
+  items = filterExcludedRecommendationCandidates(items, {
+    ...graphOptions,
+    also_exclude: args?.pdp_product ? [args.pdp_product] : [],
+  });
+  items = excludeShownGraphSimilarItems(items, graphOptions, args?.pdp_product);
   if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
   return {
     status: items.length ? 'success' : 'empty',
@@ -46751,6 +46786,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             baseProduct: product,
             componentCandidates: componentSimilarCandidates,
           }).products;
+          // Graph cards carry external-seed ids and edge snapshot prices: give this legacy surface the
+          // same public-id, renderability and serving-currency gates get_pdp_v2's similar module applies.
+          if (isPdpSimilarGraphOnlyEnabled()) {
+            relatedProducts = filterPublicVisibleSimilarProducts(
+              await hydrateVisibleSimilarProductSigIdsFromCatalog(relatedProducts, { bypassCache }),
+              { servingCurrency: servingCurrencyFor({ payload, metadata: req?.body?.metadata }) },
+            );
+          }
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), merchantId, productId },
