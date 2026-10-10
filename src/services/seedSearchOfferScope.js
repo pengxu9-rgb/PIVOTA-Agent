@@ -38,7 +38,29 @@ function seedHasColumnPriceCurrencySql(alias = '') {
 // than the search mainline ON PURPOSE: a product with live offers in two currencies (the mainline
 // would serve the buyer's one) is not recommended -- a recommendation card cannot say which it is. Measured on prod 2026-09-27: 614 serving-eligible similar
 // candidates carry no seed join and are priced only by an attached SGD seed + SGD offer.
-function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam) {
+//
+// `allowOtherCurrencyOffers` (BUYER_MARKET_OFFER_SCOPE, buyerMarketOfferScope.js): the offers leg
+// becomes the search mainline's -- a product with a live offer in the buyer's currency stays,
+// whatever other currencies it is also offered in. A store's USD product gaining SGD sibling offers
+// (pivota-backend shopify_markets) is then still recommended to a US buyer, and an SG buyer gets
+// it on its SGD offer. A product whose live offers are ALL in other currencies is still refused,
+// and the seed legs (which price the card) are unchanged.
+function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam, { allowOtherCurrencyOffers = false } = {}) {
+  const otherCurrencyOffer = `EXISTS (
+      SELECT 1 FROM catalog_offers o_cur
+      WHERE o_cur.product_key = ${cpAlias}.product_key
+        AND o_cur.suppressed_at IS NULL
+        AND upper(trim(coalesce(o_cur.currency, ''))) <> ${currencyParam}
+    )`;
+  const offersLeg = allowOtherCurrencyOffers
+    ? `(NOT ${otherCurrencyOffer}
+      OR EXISTS (
+        SELECT 1 FROM catalog_offers o_own
+        WHERE o_own.product_key = ${cpAlias}.product_key
+          AND o_own.suppressed_at IS NULL
+          AND upper(trim(coalesce(o_own.currency, ''))) = ${currencyParam}
+      ))`
+    : `NOT ${otherCurrencyOffer}`;
   return `NOT EXISTS (
       SELECT 1 FROM external_product_seeds eps_cur
       WHERE eps_cur.external_product_id = ${cpAlias}.source_product_id AND eps_cur.status = 'active'
@@ -49,12 +71,7 @@ function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam) {
       WHERE eps_cur.attached_product_key = ${cpAlias}.product_key AND eps_cur.status = 'active'
         AND ${seedNativeCurrencySql('eps_cur')} <> ${currencyParam}
     )
-    AND NOT EXISTS (
-      SELECT 1 FROM catalog_offers o_cur
-      WHERE o_cur.product_key = ${cpAlias}.product_key
-        AND o_cur.suppressed_at IS NULL
-        AND upper(trim(coalesce(o_cur.currency, ''))) <> ${currencyParam}
-    )`;
+    AND ${offersLeg}`;
 }
 
 // Use the same native-currency budget ranges as canonical SQL and the final

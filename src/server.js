@@ -368,6 +368,7 @@ const {
   requestedMarketOf,
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
+const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 
 // THE BUYER MARKET RIDES INTO THE DISCOVERY FEED (discoveryFeed.applyBuyerMarketFallback), read by
 // the SAME function the serving-currency guard judges the outgoing body with, so the feed and the
@@ -5954,6 +5955,107 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
   return (Array.isArray(result?.rows) ? result.rows : [])
     .map((row) => buildCatalogSignatureGroupMemberFromIdentityRow(row))
     .filter(Boolean);
+}
+
+// THE BUYER'S CURRENCY FOR EACH GROUP MEMBER'S OFFER (BUYER_MARKET_OFFER_SCOPE, default off).
+//
+// Both member offer joins (fetchApprovedLiveIdentityGroupMembersForOffers above and the
+// signature resolver's group query) pick ONE catalog_offers row per member with a LATERAL
+// LIMIT 1 ordered by stock and recency -- never by currency. A member carrying a store's USD
+// offer and its SGD sibling (pivota-backend shopify_markets) therefore shows whichever was
+// written last, and buildOffersFromGroupMembers' serving-currency filter can only DROP that
+// member for the other buyer; it cannot swap in the offer the member does have in the buyer's
+// currency.
+//
+// This re-picks, in one batched read, the offer of every member whose picked offer is in another
+// currency than the buyer's, among that member's own offers in the buyer's currency, in the same
+// order the LATERAL uses. Done on the members AFTER the resolver, not inside it, so the cached,
+// single-flight signature resolve keeps one cache entry per signature regardless of the buyer.
+// Left untouched: members already in the buyer's currency (every USD-only member for a US buyer:
+// no query is sent at all), members with no catalog offer ref, members whose payload carries
+// variants (their per-variant prices are the payload's own and are not re-priced here), and
+// members with no live, priced offer in the buyer's currency (the existing filter decides them).
+const GROUP_MEMBER_CURRENCY_OFFER_SQL = `
+  SELECT DISTINCT ON (picked.sku_key)
+    picked.sku_key AS picked_sku_key,
+    o.offer_id,
+    o.sku_key,
+    o.currency,
+    COALESCE(o.merchant_effective_price, o.estimated_best_price, o.list_price) AS price,
+    o.source_system,
+    o.source_ref
+  FROM catalog_skus picked
+  JOIN catalog_skus s ON s.product_key = picked.product_key
+  JOIN catalog_offers o ON o.sku_key = s.sku_key
+  WHERE picked.sku_key = ANY($1::text[])
+    AND o.suppressed_at IS NULL
+    AND upper(trim(coalesce(o.currency, ''))) = $2
+    AND COALESCE(o.merchant_effective_price, o.estimated_best_price, o.list_price) > 0
+  ORDER BY
+    picked.sku_key,
+    CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
+    o.updated_at DESC NULLS LAST,
+    o.offer_id ASC
+`;
+
+function groupMemberPayloadHasVariants(payload) {
+  if (!isPlainObject(payload)) return false;
+  const seedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
+  const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
+  return [
+    payload.variants,
+    externalSeed.variants,
+    seedData.variants,
+    isPlainObject(seedData.snapshot) ? seedData.snapshot.variants : null,
+    isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot.variants : null,
+  ].some((variants) => Array.isArray(variants) && variants.length > 0);
+}
+
+async function rescopeGroupMemberOffersToCurrency(members, servingCurrency, { queryFn = query } = {}) {
+  const currency = resolveOfferScopeCurrency(servingCurrency);
+  if (!currency || !Array.isArray(members) || !members.length || typeof queryFn !== 'function') return members;
+  const skuKeys = new Set();
+  const skuKeyByIndex = new Map();
+  members.forEach((member, index) => {
+    const payload = isPlainObject(member?.source_payload) ? member.source_payload : null;
+    const ref = payload && isPlainObject(payload.catalog_offer_v1) ? payload.catalog_offer_v1 : null;
+    const skuKey = firstNonEmptyString(ref?.sku_key);
+    const payloadCurrency = String(payload?.currency || '').trim().toUpperCase();
+    if (!skuKey || !payloadCurrency || payloadCurrency === currency || groupMemberPayloadHasVariants(payload)) return;
+    skuKeys.add(skuKey);
+    skuKeyByIndex.set(index, skuKey);
+  });
+  if (!skuKeys.size) return members;
+  let rows = [];
+  try {
+    const result = await queryFn(GROUP_MEMBER_CURRENCY_OFFER_SQL, [[...skuKeys], currency]);
+    rows = Array.isArray(result?.rows) ? result.rows : [];
+  } catch (err) {
+    logger.debug?.({ err: err?.message || String(err) }, 'group member currency offer re-pick failed');
+    return members;
+  }
+  const bySku = new Map(rows.map((row) => [String(row.picked_sku_key || ''), row]));
+  return members.map((member, index) => {
+    const row = bySku.get(skuKeyByIndex.get(index));
+    const price = Number(row?.price);
+    if (!row || !Number.isFinite(price) || price <= 0) return member;
+    const rowCurrency = String(row.currency || '').trim().toUpperCase();
+    return {
+      ...member,
+      source_payload: {
+        ...member.source_payload,
+        price: { amount: price, currency: rowCurrency },
+        price_amount: price,
+        currency: rowCurrency,
+        catalog_offer_v1: {
+          offer_id: firstNonEmptyString(row.offer_id),
+          sku_key: firstNonEmptyString(row.sku_key),
+          source_system: firstNonEmptyString(row.source_system),
+          source_ref: firstNonEmptyString(row.source_ref),
+        },
+      },
+    };
+  });
 }
 
 function normalizeCatalogSignatureResolveOptions(options = {}) {
@@ -45446,7 +45548,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             markPdpV2Checkpoint('before_offers_build');
             offersData = await buildOffersFromGroupMembers({
               productGroupId: effectiveSellableItemGroupId || effectiveProductGroupId || productGroupId,
-              members: groupMembers,
+              members: await rescopeGroupMemberOffersToCurrency(groupMembers, pdpServingCurrency),
               checkoutToken,
               bypassCache,
               limit: payload?.offers?.limit || 10,
@@ -45607,7 +45709,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               const siblingOffersData = siblingGroupMembers.length
                 ? await buildOffersFromGroupMembers({
                     productGroupId: fallbackProductGroupId,
-                    members: siblingGroupMembers,
+                    members: await rescopeGroupMemberOffersToCurrency(siblingGroupMembers, pdpServingCurrency),
                     checkoutToken,
                     bypassCache,
                     limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
@@ -52256,6 +52358,7 @@ module.exports._debug = {
   isNonBeautyCanonicalCategoryPathPrefix,
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
+  rescopeGroupMemberOffersToCurrency,
   resolveCatalogProductRefFromPivotaSignature,
   buildCatalogIdentityFromSignatureProductRef,
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
