@@ -328,7 +328,8 @@ describe('products_search circuit breaker', () => {
     clock += 60000;
     await load();
     await waitFor(() => !_internals.getProductsSearchBreakerState().probe_inflight);
-    expect(logger.info).toHaveBeenCalledWith({ probe: true }, 'discovery products_search circuit closed');
+    // `lane` names which breaker closed: the main lane's, or a buyer-market fallback's (`buyer_market:SG`).
+    expect(logger.info).toHaveBeenCalledWith({ probe: true, lane: 'products_search' }, 'discovery products_search circuit closed');
   });
 
   test('a 4xx about the query neither counts as a failure nor clears the count; 401 and 403 count', async () => {
