@@ -49,7 +49,10 @@ const CANONICAL_OWN_BRAND_SQL = "coalesce(nullif(trim(p.brand), ''), p.product_p
 //   name_norm     = fold(title, product_type)
 //                   -- what the carrier CTE folds over the whole table (a 0.40 s Seq Scan), and what
 //                   -- migration 261's trigram index covers.
-// Flag CANONICAL_CATALOG_STORED_NAME_NORM=on (default off), read per call:
+// Flag CANONICAL_CATALOG_STORED_NAME_NORM=on (default off), read per call by the CALLER
+// (canonicalCatalogSearch), which also runs the fold-drift probe (storedNameNormProbe.js: the stored
+// function must equal identitySql on a sample set, re-checked every 10 min) and hands this builder
+// the verdict as `storedNameNorm`. A failed or missing probe reads as OFF. When on:
 //   * the own-name predicates read `coalesce(p.own_name_norm, <today's expression>)`: a stamped row
 //     costs one column read (COALESCE evaluates only the arguments it needs); an unstamped row
 //     (NULL) is folded exactly as today;
@@ -108,11 +111,11 @@ function buildBrandIdentityPredicate(brand, expression, params) {
   return `(md5(${ownBrand}) = ANY($${params.length}::text[]) AND ${ownBrand} = ANY(${fullBind}::text[]))`;
 }
 
-function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere }) {
+function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere, storedNameNorm = false }) {
   if (contract?.target_domain !== 'beauty') return { where: defaultWhere, brandWhere: defaultBrandWhere };
   const hard = contract.hard_constraints || {};
   const bind = (value) => { params.push(value); return `$${params.length}`; };
-  const stored = storedNameNormEnabled();
+  const stored = storedNameNorm === true;
   const ownNameExpression = identitySql(OWN_NAME_INPUTS_SQL);
   const ownName = stored ? `coalesce(p.own_name_norm, ${ownNameExpression})` : ownNameExpression;
   let brandWhere = defaultBrandWhere;

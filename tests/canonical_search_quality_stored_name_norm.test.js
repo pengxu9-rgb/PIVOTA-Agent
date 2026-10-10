@@ -13,11 +13,12 @@
 const { fetchCanonicalChainRows } = require('../src/services/canonicalCatalogSearch');
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
 const quality = require('../src/services/canonicalSearchQualitySql');
+const probe = require('../src/services/storedNameNormProbe');
 
 const FLAG = quality.STORED_NAME_NORM_FLAG;
 const ORIGINAL = process.env[FLAG];
 afterEach(() => { if (ORIGINAL === undefined) delete process.env[FLAG]; else process.env[FLAG] = ORIGINAL; });
-beforeEach(() => { process.env.SEARCH_NAME_EVIDENCE_ADMISSION = 'on'; });
+beforeEach(() => { process.env.SEARCH_NAME_EVIDENCE_ADMISSION = 'on'; probe._resetForTest(); });
 
 async function statement(rawQuery, flag) {
   if (flag === undefined) delete process.env[FLAG]; else process.env[FLAG] = flag;
@@ -26,7 +27,12 @@ async function statement(rawQuery, flag) {
   await fetchCanonicalChainRows({
     query: rawQuery, searchQualityContract: contract, brandFilter: contract.hard_constraints.brand,
     categoryPathPrefix: contract.hard_constraints.category_path_prefix, categoryMode: 'category_browse',
-    deps: { query: async (sql, params) => { result = { sql, params }; return { rows: [] }; } },
+    deps: { query: async (sql, params) => {
+      // The fold-drift probe (stored_name_norm_probe.test.js owns its own cases): here the database's
+      // function matches identitySql, so the flag's verdict is the flag's.
+      if (sql.includes(`${probe.FUNCTION_NAME}(s)`)) return { rows: [{ n: probe.SAMPLES.length, same: probe.SAMPLES.length }] };
+      result = { sql, params }; return { rows: [] };
+    } },
   });
   return result;
 }
