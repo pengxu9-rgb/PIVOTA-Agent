@@ -1251,7 +1251,7 @@ describe('schema and mapper cannot drift', () => {
       get_alternatives: [
         'insights.id', 'insights.include_dupes', 'insights.market', 'insights.max_price_ratio', 'insights.limit',
       ],
-      get_offers: ['insights.id', 'insights.currency', 'insights.limit'],
+      get_offers: ['insights.id', 'insights.currency', 'insights.market', 'insights.limit'],
       get_intel: ['insights.id'],
     });
 
