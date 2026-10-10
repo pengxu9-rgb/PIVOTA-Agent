@@ -34,8 +34,28 @@ describe('fragrance serving guard', () => {
   test('a human decision is never hidden by this rule', () => {
     expect(fragranceReasons(edge(pradaAmber, ari, { label_state: 'human_approved' }))).toEqual([]);
   });
-  test('a perfume against a body product from the same shelf is hidden', () => {
+  test('a perfume against a body product from the same shelf is hidden, whichever side the perfume is', () => {
     expect(fragranceReasons(edge(oudEdp, oudLotion))).toEqual(['competitive_alternative_fragrance_category_mismatch']);
+    expect(fragranceReasons(edge(oudLotion, oudEdp))).toEqual(['competitive_alternative_fragrance_category_mismatch']);
+  });
+  test('a perfume listed without any perfume signal is judged by scent, not as a mismatch (review: category other)', () => {
+    const br540 = snap('product:sig_l2', 'Maison Francis Kurkdjian', 'Baccarat Rouge 540', 'other', { description: 'saffron, amberwood and fir resin' });
+    const cloud = snap('product:sig_m3', 'Ariana Grande', 'Cloud Eau de Parfum', 'fragrance', { description: 'lavender, pear, praline and musk' });
+    const amberCloud = { ...cloud, description: 'amber and musk' };
+    expect(fragranceReasons(edge(br540, cloud))).toEqual(['competitive_alternative_fragrance_no_shared_scent_family']);
+    expect(fragranceReasons(edge(br540, amberCloud))).toEqual([]);
+  });
+  test('home fragrance items are not perfumes (wax melt, linen spray, car freshener)', () => {
+    const melt = snap('product:sig_n4', 'Bath & Body Works', 'Vanilla Bean Wax Melt', 'home fragrance');
+    const candle = snap('product:sig_o5', 'Bath & Body Works', 'Vanilla Bean 3-Wick Candle', 'home fragrance');
+    const linen = snap('product:sig_p6', 'Maison X', 'Lavender Linen Spray', 'home fragrance');
+    const car = snap('product:sig_q7', 'Maison X', 'Oud Car Freshener', 'home fragrance');
+    expect(fragranceReasons(edge(melt, candle))).toEqual([]);
+    expect(fragranceReasons(edge(linen, car))).toEqual([]);
+  });
+  test('a need-anchored niche_specialist edge is not this rule\'s question', () => {
+    const need = { need_id: 'need_scent_long_wear', label: 'Long-wearing scent', category_taxonomy: ['fragrance'], tags: [] };
+    expect(fragranceReasons(edge(need, ari, { anchor_type: 'need', anchor_ref: 'need:need_scent_long_wear', relation_type: 'niche_specialist' }))).toEqual([]);
   });
   test.each(['dupe', 'niche_specialist'])('the %s lane carries its own reason prefix', (relationType) => {
     expect(fragranceReasons(edge(pradaAmber, ari, { relation_type: relationType }))).toContain(`${relationType}_fragrance_no_shared_scent_family`);
@@ -52,9 +72,15 @@ describe('fragrance serving guard', () => {
     const intelOnly = snap('product:sig_h8', 'Maison X', 'Nuit Eau de Parfum', 'fragrance', {
       intel_text: 'A gourmand vanilla and tonka heart.',
     });
+    // The published intel shape: object rows (src/pdpProductIntel.js), plus what_it_is.body.
     const coreOnly = snap('product:sig_i9', 'Maison Y', 'Jour Eau de Parfum', 'fragrance', {
-      product_intel: { product_intel_core: { why_it_stands_out: ['caramel and praline'], best_for: [] } },
+      product_intel: { product_intel_core: { why_it_stands_out: [{ headline: 'Caramel praline heart', body: 'warm and sweet' }], best_for: [{ tag: 'gourmand', label: 'Gourmand lovers' }] } },
     });
+    const whatItIsOnly = snap('product:sig_k1', 'Maison Z', 'Soir Eau de Parfum', 'fragrance', {
+      product_intel: { product_intel_core: { what_it_is: { body: 'vanilla and tonka over smoked woods' } } },
+    });
+    expect(fragranceServingSuppressionReason(whatItIsOnly, coreOnly)).toBe('');
+    expect(fragranceServingSuppressionReason(whatItIsOnly, pradaAmber)).toBe('fragrance_no_shared_scent_family');
     expect(fragranceServingSuppressionReason(intelOnly, coreOnly)).toBe('');
     expect(fragranceServingSuppressionReason(intelOnly, ari)).toBe('');
     expect(fragranceServingSuppressionReason(pradaAmber, coreOnly)).toBe('fragrance_no_shared_scent_family');

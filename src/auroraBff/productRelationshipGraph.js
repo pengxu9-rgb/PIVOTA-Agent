@@ -591,7 +591,9 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
 
   // A perfume is chosen by its scent: hide AI-approved alternatives between a fragrance and a
   // non-fragrance, or between fragrances whose own text shares no scent family. Human decisions stay.
-  if (edge.label_state === 'ai_approved' && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(edge.relation_type)) {
+  // Product anchors only: a niche_specialist anchor is a NEED object ({need_id, label, ...}), not a product.
+  if (edge.label_state === 'ai_approved' && edge.anchor_type === 'product' &&
+      ['dupe', 'competitive_alternative', 'niche_specialist'].includes(edge.relation_type)) {
     const fragranceReason = fragranceServingSuppressionReason(edge.anchor_snapshot || {}, edge.candidate_snapshot || {});
     if (fragranceReason) reasons.push(`${edge.relation_type}_${fragranceReason}`);
   }
