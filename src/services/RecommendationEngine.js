@@ -6511,8 +6511,22 @@ async function recommend({
     : result;
 }
 
+// The exclusion rule recall applies to options.exclude_items / exclude_ids ("load more": the cards
+// already shown), for callers that serve candidates from elsewhere (the graph-only similar rails).
+function filterExcludedRecommendationCandidates(candidates, options = {}) {
+  const excludeItems = Array.isArray(options?.exclude_items)
+    ? options.exclude_items
+    : Array.isArray(options?.exclude_ids)
+      ? options.exclude_ids.map((productId) => ({ product_id: String(productId || '').trim() }))
+      : [];
+  const extra = Array.isArray(options?.also_exclude) ? options.also_exclude : [];
+  if (!excludeItems.length && !extra.length) return Array.isArray(candidates) ? candidates : [];
+  return filterCandidateCollection(candidates, buildExcludedCandidateState([...excludeItems, ...extra]));
+}
+
 module.exports = {
   recommend,
+  filterExcludedRecommendationCandidates,
   pickLayeredRecommendations,
   getCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
