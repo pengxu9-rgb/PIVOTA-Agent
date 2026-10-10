@@ -240,3 +240,78 @@ test('a live price carries its own as-of; a failed read keeps the catalog as-of'
   assert.equal(failed.products[0].price_source, 'catalog_offer');
   assert.equal(failed.products[0].price_as_of, catalogCard.price_as_of);
 });
+
+// ---- a product page Shopify says is gone (judydoll "Sheer Tinted Highlighter", 2026-10-09) ------------------------
+const { DROP_GONE_FLAG } = require('../src/services/liveMerchantSearchPrice');
+const storefrontProductPage = require('../src/services/storefrontProductPage');
+
+const shopifyGone = () => new Response('{"errors":"Not Found"}', { status: 404, headers: { 'powered-by': 'Shopify' } });
+const removed = {
+  product_id: 'sig_d4f93c2b9b88ac7bd32f44d13ebe9d31', price: 12.99, currency: 'USD', availability: 'in_stock',
+  destination_url: 'https://judydoll.com/products/sheer-tinted-highlighter?variant=49869804110101',
+};
+const kept = { ...card, product_id: 'sig_kept', destination_url: 'https://kept-shop.sg/products/live-one' };
+const routeFetch = (calls) => async (url) => {
+  calls.push(url);
+  return url.includes('sheer-tinted-highlighter') ? shopifyGone() : { ok: true, json: async () => body };
+};
+
+test('flag OFF: a Shopify 404 is counted as gone but the card is served exactly as before', async () => {
+  storefrontProductPage.resetForTests();
+  const calls = [];
+  const out = await overlayLiveMerchantSearchPrices({ products: [removed, kept] }, { fetchImpl: routeFetch(calls), env: {} });
+  assert.deepEqual(out.products.map((p) => p.product_id), ['sig_d4f93c2b9b88ac7bd32f44d13ebe9d31', 'sig_kept']);
+  assert.equal(out.products[0].price, 12.99);
+  assert.equal(out.products[0].price_source, 'catalog_offer');
+  const meta = out.metadata.live_merchant_price;
+  assert.equal(meta.failure_reasons.http_404, 1);
+  assert.equal(meta.gone_count, 1);
+  assert.equal(meta.dropped_gone_count, 0);
+  // and the verdict is shared with the checkout's own check
+  assert.deepEqual(storefrontProductPage.knownGone('https://judydoll.com/products/sheer-tinted-highlighter.json'), { status: 404 });
+});
+
+test('flag ON: the gone card leaves the page; the live one is served and verified', async () => {
+  storefrontProductPage.resetForTests();
+  const calls = [];
+  const out = await overlayLiveMerchantSearchPrices({ products: [removed, kept] }, {
+    fetchImpl: routeFetch(calls), env: { [DROP_GONE_FLAG]: '1' },
+  });
+  assert.deepEqual(out.products.map((p) => p.product_id), ['sig_kept']);
+  assert.equal(out.products[0].price_source, 'merchant_live');
+  assert.equal(out.metadata.live_merchant_price.gone_count, 1);
+  assert.equal(out.metadata.live_merchant_price.dropped_gone_count, 1);
+});
+
+test('flag ON: a 404 WITHOUT Shopify\'s stamp, a 403, or a timeout never drops a card', async () => {
+  storefrontProductPage.resetForTests();
+  const env = { [DROP_GONE_FLAG]: 'true' };
+  const cases = [
+    async () => new Response('', { status: 404, headers: { server: 'AkamaiNetStorage' } }),
+    async () => new Response('', { status: 404, headers: { 'powered-by': 'Shopify', 'cf-mitigated': 'challenge' } }),
+    async () => new Response('', { status: 403, headers: { 'powered-by': 'Shopify' } }),
+    async () => { throw new Error('ECONNRESET'); },
+  ];
+  for (const [i, fetchImpl] of cases.entries()) {
+    const product = { ...removed, destination_url: `https://not-gone-${i}.example/products/a` };
+    const out = await overlayLiveMerchantSearchPrices({ products: [product] }, { fetchImpl, env });
+    assert.equal(out.products.length, 1, `case ${i} dropped a card`);
+    assert.equal(out.metadata.live_merchant_price.gone_count, 0);
+  }
+});
+
+test('a page remembered as gone is not fetched again, and two cards on it are both dropped', async () => {
+  storefrontProductPage.resetForTests();
+  storefrontProductPage.noteGone('https://judydoll.com/products/sheer-tinted-highlighter.json', 404);
+  const calls = [];
+  const twin = { ...removed, product_id: 'sig_twin', source_variant_id: '49869804077333' };
+  // its own URL: the overlay's success cache would otherwise serve the kept card from the test above
+  const freshKept = { ...kept, destination_url: 'https://kept-shop.sg/products/live-two' };
+  const out = await overlayLiveMerchantSearchPrices({ products: [removed, freshKept, twin] }, {
+    fetchImpl: routeFetch(calls), env: { [DROP_GONE_FLAG]: 'on' },
+  });
+  assert.deepEqual(out.products.map((p) => p.product_id), ['sig_kept']);
+  assert.ok(!calls.some((u) => u.includes('sheer-tinted-highlighter')), 'the remembered page was fetched again');
+  assert.equal(out.metadata.live_merchant_price.fetch_attempt_count, 1);
+  assert.equal(out.metadata.live_merchant_price.dropped_gone_count, 2);
+});

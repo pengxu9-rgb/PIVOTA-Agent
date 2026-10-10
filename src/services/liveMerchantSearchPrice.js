@@ -1,16 +1,24 @@
 'use strict';
 
-// Read-only price verification for a served search page. Only a merchant PDP URL may select
-// the storefront. A variant id must match exactly, or every variant must publish the same
-// price and currency; a product-level minimum is not an offer for an arbitrary variant.
+// Read-only price verification for a served search page. One failure is not a price question: a 404 that Shopify
+// itself served means the product page is gone (storefrontProductPage.js); behind SERVE_LIVE_MERCHANT_PRICE_DROP_GONE
+// that card leaves the page instead of being served in stock at its stored price.
+//
+// Only a merchant PDP URL may select the storefront. A variant id must match exactly, or every variant must publish
+// the same price and currency; a product-level minimum is not an offer for an arbitrary variant.
 const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 const { isRestatedProductId } = require('./merchantVariantSource');
+const storefrontProductPage = require('./storefrontProductPage');
 
 const publicFetch = createPublicNetworkFetch();
 const cache = new Map();
 const TTL_MS = 120000;
 const TIMEOUT_MS = 1800;
 const PAGE_DEADLINE_MS = 2500;
+// A card whose product page SHOPIFY says is gone (storefrontProductPage.js) is dropped from the page instead of being
+// kept at its stored price. Default OFF; read per call. Off, the read is still counted (`gone_count`) and shared with
+// the checkout's own check, and the card is kept exactly as before.
+const DROP_GONE_FLAG = 'SERVE_LIVE_MERCHANT_PRICE_DROP_GONE';
 const MERCHANT_HEADERS = Object.freeze({
   'User-Agent': 'PivotaCatalog/1.0',
   Accept: 'application/json',
@@ -77,6 +85,8 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
   const now = Date.now();
   const cached = cache.get(target.url);
   if (cached && cached.expires > now) return { ...cached.value, cacheHit: true };
+  const gone = storefrontProductPage.knownGone(target.url, now);
+  if (gone) return { reason: `http_${gone.status}`, gone: true, cacheHit: true };
   const controller = new AbortController();
   const onPageAbort = () => controller.abort();
   if (pageSignal?.aborted) return { reason: 'deadline_exceeded' };
@@ -89,7 +99,13 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
     if (controller.signal.aborted) return { reason: pageSignal?.aborted ? 'deadline_exceeded' : 'timeout' };
     if (!response.ok) {
       const status = Number(response.status);
-      return { reason: Number.isInteger(status) && status >= 400 && status <= 599 ? `http_${status}` : 'http_error' };
+      const reason = Number.isInteger(status) && status >= 400 && status <= 599 ? `http_${status}` : 'http_error';
+      // THE ONE FAILURE THAT IS AN ANSWER: Shopify itself said this product page does not exist.
+      if (storefrontProductPage.shopifySaysGone(response)) {
+        storefrontProductPage.noteGone(target.url, status);
+        return { reason, gone: true };
+      }
+      return { reason };
     }
     let body;
     try {
@@ -113,6 +129,9 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
 async function overlayLiveMerchantSearchPrices(response, options = {}) {
   if (!response || !Array.isArray(response.products) || !response.products.length) return response;
   const fetchImpl = options.fetchImpl || publicFetch;
+  const env = options.env || process.env;
+  const dropGone = /^(1|true|yes|on|enabled)$/i.test(String(env[DROP_GONE_FLAG] || '').trim());
+  const goneIndexes = new Set();
   const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : TIMEOUT_MS;
   const pageDeadlineMs = Number(options.pageDeadlineMs) > 0 ? Number(options.pageDeadlineMs) : PAGE_DEADLINE_MS;
   const pageController = new AbortController();
@@ -136,7 +155,8 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   const getProductJson = (target) => {
     if (!pageFetches.has(target.url)) {
       const cached = cache.get(target.url);
-      if (!(cached && cached.expires > Date.now())) attempted += 1;
+      const fresh = (cached && cached.expires > Date.now()) || storefrontProductPage.knownGone(target.url);
+      if (!fresh) attempted += 1;
       pageFetches.set(target.url, fetchPrice(
         target, fetchImpl, timeoutMs, pageController.signal,
       ));
@@ -165,6 +185,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         if (closed || pageController.signal.aborted) return;
         processed.add(index);
         if (fetched.cacheHit) cacheHits += 1;
+        if (fetched.gone) goneIndexes.add(index);
         const price = fetched.body && verifiedPrice(fetched.body, target.variant);
         if (!price || price.currency !== String(card.currency).toUpperCase()) {
           cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
@@ -192,18 +213,20 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       countFailure('deadline_exceeded');
     }
   }
+  const served = dropGone ? cards.filter((_, index) => !goneIndexes.has(index)) : cards;
   return {
     ...response,
-    products: cards,
+    products: served,
     metadata: {
       ...(response.metadata || {}),
       live_merchant_price: {
         attempted: eligible.size > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
+        gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
       },
     },
   };
 }
 
-module.exports = { targetOf, verifiedPrice, overlayLiveMerchantSearchPrices };
+module.exports = { DROP_GONE_FLAG, targetOf, verifiedPrice, overlayLiveMerchantSearchPrices };
