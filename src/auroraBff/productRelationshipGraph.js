@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
+const { fragranceServingSuppressionReason } = require('./relationshipFragranceProfile');
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
@@ -586,6 +587,13 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
   if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type)) {
     const identityReason = identitySuppressionReason(edge);
     if (identityReason) reasons.push(`${edge.relation_type}_${identityReason}`);
+  }
+
+  // A perfume is chosen by its scent: hide AI-approved alternatives between a fragrance and a
+  // non-fragrance, or between fragrances whose own text shares no scent family. Human decisions stay.
+  if (edge.label_state === 'ai_approved' && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(edge.relation_type)) {
+    const fragranceReason = fragranceServingSuppressionReason(edge.anchor_snapshot || {}, edge.candidate_snapshot || {});
+    if (fragranceReason) reasons.push(`${edge.relation_type}_${fragranceReason}`);
   }
 
   if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {

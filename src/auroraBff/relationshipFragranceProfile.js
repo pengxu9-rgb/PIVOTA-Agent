@@ -129,11 +129,15 @@ function scentTexts(product = {}) {
   const catalog = product.catalog || {};
   const seed = product.external_seed || {};
   const attrs = product.beauty_attrs || {};
+  // A raw edge snapshot (serving guard) keeps intel under product_intel.product_intel_core; the
+  // reviewer's evidence object has already flattened it.
+  const core = (product.product_intel && product.product_intel.product_intel_core) || {};
   const list = (value) => (Array.isArray(value) ? value : value == null ? [] : [value]);
   return [
     withoutBrand(product.title), withoutBrand(product.name), withoutBrand(catalog.title), withoutBrand(seed.title),
-    text(product.description), text(seed.description), text(catalog.description),
+    text(product.description), text(product.intel_text), text(seed.description), text(catalog.description),
     ...list(product.why_it_stands_out).map(text), ...list(product.best_for).map(text),
+    ...list(core.why_it_stands_out).map(text), ...list(core.best_for).map(text),
     text(attrs.scent_family),
   ].filter((value) => value.trim());
 }
@@ -168,7 +172,28 @@ function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = [],
   return matched ? null : 'fragrance_scent_profile_unmatched';
 }
 
+// Read-time / audit verdict on an already-approved edge, from its snapshots alone (no reviewer
+// quotes): a fragrance against a non-fragrance, or two fragrances whose own scent text names no
+// common family. Lenient by design - it hides what no text could justify, while the reviewer rule
+// (fragranceAlternativeRejection) is the strict gate on new approvals.
+// Prod 2026-10-10: 23 of 176 live ai_approved fragrance alternatives (Prada Amber <-> Ariana Grande
+// Ari, Tom Ford Oud Minerale <-> PixiFig, five perfumes <-> a note-less Dior Addict listing).
+function fragranceServingSuppressionReason(anchor = {}, candidate = {}) {
+  const anchorFragrance = isFragranceProduct(anchor);
+  const candidateFragrance = isFragranceProduct(candidate);
+  if (!anchorFragrance && !candidateFragrance) return '';
+  if (anchorFragrance !== candidateFragrance) return 'fragrance_category_mismatch';
+  const familiesOf = (product) => {
+    const families = new Set();
+    for (const value of scentTexts(product)) for (const family of scentFamilies(value)) families.add(family);
+    return families;
+  };
+  const anchorFamilies = familiesOf(anchor);
+  return [...familiesOf(candidate)].some((family) => anchorFamilies.has(family)) ? '' : 'fragrance_no_shared_scent_family';
+}
+
 module.exports = {
+  fragranceServingSuppressionReason,
   isFragranceProduct,
   scentFamilies,
   quotedFromScentText,
