@@ -255,6 +255,9 @@ const {
   DiscoveryValidationError,
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
+  getBuyerMarketWarmMarkets,
+  getBuyerMarketWarmDelayMs,
+  warmBuyerMarketPools,
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
 const { searchCatalogServingGateway } = require('./services/catalogServingGateway');
@@ -52626,6 +52629,17 @@ if (require.main === module) {
           runPdpIdentityAutoResolve();
           setInterval(runPdpIdentityAutoResolve, PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MS);
         }, PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MS);
+      }
+
+      // The discovery buyer-market pool, warmed for the listed markets after boot (one round per
+      // market, sequential), so a cold instance's first SG page is not a thin one. Empty list: no-op.
+      const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();
+      if (buyerMarketWarmMarkets.length > 0) {
+        setTimeout(() => {
+          warmBuyerMarketPools({ markets: buyerMarketWarmMarkets }).catch((err) => {
+            logger.warn({ err: err?.message || String(err) }, 'discovery buyer-market pool warm failed');
+          });
+        }, getBuyerMarketWarmDelayMs());
       }
 
       if (PDP_CORE_PREWARM_ENABLED) {

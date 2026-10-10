@@ -14,7 +14,10 @@ jest.mock('axios');
 jest.mock('../src/db', () => ({ query: jest.fn(async () => ({ rows: [] })) }));
 const axios = require('axios');
 
-const { _internals } = require('../src/services/discoveryFeed');
+const fs = require('fs');
+const path = require('path');
+const discoveryFeedModule = require('../src/services/discoveryFeed');
+const { _internals, warmBuyerMarketPools, getBuyerMarketWarmMarkets, getBuyerMarketWarmDelayMs } = discoveryFeedModule;
 const {
   applyBuyerMarketFallback, fetchBuyerMarketSearchRows, resolveDiscoveryBuyerMarket, resolveDiscoveryCardCurrency,
   buildDiscoveryFeedOnce, resetBuyerMarketPoolCacheForTest, awaitBuyerMarketRoundsForTest, isBuyerMarketPoolRow,
@@ -499,7 +502,7 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     expect(out.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', market: 'SG', status: 200, returned: 6 }));
   });
 
-  test('a hop asks for at most ONE page (60) at offset 0, whatever the candidate limit: the backend proxy 422s above 100', async () => {
+  test('a hop asks for exactly ONE page (60) at offset 0, whatever the page: the pool is the market\'s, one key per market x query', async () => {
     axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
     await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 120 });
     for (const [, config] of axios.get.mock.calls) {
@@ -507,6 +510,11 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
       expect(config.params.offset).toBe(0);
       expect(config.params.limit).toBeLessThanOrEqual(100);
     }
+    // A page with a different candidate limit (a buyer with history computes 48, a cold-start page 120)
+    // reads the SAME pool: no new hop.
+    const again = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 48 });
+    expect(again.cached).toBe(true);
+    expect(axios.get).toHaveBeenCalledTimes(4);
   });
 
   test("the page's own query text replaces the cold-start basket", async () => {
@@ -528,5 +536,107 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     const out = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     expect(out).toEqual({ products: [], recallSummary: [], skipped: 'products_search_api_key_unset' });
     expect(axios.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-10, "(c)")', () => {
+  const prev = {};
+  beforeEach(() => {
+    for (const k of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'DISCOVERY_COLD_START_QUERY_BASKET', 'DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS', 'DISCOVERY_BUYER_MARKET_WARM_MARKETS', 'DISCOVERY_BUYER_MARKET_WARM_DELAY_MS']) prev[k] = process.env[k];
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-token';
+    process.env.DISCOVERY_COLD_START_QUERY_BASKET = 'serum|sunscreen|lip gloss|shampoo';
+    process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS = '300';
+    delete process.env.DISCOVERY_BUYER_MARKET_WARM_MARKETS;
+    axios.get.mockReset();
+    resetBuyerMarketPoolCacheForTest();
+    resetProductsSearchBreaker();
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    resetBuyerMarketPoolCacheForTest();
+    resetProductsSearchBreaker();
+  });
+  const quiet = { info: jest.fn(), warn: jest.fn() };
+
+  test('the list: ISO-2 codes, upper-cased, de-duplicated, split on | , or space; junk dropped; empty by default', () => {
+    expect(getBuyerMarketWarmMarkets({ DISCOVERY_BUYER_MARKET_WARM_MARKETS: 'sg, JP|sg  gb' })).toEqual(['SG', 'JP', 'GB']);
+    expect(getBuyerMarketWarmMarkets({ DISCOVERY_BUYER_MARKET_WARM_MARKETS: 'SGP|en-US|7|s' })).toEqual([]);
+    expect(getBuyerMarketWarmMarkets({})).toEqual([]);
+    expect(getBuyerMarketWarmMarkets({ DISCOVERY_BUYER_MARKET_WARM_MARKETS: '' })).toEqual([]);
+    expect(getBuyerMarketWarmDelayMs()).toBe(3000);
+  });
+
+  test("a warmed market's FIRST page is a cache hit: the warm writes the key the storefront's cold-start browse reads", async () => {
+    axios.get.mockImplementation(async (url, config) => ({ status: 200, data: { products: [sgd(config.params.query)] } }));
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG'], log: quiet });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    for (const [, config] of axios.get.mock.calls) expect(config.params).toEqual(expect.objectContaining({ serving_market: 'SG', limit: 60, offset: 0 }));
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 4, cached: true })]);
+    // The real fallback over the storefront's own payload, with the REAL fetchRows: served from cache, no hop.
+    const payload = { surface: 'browse_products', page: 1, page_size: 24, limit: 24, buyer_market: 'SG', context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    const out = await applyBuyerMarketFallback({ response: page([usd(1)]), payload, buildOnce: harness().buildOnce });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    expect(out.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ applied: true, rows: 4, cache_hit: true }));
+    expect(out.metadata.buyer_market_fallback).not.toHaveProperty('hops_pending');
+    // A returning buyer (history -> a smaller candidate limit) reads the same pool.
+    const withHistory = { ...payload, context: { ...payload.context, recent_queries: ['serum'] } };
+    const out2 = await applyBuyerMarketFallback({ response: page([usd(1)]), payload: withHistory, buildOnce: harness().buildOnce });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    expect(out2.metadata.buyer_market_fallback.cache_hit).toBe(true);
+  });
+
+  test("the deployment's own market and a market nothing is priced for are skipped: nothing to warm, no hop", async () => {
+    axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
+    const outcomes = await warmBuyerMarketPools({ markets: ['US', 'ZZ'], log: quiet });
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([{ market: 'US', skipped: 'deployment_market' }, { market: 'ZZ', skipped: 'unpriceable' }]);
+  });
+
+  test("ONE MARKET AT A TIME: JP's hops start only when SG's round has completed, even past the page budget", async () => {
+    let finishSg = null;
+    axios.get.mockImplementation((url, config) => {
+      if (config.params.serving_market === 'SG') return new Promise((resolve) => { finishSg = finishSg || []; finishSg.push(() => resolve({ status: 200, data: { products: [sgd(config.params.query)] } })); });
+      return Promise.resolve({ status: 200, data: { products: [{ ...sgd(config.params.query), currency: 'JPY' }] } });
+    });
+    const run = warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet });
+    await new Promise((resolve) => setTimeout(resolve, 400)); // past the 300 ms page budget
+    expect(axios.get).toHaveBeenCalledTimes(4); // SG's four, none of JP's
+    expect(axios.get.mock.calls.every(([, c]) => c.params.serving_market === 'SG')).toBe(true);
+    for (const finish of finishSg) finish();
+    const outcomes = await run;
+    expect(axios.get).toHaveBeenCalledTimes(8);
+    expect(outcomes.map((o) => [o.market, o.rows, o.cached])).toEqual([['SG', 4, true], ['JP', 4, true]]);
+  });
+
+  test('a failing upstream never throws out of the warm: the outcome says so and the next market still runs', async () => {
+    axios.get.mockImplementation((url, config) => (config.params.serving_market === 'SG'
+      ? Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }))
+      : Promise.resolve({ status: 200, data: { products: [{ ...sgd(config.params.query), currency: 'JPY' }] } })));
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet });
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 0, cached: false }), expect.objectContaining({ market: 'JP', rows: 4, cached: true })]);
+    expect(quiet.warn).not.toHaveBeenCalled(); // a failed round is an outcome, not an exception
+    expect(isBuyerMarketBreakerOpen('SG')).toBe(true);
+    expect(isBuyerMarketBreakerOpen('JP')).toBe(false);
+  });
+
+  test('a fetch that THROWS is caught per market, logged, and the loop continues', async () => {
+    const fetchRows = jest.fn(async ({ market }) => { if (market === 'SG') throw new Error('boom'); return { products: [sgd(1)], recallSummary: [], skipped: null }; });
+    const log = { info: jest.fn(), warn: jest.fn() };
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], fetchRows, log });
+    expect(outcomes[0]).toEqual({ market: 'SG', error: 'boom' });
+    expect(outcomes[1]).toEqual(expect.objectContaining({ market: 'JP' }));
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ market: 'SG', error: 'boom' }), 'discovery buyer-market pool warm failed');
+  });
+
+  test('server wiring: scheduled after listen for the listed markets only, with the delay, and a failure is logged, not thrown', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+    const block = src.slice(src.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();'));
+    expect(block.length).toBeGreaterThan(0);
+    expect(block.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();')).toBe(0);
+    expect(src.indexOf('app.listen(PORT')).toBeLessThan(src.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();'));
+    expect(block).toMatch(/if \(buyerMarketWarmMarkets\.length > 0\) \{\s*setTimeout\(\(\) => \{\s*warmBuyerMarketPools\(\{ markets: buyerMarketWarmMarkets \}\)\.catch\(/);
+    expect(block).toMatch(/\}, getBuyerMarketWarmDelayMs\(\)\);/);
+    expect(src).toMatch(/warmBuyerMarketPools,\n\} = require\('\.\/services\/discoveryFeed'\);/);
   });
 });
