@@ -56,8 +56,9 @@ const RUBRIC_VERSION = 'v4';
 // reused under the same validator, model and rubric that produced it.
 // v2: inferRelationship's treatment-function, accessory, set, brush and routine-role rules (#2382) refuse
 // some pairs v1 approved and admit complements v1 refused, so no v1 negative verdict is reused.
-// The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed; it admits
-// nothing v2 refused, so a v2 negative verdict is still correct under it and the version is unchanged.
+// The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed, so the
+// validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
+// hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
@@ -119,7 +120,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     '--review-mode consensus (or RELGRAPH_AI_REVIEW_MODE=consensus) requires explicitly pinned GPT and Gemini models.',
@@ -168,6 +169,9 @@ function parseArgs(argv = process.argv.slice(2)) {
   const minScore = parseNumber(argValue(argv, 'min-score'), 0, { min: 0, max: 1 });
   const limit = Math.trunc(parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: MAX_LIMIT }));
   const idsFile = String(argValue(argv, 'ids-file') || '').trim();
+  // Inline label ids (comma-separated), merged with --ids-file: a Cloud Run job can pin its rows in its
+  // args without a shell wrapper writing a file first. Label ids are [A-Za-z0-9_-]; anything else is refused.
+  const ids = parseInlineIds(argValue(argv, 'ids'));
   // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
   // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
   const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();
@@ -206,6 +210,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       { min: 1, max: 1000 },
     )),
     idsFile,
+    ids,
     anchorRefsFile,
     anchorRefsFromBuild,
     verdictsFile,
@@ -223,6 +228,16 @@ function resolvePathMaybeRelative(filePath, cwd = process.cwd()) {
   const text = String(filePath || '').trim();
   if (!text) return '';
   return path.isAbsolute(text) ? text : path.join(cwd, text);
+}
+
+function parseInlineIds(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  const ids = Array.from(new Set(raw.split(',').map((id) => id.trim()).filter(Boolean)));
+  const invalid = ids.find((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id));
+  if (invalid) throw new Error(`--ids: invalid label id ${JSON.stringify(invalid.slice(0, 40))}`);
+  if (ids.length > MAX_LIMIT) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_LIMIT}`);
+  return ids;
 }
 
 function readIdsFile(filePath) {
@@ -1129,10 +1144,11 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
         (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
   }
-  // A perfume is chosen by its scent: an alternative between fragrances must quote notes from both
-  // products (the quotes are already verified verbatim above) that share a scent family.
+  // A perfume is chosen by its scent: an alternative between fragrances must quote notes that share a
+  // scent family, each a whole-word span of that product's own scent text (not taxonomy, tags or brand).
   if (!reason && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(row.relation_type)) {
-    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, quotes) || '';
+    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, quotes,
+      { anchor: evidence.anchor, candidate: evidence.candidate }) || '';
   }
   let suggestedRelationType = '';
   if (!reason && row.relation_type === 'related_product') {
@@ -1377,6 +1393,7 @@ async function runReview({
   minScore,
   limit,
   idsFile = '',
+  ids: inlineIds = [],
   anchorRefsFile = '',
   anchorRefsFromBuild = '',
   verdictsFile = '',
@@ -1410,7 +1427,7 @@ async function runReview({
   }
   const confidenceFloor = Math.max(consensus ? CONSENSUS_MIN_CONFIDENCE : 0,
     parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 }));
-  const ids = readIdsFile(idsFile);
+  const ids = Array.from(new Set([...readIdsFile(idsFile), ...(Array.isArray(inlineIds) ? inlineIds : [])]));
   // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
   // build that produced 0 edges, or a missing/unreadable report).
   const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
@@ -1788,6 +1805,7 @@ module.exports = {
   isRememberedNegative,
   negativeReviewTtlDays,
   parseArgs,
+  parseInlineIds,
   rememberNegativeVerdict,
   reviewPairFingerprint,
   selectReviewCandidates,

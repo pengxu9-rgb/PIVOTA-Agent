@@ -830,3 +830,23 @@ describe('bounded review concurrency', () => {
   });
 });
 
+
+describe('--ids pins label ids inline (no file needed in a job container)', () => {
+  const { parseArgs, parseInlineIds, runReview } = require('../../scripts/review-relationship-candidate-labels');
+  test('parses, trims and de-duplicates comma-separated ids', () => {
+    expect(parseArgs(['--cutoff', '2026-01-01T00:00:00Z', '--ids', 'prel_a, prel_b,prel_a']).ids).toEqual(['prel_a', 'prel_b']);
+    expect(parseArgs(['--cutoff', '2026-01-01T00:00:00Z']).ids).toEqual([]);
+  });
+  test('refuses anything that is not a label id', () => {
+    expect(() => parseInlineIds("prel_a,x'; DROP TABLE")).toThrow(/invalid label id/);
+    expect(() => parseInlineIds('prel_a,a b')).toThrow(/invalid label id/);
+    expect(() => parseInlineIds(Array.from({ length: 5001 }, (_, i) => `prel_${i}`).join(','))).toThrow(/exceeds 5000/);
+  });
+  test('the ids scope the selection exactly like --ids-file', async () => {
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await runReview({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 25, ids: ['prel_a', 'prel_b'], queryFn });
+    const select = queryFn.mock.calls.find(([sql]) => /FROM relationship_candidate_labels/.test(sql) && /label_state = 'generated'/.test(sql));
+    expect(select[0]).toMatch(/AND id = ANY\(\$\d+::text\[\]\)/);
+    expect(select[1]).toContainEqual(['prel_a', 'prel_b']);
+  });
+});

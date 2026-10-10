@@ -9,83 +9,134 @@
 // product_beauty_attributes.scent_family is empty on all 1,454 live fragrance rows and snapshots carry
 // no notes, so the only scent evidence is product text: 584 of those 1,454 descriptions name notes.
 //
-// This module owns two questions: is a product a fragrance, and which scent families does a piece
-// of product text name. The reviewer's validator applies them to the model's quoted, grounded
-// shared_evidence (relationship-graph review), so an approval must quote notes from BOTH products
-// that fall in a common family.
+// This module owns three questions: is a product a fragrance, which scent families does a piece of
+// text name, and does a quoted scent fact really come from a product's scent-bearing text. The
+// reviewer's validator applies them to the model's shared_evidence, so a fragrance approval must
+// quote notes from BOTH products, from their own text, that fall in a common family.
+//
+// Known limit: a note word in a perfume NAME counts ('Rose 31', 'Oud Wood', 'Black Orchid' -> floral
+// although that scent is chocolate/patchouli). Two names sharing a note family can pass on titles.
 
 function text(value) {
   return String(value == null ? '' : value).normalize('NFKC').toLowerCase();
 }
 
-// A perfume job: eau de parfum/toilette/cologne, parfum/perfume (incl. perfume oil), extrait, body or
-// hair mist. 'Fragrance free' / 'unscented' are formula traits of non-fragrance products.
-const FRAGRANCE_TITLE = /\b(?:eau de (?:parfum|toilette|cologne)|edp|edt|parfum|perfumes?|perfume oil|cologne|extrait|(?:body|hair) mist|fragrance mist)\b/;
-const FRAGRANCE_FREE = /\b(?:fragrance|perfume)[ -]free\b|\bunscented\b/;
-// A 'fragrance' category is a SHELF: prod files Tom Ford Oud Wood Conditioning Beard Oil, Hand and Body
-// Moisturizer, Shimmering Body Oil and candles under it (relationshipPairPolicy.optionRole reads them
-// all as 'perfume'). On that shelf a title naming another product form is that form, not a perfume.
-const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|candles?|washes|wash|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lip|lips|serums?|cleansers?|diffusers?|sachets?|mask|polish)\b/;
-
-function isFragranceProduct(snapshot = {}) {
-  const title = text(snapshot.title || snapshot.name || snapshot.display_name);
-  const category = text(snapshot.category || snapshot.product_type).replace(/[_-]+/g, ' ');
-  if (FRAGRANCE_FREE.test(title)) return false;
-  if (FRAGRANCE_TITLE.test(title)) return true;
-  return /\b(?:fragrance|perfume|parfum)\b/.test(category) && !NON_PERFUME_FORM.test(title);
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// --- Is it a fragrance? -------------------------------------------------------------------------
+// Strong forms name a perfume outright; weak forms (a mist) are also skincare and haircare products
+// (SPF body mist, heat-protectant hair mist), so they count only without a skin/hair function word.
+const FRAGRANCE_FREE = /\b(?:fragrance|perfume)[ -]free\b|\bunscented\b/;
+const STRONG_FORM = /\b(?:eau de (?:parfum|toilette|cologne)|edp|edt|parfum|perfumes?|colognes?|extrait)\b/;
+const WEAK_FORM = /\b(?:body|hair|fragrance|perfume) mists?\b/;
+const MIST_FUNCTION = /\b(?:spf|sunscreen|sun|uv|protectant|protection|heat|setting|primer|toner|serum|hydrat\w*|moisturi\w*|detangl\w*|leave[ -]in|deodori\w*|antiperspirant|antioxidant|frizz|shine|volum\w*|texturi\w*)\b/;
+// A 'fragrance' category is a SHELF: prod files Tom Ford Oud Wood Conditioning Beard Oil, Hand and Body
+// Moisturizer, Shimmering Body Oil and candles under it (relationshipPairPolicy.optionRole reads them
+// all as 'perfume'). A title naming another product form is that form, even next to 'eau de parfum'
+// ('Eau de Parfum Hand Cream'), except the perfume forms that are themselves oils or balms.
+const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|butters?|milks?|candles?|washe?s?|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lips?|serums?|cleansers?|diffusers?|sachets?|masks?|polish|sanitiz\w*|foams?|bath|bombs?|room sprays?|home sprays?|incense|after ?shave|shower)\b/;
+const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b/;
+
+function isFragranceProduct(snapshot = {}) {
+  // Both names: the evidence shows the model `name || title`, so classify on what either says.
+  const title = `${text(snapshot.title)} ${text(snapshot.name)} ${text(snapshot.display_name)}`.trim();
+  const category = text(snapshot.category || snapshot.product_type).replace(/[_/-]+/g, ' ');
+  if (FRAGRANCE_FREE.test(title) || FRAGRANCE_FREE.test(category)) return false;
+  if (NON_PERFUME_FORM.test(title) && !PERFUME_OIL_OR_BALM.test(title)) return false;
+  if (STRONG_FORM.test(title) || PERFUME_OIL_OR_BALM.test(title)) return true;
+  if (WEAK_FORM.test(title)) return !MIST_FUNCTION.test(title);
+  return /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
+}
+
+// --- Which scent families does a text name? -----------------------------------------------------
 // Note -> family. Words that are generic outside perfume ('fresh', 'green', 'salt', 'clean') are left
-// out: a quote must name an actual note or accord to count.
+// out: a quote must name an actual note or accord. French spellings perfumers print are included.
 const SCENT_FAMILIES = Object.freeze({
-  citrus: ['bergamot', 'lemon', 'grapefruit', 'mandarin', 'tangerine', 'citrus', 'yuzu', 'lime', 'petitgrain', 'neroli', 'orange zest', 'blood orange', 'sweet orange'],
-  floral: ['rose', 'roses', 'jasmine', 'tuberose', 'peony', 'iris', 'orris', 'violet', 'lily', 'magnolia', 'orange blossom', 'gardenia', 'ylang', 'ylang-ylang', 'floral', 'mimosa', 'freesia', 'lotus', 'heliotrope', 'osmanthus', 'orchid', 'frangipani', 'honeysuckle', 'neroli', 'lilac', 'geranium', 'carnation'],
-  woody: ['oud', 'agarwood', 'sandalwood', 'cedar', 'cedarwood', 'vetiver', 'patchouli', 'guaiac', 'woody', 'cashmeran', 'cashmere wood', 'birch', 'cypress', 'oakmoss', 'moss'],
-  amber: ['amber', 'ambery', 'benzoin', 'labdanum', 'incense', 'oriental', 'resin', 'resins', 'resinous', 'myrrh', 'frankincense', 'olibanum', 'opoponax'],
-  gourmand: ['vanilla', 'caramel', 'praline', 'chocolate', 'cacao', 'cocoa', 'tonka', 'coffee', 'honey', 'gourmand', 'almond', 'marshmallow', 'toffee'],
+  citrus: ['bergamot', 'lemon', 'grapefruit', 'mandarin', 'tangerine', 'citrus', 'yuzu', 'lime', 'petitgrain', 'neroli', 'néroli', 'orange zest', 'blood orange', 'sweet orange', 'bigarade'],
+  floral: ['rose', 'jasmine', 'jasmin', 'tuberose', 'peony', 'iris', 'orris', 'violet', 'lily', 'lilies', 'lily of the valley', 'muguet', 'magnolia', 'orange blossom', 'gardenia', 'ylang', 'ylang ylang', 'floral', 'mimosa', 'freesia', 'lotus', 'heliotrope', 'osmanthus', 'orchid', 'frangipani', 'honeysuckle', 'neroli', 'néroli', 'lilac', 'geranium', 'carnation', 'fleur'],
+  woody: ['oud', 'agarwood', 'sandalwood', 'santal', 'cedar', 'cedarwood', 'vetiver', 'patchouli', 'guaiac', 'woody', 'wood', 'cashmeran', 'cashmere wood', 'birch', 'cypress', 'oakmoss', 'moss', 'bois'],
+  amber: ['amber', 'ambre', 'ambery', 'benzoin', 'labdanum', 'incense', 'oriental', 'resin', 'resinous', 'myrrh', 'frankincense', 'olibanum', 'opoponax'],
+  gourmand: ['vanilla', 'vanille', 'caramel', 'praline', 'chocolate', 'cacao', 'cocoa', 'tonka', 'coffee', 'honey', 'gourmand', 'almond', 'marshmallow', 'toffee'],
   aquatic: ['aquatic', 'marine', 'ocean', 'sea salt', 'ozonic', 'watery', 'sea breeze'],
   green: ['fig', 'fig leaf', 'green tea', 'black tea', 'galbanum', 'basil', 'mint', 'cut grass', 'tomato leaf'],
   spicy: ['pepper', 'peppercorn', 'pink pepper', 'black pepper', 'cardamom', 'cinnamon', 'saffron', 'clove', 'ginger', 'nutmeg', 'spicy'],
-  fruity: ['peach', 'pear', 'apple', 'berry', 'berries', 'cherry', 'plum', 'blackcurrant', 'cassis', 'fruity', 'lychee', 'mango', 'raspberry', 'strawberry', 'apricot', 'pineapple', 'coconut', 'fig fruit'],
-  musk: ['musk', 'musky', 'ambrette', 'white musk'],
-  leather: ['leather', 'suede', 'tobacco'],
-  aromatic: ['lavender', 'sage', 'clary sage', 'rosemary', 'aromatic', 'fougere', 'fougère', 'thyme'],
+  fruity: ['peach', 'pear', 'apple', 'berry', 'berries', 'cherry', 'cherries', 'plum', 'blackcurrant', 'cassis', 'fruity', 'lychee', 'mango', 'raspberry', 'strawberry', 'apricot', 'pineapple', 'coconut'],
+  musk: ['musk', 'musc', 'musky', 'ambrette', 'white musk'],
+  leather: ['leather', 'cuir', 'suede', 'tobacco', 'tabac'],
+  aromatic: ['lavender', 'lavande', 'sage', 'clary sage', 'rosemary', 'aromatic', 'fougere', 'fougère', 'thyme'],
 });
 
+// Letters include accented ones so 'néroli' / 'fougère' are whole words and 'Cloud' never holds 'oud'.
+const LETTER = 'a-z\\u00c0-\\u024f';
 const FAMILY_PATTERNS = Object.entries(SCENT_FAMILIES).map(([family, notes]) => [
   family,
-  new RegExp(`(?:^|[^a-z])(?:${notes.map((note) => note.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[ -]')).join('|')})(?![a-z])`),
+  new RegExp(`(?:^|[^${LETTER}])(?:${notes.map((note) => escapeRegExp(note).replace(/ /g, '[ -]')).join('|')})(?:e?s)?(?![${LETTER}])`),
 ]);
-
-// Shelf taxonomy tags ('floral fragrance profiles', 'warm fragrance profiles') are merchandising
-// buckets, not notes: prod tags Tom Ford Oud Wood Eau de Parfum 'floral'. A quote of one is not scent
-// evidence, so the tag text is removed before matching.
-const SHELF_PROFILE_TAG = /\b[a-z]+[ _]fragrance[ _]profiles?\b/g;
+// The two shelf taxonomy tags prod uses are merchandising buckets, not notes (prod tags Tom Ford Oud
+// Wood Eau de Parfum 'floral'). Only those exact tags are removed; 'a jasmine fragrance profile' stays.
+const SHELF_PROFILE_TAG = /\b(?:floral|warm)[ _]fragrance[ _]profiles?\b/g;
 
 function scentFamilies(value) {
   const haystack = text(value).replace(SHELF_PROFILE_TAG, ' ');
   const families = new Set();
-  if (!haystack) return families;
+  if (!haystack.trim()) return families;
   for (const [family, pattern] of FAMILY_PATTERNS) {
     if (pattern.test(haystack)) families.add(family);
   }
   return families;
 }
 
-// The verdict for one claimed alternative between two products, given the reviewer's quoted pairs
-// (each already verified as a verbatim span of that product's supplied facts).
+// --- Is a quoted scent fact the product's own scent text? -----------------------------------------
+// The reviewer's general grounding accepts any substring of any supplied fact, including taxonomy and
+// tags ('floral' out of 'floral fragrance profiles') and a brand ('Rose' out of 'Henry Rose'). A scent
+// quote must instead be a WHOLE-WORD span of the product's scent-bearing text: its name (brand
+// removed), description, intel highlights, catalog / seed title and description, or a scent_family.
+function scentTexts(product = {}) {
+  const brand = text(product.brand).trim();
+  const withoutBrand = (value) => {
+    const s = text(value);
+    return brand ? s.split(brand).join(' ') : s;
+  };
+  const catalog = product.catalog || {};
+  const seed = product.external_seed || {};
+  const attrs = product.beauty_attrs || {};
+  const list = (value) => (Array.isArray(value) ? value : value == null ? [] : [value]);
+  return [
+    withoutBrand(product.title), withoutBrand(product.name), withoutBrand(catalog.title), withoutBrand(seed.title),
+    text(product.description), text(seed.description), text(catalog.description),
+    ...list(product.why_it_stands_out).map(text), ...list(product.best_for).map(text),
+    text(attrs.scent_family),
+  ].filter((value) => value.trim());
+}
+
+function quotedFromScentText(product, quote) {
+  const needle = text(quote).replace(/\s+/g, ' ').trim();
+  if (!needle) return false;
+  const pattern = new RegExp(`(?:^|[^${LETTER}0-9])${escapeRegExp(needle).replace(/ /g, '\\s+')}(?![${LETTER}0-9])`);
+  return scentTexts(product).some((value) => pattern.test(value));
+}
+
+// The verdict for one claimed alternative between two products, given the reviewer's quoted pairs.
+// `facts` are the product objects the model was shown (the reviewer's evidence); the snapshots are
+// used when no evidence is supplied.
 //   null                                  -> not a fragrance question; other rules decide
 //   'fragrance_category_mismatch'         -> one side is a fragrance, the other is not
-//   'fragrance_scent_profile_unmatched'   -> no quoted pair names a common scent family
-function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = []) {
+//   'fragrance_scent_profile_unmatched'   -> no quoted pair, from both products' own scent text,
+//                                            names a common scent family
+function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = [], facts = {}) {
   const anchorFragrance = isFragranceProduct(anchor);
   const candidateFragrance = isFragranceProduct(candidate);
   if (!anchorFragrance && !candidateFragrance) return null;
   if (anchorFragrance !== candidateFragrance) return 'fragrance_category_mismatch';
+  const anchorFacts = facts.anchor || anchor;
+  const candidateFacts = facts.candidate || candidate;
   const matched = (Array.isArray(quotes) ? quotes : []).some((quote) => {
-    const anchorFamilies = scentFamilies(quote && quote.anchor_fact);
-    if (!anchorFamilies.size) return false;
-    return [...scentFamilies(quote && quote.candidate_fact)].some((family) => anchorFamilies.has(family));
+    if (!quotedFromScentText(anchorFacts, quote && quote.anchor_fact)) return false;
+    if (!quotedFromScentText(candidateFacts, quote && quote.candidate_fact)) return false;
+    const anchorFamilies = scentFamilies(quote.anchor_fact);
+    return [...scentFamilies(quote.candidate_fact)].some((family) => anchorFamilies.has(family));
   });
   return matched ? null : 'fragrance_scent_profile_unmatched';
 }
@@ -93,6 +144,7 @@ function fragranceAlternativeRejection(anchor = {}, candidate = {}, quotes = [])
 module.exports = {
   isFragranceProduct,
   scentFamilies,
+  quotedFromScentText,
   fragranceAlternativeRejection,
   SCENT_FAMILIES,
 };
