@@ -28,6 +28,7 @@ const {
   catalogProductPricedOnlyInCurrencySql,
   seedNativeCurrencySql,
 } = require('./seedSearchOfferScope');
+const { resolveOfferScopeCurrency } = require('./buyerMarketOfferScope');
 
 // The currency every recommended product must be priced in (Peng 2026-09-26: a result priced in
 // another currency must never reach the agent frontend). A caller that says nothing gets the rule's
@@ -2936,7 +2937,9 @@ async function fetchCatalogCandidates({
       -- Only products priced in the buyer's currency (a blank one is refused): the eps_catalog
       -- join above prices only mirror rows, so a minted product priced by its attached SGD seed
       -- would otherwise reach a US buyer as a 'USD' card.
-      WHERE ${catalogProductPricedOnlyInCurrencySql('currency_head', servingCurrencyParam)}
+      WHERE ${catalogProductPricedOnlyInCurrencySql('currency_head', servingCurrencyParam, {
+        allowOtherCurrencyOffers: Boolean(resolveOfferScopeCurrency(recommendationCurrency)),
+      })}
       ORDER BY currency_head.currency_head_rank
       LIMIT ${limitParam}
     `;

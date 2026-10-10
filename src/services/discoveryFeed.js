@@ -9,6 +9,13 @@ const { filterProductsToServingCurrency, isPricedInServingCurrency } = require('
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
 const {
+  applyMarketPricesToIndexRow,
+  isMarketPricesColumnKnownMissing,
+  isMissingMarketPricesColumnError,
+  markMarketPricesColumnMissing,
+  resolveBuyerMarketOfferScope,
+} = require('./buyerMarketOfferScope');
+const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
   recordDiscoveryRecallStep,
@@ -3880,8 +3887,17 @@ function resolveGenericBrowsePrefetchFloor(request) {
   );
 }
 
+// A buyer-market offer scope (buyerMarketOfferScope) changes which prices and offers the canonical
+// readers serve, so a scoped pool must never be handed to another buyer: the scope's market joins
+// the key. Only when there IS a scope, so every unscoped key (flag off, US, silent) is unchanged.
+function buyerOfferScopeCacheKeyPart(request) {
+  const marketScope = resolveBuyerMarketOfferScope(request?.buyer_market);
+  return marketScope ? { buyer_offer_scope: marketScope.market } : {};
+}
+
 function buildDiscoveryContextCacheKey(request) {
   return JSON.stringify({
+    ...buyerOfferScopeCacheKeyPart(request),
     surface: request?.surface || 'unknown',
     sort: request?.sort || 'popular',
     locale: String(request?.context?.locale || '').trim(),
@@ -7903,7 +7919,10 @@ async function loadCatalogCandidates({
       let canonicalSigProducts = null;
       let canonicalSigFailed = false;
       try {
-        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({
+          limit: safeLimit,
+          marketScope: resolveBuyerMarketOfferScope(request.buyer_market),
+        });
       } catch (err) {
         canonicalSigFailed = true;
         providerResults.push(buildProviderErrorResult('canonical_sig', err));
@@ -9698,6 +9717,13 @@ function mapCanonicalIndexRowToProduct(row) {
   };
 }
 
+// The own-offer market + currency the strict-public readers price a card in. US/USD unless a
+// buyer-market offer scope (buyerMarketOfferScope, flag BUYER_MARKET_OFFER_SCOPE) names another;
+// both are validated codes there, so inlining them keeps the US statement byte-identical.
+function strictOwnOfferMarket(marketScope) {
+  return marketScope ? { market: marketScope.market, currency: marketScope.currency } : { market: 'US', currency: 'USD' };
+}
+
 async function fetchBrandScopedCanonicalCandidates({
   brandAliases = [],
   limit = 120,
@@ -9705,8 +9731,15 @@ async function fetchBrandScopedCanonicalCandidates({
   strictPublicSource = false,
   exactBrandQuery = false,
   withListingCategory = false,
+  marketScope = null,
+  marketPricesColumn = true,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
+  const own = strictOwnOfferMarket(marketScope);
+  // The non-strict reader prices a card from agent_pdp_view; for a scoped buyer it also reads the
+  // per-market summary (pivota-backend migration 263) -- unless that column is known to be absent.
+  const readMarketPrices = Boolean(marketScope) && !strictPublicSource && marketPricesColumn &&
+    !isMarketPricesColumnKnownMissing();
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => exactBrandQuery
       ? String(alias || '').trim().toLowerCase()
@@ -9768,11 +9801,12 @@ async function fetchBrandScopedCanonicalCandidates({
           apv.description,
           apv.image_url,
           apv.image_urls,
-          ${strictPublicSource ? "'USD'" : 'apv.currency'} AS currency,
+          ${strictPublicSource ? `'${own.currency}'` : 'apv.currency'} AS currency,
           ${strictPublicSource ? 'own_offers.price_min' : 'apv.price_min'} AS price_min,
           ${strictPublicSource ? 'own_offers.price_max' : 'apv.price_max'} AS price_max,
           ${strictPublicSource ? 'own_offers.offer_count' : 'apv.offer_count'} AS offer_count,
-          ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,
+          ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,${readMarketPrices ? `
+          apv.market_prices,` : ''}
           apv.category_path${withListingCategory ? `,
           -- The listing's own taxonomy (catalog_products.category_path): the
           -- slash path the public PDP serves as product.category_path. Read
@@ -9911,8 +9945,8 @@ async function fetchBrandScopedCanonicalCandidates({
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
-            AND ${buildCanonicalOwnOfferSellerSql()}
-            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
+            AND co.market = '${own.market}' AND co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
         ) own_offers ON TRUE` : ''}
@@ -9923,12 +9957,21 @@ async function fetchBrandScopedCanonicalCandidates({
     );
     return (res.rows || []).filter((row) => !strictPublicSource || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
       .map((row) => {
-        const product = mapCanonicalIndexRowToProduct(row);
+        const product = mapCanonicalIndexRowToProduct(readMarketPrices ? applyMarketPricesToIndexRow(row, marketScope) : row);
         if (product && withListingCategory) product.stored_listing_category_path = row.listing_category_path ?? null;
         return product;
       })
       .filter(Boolean);
   } catch (err) {
+    if (readMarketPrices && isMissingMarketPricesColumnError(err)) {
+      // Migration 263 not applied here yet: remember it, and serve this request exactly as the
+      // flag-off reader would.
+      markMarketPricesColumnMissing();
+      return fetchBrandScopedCanonicalCandidates({
+        brandAliases, limit, failures, strictPublicSource, exactBrandQuery, withListingCategory,
+        marketScope, marketPricesColumn: false,
+      });
+    }
     const message = String(err?.message || err || '');
     if (
       err?.code === 'NO_DATABASE' ||
@@ -9992,8 +10035,9 @@ function browseUsesCanonicalSig() {
 // The request carries no category scope in practice: the only call site is
 // gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
 // scope is set. No category branch is built here for that reason.
-async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = null } = {}) {
+async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = null, marketScope = null } = {}) {
   if (!process.env.DATABASE_URL) return null;
+  const own = strictOwnOfferMarket(marketScope);
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
   const params = signatureIds ? [safeLimit, signatureIds] : [safeLimit];
   if (signatureIds && (!Array.isArray(signatureIds) || !signatureIds.length || signatureIds.some((id) => !/^sig_[a-f0-9]{32}$/.test(id)))) throw new DiscoveryValidationError('Invalid canonical history signature');
@@ -10019,7 +10063,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           apv.description,
           apv.image_url,
           apv.image_urls,
-          'USD' AS currency,
+          '${own.currency}' AS currency,
           own_offers.price_min,
           own_offers.price_max,
           own_offers.offer_count,
@@ -10176,8 +10220,8 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
-            AND ${buildCanonicalOwnOfferSellerSql()}
-            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
+            AND co.market = '${own.market}' AND co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
          ) own_offers ON TRUE
@@ -10297,12 +10341,14 @@ async function loadCanonicalBrandQueryPrimary({ request, profile } = {}) {
       return summary([], null, 'canonical_brand_query_ambiguous');
     }
     const failures = [];
+    const marketScope = resolveBuyerMarketOfferScope(request.buyer_market);
     const products = await fetchBrandScopedCanonicalCandidates({
       brandAliases: [text],
       limit: 400,
       failures,
       strictPublicSource: true,
       exactBrandQuery: true,
+      marketScope,
     });
     if (failures.length) return summary([], null, 'canonical_brand_query_failed');
     const scoped = products
@@ -10312,22 +10358,23 @@ async function loadCanonicalBrandQueryPrimary({ request, profile } = {}) {
         const domain = path[0] === 'fashion' ? 'apparel' : path[0];
         return !profile?.dominantDomain || domain === profile.dominantDomain;
       })
-      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+      .map((product) => scopeCanonicalHistoryProduct(product, marketScope)).filter(Boolean);
     return summary(scoped, 200);
   } catch (err) {
     return summary([], null, classifyDiscoveryQueryError(err));
   }
 }
 
-function scopeCanonicalHistoryProduct(product) {
-  if (product?.currency !== 'USD') return null;
+function scopeCanonicalHistoryProduct(product, marketScope = null) {
+  const own = strictOwnOfferMarket(marketScope);
+  if (product?.currency !== own.currency) return null;
   const offers = (Array.isArray(product?.offers) ? product.offers : []).filter((offer) =>
-    offer?.market === 'US' && offer.currency === 'USD' && offer.availability === 'in_stock' &&
+    offer?.market === own.market && offer.currency === own.currency && offer.availability === 'in_stock' &&
     Number.isFinite(Number(offer.price)) && Number(offer.price) > 0);
   if (!offers.length) return null;
   const { stored_listing_category_path: _storedListingCategoryPath, ...served } = product;
   return { ...served, offers, offers_count: offers.length,
-    price: Math.min(...offers.map((offer) => Number(offer.price))), currency: 'USD' };
+    price: Math.min(...offers.map((offer) => Number(offer.price))), currency: own.currency };
 }
 
 // Canonical history is a stored subject, not permission to trust a caller's brand
@@ -10471,8 +10518,10 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       limit: poolLimit, returned: products.length, status, latencyMs: Date.now() - startedAt,
       ...(error ? { failureReason: error, error } : {}) })],
   });
+  const marketScope = resolveBuyerMarketOfferScope(request.buyer_market);
+  const ownCurrency = strictOwnOfferMarket(marketScope).currency;
   try {
-    const anchors = await fetchCanonicalSigBrowseCandidates({ limit: views.length, signatureIds: views.map((view) => view.product_id) });
+    const anchors = await fetchCanonicalSigBrowseCandidates({ limit: views.length, signatureIds: views.map((view) => view.product_id), marketScope });
     if (!Array.isArray(anchors)) return summary([], null, 'canonical_history_unavailable');
     if (anchors.length !== views.length) return summary([], null, 'canonical_history_subject_not_public');
     const byId = new Map(anchors.map((anchor) => [anchor.product_id, anchor]));
@@ -10498,8 +10547,8 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       const domain = canonicalHistoryProductDomain(anchor);
       if (profile?.dominantDomain && profile.dominantDomain !== domain)
         return summary([], null, 'canonical_history_domain_conflict');
-      if (anchor.currency !== 'USD') return summary([], null, 'canonical_history_currency_mismatch');
-      if (!scopeCanonicalHistoryProduct(anchor)) {
+      if (anchor.currency !== ownCurrency) return summary([], null, 'canonical_history_currency_mismatch');
+      if (!scopeCanonicalHistoryProduct(anchor, marketScope)) {
         const unavailable = summary([], 200);
         unavailable.recallSummary[0].eligibility_reason = 'canonical_history_item_unavailable';
         return unavailable;
@@ -10512,7 +10561,7 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     // not widen this stored-brand request or be silently replaced by it.
     if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
     const failures = [];
-    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true });
+    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true, marketScope });
     if (failures.length) {
       const failed = summary([], null, 'canonical_history_query_failed');
       if (failures.includes('canonical_database_stress')) failed.recallSummary[0].database_stress = true;
@@ -10524,7 +10573,7 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       return allowedBrands.has(normalizeBrandText(product.brand)) &&
         (!domains.size || domains.has(domain)) && (!profile?.dominantDomain || domain === profile.dominantDomain);
     })
-      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+      .map((product) => scopeCanonicalHistoryProduct(product, marketScope)).filter(Boolean);
     // Recorded views are always suppressed from the page. A resolved subject
     // whose stored scope holds nothing else would render "No picks yet", so it
     // is typed (not a failure) and the caller serves the cold canonical feed.
@@ -10615,6 +10664,7 @@ async function computeBrandScopedDirectCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
               failures: failureSink,
+              marketScope: resolveBuyerMarketOfferScope(request?.buyer_market),
             })
           : fetchBrandScopedInternalCatalogCandidates({
               brandAliases: normalizedAliases,
@@ -10717,6 +10767,7 @@ function markBrandDirectCacheHit(value, ageMs, startedAt) {
 // Every input the pool's contents depend on, and nothing else.
 function buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit }) {
   return JSON.stringify({
+    ...buyerOfferScopeCacheKeyPart(request),
     aliases: normalizedAliases,
     // Two brand names that fold to the same aliases ("Señora Skin" and "Senora Skin") produce
     // DIFFERENT scans, because the seed lane keys the indexed brand identity off the unfolded

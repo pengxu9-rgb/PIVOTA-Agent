@@ -1,7 +1,11 @@
 'use strict';
 
 // Shared official own-listing authority for discovery and selected canonical PDP money.
-function buildCanonicalOwnOfferSellerSql() {
+// `currency` is the listing SKU currency the brand-direct referral arm requires: USD unless the
+// discovery feed's buyer-market offer scope names another (a validated ISO code, buyerMarketOfferScope),
+// so every existing caller emits the identical statement.
+function buildCanonicalOwnOfferSellerSql({ currency = 'USD' } = {}) {
+  if (!/^[A-Z]{3}$/.test(String(currency))) throw new Error('buildCanonicalOwnOfferSellerSql: invalid currency');
   return `(
     co.merchant_id = own_cp.merchant_id
     OR (
@@ -40,7 +44,7 @@ function buildCanonicalOwnOfferSellerSql() {
         WHERE listing_sku.sku_key = co.sku_key
           AND listing_sku.product_key = own_cp.product_key
           AND listing_sku.merchant_id = own_cp.merchant_id
-          AND listing_sku.currency = 'USD'
+          AND listing_sku.currency = '${currency}'
           AND listing_sku.suppressed_at IS NULL AND listing_sku.suppression_reason IS NULL
       )
     )
