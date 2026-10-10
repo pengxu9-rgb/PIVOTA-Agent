@@ -171,7 +171,11 @@ function parseArgs(argv = process.argv.slice(2)) {
   const idsFile = String(argValue(argv, 'ids-file') || '').trim();
   // Inline label ids (comma-separated), merged with --ids-file: a Cloud Run job can pin its rows in its
   // args without a shell wrapper writing a file first. Label ids are [A-Za-z0-9_-]; anything else is refused.
+  if (argv.some((arg) => String(arg).startsWith('--ids='))) throw new Error('--ids takes a separate value: --ids <id,id,...>');
   const ids = parseInlineIds(argValue(argv, 'ids'));
+  // Passing --ids at all asks for an id scope, even if its value is missing or empty: that must review
+  // nothing, never fall through to the global backlog (with --apply that would approve unrelated rows).
+  const idsScopeRequested = argv.includes('--ids') || Boolean(idsFile);
   // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
   // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
   const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();
@@ -211,6 +215,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     )),
     idsFile,
     ids,
+    idsScopeRequested,
     anchorRefsFile,
     anchorRefsFromBuild,
     verdictsFile,
@@ -1394,6 +1399,7 @@ async function runReview({
   limit,
   idsFile = '',
   ids: inlineIds = [],
+  idsScopeRequested = false,
   anchorRefsFile = '',
   anchorRefsFromBuild = '',
   verdictsFile = '',
@@ -1428,6 +1434,10 @@ async function runReview({
   const confidenceFloor = Math.max(consensus ? CONSENSUS_MIN_CONFIDENCE : 0,
     parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 }));
   const ids = Array.from(new Set([...readIdsFile(idsFile), ...(Array.isArray(inlineIds) ? inlineIds : [])]));
+  const idScopeRequested = Boolean(idsScopeRequested || String(idsFile || '').trim() || (Array.isArray(inlineIds) && inlineIds.length));
+  // Pinned ids are the whole request: the limit never truncates them (a 1,000-id batch under the default
+  // limit of 250 would otherwise review 250 and report nothing about the rest).
+  const effectiveLimit = ids.length ? Math.max(limit, Math.min(ids.length, MAX_LIMIT)) : limit;
   // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
   // build that produced 0 edges, or a missing/unreadable report).
   const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
@@ -1475,10 +1485,11 @@ async function runReview({
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
   let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
-  if (!(anchorScopeRequested && anchorRefs.length === 0)) {
+  // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
+  if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
     selection = consensus
-      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit, queryFn }) }
-      : await selectReviewCandidates({ limit, fetchOptions, queryFn, memory });
+      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn }) }
+      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
@@ -1676,8 +1687,12 @@ async function runReview({
     dry_run: !apply,
     cutoff,
     min_score: minScore,
-    limit,
+    limit: effectiveLimit,
     ids_filter_count: ids.length,
+    ids_scope_requested: idScopeRequested,
+    // Pinned ids not selected: no longer generated, before the cutoff, below min-score, filtered by
+    // relation type, or skipped by negative memory.
+    ids_not_selected_count: ids.length ? Math.max(0, ids.length - rows.length) : 0,
     anchor_refs_scope_requested: anchorScopeRequested,
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,

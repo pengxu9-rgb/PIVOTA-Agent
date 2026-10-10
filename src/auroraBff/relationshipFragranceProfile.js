@@ -37,16 +37,31 @@ const MIST_FUNCTION = /\b(?:spf|sunscreen|sun|uv|protectant|protection|heat|sett
 // all as 'perfume'). A title naming another product form is that form, even next to 'eau de parfum'
 // ('Eau de Parfum Hand Cream'), except the perfume forms that are themselves oils or balms.
 const NON_PERFUME_FORM = /\b(?:oils?|moisturi[sz]ers?|lotions?|creams?|balms?|butters?|milks?|candles?|washe?s?|gels?|soaps?|shampoos?|conditioners?|conditioning|deodorants?|scrubs?|powders?|lips?|serums?|cleansers?|diffusers?|sachets?|masks?|polish|sanitiz\w*|foams?|bath|bombs?|room sprays?|home sprays?|incense|after ?shave|shower)\b/;
-const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b/;
+const PERFUME_OIL_OR_BALM = /\b(?:perfume|parfum|fragrance) (?:oils?|balms?)\b|\b(?:oil|balm) (?:perfume|parfum)\b|\bsolid perfume\b|\bextrait (?:de parfum )?oil\b|\b(?:oil )?roll(?:er ?ball|-on| on)\b/;
+
+function lastIndexOf(pattern, value) {
+  const global = new RegExp(pattern.source, 'g');
+  let last = -1;
+  for (let match = global.exec(value); match; match = global.exec(value)) last = match.index;
+  return last;
+}
 
 function isFragranceProduct(snapshot = {}) {
   // Both names: the evidence shows the model `name || title`, so classify on what either says.
-  const title = `${text(snapshot.title)} ${text(snapshot.name)} ${text(snapshot.display_name)}`.trim();
+  const names = [text(snapshot.title), text(snapshot.name), text(snapshot.display_name)].filter((value) => value.trim());
   const category = text(snapshot.category || snapshot.product_type).replace(/[_/-]+/g, ' ');
-  if (FRAGRANCE_FREE.test(title) || FRAGRANCE_FREE.test(category)) return false;
-  if (NON_PERFUME_FORM.test(title) && !PERFUME_OIL_OR_BALM.test(title)) return false;
-  if (STRONG_FORM.test(title) || PERFUME_OIL_OR_BALM.test(title)) return true;
-  if (WEAK_FORM.test(title)) return !MIST_FUNCTION.test(title);
+  const all = names.join(' ');
+  if (FRAGRANCE_FREE.test(all) || FRAGRANCE_FREE.test(category)) return false;
+  if (PERFUME_OIL_OR_BALM.test(all)) return true;
+  // The product noun comes last: 'Bubble Bath Eau de Toilette' and 'Milk Eau de Parfum' are perfumes
+  // named after a scent; 'Eau de Parfum Hand Cream' and 'Rose Extrait Face Oil' are not perfumes.
+  const strongLast = names.some((name) => {
+    const strong = lastIndexOf(STRONG_FORM, name);
+    return strong >= 0 && lastIndexOf(NON_PERFUME_FORM, name) < strong;
+  });
+  if (strongLast) return true;
+  if (NON_PERFUME_FORM.test(all)) return false;
+  if (WEAK_FORM.test(all)) return !MIST_FUNCTION.test(all);
   return /\b(?:fragrance|fragrances|perfume|perfumes|parfum)\b/.test(category);
 }
 
@@ -77,9 +92,12 @@ const FAMILY_PATTERNS = Object.entries(SCENT_FAMILIES).map(([family, notes]) => 
 // The two shelf taxonomy tags prod uses are merchandising buckets, not notes (prod tags Tom Ford Oud
 // Wood Eau de Parfum 'floral'). Only those exact tags are removed; 'a jasmine fragrance profile' stays.
 const SHELF_PROFILE_TAG = /\b(?:floral|warm)[ _]fragrance[ _]profiles?\b/g;
+// Packaging colours and carrier oils share words with notes: 'amber glass bottle', 'rose gold cap',
+// 'mint green box', 'fractionated coconut oil', 'sweet almond oil' are not scents (review r2).
+const NON_SCENT_PHRASE = /\b(?:amber|rose|mint|lavender|peach|cherry|lilac|violet)[ -](?:glass|gold|green|jars?|bottles?|vials?|tint(?:ed)?|colou?r(?:ed)?|caps?|packaging|boxe?s?|pink|blush)\b|\b(?:fractionated |sweet )?(?:coconut|almond|apricot(?: kernel)?|jojoba|grapeseed|vanilla planifolia fruit)[ -](?:oil|butter|milk|extract)s?\b/g;
 
 function scentFamilies(value) {
-  const haystack = text(value).replace(SHELF_PROFILE_TAG, ' ');
+  const haystack = text(value).replace(SHELF_PROFILE_TAG, ' ').replace(NON_SCENT_PHRASE, ' ');
   const families = new Set();
   if (!haystack.trim()) return families;
   for (const [family, pattern] of FAMILY_PATTERNS) {

@@ -842,6 +842,38 @@ describe('--ids pins label ids inline (no file needed in a job container)', () =
     expect(() => parseInlineIds('prel_a,a b')).toThrow(/invalid label id/);
     expect(() => parseInlineIds(Array.from({ length: 5001 }, (_, i) => `prel_${i}`).join(','))).toThrow(/exceeds 5000/);
   });
+  test('an id scope that resolves to nothing reviews nothing (never the global backlog)', async () => {
+    for (const argv of [['--ids', ''], ['--ids', ',, ,'], ['--ids'], ['--ids', '--apply']]) {
+      const args = parseArgs(['--cutoff', '2026-01-01T00:00:00Z', ...argv]);
+      expect([argv, args.idsScopeRequested, args.ids]).toEqual([argv, true, []]);
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+      const { summary } = await runReview({ ...args, apply: false, queryFn });
+      expect(queryFn.mock.calls.some(([sql]) => /label_state = 'generated'/.test(sql))).toBe(false);
+      expect(summary.reviewed_count).toBe(0);
+    }
+    expect(() => parseArgs(['--cutoff', '2026-01-01T00:00:00Z', '--ids=prel_a,prel_b'])).toThrow(/separate value/);
+  });
+  test('pinned ids are never truncated by the default limit', async () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => `prel_${i}`);
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    const { summary } = await runReview({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 250, ids, queryFn });
+    const select = queryFn.mock.calls.find(([sql]) => /label_state = 'generated'/.test(sql));
+    expect(select[1]).toContain(1000);
+    expect(summary).toMatchObject({ limit: 1000, ids_filter_count: 1000, ids_scope_requested: true, ids_not_selected_count: 1000 });
+  });
+  test('--ids and --ids-file are merged', async () => {
+    const fs = require('fs'); const os = require('os'); const path = require('path');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ids-')), 'ids.txt');
+    fs.writeFileSync(file, 'prel_file\n');
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await runReview({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 25, idsFile: file, ids: ['prel_inline'], queryFn });
+    const select = queryFn.mock.calls.find(([sql]) => /label_state = 'generated'/.test(sql));
+    expect(select[1]).toContainEqual(['prel_file', 'prel_inline']);
+  });
+  test('an id longer than 128 characters is refused', () => {
+    expect(() => parseInlineIds(`prel_${'a'.repeat(124)}`)).toThrow(/invalid label id/);
+    expect(parseInlineIds(`prel_${'a'.repeat(123)}`)).toHaveLength(1);
+  });
   test('the ids scope the selection exactly like --ids-file', async () => {
     const queryFn = jest.fn(async () => ({ rows: [] }));
     await runReview({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 25, ids: ['prel_a', 'prel_b'], queryFn });

@@ -36,6 +36,13 @@ describe('isFragranceProduct', () => {
     [product('Sol de Janeiro', 'Cheirosa 62 Perfume Mist', 'body mist')],
     [product('Sol de Janeiro', 'Brazilian Crush Body Mist', 'beauty')],
     [product('Gisou', 'Honey Infused Hair Perfume', 'hair')],
+    // Perfumes named after a scent that is also a product word (review r2): the product noun is last.
+    [product('Maison Margiela', 'Replica Bubble Bath Eau de Toilette', 'fragrance')],
+    [product('Maison X', 'Milk Eau de Parfum', 'fragrance')],
+    [product('Maison X', 'Shower Fresh Eau de Parfum', 'fragrance')],
+    [product('Maison X', 'Gel Eau de Toilette', 'fragrance')],
+    [product('Maison X', 'Vanilla Musk Oil Rollerball', 'fragrance')],
+    [product('Maison X', 'Amber Solid Perfume Balm', 'fragrance')],
   ].map(([p]) => [p.title, p]))('%s is a fragrance', (_title, p) => expect(isFragranceProduct(p)).toBe(true));
 
   test.each([
@@ -97,6 +104,12 @@ describe('scentFamilies', () => {
     expect(families('a jasmine fragrance profile')).toEqual(['floral']);
     expect(families('woody fragrance profile')).toEqual(['woody']);
   });
+  test('packaging colours and carrier oils are not notes (review r2)', () => {
+    for (const quote of ['amber glass bottle', 'fractionated coconut oil', 'rose gold cap', 'mint green box', 'sweet almond oil', 'recyclable amber glass']) {
+      expect([quote, families(quote)]).toEqual([quote, []]);
+    }
+    expect(families('notes of amber and coconut')).toEqual(['amber', 'fruity']);
+  });
   test('a note inside a longer word is not that note', () => {
     expect(scentFamilies('with rosemary leaf').has('floral')).toBe(false);
     expect(scentFamilies('with rosemary leaf').has('aromatic')).toBe(true);
@@ -122,6 +135,14 @@ describe('quotedFromScentText', () => {
     expect(quotedFromScentText(p, 'floral')).toBe(false);
     expect(quotedFromScentText(p, 'Rose')).toBe(false);
     expect(quotedFromScentText(p, 'rose')).toBe(false);
+    expect(quotedFromScentText(product('Maison X', 'Primrose Eau de Parfum', 'fragrance'), 'rose')).toBe(false);
+  });
+  test('quotes match across whitespace runs', () => {
+    expect(quotedFromScentText(p, 'clary   sage  over vetiver')).toBe(true);
+  });
+  test('notes only in intel highlights or best_for count (the evidence the model saw)', () => {
+    expect(quotedFromScentText({ title: 'X Eau de Parfum', why_it_stands_out: ['A smoky oud and saffron accord'] }, 'smoky oud')).toBe(true);
+    expect(quotedFromScentText({ title: 'X Eau de Parfum', best_for: ['fans of white musk'] }, 'white musk')).toBe(true);
   });
 });
 
@@ -190,6 +211,15 @@ describe('the reviewer validator applies the fragrance rule to approvals', () =>
     const e = edge(jasmine, oudWood);
     expect(validateRecommendationDecision(e, approval([{ anchor_fact: 'night-blooming jasmine', candidate_fact: 'floral' }])).utility_rejection)
       .toBe('fragrance_scent_profile_unmatched');
+  });
+  test('notes the model saw only in intel highlights are judged from the evidence, not the bare snapshot', () => {
+    const intelOnly = product('Maison X', 'Nuit Eau de Parfum', 'fragrance', {
+      category_taxonomy: ['fragrance', 'floral fragrance profiles'],
+      product_intel: { product_intel_core: { why_it_stands_out: ['sandalwood and smoked cedar at its base'] } },
+    });
+    const e = edge(intelOnly, oudWood);
+    expect(validateRecommendationDecision(e, approval([{ anchor_fact: 'sandalwood and smoked cedar', candidate_fact: 'sandalwood and vetiver' }])).verdict)
+      .toBe('approve');
   });
   test('verbatim note quotes sharing a family: approved', () => {
     const e = edge(flaura, oudWood);
