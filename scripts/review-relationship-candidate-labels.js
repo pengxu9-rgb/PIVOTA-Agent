@@ -47,6 +47,7 @@ const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, val
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
+const { fragranceAlternativeRejection } = require('../src/auroraBff/relationshipFragranceProfile');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -55,6 +56,8 @@ const RUBRIC_VERSION = 'v4';
 // reused under the same validator, model and rubric that produced it.
 // v2: inferRelationship's treatment-function, accessory, set, brush and routine-role rules (#2382) refuse
 // some pairs v1 approved and admit complements v1 refused, so no v1 negative verdict is reused.
+// The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed; it admits
+// nothing v2 refused, so a v2 negative verdict is still correct under it and the version is unchanged.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
@@ -762,6 +765,7 @@ function buildReviewPrompt(evidence, { factualQuotes = false } = {}) {
     '- niche_specialist means candidate is a more focused/specialized answer to the anchor or need use case.',
     '- related_product must be a complement: explain the different step or area and evidence for using them alongside one another. Same brand/line/routine alone is insufficient. Distinct-line substitutes belong to competitive_alternative, not related_product.',
     '- competitive_alternative may be same-brand when it is a distinct line/formulation. Another colour/style of one collection is still a variant.',
+    '- Fragrance (eau de parfum/toilette, perfume, cologne, body mist): a shared category is not a substitute. Approve only when both products\' supplied facts name scent notes or a scent family in common (for example woody, floral, citrus, amber, gourmand), and quote those notes as shared_evidence. Otherwise reject. A fragrance and a non-fragrance product are never alternatives.',
     '- A dupe requires concrete formula/ingredient or curated pair/performance evidence, plus fresh comparable price evidence. Similar names/categories alone cannot establish a dupe or equivalent performance.',
     '- For every approval choose shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product. These attributed facts explain the choice.',
     '- Copy recommendation_reason, tradeoffs and watchouts EXACTLY from consumer_copy_by_kind[relationship_kind]. Do not add, rewrite or omit text. Shopper copy is deterministic: source quotes carry supported differences; formula/performance/safety equivalence remains unknown. Your rationale is internal and must never be copied into shopper fields.',
@@ -1124,6 +1128,11 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     });
     if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
         (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
+  }
+  // A perfume is chosen by its scent: an alternative between fragrances must quote notes from both
+  // products (the quotes are already verified verbatim above) that share a scent family.
+  if (!reason && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(row.relation_type)) {
+    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, quotes) || '';
   }
   let suggestedRelationType = '';
   if (!reason && row.relation_type === 'related_product') {

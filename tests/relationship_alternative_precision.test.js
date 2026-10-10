@@ -5,6 +5,7 @@
 const real = require('./fixtures/relgraph_alternative_precision_2026_10_09.json');
 const { buildEdgeForCandidate, __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { validateRecommendationDecision, consumerCopyForKind } = require('../scripts/review-relationship-candidate-labels');
+const { isFragranceProduct } = require('../src/auroraBff/relationshipFragranceProfile');
 
 const NOW = '2026-10-09T00:00:00.000Z';
 const snapshot = (side, ref) => ({ product_ref: ref, brand: side.brand, name: side.name, title: side.name, category: side.category,
@@ -48,8 +49,20 @@ describe('reviewer: an alternative approval on these pairs is refused by the sam
     expect(validateRecommendationDecision(e, approval(e.anchor_snapshot, e.candidate_snapshot))).toMatchObject({
       verdict: 'reject', utility_rejection: 'structural_or_dupe_evidence_mismatch' });
   });
+  const fragrancePair = (e) => isFragranceProduct(e.anchor_snapshot) && isFragranceProduct(e.candidate_snapshot);
   test.each(guards.map((row) => [row.anchor.name, row.candidate.name, row]))('guard still approvable: %s || %s', (_a, _b, row) => {
     const e = edge(row);
+    // A perfume pair stays a structural alternative, but its approval must quote a shared scent
+    // (relationshipFragranceProfile): titles alone are refused, grounded shared notes are approved.
+    if (fragrancePair(e)) {
+      expect(validateRecommendationDecision(e, approval(e.anchor_snapshot, e.candidate_snapshot)))
+        .toMatchObject({ verdict: 'reject', utility_rejection: 'fragrance_scent_profile_unmatched' });
+      const noted = { ...e, anchor_snapshot: { ...e.anchor_snapshot, description: 'tobacco leaf, vanilla and tonka bean' },
+        candidate_snapshot: { ...e.candidate_snapshot, description: 'black truffle, dark chocolate and vanilla' } };
+      expect(validateRecommendationDecision(noted, { ...approval(noted.anchor_snapshot, noted.candidate_snapshot),
+        shared_evidence: [{ anchor_fact: 'vanilla and tonka bean', candidate_fact: 'dark chocolate and vanilla' }] }).verdict).toBe('approve');
+      return;
+    }
     expect(validateRecommendationDecision(e, approval(e.anchor_snapshot, e.candidate_snapshot)).verdict).toBe('approve');
   });
 });
