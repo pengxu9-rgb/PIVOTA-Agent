@@ -256,7 +256,7 @@ const {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   getBuyerMarketWarmMarkets,
-  getBuyerMarketWarmDelayMs,
+  resolveBuyerMarketWarmStartDelayMs,
   warmBuyerMarketPools,
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
@@ -52632,14 +52632,16 @@ if (require.main === module) {
       }
 
       // The discovery buyer-market pool, warmed for the listed markets after boot (one round per
-      // market, sequential), so a cold instance's first SG page is not a thin one. Empty list: no-op.
+      // market, sequential, retried while partial), so a cold instance's first SG page is not a thin
+      // one. The start is jittered per instance: after a deploy every instance boots at once, and
+      // their broad hops together on the primary are what made the first warm partial. Empty list: no-op.
       const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();
       if (buyerMarketWarmMarkets.length > 0) {
         setTimeout(() => {
           warmBuyerMarketPools({ markets: buyerMarketWarmMarkets }).catch((err) => {
             logger.warn({ err: err?.message || String(err) }, 'discovery buyer-market pool warm failed');
           });
-        }, getBuyerMarketWarmDelayMs());
+        }, resolveBuyerMarketWarmStartDelayMs());
       }
 
       if (PDP_CORE_PREWARM_ENABLED) {

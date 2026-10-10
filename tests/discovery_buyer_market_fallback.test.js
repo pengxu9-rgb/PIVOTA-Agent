@@ -17,7 +17,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const discoveryFeedModule = require('../src/services/discoveryFeed');
-const { _internals, warmBuyerMarketPools, getBuyerMarketWarmMarkets, getBuyerMarketWarmDelayMs } = discoveryFeedModule;
+const { _internals, warmBuyerMarketPools, getBuyerMarketWarmMarkets, getBuyerMarketWarmDelayMs, resolveBuyerMarketWarmStartDelayMs } = discoveryFeedModule;
 const {
   applyBuyerMarketFallback, fetchBuyerMarketSearchRows, resolveDiscoveryBuyerMarket, resolveDiscoveryCardCurrency,
   buildDiscoveryFeedOnce, resetBuyerMarketPoolCacheForTest, awaitBuyerMarketRoundsForTest, isBuyerMarketPoolRow,
@@ -248,22 +248,31 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     resetProductsSearchBreaker();
   });
 
-  test("the hops run IN PARALLEL, each under the lane's own products_search timeout, NOT the page budget", async () => {
+  test("the hops run IN PARALLEL, each under the fallback's own hop timeout (15 s, env-tunable), NOT the page budget and NOT the live lane's 6.5 s", async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS = '6500';
     const pending = [];
     axios.get.mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
     const run = fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     await new Promise((resolve) => setImmediate(resolve));
     expect(pending).toHaveLength(4); // all four in flight before any answered
-    // The broad cold-start queries take 2.6-7.3 s at the REST door; a hop clamped to the 1.8 s page
-    // budget timed out on every page and the page never saw the market's pool.
-    for (const [, config] of axios.get.mock.calls) expect(config.timeout).toBe(6500);
+    // The broad cold-start queries take 2.6-7.3 s at the REST door alone and longer when four instances
+    // warm together; a hop clamped to the 1.8 s page budget timed out on every page, and under the live
+    // lane's 6.5 s the warm landed partial on 5 of 6 instances. No page waits on a round, so a hop gets 15 s.
+    for (const [, config] of axios.get.mock.calls) expect(config.timeout).toBe(15000);
     for (const resolve of pending) resolve({ status: 200, data: { products: [sgd('p')] } });
     const out = await run;
     expect(out.products).toHaveLength(1);
     expect(out.cached).toBe(false);
+    expect(out.complete).toBe(true);
     expect(out.hops_pending).toBeUndefined();
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS;
+    // Env-tunable, clamped to [1 s, 60 s].
+    process.env.DISCOVERY_BUYER_MARKET_HOP_TIMEOUT_MS = '90000';
+    axios.get.mockReset(); axios.get.mockResolvedValue({ status: 200, data: { products: [sgd('q')] } });
+    resetBuyerMarketPoolCacheForTest();
+    await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'JP', servingCurrency: 'JPY' });
+    expect(axios.get.mock.calls[0][1].timeout).toBe(60000);
+    delete process.env.DISCOVERY_BUYER_MARKET_HOP_TIMEOUT_MS;
   });
 
   test('a hop slower than the page budget: the page takes what answered (the hop stamped pending), the round FINISHES into the cache, and the breaker saw its success', async () => {
@@ -411,17 +420,24 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     const now = () => clock;
     const first = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
     expect(first.products).toHaveLength(3);
+    expect(first.complete).toBe(false);
     expect(first.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', failure_reason: 'timeout' }));
     expect(axios.get).toHaveBeenCalledTimes(4);
     clock += 119_000;
     const inside = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
-    expect(inside).toEqual(expect.objectContaining({ cached: true, products: first.products }));
+    expect(inside).toEqual(expect.objectContaining({ cached: true, complete: false, products: first.products }));
     expect(inside.stale).toBeUndefined();
     expect(axios.get).toHaveBeenCalledTimes(4);
-    clock += 2_000; // 121 s: past the partial TTL (2 min), well inside the positive one (10 min)
+    // `refresh`: a fresh PARTIAL entry is not an answer for the warm's retry; a round runs now and its
+    // own answer is returned (here still partial: the hop still fails).
+    const refreshed = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', now, refresh: true });
+    expect(refreshed).toEqual(expect.objectContaining({ cached: false, complete: false }));
+    expect(refreshed.products).toHaveLength(3);
+    expect(axios.get).toHaveBeenCalledTimes(8);
+    clock += 121_000; // past the refreshed entry's partial TTL (2 min), well inside the positive one (10 min)
     const retried = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
     expect(retried).toEqual(expect.objectContaining({ cached: true, stale: true }));
-    expect(axios.get).toHaveBeenCalledTimes(8);
+    expect(axios.get).toHaveBeenCalledTimes(12);
     await awaitBuyerMarketRoundsForTest();
   });
 
@@ -558,6 +574,7 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
     resetProductsSearchBreaker();
   });
   const quiet = { info: jest.fn(), warn: jest.fn() };
+  const noSleep = jest.fn(async () => undefined);
 
   test('the list: ISO-2 codes, upper-cased, de-duplicated, split on | , or space; junk dropped; empty by default', () => {
     expect(getBuyerMarketWarmMarkets({ DISCOVERY_BUYER_MARKET_WARM_MARKETS: 'sg, JP|sg  gb' })).toEqual(['SG', 'JP', 'GB']);
@@ -569,10 +586,11 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
 
   test("a warmed market's FIRST page is a cache hit: the warm writes the key the storefront's cold-start browse reads", async () => {
     axios.get.mockImplementation(async (url, config) => ({ status: 200, data: { products: [sgd(config.params.query)] } }));
-    const outcomes = await warmBuyerMarketPools({ markets: ['SG'], log: quiet });
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG'], log: quiet, sleep: noSleep });
     expect(axios.get).toHaveBeenCalledTimes(4);
     for (const [, config] of axios.get.mock.calls) expect(config.params).toEqual(expect.objectContaining({ serving_market: 'SG', limit: 60, offset: 0 }));
-    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 4, cached: true })]);
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 4, cached: true, complete: true, attempts: 1 })]);
+    expect(noSleep).not.toHaveBeenCalled();
     // The real fallback over the storefront's own payload, with the REAL fetchRows: served from cache, no hop.
     const payload = { surface: 'browse_products', page: 1, page_size: 24, limit: 24, buyer_market: 'SG', context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
     const out = await applyBuyerMarketFallback({ response: page([usd(1)]), payload, buildOnce: harness().buildOnce });
@@ -588,7 +606,7 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
 
   test("the deployment's own market and a market nothing is priced for are skipped: nothing to warm, no hop", async () => {
     axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
-    const outcomes = await warmBuyerMarketPools({ markets: ['US', 'ZZ'], log: quiet });
+    const outcomes = await warmBuyerMarketPools({ markets: ['US', 'ZZ'], log: quiet, sleep: noSleep });
     expect(axios.get).not.toHaveBeenCalled();
     expect(outcomes).toEqual([{ market: 'US', skipped: 'deployment_market' }, { market: 'ZZ', skipped: 'unpriceable' }]);
   });
@@ -599,7 +617,7 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
       if (config.params.serving_market === 'SG') return new Promise((resolve) => { finishSg = finishSg || []; finishSg.push(() => resolve({ status: 200, data: { products: [sgd(config.params.query)] } })); });
       return Promise.resolve({ status: 200, data: { products: [{ ...sgd(config.params.query), currency: 'JPY' }] } });
     });
-    const run = warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet });
+    const run = warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet, sleep: noSleep });
     await new Promise((resolve) => setTimeout(resolve, 400)); // past the 300 ms page budget
     expect(axios.get).toHaveBeenCalledTimes(4); // SG's four, none of JP's
     expect(axios.get.mock.calls.every(([, c]) => c.params.serving_market === 'SG')).toBe(true);
@@ -613,8 +631,10 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
     axios.get.mockImplementation((url, config) => (config.params.serving_market === 'SG'
       ? Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }))
       : Promise.resolve({ status: 200, data: { products: [{ ...sgd(config.params.query), currency: 'JPY' }] } })));
-    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet });
-    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 0, cached: false }), expect.objectContaining({ market: 'JP', rows: 4, cached: true })]);
+    const sleep = jest.fn(async () => undefined);
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], log: quiet, sleep });
+    // SG: the all-failed first round opened SG's breaker, so the retry is `skipped` and the warm stops there.
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 0, cached: false, complete: false, skipped: 'products_search_circuit_open', attempts: 2 }), expect.objectContaining({ market: 'JP', rows: 4, cached: true, complete: true, attempts: 1 })]);
     expect(quiet.warn).not.toHaveBeenCalled(); // a failed round is an outcome, not an exception
     expect(isBuyerMarketBreakerOpen('SG')).toBe(true);
     expect(isBuyerMarketBreakerOpen('JP')).toBe(false);
@@ -623,20 +643,77 @@ describe('warmBuyerMarketPools: the pool warmed at instance start (Peng 2026-10-
   test('a fetch that THROWS is caught per market, logged, and the loop continues', async () => {
     const fetchRows = jest.fn(async ({ market }) => { if (market === 'SG') throw new Error('boom'); return { products: [sgd(1)], recallSummary: [], skipped: null }; });
     const log = { info: jest.fn(), warn: jest.fn() };
-    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], fetchRows, log });
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG', 'JP'], fetchRows, log, sleep: noSleep });
     expect(outcomes[0]).toEqual({ market: 'SG', error: 'boom' });
     expect(outcomes[1]).toEqual(expect.objectContaining({ market: 'JP' }));
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ market: 'SG', error: 'boom' }), 'discovery buyer-market pool warm failed');
   });
 
-  test('server wiring: scheduled after listen for the listed markets only, with the delay, and a failure is logged, not thrown', () => {
+  test('a PARTIAL warm (a broad hop timed out) is tried again after a backoff, doubling, until a FULL round lands; the outcome counts the attempts', async () => {
+    let serumCalls = 0;
+    axios.get.mockImplementation(async (url, config) => {
+      if (config.params.query === 'serum') {
+        serumCalls += 1;
+        if (serumCalls <= 2) throw Object.assign(new Error('timeout of 15000ms exceeded'), { code: 'ECONNABORTED' });
+        return { status: 200, data: { products: [sgd('serum_a'), sgd('serum_b')] } };
+      }
+      return { status: 200, data: { products: [sgd(config.params.query)] } };
+    });
+    const sleep = jest.fn(async () => undefined);
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG'], log: quiet, sleep });
+    // Three rounds: partial, partial, full. The waits: 20 s, then 40 s.
+    expect(axios.get).toHaveBeenCalledTimes(12);
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([20000, 40000]);
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 5, cached: true, complete: true, attempts: 3 })]);
+    // The pool the first page reads is the FULL one, under the positive TTL.
+    const payload = { surface: 'browse_products', page: 1, page_size: 24, limit: 24, buyer_market: 'SG', context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    const out = await applyBuyerMarketFallback({ response: page([usd(1)]), payload, buildOnce: harness().buildOnce });
+    expect(axios.get).toHaveBeenCalledTimes(12);
+    expect(out.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ applied: true, rows: 5, cache_hit: true }));
+  });
+
+  test('the retries stop at the attempt cap (4 by default, env-tunable): a market whose broad hop never answers is left partial, logged as such', async () => {
+    axios.get.mockImplementation(async (url, config) => {
+      if (config.params.query === 'serum') throw Object.assign(new Error('timeout of 15000ms exceeded'), { code: 'ECONNABORTED' });
+      return { status: 200, data: { products: [sgd(config.params.query)] } };
+    });
+    const sleep = jest.fn(async () => undefined);
+    const log = { info: jest.fn(), warn: jest.fn() };
+    const outcomes = await warmBuyerMarketPools({ markets: ['SG'], log, sleep });
+    expect(axios.get).toHaveBeenCalledTimes(16);
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([20000, 40000, 80000]);
+    expect(outcomes).toEqual([expect.objectContaining({ market: 'SG', rows: 3, cached: true, complete: false, attempts: 4 })]);
+    expect(log.info).toHaveBeenCalledWith(expect.objectContaining({ market: 'SG', complete: false, attempts: 4 }), 'discovery buyer-market pool warmed');
+    process.env.DISCOVERY_BUYER_MARKET_WARM_ATTEMPTS = '1';
+    axios.get.mockClear(); sleep.mockClear(); resetBuyerMarketPoolCacheForTest();
+    const once = await warmBuyerMarketPools({ markets: ['SG'], log, sleep });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(once[0]).toEqual(expect.objectContaining({ complete: false, attempts: 1 }));
+    delete process.env.DISCOVERY_BUYER_MARKET_WARM_ATTEMPTS;
+  });
+
+  test('the start is jittered per instance: base delay plus a random share of the jitter window', () => {
+    expect(resolveBuyerMarketWarmStartDelayMs({ random: () => 0 })).toBe(3000);
+    expect(resolveBuyerMarketWarmStartDelayMs({ random: () => 0.5 })).toBe(8000);
+    expect(resolveBuyerMarketWarmStartDelayMs({ random: () => 0.999 })).toBe(12990);
+    expect(resolveBuyerMarketWarmStartDelayMs({ random: () => NaN })).toBe(3000);
+    process.env.DISCOVERY_BUYER_MARKET_WARM_JITTER_MS = '0';
+    expect(resolveBuyerMarketWarmStartDelayMs({ random: () => 0.9 })).toBe(3000);
+    delete process.env.DISCOVERY_BUYER_MARKET_WARM_JITTER_MS;
+    const sampled = resolveBuyerMarketWarmStartDelayMs();
+    expect(sampled).toBeGreaterThanOrEqual(3000);
+    expect(sampled).toBeLessThan(13000);
+  });
+
+  test('server wiring: scheduled after listen for the listed markets only, with the jittered delay, and a failure is logged, not thrown', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
     const block = src.slice(src.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();'));
     expect(block.length).toBeGreaterThan(0);
     expect(block.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();')).toBe(0);
     expect(src.indexOf('app.listen(PORT')).toBeLessThan(src.indexOf('const buyerMarketWarmMarkets = getBuyerMarketWarmMarkets();'));
     expect(block).toMatch(/if \(buyerMarketWarmMarkets\.length > 0\) \{\s*setTimeout\(\(\) => \{\s*warmBuyerMarketPools\(\{ markets: buyerMarketWarmMarkets \}\)\.catch\(/);
-    expect(block).toMatch(/\}, getBuyerMarketWarmDelayMs\(\)\);/);
+    expect(block).toMatch(/\}, resolveBuyerMarketWarmStartDelayMs\(\)\);/);
     expect(src).toMatch(/warmBuyerMarketPools,\n\} = require\('\.\/services\/discoveryFeed'\);/);
   });
 });
