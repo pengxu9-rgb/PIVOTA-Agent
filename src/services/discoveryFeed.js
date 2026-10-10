@@ -13450,7 +13450,17 @@ function resetBuyerMarketPoolCacheForTest() {
  * with no price on a page whose every price is foreign (JP: 3 of 9 cards).
  */
 function isBuyerMarketPoolRow(product, servingCurrency) {
-  return isCandidateSellable(product) && isPricedInServingCurrency(product, servingCurrency);
+  if (!product || typeof product !== 'object') return false;
+  if (!isCandidateSellable(product)) return false;
+  // THE PRICE THE CARD SHOWS, not a price the row cites. The card reads `price` (the row's served
+  // price); the currency resolver also reads the seed citation (`external_seed.price_amount`), which
+  // is a source snapshot, not an offer. JP live after #2397: three Arencia rows with no `price`,
+  // `price_absent_reason: 'no_offer_derived_price'`, and a JPY amount only in the citation passed
+  // the currency rule and were served as JPY cards with no price.
+  if (product.price_absent_reason) return false;
+  const servedAmount = product.price == null ? null : parseCandidatePriceAmount(product.price);
+  if (!Number.isFinite(servedAmount)) return false; // > 0 is the resolver's rule, checked next
+  return isPricedInServingCurrency(product, servingCurrency);
 }
 function filterBuyerMarketPoolRows(products, servingCurrency) {
   return (Array.isArray(products) ? products : []).filter((product) => isBuyerMarketPoolRow(product, servingCurrency));
@@ -13609,6 +13619,9 @@ async function applyBuyerMarketFallback({
     curated_rows_dropped: products.length,
     rows: rows.products.length,
     ...(rows.skipped ? { skipped: rows.skipped } : {}),
+    // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
+    cache_hit: rows.cached === true,
+    ...(rows.cached === true && Number.isFinite(Number(rows.recallSummary?.[0]?.cache_age_ms)) ? { pool_age_ms: Number(rows.recallSummary[0].cache_age_ms) } : {}),
     ...(rows.stale ? { stale: true } : {}),
     ...(Number(rows.hops_pending) > 0 ? { hops_pending: Number(rows.hops_pending) } : {}),
   };

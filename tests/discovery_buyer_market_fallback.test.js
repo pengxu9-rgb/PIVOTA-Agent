@@ -112,9 +112,10 @@ describe('applyBuyerMarketFallback: the rule', () => {
       candidate_source: 'buyer_market_products_search',
       fallback_triggered: true,
       fallback_reason: BUYER_MARKET_FALLBACK_REASON,
-      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true, rows: 3, served: 3, curated_rows_dropped: 2, reason: BUYER_MARKET_FALLBACK_REASON }),
+      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true, rows: 3, served: 3, curated_rows_dropped: 2, reason: BUYER_MARKET_FALLBACK_REASON, cache_hit: false }),
     }));
     expect(out.metadata.buyer_market_fallback).not.toHaveProperty('hops_pending');
+    expect(out.metadata.buyer_market_fallback).not.toHaveProperty('pool_age_ms');
     expect(out.metadata.route_health).toEqual(expect.objectContaining({ fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON }));
     expect(out.metadata.search_decision).toEqual(expect.objectContaining({ fallback_triggered: true }));
   });
@@ -151,9 +152,10 @@ describe('applyBuyerMarketFallback: the rule', () => {
     const h = harness({ rows: [sgd(1)] });
     const out = await applyBuyerMarketFallback({ response: page([usd(1)]), payload: { ...BROWSE, buyer_market: 'SG' }, fetchRows, buildOnce: h.buildOnce });
     expect(out.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ applied: true, rows: 1, served: 1, hops_pending: 2 }));
-    const stale = jest.fn(async () => ({ products: [sgd(1)], recallSummary: [], skipped: null, cached: true, stale: true }));
+    const stale = jest.fn(async () => ({ products: [sgd(1)], recallSummary: [{ label: 'buyer_market_pool_cache', cache_hit: true, cache_age_ms: 61234 }], skipped: null, cached: true, stale: true }));
     const out2 = await applyBuyerMarketFallback({ response: page([usd(1)]), payload: { ...BROWSE, buyer_market: 'SG' }, fetchRows: stale, buildOnce: h.buildOnce });
-    expect(out2.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ applied: true, stale: true }));
+    // The stamp's own cache fields are truthful: a served pool from cache says so, with its age.
+    expect(out2.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ applied: true, stale: true, cache_hit: true, pool_age_ms: 61234 }));
     expect(out2.metadata.buyer_market_fallback).not.toHaveProperty('hops_pending');
   });
 
@@ -208,11 +210,17 @@ describe('isBuyerMarketPoolRow: what the pool admits', () => {
       [{ ...sgd(1), price: 'n/a' }, 'junk price'],
       [{ ...sgd(1), price: { amount: 12, currency: 'USD' } }, 'a nested price object disagreeing with the row'],
       [{ ...sgd(1), price_currency: 'USD' }, 'two stated currencies: the resolver reads SGD, the row also says USD'],
+      // JP live after #2397: no served price, a JPY amount only in the seed citation -> a JPY card with no price.
+      [{ merchant_id: 'm', product_id: 'p', currency: 'SGD', price_absent_reason: 'no_offer_derived_price', external_seed: { price_amount: 31, price_currency: 'SGD' } }, 'no served price; the citation is not an offer'],
+      [{ merchant_id: 'm', product_id: 'p', external_seed: { price_amount: 31, price_currency: 'SGD' } }, 'no served price and no marker either'],
+      [{ ...sgd(1), price_absent_reason: 'no_offer_derived_price' }, 'a price with the absent marker set is not served'],
+      [{ ...sgd(1), price: 'free' }, 'a non-numeric price'],
       [{ ...sgd(1), pricing: { current: { amount: 31, currency: 'USD' } } }, 'a pricing block disagreeing with the row'],
       [soldOut(1), 'out of stock'],
       [{ ...sgd(1), status: 'archived' }, 'not active'],
       [{ ...sgd(1), inventory_quantity: 0 }, 'no inventory'],
     ]) expect([why, isBuyerMarketPoolRow(row, 'SGD')]).toEqual([why, false]);
+    expect(isBuyerMarketPoolRow({ ...sgd(1), price: '31.00' }, 'SGD')).toBe(true); // a numeric string is a served price
     expect(isBuyerMarketPoolRow(sgd(1), '')).toBe(false);
     expect(isBuyerMarketPoolRow(null, 'SGD')).toBe(false);
   });
@@ -469,7 +477,7 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
   test('one GET per cold-start query (capped at 4), keyed on the market; rows merged, and kept only when SELLABLE and PRICED in the serving currency', async () => {
     axios.get.mockImplementation(async (url, config) => ({
       status: 200,
-      data: { products: [sgd(`${config.params.query}_a`), usd(`${config.params.query}_usd`), unpriced(`${config.params.query}_np`), soldOut(`${config.params.query}_oos`), { ...sgd('dup'), product_id: 'sig_dup' }] },
+      data: { products: [sgd(`${config.params.query}_a`), usd(`${config.params.query}_usd`), unpriced(`${config.params.query}_np`), soldOut(`${config.params.query}_oos`), { merchant_id: 'external_seed', product_id: `sig_${config.params.query}_cite`, title: 'citation only', price_absent_reason: 'no_offer_derived_price', external_seed: { price_amount: 31, price_currency: 'SGD' } }, { ...sgd('dup'), product_id: 'sig_dup' }] },
     }));
     const out = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 60 });
     expect(axios.get).toHaveBeenCalledTimes(4);
@@ -484,11 +492,11 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     const ids = out.products.map((p) => p.product_id);
     // USD rows never cross markets; an unpriced row (JP live: a JPY card with no price) and an
     // out-of-stock row (GB live: rows:1, nothing served) never enter the pool; the duplicate is merged once.
-    expect(ids.filter((id) => id.endsWith('_usd') || id.endsWith('_np') || id.endsWith('_oos'))).toEqual([]);
+    expect(ids.filter((id) => id.endsWith('_usd') || id.endsWith('_np') || id.endsWith('_oos') || id.endsWith('_cite'))).toEqual([]);
     expect(ids.filter((id) => id === 'sig_dup')).toHaveLength(1);
     expect(ids.sort()).toEqual(['sig_dup', 'sig_lip gloss_a', 'sig_serum_a', 'sig_shampoo_a', 'sig_sunscreen_a']);
     expect(out.recallSummary).toHaveLength(4);
-    expect(out.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', market: 'SG', status: 200, returned: 5 }));
+    expect(out.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', market: 'SG', status: 200, returned: 6 }));
   });
 
   test('a hop asks for at most ONE page (60) at offset 0, whatever the candidate limit: the backend proxy 422s above 100', async () => {
