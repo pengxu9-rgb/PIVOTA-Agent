@@ -18,7 +18,7 @@ const { _internals } = require('../src/services/discoveryFeed');
 const {
   applyBuyerMarketFallback, fetchBuyerMarketSearchRows, resolveDiscoveryBuyerMarket, resolveDiscoveryCardCurrency,
   buildDiscoveryFeedOnce, resetBuyerMarketPoolCacheForTest, awaitBuyerMarketRoundsForTest, isBuyerMarketPoolRow,
-  resetProductsSearchBreaker, isProductsSearchBreakerOpen, BUYER_MARKET_FALLBACK_REASON,
+  isBuyerMarketBreakerOpen, resetProductsSearchBreaker, isProductsSearchBreakerOpen, BUYER_MARKET_FALLBACK_REASON,
 } = _internals;
 
 const usd = (id, price = 24) => ({ merchant_id: 'external_seed', product_id: `sig_${id}`, title: `USD ${id}`, currency: 'USD', price });
@@ -222,7 +222,7 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
   const REQUEST = { surface: 'browse_products', query: { text: '' }, request_id: 'req_1' };
   const prev = {};
   beforeEach(() => {
-    for (const k of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'DISCOVERY_COLD_START_QUERY_BASKET', 'DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS']) prev[k] = process.env[k];
+    for (const k of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'DISCOVERY_COLD_START_QUERY_BASKET', 'DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS', 'DISCOVERY_PRODUCTS_SEARCH_BREAKER_FAILURES', 'DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS']) prev[k] = process.env[k];
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-token';
     process.env.DISCOVERY_COLD_START_QUERY_BASKET = 'serum|sunscreen|lip gloss|shampoo|toner|mask';
@@ -257,6 +257,7 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
 
   test('a hop slower than the page budget: the page takes what answered (the hop stamped pending), the round FINISHES into the cache, and the breaker saw its success', async () => {
     process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS = '300';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BREAKER_FAILURES = '1'; // ONE failure opens: a pending hop fed as one would show
     let finishSlow = null;
     axios.get.mockImplementation(async (url, config) => {
       if (config.params.query === 'serum') return new Promise((resolve) => { finishSlow = () => resolve({ status: 200, data: { products: [sgd('slow_1'), sgd('slow_2'), sgd('slow_3')] } }); });
@@ -275,8 +276,10 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     expect(axios.get).toHaveBeenCalledTimes(4);
     expect(during.hops_pending).toBe(1);
     // The slow hop answers: the round completes, the pool is the FULL one, and nothing fed the breaker a failure.
+    expect(isBuyerMarketBreakerOpen('SG')).toBe(false); // the budget cut fed nothing
     finishSlow();
     await awaitBuyerMarketRoundsForTest();
+    expect(isBuyerMarketBreakerOpen('SG')).toBe(false);
     expect(isProductsSearchBreakerOpen()).toBe(false);
     const next = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     expect(axios.get).toHaveBeenCalledTimes(4);
@@ -297,7 +300,10 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     expect(first.hops_pending).toBe(4);
     failAll();
     await awaitBuyerMarketRoundsForTest();
-    resetProductsSearchBreaker(); // the four failures opened it, as the lane's own would
+    // The four late failures opened SG's own breaker (and only SG's); lift it to look at the cache.
+    expect(isBuyerMarketBreakerOpen('SG')).toBe(true);
+    expect(isProductsSearchBreakerOpen()).toBe(false);
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BREAKER_FAILURES = '0';
     axios.get.mockResolvedValue({ status: 200, data: { products: [sgd(1)] } });
     const second = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     expect(second.cached).toBe(false);
@@ -329,14 +335,15 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     const emptyAgain = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
     expect(emptyAgain.cached).toBe(true);
     expect(axios.get).toHaveBeenCalledTimes(12);
-    // Inside the negative TTL (120 s): still the cached answer, nothing stale, no hop.
-    clock += 60000;
+    // Inside the negative TTL (10 min): still the cached answer, nothing stale, no hop.
+    clock += 540000;
     const inside = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
     expect(inside).toEqual(expect.objectContaining({ cached: true, products: [] }));
     expect(inside.stale).toBeUndefined();
     expect(axios.get).toHaveBeenCalledTimes(12);
     // Past it: the stale answer is served NOW and a round refreshes it behind.
     clock += 60001;
+
     axios.get.mockResolvedValue({ status: 200, data: { products: [{ ...sgd('gb_1'), currency: 'GBP' }] } });
     const afterTtl = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'GB', servingCurrency: 'GBP', limit: 24, now });
     expect(afterTtl).toEqual(expect.objectContaining({ cached: true, stale: true, products: [] }));
@@ -361,18 +368,102 @@ describe('fetchBuyerMarketSearchRows: the hop', () => {
     await awaitBuyerMarketRoundsForTest();
   });
 
-  test('an all-failed round is not an answer: not cached, and it FEEDS the breaker, which the next call RESPECTS', async () => {
+  test("an all-failed round is not an answer: not cached, and it FEEDS the market's OWN breaker, which the next call RESPECTS -- the main lane's and other markets' stay closed", async () => {
     axios.get.mockRejectedValue(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
     const failed = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     expect(failed.products).toEqual([]);
     expect(failed.recallSummary.every((s) => s.failure_reason === 'request_error:ECONNRESET')).toBe(true);
     expect(axios.get).toHaveBeenCalledTimes(4);
-    // Four failures passed the breaker's threshold (3): open.
-    expect(isProductsSearchBreakerOpen()).toBe(true);
+    // Four failures passed the breaker's threshold (3): SG's breaker is open ...
+    expect(isBuyerMarketBreakerOpen('SG')).toBe(true);
+    // ... and the US lane's products_search breaker is NOT: four SG hop timeouts must never switch it
+    // off (up to 4 x 6.5 s timeouts per round would open a shared breaker on every bad round). JP's
+    // own is closed too.
+    expect(isProductsSearchBreakerOpen()).toBe(false);
+    expect(isBuyerMarketBreakerOpen('JP')).toBe(false);
     const skipped = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
     expect(skipped).toEqual(expect.objectContaining({ products: [], skipped: 'products_search_circuit_open' }));
-    // Nothing new was paid beyond the lane's own probe (at most one request).
+    // Nothing new was paid beyond this breaker's own probe (at most one request).
     expect(axios.get.mock.calls.length).toBeLessThanOrEqual(5);
+    // JP still pays its hops.
+    axios.get.mockResolvedValue({ status: 200, data: { products: [{ ...sgd('jp'), currency: 'JPY' }] } });
+    const jp = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'JP', servingCurrency: 'JPY', limit: 24 });
+    expect(jp.products).toHaveLength(1);
+  });
+
+  test('a PARTIAL round (one hop failed, the others answered rows) is served but re-tried after the short TTL, not pinned for 10 min', async () => {
+    axios.get.mockImplementation(async (url, config) => {
+      if (config.params.query === 'serum') throw Object.assign(new Error('timeout of 6500ms exceeded'), { code: 'ECONNABORTED' });
+      return { status: 200, data: { products: [sgd(config.params.query)] } };
+    });
+    let clock = 2_000_000;
+    const now = () => clock;
+    const first = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    expect(first.products).toHaveLength(3);
+    expect(first.recallSummary[0]).toEqual(expect.objectContaining({ label: 'buyer_market_pool_1', failure_reason: 'timeout' }));
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    clock += 119_000;
+    const inside = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    expect(inside).toEqual(expect.objectContaining({ cached: true, products: first.products }));
+    expect(inside.stale).toBeUndefined();
+    expect(axios.get).toHaveBeenCalledTimes(4);
+    clock += 2_000; // 121 s: past the partial TTL (2 min), well inside the positive one (10 min)
+    const retried = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    expect(retried).toEqual(expect.objectContaining({ cached: true, stale: true }));
+    expect(axios.get).toHaveBeenCalledTimes(8);
+    await awaitBuyerMarketRoundsForTest();
+  });
+
+  test('a round where a hop failed and the rest answered NO rows claims nothing: not cached, the next page pays a round', async () => {
+    axios.get.mockImplementation(async (url, config) => {
+      if (config.params.query === 'serum') throw Object.assign(new Error('timeout of 6500ms exceeded'), { code: 'ECONNABORTED' });
+      return { status: 200, data: { products: [] } };
+    });
+    const first = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(first).toEqual(expect.objectContaining({ cached: false, products: [] }));
+    const second = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24 });
+    expect(second.cached).toBe(false);
+    expect(axios.get).toHaveBeenCalledTimes(8);
+  });
+
+  test('an entry older than the maximum stale age (1 h) is not served even stale: the page waits a fresh round', async () => {
+    axios.get.mockResolvedValue({ status: 200, data: { products: [sgd('old')] } });
+    let clock = 3_000_000;
+    const now = () => clock;
+    await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    clock += 3_599_000;
+    const stale = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    expect(stale).toEqual(expect.objectContaining({ cached: true, stale: true }));
+    await awaitBuyerMarketRoundsForTest();
+    clock += 3_600_001;
+    axios.get.mockResolvedValue({ status: 200, data: { products: [sgd('new')] } });
+    const fresh = await fetchBuyerMarketSearchRows({ request: REQUEST, market: 'SG', servingCurrency: 'SGD', limit: 24, now });
+    expect(fresh.cached).toBe(false);
+    expect(fresh.products.map((p) => p.product_id)).toEqual(['sig_new']);
+  });
+
+  test('a throw inside the round (after the page returned) is logged and swallowed, never an unhandled rejection', async () => {
+    process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS = '300';
+    const unhandled = [];
+    const onUnhandled = (err) => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+    let finish = null;
+    const fetchStepFn = () => new Promise((resolve) => {
+      finish = () => resolve({ success: true, products: [sgd(1)], get summary() { throw new Error('boom in the round'); } });
+    });
+    try {
+      const page = await fetchBuyerMarketSearchRows({ request: { ...REQUEST, query: { text: 'serum' } }, market: 'SG', servingCurrency: 'SGD', limit: 24, fetchStepFn });
+      expect(page.hops_pending).toBe(1);
+      finish();
+      await awaitBuyerMarketRoundsForTest();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+      // The round claimed nothing; the next page pays a new one.
+      const next = await fetchBuyerMarketSearchRows({ request: { ...REQUEST, query: { text: 'serum' } }, market: 'SG', servingCurrency: 'SGD', limit: 24, fetchStepFn });
+      expect(next.cached).toBe(false);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   test('one GET per cold-start query (capped at 4), keyed on the market; rows merged, and kept only when SELLABLE and PRICED in the serving currency', async () => {

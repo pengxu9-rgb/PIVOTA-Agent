@@ -4454,22 +4454,24 @@ function getProductsSearchBreakerMaxCooldownMs() {
   );
 }
 
-const productsSearchBreaker = {
-  consecutiveFailures: 0,
-  openUntil: 0,
-  cooldownMs: 0,
-  probe: null,
-};
+// One breaker per LANE. The main products_search lane has this one; the discovery buyer-market
+// fallback has one per market (buyerMarketBreakerFor): its hops run to the lane's full timeout and
+// up to four of them time out per round, so feeding them here would open THIS breaker -- and switch
+// off the US lane's products_search for 60 s and more -- because of non-US traffic.
+function createProductsSearchBreakerState(lane = 'products_search') {
+  return { lane, consecutiveFailures: 0, openUntil: 0, cooldownMs: 0, probe: null };
+}
+const productsSearchBreaker = createProductsSearchBreakerState();
 
-function resetProductsSearchBreaker() {
-  productsSearchBreaker.consecutiveFailures = 0;
-  productsSearchBreaker.openUntil = 0;
-  productsSearchBreaker.cooldownMs = 0;
-  productsSearchBreaker.probe = null;
+function resetProductsSearchBreaker(breaker = productsSearchBreaker) {
+  breaker.consecutiveFailures = 0;
+  breaker.openUntil = 0;
+  breaker.cooldownMs = 0;
+  breaker.probe = null;
 }
 
-function isProductsSearchBreakerOpen() {
-  return getProductsSearchBreakerFailureThreshold() > 0 && productsSearchBreaker.cooldownMs > 0;
+function isProductsSearchBreakerOpen(breaker = productsSearchBreaker) {
+  return getProductsSearchBreakerFailureThreshold() > 0 && breaker.cooldownMs > 0;
 }
 
 // Only answers that say the upstream is down or unusable count against it: a timeout, a transport error,
@@ -4486,11 +4488,11 @@ function classifyProductsSearchOutcome(result) {
   return 'neutral';
 }
 
-function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null } = {}) {
-  const wasOpen = productsSearchBreaker.cooldownMs > 0;
+function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null, breaker = productsSearchBreaker } = {}) {
+  const wasOpen = breaker.cooldownMs > 0;
   if (outcome === 'success' || (probe && outcome === 'neutral')) {
-    resetProductsSearchBreaker();
-    if (wasOpen) logger.info({ probe }, 'discovery products_search circuit closed');
+    resetProductsSearchBreaker(breaker);
+    if (wasOpen) logger.info({ probe, lane: breaker.lane }, 'discovery products_search circuit closed');
     return;
   }
   if (outcome !== 'failure') return;
@@ -4499,38 +4501,40 @@ function recordProductsSearchOutcome(outcome, { probe = false, failureReason = n
   // A call that was already in flight when the circuit opened must not stretch the cooldown; only the
   // probe's verdict does.
   if (wasOpen && !probe) return;
-  productsSearchBreaker.consecutiveFailures += 1;
+  breaker.consecutiveFailures += 1;
   if (wasOpen) {
-    productsSearchBreaker.cooldownMs = Math.min(
-      productsSearchBreaker.cooldownMs * 2,
+    breaker.cooldownMs = Math.min(
+      breaker.cooldownMs * 2,
       Math.max(getProductsSearchBreakerMaxCooldownMs(), getProductsSearchBreakerCooldownMs()),
     );
-  } else if (productsSearchBreaker.consecutiveFailures >= threshold) {
-    productsSearchBreaker.cooldownMs = getProductsSearchBreakerCooldownMs();
+  } else if (breaker.consecutiveFailures >= threshold) {
+    breaker.cooldownMs = getProductsSearchBreakerCooldownMs();
   } else {
     return;
   }
-  productsSearchBreaker.openUntil = Date.now() + productsSearchBreaker.cooldownMs;
+  breaker.openUntil = Date.now() + breaker.cooldownMs;
   logger.warn(
     {
       probe,
+      lane: breaker.lane,
       failure_reason: failureReason,
-      consecutive_failures: productsSearchBreaker.consecutiveFailures,
-      cooldown_ms: productsSearchBreaker.cooldownMs,
+      consecutive_failures: breaker.consecutiveFailures,
+      cooldown_ms: breaker.cooldownMs,
     },
     'discovery products_search circuit open',
   );
 }
 
-function recordProductsSearchResult(result, { probe = false } = {}) {
+function recordProductsSearchResult(result, { probe = false, breaker = productsSearchBreaker } = {}) {
   recordProductsSearchOutcome(classifyProductsSearchOutcome(result), {
     probe,
+    breaker,
     failureReason: result?.summary?.failure_reason || null,
   });
 }
 
-function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders }) {
-  if (productsSearchBreaker.probe || Date.now() < productsSearchBreaker.openUntil) return;
+function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders, breaker = productsSearchBreaker }) {
+  if (breaker.probe || Date.now() < breaker.openUntil) return;
   // The probe gets the same step timeout a visitor would: an upstream that only answers after a visitor
   // has given up is still down.
   const timeoutMs = computeDiscoveryStepTimeoutMs(getDiscoveryRecallBudgetMs(), getDiscoveryProductsSearchTimeoutMs());
@@ -4538,11 +4542,11 @@ function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders 
     .catch((err) => ({ success: false, summary: { failure_reason: `request_error:${err?.code || 'unknown'}` } }))
     .then((result) => {
       // A real success may have closed the circuit, and a new probe replaced this one, while it was out.
-      if (productsSearchBreaker.probe !== probe) return;
-      productsSearchBreaker.probe = null;
-      recordProductsSearchResult(result, { probe: true });
+      if (breaker.probe !== probe) return;
+      breaker.probe = null;
+      recordProductsSearchResult(result, { probe: true, breaker });
     });
-  productsSearchBreaker.probe = probe;
+  breaker.probe = probe;
 }
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
@@ -13378,7 +13382,19 @@ function getBuyerMarketPoolCacheTtlMs() {
 }
 /** ... and an EMPTY pool this often (negative): GB with no rows must not pay the round on every page. */
 function getBuyerMarketPoolNegativeCacheTtlMs() {
-  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 120000, 1000, 3600000);
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 600000, 1000, 3600000);
+}
+/**
+ * A PARTIAL round (a hop failed, others answered with rows) is re-tried this soon: 13% of REST-door
+ * calls exceed the 6.5 s hop timeout (controller, 2026-10-09), and a round that lost a broad hop
+ * must not pin the narrow queries' rows on an instance for the full positive TTL.
+ */
+function getBuyerMarketPoolPartialCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_PARTIAL_TTL_MS, 120000, 1000, 3600000);
+}
+/** Past this age an entry is not served even stale: a breaker-open hour must not serve hours-old prices and stock. */
+function getBuyerMarketPoolMaxStaleMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_MAX_STALE_MS, 3600000, 1000, 86400000);
 }
 
 // market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
@@ -13392,10 +13408,23 @@ function buyerMarketPoolCacheKey({ market, queryText, limit }) {
 function readBuyerMarketPoolCache(key, now = Date.now()) {
   const entry = buyerMarketPoolCache.get(key);
   if (!entry) return null;
-  return { ...entry, stale: now - entry.storedAt > entry.ttlMs };
+  const ageMs = now - entry.storedAt;
+  if (ageMs > getBuyerMarketPoolMaxStaleMs()) { buyerMarketPoolCache.delete(key); return null; }
+  return { ...entry, stale: ageMs > entry.ttlMs };
 }
 // key -> the Promise of the round that is filling or refreshing that pool.
 const buyerMarketRoundsInFlight = new Map();
+// market -> the fallback's own breaker (see createProductsSearchBreakerState: never the main lane's).
+const buyerMarketBreakers = new Map();
+function buyerMarketBreakerFor(market) {
+  const key = String(market || '').trim().toUpperCase();
+  if (!buyerMarketBreakers.has(key)) buyerMarketBreakers.set(key, createProductsSearchBreakerState(`buyer_market:${key}`));
+  return buyerMarketBreakers.get(key);
+}
+/** Test seam. */
+function isBuyerMarketBreakerOpen(market) {
+  return isProductsSearchBreakerOpen(buyerMarketBreakerFor(market));
+}
 /** Test seam: every round still running (a page returned before its slow hops answered). */
 function awaitBuyerMarketRoundsForTest() {
   return Promise.all([...buyerMarketRoundsInFlight.values()]).then(() => undefined);
@@ -13410,6 +13439,7 @@ function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
 function resetBuyerMarketPoolCacheForTest() {
   buyerMarketPoolCache.clear();
   buyerMarketRoundsInFlight.clear();
+  buyerMarketBreakers.clear();
 }
 
 /**
@@ -13461,10 +13491,12 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, li
   const requestHeaders = { 'X-Agent-API-Key': apiKey, 'X-API-Key': apiKey, Authorization: `Bearer ${apiKey}` };
   const queries = (queryText ? [queryText] : getDiscoveryColdStartQueries()).slice(0, BUYER_MARKET_FALLBACK_MAX_QUERIES);
   const steps = queries.map((text, index) => ({ label: `buyer_market_pool_${index + 1}`, query: text, limit: safeLimit, offset: 0, market }));
-  // THE SAME BREAKER AS THE MAIN products_search LANE: open means the upstream is down, so no hop is
-  // paid (the lane's probe decides when it is back); every answer below feeds it like the lane's do.
-  if (isProductsSearchBreakerOpen()) {
-    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders });
+  // THIS MARKET'S OWN BREAKER (the same rule as the main lane's, never its state): open means the
+  // upstream is down for these hops, so none is paid (the probe decides when it is back); every
+  // completed round below feeds it. Four 6.5 s timeouts here must never switch off the US lane.
+  const breaker = buyerMarketBreakerFor(market);
+  if (isProductsSearchBreakerOpen(breaker)) {
+    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders, breaker });
     if (cached) return cacheAnswer(cached);
     return { products: [], recallSummary: [], skipped: 'products_search_circuit_open' };
   }
@@ -13484,14 +13516,24 @@ async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, li
         .then((result) => { settled[index] = result; return result; }),
     );
     round = Promise.all(hops).then((results) => {
-      for (const result of results) recordProductsSearchResult(result);
+      for (const result of results) recordProductsSearchResult(result, { breaker });
       const pool = mergeBuyerMarketPool(results, { market, servingCurrency });
-      // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the round on
-      // every page. An all-failed round (every hop timed out or errored) is not an answer: not cached.
-      if (results.some((result) => result && result.success === true)) {
+      // What a round may claim. Every hop answered: the pool is the market's (positive TTL), or the
+      // market is empty (negative TTL). A hop failed: rows from the others are served but re-tried
+      // soon (partial TTL), and NO rows is not "the market is empty" -- not cached. All failed: not
+      // an answer, not cached.
+      const succeeded = results.filter((result) => result && result.success === true).length;
+      if (succeeded === results.length) {
         writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: pool.products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
+      } else if (succeeded > 0 && pool.products.length > 0) {
+        writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: getBuyerMarketPoolPartialCacheTtlMs() }, now());
       }
       return pool;
+    }).catch((err) => {
+      // The round is unobserved when the page did not wait for it (budget, stale refresh); a throw
+      // here would be an unhandled rejection, and the process has no handler for those.
+      logger.warn({ err: err?.message || String(err), market }, 'discovery buyer-market pool round failed');
+      return { products: [], recallSummary: [] };
     }).finally(() => {
       if (buyerMarketRoundsInFlight.get(cacheKey) === round) buyerMarketRoundsInFlight.delete(cacheKey);
     });
@@ -13624,6 +13666,7 @@ module.exports = {
     resetBuyerMarketPoolCacheForTest,
     awaitBuyerMarketRoundsForTest,
     isBuyerMarketPoolRow,
+    isBuyerMarketBreakerOpen,
     isProductsSearchBreakerOpen,
     BUYER_MARKET_FALLBACK_REASON,
     // The phase timer is exported so a test can drive it with a fake clock: the
