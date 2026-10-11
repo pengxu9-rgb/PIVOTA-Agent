@@ -39,6 +39,7 @@ test('only https://<host>/products/<handle> is a product page', () => {
   assert.deepEqual(page.productPageOf('https://judydoll.com/products/sheer-tinted-highlighter?variant=1&utm_source=pivota'), {
     host: 'judydoll.com', handle: 'sheer-tinted-highlighter',
     jsonUrl: 'https://judydoll.com/products/sheer-tinted-highlighter.json',
+    htmlUrl: 'https://judydoll.com/products/sheer-tinted-highlighter',
   });
   assert.equal(page.productPageOf('http://judydoll.com/products/x'), null);
   assert.equal(page.productPageOf('https://u:p@judydoll.com/products/x'), null);
@@ -123,4 +124,72 @@ test('a URL that is not a product page is unknown without any request', async ()
     fetchImpl: async () => { throw new Error('must not fetch'); },
   });
   assert.deepEqual(got, { state: 'unknown', reason: 'not_a_product_page' });
+});
+
+// HYDROGEN / OXYGEN (2026-10-11 review of #2393). A headless storefront has no /products/<handle>.json route: that URL
+// is 404 for LIVE products, with Shopify's own stamp. Measured on hydrogen.shop: /products/the-full-stack 200,
+// /products/the-full-stack.json 404, both `powered-by: Shopify, Oxygen, Hydrogen`, no x-shopid.
+const HYDROGEN = { 'powered-by': 'Shopify, Oxygen, Hydrogen', server: 'cloudflare', 'content-type': 'text/html' };
+const hydrogen = (status) => new Response(status === 200 ? '<html>' : 'Not found', { status, headers: HYDROGEN });
+
+test('a Hydrogen/Oxygen .json 404 is not Shopify saying the product is gone', () => {
+  assert.equal(page.shopifySaysGone(hydrogen(404)), false);
+  assert.equal(page.shopifySaysGone(new Response('', { status: 404, headers: { 'powered-by': 'Shopify, Oxygen' } })), false);
+  assert.equal(page.isHeadlessStorefront(hydrogen(404)), true);
+  assert.equal(page.isHeadlessStorefront(shopify404()), false);
+});
+
+test('a live Hydrogen product is asked again on its HTML page and is unknown, never gone', async () => {
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    asked.push([url, init.headers.Accept, init.redirect]);
+    return url.endsWith('.json') ? hydrogen(404) : hydrogen(200);
+  };
+  const got = await page.readStorefrontProductPage('https://hydrogen.shop/products/the-full-stack?variant=1', { fetchImpl });
+  assert.equal(got.state, 'unknown');
+  assert.equal(got.reason, 'headless_storefront');
+  assert.deepEqual(asked, [
+    ['https://hydrogen.shop/products/the-full-stack.json', 'application/json', 'error'],
+    ['https://hydrogen.shop/products/the-full-stack', 'text/html', 'error'],
+  ]);
+  assert.equal(page.knownGone('https://hydrogen.shop/products/the-full-stack.json'), null);
+});
+
+test('a removed Hydrogen product is gone on the HTML page\'s own Shopify-stamped 404', async () => {
+  const fetchImpl = async () => hydrogen(404);
+  const got = await page.readStorefrontProductPage('https://hydrogen.shop/products/zz-no-such-handle', { fetchImpl });
+  assert.equal(got.state, 'gone');
+  assert.equal(got.reason, 'http_404');
+  assert.equal(got.headless, true);
+  assert.deepEqual(page.knownGone('https://hydrogen.shop/products/zz-no-such-handle.json'), { status: 404 });
+});
+
+test('a Hydrogen HTML page that is not a Shopify 404 (CDN block, 5xx, network) is unknown', async () => {
+  const cases = [
+    [new Response('', { status: 404, headers: { server: 'AkamaiNetStorage' } }), 'headless_http_404'],
+    [new Response('', { status: 404, headers: { ...HYDROGEN, 'cf-mitigated': 'challenge' } }), 'headless_http_404'],
+    [new Response('', { status: 503, headers: HYDROGEN }), 'headless_http_503'],
+  ];
+  for (const [html, reason] of cases) {
+    page.resetForTests();
+    const fetchImpl = async (url) => (url.endsWith('.json') ? hydrogen(404) : html);
+    const got = await page.readStorefrontProductPage('https://hydrogen.shop/products/a', { fetchImpl });
+    assert.equal(got.state, 'unknown', reason);
+    assert.equal(got.reason, reason);
+  }
+  const thrown = await page.readStorefrontProductPage('https://hydrogen.shop/products/b', {
+    fetchImpl: async (url) => { if (url.endsWith('.json')) return hydrogen(404); throw new Error('ECONNRESET'); },
+  });
+  assert.deepEqual([thrown.state, thrown.reason], ['unknown', 'network_error']);
+});
+
+test('a product with more variants than the cap is live with variantIds null (cannot tell), not a partial set', async () => {
+  const variants = Array.from({ length: page.MAX_VARIANT_IDS + 1 }, (_, i) => ({ id: 40000000000000 + i }));
+  const fetchImpl = async () => new Response(JSON.stringify({ product: { variants } }), { status: 200, headers: { 'powered-by': 'Shopify' } });
+  const got = await page.readStorefrontProductPage('https://big.example/products/a', { fetchImpl });
+  assert.equal(got.state, 'live');
+  assert.equal(got.variantIds, null);
+  const again = await page.readStorefrontProductPage('https://big.example/products/a', { fetchImpl });
+  assert.equal(again.cacheHit, true);
+  assert.equal(again.variantIds, null);
 });

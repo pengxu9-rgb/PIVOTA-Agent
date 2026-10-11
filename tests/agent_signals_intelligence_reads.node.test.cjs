@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const { relationshipEdgeToSignal, relationshipEdgesToSignals } = require('../src/agentSignals/relationshipEdgeToSignal');
 const { offerToSignal, offersToSignals } = require('../src/agentSignals/offerToSignal');
 const {
+  getOffersBuyerMarket,
   makeGetAlternatives,
   makeGetOffers,
   mapOffersResolveResponse,
@@ -1052,3 +1053,50 @@ test('sellable outranks the verification tier: a FAILED check beats a sold-out u
   );
   assert.equal(best_offer.value.merchant_id, 'check_failed_in_stock');
 });
+
+// ---------------------------------------------------------------------------------------------
+// THE BUYER MARKET A get_offers CALLER STATED (Peng 2026-10-09). get_offers resolves offers through the
+// backend's offers.resolve, whose cart-minting gate (pivota-backend #2411) keys on `payload.market`; this
+// read sent none, so every get_offers answer was referral-only even for a caller that knew its buyer's
+// market. The market rides ONLY when stated, ISO-2 and priceable; the fetch is byte-identical otherwise.
+// ---------------------------------------------------------------------------------------------
+
+test('getOffersBuyerMarket: ISO-2 and priceable only, from `market` then `buyer_market`; never defaulted', () => {
+  assert.equal(getOffersBuyerMarket({ market: 'sg' }), 'SG');
+  assert.equal(getOffersBuyerMarket({ buyer_market: ' jp ' }), 'JP');
+  assert.equal(getOffersBuyerMarket({ market: 'US', buyer_market: 'SG' }), 'US', '`market` wins when both are stated');
+  for (const raw of ['USA', 'en-US', 'US,SG', 'ZZ', 'DE', '', null, undefined, 7, ['US']]) {
+    assert.equal(getOffersBuyerMarket({ market: raw }), null, String(raw));
+  }
+  assert.equal(getOffersBuyerMarket({}), null);
+  assert.equal(getOffersBuyerMarket(null), null);
+});
+
+test('makeGetOffers: a stated market reaches fetchOffers as `market`; absent or junk, the fetch args are byte-identical to today', async () => {
+  const seen = [];
+  const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers: [sampleOffer({ price: 12 })] }; } });
+  await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: 'sg', limit: 5 } });
+  assert.deepEqual(seen[0], { merchant_id: 'm1', product_id: 'p1', product_group_id: undefined, currency: undefined, limit: 5, market: 'SG' });
+  const today = { merchant_id: 'm1', product_id: 'p1', product_group_id: undefined, currency: undefined, limit: 10 };
+  await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
+  assert.deepEqual(seen[1], today);
+  assert.equal(Object.prototype.hasOwnProperty.call(seen[1], 'market'), false, 'no market key at all when none is stated');
+  for (const junk of ['USA', 'en-US', 'ZZ', '']) {
+    await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: junk } });
+    assert.deepEqual(seen[seen.length - 1], today, junk);
+  }
+  await handler({ payload: { product_id: 'p1', merchant_id: 'm1', buyer_market: 'JP' } });
+  assert.equal(seen[seen.length - 1].market, 'JP');
+});
+
+test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offers.resolve payload, and only then', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const start = src.indexOf('get_offers: makeGetOffers({');
+  assert.ok(start > 0, 'the get_offers wiring moved');
+  const block = src.slice(start, start + 2500);
+  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market \}\)/);
+  assert.match(block, /invokeCommerceKernelRawUpstream\('offers\.resolve', \{[\s\S]*?\.\.\.\(market \? \{ market \} : \{\}\),/);
+});
+

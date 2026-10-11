@@ -291,6 +291,8 @@ test('flag ON: a 404 WITHOUT Shopify\'s stamp, a 403, or a timeout never drops a
     async () => new Response('', { status: 404, headers: { 'powered-by': 'Shopify', 'cf-mitigated': 'challenge' } }),
     async () => new Response('', { status: 403, headers: { 'powered-by': 'Shopify' } }),
     async () => { throw new Error('ECONNRESET'); },
+    // a Hydrogen/Oxygen storefront answers its .json URL 404 for LIVE products (hydrogen.shop, measured 2026-10-11)
+    async () => new Response('Not found', { status: 404, headers: { 'powered-by': 'Shopify, Oxygen, Hydrogen', server: 'cloudflare' } }),
   ];
   for (const [i, fetchImpl] of cases.entries()) {
     const product = { ...removed, destination_url: `https://not-gone-${i}.example/products/a` };

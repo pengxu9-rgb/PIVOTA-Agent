@@ -114,6 +114,21 @@ test('a buyer market never relabels a currency explicitly written in the budget'
   assert.equal(resolveBuyerBudgetConstraint({ constraint: unstated, buyerCurrency: null }), unstated);
 });
 
+test('REST boundary: `serving_market` is the same buyer market (the backend proxies the discovery hop here); `market` wins when both are sent; neither without the flag', () => {
+  const { buildFindProductsMultiPayloadFromQuery } = require('../src/server')._debug;
+  const prev = process.env.FIND_PRODUCTS_BUYER_MARKET;
+  try {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'off';
+    assert.equal('market' in (buildFindProductsMultiPayloadFromQuery({ query: 'serum', serving_market: 'SG' }).search || {}), false);
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    assert.strictEqual(buildFindProductsMultiPayloadFromQuery({ query: 'serum', serving_market: 'SG' }).search.market, 'SG');
+    assert.strictEqual(buildFindProductsMultiPayloadFromQuery({ query: 'serum', market: 'US', serving_market: 'SG' }).search.market, 'US');
+    assert.equal('market' in buildFindProductsMultiPayloadFromQuery({ query: 'serum' }).search, false);
+  } finally {
+    if (prev === undefined) delete process.env.FIND_PRODUCTS_BUYER_MARKET; else process.env.FIND_PRODUCTS_BUYER_MARKET = prev;
+  }
+});
+
 test('REST boundary: `market` reaches search.market only under the flag', () => {
   const prior = process.env[FLAG];
   const { buildFindProductsMultiPayloadFromQuery } = require(path.join(ROOT, 'src/server'))._debug;

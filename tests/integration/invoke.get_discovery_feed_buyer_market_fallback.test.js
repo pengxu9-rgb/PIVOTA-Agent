@@ -50,7 +50,7 @@ function mockCatalog() {
     .get('/agent/v1/products/search')
     .query((params) => { hops.push(params); return true; })
     .times(12)
-    .reply(200, (uri) => ({ products: /[?&]market=SG/.test(uri) ? sgdRows : usdRows }));
+    .reply(200, (uri) => ({ products: /[?&]serving_market=SG/.test(uri) ? sgdRows : usdRows }));
   return hops;
 }
 
@@ -68,13 +68,20 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
       candidate_source: 'buyer_market_products_search',
       fallback_triggered: true,
       fallback_reason: 'buyer_market_currency_empty',
-      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true }),
+      buyer_market_fallback: expect.objectContaining({ market: 'SG', serving_currency: 'SGD', applied: true, rows: 2, served: 2 }),
     }));
     expect(res.body.metadata.serving_currency_guard).toBeUndefined();
-    expect(hops.some((p) => p.market === 'SG')).toBe(true);
-    expect(hops.filter((p) => p.market === 'SG').every((p) => String(p.query || '').trim().length > 0)).toBe(true);
-    // The first build's hops carried no market (the deployment's own feed), the fallback's did.
-    expect(hops.some((p) => !('market' in p))).toBe(true);
+    expect(hops.some((p) => p.serving_market === 'SG')).toBe(true);
+    expect(hops.filter((p) => p.serving_market === 'SG').every((p) => String(p.query || '').trim().length > 0)).toBe(true);
+    // THE BACKEND PROXY'S PAGINATION CONTRACT, pinned on the wire: limit <= 100 and offset a multiple of it
+    // (its SDK route answers 422 gateway_pagination_unsupported otherwise, before any search runs).
+    for (const p of hops.filter((h) => h.serving_market === 'SG')) {
+      expect(Number(p.limit)).toBeLessThanOrEqual(100);
+      expect(Number(p.offset) % Number(p.limit)).toBe(0);
+    }
+    // No hop ever names the storage partition; the first build's hops carried no market at all.
+    expect(hops.some((p) => 'market' in p)).toBe(false);
+    expect(hops.some((p) => !('serving_market' in p))).toBe(true);
   });
 
   test('no market: the page is the deployment\'s own (USD), untouched, no fallback stamp', async () => {
@@ -83,7 +90,7 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
     expect(res.body.products.map((p) => p.currency)).toEqual(res.body.products.map(() => 'USD'));
     expect(res.body.metadata.buyer_market_fallback).toBeUndefined();
     expect(res.body.metadata.fallback_reason).not.toBe('buyer_market_currency_empty');
-    expect(hops.some((p) => 'market' in p)).toBe(false);
+    expect(hops.some((p) => 'serving_market' in p)).toBe(false);
   });
 
   test('metadata.market=US: the deployment\'s own market, untouched', async () => {
@@ -91,7 +98,7 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
     const res = await request(app).post('/agent/shop/v1/invoke').send(invokeBody('US')).expect(200);
     expect(res.body.products.map((p) => p.currency)).toEqual(res.body.products.map(() => 'USD'));
     expect(res.body.metadata.buyer_market_fallback).toBeUndefined();
-    expect(hops.some((p) => 'market' in p)).toBe(false);
+    expect(hops.some((p) => 'serving_market' in p)).toBe(false);
   });
 
   test('a buyer_market the CLIENT wrote into the payload is scrubbed: no market on any hop, no fallback stamp', async () => {
@@ -101,7 +108,7 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
     const res = await request(app).post('/agent/shop/v1/invoke').send(body).expect(200);
     expect(res.body.products.map((p) => p.currency)).toEqual(res.body.products.map(() => 'USD'));
     expect(res.body.metadata.buyer_market_fallback).toBeUndefined();
-    expect(hops.some((p) => 'market' in p)).toBe(false);
+    expect(hops.some((p) => 'serving_market' in p)).toBe(false);
   });
 
   test('metadata.market=SG but the backend has no SG rows either: an empty page that says why', async () => {
@@ -111,10 +118,12 @@ describe('/agent/shop/v1/invoke get_discovery_feed: the buyer-market fallback', 
       .get('/agent/v1/products/search')
       .query((params) => { hops.push(params); return true; })
       .times(12)
-      .reply(200, (uri) => ({ products: /[?&]market=SG/.test(uri) ? [] : usdRows }));
+      .reply(200, (uri) => ({ products: /[?&]serving_market=SG/.test(uri) ? [] : usdRows }));
     const res = await request(app).post('/agent/shop/v1/invoke').send(invokeBody('SG')).expect(200);
     expect(res.body.products).toEqual([]);
     expect(res.body.metadata.buyer_market_fallback).toEqual(expect.objectContaining({ market: 'SG', applied: false, rows: 0 }));
+    expect(res.body.metadata.buyer_market_fallback.recall_summary.length).toBeGreaterThan(0);
+    expect(res.body.metadata.buyer_market_fallback.recall_summary.every((h) => h.returned === 0 && h.status === 200)).toBe(true);
     // The door's guard did the emptying, and says so.
     expect(res.body.metadata.serving_currency_guard).toEqual(expect.objectContaining({ serving_currency: 'SGD', dropped_currencies: ['USD'] }));
   });
