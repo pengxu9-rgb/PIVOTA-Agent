@@ -31,15 +31,19 @@
 //   GATEWAY_SA="sa-gateway$(printf '\x40')pivota-prod.iam.gserviceaccount.com"
 //   COMMAND=node IMAGE=us-west1-docker.pkg.dev/pivota-shared/pivota/gateway:<sha> \
 //     SERVICE_ACCOUNT="$GATEWAY_SA" \
-//     SECRETS=DATABASE_URL=DATABASE_URL_NOVERIFY:latest ENV_VARS=NODE_ENV=production \
+//     SECRETS=DATABASE_URL=DATABASE_URL_NOVERIFY:latest,PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED=gateway-env-PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED:latest \
+//     ENV_VARS=NODE_ENV=production,<the service's search flags, see below> \
 //     bash scripts/ops/run_oneoff_job.sh -e "$(cat <PIVOTA-Agent>/tests/_manual/stored_name_norm_invariant.js)" -- --market SG
 //
 // The image must carry #2406 (the builder and the probe), and migration 260 must be applied (else
 // the probe reports fold_function_missing and the script fails, as it should). A job inherits none
 // of the gateway service's env: add the search flags the service runs with (read them off the
 // service, e.g. SEARCH_NAME_EVIDENCE_ADMISSION) to ENV_VARS, or both statements are built for a lane
-// prod does not serve. It sets
-// statement_timeout 30 s per statement and never writes.
+// prod does not serve. Both statements spread mainlineLaneConfig() -- the buyable beauty mainline's
+// tokenMatch / sargableTextWhere elections, read from the same env as src/server.js -- and the first
+// line printed is that config. PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED is SECRET-backed on the
+// gateway, so it goes in SECRETS, not ENV_VARS (PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED is a
+// plain var). It sets statement_timeout 30 s per statement and never writes.
 const path = require('path');
 
 const QUERIES = (process.env.INVARIANT_QUERIES || 'barrier moisturizer|beauty skincare serum|niacinamide serum|vitamin c serum|lip gloss|nail polish|eye cream|curl cream')
@@ -57,12 +61,14 @@ function marketArg(argv = process.argv) {
 async function buildStatement(rawQuery, flagOn, { client, market = '' } = {}) {
   // The builder reads the flag per call; the module is loaded once.
   if (flagOn) process.env[FLAG] = 'on'; else delete process.env[FLAG];
-  const { fetchCanonicalChainRows } = srcModule('services', 'canonicalCatalogSearch');
+  const { fetchCanonicalChainRows, mainlineLaneConfig } = srcModule('services', 'canonicalCatalogSearch');
   const { buildSearchQualityContract } = srcModule('findProductsMulti', 'queryUnderstanding');
   const { PROBE_SQL } = srcModule('services', 'storedNameNormProbe');
   const contract = buildSearchQualityContract({ rawQuery });
   let captured = null;
   await fetchCanonicalChainRows({
+    // The mainline lane's elections, spread rather than restated (see mainlineLaneConfig's comment).
+    ...mainlineLaneConfig(),
     query: rawQuery, searchQualityContract: contract, brandFilter: contract.hard_constraints.brand,
     categoryPathPrefix: contract.hard_constraints.category_path_prefix, categoryMode: 'category_browse',
     ...(market ? { marketId: market } : {}),
@@ -98,6 +104,7 @@ async function run() {
   try {
     await client.query('SET default_transaction_read_only = on');
     await client.query("SET statement_timeout = '30s'");
+    console.log(`INVARIANT LANE ${JSON.stringify(srcModule('services', 'canonicalCatalogSearch').mainlineLaneConfig())}`);
     for (const q of QUERIES) {
       const off = await buildStatement(q, false, { client, market });
       const on = await buildStatement(q, true, { client, market });

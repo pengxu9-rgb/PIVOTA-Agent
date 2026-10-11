@@ -57,6 +57,36 @@ test('a probe with no row (the old stub\'s answer): the on statement is today\'s
   expect(probe._stateForTest().lastReason).toBe('probe_returned_no_row');
 });
 
+test('both statements carry the mainline lane\'s elections (mainlineLaneConfig), read from the env the way server.js reads them', async () => {
+  const { fetchCanonicalChainRows, mainlineLaneConfig } = require('../src/services/canonicalCatalogSearch');
+  const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
+  const rawQuery = 'barrier moisturizer';
+  const direct = async (lane) => {
+    const contract = buildSearchQualityContract({ rawQuery });
+    let sql = null;
+    await fetchCanonicalChainRows({
+      ...lane, query: rawQuery, searchQualityContract: contract, brandFilter: contract.hard_constraints.brand,
+      categoryPathPrefix: contract.hard_constraints.category_path_prefix, categoryMode: 'category_browse',
+      deps: { query: async (s) => { sql = s; return { rows: [] }; } },
+    });
+    return sql;
+  };
+  const client = fakeClient({ n: 9, same: 9 });
+  const tokenMatchEnv = 'PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED';
+  try {
+    delete process.env[tokenMatchEnv];
+    const plain = await buildStatement(rawQuery, false, { client });
+    process.env[tokenMatchEnv] = 'true';
+    expect(mainlineLaneConfig().tokenMatch).toBe(true);
+    const elected = await buildStatement(rawQuery, false, { client });
+    // The election reaches the builder: the statement changes, and it is the one the mainline lane builds.
+    expect(elected.sql).not.toBe(plain.sql);
+    expect(elected.sql).toBe(await direct(mainlineLaneConfig()));
+  } finally {
+    delete process.env[tokenMatchEnv];
+  }
+});
+
 test('an on statement that differs but never reads name_norm is vacuous too', () => {
   expect(vacuousReason({ sql: 'SELECT 1' }, { sql: 'SELECT 2' })).toBe('on_statement_does_not_read_name_norm');
 });
