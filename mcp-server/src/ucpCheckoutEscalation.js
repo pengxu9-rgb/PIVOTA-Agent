@@ -104,7 +104,7 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 // found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
 import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId, sellerVariantGidOf } from "./ucpMerchantDoorPricing.js";
+import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
@@ -844,14 +844,18 @@ export function variantPolicyEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[VARIANT_POLICY_FLAG]) || "").trim());
 }
 
-/** The numeric seller variant id a line will land on: the row's own seller variant, else the link's one `variant=`. */
+/**
+ * The numeric seller variant id a line will land on: the row's own seller variant, else the link's one `variant=`.
+ * `stored`: the id of a BUYER-CHOSEN variant came from its stored seller id (source_variant_id / variant_gid), not
+ * from its own id that merely looks like one (a barcode in variant_id does). Only a stored id may refuse.
+ */
 function landingVariantOf(row, link, landing, chosenVariantId) {
-  const gid = sellerVariantGidOf(row, sellerHostOf(link), chosenVariantId);
-  const fromGid = gid ? (String(gid).match(/(\d+)$/) || [])[1] : null;
-  if (fromGid || chosenVariantId) return fromGid || null;
+  const choice = sellerVariantChoiceOf(row, sellerHostOf(link), chosenVariantId);
+  const fromGid = choice.gid ? (String(choice.gid).match(/(\d+)$/) || [])[1] : null;
+  if (fromGid || chosenVariantId) return fromGid ? { variant: fromGid, stored: choice.stored === true } : null;
   try {
     const values = new URL(landing).searchParams.getAll("variant");
-    return values.length === 1 && /^\d{1,20}$/.test(values[0]) ? values[0] : null;
+    return values.length === 1 && /^\d{1,20}$/.test(values[0]) ? { variant: values[0], stored: false } : null;
   } catch { return null; }
 }
 
@@ -883,10 +887,18 @@ async function checkStorefrontPages({ items, links, rows, continueUrl, env, stor
   const read = typeof storefrontPage === "function"
     ? storefrontPage
     : (url) => storefrontProductPageModule.readStorefrontProductPage(url, { timeoutMs: DEAD_PAGE_CHECK_BUDGET_MS });
+  // One read per product page: up to MAX_ESCALATION_ITEMS lines (shades of one product) share a page.
+  const reads = new Map();
+  const readOnce = (landing) => {
+    const key = (storefrontProductPageModule.productPageOf(landing) || {}).jsonUrl || landing;
+    if (!reads.has(key)) reads.set(key, Promise.resolve().then(() => read(landing)).catch(() => null));
+    return reads.get(key);
+  };
   const lines = await Promise.all(items.map(async (it, idx) => {
     const landing = landingUrlOf(links[idx]);
     if (!landing) return null;
-    try { return { it, link: links[idx], landing, page: await read(landing) }; } catch { return null; }
+    const page = await readOnce(landing);
+    return page ? { it, link: links[idx], landing, page } : null;
   }));
 
   const gone = lines.filter((l) => l && l.page && l.page.state === "gone");
@@ -908,26 +920,35 @@ async function checkStorefrontPages({ items, links, rows, continueUrl, env, stor
 
   const chosenGone = [];
   const impliedGone = [];
+  const catalogIdErrors = [];
   for (const l of lines) {
     if (!l || !l.page || l.page.state !== "live" || !(l.page.variantIds instanceof Set)) continue;
-    const variant = landingVariantOf(rows.get(l.it.product_id), l.link, l.landing, l.it.variant_id);
-    if (!variant || l.page.variantIds.has(variant)) continue;
+    const landed = landingVariantOf(rows.get(l.it.product_id), l.link, l.landing, l.it.variant_id);
+    if (!landed || l.page.variantIds.has(landed.variant)) continue;
+    const variant = landed.variant;
+    // The page lists this "variant id" as one of its variants' barcode or SKU: the CATALOG stored the wrong id. The
+    // store sells the product; that is a warning, never a refusal.
+    if (l.page.variantCodes instanceof Set && l.page.variantCodes.has(variant)) { catalogIdErrors.push({ ...l, variant }); continue; }
     // A CHOSEN variant is refused only on TWO witnesses: the store's page does not list it AND the seller's own door
-    // said `variant_invalid`. The page alone cannot tell a discontinued option from a catalog that stored a barcode
-    // where the variant id belongs (see ucpMerchantDoorPricing ownVariantIdGid), and a refusal there would stop the sale
-    // of a product the store does sell; such a line gets the warning instead.
-    (l.it.variant_id && doorSaid ? chosenGone : impliedGone).push({ ...l, variant });
+    // said `variant_invalid`, and only when its id is the variant's STORED seller id. The door was asked with that same
+    // id, so an id that merely looks like a Shopify id (a barcode in variant_id, see ucpMerchantDoorPricing
+    // ownVariantIdGid) gets "Variant not found" at the door and is absent from the page: one bad catalog id, not two
+    // witnesses. A refusal there would stop the sale of a product the store does sell; such a line gets the warning.
+    (l.it.variant_id && doorSaid && landed.stored ? chosenGone : impliedGone).push({ ...l, variant });
   }
-  const stale = [...chosenGone, ...impliedGone];
+  const stale = [...chosenGone, ...impliedGone, ...catalogIdErrors];
   if (stale.length || doorSaid) {
     emitPageCheck(log, "info", {
-      outcome: chosenGone.length ? "refused" : (stale.length ? "variant_dropped" : "variant_listed"),
-      reason: stale.length ? "storefront_variant_gone" : "door_variant_invalid",
+      outcome: chosenGone.length ? "refused"
+        : impliedGone.length ? "variant_dropped" : catalogIdErrors.length ? "catalog_id_error" : "variant_listed",
+      reason: chosenGone.length || impliedGone.length ? "storefront_variant_gone"
+        : catalogIdErrors.length ? "catalog_variant_id_is_a_page_code" : "door_variant_invalid",
       door_variant_invalid: doorSaid,
       seller_hosts: [...new Set(lines.filter(Boolean).map((l) => l.page && l.page.host).filter(Boolean))],
       product_ids: (stale.length ? stale.map((l) => l.it.product_id) : items.map((it) => it.product_id)),
       // The refresh hint: the store handle and the variant id the catalog still names.
       stale_variants: stale.map((l) => ({ handle: l.page.handle, variant: l.variant })),
+      catalog_id_errors: catalogIdErrors.length ? catalogIdErrors.map((l) => ({ handle: l.page.handle, variant: l.variant })) : undefined,
     });
   }
   if (chosenGone.length) {
@@ -938,11 +959,11 @@ async function checkStorefrontPages({ items, links, rows, continueUrl, env, stor
       "This will not change on retry; offer the buyer the product's other options or alternatives.",
     ].join(" "), compact({ storefront_items: ids, seller_hosts: hosts.length ? hosts : undefined }));
   }
-  if (!impliedGone.length) return unchanged;
-  const productIds = [...new Set(impliedGone.map((l) => l.it.product_id))];
-  return {
-    continueUrl: withoutStaleVariant(continueUrl, impliedGone.map((l) => l.landing)),
-    messages: [{
+  if (!impliedGone.length && !catalogIdErrors.length) return unchanged;
+  const messages = [];
+  if (impliedGone.length) {
+    const productIds = [...new Set(impliedGone.map((l) => l.it.product_id))];
+    messages.push({
       type: "warning",
       code: "checkout.storefront_variant_not_listed",
       path: "$.continue_url",
@@ -951,7 +972,24 @@ async function checkStorefrontPages({ items, links, rows, continueUrl, env, stor
         "continue_url opens the product page, where the buyer picks from the options the seller sells now; the catalog price above may not apply to them.",
       ].join(" "),
       content_type: "plain",
-    }],
+    });
+  }
+  if (catalogIdErrors.length) {
+    const productIds = [...new Set(catalogIdErrors.map((l) => l.it.product_id))];
+    messages.push({
+      type: "warning",
+      code: "checkout.catalog_variant_id_unverified",
+      path: "$.continue_url",
+      content: [
+        `The catalog's option id for ${productIds.join(", ")} is not one the seller's storefront uses for it.`,
+        "continue_url opens the product page, where the buyer confirms the option; the catalog price above may not apply to it.",
+      ].join(" "),
+      content_type: "plain",
+    });
+  }
+  return {
+    continueUrl: withoutStaleVariant(continueUrl, [...impliedGone, ...catalogIdErrors].map((l) => l.landing)),
+    messages,
   };
 }
 

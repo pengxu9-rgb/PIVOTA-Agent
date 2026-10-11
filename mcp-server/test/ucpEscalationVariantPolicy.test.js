@@ -220,3 +220,67 @@ describe('ON: the store\'s own page decides', () => {
     assert.ok(out.messages.some((m) => m.code === 'checkout.storefront_variant_not_listed'));
   });
 });
+
+// B2 (2026-10-11 review of #2394): a seed variant whose variant_id is a BARCODE. ownVariantIdGid accepts any 6+ digit
+// id, so the door is asked for gid://shopify/ProductVariant/8809123456789, answers "Variant not found", and the page
+// (live, real ids 51000000000001/2) does not list it: two "witnesses" from one bad catalog id. Never a refusal.
+describe('a chosen variant whose id is not a stored seller id', () => {
+  const BARCODE = '8809123456789';
+  const SEEDED = Object.freeze({
+    ...ROW, product_id: 'sig_seed_shades', external_redirect_url: 'https://judydoll.com/products/seed-shades',
+    variants: [
+      { variant_id: BARCODE, sku_id: BARCODE, title: 'Shade 01' },
+      { variant_id: '8809123456796', sku_id: '8809123456796', title: 'Shade 02' },
+    ],
+  });
+  const items = [{ product_id: SEEDED.product_id, quantity: 1, variant_id: BARCODE }];
+
+  test('the door says variant_invalid and the page does not list it: warned, never refused', async () => {
+    const log = recordingLog();
+    const pages = { 'seed-shades': live('51000000000001', '51000000000002') };
+    const asked = [];
+    const door = { ...variantInvalidDoor(), async createCart(...a) { asked.push(JSON.stringify(a)); return { ok: true, status: 200, error: { message: 'Variant not found' } }; } };
+    const out = await create({ row: SEEDED, items, env: PRICED_POLICY, storefrontPage: reader(pages), merchantDoor: door, log })
+      .catch((err) => assert.fail(`refused a product the store sells: ${err && err.detail && err.detail.reason}`));
+    assert.ok(asked.some((a) => a.includes(`ProductVariant/${BARCODE}`)), 'precondition: the door was asked for the barcode gid');
+    assert.equal(out.status, 'requires_escalation');
+    assert.ok(out.messages.some((m) => m.code === 'checkout.storefront_variant_not_listed'));
+    const hint = log.lines.find((l) => l.event === 'ucp_storefront_page_check' && l.door_variant_invalid === true);
+    assert.ok(hint, 'the door\'s word is still logged as a refresh hint');
+    assert.notEqual(hint.outcome, 'refused');
+  });
+
+  test('the page lists that id as a variant\'s barcode: a catalog-id warning, never a refusal', async () => {
+    const log = recordingLog();
+    const pages = { 'seed-shades': { ...live('51000000000001', '51000000000002'), variantCodes: new Set([BARCODE, '8809123456796']) } };
+    const out = await create({ row: SEEDED, items, env: PRICED_POLICY, storefrontPage: reader(pages), merchantDoor: variantInvalidDoor(), log });
+    assert.equal(out.status, 'requires_escalation');
+    assert.ok(out.messages.some((m) => m.code === 'checkout.catalog_variant_id_unverified'));
+    assert.ok(!out.messages.some((m) => m.code === 'checkout.storefront_variant_not_listed'));
+    const hint = log.lines.find((l) => l.event === 'ucp_storefront_page_check' && l.outcome === 'catalog_id_error');
+    assert.deepEqual(hint.catalog_id_errors, [{ handle: 'seed-shades', variant: BARCODE }]);
+  });
+
+  test('even a STORED seller id that the page lists as a barcode is a catalog-id warning, not a refusal', async () => {
+    const stored = { ...SHADES, variants: [{ ...SHADES.variants[0], source_variant_id: BARCODE }, SHADES.variants[1]] };
+    const pages = { shades: { ...live('49869804110102'), variantCodes: new Set([BARCODE]) } };
+    const out = await create({
+      row: stored, items: [{ product_id: SHADES.product_id, quantity: 1, variant_id: 'shade_01' }],
+      env: PRICED_POLICY, storefrontPage: reader(pages), merchantDoor: variantInvalidDoor(),
+    });
+    assert.ok(out.messages.some((m) => m.code === 'checkout.catalog_variant_id_unverified'));
+  });
+});
+
+test('lines on one product page read that page once', async () => {
+  const read = reader({ shades: live(STALE, '49869804110102') });
+  const out = await create({
+    row: SHADES, storefrontPage: read,
+    items: [
+      { product_id: SHADES.product_id, quantity: 1, variant_id: 'shade_01' },
+      { product_id: SHADES.product_id, quantity: 2, variant_id: 'shade_02' },
+    ],
+  });
+  assert.equal(out.status, 'requires_escalation');
+  assert.equal(read.asked.length, 1);
+});

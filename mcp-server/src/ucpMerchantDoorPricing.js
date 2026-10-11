@@ -146,7 +146,8 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
 }
 
 /**
- * The seller variant gid AND where it came from: `chosen` (the buyer picked it), `row_id` (a row-level or sole-variant
+ * The seller variant gid AND where it came from: `chosen` (the buyer picked it; `stored` true when the gid is the
+ * variant's stored seller id `source_variant_id` / `variant_gid`, false when it is the variant's own id), `row_id` (a row-level or sole-variant
  * seller id field), `url` (a seller-host link's `variant=`, possibly agreeing with the read), or `sole_variant_id` (the
  * read's single variant's own id with no link naming it — a DERIVED id, see refuseDerivedSoleVariant). `{gid: null}`
  * when there is none.
@@ -162,10 +163,13 @@ export function sellerVariantChoiceOf(row, sellerHost, chosenVariantId) {
     if (!v) return none;
     for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid")]) {
       const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
-      if (gid) return { gid, source: "chosen" };
+      if (gid) return { gid, source: "chosen", stored: true };
     }
+    // `stored: false`: the variant's own id merely LOOKS like a Shopify id (6+ digits). A barcode copied into
+    // variant_id passes that test, so this gid is not evidence of what the seller sells (see ucpCheckoutEscalation's
+    // variant policy, which never refuses on it).
     const own_ = ownVariantIdGid(v, row);
-    return own_ ? { gid: own_, source: "chosen" } : none;
+    return own_ ? { gid: own_, source: "chosen", stored: false } : none;
   }
   const variants = Array.isArray(own(row, "variants")) ? own(row, "variants").filter(isPlainObject) : [];
   if (variants.length > 1) return none; // the buyer's choice is not carried on this door: never guess
