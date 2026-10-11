@@ -207,43 +207,101 @@ describe('discovery feed wiring', () => {
       .toBeNull();
   });
 
-  // P1 of the gateway review: with the scope, the curated readers return a FEW SGD rows; the old
-  // "any row in the currency" rule then skipped the market's fallback pool and left a 2-card page.
-  const fallbackRun = (flag, curatedCurrencies) => withEnv({ [FLAG]: flag ? 'on' : undefined }, async () => {
+  // The buyer-market fallback under the scope. The curated readers return a FEW SGD rows; an SG
+  // page is built from ONE sequence -- every curated SGD row, then the market's pool minus any
+  // product already kept -- sliced by page, so every pool row lands on exactly one page and
+  // `total` is the same on every page.
+  const card = (id, currency, extra = {}) => ({ merchant_id: 'external_seed', product_id: id, pivota_signature_id: id, title: id, currency, price: 20, ...extra });
+  const fallbackRun = ({ flag, curated, pool, page = 1, limit = 24 }) => withEnv({ [FLAG]: flag ? 'on' : undefined }, async () => {
     const { internals } = loadInternals();
-    const payload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+    const payload = { surface: 'browse_products', page, limit, buyer_market: 'SG',
       context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
-    const card = (id, currency, price) => ({ merchant_id: 'external_seed', product_id: id, pivota_signature_id: id, title: id, currency, price });
-    const response = { products: curatedCurrencies.map((currency, n) => card(`sig_curated${n}`, currency, 20 + n)), metadata: {} };
-    const pool = [card('sig_curated0', 'SGD', 20), ...Array.from({ length: 20 }, (_, n) => card(`sig_pool${n}`, 'SGD', 30 + n))];
+    // The curated feed as the caller built it for THIS page, and as a page-independent window.
+    const response = { products: curated.slice((page - 1) * limit, page * limit), metadata: { candidate_source: 'canonical_sig' } };
+    const buildCurated = jest.fn(async (p) => ({ products: curated.slice(0, p.limit), metadata: { candidate_source: 'canonical_sig', serving_mode: 'exhaustive' } }));
     const fetchRows = jest.fn(async () => ({ products: pool, recallSummary: [], skipped: null }));
-    const buildOnce = jest.fn(async (_p, options) => ({ products: options.candidateProducts, metadata: { eligible_pool_count: options.candidateProducts.length } }));
-    const out = await internals.applyBuyerMarketFallback({ response, payload, fetchRows, buildOnce });
-    return { out, fetchRows };
+    const buildOnce = jest.fn(async (p, options) => ({
+      products: options.candidateProducts.slice((p.page - 1) * p.limit, p.page * p.limit),
+      metadata: { eligible_pool_count: options.candidateProducts.length, serving_mode: 'exhaustive' },
+    }));
+    const out = await internals.applyBuyerMarketFallback({ response, payload, fetchRows, buildOnce, buildCurated });
+    return { out, fetchRows, buildOnce, buildCurated };
   });
 
   test('flag off: today\'s rule -- any SGD row on the page skips the fallback', async () => {
-    const { out, fetchRows } = await fallbackRun(false, ['SGD', 'USD', 'USD']);
+    const { out, fetchRows, buildCurated } = await fallbackRun({ flag: false, curated: [card('sig_c0', 'SGD'), card('sig_c1', 'USD')], pool: [card('sig_p0', 'SGD')] });
     expect(fetchRows).not.toHaveBeenCalled();
-    expect(out.products).toHaveLength(3);
+    expect(buildCurated).not.toHaveBeenCalled();
+    expect(out.products.map((p) => p.product_id)).toEqual(['sig_c0', 'sig_c1']);
   });
 
-  test('flag on: an SG page with 2 SGD rows is underfilled -- they lead, the pool fills the page', async () => {
-    const { out, fetchRows } = await fallbackRun(true, ['SGD', 'SGD', 'USD']);
-    expect(fetchRows).toHaveBeenCalledTimes(1);
-    const ids = out.products.map((p) => p.product_id);
-    expect(ids.slice(0, 2)).toEqual(['sig_curated0', 'sig_curated1']);
-    expect(ids.filter((id) => id === 'sig_curated0')).toHaveLength(1); // deduped against the pool
-    expect(out.products).toHaveLength(22);
-    expect(out.products.every((p) => p.currency === 'SGD')).toBe(true);
-    expect(out.metadata.buyer_market_fallback).toMatchObject({ applied: true, curated_rows_kept: 2, curated_rows_dropped: 1 });
-    expect(out.total).toBe(23); // the pool's 21 + the 2 kept
+  // 2 curated SGD rows (+1 USD), and a 60-row pool in which three rows are the kept products under
+  // another id scheme: the same signature, the same external_product_id, the same content_key.
+  const curated = [
+    card('sig_c0', 'SGD', { external_product_id: 'ext_c0', content_key: 'ck_c0' }),
+    card('sig_c1', 'SGD', { external_product_id: 'ext_c1', content_key: 'ck_c1' }),
+    card('sig_c2', 'USD'),
+  ];
+  const pool = [
+    card('sig_c0', 'SGD'),
+    { ...card('ext_pool_dup_ext', 'SGD', { external_product_id: 'ext_c1' }), merchant_id: 'merch_obs_pool', pivota_signature_id: undefined },
+    { ...card('ext_pool_dup_ck', 'SGD', { content_key: 'ck_c0' }), merchant_id: 'merch_obs_pool', pivota_signature_id: undefined },
+    ...Array.from({ length: 57 }, (_, n) => ({ ...card(`ext_pool_${n}`, 'SGD'), merchant_id: 'merch_obs_pool', pivota_signature_id: undefined })),
+  ];
+  const pages = async () => Promise.all([1, 2, 3, 4].map((page) => fallbackRun({ flag: true, curated, pool, page })));
+
+  test('flag on: every kept row and every distinct pool row lands on exactly one page', async () => {
+    const outs = (await pages()).map(({ out }) => out);
+    const ids = outs.flatMap((out) => out.products.map((p) => p.product_id));
+    expect(new Set(ids).size).toBe(ids.length); // nothing twice, across pages
+    const expected = ['sig_c0', 'sig_c1', ...Array.from({ length: 57 }, (_, n) => `ext_pool_${n}`)];
+    expect([...ids].sort()).toEqual([...expected].sort()); // nothing skipped (ext_pool_23 included)
+    expect(ids.slice(0, 2)).toEqual(['sig_c0', 'sig_c1']); // kept rows lead page 1
+    expect(outs.every((out) => out.products.every((p) => p.currency === 'SGD'))).toBe(true);
   });
 
-  test('flag on: a full page of SGD rows is left alone', async () => {
-    const { out, fetchRows } = await fallbackRun(true, Array.from({ length: 24 }, () => 'SGD'));
-    expect(fetchRows).not.toHaveBeenCalled();
-    expect(out.products).toHaveLength(24);
+  test('flag on: the page size is honoured with a pool larger than a page', async () => {
+    const outs = (await pages()).map(({ out }) => out);
+    expect(outs.map((out) => out.products.length)).toEqual([24, 24, 11, 0]);
+    expect(outs.map((out) => out.page_size)).toEqual([24, 24, 11, 0]);
+    expect(outs.map((out) => out.metadata.has_more)).toEqual([true, true, false, false]);
+  });
+
+  test('flag on: total counts unique products after dedupe, the same on every page', async () => {
+    const outs = (await pages()).map(({ out }) => out);
+    expect(outs.map((out) => out.total)).toEqual([59, 59, 59, 59]);
+    expect(outs.map((out) => out.metadata.corpus_total_count)).toEqual([59, 59, 59, 59]);
+    expect(outs[0].metadata.buyer_market_fallback).toMatchObject({
+      applied: true, curated_rows_kept: 2, curated_rows_on_page: 2, pool_rows_on_page: 22, pool_rows_duplicating_kept: 3, curated_rows_dropped: 1,
+    });
+    expect(outs[0].metadata.candidate_source).toBe('buyer_market_curated+products_search');
+    expect(outs[1].metadata.candidate_source).toBe('buyer_market_products_search');
+  });
+
+  test('flag on: both halves are built over the page-independent window', async () => {
+    const { buildOnce, buildCurated } = await fallbackRun({ flag: true, curated, pool, page: 3 });
+    for (const fn of [buildOnce, buildCurated]) {
+      expect(fn.mock.calls[0][0]).toMatchObject({ page: 1, limit: 100, cursor: '' });
+    }
+  });
+
+  test('flag on: a page the pool adds nothing to is labelled as curated, not as the fallback', async () => {
+    const many = Array.from({ length: 30 }, (_, n) => card(`sig_k${n}`, 'SGD'));
+    const [{ out: first }, { out: second }] = await Promise.all([1, 2].map((page) => fallbackRun({ flag: true, curated: many, pool: pool.slice(3, 13), page })));
+    expect(first.products.map((p) => p.product_id)).toEqual(many.slice(0, 24).map((p) => p.product_id));
+    expect(first.metadata.candidate_source).toBe('canonical_sig');
+    expect(first.metadata).not.toHaveProperty('fallback_triggered');
+    expect(first.metadata.buyer_market_fallback).toMatchObject({ applied: false, pool_rows_on_page: 0, curated_rows_on_page: 24 });
+    expect(second.products).toHaveLength(16);
+    expect(second.metadata).toMatchObject({ candidate_source: 'buyer_market_curated+products_search', fallback_triggered: true });
+    expect([first.total, second.total]).toEqual([40, 40]);
+  });
+
+  test('flag on: with no pool rows the page is the kept rows alone', async () => {
+    const { out } = await fallbackRun({ flag: true, curated, pool: [] });
+    expect(out.products.map((p) => p.product_id)).toEqual(['sig_c0', 'sig_c1']);
+    expect(out.total).toBe(2);
+    expect(out.metadata.buyer_market_fallback).toMatchObject({ applied: false, rows: 0 });
   });
 });
 

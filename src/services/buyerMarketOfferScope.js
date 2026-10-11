@@ -27,8 +27,9 @@
 // writes and the market_prices backfill, and watch the SG discovery page size when you do. A
 // missing, NULL or stale summary falls back to the legacy columns per row, but the flag also
 // changes which rows the strict readers return and when the buyer-market fallback pool is used
-// (applyBuyerMarketFallback: a scoped page fewer than a page of priced rows is topped up from
-// the pool rather than replaced), so the page an SG buyer sees does change at the flip.
+// (applyScopedBuyerMarketSequence: a scoped buyer's pages are slices of ONE sequence -- the
+// curated own-currency rows, then the market's pool minus those products), so the page an SG
+// buyer sees does change at the flip.
 
 const { resolveServingCurrency } = require('./buyerMarket');
 const { parseMarketList } = require('./servedMarkets');

@@ -13789,6 +13789,7 @@ async function applyBuyerMarketFallback({
   payload,
   options = {},
   buildOnce = buildDiscoveryFeedOnce,
+  buildCurated = buildDiscoveryFeedOnce,
   fetchRows = fetchBuyerMarketSearchRows,
 } = {}) {
   const source = payload && typeof payload.discovery === 'object' ? { ...payload.discovery, ...payload } : payload;
@@ -13799,50 +13800,31 @@ async function applyBuyerMarketFallback({
   // The deployment's own market (the curated feed IS that market's), or one nothing is priced for
   // (null: the door serves nothing, by design): unchanged.
   if (!servingCurrency || servingCurrency === deploymentCurrency) return response;
-  const products = Array.isArray(response?.products) ? response.products : [];
-  // BUYER_MARKET_OFFER_SCOPE: the curated readers now return this buyer's own-currency rows, often
-  // only a few of them. "Any row in the currency" would then stop the fallback and leave a 2-card
-  // page where the market's pool fills 20, so under the scope the page counts as UNDERFILLED until
-  // it holds a page of priced rows, and those rows lead the fallback page instead of replacing it.
-  // Without the scope: today's rule, unchanged.
-  const scoped = Boolean(resolveBuyerMarketOfferScope(market));
-  const request = normalizeDiscoveryRequest(payload);
-  const keptRows = scoped ? products.filter((product) => isPricedInServingCurrency(product, servingCurrency)) : [];
-  if (scoped) {
-    if (keptRows.length >= Math.max(1, Number(request?.limit) || 1)) return response;
-  } else if (hasRowsInServingCurrency(products, servingCurrency)) {
-    return response;
+  // BUYER_MARKET_OFFER_SCOPE: the curated readers return this buyer's own-currency rows, often only
+  // a few. The page is then built from ONE sequence -- see applyScopedBuyerMarketSequence. Without
+  // the scope: today's rule, unchanged.
+  if (resolveBuyerMarketOfferScope(market)) {
+    return applyScopedBuyerMarketSequence({ response, payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows });
   }
+  const products = Array.isArray(response?.products) ? response.products : [];
+  if (hasRowsInServingCurrency(products, servingCurrency)) return response;
 
+  const request = normalizeDiscoveryRequest(payload);
   const rows = await fetchRows({ request, market, servingCurrency });
-  const stamp = {
-    market,
-    serving_currency: servingCurrency,
-    reason: BUYER_MARKET_FALLBACK_REASON,
-    curated_rows_dropped: products.length - keptRows.length,
-    rows: rows.products.length,
-    ...(rows.skipped ? { skipped: rows.skipped } : {}),
-    // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
-    cache_hit: rows.cached === true,
-    ...(rows.cached === true && Number.isFinite(Number(rows.recallSummary?.[0]?.cache_age_ms)) ? { pool_age_ms: Number(rows.recallSummary[0].cache_age_ms) } : {}),
-    ...(rows.stale ? { stale: true } : {}),
-    ...(Number(rows.hops_pending) > 0 ? { hops_pending: Number(rows.hops_pending) } : {}),
-  };
+  const stamp = buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: products.length });
   if (rows.products.length === 0) {
     // Nothing in that market either: the page stays as built (the door's guard empties it) and says why,
     // hop by hop (status, returned, latency, cache), so a live diagnosis needs no API key.
     return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false, recall_summary: rows.recallSummary || [] } } };
   }
-  const rebuiltOnce = await buildOnce(payload, {
+  const rebuilt = await buildOnce(payload, {
     ...options,
     candidateProducts: annotateProviderProducts('products_search', rows.products),
   });
-  const rebuilt = keptRows.length ? mergeKeptRowsAhead(rebuiltOnce, keptRows, request) : rebuiltOnce;
   const rebuiltMetadata = rebuilt?.metadata || {};
   const eligible = Number.isFinite(Number(rebuiltMetadata.eligible_pool_count))
-    ? Number(rebuiltMetadata.eligible_pool_count) + (rebuilt.kept_rows_merged || 0)
+    ? Number(rebuiltMetadata.eligible_pool_count)
     : (Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0);
-  delete rebuilt.kept_rows_merged;
   return {
     ...rebuilt,
     // The page is now this market's pool, so the totals are that pool, not the USD corpus count.
@@ -13858,19 +13840,156 @@ async function applyBuyerMarketFallback({
       search_decision: { ...(rebuiltMetadata.search_decision || {}), fallback_triggered: true },
       // `served`: what the rebuilt page shows. `rows` is the pool; the ranker and a page's own
       // query filter can leave fewer, and a reader must not take applied:true for "cards shown".
-      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, ...(keptRows.length ? { curated_rows_kept: keptRows.length } : {}), recall_summary: rows.recallSummary },
+      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, recall_summary: rows.recallSummary },
     },
   };
 }
 
-// The curated page's own-currency rows first, then the fallback page's rows that are not the same
-// product, cut to the page size. Both are cards from the same builder, so nothing is re-ranked.
-function mergeKeptRowsAhead(rebuilt, keptRows, request) {
-  const keys = (product) => [buildDiscoveryDedupKey(product), String(product?.pivota_signature_id || '').trim()].filter(Boolean);
-  const seen = new Set(keptRows.flatMap(keys));
-  const rest = (Array.isArray(rebuilt?.products) ? rebuilt.products : []).filter((product) => !keys(product).some((key) => seen.has(key)));
-  const pageSize = Math.max(1, Number(request?.limit) || keptRows.length + rest.length);
-  return { ...rebuilt, products: [...keptRows, ...rest].slice(0, pageSize), kept_rows_merged: keptRows.length };
+function buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped }) {
+  return {
+    market,
+    serving_currency: servingCurrency,
+    reason: BUYER_MARKET_FALLBACK_REASON,
+    curated_rows_dropped: curatedRowsDropped,
+    rows: rows.products.length,
+    ...(rows.skipped ? { skipped: rows.skipped } : {}),
+    // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
+    cache_hit: rows.cached === true,
+    ...(rows.cached === true && Number.isFinite(Number(rows.recallSummary?.[0]?.cache_age_ms)) ? { pool_age_ms: Number(rows.recallSummary[0].cache_age_ms) } : {}),
+    ...(rows.stale ? { stale: true } : {}),
+    ...(Number(rows.hops_pending) > 0 ? { hops_pending: Number(rows.hops_pending) } : {}),
+  };
+}
+
+// The window each half of the scoped sequence is built over: page 1 at the largest page the
+// request normaliser allows, no cursor (an empty string, so a cursor nested under `discovery`
+// cannot leak through the merge). Page-independent, so every page slices the same sequence.
+const SCOPED_SEQUENCE_WINDOW = 100;
+function scopedSequenceWindowPayload(payload) {
+  return { ...payload, page: 1, limit: SCOPED_SEQUENCE_WINDOW, cursor: '', next_cursor: '', nextCursor: '' };
+}
+
+// Every identity one product can carry across the two builders: the merchant:product key, the
+// signature, the external product id and the content key. Two cards sharing any one of them are
+// the same product, whichever id scheme each lane minted.
+function scopedSequenceDedupKeys(product) {
+  return [
+    `mp:${buildDiscoveryDedupKey(product)}`,
+    `sig:${String(product?.pivota_signature_id || '').trim()}`,
+    `ext:${String(product?.external_product_id || '').trim()}`,
+    `ck:${String(product?.content_key || '').trim()}`,
+  ].filter((key) => !key.endsWith(':'));
+}
+
+/**
+ * A scoped (BUYER_MARKET_OFFER_SCOPE) buyer's page, from ONE ordered sequence:
+ *
+ *   [every curated row priced in the buyer's currency, in curated order]
+ *   ++ [the market's fallback pool, in its builder's order, minus any product already kept]
+ *
+ * and page N is that sequence's slice ((N-1)*limit, N*limit]. Both halves are built over a
+ * page-independent window (scopedSequenceWindowPayload), so every pool row lands on exactly one
+ * page, a kept row is never repeated on a later page, and `total` is the same on every page:
+ * kept rows + deduped pool rows. The window caps the sequence at SCOPED_SEQUENCE_WINDOW rows of
+ * each half. The page is labelled by what it holds: the fallback is stamped as applied only when
+ * pool rows are on it.
+ */
+async function applyScopedBuyerMarketSequence({ response, payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
+  const request = normalizeDiscoveryRequest(payload);
+  const pageSize = Math.max(1, Number(request.limit) || 1);
+  const pageIndex = Math.max(1, Number(request.page) || 1);
+  const windowPayload = scopedSequenceWindowPayload(payload);
+
+  const curatedWindow = await buildCurated(windowPayload, options);
+  const kept = (Array.isArray(curatedWindow?.products) ? curatedWindow.products : [])
+    .filter((product) => isPricedInServingCurrency(product, servingCurrency));
+  const seen = new Set(kept.flatMap(scopedSequenceDedupKeys));
+
+  const rows = await fetchRows({ request, market, servingCurrency });
+  let poolWindow = null;
+  let pool = [];
+  let poolDuplicates = 0;
+  if (rows.products.length) {
+    poolWindow = await buildOnce(windowPayload, {
+      ...options,
+      candidateProducts: annotateProviderProducts('products_search', rows.products),
+    });
+    for (const product of (Array.isArray(poolWindow?.products) ? poolWindow.products : [])) {
+      const keys = scopedSequenceDedupKeys(product);
+      if (keys.some((key) => seen.has(key))) {
+        poolDuplicates += 1;
+        continue;
+      }
+      keys.forEach((key) => seen.add(key));
+      pool.push(product);
+    }
+  }
+  const poolMetadata = poolWindow?.metadata || {};
+  const poolEligible = Number.isFinite(Number(poolMetadata.eligible_pool_count))
+    ? Math.max(pool.length, Number(poolMetadata.eligible_pool_count) - poolDuplicates)
+    : pool.length;
+  const total = kept.length + poolEligible;
+
+  const sequence = [...kept, ...pool];
+  const offset = (pageIndex - 1) * pageSize;
+  const pageProducts = sequence.slice(offset, offset + pageSize);
+  const keptOnPage = Math.max(0, Math.min(kept.length - offset, pageProducts.length));
+  const poolOnPage = pageProducts.length - keptOnPage;
+  const hasMore = offset + pageProducts.length < total;
+
+  const base = poolOnPage > 0 ? poolMetadata : (curatedWindow?.metadata || response?.metadata || {});
+  const stamp = {
+    ...buildBuyerMarketFallbackStamp({
+      market,
+      servingCurrency,
+      rows,
+      curatedRowsDropped: (Array.isArray(response?.products) ? response.products : [])
+        .filter((product) => !isPricedInServingCurrency(product, servingCurrency)).length,
+    }),
+    applied: poolOnPage > 0,
+    served: pageProducts.length,
+    curated_rows_kept: kept.length,
+    curated_rows_on_page: keptOnPage,
+    pool_rows_on_page: poolOnPage,
+    pool_rows_duplicating_kept: poolDuplicates,
+    recall_summary: rows.recallSummary || [],
+  };
+  const fallbackLabels = poolOnPage > 0
+    ? {
+        candidate_source: keptOnPage > 0 ? 'buyer_market_curated+products_search' : 'buyer_market_products_search',
+        fallback_triggered: true,
+        fallback_reason: BUYER_MARKET_FALLBACK_REASON,
+        route_health: { ...(base.route_health || {}), fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON },
+        search_decision: { ...(base.search_decision || {}), fallback_triggered: true },
+      }
+    : {};
+  // The windows were built at page 1 / SCOPED_SEQUENCE_WINDOW; the page fields describe THIS page.
+  const cursorInfo = request.surface === 'browse_products'
+    ? buildDiscoveryCursorInfo({
+        request,
+        servingMode: base.serving_mode,
+        nextOffset: offset + pageSize,
+        nextAbsoluteOffset: offset + pageSize,
+        hasNextPage: hasMore,
+      })
+    : null;
+  return {
+    ...(poolOnPage > 0 ? poolWindow : (curatedWindow || response)),
+    products: pageProducts,
+    total,
+    page: request.page,
+    page_size: pageProducts.length,
+    ...(cursorInfo ? { cursor_info: cursorInfo } : {}),
+    metadata: {
+      ...base,
+      corpus_total_count: total,
+      ...(Object.prototype.hasOwnProperty.call(base, 'runtime_corpus_count') ? { runtime_corpus_count: total } : {}),
+      has_more: hasMore,
+      ...(cursorInfo ? { cursor_info: cursorInfo } : {}),
+      ...fallbackLabels,
+      buyer_market_fallback: stamp,
+    },
+  };
 }
 
 async function getDiscoveryFeed(payload = {}, options = {}) {
