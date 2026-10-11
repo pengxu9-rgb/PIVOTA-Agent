@@ -297,6 +297,126 @@ describe('discovery feed wiring', () => {
     expect([first.total, second.total]).toEqual([40, 40]);
   });
 
+  // ---- round 3: totals bounded by the sequence, cursor paging, one assembly, error fallback ----
+  const bigPool = Array.from({ length: 150 }, (_, n) => ({ ...card(`ext_big_${n}`, 'SGD'), merchant_id: 'merch_obs_pool', pivota_signature_id: undefined }));
+  const threeKept = [card('sig_k0', 'SGD'), card('sig_k1', 'SGD'), card('sig_k2', 'SGD')];
+  const sequenceHarness = ({ curatedRows = threeKept, poolRows = bigPool, curatedImpl = null } = {}) => {
+    const { internals } = loadInternals();
+    const calls = { curated: 0, pool: 0, fetch: 0 };
+    const buildCurated = jest.fn(async (p) => {
+      calls.curated += 1;
+      if (curatedImpl) return curatedImpl(p);
+      return { products: curatedRows.slice(0, p.limit), metadata: { candidate_source: 'canonical_sig', serving_mode: 'exhaustive' } };
+    });
+    const buildOnce = jest.fn(async (p, options) => {
+      calls.pool += 1;
+      return { products: options.candidateProducts.slice((p.page - 1) * p.limit, p.page * p.limit), metadata: { eligible_pool_count: options.candidateProducts.length, serving_mode: 'exhaustive' } };
+    });
+    const fetchRows = jest.fn(async () => { calls.fetch += 1; return { products: poolRows, recallSummary: [], skipped: null }; });
+    const payloadFor = (extra) => ({ surface: 'browse_products', limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] }, ...extra });
+    const call = (extra, response = { products: [], metadata: {} }) => internals.applyBuyerMarketFallback({
+      response, payload: payloadFor(extra), fetchRows, buildOnce, buildCurated,
+    });
+    return { internals, calls, call };
+  };
+
+  test('flag on: with a pool larger than the window, total is what can be shown and the last page says so', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { call } = sequenceHarness();
+    const pages = [];
+    for (let page = 1; page <= 10; page += 1) {
+      const out = await call({ page });
+      pages.push(out);
+      if (!out.metadata.has_more) break;
+    }
+    const shown = pages.flatMap((out) => out.products.map((p) => p.product_id));
+    expect(shown).toHaveLength(103); // 3 kept + the 100-row pool window
+    expect(new Set(shown).size).toBe(103);
+    expect(pages.every((out) => out.total === 103)).toBe(true);
+    expect(pages.every((out) => out.products.length > 0)).toBe(true); // no empty page while has_more
+    const last = pages[pages.length - 1];
+    expect([last.metadata.has_more, last.cursor_info.next_cursor]).toEqual([false, null]);
+    expect(pages[0].metadata.buyer_market_fallback.pool_eligible_total).toBe(150);
+  }));
+
+  test('flag on: following next_cursor walks the same pages as page numbers', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { call } = sequenceHarness();
+    const byPage = [];
+    for (let page = 1; page <= 10; page += 1) {
+      const out = await call({ page });
+      byPage.push(out.products.map((p) => p.product_id));
+      if (!out.metadata.has_more) break;
+    }
+    const byCursor = [];
+    let cursor = null;
+    for (let step = 0; step < 10; step += 1) {
+      const out = await call(cursor ? { page: 1, cursor } : { page: 1 });
+      byCursor.push(out.products.map((p) => p.product_id));
+      if (step === 0) {
+        // Both offsets point at the first row page 1 did not show.
+        const decoded = JSON.parse(Buffer.from(out.cursor_info.next_cursor.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+        expect([decoded.offset, decoded.absolute_offset]).toEqual([24, 24]);
+      }
+      cursor = out.cursor_info.next_cursor;
+      if (!cursor) break;
+    }
+    expect(byCursor).toEqual(byPage);
+  }));
+
+  test('flag on: concurrent SG requests share one assembly, and page 2 slices the cached sequence', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { call, calls } = sequenceHarness();
+    const [a, b] = await Promise.all([call({ page: 1 }), call({ page: 1 })]);
+    expect(a.products).toEqual(b.products);
+    expect(calls).toEqual({ curated: 1, pool: 1, fetch: 1 });
+    const page2 = await call({ page: 2 });
+    expect(calls).toEqual({ curated: 1, pool: 1, fetch: 1 });
+    expect(page2.metadata.buyer_market_fallback.sequence_cache_hit).toBe(true);
+    expect(page2.products[0].product_id).toBe('ext_big_21');
+    // A US request never reads the SG entry (its context key carries no scope; it takes no scoped path).
+    expect(await call({ page: 1, buyer_market: 'US' }, { products: [card('sig_us', 'USD')], metadata: {} }))
+      .toEqual({ products: [card('sig_us', 'USD')], metadata: {} });
+  }));
+
+  test('flag on: a failing window build falls back to today\'s unscoped behaviour', () => withEnv({ [FLAG]: 'on' }, async () => {
+    // The 100-row window times out; the request's own page (24) still builds.
+    const timeout = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+    const { call } = sequenceHarness({
+      curatedImpl: (p) => {
+        if (p.limit === 100) throw timeout;
+        return { products: [card('sig_c0', 'USD')], metadata: { candidate_source: 'canonical_sig' } };
+      },
+    });
+    // No page built by the caller (getDiscoveryFeed's scoped path): it is built now, and today's
+    // rule (no SGD row on it) sends it to the market pool.
+    const out = await call({ page: 1 }, null);
+    expect(out.metadata.candidate_source).toBe('buyer_market_products_search');
+    expect(out.metadata.buyer_market_fallback.scoped_sequence_error).toEqual(expect.any(String));
+    // With an SGD row on the caller's page: today's rule leaves it as built, and says why.
+    const kept = await call({ page: 1 }, { products: [card('sig_c1', 'SGD')], metadata: {} });
+    expect(kept.products.map((p) => p.product_id)).toEqual(['sig_c1']);
+    expect(kept.metadata.buyer_market_scoped_sequence_error).toEqual(expect.any(String));
+  }));
+
+  test('getDiscoveryFeed: a scoped SG request does not build its own page before the sequence', () => withEnv({
+    [FLAG]: 'on', DATABASE_URL: 'postgres://scope-test', DISCOVERY_BROWSE_USES_CANONICAL_SIG: 'true',
+  }, async () => {
+    let sigQueries = 0;
+    jest.resetModules();
+    jest.doMock('../src/db', () => ({ query: jest.fn(async (sql) => {
+      if (String(sql).includes('FROM agent_pdp_view apv')) sigQueries += 1;
+      return { rows: [] };
+    }) }));
+    // eslint-disable-next-line global-require
+    const feed = require('../src/services/discoveryFeed');
+    const payload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    expect(feed._internals.isScopedBuyerMarketRequest(payload)).toBe(true);
+    expect(feed._internals.isScopedBuyerMarketRequest({ ...payload, buyer_market: 'US' })).toBe(false);
+    await feed.getDiscoveryFeed(payload);
+    expect(sigQueries).toBe(1); // the window build only
+    jest.dontMock('../src/db');
+  }));
+
   test('flag on: with no pool rows the page is the kept rows alone', async () => {
     const { out } = await fallbackRun({ flag: true, curated, pool: [] });
     expect(out.products.map((p) => p.product_id)).toEqual(['sig_c0', 'sig_c1']);

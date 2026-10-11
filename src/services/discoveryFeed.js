@@ -13803,15 +13803,31 @@ async function applyBuyerMarketFallback({
   // BUYER_MARKET_OFFER_SCOPE: the curated readers return this buyer's own-currency rows, often only
   // a few. The page is then built from ONE sequence -- see applyScopedBuyerMarketSequence. Without
   // the scope: today's rule, unchanged.
+  let scopedSequenceError = null;
   if (resolveBuyerMarketOfferScope(market)) {
-    return applyScopedBuyerMarketSequence({ response, payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows });
+    try {
+      return await applyScopedBuyerMarketSequence({ payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows });
+    } catch (err) {
+      // A failed window build must not fail the request: serve today's unscoped behaviour instead,
+      // building the page now if the caller skipped it for the scoped path.
+      scopedSequenceError = classifyDiscoveryQueryError(err) || 'scoped_sequence_failed';
+      logger.warn({ err: err?.message || String(err), market, reason: scopedSequenceError }, 'buyer-market scoped sequence failed; serving the unscoped fallback');
+      if (!response) response = await buildCurated(payload, options);
+    }
   }
   const products = Array.isArray(response?.products) ? response.products : [];
-  if (hasRowsInServingCurrency(products, servingCurrency)) return response;
+  if (hasRowsInServingCurrency(products, servingCurrency)) {
+    return scopedSequenceError
+      ? { ...response, metadata: { ...(response?.metadata || {}), buyer_market_scoped_sequence_error: scopedSequenceError } }
+      : response;
+  }
 
   const request = normalizeDiscoveryRequest(payload);
   const rows = await fetchRows({ request, market, servingCurrency });
-  const stamp = buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: products.length });
+  const stamp = {
+    ...buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: products.length }),
+    ...(scopedSequenceError ? { scoped_sequence_error: scopedSequenceError } : {}),
+  };
   if (rows.products.length === 0) {
     // Nothing in that market either: the page stays as built (the door's guard empties it) and says why,
     // hop by hop (status, returned, latency, cache), so a live diagnosis needs no API key.
@@ -13889,25 +13905,50 @@ function scopedSequenceDedupKeys(product) {
  *
  * and page N is that sequence's slice ((N-1)*limit, N*limit]. Both halves are built over a
  * page-independent window (scopedSequenceWindowPayload), so every pool row lands on exactly one
- * page, a kept row is never repeated on a later page, and `total` is the same on every page:
- * kept rows + deduped pool rows. The window caps the sequence at SCOPED_SEQUENCE_WINDOW rows of
- * each half. The page is labelled by what it holds: the fallback is stamped as applied only when
- * pool rows are on it.
+ * page and no kept row repeats on a later page. `total` and `has_more` are the SEQUENCE's: at most
+ * SCOPED_SEQUENCE_WINDOW rows of each half can be shown, so that is what is counted (the pool's
+ * own eligible size is reported apart, as pool_eligible_total). The page is labelled by what it
+ * holds: the fallback is stamped as applied only when pool rows are on it.
+ *
+ * The sequence is assembled once per scope + request context (scopedSequenceCacheKey) and kept
+ * for SCOPED_SEQUENCE_TTL_MS, with concurrent requests sharing one in-flight assembly, so page 2+
+ * and parallel SG requests slice it without rebuilding.
  */
-async function applyScopedBuyerMarketSequence({ response, payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
-  const request = normalizeDiscoveryRequest(payload);
-  const pageSize = Math.max(1, Number(request.limit) || 1);
-  const pageIndex = Math.max(1, Number(request.page) || 1);
-  const windowPayload = scopedSequenceWindowPayload(payload);
+const SCOPED_SEQUENCE_CACHE_MAX = 200;
+const scopedSequenceCache = new Map();
+const scopedSequenceInflight = new Map();
 
+function getScopedSequenceTtlMs() {
+  return clampInt(process.env.DISCOVERY_SCOPED_SEQUENCE_TTL_MS, 60_000, 0, 600_000);
+}
+
+function resetScopedSequenceCacheForTest() {
+  scopedSequenceCache.clear();
+  scopedSequenceInflight.clear();
+}
+
+// Everything that changes the two window builds' output. The context key already carries the
+// buyer's offer scope (buyerOfferScopeCacheKeyPart), so a US and an SG buyer never share an entry.
+function scopedSequenceCacheKey(request, market) {
+  return JSON.stringify({
+    market,
+    context: buildDiscoveryContextCacheKey(request),
+    scope: request.scope,
+    response_detail: request.response_detail ?? null,
+    debug: request.debug ?? null,
+  });
+}
+
+async function assembleScopedBuyerMarketSequence({ payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
+  const windowPayload = scopedSequenceWindowPayload(payload);
   const curatedWindow = await buildCurated(windowPayload, options);
-  const kept = (Array.isArray(curatedWindow?.products) ? curatedWindow.products : [])
-    .filter((product) => isPricedInServingCurrency(product, servingCurrency));
+  const curatedRows = Array.isArray(curatedWindow?.products) ? curatedWindow.products : [];
+  const kept = curatedRows.filter((product) => isPricedInServingCurrency(product, servingCurrency));
   const seen = new Set(kept.flatMap(scopedSequenceDedupKeys));
 
   const rows = await fetchRows({ request, market, servingCurrency });
   let poolWindow = null;
-  let pool = [];
+  const pool = [];
   let poolDuplicates = 0;
   if (rows.products.length) {
     poolWindow = await buildOnce(windowPayload, {
@@ -13925,33 +13966,72 @@ async function applyScopedBuyerMarketSequence({ response, payload, options, mark
     }
   }
   const poolMetadata = poolWindow?.metadata || {};
-  const poolEligible = Number.isFinite(Number(poolMetadata.eligible_pool_count))
-    ? Math.max(pool.length, Number(poolMetadata.eligible_pool_count) - poolDuplicates)
-    : pool.length;
-  const total = kept.length + poolEligible;
+  return {
+    kept,
+    sequence: [...kept, ...pool],
+    curatedRowsDropped: curatedRows.length - kept.length,
+    poolDuplicates,
+    poolEligibleTotal: Number.isFinite(Number(poolMetadata.eligible_pool_count))
+      ? Math.max(pool.length, Number(poolMetadata.eligible_pool_count) - poolDuplicates)
+      : pool.length,
+    curatedWindow,
+    poolWindow,
+    rows,
+  };
+}
 
-  const sequence = [...kept, ...pool];
+async function loadScopedBuyerMarketSequence(args) {
+  const key = scopedSequenceCacheKey(args.request, args.market);
+  const ttlMs = getScopedSequenceTtlMs();
+  const cached = scopedSequenceCache.get(key);
+  if (cached && Date.now() - cached.storedAt <= ttlMs) return { ...cached.value, cacheHit: true };
+  if (cached) scopedSequenceCache.delete(key);
+  if (scopedSequenceInflight.has(key)) return { ...(await scopedSequenceInflight.get(key)), cacheHit: true };
+  const pending = assembleScopedBuyerMarketSequence(args);
+  scopedSequenceInflight.set(key, pending);
+  try {
+    const value = await pending;
+    // A cold or failing pool is not kept: the next request should get the warmed pool.
+    if (ttlMs > 0 && value.rows.products.length > 0) {
+      if (scopedSequenceCache.size >= SCOPED_SEQUENCE_CACHE_MAX) {
+        scopedSequenceCache.delete(scopedSequenceCache.keys().next().value);
+      }
+      scopedSequenceCache.set(key, { storedAt: Date.now(), value });
+    }
+    return { ...value, cacheHit: false };
+  } finally {
+    scopedSequenceInflight.delete(key);
+  }
+}
+
+async function applyScopedBuyerMarketSequence({ payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
+  const request = normalizeDiscoveryRequest(payload);
+  const pageSize = Math.max(1, Number(request.limit) || 1);
+  const pageIndex = Math.max(1, Number(request.page) || 1);
+  const assembled = await loadScopedBuyerMarketSequence({
+    payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows,
+  });
+  const { kept, sequence, curatedWindow, poolWindow, rows } = assembled;
+
+  const total = sequence.length;
   const offset = (pageIndex - 1) * pageSize;
   const pageProducts = sequence.slice(offset, offset + pageSize);
   const keptOnPage = Math.max(0, Math.min(kept.length - offset, pageProducts.length));
   const poolOnPage = pageProducts.length - keptOnPage;
-  const hasMore = offset + pageProducts.length < total;
+  const nextOffset = offset + pageProducts.length;
+  const hasMore = nextOffset < total;
 
-  const base = poolOnPage > 0 ? poolMetadata : (curatedWindow?.metadata || response?.metadata || {});
+  const base = poolOnPage > 0 ? (poolWindow?.metadata || {}) : (curatedWindow?.metadata || {});
   const stamp = {
-    ...buildBuyerMarketFallbackStamp({
-      market,
-      servingCurrency,
-      rows,
-      curatedRowsDropped: (Array.isArray(response?.products) ? response.products : [])
-        .filter((product) => !isPricedInServingCurrency(product, servingCurrency)).length,
-    }),
+    ...buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: assembled.curatedRowsDropped }),
     applied: poolOnPage > 0,
     served: pageProducts.length,
     curated_rows_kept: kept.length,
     curated_rows_on_page: keptOnPage,
     pool_rows_on_page: poolOnPage,
-    pool_rows_duplicating_kept: poolDuplicates,
+    pool_rows_duplicating_kept: assembled.poolDuplicates,
+    pool_eligible_total: assembled.poolEligibleTotal,
+    sequence_cache_hit: assembled.cacheHit === true,
     recall_summary: rows.recallSummary || [],
   };
   const fallbackLabels = poolOnPage > 0
@@ -13963,18 +14043,19 @@ async function applyScopedBuyerMarketSequence({ response, payload, options, mark
         search_decision: { ...(base.search_decision || {}), fallback_triggered: true },
       }
     : {};
-  // The windows were built at page 1 / SCOPED_SEQUENCE_WINDOW; the page fields describe THIS page.
+  // The windows were built at page 1 / SCOPED_SEQUENCE_WINDOW; the page fields describe THIS page,
+  // and the next cursor points at the first row this page did not show.
   const cursorInfo = request.surface === 'browse_products'
     ? buildDiscoveryCursorInfo({
         request,
-        servingMode: base.serving_mode,
-        nextOffset: offset + pageSize,
-        nextAbsoluteOffset: offset + pageSize,
+        servingMode: base.serving_mode || 'exhaustive',
+        nextOffset,
+        nextAbsoluteOffset: nextOffset,
         hasNextPage: hasMore,
       })
     : null;
   return {
-    ...(poolOnPage > 0 ? poolWindow : (curatedWindow || response)),
+    ...(poolOnPage > 0 ? poolWindow : (curatedWindow || {})),
     products: pageProducts,
     total,
     page: request.page,
@@ -13992,7 +14073,21 @@ async function applyScopedBuyerMarketSequence({ response, payload, options, mark
   };
 }
 
+// The request is served by the scoped sequence (applyBuyerMarketFallback would take that path), so
+// getDiscoveryFeed need not build the request's own page first: the sequence builds its windows.
+function isScopedBuyerMarketRequest(payload) {
+  const source = payload && typeof payload.discovery === 'object' ? { ...payload.discovery, ...payload } : payload;
+  const market = resolveDiscoveryBuyerMarket(source);
+  if (!market) return false;
+  const servingCurrency = resolveServingCurrency(market);
+  if (!servingCurrency || servingCurrency === resolveServingCurrency('')) return false;
+  return Boolean(resolveBuyerMarketOfferScope(market));
+}
+
 async function getDiscoveryFeed(payload = {}, options = {}) {
+  if (isScopedBuyerMarketRequest(payload)) {
+    return applyBuyerMarketFallback({ response: null, payload, options });
+  }
   const response = await buildDiscoveryFeedOnce(payload, options);
   return applyBuyerMarketFallback({ response, payload, options });
 }
@@ -14015,6 +14110,8 @@ module.exports = {
     resolveDiscoveryCardCurrency,
     buildDiscoveryFeedOnce,
     resetBuyerMarketPoolCacheForTest,
+    resetScopedSequenceCacheForTest,
+    isScopedBuyerMarketRequest,
     awaitBuyerMarketRoundsForTest,
     isBuyerMarketPoolRow,
     isBuyerMarketBreakerOpen,
