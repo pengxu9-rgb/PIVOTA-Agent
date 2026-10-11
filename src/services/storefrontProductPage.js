@@ -15,6 +15,13 @@
 // glossier.com: `404` + `powered-by: Shopify` for removed handles, `200` + the same header for live ones. A
 // Cloudflare challenge (`cf-mitigated`) is never evidence of anything.
 //
+// EXCEPT A HEADLESS STOREFRONT. A Hydrogen app on Oxygen stamps `powered-by: Shopify, Oxygen, Hydrogen` on every
+// response, and it has no `/products/<handle>.json` route at all: that URL is 404 for LIVE products. Measured
+// 2026-10-11 on hydrogen.shop: `/products/the-full-stack` 200, `/products/the-full-stack.json` 404, both with that
+// header and no x-shopid. So a `.json` 404 from Hydrogen/Oxygen is not an answer; the HTML product page is asked
+// instead (a removed handle there is a real 404 with the same header), and a live HTML page is `unknown`, because it
+// carries no variant ids.
+//
 // WHAT "GONE" MEANS HERE: a buyer following this link lands on the store's own "page not found". It is a serving
 // fact, not a retirement: nothing is written, the verdict lives in this process for TTL_MS, and the backend's
 // corroborated sweep remains the only thing that withdraws a row.
@@ -27,9 +34,15 @@ const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 const TTL_MS = 120000;
 const MAX_ENTRIES = 1000;
 const DEFAULT_TIMEOUT_MS = 1500;
+// A product's stored variant ids are capped; above the cap the page is live with `variantIds: null` (cannot tell).
+const MAX_VARIANT_IDS = 250;
 const MERCHANT_HEADERS = Object.freeze({
   'User-Agent': 'PivotaCatalog/1.0',
   Accept: 'application/json',
+});
+const HTML_HEADERS = Object.freeze({
+  'User-Agent': 'PivotaCatalog/1.0',
+  Accept: 'text/html',
 });
 
 let defaultFetch = null;
@@ -52,6 +65,7 @@ function productPageOf(raw) {
     host: url.hostname.toLowerCase(),
     handle: match[1],
     jsonUrl: `${url.origin}/products/${match[1]}.json`,
+    htmlUrl: `${url.origin}/products/${match[1]}`,
   };
 }
 
@@ -63,12 +77,25 @@ function headerOf(response, name) {
   return Array.isArray(value) ? value.join(',') : String(value || '');
 }
 
-/** True only for a 404/410 that Shopify itself served. See the evidence rule above. */
-function shopifySaysGone(response) {
+/** A Hydrogen/Oxygen (headless) storefront: its `/products/<handle>.json` is 404 for live products. */
+function isHeadlessStorefront(response) {
+  return /\b(hydrogen|oxygen)\b/i.test(headerOf(response, 'powered-by'));
+}
+
+/** A 404/410 that Shopify itself served, on whatever page was asked. */
+function shopifyStamped404(response) {
   const status = Number(response && response.status);
   if (status !== 404 && status !== 410) return false;
   if (headerOf(response, 'cf-mitigated')) return false;
   return /\bshopify\b/i.test(headerOf(response, 'powered-by')) || /^\d+$/.test(headerOf(response, 'x-shopid').trim());
+}
+
+/**
+ * True only for a product `.json` 404/410 that Shopify itself served. See the evidence rule above: a headless
+ * storefront's `.json` 404 is never gone here (readStorefrontProductPage asks its HTML page instead).
+ */
+function shopifySaysGone(response) {
+  return shopifyStamped404(response) && !isHeadlessStorefront(response);
 }
 
 function noteGone(jsonUrl, status, now = Date.now()) {
@@ -88,13 +115,15 @@ function knownGone(jsonUrl, now = Date.now()) {
 function variantIdsOf(body) {
   const variants = body && body.product && Array.isArray(body.product.variants) ? body.product.variants : null;
   if (!variants) return null;
+  if (variants.length > MAX_VARIANT_IDS) return 'too_many';
   return new Set(variants.map((v) => String(v && v.id != null ? v.id : '')).filter((id) => /^\d+$/.test(id)));
 }
 
 /**
  * One bounded read of a storefront product page. Never throws.
  * @returns {Promise<{state:'gone'|'live'|'unknown', reason:string, host?:string, handle?:string, status?:number,
- *   variantIds?:Set<string>|null, cacheHit?:boolean}>}
+ *   variantIds?:Set<string>|null, cacheHit?:boolean, headless?:boolean}>}
+ *   `variantIds: null` on a live page = more than MAX_VARIANT_IDS variants: which ones are sold is not known.
  */
 async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, now = Date.now } = {}) {
   const page = productPageOf(rawUrl);
@@ -114,11 +143,21 @@ async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAUL
       noteGone(page.jsonUrl, response.status, now());
       return { ...base, state: 'gone', reason: `http_${response.status}`, status: Number(response.status) };
     }
+    if (shopifyStamped404(response) && isHeadlessStorefront(response)) {
+      // A headless store's .json 404 says nothing: ask the product page a buyer would land on.
+      const html = await doFetch(page.htmlUrl, { redirect: 'error', signal: controller.signal, headers: HTML_HEADERS });
+      if (shopifyStamped404(html)) {
+        noteGone(page.jsonUrl, html.status, now());
+        return { ...base, state: 'gone', reason: `http_${html.status}`, status: Number(html.status), headless: true };
+      }
+      return { ...base, state: 'unknown', reason: html && html.ok ? 'headless_storefront' : `headless_http_${Number(html && html.status) || 0}` };
+    }
     if (!response || !response.ok) return { ...base, state: 'unknown', reason: `http_${Number(response && response.status) || 0}` };
     let body;
     try { body = await response.json(); } catch { return { ...base, state: 'unknown', reason: 'invalid_json' }; }
-    const variantIds = variantIdsOf(body);
+    let variantIds = variantIdsOf(body);
     if (!variantIds) return { ...base, state: 'unknown', reason: 'no_variants' };
+    if (variantIds === 'too_many') variantIds = null;
     remember(liveCache, page.jsonUrl, { variantIds, expires: now() + TTL_MS });
     return { ...base, state: 'live', reason: 'ok', variantIds };
   } catch {
@@ -135,7 +174,9 @@ function resetForTests() {
 
 module.exports = {
   TTL_MS,
+  MAX_VARIANT_IDS,
   productPageOf,
+  isHeadlessStorefront,
   shopifySaysGone,
   noteGone,
   knownGone,
