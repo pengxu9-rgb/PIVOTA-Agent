@@ -1,13 +1,22 @@
 const { buildCanonicalOwnOfferSellerSql } = require('./canonicalOwnOfferSellerSql');
 const axios = require('axios');
 const logger = require('../logger');
+const crypto = require('crypto');
 const { query } = require('../db');
 // THE BUYER'S MARKET, AND THE CURRENCY ITS PAGE MUST BE IN (applyBuyerMarketFallback below).
 const { parseMarketList } = require('./servedMarkets');
 const { resolveServingCurrency } = require('./buyerMarket');
-const { filterProductsToServingCurrency } = require('./servingCurrencyGuard');
+const { filterProductsToServingCurrency, isPricedInServingCurrency } = require('./servingCurrencyGuard');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 const { seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql } = require('./seedSearchOfferScope');
+const {
+  applyMarketPricesToIndexRow,
+  isMarketPricesColumnKnownMissing,
+  isMissingMarketPricesColumnError,
+  markMarketPricesColumnMissing,
+  marketPricesFreshSql,
+  resolveBuyerMarketOfferScope,
+} = require('./buyerMarketOfferScope');
 const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
@@ -3880,8 +3889,17 @@ function resolveGenericBrowsePrefetchFloor(request) {
   );
 }
 
+// A buyer-market offer scope (buyerMarketOfferScope) changes which prices and offers the canonical
+// readers serve, so a scoped pool must never be handed to another buyer: the scope's market joins
+// the key. Only when there IS a scope, so every unscoped key (flag off, US, silent) is unchanged.
+function buyerOfferScopeCacheKeyPart(request) {
+  const marketScope = resolveBuyerMarketOfferScope(request?.buyer_market);
+  return marketScope ? { buyer_offer_scope: marketScope.market } : {};
+}
+
 function buildDiscoveryContextCacheKey(request) {
   return JSON.stringify({
+    ...buyerOfferScopeCacheKeyPart(request),
     surface: request?.surface || 'unknown',
     sort: request?.sort || 'popular',
     locale: String(request?.context?.locale || '').trim(),
@@ -4333,9 +4351,13 @@ async function fetchDiscoveryRecallStep({
     const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
       params: {
         ...(step?.query ? { query: step.query } : {}),
-        // The buyer's market, for the buyer-market fallback only: the backend then recalls THAT
-        // market's rows (its own currency), never USD rows across markets.
-        ...(step?.market ? { market: step.market } : {}),
+        // The buyer's SERVING market, for the buyer-market fallback only. NOT `market`: on the backend
+        // `market` is the storage PARTITION, and every SGD seed is filed under the US partition (the
+        // SG partition holds zero rows), so `market=SG` bound an empty partition and the fallback got
+        // nothing, live, 2026-10-09. `serving_market` is the buyer's market: the backend reads its
+        // served partitions and keeps only rows priced in that market's currency (pivota-backend GET
+        // /agent/v1/products/search, `serving_market`). An older backend ignores it: rows stay empty.
+        ...(step?.market ? { serving_market: step.market } : {}),
         in_stock_only: false,
         limit: step?.limit,
         offset: step?.offset,
@@ -4450,22 +4472,24 @@ function getProductsSearchBreakerMaxCooldownMs() {
   );
 }
 
-const productsSearchBreaker = {
-  consecutiveFailures: 0,
-  openUntil: 0,
-  cooldownMs: 0,
-  probe: null,
-};
+// One breaker per LANE. The main products_search lane has this one; the discovery buyer-market
+// fallback has one per market (buyerMarketBreakerFor): its hops run to the lane's full timeout and
+// up to four of them time out per round, so feeding them here would open THIS breaker -- and switch
+// off the US lane's products_search for 60 s and more -- because of non-US traffic.
+function createProductsSearchBreakerState(lane = 'products_search') {
+  return { lane, consecutiveFailures: 0, openUntil: 0, cooldownMs: 0, probe: null };
+}
+const productsSearchBreaker = createProductsSearchBreakerState();
 
-function resetProductsSearchBreaker() {
-  productsSearchBreaker.consecutiveFailures = 0;
-  productsSearchBreaker.openUntil = 0;
-  productsSearchBreaker.cooldownMs = 0;
-  productsSearchBreaker.probe = null;
+function resetProductsSearchBreaker(breaker = productsSearchBreaker) {
+  breaker.consecutiveFailures = 0;
+  breaker.openUntil = 0;
+  breaker.cooldownMs = 0;
+  breaker.probe = null;
 }
 
-function isProductsSearchBreakerOpen() {
-  return getProductsSearchBreakerFailureThreshold() > 0 && productsSearchBreaker.cooldownMs > 0;
+function isProductsSearchBreakerOpen(breaker = productsSearchBreaker) {
+  return getProductsSearchBreakerFailureThreshold() > 0 && breaker.cooldownMs > 0;
 }
 
 // Only answers that say the upstream is down or unusable count against it: a timeout, a transport error,
@@ -4482,11 +4506,11 @@ function classifyProductsSearchOutcome(result) {
   return 'neutral';
 }
 
-function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null } = {}) {
-  const wasOpen = productsSearchBreaker.cooldownMs > 0;
+function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null, breaker = productsSearchBreaker } = {}) {
+  const wasOpen = breaker.cooldownMs > 0;
   if (outcome === 'success' || (probe && outcome === 'neutral')) {
-    resetProductsSearchBreaker();
-    if (wasOpen) logger.info({ probe }, 'discovery products_search circuit closed');
+    resetProductsSearchBreaker(breaker);
+    if (wasOpen) logger.info({ probe, lane: breaker.lane }, 'discovery products_search circuit closed');
     return;
   }
   if (outcome !== 'failure') return;
@@ -4495,38 +4519,40 @@ function recordProductsSearchOutcome(outcome, { probe = false, failureReason = n
   // A call that was already in flight when the circuit opened must not stretch the cooldown; only the
   // probe's verdict does.
   if (wasOpen && !probe) return;
-  productsSearchBreaker.consecutiveFailures += 1;
+  breaker.consecutiveFailures += 1;
   if (wasOpen) {
-    productsSearchBreaker.cooldownMs = Math.min(
-      productsSearchBreaker.cooldownMs * 2,
+    breaker.cooldownMs = Math.min(
+      breaker.cooldownMs * 2,
       Math.max(getProductsSearchBreakerMaxCooldownMs(), getProductsSearchBreakerCooldownMs()),
     );
-  } else if (productsSearchBreaker.consecutiveFailures >= threshold) {
-    productsSearchBreaker.cooldownMs = getProductsSearchBreakerCooldownMs();
+  } else if (breaker.consecutiveFailures >= threshold) {
+    breaker.cooldownMs = getProductsSearchBreakerCooldownMs();
   } else {
     return;
   }
-  productsSearchBreaker.openUntil = Date.now() + productsSearchBreaker.cooldownMs;
+  breaker.openUntil = Date.now() + breaker.cooldownMs;
   logger.warn(
     {
       probe,
+      lane: breaker.lane,
       failure_reason: failureReason,
-      consecutive_failures: productsSearchBreaker.consecutiveFailures,
-      cooldown_ms: productsSearchBreaker.cooldownMs,
+      consecutive_failures: breaker.consecutiveFailures,
+      cooldown_ms: breaker.cooldownMs,
     },
     'discovery products_search circuit open',
   );
 }
 
-function recordProductsSearchResult(result, { probe = false } = {}) {
+function recordProductsSearchResult(result, { probe = false, breaker = productsSearchBreaker } = {}) {
   recordProductsSearchOutcome(classifyProductsSearchOutcome(result), {
     probe,
+    breaker,
     failureReason: result?.summary?.failure_reason || null,
   });
 }
 
-function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders }) {
-  if (productsSearchBreaker.probe || Date.now() < productsSearchBreaker.openUntil) return;
+function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders, breaker = productsSearchBreaker }) {
+  if (breaker.probe || Date.now() < breaker.openUntil) return;
   // The probe gets the same step timeout a visitor would: an upstream that only answers after a visitor
   // has given up is still down.
   const timeoutMs = computeDiscoveryStepTimeoutMs(getDiscoveryRecallBudgetMs(), getDiscoveryProductsSearchTimeoutMs());
@@ -4534,11 +4560,11 @@ function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders 
     .catch((err) => ({ success: false, summary: { failure_reason: `request_error:${err?.code || 'unknown'}` } }))
     .then((result) => {
       // A real success may have closed the circuit, and a new probe replaced this one, while it was out.
-      if (productsSearchBreaker.probe !== probe) return;
-      productsSearchBreaker.probe = null;
-      recordProductsSearchResult(result, { probe: true });
+      if (breaker.probe !== probe) return;
+      breaker.probe = null;
+      recordProductsSearchResult(result, { probe: true, breaker });
     });
-  productsSearchBreaker.probe = probe;
+  breaker.probe = probe;
 }
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
@@ -7895,7 +7921,10 @@ async function loadCatalogCandidates({
       let canonicalSigProducts = null;
       let canonicalSigFailed = false;
       try {
-        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({
+          limit: safeLimit,
+          marketScope: resolveBuyerMarketOfferScope(request.buyer_market),
+        });
       } catch (err) {
         canonicalSigFailed = true;
         providerResults.push(buildProviderErrorResult('canonical_sig', err));
@@ -9690,6 +9719,41 @@ function mapCanonicalIndexRowToProduct(row) {
   };
 }
 
+// The own offers the strict-public readers price a card from. Unscoped: market 'US' and currency
+// 'USD', exactly as before (the statement stays byte-identical). Scoped (buyerMarketOfferScope,
+// flag BUYER_MARKET_OFFER_SCOPE): the buyer's CURRENCY alone, like canonical search and the
+// agent_pdp_view summary -- catalog_offers.market is a DEFAULT 'US' most writers never set, and
+// older SGD rows are stored market 'US'. The currency is a validated ISO code there.
+function strictOwnOfferMarket(marketScope) {
+  return marketScope
+    ? { market: null, currency: marketScope.currency, marketSql: '' }
+    : { market: 'US', currency: 'USD', marketSql: "co.market = 'US' AND " };
+}
+
+// Scoped strict readers only: keep a row BEFORE the page LIMIT only when some public, live own
+// listing of its content_key has an in-stock own offer in the buyer's currency -- the own_offers
+// lateral's test, minus its one chosen listing (the lateral still decides the served offers).
+// Without it the reader took the newest N rows and filtered afterwards, so an SG page held the
+// few SGD rows that happened to be among the newest. Relies on catalog_products(content_key),
+// catalog_row_trust(subject_type, subject_key) and catalog_offers(product_key), the lateral's own
+// lookups.
+function scopedOwnOfferExistsSql(marketScope) {
+  if (!marketScope) return '';
+  return `AND EXISTS (
+            SELECT 1
+            FROM catalog_products own_cp
+            JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+              AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
+            JOIN catalog_offers co ON co.product_key = own_cp.product_key
+            WHERE own_cp.content_key = apv.content_key
+              AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+              AND ${buildCanonicalOwnOfferSellerSql({ currency: marketScope.currency })}
+              AND co.currency = '${marketScope.currency}' AND co.availability = 'in_stock'
+              AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
+              AND coalesce(co.merchant_effective_price, co.list_price) > 0
+          )`;
+}
+
 async function fetchBrandScopedCanonicalCandidates({
   brandAliases = [],
   limit = 120,
@@ -9697,8 +9761,15 @@ async function fetchBrandScopedCanonicalCandidates({
   strictPublicSource = false,
   exactBrandQuery = false,
   withListingCategory = false,
+  marketScope = null,
+  marketPricesColumn = true,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
+  const own = strictOwnOfferMarket(marketScope);
+  // The non-strict reader prices a card from agent_pdp_view; for a scoped buyer it also reads the
+  // per-market summary (pivota-backend migration 263) -- unless that column is known to be absent.
+  const readMarketPrices = Boolean(marketScope) && !strictPublicSource && marketPricesColumn &&
+    !isMarketPricesColumnKnownMissing();
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => exactBrandQuery
       ? String(alias || '').trim().toLowerCase()
@@ -9737,7 +9808,8 @@ async function fetchBrandScopedCanonicalCandidates({
           JOIN brand_match bm ON bm.content_key = apv.content_key
           ${gateJoinSql}
           WHERE apv.pivota_signature_id IS NOT NULL
-            ${gateWhereSql}
+            ${gateWhereSql}${strictPublicSource && marketScope ? `
+            ${scopedOwnOfferExistsSql(marketScope)}` : ''}
             ${exactBrandQuery ? 'AND lower(apv.brand) = ANY($1::text[])' : ''}
           ORDER BY apv.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
           LIMIT $3
@@ -9760,11 +9832,12 @@ async function fetchBrandScopedCanonicalCandidates({
           apv.description,
           apv.image_url,
           apv.image_urls,
-          ${strictPublicSource ? "'USD'" : 'apv.currency'} AS currency,
+          ${strictPublicSource ? `'${own.currency}'` : 'apv.currency'} AS currency,
           ${strictPublicSource ? 'own_offers.price_min' : 'apv.price_min'} AS price_min,
           ${strictPublicSource ? 'own_offers.price_max' : 'apv.price_max'} AS price_max,
           ${strictPublicSource ? 'own_offers.offer_count' : 'apv.offer_count'} AS offer_count,
-          ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,
+          ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,${readMarketPrices ? `
+          ${marketPricesFreshSql('apv')} AS market_prices,` : ''}
           apv.category_path${withListingCategory ? `,
           -- The listing's own taxonomy (catalog_products.category_path): the
           -- slash path the public PDP serves as product.category_path. Read
@@ -9903,8 +9976,8 @@ async function fetchBrandScopedCanonicalCandidates({
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
-            AND ${buildCanonicalOwnOfferSellerSql()}
-            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
+            AND ${own.marketSql}co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
         ) own_offers ON TRUE` : ''}
@@ -9915,12 +9988,21 @@ async function fetchBrandScopedCanonicalCandidates({
     );
     return (res.rows || []).filter((row) => !strictPublicSource || ((row.first_party_product_key || row.external_product_key) && Array.isArray(row.offers) && row.offers.length))
       .map((row) => {
-        const product = mapCanonicalIndexRowToProduct(row);
+        const product = mapCanonicalIndexRowToProduct(readMarketPrices ? applyMarketPricesToIndexRow(row, marketScope) : row);
         if (product && withListingCategory) product.stored_listing_category_path = row.listing_category_path ?? null;
         return product;
       })
       .filter(Boolean);
   } catch (err) {
+    if (readMarketPrices && isMissingMarketPricesColumnError(err)) {
+      // Migration 263 not applied here yet: remember it, and serve this request exactly as the
+      // flag-off reader would.
+      markMarketPricesColumnMissing();
+      return fetchBrandScopedCanonicalCandidates({
+        brandAliases, limit, failures, strictPublicSource, exactBrandQuery, withListingCategory,
+        marketScope, marketPricesColumn: false,
+      });
+    }
     const message = String(err?.message || err || '');
     if (
       err?.code === 'NO_DATABASE' ||
@@ -9984,8 +10066,9 @@ function browseUsesCanonicalSig() {
 // The request carries no category scope in practice: the only call site is
 // gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
 // scope is set. No category branch is built here for that reason.
-async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = null } = {}) {
+async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = null, marketScope = null } = {}) {
   if (!process.env.DATABASE_URL) return null;
+  const own = strictOwnOfferMarket(marketScope);
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
   const params = signatureIds ? [safeLimit, signatureIds] : [safeLimit];
   if (signatureIds && (!Array.isArray(signatureIds) || !signatureIds.length || signatureIds.some((id) => !/^sig_[a-f0-9]{32}$/.test(id)))) throw new DiscoveryValidationError('Invalid canonical history signature');
@@ -10011,7 +10094,7 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           apv.description,
           apv.image_url,
           apv.image_urls,
-          'USD' AS currency,
+          '${own.currency}' AS currency,
           own_offers.price_min,
           own_offers.price_max,
           own_offers.offer_count,
@@ -10168,14 +10251,15 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
             AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
-            AND ${buildCanonicalOwnOfferSellerSql()}
-            AND co.market = 'US' AND co.currency = 'USD' AND co.availability = 'in_stock'
+            AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
+            AND ${own.marketSql}co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
          ) own_offers ON TRUE
 
         WHERE apv.pivota_signature_id IS NOT NULL
-          ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}
+          ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}${marketScope && !signatureIds ? `
+          ${scopedOwnOfferExistsSql(marketScope)}` : ''}
           AND EXISTS (
             SELECT 1
             FROM catalog_products cp_trust
@@ -10289,12 +10373,14 @@ async function loadCanonicalBrandQueryPrimary({ request, profile } = {}) {
       return summary([], null, 'canonical_brand_query_ambiguous');
     }
     const failures = [];
+    const marketScope = resolveBuyerMarketOfferScope(request.buyer_market);
     const products = await fetchBrandScopedCanonicalCandidates({
       brandAliases: [text],
       limit: 400,
       failures,
       strictPublicSource: true,
       exactBrandQuery: true,
+      marketScope,
     });
     if (failures.length) return summary([], null, 'canonical_brand_query_failed');
     const scoped = products
@@ -10304,22 +10390,23 @@ async function loadCanonicalBrandQueryPrimary({ request, profile } = {}) {
         const domain = path[0] === 'fashion' ? 'apparel' : path[0];
         return !profile?.dominantDomain || domain === profile.dominantDomain;
       })
-      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+      .map((product) => scopeCanonicalHistoryProduct(product, marketScope)).filter(Boolean);
     return summary(scoped, 200);
   } catch (err) {
     return summary([], null, classifyDiscoveryQueryError(err));
   }
 }
 
-function scopeCanonicalHistoryProduct(product) {
-  if (product?.currency !== 'USD') return null;
+function scopeCanonicalHistoryProduct(product, marketScope = null) {
+  const own = strictOwnOfferMarket(marketScope);
+  if (product?.currency !== own.currency) return null;
   const offers = (Array.isArray(product?.offers) ? product.offers : []).filter((offer) =>
-    offer?.market === 'US' && offer.currency === 'USD' && offer.availability === 'in_stock' &&
+    (own.market === null || offer?.market === own.market) && offer?.currency === own.currency && offer.availability === 'in_stock' &&
     Number.isFinite(Number(offer.price)) && Number(offer.price) > 0);
   if (!offers.length) return null;
   const { stored_listing_category_path: _storedListingCategoryPath, ...served } = product;
   return { ...served, offers, offers_count: offers.length,
-    price: Math.min(...offers.map((offer) => Number(offer.price))), currency: 'USD' };
+    price: Math.min(...offers.map((offer) => Number(offer.price))), currency: own.currency };
 }
 
 // Canonical history is a stored subject, not permission to trust a caller's brand
@@ -10463,8 +10550,10 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       limit: poolLimit, returned: products.length, status, latencyMs: Date.now() - startedAt,
       ...(error ? { failureReason: error, error } : {}) })],
   });
+  const marketScope = resolveBuyerMarketOfferScope(request.buyer_market);
+  const ownCurrency = strictOwnOfferMarket(marketScope).currency;
   try {
-    const anchors = await fetchCanonicalSigBrowseCandidates({ limit: views.length, signatureIds: views.map((view) => view.product_id) });
+    const anchors = await fetchCanonicalSigBrowseCandidates({ limit: views.length, signatureIds: views.map((view) => view.product_id), marketScope });
     if (!Array.isArray(anchors)) return summary([], null, 'canonical_history_unavailable');
     if (anchors.length !== views.length) return summary([], null, 'canonical_history_subject_not_public');
     const byId = new Map(anchors.map((anchor) => [anchor.product_id, anchor]));
@@ -10490,8 +10579,8 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       const domain = canonicalHistoryProductDomain(anchor);
       if (profile?.dominantDomain && profile.dominantDomain !== domain)
         return summary([], null, 'canonical_history_domain_conflict');
-      if (anchor.currency !== 'USD') return summary([], null, 'canonical_history_currency_mismatch');
-      if (!scopeCanonicalHistoryProduct(anchor)) {
+      if (anchor.currency !== ownCurrency) return summary([], null, 'canonical_history_currency_mismatch');
+      if (!scopeCanonicalHistoryProduct(anchor, marketScope)) {
         const unavailable = summary([], 200);
         unavailable.recallSummary[0].eligibility_reason = 'canonical_history_item_unavailable';
         return unavailable;
@@ -10504,7 +10593,7 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
     // not widen this stored-brand request or be silently replaced by it.
     if ((request.context.recent_queries || []).some((value) => !allowedHistoryTerms.has(normalizeBrandText(value)))) return null;
     const failures = [];
-    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true });
+    const products = await fetchBrandScopedCanonicalCandidates({ brandAliases: brands, limit: poolLimit, failures, strictPublicSource: true, withListingCategory: true, marketScope });
     if (failures.length) {
       const failed = summary([], null, 'canonical_history_query_failed');
       if (failures.includes('canonical_database_stress')) failed.recallSummary[0].database_stress = true;
@@ -10516,7 +10605,7 @@ async function loadCanonicalHistoryPrimary({ request, profile, limit } = {}) {
       return allowedBrands.has(normalizeBrandText(product.brand)) &&
         (!domains.size || domains.has(domain)) && (!profile?.dominantDomain || domain === profile.dominantDomain);
     })
-      .map(scopeCanonicalHistoryProduct).filter(Boolean);
+      .map((product) => scopeCanonicalHistoryProduct(product, marketScope)).filter(Boolean);
     // Recorded views are always suppressed from the page. A resolved subject
     // whose stored scope holds nothing else would render "No picks yet", so it
     // is typed (not a failure) and the caller serves the cold canonical feed.
@@ -10607,6 +10696,7 @@ async function computeBrandScopedDirectCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
               failures: failureSink,
+              marketScope: resolveBuyerMarketOfferScope(request?.buyer_market),
             })
           : fetchBrandScopedInternalCatalogCandidates({
               brandAliases: normalizedAliases,
@@ -10709,6 +10799,7 @@ function markBrandDirectCacheHit(value, ageMs, startedAt) {
 // Every input the pool's contents depend on, and nothing else.
 function buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit }) {
   return JSON.stringify({
+    ...buyerOfferScopeCacheKeyPart(request),
     aliases: normalizedAliases,
     // Two brand names that fold to the same aliases ("Señora Skin" and "Senora Skin") produce
     // DIFFERENT scans, because the seed lane keys the indexed brand identity off the unfolded
@@ -12880,6 +12971,18 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
       ]);
     }
     phaseTimer.mark('recall');
+    // The scoped SG sequence cache must judge this build's recall health on EVERY request:
+    // metadata.recall_summary is emitted by buildRankDebug alone (debug requests). Reported HERE, once
+    // every recall step is in (relationship graph, brand-direct pool, brand catalog are concatenated
+    // after the first load -- review of #2411), and only to a caller that passes an observer, so every
+    // other response is byte-identical.
+    if (typeof options.observeRecall === 'function') {
+      try {
+        options.observeRecall({ recallSummary, providerBreakdown });
+      } catch (_) {
+        // observation only: it can never fail the build
+      }
+    }
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
       identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
@@ -13333,9 +13436,9 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
 //
 // THE RULE. When a request names a market whose currency is not the deployment's, and the page the
 // feed built has NO row in that currency, the feed is rebuilt from THAT market's own products_search
-// rows (`GET /agent/v1/products/search?market=SG`, the backend recalling its SG partition), filtered
-// to the market's currency before they enter ranking -- never USD rows across markets, and never a
-// row whose currency cannot be read. The door's guard still runs on what leaves; this makes it a
+// rows (`GET /agent/v1/products/search?serving_market=SG`), kept only when sellable and priced in
+// the market's currency before they enter ranking -- never USD rows across markets, never an
+// unpriced row, never one that is out of stock. The door's guard still runs on what leaves; this makes it a
 // no-op rather than the thing that empties the page. A silent request, the deployment's own market,
 // or a market the gateway cannot price (null currency: the guard serves nothing, by design) leave
 // the feed byte-identical. A market joins agent-ui's SERVED_MARKETS only once this fallback is
@@ -13343,32 +13446,189 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
 // ---------------------------------------------------------------------------------------------
 const BUYER_MARKET_FALLBACK_REASON = 'buyer_market_currency_empty';
 const BUYER_MARKET_FALLBACK_MAX_QUERIES = 4;
+// ONE HOP IS ONE PAGE OF THE BACKEND'S SEARCH, AT MOST. The backend's SDK route, under its gateway
+// search proxy (AGENT_BEAUTY_SEARCH_VIA_GATEWAY, on in prod), refuses `limit > 100` or an offset that
+// is not a multiple of the limit with HTTP 422 `gateway_pagination_unsupported` -- before any search
+// runs. The first cut sent the browse candidate limit (120) and every hop was 422, read as "0 rows"
+// (live 2026-10-09, 12:22Z onwards). The main products_search lane never asks for more than a page
+// (PRODUCTS_SEARCH_PAGE_SIZE) per step; the fallback asks for the same, at offset 0.
+const BUYER_MARKET_HOP_LIMIT = PRODUCTS_SEARCH_PAGE_SIZE;
+// ... and ALWAYS that page, whatever the page's own candidate limit (24-120 by page shape and buyer
+// history): the pool is the market's, not the page's, so one pool per market x query text serves
+// every page shape, and the warm at boot (below) fills the key every first page reads.
 const BUYER_MARKET_POOL_CACHE_MAX_ENTRIES = 64;
 
-/** ONE wall-clock budget for the whole fallback: the hops run in parallel, each clamped to it. */
+/**
+ * How long ONE PAGE waits for the round of hops. It is NOT the hops' timeout: the two broad
+ * cold-start queries ('beauty skincare serum', 'barrier moisturizer') take 2.6-7.3 s at the REST door
+ * (Cloud Run, 2026-10-09 14:16-14:21Z, every market) and they are the ones that hold the market's
+ * pool (SG: 108 and 56 SGD rows). Clamping the hop to this budget timed both out on every page,
+ * served SG the 4 rows the narrow queries found, and fed the breaker two 'timeout's per page.
+ * Now the hops run under the lane's own timeout, the page takes what has answered when this
+ * elapses, and the round finishes in the background into the pool cache.
+ */
 function getBuyerMarketFallbackBudgetMs() {
   return clampInt(process.env.DISCOVERY_BUYER_MARKET_FALLBACK_BUDGET_MS, 1800, 300, 5000);
 }
-/** A market's pool is re-read this often (positive). */
+/**
+ * A market's pool is re-read this often (positive) -- served STALE meanwhile and refreshed in the
+ * background, so no page after the first pays a cold round. Minutes: a round costs the primary
+ * ~15 s of query time, per instance.
+ */
 function getBuyerMarketPoolCacheTtlMs() {
-  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 60000, 1000, 600000);
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_CACHE_TTL_MS, 600000, 1000, 3600000);
 }
-/** ... and an EMPTY pool this often (negative): SG with no rows must not pay the hops on every page. */
+/** ... and an EMPTY pool this often (negative): GB with no rows must not pay the round on every page. */
 function getBuyerMarketPoolNegativeCacheTtlMs() {
-  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 30000, 1000, 600000);
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_NEGATIVE_TTL_MS, 600000, 1000, 3600000);
+}
+/**
+ * A PARTIAL round (a hop failed, others answered with rows) is re-tried this soon: 13% of REST-door
+ * calls exceed the 6.5 s hop timeout (controller, 2026-10-09), and a round that lost a broad hop
+ * must not pin the narrow queries' rows on an instance for the full positive TTL.
+ */
+function getBuyerMarketPoolPartialCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_PARTIAL_TTL_MS, 120000, 1000, 3600000);
+}
+/**
+ * The timeout of ONE HOP of a fallback round. No page waits on a round beyond its 1.8 s budget (the
+ * round completes in the background, or at boot), so this is not the live lane's 6.5 s: the broad
+ * category_browse queries take 2.5-7.3 s alone and longer when four instances warm at once (live
+ * 2026-10-10, gateway-00250: 5 of 6 warmed instances held only the narrow hops' 4 rows). A hop
+ * that needs 12 s is a slow hop, not a failed one; a down upstream still fails every hop and feeds
+ * the market's breaker, only later.
+ */
+function getBuyerMarketHopTimeoutMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_HOP_TIMEOUT_MS, 15000, 1000, 60000);
+}
+/** Past this age an entry is not served even stale: a breaker-open hour must not serve hours-old prices and stock. */
+function getBuyerMarketPoolMaxStaleMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_POOL_MAX_STALE_MS, 3600000, 1000, 86400000);
 }
 
 // market x query text x limit -> { products, recallSummary, storedAt, ttlMs }. Bounded; oldest evicted.
 // Paging within a market reads this: page 2 of SG is the same pool, not four more hops.
 const buyerMarketPoolCache = new Map();
-function buyerMarketPoolCacheKey({ market, queryText, limit }) {
-  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase(), limit: Number(limit) || 0 });
+function buyerMarketPoolCacheKey({ market, queryText }) {
+  return JSON.stringify({ market, q: String(queryText || '').trim().toLowerCase() });
 }
+// An entry past its TTL is still returned, marked stale: the page is served from it while a fresh
+// round runs in the background (one per key at a time; `buyerMarketRoundsInFlight`).
 function readBuyerMarketPoolCache(key, now = Date.now()) {
   const entry = buyerMarketPoolCache.get(key);
   if (!entry) return null;
-  if (now - entry.storedAt > entry.ttlMs) { buyerMarketPoolCache.delete(key); return null; }
-  return entry;
+  const ageMs = now - entry.storedAt;
+  if (ageMs > getBuyerMarketPoolMaxStaleMs()) { buyerMarketPoolCache.delete(key); return null; }
+  return { ...entry, stale: ageMs > entry.ttlMs };
+}
+// key -> the Promise of the round that is filling or refreshing that pool.
+const buyerMarketRoundsInFlight = new Map();
+// market -> the fallback's own breaker (see createProductsSearchBreakerState: never the main lane's).
+const buyerMarketBreakers = new Map();
+function buyerMarketBreakerFor(market) {
+  const key = String(market || '').trim().toUpperCase();
+  if (!buyerMarketBreakers.has(key)) buyerMarketBreakers.set(key, createProductsSearchBreakerState(`buyer_market:${key}`));
+  return buyerMarketBreakers.get(key);
+}
+/** Test seam. */
+function isBuyerMarketBreakerOpen(market) {
+  return isProductsSearchBreakerOpen(buyerMarketBreakerFor(market));
+}
+
+// ---------------------------------------------------------------------------------------------
+// WARM AT BOOT (Peng 2026-10-10, "(c)"). The pool cache is per instance, so a cold instance's first
+// non-US page holds only the narrow hops' rows for a few seconds (SG live after #2397: 4 cards, then
+// 20 from a 97-row pool). For the markets in DISCOVERY_BUYER_MARKET_WARM_MARKETS (ISO-2, empty by
+// default; set SG when SG is a served candidate) one round runs at instance start, ONE MARKET AT A
+// TIME (a round costs the primary ~15 s of query time; the next market's starts when this one's
+// round has completed), with the storefront's cold-start browse shape -- the same key its first
+// page reads. A market the gateway cannot price, or the deployment's own, has nothing to warm.
+// Never throws, never blocks boot (server.js schedules it after listen).
+// ---------------------------------------------------------------------------------------------
+function getBuyerMarketWarmMarkets(env = process.env) {
+  const seen = new Set();
+  for (const raw of String(env.DISCOVERY_BUYER_MARKET_WARM_MARKETS || '').split(/[|,\s]+/)) {
+    const code = String(raw || '').trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(code)) seen.add(code);
+  }
+  return [...seen];
+}
+function getBuyerMarketWarmDelayMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_DELAY_MS, 3000, 0, 600000);
+}
+/** Instances start together after a deploy; a random share of this keeps their broad hops off the primary at the same instant. */
+function getBuyerMarketWarmJitterMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_JITTER_MS, 10000, 0, 600000);
+}
+function resolveBuyerMarketWarmStartDelayMs({ random = Math.random } = {}) {
+  const r = Number(random());
+  const share = Number.isFinite(r) ? Math.min(Math.max(r, 0), 1) : 0;
+  return getBuyerMarketWarmDelayMs() + Math.floor(share * getBuyerMarketWarmJitterMs());
+}
+/** A PARTIAL warm (a hop timed out) is tried again, this many rounds in all ... */
+function getBuyerMarketWarmAttempts() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_ATTEMPTS, 4, 1, 20);
+}
+/** ... this long after the partial one, doubling each time. */
+function getBuyerMarketWarmRetryMs() {
+  return clampInt(process.env.DISCOVERY_BUYER_MARKET_WARM_RETRY_MS, 20000, 100, 600000);
+}
+const BUYER_MARKET_WARM_PAYLOAD = Object.freeze({
+  surface: 'browse_products', page: 1, page_size: 24, limit: 24,
+  context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] },
+});
+async function warmBuyerMarketPools({ markets = getBuyerMarketWarmMarkets(), now = Date.now, fetchRows = fetchBuyerMarketSearchRows, log = logger, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  const deploymentCurrency = resolveServingCurrency('');
+  const request = normalizeDiscoveryRequest(BUYER_MARKET_WARM_PAYLOAD);
+  const outcomes = [];
+  for (const market of markets) {
+    const servingCurrency = resolveServingCurrency(market);
+    if (!servingCurrency || servingCurrency === deploymentCurrency) {
+      outcomes.push({ market, skipped: !servingCurrency ? 'unpriceable' : 'deployment_market' });
+      continue;
+    }
+    const startedAt = now();
+    try {
+      // A warm is FULL only when every hop answered. A partial round (a broad hop timed out: live
+      // 2026-10-10, 5 of 6 instances) is cached for the short partial TTL and tried again after a
+      // backoff, up to the attempt cap, so the instance does not serve the narrow hops' 4 rows as
+      // "the pool" for its first minutes.
+      const attempts = getBuyerMarketWarmAttempts();
+      let rows = null;
+      let entry = null;
+      let attempt = 0;
+      let waitMs = getBuyerMarketWarmRetryMs();
+      for (attempt = 1; attempt <= attempts; attempt += 1) {
+        if (attempt > 1) { await sleep(waitMs); waitMs *= 2; }
+        rows = await fetchRows({ request, market, servingCurrency, now, refresh: attempt > 1 });
+        // The page-budget return can leave hops running: wait for the round, so the next round or
+        // the next market's does not overlap it on the primary.
+        await Promise.all([...buyerMarketRoundsInFlight.values()]);
+        entry = readBuyerMarketPoolCache(buyerMarketPoolCacheKey({ market, queryText: '' }), now());
+        if (rows?.skipped || (entry && entry.complete !== false)) break;
+      }
+      const outcome = {
+        market,
+        rows: entry ? entry.products.length : (Array.isArray(rows?.products) ? rows.products.length : 0),
+        cached: Boolean(entry),
+        complete: Boolean(entry && entry.complete !== false),
+        attempts: Math.min(attempt, attempts),
+        ...(rows?.skipped ? { skipped: rows.skipped } : {}),
+        latency_ms: Math.max(0, now() - startedAt),
+      };
+      outcomes.push(outcome);
+      log.info(outcome, 'discovery buyer-market pool warmed');
+    } catch (err) {
+      const outcome = { market, error: err?.message || String(err) };
+      outcomes.push(outcome);
+      log.warn(outcome, 'discovery buyer-market pool warm failed');
+    }
+  }
+  return outcomes;
+}
+/** Test seam: every round still running (a page returned before its slow hops answered). */
+function awaitBuyerMarketRoundsForTest() {
+  return Promise.all([...buyerMarketRoundsInFlight.values()]).then(() => undefined);
 }
 function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
   if (buyerMarketPoolCache.size >= BUYER_MARKET_POOL_CACHE_MAX_ENTRIES) {
@@ -13379,6 +13639,32 @@ function writeBuyerMarketPoolCache(key, value, now = Date.now()) {
 }
 function resetBuyerMarketPoolCacheForTest() {
   buyerMarketPoolCache.clear();
+  buyerMarketRoundsInFlight.clear();
+  buyerMarketBreakers.clear();
+}
+
+/**
+ * What the pool admits: a row the normaliser would keep (sellable: active, not out of stock) AND
+ * priced in the market's currency. The hop asks `in_stock_only=false` like the main lane and the
+ * normaliser drops out-of-stock rows later; counting them as `rows` stamped applied:true on a page
+ * that then served nothing (GB, SG 'niacinamide serum', live 2026-10-09). An unpriced row is a card
+ * with no price on a page whose every price is foreign (JP: 3 of 9 cards).
+ */
+function isBuyerMarketPoolRow(product, servingCurrency) {
+  if (!product || typeof product !== 'object') return false;
+  if (!isCandidateSellable(product)) return false;
+  // THE PRICE THE CARD SHOWS, not a price the row cites. The card reads `price` (the row's served
+  // price); the currency resolver also reads the seed citation (`external_seed.price_amount`), which
+  // is a source snapshot, not an offer. JP live after #2397: three Arencia rows with no `price`,
+  // `price_absent_reason: 'no_offer_derived_price'`, and a JPY amount only in the citation passed
+  // the currency rule and were served as JPY cards with no price.
+  if (product.price_absent_reason) return false;
+  const servedAmount = product.price == null ? null : parseCandidatePriceAmount(product.price);
+  if (!Number.isFinite(servedAmount)) return false; // > 0 is the resolver's rule, checked next
+  return isPricedInServingCurrency(product, servingCurrency);
+}
+function filterBuyerMarketPoolRows(products, servingCurrency) {
+  return (Array.isArray(products) ? products : []).filter((product) => isBuyerMarketPoolRow(product, servingCurrency));
 }
 
 /** The page has at least one row the buyer's currency allows (the guard's own rule for this surface). */
@@ -13390,63 +13676,120 @@ function hasRowsInServingCurrency(products, servingCurrency) {
  * That market's own rows: one products_search hop per cold-start query (or the page's own query
  * text), keyed on the market, merged, and KEPT ONLY WHEN PRICED IN THE MARKET'S CURRENCY.
  */
-async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, limit, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now } = {}) {
+async function fetchBuyerMarketSearchRows({ request, market, servingCurrency, fetchStepFn = fetchDiscoveryRecallStep, now = Date.now, refresh = false } = {}) {
   const queryText = String(request?.query?.text || '').trim();
-  const safeLimit = clampInt(limit, MAX_CANDIDATE_FETCH, 24, MAX_CANDIDATE_FETCH);
-  const cacheKey = buyerMarketPoolCacheKey({ market, queryText, limit: safeLimit });
+  const safeLimit = BUYER_MARKET_HOP_LIMIT;
+  const cacheKey = buyerMarketPoolCacheKey({ market, queryText });
+  // `refresh`: the warm's retry of a PARTIAL pool. A fresh entry is not an answer then; a round runs
+  // (or the one in flight is joined) and the page-shaped return below reports it.
   const cached = readBuyerMarketPoolCache(cacheKey, now());
-  if (cached) {
-    return {
-      products: cached.products,
-      recallSummary: [
-        { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: cached.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - cached.storedAt) },
-      ],
-      skipped: null,
-      cached: true,
-    };
-  }
+  const cacheAnswer = (entry) => ({
+    products: entry.products,
+    recallSummary: [
+      { provider: 'products_search', label: 'buyer_market_pool_cache', market, status: 200, returned: entry.products.length, latency_ms: 0, cache_hit: true, cache_age_ms: Math.max(0, now() - entry.storedAt), ...(entry.stale ? { stale: true } : {}) },
+    ],
+    skipped: null,
+    cached: true,
+    complete: entry.complete !== false,
+    ...(entry.stale ? { stale: true } : {}),
+  });
+  if (cached && !cached.stale && !refresh) return cacheAnswer(cached);
   const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
   const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
   const baseUrl = baseUrlConfig.value;
   const apiKey = apiKeyConfig.value;
   if (!baseUrl || !apiKey) {
+    if (cached) return cacheAnswer(cached);
     return { products: [], recallSummary: [], skipped: !baseUrl ? 'products_search_base_url_unset' : 'products_search_api_key_unset' };
   }
   const requestHeaders = { 'X-Agent-API-Key': apiKey, 'X-API-Key': apiKey, Authorization: `Bearer ${apiKey}` };
   const queries = (queryText ? [queryText] : getDiscoveryColdStartQueries()).slice(0, BUYER_MARKET_FALLBACK_MAX_QUERIES);
   const steps = queries.map((text, index) => ({ label: `buyer_market_pool_${index + 1}`, query: text, limit: safeLimit, offset: 0, market }));
-  // THE SAME BREAKER AS THE MAIN products_search LANE: open means the upstream is down, so no hop is
-  // paid (the lane's probe decides when it is back); every answer below feeds it like the lane's do.
-  if (isProductsSearchBreakerOpen()) {
-    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders });
+  // THIS MARKET'S OWN BREAKER (the same rule as the main lane's, never its state): open means the
+  // upstream is down for these hops, so none is paid (the probe decides when it is back); every
+  // completed round below feeds it. Four 6.5 s timeouts here must never switch off the US lane.
+  const breaker = buyerMarketBreakerFor(market);
+  if (isProductsSearchBreakerOpen(breaker)) {
+    if (steps[0]) maybeStartProductsSearchProbe({ baseUrl, request, step: steps[0], requestHeaders, breaker });
+    if (cached) return cacheAnswer(cached);
     return { products: [], recallSummary: [], skipped: 'products_search_circuit_open' };
   }
-  // IN PARALLEL, UNDER ONE BUDGET. Sequential hops on the 6.5 s default cost ~26 s for four; a page
-  // waits for the slowest hop only, and that hop is clamped to the budget.
-  const timeoutMs = computeDiscoveryStepTimeoutMs(getBuyerMarketFallbackBudgetMs());
-  const results = await Promise.all(steps.map((step) =>
-    Promise.resolve()
-      .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
-      .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } })),
-  ));
+
+  // THE ROUND: the hops in parallel, each under the lane's own products_search timeout (6.5 s by
+  // default) -- not the page budget. It runs to completion whether or not the page waited for it,
+  // feeds the breaker with what the hops really did, and writes the pool cache. One round per key.
+  let round = buyerMarketRoundsInFlight.get(cacheKey);
+  let settled = round ? round.settled : null;
+  if (!round) {
+    settled = new Array(steps.length).fill(null);
+    const timeoutMs = getBuyerMarketHopTimeoutMs();
+    const hops = steps.map((step, index) =>
+      Promise.resolve()
+        .then(() => fetchStepFn({ baseUrl, request, step, requestHeaders, provider: 'products_search', timeoutMs }))
+        .catch((err) => ({ success: false, products: [], summary: { provider: 'products_search', label: step.label, query: step.query, returned: 0, failure_reason: `request_error:${err?.code || 'unknown'}`, error: err?.message || String(err) } }))
+        .then((result) => { settled[index] = result; return result; }),
+    );
+    round = Promise.all(hops).then((results) => {
+      for (const result of results) recordProductsSearchResult(result, { breaker });
+      const pool = mergeBuyerMarketPool(results, { market, servingCurrency });
+      // What a round may claim. Every hop answered: the pool is the market's (positive TTL), or the
+      // market is empty (negative TTL). A hop failed: rows from the others are served but re-tried
+      // soon (partial TTL), and NO rows is not "the market is empty" -- not cached. All failed: not
+      // an answer, not cached.
+      const succeeded = results.filter((result) => result && result.success === true).length;
+      pool.complete = succeeded === results.length;
+      if (pool.complete) {
+        writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: pool.products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
+      } else if (succeeded > 0 && pool.products.length > 0) {
+        writeBuyerMarketPoolCache(cacheKey, { ...pool, ttlMs: getBuyerMarketPoolPartialCacheTtlMs() }, now());
+      }
+      return pool;
+    }).catch((err) => {
+      // The round is unobserved when the page did not wait for it (budget, stale refresh); a throw
+      // here would be an unhandled rejection, and the process has no handler for those.
+      logger.warn({ err: err?.message || String(err), market }, 'discovery buyer-market pool round failed');
+      return { products: [], recallSummary: [], complete: false };
+    }).finally(() => {
+      if (buyerMarketRoundsInFlight.get(cacheKey) === round) buyerMarketRoundsInFlight.delete(cacheKey);
+    });
+    round.settled = settled;
+    buyerMarketRoundsInFlight.set(cacheKey, round);
+  }
+  // A stale pool is served NOW; the round above refreshes it for the next page. (A `refresh` caller
+  // wants the round's own answer and waits below.)
+  if (cached && !refresh) return cacheAnswer(cached);
+
+  // THE PAGE waits the budget, then takes what has answered. A hop still running is stamped pending
+  // (status null, no rows); it lands in the cache when it answers, for the next page.
+  let budgetTimer = null;
+  const budget = new Promise((resolve) => { budgetTimer = setTimeout(() => resolve('budget'), getBuyerMarketFallbackBudgetMs()); });
+  const outcome = await Promise.race([round.then(() => 'done', () => 'done'), budget]);
+  if (budgetTimer) clearTimeout(budgetTimer);
+  if (outcome === 'done') {
+    const pool = await round;
+    return { ...pool, skipped: null, cached: false };
+  }
+  const budgetMs = getBuyerMarketFallbackBudgetMs();
+  const partial = mergeBuyerMarketPool(settled.map((result, index) => result || {
+    success: false,
+    products: [],
+    summary: { provider: 'products_search', label: steps[index].label, query: steps[index].query, offset: 0, limit: safeLimit, status: null, returned: 0, latency_ms: budgetMs, cache_hit: false, failure_reason: 'pending', pending: true },
+  }), { market, servingCurrency });
+  return { ...partial, complete: false, skipped: null, cached: false, hops_pending: settled.filter((result) => !result).length };
+}
+
+/** The round's rows, merged across hops, KEPT ONLY WHEN SELLABLE AND PRICED IN THE MARKET'S CURRENCY. */
+function mergeBuyerMarketPool(results, { market, servingCurrency }) {
   const merged = new Map();
   const recallSummary = [];
   for (const result of results) {
-    recordProductsSearchResult(result);
     recallSummary.push({ ...result.summary, market });
-    for (const product of filterProductsToServingCurrency(result.products, servingCurrency)) {
+    for (const product of filterBuyerMarketPoolRows(result.products, servingCurrency)) {
       const key = buildDiscoveryProviderMergeKey(product) || `${merged.size}:${Math.random()}`;
       if (!merged.has(key)) merged.set(key, product);
     }
   }
-  const products = [...merged.values()];
-  // A pool is cached positive or NEGATIVE: an answered-empty market must not pay the hops on every
-  // page. An all-failed round (every hop timed out or errored) is not an answer and is not cached.
-  const answered = results.some((result) => result && result.success === true);
-  if (answered) {
-    writeBuyerMarketPoolCache(cacheKey, { products, recallSummary, ttlMs: products.length > 0 ? getBuyerMarketPoolCacheTtlMs() : getBuyerMarketPoolNegativeCacheTtlMs() }, now());
-  }
-  return { products, recallSummary, skipped: null, cached: false };
+  return { products: [...merged.values()], recallSummary };
 }
 
 /**
@@ -13459,6 +13802,7 @@ async function applyBuyerMarketFallback({
   payload,
   options = {},
   buildOnce = buildDiscoveryFeedOnce,
+  buildCurated = buildDiscoveryFeedOnce,
   fetchRows = fetchBuyerMarketSearchRows,
 } = {}) {
   const source = payload && typeof payload.discovery === 'object' ? { ...payload.discovery, ...payload } : payload;
@@ -13469,23 +13813,38 @@ async function applyBuyerMarketFallback({
   // The deployment's own market (the curated feed IS that market's), or one nothing is priced for
   // (null: the door serves nothing, by design): unchanged.
   if (!servingCurrency || servingCurrency === deploymentCurrency) return response;
+  // BUYER_MARKET_OFFER_SCOPE: the curated readers return this buyer's own-currency rows, often only
+  // a few. The page is then built from ONE sequence -- see applyScopedBuyerMarketSequence. Without
+  // the scope: today's rule, unchanged.
+  let scopedSequenceError = null;
+  if (resolveBuyerMarketOfferScope(market)) {
+    try {
+      return await applyScopedBuyerMarketSequence({ payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows });
+    } catch (err) {
+      // A failed window build must not fail the request: serve today's unscoped behaviour instead,
+      // building the page now if the caller skipped it for the scoped path.
+      scopedSequenceError = classifyDiscoveryQueryError(err) || 'scoped_sequence_failed';
+      logger.warn({ err: err?.message || String(err), market, reason: scopedSequenceError }, 'buyer-market scoped sequence failed; serving the unscoped fallback');
+      if (!response) response = await buildCurated(payload, options);
+    }
+  }
   const products = Array.isArray(response?.products) ? response.products : [];
-  if (hasRowsInServingCurrency(products, servingCurrency)) return response;
+  if (hasRowsInServingCurrency(products, servingCurrency)) {
+    return scopedSequenceError
+      ? { ...response, metadata: { ...(response?.metadata || {}), buyer_market_scoped_sequence_error: scopedSequenceError } }
+      : response;
+  }
 
   const request = normalizeDiscoveryRequest(payload);
-  const limit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
-  const rows = await fetchRows({ request, market, servingCurrency, limit });
+  const rows = await fetchRows({ request, market, servingCurrency });
   const stamp = {
-    market,
-    serving_currency: servingCurrency,
-    reason: BUYER_MARKET_FALLBACK_REASON,
-    curated_rows_dropped: products.length,
-    rows: rows.products.length,
-    ...(rows.skipped ? { skipped: rows.skipped } : {}),
+    ...buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: products.length }),
+    ...(scopedSequenceError ? { scoped_sequence_error: scopedSequenceError } : {}),
   };
   if (rows.products.length === 0) {
-    // Nothing in that market either: the page stays as built (the door's guard empties it) and says why.
-    return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false } } };
+    // Nothing in that market either: the page stays as built (the door's guard empties it) and says why,
+    // hop by hop (status, returned, latency, cache), so a live diagnosis needs no API key.
+    return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false, recall_summary: rows.recallSummary || [] } } };
   }
   const rebuilt = await buildOnce(payload, {
     ...options,
@@ -13508,12 +13867,331 @@ async function applyBuyerMarketFallback({
       fallback_reason: BUYER_MARKET_FALLBACK_REASON,
       route_health: { ...(rebuiltMetadata.route_health || {}), fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON },
       search_decision: { ...(rebuiltMetadata.search_decision || {}), fallback_triggered: true },
-      buyer_market_fallback: { ...stamp, applied: true, recall_summary: rows.recallSummary },
+      // `served`: what the rebuilt page shows. `rows` is the pool; the ranker and a page's own
+      // query filter can leave fewer, and a reader must not take applied:true for "cards shown".
+      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, recall_summary: rows.recallSummary },
     },
   };
 }
 
+function buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped }) {
+  return {
+    market,
+    serving_currency: servingCurrency,
+    reason: BUYER_MARKET_FALLBACK_REASON,
+    curated_rows_dropped: curatedRowsDropped,
+    rows: Number.isFinite(rows.count) ? rows.count : rows.products.length,
+    ...(rows.skipped ? { skipped: rows.skipped } : {}),
+    // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
+    cache_hit: rows.cached === true,
+    ...(rows.cached === true && Number.isFinite(Number(rows.recallSummary?.[0]?.cache_age_ms)) ? { pool_age_ms: Number(rows.recallSummary[0].cache_age_ms) } : {}),
+    ...(rows.stale ? { stale: true } : {}),
+    ...(Number(rows.hops_pending) > 0 ? { hops_pending: Number(rows.hops_pending) } : {}),
+  };
+}
+
+// The window each half of the scoped sequence is built over: page 1 at the largest page the
+// request normaliser allows, no cursor (an empty string, so a cursor nested under `discovery`
+// cannot leak through the merge). Page-independent, so every page slices the same sequence.
+const SCOPED_SEQUENCE_WINDOW = 100;
+function scopedSequenceWindowPayload(payload) {
+  return { ...payload, page: 1, limit: SCOPED_SEQUENCE_WINDOW, cursor: '', next_cursor: '', nextCursor: '' };
+}
+
+// Every identity one product can carry across the two builders: the merchant:product key, the
+// signature, the external product id and the content key. Two cards sharing any one of them are
+// the same product, whichever id scheme each lane minted.
+function scopedSequenceDedupKeys(product) {
+  return [
+    `mp:${buildDiscoveryDedupKey(product)}`,
+    `sig:${String(product?.pivota_signature_id || '').trim()}`,
+    `ext:${String(product?.external_product_id || '').trim()}`,
+    `ck:${String(product?.content_key || '').trim()}`,
+  ].filter((key) => !key.endsWith(':'));
+}
+
+/**
+ * A scoped (BUYER_MARKET_OFFER_SCOPE) buyer's page, from ONE ordered sequence:
+ *
+ *   [every curated row priced in the buyer's currency, in curated order]
+ *   ++ [the market's fallback pool, in its builder's order, minus any product already kept]
+ *
+ * and page N is that sequence's slice ((N-1)*limit, N*limit]. Both halves are built over a
+ * page-independent window (scopedSequenceWindowPayload), so every pool row lands on exactly one
+ * page and no kept row repeats on a later page. `total` and `has_more` are the SEQUENCE's: at most
+ * SCOPED_SEQUENCE_WINDOW rows of each half can be shown, so that is what is counted (the pool's
+ * own eligible size is reported apart, as pool_eligible_total). The page is labelled by what it
+ * holds: the fallback is stamped as applied only when pool rows are on it.
+ *
+ * The sequence is assembled once per scope + request context (scopedSequenceCacheKey) and kept
+ * for SCOPED_SEQUENCE_TTL_MS, with concurrent requests sharing one in-flight assembly, so page 2+
+ * and parallel SG requests slice it without rebuilding.
+ */
+const SCOPED_SEQUENCE_CACHE_MAX = 200;
+const scopedSequenceCache = new Map();
+const scopedSequenceInflight = new Map();
+
+function getScopedSequenceTtlMs() {
+  return clampInt(process.env.DISCOVERY_SCOPED_SEQUENCE_TTL_MS, 60_000, 0, 600_000);
+}
+
+function resetScopedSequenceCacheForTest() {
+  scopedSequenceCache.clear();
+  scopedSequenceInflight.clear();
+}
+
+// The sequence cache key: the FULL normalized request -- every input any reader or ranker consults
+// (source_product_ref, query, scope, context, sort, surface, response_detail, debug, buyer_market,
+// ...) -- minus only what selects a page of the same sequence (page, limit, cursor) and the
+// per-request identity (request_id), plus the scoped market. Built by EXCLUSION, so an input added
+// to the request later changes the key without anyone remembering this function. Full values,
+// never the truncated context key, hashed to bound the key's size.
+const SCOPED_SEQUENCE_KEY_EXCLUDED = new Set(['page', 'limit', 'cursor', 'request_id']);
+function scopedSequenceCacheKey(request, market) {
+  const inputs = {};
+  for (const [field, value] of Object.entries(request || {})) {
+    if (!SCOPED_SEQUENCE_KEY_EXCLUDED.has(field)) inputs[field] = value;
+  }
+  const digest = crypto.createHash('sha256').update(JSON.stringify({ market, inputs })).digest('hex');
+  return `scoped_sequence:${market}:${digest}`;
+}
+
+// A window built over a failed or partial read must not be cached: loadCatalogCandidates records a
+// reader failure as a provider error and still returns, so the build "succeeds" with 0 kept rows,
+// and caching that would hide the market's own-currency rows for the whole TTL. The brand-direct
+// cache's `errored` rule, on the provider breakdown and recall steps the window reports.
+// A provider that is ABSENT in this deployment (no database, no schema) reports a failure reason
+// on every build; that is configuration, not a transient read failure, and must not make every
+// SG sequence uncacheable.
+const SCOPED_WINDOW_FAILED_RECALL = new Set(['provider_error', 'budget_truncated', 'unavailable']);
+// A SKIPPED step is a failure only when it was skipped because something failed -- the same reasons
+// the provider summary already promotes to failures (query_error, budget_truncated, circuit_open);
+// every other skip ("sufficient_*", "empty_recall_terms", "*_primary_used") asked nothing and failed
+// nothing (review of #2411).
+const SCOPED_WINDOW_FAILED_SKIPS = new Set(['query_error', 'budget_truncated', 'circuit_open']);
+function scopedStepFailed(step) {
+  if (!step || typeof step !== 'object') return false;
+  if (step.degraded === true) return true; // a swallowed reader error: status 200, returned 0, degraded
+  if (step.skipped) {
+    return SCOPED_WINDOW_FAILED_SKIPS.has(step.skip_reason) || SCOPED_WINDOW_FAILED_SKIPS.has(step.failure_reason);
+  }
+  return false;
+}
+const SCOPED_WINDOW_STANDING_REASONS = new Set([
+  'schema_missing', 'missing_database',
+  // configuration, or nothing to ask: never a transient read failure (review of #2411)
+  'missing_base_url', 'missing_api_key', 'empty_recall_terms',
+]);
+function scopedWindowErrored(metadata, observed = null) {
+  const md = metadata && typeof metadata === 'object' ? metadata : {};
+  const seen = observed && typeof observed === 'object' ? observed : {};
+  const transient = (reason) => Boolean(reason) && !SCOPED_WINDOW_STANDING_REASONS.has(reason);
+  const breakdown = [
+    ...(Array.isArray(md.provider_breakdown) ? md.provider_breakdown : []),
+    ...(Array.isArray(seen.providerBreakdown) ? seen.providerBreakdown : []),
+  ];
+  if (breakdown.some((entry) => entry && (scopedStepFailed(entry) || (!entry.skipped &&
+    (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))))) {
+    return true;
+  }
+  // The recall STEPS: a provider that returned some rows can still have had a failed or budget-truncated
+  // step, which its breakdown entry does not show. On non-debug requests they arrive only through the
+  // build's observeRecall (metadata.recall_summary exists on debug requests alone).
+  const steps = [
+    ...(Array.isArray(md.recall_summary) ? md.recall_summary : []),
+    ...(Array.isArray(seen.recallSummary) ? seen.recallSummary : []),
+  ];
+  return steps.some((step) => step && (scopedStepFailed(step) || (!step.skipped &&
+    (transient(step.failure_reason) || step.error || step.truncated_by_budget))));
+}
+
+// A cached card is handed out many times: copy it whole (nested offers, variants, images), so no
+// caller's in-place change -- at any depth -- reaches the cache (review of #2408: a one-level spread
+// let a mutated `offers` array leak to the next hit).
+function cloneScopedCard(product) {
+  return typeof structuredClone === 'function' ? structuredClone(product) : JSON.parse(JSON.stringify(product));
+}
+
+function scopedPoolPartial(rows) {
+  return !rows || rows.products.length === 0 || Boolean(rows.skipped) || rows.complete === false ||
+    rows.stale === true || Number(rows.hops_pending) > 0;
+}
+
+// What a cached entry holds: the ordered cards, the counts, the two windows' metadata (the page's
+// metadata is built from it) and the pool fetch's summary -- not the window objects or raw pool rows.
+async function assembleScopedBuyerMarketSequence({ payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
+  const windowPayload = scopedSequenceWindowPayload(payload);
+  const curatedRecall = {};
+  const curatedWindow = await buildCurated(windowPayload, {
+    ...options,
+    observeRecall: (observed) => Object.assign(curatedRecall, observed),
+  });
+  const curatedRows = Array.isArray(curatedWindow?.products) ? curatedWindow.products : [];
+  const kept = curatedRows.filter((product) => isPricedInServingCurrency(product, servingCurrency));
+  const seen = new Set(kept.flatMap(scopedSequenceDedupKeys));
+
+  const rows = await fetchRows({ request, market, servingCurrency });
+  let poolWindow = null;
+  const pool = [];
+  let poolDuplicates = 0;
+  const poolRecall = {};
+  if (rows.products.length) {
+    poolWindow = await buildOnce(windowPayload, {
+      ...options,
+      candidateProducts: annotateProviderProducts('products_search', rows.products),
+      observeRecall: (observed) => Object.assign(poolRecall, observed),
+    });
+    for (const product of (Array.isArray(poolWindow?.products) ? poolWindow.products : [])) {
+      const keys = scopedSequenceDedupKeys(product);
+      if (keys.some((key) => seen.has(key))) {
+        poolDuplicates += 1;
+        continue;
+      }
+      keys.forEach((key) => seen.add(key));
+      pool.push(product);
+    }
+  }
+  const poolMetadata = poolWindow?.metadata || {};
+  return {
+    // Own copies: nothing the windows' builders keep, or a caller mutates, can reach the cache.
+    sequence: [...kept, ...pool].map(cloneScopedCard),
+    keptCount: kept.length,
+    curatedRowsDropped: curatedRows.length - kept.length,
+    poolDuplicates,
+    poolEligibleTotal: Number.isFinite(Number(poolMetadata.eligible_pool_count))
+      ? Math.max(pool.length, Number(poolMetadata.eligible_pool_count) - poolDuplicates)
+      : pool.length,
+    curatedMetadata: curatedWindow?.metadata || {},
+    poolMetadata,
+    hasPoolWindow: Boolean(poolWindow),
+    rows: {
+      count: rows.products.length,
+      skipped: rows.skipped || null,
+      cached: rows.cached === true,
+      stale: rows.stale === true,
+      complete: rows.complete,
+      hops_pending: rows.hops_pending,
+      recallSummary: rows.recallSummary || [],
+    },
+    cacheable: !scopedPoolPartial(rows) &&
+      !scopedWindowErrored(curatedWindow?.metadata, curatedRecall) &&
+      !scopedWindowErrored(poolMetadata, poolRecall) &&
+      !scopedWindowErrored(null, { recallSummary: rows.recallSummary }),
+  };
+}
+
+async function loadScopedBuyerMarketSequence(args) {
+  const key = scopedSequenceCacheKey(args.request, args.market);
+  const ttlMs = getScopedSequenceTtlMs();
+  const cached = scopedSequenceCache.get(key);
+  if (cached && Date.now() - cached.storedAt <= ttlMs) return { ...cached.value, cacheHit: true };
+  if (cached) scopedSequenceCache.delete(key);
+  if (scopedSequenceInflight.has(key)) return { ...(await scopedSequenceInflight.get(key)), cacheHit: true };
+  const pending = assembleScopedBuyerMarketSequence(args);
+  scopedSequenceInflight.set(key, pending);
+  try {
+    const value = await pending;
+    // A failed read, or a cold / partial / empty pool, is served but not kept: the next request
+    // rebuilds instead of inheriting it for the whole TTL.
+    if (ttlMs > 0 && value.cacheable) {
+      if (scopedSequenceCache.size >= SCOPED_SEQUENCE_CACHE_MAX) {
+        scopedSequenceCache.delete(scopedSequenceCache.keys().next().value);
+      }
+      scopedSequenceCache.set(key, { storedAt: Date.now(), value });
+    }
+    return { ...value, cacheHit: false };
+  } finally {
+    scopedSequenceInflight.delete(key);
+  }
+}
+
+async function applyScopedBuyerMarketSequence({ payload, options, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
+  const request = normalizeDiscoveryRequest(payload);
+  const pageSize = Math.max(1, Number(request.limit) || 1);
+  const pageIndex = Math.max(1, Number(request.page) || 1);
+  const assembled = await loadScopedBuyerMarketSequence({
+    payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows,
+  });
+  const { sequence, keptCount, rows } = assembled;
+
+  const total = sequence.length;
+  const offset = (pageIndex - 1) * pageSize;
+  // Copies on the way out: no downstream in-place change can reach a cached card.
+  const pageProducts = sequence.slice(offset, offset + pageSize).map(cloneScopedCard);
+  const keptOnPage = Math.max(0, Math.min(keptCount - offset, pageProducts.length));
+  const poolOnPage = pageProducts.length - keptOnPage;
+  const nextOffset = offset + pageProducts.length;
+  const hasMore = nextOffset < total;
+
+  const base = poolOnPage > 0 ? assembled.poolMetadata : assembled.curatedMetadata;
+  const stamp = {
+    ...buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: assembled.curatedRowsDropped }),
+    applied: poolOnPage > 0,
+    served: pageProducts.length,
+    curated_rows_kept: keptCount,
+    curated_rows_on_page: keptOnPage,
+    pool_rows_on_page: poolOnPage,
+    pool_rows_duplicating_kept: assembled.poolDuplicates,
+    pool_eligible_total: assembled.poolEligibleTotal,
+    sequence_cache_hit: assembled.cacheHit === true,
+    sequence_cacheable: assembled.cacheable === true,
+    recall_summary: rows.recallSummary || [],
+  };
+  const fallbackLabels = poolOnPage > 0
+    ? {
+        candidate_source: keptOnPage > 0 ? 'buyer_market_curated+products_search' : 'buyer_market_products_search',
+        fallback_triggered: true,
+        fallback_reason: BUYER_MARKET_FALLBACK_REASON,
+        route_health: { ...(base.route_health || {}), fallback_triggered: true, fallback_reason: BUYER_MARKET_FALLBACK_REASON },
+        search_decision: { ...(base.search_decision || {}), fallback_triggered: true },
+      }
+    : {};
+  // The windows were built at page 1 / SCOPED_SEQUENCE_WINDOW; the page fields describe THIS page,
+  // and the next cursor points at the first row this page did not show.
+  const cursorInfo = request.surface === 'browse_products'
+    ? buildDiscoveryCursorInfo({
+        request,
+        servingMode: base.serving_mode || 'exhaustive',
+        nextOffset,
+        nextAbsoluteOffset: nextOffset,
+        hasNextPage: hasMore,
+      })
+    : null;
+  return {
+    status: 'success',
+    success: true,
+    products: pageProducts,
+    total,
+    page: request.page,
+    page_size: pageProducts.length,
+    ...(cursorInfo ? { cursor_info: cursorInfo } : {}),
+    metadata: {
+      ...base,
+      corpus_total_count: total,
+      ...(Object.prototype.hasOwnProperty.call(base, 'runtime_corpus_count') ? { runtime_corpus_count: total } : {}),
+      has_more: hasMore,
+      ...(cursorInfo ? { cursor_info: cursorInfo } : {}),
+      ...fallbackLabels,
+      buyer_market_fallback: stamp,
+    },
+  };
+}
+
+// The request is served by the scoped sequence (applyBuyerMarketFallback would take that path), so
+// getDiscoveryFeed need not build the request's own page first: the sequence builds its windows.
+function isScopedBuyerMarketRequest(payload) {
+  const source = payload && typeof payload.discovery === 'object' ? { ...payload.discovery, ...payload } : payload;
+  const market = resolveDiscoveryBuyerMarket(source);
+  if (!market) return false;
+  const servingCurrency = resolveServingCurrency(market);
+  if (!servingCurrency || servingCurrency === resolveServingCurrency('')) return false;
+  return Boolean(resolveBuyerMarketOfferScope(market));
+}
+
 async function getDiscoveryFeed(payload = {}, options = {}) {
+  if (isScopedBuyerMarketRequest(payload)) {
+    return applyBuyerMarketFallback({ response: null, payload, options });
+  }
   const response = await buildDiscoveryFeedOnce(payload, options);
   return applyBuyerMarketFallback({ response, payload, options });
 }
@@ -13524,6 +14202,10 @@ module.exports = {
   buildDiscoveryProfile,
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
+  getBuyerMarketWarmMarkets,
+  getBuyerMarketWarmDelayMs,
+  resolveBuyerMarketWarmStartDelayMs,
+  warmBuyerMarketPools,
   _internals: {
     // The buyer-market fallback, with its collaborators injectable (no database, no transport).
     applyBuyerMarketFallback,
@@ -13532,6 +14214,13 @@ module.exports = {
     resolveDiscoveryCardCurrency,
     buildDiscoveryFeedOnce,
     resetBuyerMarketPoolCacheForTest,
+    resetScopedSequenceCacheForTest,
+    isScopedBuyerMarketRequest,
+    scopedSequenceCacheKey,
+    scopedWindowErrored,
+    awaitBuyerMarketRoundsForTest,
+    isBuyerMarketPoolRow,
+    isBuyerMarketBreakerOpen,
     isProductsSearchBreakerOpen,
     BUYER_MARKET_FALLBACK_REASON,
     // The phase timer is exported so a test can drive it with a fake clock: the

@@ -9,6 +9,7 @@
 const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
 const { intelToSignal } = require('./intelToSignal');
+const { normalizeBuyerRegion, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -316,6 +317,19 @@ function makeGetAlternatives(deps = {}) {
  *   fetchOffers is the backend offers source (agent_pdp_view.offers). If absent, the tool fails closed
  *   with `offers_source_unavailable` (no fabricated competition) until the backend op is wired.
  */
+/**
+ * THE BUYER MARKET A get_offers CALLER STATED, or null. ISO-2 and priceable only (the repo's one
+ * normaliser, ADR-024): a locale, a list, a three-letter code or a well-formed code nothing is priced
+ * for is not a market. Never defaulted: get_offers resolves offers through the backend's
+ * `offers.resolve`, whose cart-minting gate (pivota-backend #2411) keys on `payload.market`, and a
+ * caller that states none gets the referral-only answer it always got.
+ */
+function getOffersBuyerMarket(p) {
+  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
+  const region = normalizeBuyerRegion(raw);
+  return region && currencyForBuyerRegion(region) ? region : null;
+}
+
 function makeGetOffers(deps = {}) {
   const { fetchOffers } = deps;
   return async function getOffers(params = {}) {
@@ -325,12 +339,15 @@ function makeGetOffers(deps = {}) {
       return { subject, best_offer: null, signals: [], metadata: { reason: 'offers_source_unavailable' } };
     }
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
+    const market = getOffersBuyerMarket(p);
     const res = await fetchOffers({
       merchant_id: p.merchant_id,
       product_id: p.product_id,
       product_group_id: p.product_group_id,
       currency: p.currency,
       limit,
+      // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
+      ...(market ? { market } : {}),
     });
     const offers = res && Array.isArray(res.offers) ? res.offers : [];
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
@@ -502,6 +519,7 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
 }
 
 module.exports = {
+  getOffersBuyerMarket,
   makeGetAlternatives,
   makeGetOffers,
   makeGetIntel,

@@ -198,7 +198,11 @@ test.each([
   const a=snapshot('House',aTitle,'makeup');const b=snapshot('House',bTitle,'makeup');
   expect(isSameFamilyVariant(a,b)).toBe(false);
   for (const relation of ['related_product','competitive_alternative']) {
-    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation))).toEqual([]);
+    // No identity reason on either lane. A perfume offered as an ALTERNATIVE to a lip gloss is hidden by
+    // the fragrance rule (relationshipFragranceProfile), which is a different question.
+    const fragranceCross = relation === 'competitive_alternative' && /perfume/i.test(`${aTitle} ${bTitle}`);
+    expect(getRelationshipEdgeServingSuppressionReasons(edge(a,b,relation)))
+      .toEqual(fragranceCross ? ['competitive_alternative_fragrance_category_mismatch'] : []);
   }
 });
 

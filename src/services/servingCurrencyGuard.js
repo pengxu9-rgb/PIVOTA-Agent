@@ -112,6 +112,23 @@ function filterProductsToServingCurrency(products, servingCurrency) {
 }
 
 /**
+ * A row that quotes a price, in the serving currency and no other. The discovery feed's buyer-market
+ * fallback pool admits only these: an unpriced row is a card with no price on a page whose every
+ * price is foreign to the deployment -- the buyer cannot tell what it would cost (JP, live
+ * 2026-10-09: 3 of 9 cards). filterProductsToServingCurrency keeps unpriced rows on purpose (the
+ * door must not empty a page over a missing price); this is the stricter read for a pool that is
+ * built from scratch.
+ */
+function isPricedInServingCurrency(product, servingCurrency) {
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  if (!currency || !isPlainObject(product)) return false;
+  const priced = resolveCanonicalSearchProductPrice(product);
+  if (!priced) return false; // the resolver answers only a finite amount > 0 with a currency
+  const stated = statedCurrencies(product);
+  return stated.size > 0 && [...stated].every((value) => value === currency);
+}
+
+/**
  * Returns the body to send. Untouched unless it is a guarded operation's body with a `products`
  * list holding a row not priced in the serving currency; then those rows are removed, `total`
  * shrinks by as many, and `metadata.serving_currency_guard` says what was dropped.
@@ -155,6 +172,7 @@ module.exports = {
   GUARDED_OPERATIONS,
   enforceServingCurrency,
   filterProductsToServingCurrency,
+  isPricedInServingCurrency,
   requestedMarketOf,
   servingCurrencyFor,
 };

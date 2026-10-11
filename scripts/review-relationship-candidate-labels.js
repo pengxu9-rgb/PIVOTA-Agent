@@ -47,6 +47,7 @@ const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, val
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
+const { fragranceAlternativeRejection } = require('../src/auroraBff/relationshipFragranceProfile');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -55,6 +56,9 @@ const RUBRIC_VERSION = 'v4';
 // reused under the same validator, model and rubric that produced it.
 // v2: inferRelationship's treatment-function, accessory, set, brush and routine-role rules (#2382) refuse
 // some pairs v1 approved and admit complements v1 refused, so no v1 negative verdict is reused.
+// The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed, so the
+// validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
+// hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
@@ -116,7 +120,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     '--review-mode consensus (or RELGRAPH_AI_REVIEW_MODE=consensus) requires explicitly pinned GPT and Gemini models.',
@@ -165,6 +169,13 @@ function parseArgs(argv = process.argv.slice(2)) {
   const minScore = parseNumber(argValue(argv, 'min-score'), 0, { min: 0, max: 1 });
   const limit = Math.trunc(parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: MAX_LIMIT }));
   const idsFile = String(argValue(argv, 'ids-file') || '').trim();
+  // Inline label ids (comma-separated), merged with --ids-file: a Cloud Run job can pin its rows in its
+  // args without a shell wrapper writing a file first. Label ids are [A-Za-z0-9_-]; anything else is refused.
+  if (argv.some((arg) => String(arg).startsWith('--ids='))) throw new Error('--ids takes a separate value: --ids <id,id,...>');
+  const ids = parseInlineIds(argValue(argv, 'ids'));
+  // Passing --ids at all asks for an id scope, even if its value is missing or empty: that must review
+  // nothing, never fall through to the global backlog (with --apply that would approve unrelated rows).
+  const idsScopeRequested = argv.includes('--ids') || argv.includes('--ids-file') || Boolean(idsFile);
   // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
   // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
   const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();
@@ -203,6 +214,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       { min: 1, max: 1000 },
     )),
     idsFile,
+    ids,
+    idsScopeRequested,
     anchorRefsFile,
     anchorRefsFromBuild,
     verdictsFile,
@@ -220,6 +233,16 @@ function resolvePathMaybeRelative(filePath, cwd = process.cwd()) {
   const text = String(filePath || '').trim();
   if (!text) return '';
   return path.isAbsolute(text) ? text : path.join(cwd, text);
+}
+
+function parseInlineIds(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  const ids = Array.from(new Set(raw.split(',').map((id) => id.trim()).filter(Boolean)));
+  const invalid = ids.find((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id));
+  if (invalid) throw new Error(`--ids: invalid label id ${JSON.stringify(invalid.slice(0, 40))}`);
+  if (ids.length > MAX_LIMIT) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_LIMIT}`);
+  return ids;
 }
 
 function readIdsFile(filePath) {
@@ -762,6 +785,7 @@ function buildReviewPrompt(evidence, { factualQuotes = false } = {}) {
     '- niche_specialist means candidate is a more focused/specialized answer to the anchor or need use case.',
     '- related_product must be a complement: explain the different step or area and evidence for using them alongside one another. Same brand/line/routine alone is insufficient. Distinct-line substitutes belong to competitive_alternative, not related_product.',
     '- competitive_alternative may be same-brand when it is a distinct line/formulation. Another colour/style of one collection is still a variant.',
+    '- Fragrance (eau de parfum/toilette, perfume, cologne, body mist): a shared category is not a substitute. Approve only when both products\' supplied facts name scent notes or a scent family in common (for example woody, floral, citrus, amber, gourmand), and quote those notes as shared_evidence. Otherwise reject. A fragrance and a non-fragrance product are never alternatives.',
     '- A dupe requires concrete formula/ingredient or curated pair/performance evidence, plus fresh comparable price evidence. Similar names/categories alone cannot establish a dupe or equivalent performance.',
     '- For every approval choose shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product. These attributed facts explain the choice.',
     '- Copy recommendation_reason, tradeoffs and watchouts EXACTLY from consumer_copy_by_kind[relationship_kind]. Do not add, rewrite or omit text. Shopper copy is deterministic: source quotes carry supported differences; formula/performance/safety equivalence remains unknown. Your rationale is internal and must never be copied into shopper fields.',
@@ -1125,6 +1149,12 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
         (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
   }
+  // A perfume is chosen by its scent: an alternative between fragrances must quote notes that share a
+  // scent family, each a whole-word span of that product's own scent text (not taxonomy, tags or brand).
+  if (!reason && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(row.relation_type)) {
+    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, quotes,
+      { anchor: evidence.anchor, candidate: evidence.candidate }) || '';
+  }
   let suggestedRelationType = '';
   if (!reason && row.relation_type === 'related_product') {
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
@@ -1368,6 +1398,8 @@ async function runReview({
   minScore,
   limit,
   idsFile = '',
+  ids: inlineIds = [],
+  idsScopeRequested = false,
   anchorRefsFile = '',
   anchorRefsFromBuild = '',
   verdictsFile = '',
@@ -1401,7 +1433,11 @@ async function runReview({
   }
   const confidenceFloor = Math.max(consensus ? CONSENSUS_MIN_CONFIDENCE : 0,
     parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 }));
-  const ids = readIdsFile(idsFile);
+  const ids = Array.from(new Set([...readIdsFile(idsFile), ...(Array.isArray(inlineIds) ? inlineIds : [])]));
+  const idScopeRequested = Boolean(idsScopeRequested || String(idsFile || '').trim() || (Array.isArray(inlineIds) && inlineIds.length));
+  // Pinned ids are the whole request: the limit never truncates them (a 1,000-id batch under the default
+  // limit of 250 would otherwise review 250 and report nothing about the rest).
+  const effectiveLimit = ids.length ? Math.max(limit, Math.min(ids.length, MAX_LIMIT)) : limit;
   // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
   // build that produced 0 edges, or a missing/unreadable report).
   const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
@@ -1449,10 +1485,11 @@ async function runReview({
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
   let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
-  if (!(anchorScopeRequested && anchorRefs.length === 0)) {
+  // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
+  if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
     selection = consensus
-      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit, queryFn }) }
-      : await selectReviewCandidates({ limit, fetchOptions, queryFn, memory });
+      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn }) }
+      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
@@ -1650,8 +1687,12 @@ async function runReview({
     dry_run: !apply,
     cutoff,
     min_score: minScore,
-    limit,
+    limit: effectiveLimit,
     ids_filter_count: ids.length,
+    ids_scope_requested: idScopeRequested,
+    // Pinned ids not selected: no longer generated, before the cutoff, below min-score, filtered by
+    // relation type, or skipped by negative memory.
+    ids_not_selected_count: ids.length ? Math.max(0, ids.length - rows.length) : 0,
     anchor_refs_scope_requested: anchorScopeRequested,
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
@@ -1779,6 +1820,7 @@ module.exports = {
   isRememberedNegative,
   negativeReviewTtlDays,
   parseArgs,
+  parseInlineIds,
   rememberNegativeVerdict,
   reviewPairFingerprint,
   selectReviewCandidates,
