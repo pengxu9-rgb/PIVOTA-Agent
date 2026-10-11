@@ -53,6 +53,12 @@ test('the buyer step is re-keyed action_url (a handoff key) and nothing else in 
   assert.deepEqual(out.next_action, { type: 'open_url', kind: 'approval', action_url: 'https://pay.prava.space/a?token=t1', expires_at: 'x' });
 });
 
+test('a backend refusal of the caller (401) is non-retriable OPERATION_NOT_ALLOWED, never MERCHANT_UNAVAILABLE', async () => {
+  const { exec } = setup(async () => ({ kind: 'rejected' }));
+  await assert.rejects(exec('get_order', { order_id: PID }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'caller_credentials_rejected');
+});
+
 test('an agent the request did not authenticate is refused before any read (identity_mismatch)', async () => {
   const { exec } = setup(async () => ({ kind: 'identity_mismatch' }));
   await assert.rejects(exec('get_order', { order_id: PID }, CTX),

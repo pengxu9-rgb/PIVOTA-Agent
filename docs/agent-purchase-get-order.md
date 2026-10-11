@@ -31,6 +31,7 @@ The backend's unified purchase body, plus:
 | Not this buyer's, or does not exist | `QUOTE_NOT_FOUND` / `order_not_found` (same as an unknown kernel order) |
 | Backend unreachable, dial off, timeout, unmapped state | `MERCHANT_UNAVAILABLE` (retriable). Says nothing about the purchase; never start a second purchase on it. |
 | The door has no agent API key (MCP OAuth, checkout token) | `OPERATION_NOT_ALLOWED` / `agent_api_key_required` |
+| The backend rejects the caller's credentials (401) | `OPERATION_NOT_ALLOWED` / `caller_credentials_rejected` (non-retriable) |
 | The request's agent differs from the session's | `STATE_LINKAGE_MISMATCH` / `agent_mismatch` |
 
 ## Rollout

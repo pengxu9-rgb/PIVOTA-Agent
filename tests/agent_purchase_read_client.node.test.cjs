@@ -82,10 +82,19 @@ test('404 purchase_not_found is not_found; every other refusal is unavailable, n
   assert.equal(dark.code, 'not_available');
   const bare404 = await client({ status: 404, body: '' }).c.getPurchase(PID);
   assert.equal(bare404.kind, 'unavailable', 'a 404 without the backend envelope (a platform 404) is not an owner miss');
-  for (const status of [401, 403, 429, 503, 500]) {
+  for (const status of [403, 429, 503, 500]) {
     const out = await client({ status, body: { detail: { error: 'state_unmapped' } } }).c.getPurchase(PID);
     assert.equal(out.kind, 'unavailable', String(status));
   }
+});
+
+test('a 401 is the backend refusing the caller (rejected, non-retriable); a 403 stays unavailable (our IAM hop)', async () => {
+  const lower = await client({ status: 401, body: { detail: { error: 'agent_user_required' } } }).c.getPurchase(PID);
+  assert.deepEqual(lower, { kind: 'rejected' });
+  const upper = await client({ status: 401, body: { detail: { error: 'AGENT_USER_JWT_INVALID', message: 'x' } } }).c.getPurchase(PID);
+  assert.deepEqual(upper, { kind: 'rejected' }, 'an uppercase backend code is still a caller refusal');
+  const forbidden = await client({ status: 403, body: '' }).c.getPurchase(PID);
+  assert.equal(forbidden.kind, 'unavailable');
 });
 
 test('transport failure and timeout are unavailable', async () => {

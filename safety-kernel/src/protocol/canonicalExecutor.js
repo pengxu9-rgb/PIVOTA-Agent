@@ -144,6 +144,9 @@ function agentPurchaseOrder(orderId, answered) {
       // differently (MCP OAuth, a checkout token) has no such key: that is not "sign in again" (which would
       // loop), it is a read this door cannot make.
       throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'agent_api_key_required' });
+    case 'rejected':
+      // The backend refused the caller's credentials (401). Non-retriable: retrying the same token cannot work.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'caller_credentials_rejected' });
     case 'identity_mismatch':
       throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
     default:

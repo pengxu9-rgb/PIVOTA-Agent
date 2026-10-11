@@ -18,6 +18,7 @@
  *   not_found        404 `purchase_not_found`: not this buyer's, or does not exist (one answer by design)
  *   unavailable      everything else, including 404 `not_available` (backend dial off), 503
  *                    `state_unmapped`, a timeout or a malformed body. Never a statement about the purchase.
+ *   rejected         401: the backend refused the caller's credentials (no request retry can fix it)
  *   unauthenticated  the request context has no agent key or no buyer token. No request is made, and the
  *                    INTERNAL key is never substituted (`allowInternalFallback: false` at the host): it would
  *                    read under Pivota's own agent id, which owns no buyer's purchase.
@@ -138,6 +139,13 @@ function createAgentPurchaseReadClient(deps = {}) {
       return { kind: KIND.unavailable, code: 'malformed' };
     }
     const reason = canonicalBackendReasonCode(status, body);
+    // A 401 is the backend refusing the CALLER's credentials (no buyer, a buyer token it does not accept):
+    // retrying cannot fix it, so it is a refusal, not an outage. A 403 stays `unavailable`: that is what a
+    // private-hop IAM misconfiguration on our side produces, and the caller can do nothing about it.
+    if (status === 401) {
+      log('info', { outcome: 'rejected', http_status: status });
+      return { kind: 'rejected' };
+    }
     if (status === 404 && reason === 'purchase_not_found') {
       log('info', { outcome: KIND.notFound, code: reason, http_status: status });
       return { kind: KIND.notFound, code: reason };
