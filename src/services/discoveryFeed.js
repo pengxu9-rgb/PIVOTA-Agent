@@ -1,6 +1,7 @@
 const { buildCanonicalOwnOfferSellerSql } = require('./canonicalOwnOfferSellerSql');
 const axios = require('axios');
 const logger = require('../logger');
+const crypto = require('crypto');
 const { query } = require('../db');
 // THE BUYER'S MARKET, AND THE CURRENCY ITS PAGE MUST BE IN (applyBuyerMarketFallback below).
 const { parseMarketList } = require('./servedMarkets');
@@ -13867,7 +13868,7 @@ function buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedR
     serving_currency: servingCurrency,
     reason: BUYER_MARKET_FALLBACK_REASON,
     curated_rows_dropped: curatedRowsDropped,
-    rows: rows.products.length,
+    rows: Number.isFinite(rows.count) ? rows.count : rows.products.length,
     ...(rows.skipped ? { skipped: rows.skipped } : {}),
     // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
     cache_hit: rows.cached === true,
@@ -13927,18 +13928,49 @@ function resetScopedSequenceCacheForTest() {
   scopedSequenceInflight.clear();
 }
 
-// Everything that changes the two window builds' output. The context key already carries the
-// buyer's offer scope (buyerOfferScopeCacheKeyPart), so a US and an SG buyer never share an entry.
+// The sequence cache key: the FULL normalized request -- every input any reader or ranker consults
+// (source_product_ref, query, scope, context, sort, surface, response_detail, debug, buyer_market,
+// ...) -- minus only what selects a page of the same sequence (page, limit, cursor) and the
+// per-request identity (request_id), plus the scoped market. Built by EXCLUSION, so an input added
+// to the request later changes the key without anyone remembering this function. Full values,
+// never the truncated context key, hashed to bound the key's size.
+const SCOPED_SEQUENCE_KEY_EXCLUDED = new Set(['page', 'limit', 'cursor', 'request_id']);
 function scopedSequenceCacheKey(request, market) {
-  return JSON.stringify({
-    market,
-    context: buildDiscoveryContextCacheKey(request),
-    scope: request.scope,
-    response_detail: request.response_detail ?? null,
-    debug: request.debug ?? null,
-  });
+  const inputs = {};
+  for (const [field, value] of Object.entries(request || {})) {
+    if (!SCOPED_SEQUENCE_KEY_EXCLUDED.has(field)) inputs[field] = value;
+  }
+  const digest = crypto.createHash('sha256').update(JSON.stringify({ market, inputs })).digest('hex');
+  return `scoped_sequence:${market}:${digest}`;
 }
 
+// A window built over a failed or partial read must not be cached: loadCatalogCandidates records a
+// reader failure as a provider error and still returns, so the build "succeeds" with 0 kept rows,
+// and caching that would hide the market's own-currency rows for the whole TTL. The brand-direct
+// cache's `errored` rule, on the provider breakdown and recall steps the window reports.
+// A provider that is ABSENT in this deployment (no database, no schema) reports a failure reason
+// on every build; that is configuration, not a transient read failure, and must not make every
+// SG sequence uncacheable.
+const SCOPED_WINDOW_FAILED_RECALL = new Set(['provider_error', 'budget_truncated', 'unavailable']);
+const SCOPED_WINDOW_STANDING_REASONS = new Set(['schema_missing', 'missing_database']);
+function scopedWindowErrored(metadata) {
+  const md = metadata && typeof metadata === 'object' ? metadata : {};
+  const transient = (reason) => Boolean(reason) && !SCOPED_WINDOW_STANDING_REASONS.has(reason);
+  const breakdown = Array.isArray(md.provider_breakdown) ? md.provider_breakdown : [];
+  if (breakdown.some((entry) => entry && (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))) {
+    return true;
+  }
+  const steps = Array.isArray(md.recall_summary) ? md.recall_summary : [];
+  return steps.some((step) => step && (transient(step.failure_reason) || step.error || step.truncated_by_budget));
+}
+
+function scopedPoolPartial(rows) {
+  return !rows || rows.products.length === 0 || Boolean(rows.skipped) || rows.complete === false ||
+    rows.stale === true || Number(rows.hops_pending) > 0;
+}
+
+// What a cached entry holds: the ordered cards, the counts, the two windows' metadata (the page's
+// metadata is built from it) and the pool fetch's summary -- not the window objects or raw pool rows.
 async function assembleScopedBuyerMarketSequence({ payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
   const windowPayload = scopedSequenceWindowPayload(payload);
   const curatedWindow = await buildCurated(windowPayload, options);
@@ -13967,16 +13999,29 @@ async function assembleScopedBuyerMarketSequence({ payload, options, request, ma
   }
   const poolMetadata = poolWindow?.metadata || {};
   return {
-    kept,
-    sequence: [...kept, ...pool],
+    // Own copies: nothing the windows' builders keep, or a caller mutates, can reach the cache.
+    sequence: [...kept, ...pool].map((product) => ({ ...product })),
+    keptCount: kept.length,
     curatedRowsDropped: curatedRows.length - kept.length,
     poolDuplicates,
     poolEligibleTotal: Number.isFinite(Number(poolMetadata.eligible_pool_count))
       ? Math.max(pool.length, Number(poolMetadata.eligible_pool_count) - poolDuplicates)
       : pool.length,
-    curatedWindow,
-    poolWindow,
-    rows,
+    curatedMetadata: curatedWindow?.metadata || {},
+    poolMetadata,
+    hasPoolWindow: Boolean(poolWindow),
+    rows: {
+      count: rows.products.length,
+      skipped: rows.skipped || null,
+      cached: rows.cached === true,
+      stale: rows.stale === true,
+      complete: rows.complete,
+      hops_pending: rows.hops_pending,
+      recallSummary: rows.recallSummary || [],
+    },
+    cacheable: !scopedPoolPartial(rows) &&
+      !scopedWindowErrored(curatedWindow?.metadata) &&
+      !scopedWindowErrored(poolMetadata),
   };
 }
 
@@ -13991,8 +14036,9 @@ async function loadScopedBuyerMarketSequence(args) {
   scopedSequenceInflight.set(key, pending);
   try {
     const value = await pending;
-    // A cold or failing pool is not kept: the next request should get the warmed pool.
-    if (ttlMs > 0 && value.rows.products.length > 0) {
+    // A failed read, or a cold / partial / empty pool, is served but not kept: the next request
+    // rebuilds instead of inheriting it for the whole TTL.
+    if (ttlMs > 0 && value.cacheable) {
       if (scopedSequenceCache.size >= SCOPED_SEQUENCE_CACHE_MAX) {
         scopedSequenceCache.delete(scopedSequenceCache.keys().next().value);
       }
@@ -14011,27 +14057,29 @@ async function applyScopedBuyerMarketSequence({ payload, options, market, servin
   const assembled = await loadScopedBuyerMarketSequence({
     payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows,
   });
-  const { kept, sequence, curatedWindow, poolWindow, rows } = assembled;
+  const { sequence, keptCount, rows } = assembled;
 
   const total = sequence.length;
   const offset = (pageIndex - 1) * pageSize;
-  const pageProducts = sequence.slice(offset, offset + pageSize);
-  const keptOnPage = Math.max(0, Math.min(kept.length - offset, pageProducts.length));
+  // Copies on the way out: no downstream in-place change can reach a cached card.
+  const pageProducts = sequence.slice(offset, offset + pageSize).map((product) => ({ ...product }));
+  const keptOnPage = Math.max(0, Math.min(keptCount - offset, pageProducts.length));
   const poolOnPage = pageProducts.length - keptOnPage;
   const nextOffset = offset + pageProducts.length;
   const hasMore = nextOffset < total;
 
-  const base = poolOnPage > 0 ? (poolWindow?.metadata || {}) : (curatedWindow?.metadata || {});
+  const base = poolOnPage > 0 ? assembled.poolMetadata : assembled.curatedMetadata;
   const stamp = {
     ...buildBuyerMarketFallbackStamp({ market, servingCurrency, rows, curatedRowsDropped: assembled.curatedRowsDropped }),
     applied: poolOnPage > 0,
     served: pageProducts.length,
-    curated_rows_kept: kept.length,
+    curated_rows_kept: keptCount,
     curated_rows_on_page: keptOnPage,
     pool_rows_on_page: poolOnPage,
     pool_rows_duplicating_kept: assembled.poolDuplicates,
     pool_eligible_total: assembled.poolEligibleTotal,
     sequence_cache_hit: assembled.cacheHit === true,
+    sequence_cacheable: assembled.cacheable === true,
     recall_summary: rows.recallSummary || [],
   };
   const fallbackLabels = poolOnPage > 0
@@ -14055,7 +14103,8 @@ async function applyScopedBuyerMarketSequence({ payload, options, market, servin
       })
     : null;
   return {
-    ...(poolOnPage > 0 ? poolWindow : (curatedWindow || {})),
+    status: 'success',
+    success: true,
     products: pageProducts,
     total,
     page: request.page,
@@ -14112,6 +14161,8 @@ module.exports = {
     resetBuyerMarketPoolCacheForTest,
     resetScopedSequenceCacheForTest,
     isScopedBuyerMarketRequest,
+    scopedSequenceCacheKey,
+    scopedWindowErrored,
     awaitBuyerMarketRoundsForTest,
     isBuyerMarketPoolRow,
     isBuyerMarketBreakerOpen,

@@ -397,6 +397,107 @@ describe('discovery feed wiring', () => {
     expect(kept.metadata.buyer_market_scoped_sequence_error).toEqual(expect.any(String));
   }));
 
+  // ---- round 4: the cache key is the full request; failed / partial builds are not kept ----
+  test('the sequence key changes with every build input, and only paging and identity leave it alone', () => withEnv({ [FLAG]: 'on' }, () => {
+    const { internals } = loadInternals();
+    const basePayload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    const keyOf = (payload, market = 'SG') => internals.scopedSequenceCacheKey(internals.normalizeDiscoveryRequest(payload), market);
+    const baseKey = keyOf(basePayload);
+    const longQuery = 'q'.repeat(130);
+    const variants = {
+      source_product_ref: { source_product_ref: { merchant_id: 'merch_obs_x', product_id: 'sig_' + 'a'.repeat(32) } },
+      query: { query: { text: 'barrier cream' } },
+      query_past_120_chars: [{ query: { text: `${longQuery}a` } }, { query: { text: `${longQuery}b` } }],
+      brand: { scope: { brand_names: ['Example'] } },
+      category: { scope: { categories: ['serum'] } },
+      buyer_market: { buyer_market: 'JP' },
+      response_detail: { response_detail: 'card' },
+      sort: { sort: 'price_asc' },
+      surface: { surface: 'home_hot_deals' },
+      locale: { context: { ...basePayload.context, locale: 'en-SG' } },
+      auth_state: { context: { ...basePayload.context, auth_state: 'authenticated' } },
+      recent_queries: { context: { ...basePayload.context, recent_queries: ['toner'] } },
+      recent_views: { context: { ...basePayload.context, recent_views: [{ merchant_id: 'm1', product_id: 'p1', title: 'x' }] } },
+    };
+    for (const [name, variant] of Object.entries(variants)) {
+      const [left, right] = Array.isArray(variant) ? variant : [{}, variant];
+      expect([name, keyOf({ ...basePayload, ...left })]).not.toEqual([name, keyOf({ ...basePayload, ...right })]);
+    }
+    // The scoped market itself is part of the key (not only the request's own copy of it).
+    expect(keyOf(basePayload, 'JP')).not.toBe(baseKey);
+    // Paging and identity select a page of the same sequence: same key.
+    for (const same of [{ page: 3 }, { limit: 48 }, { request_id: 'req-123' }]) {
+      expect(keyOf({ ...basePayload, ...same })).toBe(baseKey);
+    }
+  }));
+
+  test('scopedWindowErrored: provider failures, failed recall and truncation are errors; a clean build is not', () => {
+    const { internals } = loadInternals();
+    expect(internals.scopedWindowErrored({ provider_breakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] })).toBe(false);
+    expect(internals.scopedWindowErrored({ provider_breakdown: [{ provider: 'canonical_sig', failure_reason: 'timeout' }] })).toBe(true);
+    expect(internals.scopedWindowErrored({ provider_breakdown: [{ provider: 'canonical_sig', zero_recall_reason: 'provider_error' }] })).toBe(true);
+    expect(internals.scopedWindowErrored({ recall_summary: [{ label: 'x', truncated_by_budget: true }] })).toBe(true);
+    expect(internals.scopedWindowErrored(null)).toBe(false);
+    // A provider absent from this deployment is configuration, not a transient failure.
+    expect(internals.scopedWindowErrored({ provider_breakdown: [
+      { provider: 'canonical_sig', successful: true, returned: 3 },
+      { provider: 'external_seeds', skipped: true, skip_reason: 'schema_missing', failure_reason: 'schema_missing' },
+    ] })).toBe(false);
+  });
+
+  test('flag on: a build over a failed curated read is served but not cached; the next request rebuilds', () => withEnv({ [FLAG]: 'on' }, async () => {
+    let fail = true;
+    const { call, calls } = sequenceHarness({
+      curatedImpl: (p) => {
+        if (fail) {
+          fail = false;
+          return { products: [], metadata: { candidate_source: 'canonical_sig', provider_breakdown: [{ provider: 'canonical_sig', failure_reason: 'timeout' }] } };
+        }
+        return { products: threeKept.slice(0, p.limit), metadata: { candidate_source: 'canonical_sig', serving_mode: 'exhaustive' } };
+      },
+    });
+    const first = await call({ page: 1 });
+    expect(first.metadata.buyer_market_fallback).toMatchObject({ curated_rows_kept: 0, sequence_cacheable: false });
+    const second = await call({ page: 1 });
+    expect(calls.curated).toBe(2);
+    expect(second.products.slice(0, 3).map((p) => p.product_id)).toEqual(['sig_k0', 'sig_k1', 'sig_k2']);
+    await call({ page: 2 });
+    expect(calls.curated).toBe(2); // the clean build was kept
+  }));
+
+  test('flag on: an empty pool is not cached', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { call, calls } = sequenceHarness({ poolRows: [] });
+    await call({ page: 1 });
+    await call({ page: 1 });
+    expect(calls).toEqual({ curated: 2, pool: 0, fetch: 2 });
+  }));
+
+  test.each([
+    ['an incomplete round', { complete: false }],
+    ['hops still pending', { hops_pending: 2 }],
+    ['a stale pool', { stale: true }],
+  ])('flag on: a partial pool (%s) is not cached', (_name, partial) => withEnv({ [FLAG]: 'on' }, async () => {
+    const { internals } = loadInternals();
+    const fetchRows = jest.fn(async () => ({ products: bigPool, recallSummary: [], skipped: null, ...partial }));
+    const buildCurated = jest.fn(async () => ({ products: threeKept, metadata: {} }));
+    const buildOnce = jest.fn(async (_p, options) => ({ products: options.candidateProducts.slice(0, 100), metadata: {} }));
+    const payload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    for (let n = 0; n < 2; n += 1) await internals.applyBuyerMarketFallback({ response: null, payload, fetchRows, buildOnce, buildCurated });
+    expect(fetchRows).toHaveBeenCalledTimes(2);
+  }));
+
+  test('flag on: a card changed in place by a caller never reaches the cached sequence', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { call } = sequenceHarness();
+    const first = await call({ page: 1 });
+    first.products[0].price = 999;
+    first.products[0].title = 'mutated';
+    const again = await call({ page: 1 });
+    expect(again.metadata.buyer_market_fallback.sequence_cache_hit).toBe(true);
+    expect([again.products[0].price, again.products[0].title]).toEqual([20, 'sig_k0']);
+  }));
+
   test('getDiscoveryFeed: a scoped SG request does not build its own page before the sequence', () => withEnv({
     [FLAG]: 'on', DATABASE_URL: 'postgres://scope-test', DISCOVERY_BROWSE_USES_CANONICAL_SIG: 'true',
   }, async () => {
