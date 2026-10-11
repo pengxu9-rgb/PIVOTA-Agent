@@ -305,3 +305,32 @@ test("P2: malformed OAuth claims do not break read-only tools (anonymous read pr
   await surface.callTool("search_catalog", { query: "x" }, { claims: { iss: "issuer-only" } }); // sub missing
   assert.equal(reads.length, 1);
 });
+
+// get_order for a rail purchase (`pp_…`): the buyer's approval link must reach the agent intact through the
+// surface's result sanitizer. Kernel order results keep the strict (non-handoff) scrub.
+test("get_order: a rail purchase keeps its buyer handoff URL verbatim; a kernel order result is still scrubbed", async () => {
+  const PID = "pp_0123456789abcdef01234567";
+  const URL = "https://pay.prava.space/approve/abc?token=tok_123&sig=s1";
+  const purchase = {
+    purchase_id: PID, rail_purchase_id: "rp_0123456789abcdef01234567", rail: "reap", state: "awaiting_buyer_authorization",
+    next_action: { type: "open_url", kind: "approval", url: URL, expires_at: "2999-01-01T00:00:00+00:00" },
+    detail: { state: "awaiting_approval", hosted_url: URL },
+  };
+  const kernel = new SafetyKernel({ upstream: async () => ({}), secret: SECRET, log: quiet });
+  const executor = createCanonicalExecutor({
+    kernel,
+    upstream: async () => ({ order_id: "o1", source: "agent_purchase", redirect_url: URL }),
+    readAgentPurchase: async () => ({ kind: "accepted", purchase }),
+  });
+  const surface = createCommerceToolSurface(executor);
+  const out = await surface.callTool("get_order", { order_id: PID }, SESS);
+  assert.equal(out.next_action.action_url, URL);
+  assert.equal(out.detail.hosted_url, URL);
+  assert.equal(out.status, "awaiting_buyer_authorization");
+
+  // A kernel-path result that merely CLAIMS source:'agent_purchase' gets no handoff allowance.
+  await kernel._orderStore.set("o1", { order_id: "o1", user_ref: SESS.user_ref });
+  const kernelOut = await surface.callTool("get_order", { order_id: "o1" }, SESS);
+  assert.equal(kernelOut.source, "agent_purchase", "precondition: the kernel result carries the claim");
+  assert.equal(String(kernelOut.redirect_url).includes("tok_123"), false, "kernel results stay scrubbed");
+});
