@@ -48,9 +48,24 @@ describe('buyerMarketOfferScope', () => {
     for (const unpriced of ['US,SG', 'en-US', 'ZZ', "SG'; DROP TABLE x; --"]) {
       expect(scope.resolveBuyerMarketOfferScope(unpriced)).toBeNull();
     }
+    // Priceable but not served (acquisition markets): no scope, no currency.
+    for (const acquired of ['JP', 'AU']) expect(scope.resolveBuyerMarketOfferScope(acquired)).toBeNull();
+    expect(scope.resolveOfferScopeCurrency('JPY')).toBeNull();
     expect(scope.resolveOfferScopeCurrency('usd')).toBe('USD');
+    expect(scope.resolveOfferScopeCurrency('SGD')).toBe('SGD');
     expect(scope.resolveOfferScopeCurrency(null)).toBeNull();
   }));
+
+  test('BUYER_MARKET_OFFER_SCOPE_MARKETS decides which buyer markets are scoped', () => withEnv({ [FLAG]: 'on', [scope.MARKETS_ENV]: 'US' }, () => {
+    expect(scope.resolveBuyerMarketOfferScope('SG')).toBeNull();
+    expect(scope.resolveOfferScopeCurrency('SGD')).toBeNull();
+  }));
+
+  test('marketPricesFreshSql serves the summary only while its stamp is the row\'s refreshed_at', () => {
+    expect(scope.marketPricesFreshSql('apv')).toBe(
+      "CASE WHEN apv.market_prices_refreshed_at = apv.refreshed_at AND apv.market_prices->>'version' = '1' THEN apv.market_prices END",
+    );
+  });
 
   // The row shape the canonical readers SELECT, with agent_pdp_view.market_prices as
   // pivota-backend's build_market_prices writes it.
@@ -59,8 +74,11 @@ describe('buyerMarketOfferScope', () => {
     currency: 'USD', price_min: 45, price_max: 50, offer_count: 3,
     offers: [{ currency: 'USD', price: 45 }, { currency: 'USD', price: 50 }, { currency: 'SGD', price: 61 }],
     market_prices: JSON.stringify({
-      US: { currency: 'USD', price_min: 45, price_max: 50, offer_count: 2, offers: [{ currency: 'USD', price: 45 }, { currency: 'USD', price: 50 }] },
-      SG: { currency: 'SGD', price_min: 61, price_max: 61, offer_count: 1, offers: [{ currency: 'SGD', price: 61 }] },
+      version: 1,
+      currencies: {
+        USD: { price_min: 45, price_max: 50, offer_count: 2, offers: [{ currency: 'USD', price: 45 }, { currency: 'USD', price: 50 }] },
+        SGD: { price_min: 61, price_max: 61, offer_count: 1, offers: [{ currency: 'SGD', price: 61 }] },
+      },
     }),
   });
 
@@ -76,7 +94,8 @@ describe('buyerMarketOfferScope', () => {
   test('applyMarketPricesToIndexRow leaves the row alone without a scope, a summary, or a matching entry', () => {
     const base = row();
     expect(scope.applyMarketPricesToIndexRow(base, null)).toBe(base);
-    for (const marketPrices of [null, undefined, '{}', 'not json', JSON.stringify({ SG: { currency: 'USD', price_min: 1 } })]) {
+    for (const marketPrices of [null, undefined, '{}', 'not json', JSON.stringify({ SG: { currency: 'SGD', price_min: 1 } }),
+      JSON.stringify({ version: 2, currencies: { SGD: { price_min: 1 } } }), JSON.stringify({ version: 1, currencies: { USD: { price_min: 1 } } })]) {
       const r = { ...row(), market_prices: marketPrices };
       expect(scope.applyMarketPricesToIndexRow(r, { market: 'SG', currency: 'SGD' })).toBe(r);
     }
@@ -148,7 +167,10 @@ describe('discovery feed wiring', () => {
 
   test('generic browse: flag on + SG buyer prices the strict own offers in SG/SGD', async () => {
     const [sql] = await sigSqlFor({ buyer_market: 'SG' }, { [FLAG]: 'on' });
-    expect(sql).toContain("co.market = 'SG' AND co.currency = 'SGD'");
+    // Currency alone (older SGD rows are stored market 'US'), before the LIMIT as well as in the lateral.
+    expect(sql).toContain("AND co.currency = 'SGD' AND co.availability = 'in_stock'");
+    expect(sql).not.toContain("co.market =");
+    expect(sql.indexOf('JOIN catalog_offers co ON co.product_key = own_cp.product_key')).toBeLessThan(sql.lastIndexOf('LIMIT $1'));
     expect(sql).toContain("'SGD' AS currency");
     expect(sql).not.toContain("'USD'");
   });
@@ -178,6 +200,50 @@ describe('discovery feed wiring', () => {
     expect(internals.scopeCanonicalHistoryProduct(product, { market: 'SG', currency: 'SGD' })).toBeNull();
     expect(internals.scopeCanonicalHistoryProduct({ ...product, currency: 'SGD' }, { market: 'SG', currency: 'SGD' }))
       .toMatchObject({ currency: 'SGD', price: 61, offers: [{ currency: 'SGD' }] });
+    // An SGD offer stored market 'US' (the column default) still counts for the SG buyer.
+    const legacyMarket = { ...product, currency: 'SGD', offers: [{ market: 'US', currency: 'SGD', availability: 'in_stock', price: 52 }] };
+    expect(internals.scopeCanonicalHistoryProduct(legacyMarket, { market: 'SG', currency: 'SGD' })).toMatchObject({ price: 52 });
+    expect(internals.scopeCanonicalHistoryProduct({ ...legacyMarket, currency: 'USD', offers: [{ market: 'SG', currency: 'USD', availability: 'in_stock', price: 9 }] }))
+      .toBeNull();
+  });
+
+  // P1 of the gateway review: with the scope, the curated readers return a FEW SGD rows; the old
+  // "any row in the currency" rule then skipped the market's fallback pool and left a 2-card page.
+  const fallbackRun = (flag, curatedCurrencies) => withEnv({ [FLAG]: flag ? 'on' : undefined }, async () => {
+    const { internals } = loadInternals();
+    const payload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    const card = (id, currency, price) => ({ merchant_id: 'external_seed', product_id: id, pivota_signature_id: id, title: id, currency, price });
+    const response = { products: curatedCurrencies.map((currency, n) => card(`sig_curated${n}`, currency, 20 + n)), metadata: {} };
+    const pool = [card('sig_curated0', 'SGD', 20), ...Array.from({ length: 20 }, (_, n) => card(`sig_pool${n}`, 'SGD', 30 + n))];
+    const fetchRows = jest.fn(async () => ({ products: pool, recallSummary: [], skipped: null }));
+    const buildOnce = jest.fn(async (_p, options) => ({ products: options.candidateProducts, metadata: { eligible_pool_count: options.candidateProducts.length } }));
+    const out = await internals.applyBuyerMarketFallback({ response, payload, fetchRows, buildOnce });
+    return { out, fetchRows };
+  });
+
+  test('flag off: today\'s rule -- any SGD row on the page skips the fallback', async () => {
+    const { out, fetchRows } = await fallbackRun(false, ['SGD', 'USD', 'USD']);
+    expect(fetchRows).not.toHaveBeenCalled();
+    expect(out.products).toHaveLength(3);
+  });
+
+  test('flag on: an SG page with 2 SGD rows is underfilled -- they lead, the pool fills the page', async () => {
+    const { out, fetchRows } = await fallbackRun(true, ['SGD', 'SGD', 'USD']);
+    expect(fetchRows).toHaveBeenCalledTimes(1);
+    const ids = out.products.map((p) => p.product_id);
+    expect(ids.slice(0, 2)).toEqual(['sig_curated0', 'sig_curated1']);
+    expect(ids.filter((id) => id === 'sig_curated0')).toHaveLength(1); // deduped against the pool
+    expect(out.products).toHaveLength(22);
+    expect(out.products.every((p) => p.currency === 'SGD')).toBe(true);
+    expect(out.metadata.buyer_market_fallback).toMatchObject({ applied: true, curated_rows_kept: 2, curated_rows_dropped: 1 });
+    expect(out.total).toBe(23); // the pool's 21 + the 2 kept
+  });
+
+  test('flag on: a full page of SGD rows is left alone', async () => {
+    const { out, fetchRows } = await fallbackRun(true, Array.from({ length: 24 }, () => 'SGD'));
+    expect(fetchRows).not.toHaveBeenCalled();
+    expect(out.products).toHaveLength(24);
   });
 });
 
@@ -251,9 +317,59 @@ describe('PDP group member re-pick', () => {
     expect(kept.source_payload.currency).toBe('USD');
   }));
 
+  test('flag on: a member whose payload holds variants inside a STRINGIFIED seed_data is not re-priced', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const queryFn = jest.fn(async () => ({ rows: [sgdRow] }));
+    const stringified = member('USD', { seed_data: JSON.stringify({ snapshot: { variants: [{ id: 'v1', price: 45, currency: 'USD' }] } }) });
+    const [kept] = await debug.rescopeGroupMemberOffersToCurrency([stringified], 'SGD', { queryFn });
+    expect(kept).toBe(stringified);
+    expect(queryFn).not.toHaveBeenCalled();
+  }));
+
   test('flag on: a failed read leaves the members exactly as they were', () => withEnv({ [FLAG]: 'on' }, async () => {
     const members = [member('USD')];
     const queryFn = jest.fn(async () => { throw new Error('boom'); });
     expect(await debug.rescopeGroupMemberOffersToCurrency(members, 'SGD', { queryFn })).toBe(members);
   }));
+});
+
+describe('product intel offers re-pick (BUYER_MARKET_OFFER_SCOPE)', () => {
+  const sgdRow = { picked_sku_key: 'sku_pi', offer_id: 'of_pi_sgd', sku_key: 'sku_pi', currency: 'SGD', price: '61.00', source_system: 'retailer_ingest', source_ref: 'https://store.example.com/p' };
+  const run = (flag) => withEnv({ [FLAG]: flag ? 'on' : undefined, AURORA_BFF_USE_MOCK: undefined }, async () => {
+    const statements = [];
+    jest.resetModules();
+    jest.doMock('../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        statements.push(String(sql));
+        return { rows: String(sql).includes('picked_sku_key') ? [sgdRow] : [] };
+      }),
+    }));
+    // eslint-disable-next-line global-require
+    const { _debug } = require('../src/server');
+    const member = {
+      merchant_id: 'external_seed', product_id: 'ext_pi', source_kind: 'external_seed',
+      source_payload: {
+        title: 'Barrier Cream', brand: 'Example', price: { amount: 45, currency: 'USD' }, price_amount: 45, currency: 'USD',
+        canonical_url: 'https://store.example.com/p', catalog_offer_v1: { offer_id: 'of_pi_usd', sku_key: 'sku_pi' },
+      },
+    };
+    const offersData = await _debug.buildProductIntelOffersDataForContext({
+      context: { canonicalProductRef: { merchant_id: 'external_seed', product_id: 'ext_pi' }, product: { title: 'Barrier Cream' }, groupMembers: [member] },
+      productGroupId: 'sig_pi',
+      servingCurrency: 'SGD',
+    });
+    jest.dontMock('../src/db');
+    return { offersData, repicked: statements.some((sql) => sql.includes('picked_sku_key')) };
+  });
+
+  test('flag off: no re-pick, the member keeps its USD offer', async () => {
+    const { offersData, repicked } = await run(false);
+    expect(repicked).toBe(false);
+    expect((offersData?.offers || []).map((o) => o.price?.currency)).toEqual(['USD']);
+  });
+
+  test('flag on, SG buyer: the member is offered in SGD, as on get_pdp_v2', async () => {
+    const { offersData, repicked } = await run(true);
+    expect(repicked).toBe(true);
+    expect((offersData?.offers || []).map((o) => [o.price?.currency, o.price?.amount])).toEqual([['SGD', 61]]);
+  });
 });

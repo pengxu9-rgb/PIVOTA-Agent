@@ -41,9 +41,10 @@ function seedHasColumnPriceCurrencySql(alias = '') {
 //
 // `allowOtherCurrencyOffers` (BUYER_MARKET_OFFER_SCOPE, buyerMarketOfferScope.js): the offers leg
 // becomes the search mainline's -- a product with a live offer in the buyer's currency stays,
-// whatever other currencies it is also offered in. A store's USD product gaining SGD sibling offers
-// (pivota-backend shopify_markets) is then still recommended to a US buyer, and an SG buyer gets
-// it on its SGD offer. A product whose live offers are ALL in other currencies is still refused,
+// whatever other currencies it is also offered in. A product carrying offers in several served
+// currencies (a USD sibling beside a non-USD base offer today; SGD siblings beside USD once
+// pivota-backend #2553 lands) is then recommended to each buyer whose currency it has a live offer
+// in, when its card can be priced for that buyer. A product whose live offers are ALL in other currencies is still refused,
 // and the seed legs (which price the card) are unchanged.
 function catalogProductPricedOnlyInCurrencySql(cpAlias, currencyParam, { allowOtherCurrencyOffers = false } = {}) {
   const otherCurrencyOffer = `EXISTS (

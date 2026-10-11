@@ -115,7 +115,7 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
     await insertSeed({ externalId: 'ext_attached_sgd_only', title: 'Attached SGD only', currency: 'SGD', attachedProductKey: 'minted_sgd_seed_only', tool: '*' });
     await insertCatalogProduct({ productKey: 'minted_usd', sourceSystem: 'catalog_enrichment_agent_v1', sourceProductId: 'cea_minted_usd', offerCurrencies: ['USD'] });
     await insertSeed({ externalId: 'ext_attached_usd', title: 'Attached USD', currency: 'USD', attachedProductKey: 'minted_usd', tool: '*' });
-    // A store's base USD offer plus its SGD sibling (pivota-backend shopify_markets). Refused for
+    // A product with live offers in two served currencies (USD + SGD). Refused for
     // every buyer by the single-currency offers leg; BUYER_MARKET_OFFER_SCOPE keeps each for the
     // buyer its CARD can be priced for (the seed that prices it): the mirror for US, the minted
     // row (attached SGD seed) for SG.
@@ -123,6 +123,11 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
     await insertCatalogProduct({ productKey: 'mirror_usd_sgd_sibling', sourceSystem: 'external_product_seeds_mirror_v1', sourceProductId: 'ext_sim_sibling', offerCurrencies: ['USD', 'SGD'] });
     await insertCatalogProduct({ productKey: 'minted_sgd_sibling', sourceSystem: 'catalog_enrichment_agent_v1', sourceProductId: 'cea_minted_sgd_sibling', offerCurrencies: ['USD', 'SGD'] });
     await insertSeed({ externalId: 'ext_attached_sgd_sibling', title: 'Attached SGD sibling', currency: 'SGD', attachedProductKey: 'minted_sgd_sibling', tool: '*' });
+    // Its only USD offer is SUPPRESSED: a suppressed offer prices nothing, so for a US buyer this
+    // product's live offers are all SGD and it stays refused, flag on or off.
+    await insertSeed({ externalId: 'ext_sim_supp_usd', title: 'Similar suppressed USD', currency: 'USD' });
+    await insertCatalogProduct({ productKey: 'mirror_suppressed_usd_live_sgd', sourceSystem: 'external_product_seeds_mirror_v1', sourceProductId: 'ext_sim_supp_usd', offerCurrencies: ['USD', 'SGD'] });
+    await db.query(`UPDATE catalog_offers SET suppressed_at = now() WHERE product_key = 'mirror_suppressed_usd_live_sgd' AND currency = 'USD'`);
 
     // --- Aurora local seed search + ingredient recall (creator_agents, unattached) ---
     for (const [suffix, currency] of [['usd', 'USD'], ['sgd', 'SGD'], ['null', null], ['blank', ' '], ['gbp', 'GBP']]) {
@@ -237,6 +242,7 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
       // Still refused: a product whose live offers are ALL in another currency (mirror_conflict's SGD
       // offer for a US buyer), and any product whose pricing seed is in another currency.
       expect(recalledKeys()).not.toContain('mirror_conflict');
+      expect(recalledKeys()).not.toContain('mirror_suppressed_usd_live_sgd');
     });
 
     test('a market nothing is priced in gets nothing, without reading the database', async () => {
@@ -262,7 +268,7 @@ suite('seed readers serve only the buyer currency, real PostgreSQL', () => {
       expect(statements.filter((s) => s.error)).toEqual([]);
       expect(statements.length).toBeGreaterThan(0);
       // Every unattached USD seed on the domain (the catalog-level conflict row is a USD SEED).
-      expect(seedRowsReturned()).toEqual(['ext_bha_usd', 'ext_sim_conflict', 'ext_sim_sibling', 'ext_sim_suppressed', 'ext_sim_usd']);
+      expect(seedRowsReturned()).toEqual(['ext_bha_usd', 'ext_sim_conflict', 'ext_sim_sibling', 'ext_sim_supp_usd', 'ext_sim_suppressed', 'ext_sim_usd']);
       statements = [];
       await fetchExternal('SGD');
       expect(seedRowsReturned()).toEqual(['ext_bha_payload_sgd', 'ext_bha_sgd']);

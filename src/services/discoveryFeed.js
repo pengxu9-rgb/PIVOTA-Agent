@@ -13,6 +13,7 @@ const {
   isMarketPricesColumnKnownMissing,
   isMissingMarketPricesColumnError,
   markMarketPricesColumnMissing,
+  marketPricesFreshSql,
   resolveBuyerMarketOfferScope,
 } = require('./buyerMarketOfferScope');
 const {
@@ -9717,11 +9718,39 @@ function mapCanonicalIndexRowToProduct(row) {
   };
 }
 
-// The own-offer market + currency the strict-public readers price a card in. US/USD unless a
-// buyer-market offer scope (buyerMarketOfferScope, flag BUYER_MARKET_OFFER_SCOPE) names another;
-// both are validated codes there, so inlining them keeps the US statement byte-identical.
+// The own offers the strict-public readers price a card from. Unscoped: market 'US' and currency
+// 'USD', exactly as before (the statement stays byte-identical). Scoped (buyerMarketOfferScope,
+// flag BUYER_MARKET_OFFER_SCOPE): the buyer's CURRENCY alone, like canonical search and the
+// agent_pdp_view summary -- catalog_offers.market is a DEFAULT 'US' most writers never set, and
+// older SGD rows are stored market 'US'. The currency is a validated ISO code there.
 function strictOwnOfferMarket(marketScope) {
-  return marketScope ? { market: marketScope.market, currency: marketScope.currency } : { market: 'US', currency: 'USD' };
+  return marketScope
+    ? { market: null, currency: marketScope.currency, marketSql: '' }
+    : { market: 'US', currency: 'USD', marketSql: "co.market = 'US' AND " };
+}
+
+// Scoped strict readers only: keep a row BEFORE the page LIMIT only when some public, live own
+// listing of its content_key has an in-stock own offer in the buyer's currency -- the own_offers
+// lateral's test, minus its one chosen listing (the lateral still decides the served offers).
+// Without it the reader took the newest N rows and filtered afterwards, so an SG page held the
+// few SGD rows that happened to be among the newest. Relies on catalog_products(content_key),
+// catalog_row_trust(subject_type, subject_key) and catalog_offers(product_key), the lateral's own
+// lookups.
+function scopedOwnOfferExistsSql(marketScope) {
+  if (!marketScope) return '';
+  return `AND EXISTS (
+            SELECT 1
+            FROM catalog_products own_cp
+            JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
+              AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
+            JOIN catalog_offers co ON co.product_key = own_cp.product_key
+            WHERE own_cp.content_key = apv.content_key
+              AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
+              AND ${buildCanonicalOwnOfferSellerSql({ currency: marketScope.currency })}
+              AND co.currency = '${marketScope.currency}' AND co.availability = 'in_stock'
+              AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
+              AND coalesce(co.merchant_effective_price, co.list_price) > 0
+          )`;
 }
 
 async function fetchBrandScopedCanonicalCandidates({
@@ -9778,7 +9807,8 @@ async function fetchBrandScopedCanonicalCandidates({
           JOIN brand_match bm ON bm.content_key = apv.content_key
           ${gateJoinSql}
           WHERE apv.pivota_signature_id IS NOT NULL
-            ${gateWhereSql}
+            ${gateWhereSql}${strictPublicSource && marketScope ? `
+            ${scopedOwnOfferExistsSql(marketScope)}` : ''}
             ${exactBrandQuery ? 'AND lower(apv.brand) = ANY($1::text[])' : ''}
           ORDER BY apv.refreshed_at DESC NULLS LAST${strictPublicSource ? ', apv.pivota_signature_id ASC' : ''}
           LIMIT $3
@@ -9806,7 +9836,7 @@ async function fetchBrandScopedCanonicalCandidates({
           ${strictPublicSource ? 'own_offers.price_max' : 'apv.price_max'} AS price_max,
           ${strictPublicSource ? 'own_offers.offer_count' : 'apv.offer_count'} AS offer_count,
           ${strictPublicSource ? 'own_offers.offers' : 'apv.offers'} AS offers,${readMarketPrices ? `
-          apv.market_prices,` : ''}
+          ${marketPricesFreshSql('apv')} AS market_prices,` : ''}
           apv.category_path${withListingCategory ? `,
           -- The listing's own taxonomy (catalog_products.category_path): the
           -- slash path the public PDP serves as product.category_path. Read
@@ -9946,7 +9976,7 @@ async function fetchBrandScopedCanonicalCandidates({
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
             AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
-            AND co.market = '${own.market}' AND co.currency = '${own.currency}' AND co.availability = 'in_stock'
+            AND ${own.marketSql}co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
         ) own_offers ON TRUE` : ''}
@@ -10221,13 +10251,14 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120, signatureIds = n
           WHERE co.product_key = coalesce(first_party.product_key, ext_seed.product_key)
             AND own_cp.content_key = apv.content_key AND own_cp.sync_status = 'live' AND own_cp.suppression_reason IS NULL
             AND ${buildCanonicalOwnOfferSellerSql({ currency: own.currency })}
-            AND co.market = '${own.market}' AND co.currency = '${own.currency}' AND co.availability = 'in_stock'
+            AND ${own.marketSql}co.currency = '${own.currency}' AND co.availability = 'in_stock'
             AND co.suppressed_at IS NULL AND co.suppression_reason IS NULL
             AND coalesce(co.merchant_effective_price, co.list_price) > 0
          ) own_offers ON TRUE
 
         WHERE apv.pivota_signature_id IS NOT NULL
-          ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}
+          ${signatureIds ? 'AND apv.pivota_signature_id = ANY($2::text[])' : ''}${marketScope && !signatureIds ? `
+          ${scopedOwnOfferExistsSql(marketScope)}` : ''}
           AND EXISTS (
             SELECT 1
             FROM catalog_products cp_trust
@@ -10369,7 +10400,7 @@ function scopeCanonicalHistoryProduct(product, marketScope = null) {
   const own = strictOwnOfferMarket(marketScope);
   if (product?.currency !== own.currency) return null;
   const offers = (Array.isArray(product?.offers) ? product.offers : []).filter((offer) =>
-    offer?.market === own.market && offer.currency === own.currency && offer.availability === 'in_stock' &&
+    (own.market === null || offer?.market === own.market) && offer?.currency === own.currency && offer.availability === 'in_stock' &&
     Number.isFinite(Number(offer.price)) && Number(offer.price) > 0);
   if (!offers.length) return null;
   const { stored_listing_category_path: _storedListingCategoryPath, ...served } = product;
@@ -13769,15 +13800,26 @@ async function applyBuyerMarketFallback({
   // (null: the door serves nothing, by design): unchanged.
   if (!servingCurrency || servingCurrency === deploymentCurrency) return response;
   const products = Array.isArray(response?.products) ? response.products : [];
-  if (hasRowsInServingCurrency(products, servingCurrency)) return response;
-
+  // BUYER_MARKET_OFFER_SCOPE: the curated readers now return this buyer's own-currency rows, often
+  // only a few of them. "Any row in the currency" would then stop the fallback and leave a 2-card
+  // page where the market's pool fills 20, so under the scope the page counts as UNDERFILLED until
+  // it holds a page of priced rows, and those rows lead the fallback page instead of replacing it.
+  // Without the scope: today's rule, unchanged.
+  const scoped = Boolean(resolveBuyerMarketOfferScope(market));
   const request = normalizeDiscoveryRequest(payload);
+  const keptRows = scoped ? products.filter((product) => isPricedInServingCurrency(product, servingCurrency)) : [];
+  if (scoped) {
+    if (keptRows.length >= Math.max(1, Number(request?.limit) || 1)) return response;
+  } else if (hasRowsInServingCurrency(products, servingCurrency)) {
+    return response;
+  }
+
   const rows = await fetchRows({ request, market, servingCurrency });
   const stamp = {
     market,
     serving_currency: servingCurrency,
     reason: BUYER_MARKET_FALLBACK_REASON,
-    curated_rows_dropped: products.length,
+    curated_rows_dropped: products.length - keptRows.length,
     rows: rows.products.length,
     ...(rows.skipped ? { skipped: rows.skipped } : {}),
     // Truthful cache fields on the stamp itself (a reader should not have to find the cache hop).
@@ -13791,14 +13833,16 @@ async function applyBuyerMarketFallback({
     // hop by hop (status, returned, latency, cache), so a live diagnosis needs no API key.
     return { ...response, metadata: { ...(response?.metadata || {}), buyer_market_fallback: { ...stamp, applied: false, recall_summary: rows.recallSummary || [] } } };
   }
-  const rebuilt = await buildOnce(payload, {
+  const rebuiltOnce = await buildOnce(payload, {
     ...options,
     candidateProducts: annotateProviderProducts('products_search', rows.products),
   });
+  const rebuilt = keptRows.length ? mergeKeptRowsAhead(rebuiltOnce, keptRows, request) : rebuiltOnce;
   const rebuiltMetadata = rebuilt?.metadata || {};
   const eligible = Number.isFinite(Number(rebuiltMetadata.eligible_pool_count))
-    ? Number(rebuiltMetadata.eligible_pool_count)
+    ? Number(rebuiltMetadata.eligible_pool_count) + (rebuilt.kept_rows_merged || 0)
     : (Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0);
+  delete rebuilt.kept_rows_merged;
   return {
     ...rebuilt,
     // The page is now this market's pool, so the totals are that pool, not the USD corpus count.
@@ -13814,9 +13858,19 @@ async function applyBuyerMarketFallback({
       search_decision: { ...(rebuiltMetadata.search_decision || {}), fallback_triggered: true },
       // `served`: what the rebuilt page shows. `rows` is the pool; the ranker and a page's own
       // query filter can leave fewer, and a reader must not take applied:true for "cards shown".
-      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, recall_summary: rows.recallSummary },
+      buyer_market_fallback: { ...stamp, applied: true, served: Array.isArray(rebuilt?.products) ? rebuilt.products.length : 0, ...(keptRows.length ? { curated_rows_kept: keptRows.length } : {}), recall_summary: rows.recallSummary },
     },
   };
+}
+
+// The curated page's own-currency rows first, then the fallback page's rows that are not the same
+// product, cut to the page size. Both are cards from the same builder, so nothing is re-ranked.
+function mergeKeptRowsAhead(rebuilt, keptRows, request) {
+  const keys = (product) => [buildDiscoveryDedupKey(product), String(product?.pivota_signature_id || '').trim()].filter(Boolean);
+  const seen = new Set(keptRows.flatMap(keys));
+  const rest = (Array.isArray(rebuilt?.products) ? rebuilt.products : []).filter((product) => !keys(product).some((key) => seen.has(key)));
+  const pageSize = Math.max(1, Number(request?.limit) || keptRows.length + rest.length);
+  return { ...rebuilt, products: [...keptRows, ...rest].slice(0, pageSize), kept_rows_merged: keptRows.length };
 }
 
 async function getDiscoveryFeed(payload = {}, options = {}) {

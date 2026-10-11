@@ -8,7 +8,7 @@ const scope = require('../../src/services/buyerMarketOfferScope');
 // BUYER_MARKET_OFFER_SCOPE on real PostgreSQL: the strict-public canonical reader (history primary),
 // the agent_pdp_view brand reader with and without pivota-backend migration 263's market_prices
 // column, and the PDP group-member re-pick. Three products of one brand:
-//   both  -- a USD offer (US) and its SGD sibling (SG), what shopify_markets writes
+//   both  -- a USD offer and an SGD one, as once pivota-backend #2553's SGD siblings land
 //   usd   -- USD only
 //   sgd   -- SGD only
 // Contract: flag off = today; flag on + a US (or silent) buyer = today, byte for byte; flag on + an
@@ -23,12 +23,18 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     { n: 0, key: 'both', currency: 'USD', offers: [['US', 'USD', 45], ['SG', 'SGD', 61]] },
     { n: 1, key: 'usd', currency: 'USD', offers: [['US', 'USD', 30]] },
     { n: 2, key: 'sgd', currency: 'SGD', offers: [['SG', 'SGD', 58]] },
+    // An older SGD row stored under market 'US' (the column's DEFAULT): currency decides.
+    { n: 3, key: 'sgdlegacy', currency: 'SGD', offers: [['US', 'SGD', 52]] },
   ];
   const offerJson = (key, [market, currency, price]) => ({ merchant_id: 'merch_obs_local', market, currency, price, availability: 'in_stock', url: `https://exemplar.example.com/products/${key}` });
-  const marketPricesOf = (product) => Object.fromEntries(product.offers.map((offer) => {
-    const [market, currency, price] = offer;
-    return [market, { currency, price_min: price, price_max: price, offer_count: 1, offers: [offerJson(product.key, offer)] }];
-  }));
+  // pivota-backend build_market_prices' shape: version 1, keyed by currency.
+  const marketPricesOf = (product) => ({
+    version: 1,
+    currencies: Object.fromEntries(product.offers.map((offer) => {
+      const [, currency, price] = offer;
+      return [currency, { price_min: price, price_max: price, offer_count: 1, offers: [offerJson(product.key, offer)] }];
+    })),
+  });
   const historyPayload = (extra = {}) => ({
     surface: 'home_hot_deals', limit: 6,
     context: { auth_state: 'authenticated', locale: 'en-US', recent_queries: [], recent_views: [{ merchant_id: 'external_seed', product_id: sig(0), title: 'Exemplar both', brand: 'Exemplar' }] },
@@ -62,7 +68,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     client = new Client({ connectionString: url });
     await client.connect();
     await client.query(`BEGIN; CREATE SCHEMA ${schema}; SET LOCAL search_path TO ${schema}, public;
-      CREATE TABLE agent_pdp_view(content_key text PRIMARY KEY,pivota_signature_id text,brand text,title text,description text,image_url text,image_urls jsonb,currency text,price_min numeric,price_max numeric,offer_count int,offers jsonb,category_path text,refreshed_at timestamptz,market_prices jsonb);
+      CREATE TABLE agent_pdp_view(content_key text PRIMARY KEY,pivota_signature_id text,brand text,title text,description text,image_url text,image_urls jsonb,currency text,price_min numeric,price_max numeric,offer_count int,offers jsonb,category_path text,refreshed_at timestamptz,market_prices jsonb,market_prices_refreshed_at timestamptz);
       CREATE TABLE catalog_products(product_key text PRIMARY KEY,content_key text,pivota_signature_id text,merchant_id text,platform text,source_product_id text,brand text,canonical_url text,sync_status text,suppression_reason text,updated_at timestamptz,category_path text,source_system text,source_domain text);
       CREATE TABLE catalog_row_trust(subject_type text,subject_key text,serving_decision text);
       CREATE TABLE catalog_offers(offer_id text,product_key text,merchant_id text,market text,currency text,availability text,merchant_effective_price numeric,estimated_best_price numeric,list_price numeric,suppressed_at timestamptz,suppression_reason text,sku_key text,source_system text,source_domain text,source_ref text,offer_type text,is_first_party boolean,offer_mode text,catalog_track text,truth_tier text,readiness_tier text,offer_payload jsonb,updated_at timestamptz);
@@ -80,11 +86,12 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
   beforeEach(async () => {
     delete process.env[scope.FLAG];
     scope.resetMarketPricesColumnState();
-    await run('ALTER TABLE agent_pdp_view ADD COLUMN IF NOT EXISTS market_prices jsonb');
+    await run('ALTER TABLE agent_pdp_view ADD COLUMN IF NOT EXISTS market_prices jsonb, ADD COLUMN IF NOT EXISTS market_prices_refreshed_at timestamptz');
     await run('TRUNCATE agent_pdp_view,catalog_products,catalog_row_trust,external_product_seeds,catalog_offers,catalog_merchants,catalog_skus');
     for (const product of PRODUCTS) {
       const prices = product.offers.filter((offer) => offer[1] === product.currency).map((offer) => offer[2]);
-      await run(`INSERT INTO agent_pdp_view VALUES($1,$2,'Exemplar',$3,'A cream.','https://cdn.example.com/x.jpg','[]',$4,$5,$5,$6,$7,'beauty/skincare/moisturizer','2026-10-03T00:00:00Z',$8)`,
+      // Stamped by the write that set refreshed_at, as the backend's flag-on upsert does.
+      await run(`INSERT INTO agent_pdp_view VALUES($1,$2,'Exemplar',$3,'A cream.','https://cdn.example.com/x.jpg','[]',$4,$5,$5,$6,$7,'beauty/skincare/moisturizer','2026-10-03T00:00:00Z',$8,'2026-10-03T00:00:00Z')`,
         [product.key, sig(product.n), `Exemplar ${product.key}`, product.currency, Math.min(...prices), product.offers.length,
           JSON.stringify(product.offers.map((offer) => offerJson(product.key, offer))), JSON.stringify(marketPricesOf(product))]);
       await run(`INSERT INTO catalog_products(product_key,content_key,pivota_signature_id,merchant_id,platform,source_product_id,brand,canonical_url,sync_status,updated_at,category_path) VALUES($1,$1,$2,'merch_obs_local','external_seed',$3,'Exemplar',$4,'live',NOW(),'beauty/skincare/moisturizer')`,
@@ -140,8 +147,11 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       expect(priced(sg.products)).toEqual([
         ['Exemplar both', 'SGD', 61, ['SGD']],
         ['Exemplar sgd', 'SGD', 58, ['SGD']],
+        ['Exemplar sgdlegacy', 'SGD', 52, ['SGD']],
       ]);
-      expect(sqlSent().some((sql) => sql.includes("co.market = 'SG' AND co.currency = 'SGD'"))).toBe(true);
+      // Currency alone decides, never catalog_offers.market.
+      expect(sqlSent().some((sql) => sql.includes("AND co.currency = 'SGD' AND co.availability = 'in_stock'"))).toBe(true);
+      expect(sqlSent().some((sql) => sql.includes("co.market = 'SG'"))).toBe(false);
       expect(axios.get).not.toHaveBeenCalled();
     });
 
@@ -168,6 +178,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       expect(priced(products)).toEqual([
         ['Exemplar both', 'USD', 45, ['USD', 'SGD']],
         ['Exemplar sgd', 'SGD', 58, ['SGD']],
+        ['Exemplar sgdlegacy', 'SGD', 52, ['SGD']],
         ['Exemplar usd', 'USD', 30, ['USD']],
       ]);
       expect(sqlSent().some((sql) => sql.includes('market_prices'))).toBe(false);
@@ -178,6 +189,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       expect(priced(products)).toEqual([
         ['Exemplar both', 'SGD', 61, ['SGD']],
         ['Exemplar sgd', 'SGD', 58, ['SGD']],
+        ['Exemplar sgdlegacy', 'SGD', 52, ['SGD']],
         ['Exemplar usd', 'USD', 30, ['USD']],
       ]);
       // Same page, same order as the unscoped reader: only prices and offers move.
@@ -189,9 +201,23 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       expect(priced(await fetchBrand(SG))).toEqual(priced(await fetchBrand(null)));
     });
 
+    test('a STALE summary (a later write without it moved refreshed_at) serves the legacy row', async () => {
+      // What a backend writer with the flag off, an old image or the repair script does: rewrite
+      // offers and refreshed_at, leave the summary and its stamp alone.
+      await run("UPDATE agent_pdp_view SET refreshed_at = refreshed_at + interval '1 second', offers = '[]'::jsonb WHERE content_key = 'both'");
+      const both = (await fetchBrand(SG)).find((p) => p.title === 'Exemplar both');
+      expect([both.currency, both.price]).toEqual(['USD', 45]);
+      expect(both.offers).toEqual([]);
+    });
+
+    test('a summary of another version serves the legacy row', async () => {
+      await run(`UPDATE agent_pdp_view SET market_prices = jsonb_set(market_prices, '{version}', '2')`);
+      expect(priced(await fetchBrand(SG))).toEqual(priced(await fetchBrand(null)));
+    });
+
     test('the column absent (migration 263 not applied): legacy rows, one failed statement, then never named again', async () => {
       const legacy = await fetchBrand(null);
-      await run('ALTER TABLE agent_pdp_view DROP COLUMN market_prices');
+      await run('ALTER TABLE agent_pdp_view DROP COLUMN market_prices, DROP COLUMN market_prices_refreshed_at');
       db.query.mockClear();
       expect(priced(await fetchBrand(SG))).toEqual(priced(legacy));
       expect(sqlSent().filter((sql) => sql.includes('apv.market_prices'))).toHaveLength(1);
@@ -199,6 +225,37 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       db.query.mockClear();
       expect(priced(await fetchBrand(SG))).toEqual(priced(legacy));
       expect(sqlSent().some((sql) => sql.includes('market_prices'))).toBe(false);
+    });
+  });
+
+  describe('scoped strict readers pick own-currency rows BEFORE the page LIMIT', () => {
+    const SG = { market: 'SG', currency: 'SGD' };
+    beforeEach(async () => {
+      // 30 USD-only products newer than every SGD one: a pick-then-filter page of 24 holds none.
+      for (let n = 10; n < 40; n += 1) {
+        const key = `newer${n}`;
+        await run(`INSERT INTO agent_pdp_view VALUES($1,$2,'Exemplar',$3,'A cream.','https://cdn.example.com/x.jpg','[]','USD',20,20,1,'[]','beauty/skincare/moisturizer','2026-10-05T00:00:00Z',NULL,NULL)`, [key, sig(n), `Exemplar ${key}`]);
+        await run(`INSERT INTO catalog_products(product_key,content_key,pivota_signature_id,merchant_id,platform,source_product_id,brand,canonical_url,sync_status,updated_at,category_path) VALUES($1,$1,$2,'merch_obs_local','external_seed',$3,'Exemplar',$4,'live',NOW(),'beauty/skincare/moisturizer')`, [key, sig(n), `ext_${key}`, `https://exemplar.example.com/products/${key}`]);
+        await run("INSERT INTO catalog_row_trust VALUES('product',$1,'public')", [key]);
+        await run(`INSERT INTO external_product_seeds VALUES($1,$2,$3,'active',NOW())`, [`seed_${key}`, key, `https://exemplar.example.com/products/${key}`]);
+        await run(`INSERT INTO catalog_offers(offer_id,product_key,sku_key,merchant_id,market,currency,availability,merchant_effective_price,updated_at) VALUES($1,$2,$3,'merch_obs_local','US','USD','in_stock',20,NOW())`, [`offer_${key}`, key, `sku_${key}`]);
+      }
+      db.query.mockClear();
+    });
+    const sgdTitles = (products) => products.filter((p) => p.currency === 'SGD').map((p) => p.title).sort();
+    const SGD_TITLES = ['Exemplar both', 'Exemplar sgd', 'Exemplar sgdlegacy'];
+
+    test('generic browse reader', async () => {
+      expect(sgdTitles(await i.fetchCanonicalSigBrowseCandidates({ limit: 24, marketScope: SG }))).toEqual(SGD_TITLES);
+      // Unscoped: unchanged, the newest 24 (all USD).
+      const us = await i.fetchCanonicalSigBrowseCandidates({ limit: 24 });
+      expect(us).toHaveLength(24);
+      expect(us.every((p) => p.currency === 'USD' && p.title.startsWith('Exemplar newer'))).toBe(true);
+    });
+
+    test('strict brand reader', async () => {
+      const products = await i.fetchBrandScopedCanonicalCandidates({ brandAliases: ['Exemplar'], limit: 24, strictPublicSource: true, marketScope: SG });
+      expect(sgdTitles(products)).toEqual(SGD_TITLES);
     });
   });
 
@@ -226,6 +283,25 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       const out = await _debug.rescopeGroupMemberOffersToCurrency([member('both', 'USD', 45), member('usd', 'USD', 30)], 'SGD', { queryFn: run });
       expect(out[0].source_payload).toMatchObject({ currency: 'SGD', price_amount: 61, price: { amount: 61, currency: 'SGD' }, catalog_offer_v1: { offer_id: 'offer_both_1', sku_key: 'sku_both' } });
       expect(out[1].source_payload.currency).toBe('USD');
+    });
+
+    // Each pinned by its own fixture: the re-pick reads only live, priced offers, in-stock first.
+    test.each([
+      ['a newer SUPPRESSED offer is never picked', [['live', 'in_stock', 50, 0, null], ['supp', 'in_stock', 40, 5, 'NOW()']], 50],
+      ['in stock beats a newer out-of-stock offer', [['instock', 'in_stock', 55, 0, null], ['oos', 'out_of_stock', 40, 5, null]], 55],
+      ['a newer zero-price offer is never picked', [['priced', 'in_stock', 57, 0, null], ['zero', 'in_stock', 0, 5, null]], 57],
+    ])('flag on, SG buyer: %s', async (_name, sgdOffers, expected) => {
+      process.env[scope.FLAG] = 'on';
+      await run(`INSERT INTO catalog_skus(sku_key,product_key,merchant_id) VALUES('sku_rp','rp','merch_obs_local')`);
+      await run(`INSERT INTO catalog_offers(offer_id,product_key,sku_key,merchant_id,market,currency,availability,merchant_effective_price,updated_at) VALUES('rp_usd','rp','sku_rp','merch_obs_local','US','USD','in_stock',40,NOW())`);
+      for (const [id, availability, price, minutes, suppressedAt] of sgdOffers) {
+        await run(`INSERT INTO catalog_offers(offer_id,product_key,sku_key,merchant_id,market,currency,availability,merchant_effective_price,updated_at,suppressed_at) VALUES($1,'rp','sku_rp','merch_obs_local','SG','SGD',$2,$3,NOW() + ($4 || ' minutes')::interval,${suppressedAt || 'NULL'})`, [`rp_${id}`, availability, price, String(minutes)]);
+      }
+      const [out] = await _debug.rescopeGroupMemberOffersToCurrency([{
+        merchant_id: 'merch_obs_local', product_id: 'ext_rp',
+        source_payload: { price: { amount: 40, currency: 'USD' }, price_amount: 40, currency: 'USD', catalog_offer_v1: { offer_id: 'rp_usd', sku_key: 'sku_rp' } },
+      }], 'SGD', { queryFn: run });
+      expect([out.source_payload.currency, out.source_payload.price_amount]).toEqual(['SGD', expected]);
     });
 
     test('flag on, US buyer: a member whose LATERAL pick was the newer SGD sibling gets its USD offer back', async () => {

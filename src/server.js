@@ -5961,9 +5961,9 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
 //
 // Both member offer joins (fetchApprovedLiveIdentityGroupMembersForOffers above and the
 // signature resolver's group query) pick ONE catalog_offers row per member with a LATERAL
-// LIMIT 1 ordered by stock and recency -- never by currency. A member carrying a store's USD
-// offer and its SGD sibling (pivota-backend shopify_markets) therefore shows whichever was
-// written last, and buildOffersFromGroupMembers' serving-currency filter can only DROP that
+// LIMIT 1 ordered by stock and recency -- never by currency. A member carrying offers in two
+// served currencies (a USD sibling beside a non-USD base offer today; SGD siblings beside USD once
+// pivota-backend #2553 lands) therefore shows whichever was written last, and buildOffersFromGroupMembers' serving-currency filter can only DROP that
 // member for the other buyer; it cannot swap in the offer the member does have in the buyer's
 // currency.
 //
@@ -5998,8 +5998,11 @@ const GROUP_MEMBER_CURRENCY_OFFER_SQL = `
     o.offer_id ASC
 `;
 
-function groupMemberPayloadHasVariants(payload) {
-  if (!isPlainObject(payload)) return false;
+function groupMemberPayloadHasVariants(rawPayload) {
+  // Parsed the way the offer projection reads it (projectExternalSeedOfferPayload), so a seed_data /
+  // external_seed / snapshot stored as a JSON STRING is seen too, not re-priced at the top level.
+  const payload = parseCanonicalCatalogPayload(rawPayload);
+  if (!isPlainObject(payload) || !Object.keys(payload).length) return false;
   const seedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
   const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
   return [
@@ -38476,13 +38479,17 @@ async function buildProductIntelOffersDataForContext({
   // The request's buyer market, threaded for the merchant-purchasability gate below. Undefined =
   // unkeyable: declined under backend enforcement, else today's exact shape.
   buyerMarket,
+  // The buyer's serving currency: under BUYER_MARKET_OFFER_SCOPE each member's offer is re-picked
+  // in it, as get_pdp_v2 does (rescopeGroupMemberOffersToCurrency). No currency filter is added
+  // here -- product intel never had one -- so with the flag off this is today's exact shape.
+  servingCurrency = null,
 }) {
   if (!context?.canonicalProductRef || !context?.product) return null;
   let offersData =
     Array.isArray(context.groupMembers) && context.groupMembers.length > 0
       ? await buildOffersFromGroupMembers({
           productGroupId,
-          members: context.groupMembers,
+          members: await rescopeGroupMemberOffersToCurrency(context.groupMembers, servingCurrency),
           checkoutToken,
           limit,
           buyerMarket,
@@ -46543,6 +46550,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         checkoutToken,
         limit: payload?.offers?.limit || 10,
         buyerMarket: offersGateBuyerMarket(payload, metadata),
+        servingCurrency: servingCurrencyFor({ payload, metadata }),
       });
       const productIntel = await buildProductIntelTopLevelModuleData({
         product: context.product,
@@ -46665,6 +46673,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             checkoutToken,
             limit: payload?.offers?.limit || 10,
             buyerMarket: offersGateBuyerMarket(payload, metadata),
+            servingCurrency: servingCurrencyFor({ payload, metadata }),
           });
 
           const coverageIntel = await buildCoverageProductIntelData({
@@ -52359,6 +52368,7 @@ module.exports._debug = {
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
   rescopeGroupMemberOffersToCurrency,
+  buildProductIntelOffersDataForContext,
   resolveCatalogProductRefFromPivotaSignature,
   buildCatalogIdentityFromSignatureProductRef,
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
