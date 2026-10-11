@@ -548,6 +548,43 @@ describe('discovery feed wiring', () => {
     expect(fetchRows).toHaveBeenCalledTimes(2);
   }));
 
+  test('scopedWindowErrored: a degraded (swallowed) read is an error; a skipped or config-only step is not', () => {
+    const { internals } = loadInternals();
+    const healthy = { provider_breakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] };
+    // computeBrandScopedDirectCandidates reports a swallowed reader error as status 200, returned 0, degraded.
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'brand_direct_pool', status: 200, returned: 0, degraded: true }] })).toBe(true);
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'products_search', skipped: true, skip_reason: 'empty_recall_terms', failure_reason: 'empty_recall_terms' }] })).toBe(false);
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'brand_direct_pool', skipped: true, skip_reason: 'sufficient_brand_primary_candidates' }] })).toBe(false);
+    // A skip because something FAILED still blocks caching; a skip because there was nothing to do never does.
+    for (const reason of ['circuit_open', 'query_error', 'budget_truncated']) {
+      expect([reason, internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'products_search_pool', skipped: true, skip_reason: reason }] })]).toEqual([reason, true]);
+    }
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'x', skipped: true, skip_reason: 'canonical_sig_sufficient', failure_reason: 'timeout' }] })).toBe(false);
+    for (const reason of ['missing_base_url', 'missing_api_key', 'empty_recall_terms']) {
+      expect([reason, internals.scopedWindowErrored({ provider_breakdown: [{ provider: 'products_search', failure_reason: reason }] })]).toEqual([reason, false]);
+    }
+  });
+
+  test('flag on: a degraded brand-direct read on an SG brand page is not cached', () => withEnv({ [FLAG]: 'on' }, async () => {
+    let fail = true;
+    const { call, calls } = sequenceHarness({
+      curatedImpl: (p, options) => {
+        options.observeRecall({
+          recallSummary: fail
+            ? [{ label: 'brand_direct_pool', status: 200, returned: 0, degraded: true }]
+            : [{ label: 'brand_direct_pool', status: 200, returned: 3 }],
+          providerBreakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }],
+        });
+        fail = false;
+        return { products: threeKept.slice(0, p.limit), metadata: { candidate_source: 'brand_direct_pool' } };
+      },
+    });
+    const first = await call({ page: 1, scope: { brand_names: ['Example'] } });
+    expect(first.metadata.buyer_market_fallback.sequence_cacheable).toBe(false);
+    await call({ page: 1, scope: { brand_names: ['Example'] } });
+    expect(calls.curated).toBe(2);
+  }));
+
   test('scopedWindowErrored reads the observed recall: a failed step behind a healthy breakdown is an error', () => {
     const { internals } = loadInternals();
     const healthy = { provider_breakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] };

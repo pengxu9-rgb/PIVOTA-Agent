@@ -195,6 +195,12 @@ describe('resolveDiscoveryCardCurrency and the card build', () => {
     const plain = await buildDiscoveryFeedOnce({ ...BROWSE, response_detail: 'card', buyer_market: 'SG' }, { candidateProducts: candidates() });
     const strip = (out) => JSON.parse(JSON.stringify(out, (k, v) => (/latency|_ms$|generated_at|request_id|timestamp/i.test(k) ? undefined : v)));
     expect(strip(watched)).toEqual(strip(plain));
+    // The observer fires once EVERY recall step is in: a brand page's late brand_catalog step is seen.
+    const lateObserver = jest.fn();
+    await buildDiscoveryFeedOnce({ ...BROWSE, response_detail: 'card', buyer_market: 'SG', scope: { brand_names: ['No Such Brand'] } },
+      { candidateProducts: candidates(), observeRecall: lateObserver });
+    expect(lateObserver).toHaveBeenCalledTimes(1);
+    expect(lateObserver.mock.calls[0][0].recallSummary.map((step) => step.label)).toContain('brand_catalog');
     // An observer that throws never fails the build.
     await expect(buildDiscoveryFeedOnce({ ...BROWSE, response_detail: 'card', buyer_market: 'SG' }, {
       candidateProducts: candidates(), observeRecall: () => { throw new Error('observer bug'); },

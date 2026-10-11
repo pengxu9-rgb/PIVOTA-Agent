@@ -12790,16 +12790,6 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
     providerBreakdown = Array.isArray(candidateLoadResult?.providerBreakdown)
       ? candidateLoadResult.providerBreakdown
       : [];
-    // The scoped SG sequence cache must judge this build's recall health on EVERY request:
-    // metadata.recall_summary is emitted by buildRankDebug alone (debug requests). An observer keeps
-    // the response byte-identical for every caller that does not pass one (review of #2408).
-    if (typeof options.observeRecall === 'function') {
-      try {
-        options.observeRecall({ recallSummary, providerBreakdown });
-      } catch (_) {
-        // observation only: it can never fail the build
-      }
-    }
     if (typeof candidateLoadResult?.candidateSource === 'string' && candidateLoadResult.candidateSource.trim()) {
       effectiveCandidateSource = candidateLoadResult.candidateSource.trim();
     }
@@ -12981,6 +12971,18 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
       ]);
     }
     phaseTimer.mark('recall');
+    // The scoped SG sequence cache must judge this build's recall health on EVERY request:
+    // metadata.recall_summary is emitted by buildRankDebug alone (debug requests). Reported HERE, once
+    // every recall step is in (relationship graph, brand-direct pool, brand catalog are concatenated
+    // after the first load -- review of #2411), and only to a caller that passes an observer, so every
+    // other response is byte-identical.
+    if (typeof options.observeRecall === 'function') {
+      try {
+        options.observeRecall({ recallSummary, providerBreakdown });
+      } catch (_) {
+        // observation only: it can never fail the build
+      }
+    }
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
       identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
@@ -13962,7 +13964,24 @@ function scopedSequenceCacheKey(request, market) {
 // on every build; that is configuration, not a transient read failure, and must not make every
 // SG sequence uncacheable.
 const SCOPED_WINDOW_FAILED_RECALL = new Set(['provider_error', 'budget_truncated', 'unavailable']);
-const SCOPED_WINDOW_STANDING_REASONS = new Set(['schema_missing', 'missing_database']);
+// A SKIPPED step is a failure only when it was skipped because something failed -- the same reasons
+// the provider summary already promotes to failures (query_error, budget_truncated, circuit_open);
+// every other skip ("sufficient_*", "empty_recall_terms", "*_primary_used") asked nothing and failed
+// nothing (review of #2411).
+const SCOPED_WINDOW_FAILED_SKIPS = new Set(['query_error', 'budget_truncated', 'circuit_open']);
+function scopedStepFailed(step) {
+  if (!step || typeof step !== 'object') return false;
+  if (step.degraded === true) return true; // a swallowed reader error: status 200, returned 0, degraded
+  if (step.skipped) {
+    return SCOPED_WINDOW_FAILED_SKIPS.has(step.skip_reason) || SCOPED_WINDOW_FAILED_SKIPS.has(step.failure_reason);
+  }
+  return false;
+}
+const SCOPED_WINDOW_STANDING_REASONS = new Set([
+  'schema_missing', 'missing_database',
+  // configuration, or nothing to ask: never a transient read failure (review of #2411)
+  'missing_base_url', 'missing_api_key', 'empty_recall_terms',
+]);
 function scopedWindowErrored(metadata, observed = null) {
   const md = metadata && typeof metadata === 'object' ? metadata : {};
   const seen = observed && typeof observed === 'object' ? observed : {};
@@ -13971,7 +13990,8 @@ function scopedWindowErrored(metadata, observed = null) {
     ...(Array.isArray(md.provider_breakdown) ? md.provider_breakdown : []),
     ...(Array.isArray(seen.providerBreakdown) ? seen.providerBreakdown : []),
   ];
-  if (breakdown.some((entry) => entry && (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))) {
+  if (breakdown.some((entry) => entry && (scopedStepFailed(entry) || (!entry.skipped &&
+    (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))))) {
     return true;
   }
   // The recall STEPS: a provider that returned some rows can still have had a failed or budget-truncated
@@ -13981,7 +14001,8 @@ function scopedWindowErrored(metadata, observed = null) {
     ...(Array.isArray(md.recall_summary) ? md.recall_summary : []),
     ...(Array.isArray(seen.recallSummary) ? seen.recallSummary : []),
   ];
-  return steps.some((step) => step && (transient(step.failure_reason) || step.error || step.truncated_by_budget));
+  return steps.some((step) => step && (scopedStepFailed(step) || (!step.skipped &&
+    (transient(step.failure_reason) || step.error || step.truncated_by_budget))));
 }
 
 // A cached card is handed out many times: copy it whole (nested offers, variants, images), so no
