@@ -303,9 +303,9 @@ describe('discovery feed wiring', () => {
   const sequenceHarness = ({ curatedRows = threeKept, poolRows = bigPool, curatedImpl = null } = {}) => {
     const { internals } = loadInternals();
     const calls = { curated: 0, pool: 0, fetch: 0 };
-    const buildCurated = jest.fn(async (p) => {
+    const buildCurated = jest.fn(async (p, options) => {
       calls.curated += 1;
-      if (curatedImpl) return curatedImpl(p);
+      if (curatedImpl) return curatedImpl(p, options);
       return { products: curatedRows.slice(0, p.limit), metadata: { candidate_source: 'canonical_sig', serving_mode: 'exhaustive' } };
     });
     const buildOnce = jest.fn(async (p, options) => {
@@ -497,6 +497,102 @@ describe('discovery feed wiring', () => {
     expect(again.metadata.buyer_market_fallback.sequence_cache_hit).toBe(true);
     expect([again.products[0].price, again.products[0].title]).toEqual([20, 'sig_k0']);
   }));
+
+  // ---- follow-ups after #2408: deep copies, recall health on non-debug requests ----
+  test('flag on: a NESTED field changed in place by a caller never reaches the cached sequence', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const nested = threeKept.map((c) => ({ ...c, offers: [{ offer_id: `${c.product_id}_o1`, currency: 'SGD', price: 20 }], variants: [{ id: 'v1', price: 20 }] }));
+    const { call } = sequenceHarness({ curatedRows: nested });
+    const first = await call({ page: 1 });
+    first.products[0].offers[0].price = 999;
+    first.products[0].offers.push({ offer_id: 'injected', currency: 'USD', price: 1 });
+    first.products[0].variants[0].price = 999;
+    const again = await call({ page: 1 });
+    expect(again.metadata.buyer_market_fallback.sequence_cache_hit).toBe(true);
+    expect(again.products[0].offers).toEqual([{ offer_id: 'sig_k0_o1', currency: 'SGD', price: 20 }]);
+    expect(again.products[0].variants).toEqual([{ id: 'v1', price: 20 }]);
+  }));
+
+  test('flag on: a curated window whose recall step failed is not cached, though it returned rows and is not a debug request', () => withEnv({ [FLAG]: 'on' }, async () => {
+    let fail = true;
+    const { call, calls } = sequenceHarness({
+      curatedImpl: (p, options) => {
+        // Rows came back and the breakdown looks healthy; only the build's observed recall shows a
+        // truncated step -- what a non-debug request sees, since metadata.recall_summary is debug-only.
+        if (fail) {
+          fail = false;
+          options.observeRecall({ recallSummary: [{ label: 'canonical_sig_page_2', truncated_by_budget: true, returned: 0 }],
+            providerBreakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] });
+        } else if (typeof options.observeRecall === 'function') {
+          options.observeRecall({ recallSummary: [{ label: 'canonical_sig_page_1', returned: 3 }],
+            providerBreakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] });
+        }
+        return { products: threeKept.slice(0, p.limit), metadata: { candidate_source: 'canonical_sig', serving_mode: 'exhaustive' } };
+      },
+    });
+    const first = await call({ page: 1 });
+    expect(first.metadata.buyer_market_fallback).toMatchObject({ curated_rows_kept: 3, sequence_cacheable: false });
+    await call({ page: 1 });
+    expect(calls.curated).toBe(2); // rebuilt, not inherited
+    await call({ page: 2 });
+    expect(calls.curated).toBe(2); // the clean build was kept
+  }));
+
+  test('flag on: a pool fetch with a failed recall step is not cached', () => withEnv({ [FLAG]: 'on' }, async () => {
+    const { internals } = loadInternals();
+    const fetchRows = jest.fn(async () => ({ products: bigPool, recallSummary: [{ label: 'hop_1', error: 'timeout' }], skipped: null }));
+    const buildCurated = jest.fn(async () => ({ products: threeKept, metadata: {} }));
+    const buildOnce = jest.fn(async (_p, options) => ({ products: options.candidateProducts.slice(0, 100), metadata: {} }));
+    const payload = { surface: 'browse_products', page: 1, limit: 24, buyer_market: 'SG',
+      context: { auth_state: 'anonymous', locale: 'en-US', recent_views: [], recent_queries: [] } };
+    for (let n = 0; n < 2; n += 1) await internals.applyBuyerMarketFallback({ response: null, payload, fetchRows, buildOnce, buildCurated });
+    expect(fetchRows).toHaveBeenCalledTimes(2);
+  }));
+
+  test('scopedWindowErrored: a degraded (swallowed) read is an error; a skipped or config-only step is not', () => {
+    const { internals } = loadInternals();
+    const healthy = { provider_breakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] };
+    // computeBrandScopedDirectCandidates reports a swallowed reader error as status 200, returned 0, degraded.
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'brand_direct_pool', status: 200, returned: 0, degraded: true }] })).toBe(true);
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'products_search', skipped: true, skip_reason: 'empty_recall_terms', failure_reason: 'empty_recall_terms' }] })).toBe(false);
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'brand_direct_pool', skipped: true, skip_reason: 'sufficient_brand_primary_candidates' }] })).toBe(false);
+    // A skip because something FAILED still blocks caching; a skip because there was nothing to do never does.
+    for (const reason of ['circuit_open', 'query_error', 'budget_truncated']) {
+      expect([reason, internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'products_search_pool', skipped: true, skip_reason: reason }] })]).toEqual([reason, true]);
+    }
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'x', skipped: true, skip_reason: 'canonical_sig_sufficient', failure_reason: 'timeout' }] })).toBe(false);
+    for (const reason of ['missing_base_url', 'missing_api_key', 'empty_recall_terms']) {
+      expect([reason, internals.scopedWindowErrored({ provider_breakdown: [{ provider: 'products_search', failure_reason: reason }] })]).toEqual([reason, false]);
+    }
+  });
+
+  test('flag on: a degraded brand-direct read on an SG brand page is not cached', () => withEnv({ [FLAG]: 'on' }, async () => {
+    let fail = true;
+    const { call, calls } = sequenceHarness({
+      curatedImpl: (p, options) => {
+        options.observeRecall({
+          recallSummary: fail
+            ? [{ label: 'brand_direct_pool', status: 200, returned: 0, degraded: true }]
+            : [{ label: 'brand_direct_pool', status: 200, returned: 3 }],
+          providerBreakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }],
+        });
+        fail = false;
+        return { products: threeKept.slice(0, p.limit), metadata: { candidate_source: 'brand_direct_pool' } };
+      },
+    });
+    const first = await call({ page: 1, scope: { brand_names: ['Example'] } });
+    expect(first.metadata.buyer_market_fallback.sequence_cacheable).toBe(false);
+    await call({ page: 1, scope: { brand_names: ['Example'] } });
+    expect(calls.curated).toBe(2);
+  }));
+
+  test('scopedWindowErrored reads the observed recall: a failed step behind a healthy breakdown is an error', () => {
+    const { internals } = loadInternals();
+    const healthy = { provider_breakdown: [{ provider: 'canonical_sig', successful: true, returned: 3 }] };
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'p1', returned: 3 }] })).toBe(false);
+    expect(internals.scopedWindowErrored(healthy, { recallSummary: [{ label: 'p2', error: 'ECONNRESET' }] })).toBe(true);
+    expect(internals.scopedWindowErrored(healthy, { providerBreakdown: [{ provider: 'canonical_sig', failure_reason: 'query_error' }] })).toBe(true);
+    expect(internals.scopedWindowErrored(healthy, { providerBreakdown: [{ provider: 'external_seeds', failure_reason: 'schema_missing' }] })).toBe(false);
+  });
 
   test('getDiscoveryFeed: a scoped SG request does not build its own page before the sequence', () => withEnv({
     [FLAG]: 'on', DATABASE_URL: 'postgres://scope-test', DISCOVERY_BROWSE_USES_CANONICAL_SIG: 'true',

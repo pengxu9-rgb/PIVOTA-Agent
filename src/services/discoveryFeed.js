@@ -12971,6 +12971,18 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
       ]);
     }
     phaseTimer.mark('recall');
+    // The scoped SG sequence cache must judge this build's recall health on EVERY request:
+    // metadata.recall_summary is emitted by buildRankDebug alone (debug requests). Reported HERE, once
+    // every recall step is in (relationship graph, brand-direct pool, brand catalog are concatenated
+    // after the first load -- review of #2411), and only to a caller that passes an observer, so every
+    // other response is byte-identical.
+    if (typeof options.observeRecall === 'function') {
+      try {
+        options.observeRecall({ recallSummary, providerBreakdown });
+      } catch (_) {
+        // observation only: it can never fail the build
+      }
+    }
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
       identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
@@ -13952,16 +13964,52 @@ function scopedSequenceCacheKey(request, market) {
 // on every build; that is configuration, not a transient read failure, and must not make every
 // SG sequence uncacheable.
 const SCOPED_WINDOW_FAILED_RECALL = new Set(['provider_error', 'budget_truncated', 'unavailable']);
-const SCOPED_WINDOW_STANDING_REASONS = new Set(['schema_missing', 'missing_database']);
-function scopedWindowErrored(metadata) {
+// A SKIPPED step is a failure only when it was skipped because something failed -- the same reasons
+// the provider summary already promotes to failures (query_error, budget_truncated, circuit_open);
+// every other skip ("sufficient_*", "empty_recall_terms", "*_primary_used") asked nothing and failed
+// nothing (review of #2411).
+const SCOPED_WINDOW_FAILED_SKIPS = new Set(['query_error', 'budget_truncated', 'circuit_open']);
+function scopedStepFailed(step) {
+  if (!step || typeof step !== 'object') return false;
+  if (step.degraded === true) return true; // a swallowed reader error: status 200, returned 0, degraded
+  if (step.skipped) {
+    return SCOPED_WINDOW_FAILED_SKIPS.has(step.skip_reason) || SCOPED_WINDOW_FAILED_SKIPS.has(step.failure_reason);
+  }
+  return false;
+}
+const SCOPED_WINDOW_STANDING_REASONS = new Set([
+  'schema_missing', 'missing_database',
+  // configuration, or nothing to ask: never a transient read failure (review of #2411)
+  'missing_base_url', 'missing_api_key', 'empty_recall_terms',
+]);
+function scopedWindowErrored(metadata, observed = null) {
   const md = metadata && typeof metadata === 'object' ? metadata : {};
+  const seen = observed && typeof observed === 'object' ? observed : {};
   const transient = (reason) => Boolean(reason) && !SCOPED_WINDOW_STANDING_REASONS.has(reason);
-  const breakdown = Array.isArray(md.provider_breakdown) ? md.provider_breakdown : [];
-  if (breakdown.some((entry) => entry && (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))) {
+  const breakdown = [
+    ...(Array.isArray(md.provider_breakdown) ? md.provider_breakdown : []),
+    ...(Array.isArray(seen.providerBreakdown) ? seen.providerBreakdown : []),
+  ];
+  if (breakdown.some((entry) => entry && (scopedStepFailed(entry) || (!entry.skipped &&
+    (transient(entry.failure_reason) || SCOPED_WINDOW_FAILED_RECALL.has(entry.zero_recall_reason)))))) {
     return true;
   }
-  const steps = Array.isArray(md.recall_summary) ? md.recall_summary : [];
-  return steps.some((step) => step && (transient(step.failure_reason) || step.error || step.truncated_by_budget));
+  // The recall STEPS: a provider that returned some rows can still have had a failed or budget-truncated
+  // step, which its breakdown entry does not show. On non-debug requests they arrive only through the
+  // build's observeRecall (metadata.recall_summary exists on debug requests alone).
+  const steps = [
+    ...(Array.isArray(md.recall_summary) ? md.recall_summary : []),
+    ...(Array.isArray(seen.recallSummary) ? seen.recallSummary : []),
+  ];
+  return steps.some((step) => step && (scopedStepFailed(step) || (!step.skipped &&
+    (transient(step.failure_reason) || step.error || step.truncated_by_budget))));
+}
+
+// A cached card is handed out many times: copy it whole (nested offers, variants, images), so no
+// caller's in-place change -- at any depth -- reaches the cache (review of #2408: a one-level spread
+// let a mutated `offers` array leak to the next hit).
+function cloneScopedCard(product) {
+  return typeof structuredClone === 'function' ? structuredClone(product) : JSON.parse(JSON.stringify(product));
 }
 
 function scopedPoolPartial(rows) {
@@ -13973,7 +14021,11 @@ function scopedPoolPartial(rows) {
 // metadata is built from it) and the pool fetch's summary -- not the window objects or raw pool rows.
 async function assembleScopedBuyerMarketSequence({ payload, options, request, market, servingCurrency, buildOnce, buildCurated, fetchRows }) {
   const windowPayload = scopedSequenceWindowPayload(payload);
-  const curatedWindow = await buildCurated(windowPayload, options);
+  const curatedRecall = {};
+  const curatedWindow = await buildCurated(windowPayload, {
+    ...options,
+    observeRecall: (observed) => Object.assign(curatedRecall, observed),
+  });
   const curatedRows = Array.isArray(curatedWindow?.products) ? curatedWindow.products : [];
   const kept = curatedRows.filter((product) => isPricedInServingCurrency(product, servingCurrency));
   const seen = new Set(kept.flatMap(scopedSequenceDedupKeys));
@@ -13982,10 +14034,12 @@ async function assembleScopedBuyerMarketSequence({ payload, options, request, ma
   let poolWindow = null;
   const pool = [];
   let poolDuplicates = 0;
+  const poolRecall = {};
   if (rows.products.length) {
     poolWindow = await buildOnce(windowPayload, {
       ...options,
       candidateProducts: annotateProviderProducts('products_search', rows.products),
+      observeRecall: (observed) => Object.assign(poolRecall, observed),
     });
     for (const product of (Array.isArray(poolWindow?.products) ? poolWindow.products : [])) {
       const keys = scopedSequenceDedupKeys(product);
@@ -14000,7 +14054,7 @@ async function assembleScopedBuyerMarketSequence({ payload, options, request, ma
   const poolMetadata = poolWindow?.metadata || {};
   return {
     // Own copies: nothing the windows' builders keep, or a caller mutates, can reach the cache.
-    sequence: [...kept, ...pool].map((product) => ({ ...product })),
+    sequence: [...kept, ...pool].map(cloneScopedCard),
     keptCount: kept.length,
     curatedRowsDropped: curatedRows.length - kept.length,
     poolDuplicates,
@@ -14020,8 +14074,9 @@ async function assembleScopedBuyerMarketSequence({ payload, options, request, ma
       recallSummary: rows.recallSummary || [],
     },
     cacheable: !scopedPoolPartial(rows) &&
-      !scopedWindowErrored(curatedWindow?.metadata) &&
-      !scopedWindowErrored(poolMetadata),
+      !scopedWindowErrored(curatedWindow?.metadata, curatedRecall) &&
+      !scopedWindowErrored(poolMetadata, poolRecall) &&
+      !scopedWindowErrored(null, { recallSummary: rows.recallSummary }),
   };
 }
 
@@ -14062,7 +14117,7 @@ async function applyScopedBuyerMarketSequence({ payload, options, market, servin
   const total = sequence.length;
   const offset = (pageIndex - 1) * pageSize;
   // Copies on the way out: no downstream in-place change can reach a cached card.
-  const pageProducts = sequence.slice(offset, offset + pageSize).map((product) => ({ ...product }));
+  const pageProducts = sequence.slice(offset, offset + pageSize).map(cloneScopedCard);
   const keptOnPage = Math.max(0, Math.min(keptCount - offset, pageProducts.length));
   const poolOnPage = pageProducts.length - keptOnPage;
   const nextOffset = offset + pageProducts.length;
