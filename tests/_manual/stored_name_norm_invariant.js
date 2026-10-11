@@ -1,15 +1,23 @@
 'use strict';
 // MANUAL (rollout step 3 of PIVOTA-Agent #2404): the no-change invariant on REAL rows, on the
-// statement the REAL mainline builds.
+// statements the REAL serving lanes build.
 //
 // For each sample query, the script boots the gateway app in-process and sends find_products_multi
-// through POST /agent/shop/v1/invoke over loopback, exactly as a public caller would. It records the
-// arguments searchBeautyExternalSeedProductsMainline (src/server.js) passes to fetchCanonicalChainRows
-// -- query text, category prefix, brand filter, limit, markets, offer scope, lane elections, all as
-// server.js derives them -- and then builds THAT call twice through the real builder,
-// CANONICAL_CATALOG_STORED_NAME_NORM off and on, runs both READ-ONLY, and compares the product keys
-// IN ORDER. Prints one line per mainline call and exits 1 on any difference, or when no mainline call
-// was made (an invariant over a lane the request never reached proves nothing).
+// through POST /agent/shop/v1/invoke over loopback, exactly as a public caller would. It records every
+// fetchCanonicalChainRows call that request makes, with the arguments the serving lane passed --
+// query text, category prefix, brand filter, limit, markets, offer scope, lane elections, all as
+// server.js derives them -- and its caller (searchBeautyExternalSeedProductsMainline for most beauty
+// queries; prod routes ingredient queries such as "niacinamide serum" to the ingredient-recall-direct
+// lane instead, which calls the same builder). Each call is then built twice through the real
+// builder, CANONICAL_CATALOG_STORED_NAME_NORM off and on, both run READ-ONLY, and the product keys
+// compared IN ORDER. Prints one line per call and exits 1 on any difference, or when a request made
+// no canonical call (an invariant over a lane the request never reached proves nothing).
+//
+// NOT EVERY LANE READS THE STORED FOLD. It changes the category-browse predicates only, so a lane
+// whose statement is byte-identical with the flag off and on WHILE THE PROBE IS VERIFIED (the
+// ingredient lane's text recall) is reported "not_applicable": same statement, same rows, nothing to
+// run. Identical statements with the probe NOT verified are the vacuous case and fail. And the run
+// fails unless at least one call actually compared the stored read.
 //
 // THE ON STATEMENT MUST ACTUALLY BE THE STORED READ. With the flag on, the builder first asks the
 // database whether catalog_products_identity_fold(text) still equals identitySql (the fold-drift
@@ -73,7 +81,8 @@ function marketArg(argv = process.argv) {
 }
 
 // Boots the app once. fetchCanonicalChainRows is wrapped BEFORE server.js loads (it destructures the
-// export at load): calls made from the mainline are recorded, and every call still runs for real.
+// export at load): calls made while a request is being recorded are kept with their caller's frame,
+// and every call still runs for real.
 const harness = { app: null, server: null, port: 0, key: null, recording: null, realFetch: null };
 async function bootApp() {
   if (harness.server) return harness;
@@ -83,10 +92,9 @@ async function bootApp() {
   if (!harness.realFetch) {
     harness.realFetch = canonical.fetchCanonicalChainRows;
     canonical.fetchCanonicalChainRows = function recordingFetch(args) {
-      const frame = String(new Error().stack || '').split('\n').slice(2, 3).join('');
-      if (harness.recording && frame.includes(`at ${MAINLINE} `)) {
+      if (harness.recording) {
         const { deps, ...callArgs } = args || {};
-        harness.recording.push({ args: callArgs, line: Number((frame.match(/server\.js:(\d+)/) || [])[1]) || null });
+        harness.recording.push({ args: callArgs, caller: callerOf(String(new Error().stack || '').split('\n')[2] || '') });
       }
       return harness.realFetch.apply(this, arguments);
     };
@@ -99,13 +107,20 @@ async function bootApp() {
   return harness;
 }
 
+// "    at fn (/app/src/server.js:22767:31)" -> { fn, file: 'server.js', line: 22767 }.
+function callerOf(frame) {
+  const m = frame.match(/at (?:async )?(?:([^\s(]+) \()?([^():]+):(\d+):\d+\)?\s*$/);
+  if (!m) return { fn: null, file: null, line: null, mainline: false };
+  return { fn: m[1] || null, file: path.basename(m[2]), line: Number(m[3]), mainline: m[1] === MAINLINE };
+}
+
 async function stopApp() {
   if (harness.server) await new Promise((resolve) => harness.server.close(() => resolve()));
   harness.server = null;
 }
 
-// One public find_products_multi through the real route; returns the mainline's canonical calls.
-async function captureMainlineCalls(rawQuery, market = '') {
+// One public find_products_multi through the real route; returns every canonical call it made.
+async function captureCanonicalCalls(rawQuery, market = '') {
   await bootApp();
   harness.recording = [];
   let response = null;
@@ -155,16 +170,18 @@ async function buildStatement(callArgs, flagOn, { client } = {}) {
   return captured;
 }
 
-// Null when the on statement is the stored read; otherwise why the comparison would be vacuous.
-function vacuousReason(off, on) {
-  if (on.sql === off.sql) return 'on_statement_equals_off';
+// 'stored_read' = compare the rows; 'not_applicable' = this lane's statement does not depend on the
+// flag (only with the probe verified); anything else names why the comparison would be vacuous.
+function classifyPair(off, on, probeState) {
+  if (on.sql === off.sql) return probeState && probeState.verified === true ? 'not_applicable' : 'on_statement_equals_off';
   if (!on.sql.includes('name_norm')) return 'on_statement_does_not_read_name_norm';
-  return null;
+  return 'stored_read';
 }
 
-function probeReason() {
-  try { return srcModule('services', 'storedNameNormProbe')._stateForTest().lastReason; } catch (_) { return null; }
+function probeState() {
+  try { return srcModule('services', 'storedNameNormProbe')._stateForTest(); } catch (_) { return null; }
 }
+
 
 // What the mainline asked for, in one line: enough to see it is the served lane.
 function laneSummary(a) {
@@ -183,28 +200,35 @@ async function run() {
   await client.connect();
   let failures = 0;
   let compared = 0;
+  let notApplicable = 0;
   try {
     await client.query('SET default_transaction_read_only = on');
     await client.query("SET statement_timeout = '30s'");
     for (const q of QUERIES) {
       // Serve the request the way prod does (the service runs with the flag as configured).
-      const { calls, response } = await captureMainlineCalls(q, market);
+      const { calls, response } = await captureCanonicalCalls(q, market);
       if (!calls.length) {
         failures += 1;
-        console.log(`INVARIANT ${JSON.stringify({ query: q, market: market || null, ok: false, reason: 'mainline_not_reached', response })}`);
+        console.log(`INVARIANT ${JSON.stringify({ query: q, market: market || null, ok: false, reason: 'no_canonical_call', response })}`);
         continue;
       }
       for (const [i, call] of calls.entries()) {
-        compared += 1;
         const off = await buildStatement(call.args, false, { client });
         const on = await buildStatement(call.args, true, { client });
-        const base = { query: q, market: market || null, call: i, server_line: call.line, response, lane: laneSummary(call.args) };
-        const vacuous = vacuousReason(off, on);
-        if (vacuous) {
-          failures += 1;
-          console.log(`INVARIANT ${JSON.stringify({ ...base, ok: false, reason: vacuous, probe_reason: probeReason() })}`);
+        const base = { query: q, market: market || null, call: i, caller: call.caller, response, lane: laneSummary(call.args) };
+        const state = probeState();
+        const kind = classifyPair(off, on, state);
+        if (kind === 'not_applicable') {
+          notApplicable += 1;
+          console.log(`INVARIANT ${JSON.stringify({ ...base, ok: true, applies: false, reason: 'not_applicable', note: 'statement identical with the flag off and on; probe verified' })}`);
           continue;
         }
+        if (kind !== 'stored_read') {
+          failures += 1;
+          console.log(`INVARIANT ${JSON.stringify({ ...base, ok: false, reason: kind, probe_reason: state && state.lastReason })}`);
+          continue;
+        }
+        compared += 1;
         const t0 = Date.now();
         const rowsOff = (await client.query(off.sql, off.params)).rows;
         const t1 = Date.now();
@@ -214,7 +238,7 @@ async function run() {
         const keysOn = rowsOn.map((r) => r.product_key);
         const same = keysOff.length === keysOn.length && keysOff.every((k, j) => k === keysOn[j]);
         if (!same) failures += 1;
-        console.log(`INVARIANT ${JSON.stringify({ ...base, ok: same, on_differs: true, rows_off: keysOff.length, rows_on: keysOn.length, same_rows_same_order: same, ms_off: t1 - t0, ms_on: t2 - t1,
+        console.log(`INVARIANT ${JSON.stringify({ ...base, ok: same, applies: true, on_differs: true, rows_off: keysOff.length, rows_on: keysOn.length, same_rows_same_order: same, ms_off: t1 - t0, ms_on: t2 - t1,
           ...(same ? {} : { first_difference_at: keysOff.findIndex((k, j) => k !== keysOn[j]), only_off: keysOff.filter((k) => !keysOn.includes(k)).slice(0, 5), only_on: keysOn.filter((k) => !keysOff.includes(k)).slice(0, 5) }) })}`);
       }
     }
@@ -222,12 +246,13 @@ async function run() {
     await client.end();
     await stopApp();
   }
-  if (failures) { console.log(`INVARIANT FAILED: ${failures} failure(s) over ${QUERIES.length} queries (${compared} mainline calls compared)`); process.exit(1); }
-  console.log(`INVARIANT PASSED: ${QUERIES.length} of ${QUERIES.length} queries, ${compared} mainline calls, same rows in the same order, on statement reads name_norm`);
+  if (!failures && !compared) { failures += 1; console.log(`INVARIANT no call compared the stored read (every lane not_applicable): nothing was tested`); }
+  if (failures) { console.log(`INVARIANT FAILED: ${failures} failure(s) over ${QUERIES.length} queries (${compared} stored-read calls compared, ${notApplicable} not applicable)`); process.exit(1); }
+  console.log(`INVARIANT PASSED: ${QUERIES.length} of ${QUERIES.length} queries; ${compared} stored-read calls with the same rows in the same order; ${notApplicable} calls not applicable (statement independent of the flag)`);
   process.exit(0);
 }
 
-module.exports = { captureMainlineCalls, buildStatement, vacuousReason, marketArg, laneSummary, stopApp, QUERIES };
+module.exports = { captureCanonicalCalls, callerOf, buildStatement, classifyPair, marketArg, laneSummary, stopApp, QUERIES };
 
 if (require.main === module || __filename === '[eval]') {
   run().catch((err) => { console.error(`INVARIANT ERROR ${err && err.stack || err}`); process.exit(2); });
