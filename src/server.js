@@ -522,6 +522,7 @@ const productRelationshipGraph = require('./auroraBff/productRelationshipGraph')
 const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
 const {
   capSimilarSameBrandItems,
+  resolveSimilarSameBrandMax,
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
   relationshipGraphReadMetadata,
@@ -27005,6 +27006,22 @@ function excludeShownGraphSimilarItems(items, options = {}, anchor = null) {
   }));
 }
 
+// "Load more" re-reads the same top-k and drops the cards already shown, so the public filter's
+// same-brand cap would count afresh on every page and let one more same-brand card through each time.
+// Once the shown cards already spent the cap, the remaining same-brand cards leave here.
+// Bundle components ride in the same exclude_items (collectPdpComponentSimilarCandidates); they were
+// never shown, so they do not spend the cap.
+function dropSameBrandCardsAfterCapSpent(items, graphItems, options = {}) {
+  const tagged = (Array.isArray(graphItems) ? graphItems : []).filter((item) => item?.similar_same_brand === true);
+  if (!tagged.length) return items;
+  const shownOptions = Array.isArray(options?.exclude_items)
+    ? { exclude_items: options.exclude_items.filter((item) => item?.retrieval_source !== 'reviewed_component_ref') }
+    : options;
+  const shownSameBrand = tagged.length - excludeShownGraphSimilarItems(tagged, shownOptions, null).length;
+  if (shownSameBrand < resolveSimilarSameBrandMax()) return items;
+  return (Array.isArray(items) ? items : []).filter((item) => item?.similar_same_brand !== true);
+}
+
 async function fetchGraphOnlySimilarProducts(args = {}) {
   const k = Number(args?.k);
   const base = {
@@ -27053,6 +27070,7 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
     also_exclude: args?.pdp_product ? [args.pdp_product] : [],
   });
   items = excludeShownGraphSimilarItems(items, graphOptions, args?.pdp_product);
+  items = dropSameBrandCardsAfterCapSpent(items, graphItems, graphOptions);
   if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
   return {
     status: items.length ? 'success' : 'empty',
@@ -27138,6 +27156,8 @@ async function fetchSimilarProductsDeduped(args = {}) {
     if (curated.length) {
       // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
       // keeps the first occurrence, so curated wins on collisions.
+      mergedItems = dropSameBrandCardsAfterCapSpent(mergedItems, curated,
+        args?.options && typeof args.options === 'object' ? args.options : {});
       const k = Number(args?.k);
       if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
       relationshipGraphMeta = {
@@ -27647,6 +27667,8 @@ function buildSimilarCardEnrichmentCacheKey({
         item.platform_product_id,
       ),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
+      // Cached cards carry the anchor-relative same-brand tag: two anchors must not share it.
+      same_brand: item.similar_same_brand === true,
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -27759,6 +27781,8 @@ function buildVisibleSimilarSigHydrationCacheKey(products = []) {
       ),
       external_ids: collectExternalSeedIdCandidatesForVisibleCatalogHydration(item),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
+      // Cached cards carry the anchor-relative same-brand tag: two anchors must not share it.
+      same_brand: item.similar_same_brand === true,
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -29088,7 +29112,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalogBase(products, optio
 // `servingCurrency`: the buyer's (servingCurrencyFor). A caller with no request to read it from
 // gets the rule's silence -- the default market's currency -- so no similar surface can serve a
 // product priced in another one (Peng 2026-09-26).
-function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
+function filterPublicVisibleSimilarProducts(products, { servingCurrency, capSameBrand = true } = {}) {
   const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
@@ -29098,11 +29122,13 @@ function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) 
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
-  // The same-brand cap counts only cards that survived every filter above, so it never empties a rail.
-  return capSimilarSameBrandItems(filterProductsToServingCurrency(
+  const servable = filterProductsToServingCurrency(
     publicProducts,
     servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency,
-  ));
+  );
+  // The same-brand cap counts only cards that survived every filter above, so it never empties a rail.
+  // A caller with a later drop (bundle components) passes capSameBrand: false and caps after it.
+  return capSameBrand ? capSimilarSameBrandItems(servable) : servable;
 }
 
 function dedupeSimilarCandidatesByMerchantProductId(products) {
@@ -39155,11 +39181,11 @@ async function resolveProductIntelInvokeContext({
         },
       }).catch(() => null)
     : [];
-  const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
-    products: capSimilarSameBrandItems(relatedProducts?.items),
+  const filteredRelatedProducts = capSimilarSameBrandItems(excludeBundleComponentProductsFromSimilar({
+    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
     baseProduct: product,
     componentCandidates: componentSimilarCandidates,
-  }).products;
+  }).products);
 
   return {
     canonicalProductRef,
@@ -45060,12 +45086,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         markPdpV2Checkpoint('after_similar_sig_hydration');
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
           servingCurrency: pdpServingCurrency,
+          capSameBrand: false,
         });
         const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
           componentCandidates: componentSimilarCandidates,
         });
+        // Same-brand cards are the likeliest bundle components: cap only what is left after them.
+        componentFilteredSimilar.products = capSimilarSameBrandItems(componentFilteredSimilar.products);
         const displayableRelatedProducts = componentFilteredSimilar.products.slice(0, similarLimit);
         const publicExternalIdFilteredCount = Math.max(
           0,

@@ -102,7 +102,10 @@ function brandKey(snapshot) {
   const src = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? snapshot : {};
   const brand = src.brand && typeof src.brand === 'object' ? src.brand.name : src.brand;
   return String(brand || src.brand_name || src.brandName || '')
-    .normalize('NFKD') // decomposes an accent into its letter plus a mark the next line drops
+    // Latin accents fold (é -> e); NFC then recomposes what other scripts mean (kana voicing: ガ != カ).
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
     .toLowerCase()
     .replace(/^\s*the\s+/, '')
     .replace(/[^\p{L}\p{N}]+/gu, '');
@@ -271,7 +274,12 @@ async function fetchRelationshipGraphRecallForAnchor({
     const ordered = Number.isFinite(sameBrandMax)
       ? orderSameBrandSimilarEdges(readEdges, { anchorProduct: hydratedAnchor })
       : { edges: Array.isArray(readEdges) ? readEdges : [], sameBrandEdges: new Set() };
-    const edges = ordered.edges.slice(0, requestedLimit);
+    // The rail keeps a short same-brand tail past its size: the serving cap needs a fallback when the
+    // cross-brand cards fail the serving filters (dead PDP, no image, currency).
+    const head = ordered.edges.slice(0, requestedLimit);
+    const headSameBrand = head.filter((edge) => ordered.sameBrandEdges.has(edge)).length;
+    const tailRoom = Number.isFinite(sameBrandMax) && sameBrandMax > 0 ? Math.max(0, sameBrandMax + 2 - headSameBrand) : 0;
+    const edges = [...head, ...ordered.edges.slice(requestedLimit).filter((edge) => ordered.sameBrandEdges.has(edge)).slice(0, tailRoom)];
     const items = edges
       .map((edge) => {
         const item = relationshipEdgeToSimilarItem(edge);

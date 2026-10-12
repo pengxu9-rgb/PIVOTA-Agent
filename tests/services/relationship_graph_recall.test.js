@@ -198,9 +198,10 @@ describe('a similar rail keeps at most one same-brand card, after every cross-br
 
   test('recall puts cross-brand cards first (in score order) and tags the same-brand ones; it drops none', async () => {
     const { result } = await fetchRail(rail());
-    expect(ids(result.items)).toEqual(['candidate_3', 'candidate_5', 'candidate_1', 'candidate_2']);
-    expect(result.items.map((item) => item.similar_same_brand === true)).toEqual([false, false, true, true]);
-    expect(result.metadata).toMatchObject({ edge_count: 4, item_count: 4, same_brand_max: 1, same_brand_read_count: 3 });
+    // Rail of 4, plus a same-brand tail up to max + 2 same-brand cards in all (the serving fallback).
+    expect(ids(result.items)).toEqual(['candidate_3', 'candidate_5', 'candidate_1', 'candidate_2', 'candidate_4']);
+    expect(result.items.map((item) => item.similar_same_brand === true)).toEqual([false, false, true, true, true]);
+    expect(result.metadata).toMatchObject({ edge_count: 5, item_count: 5, same_brand_max: 1, same_brand_read_count: 3 });
   });
 
   test('the serving cap keeps only the first same-brand card of what survived, and strips the tag', async () => {
@@ -224,11 +225,15 @@ describe('a similar rail keeps at most one same-brand card, after every cross-br
     expect(big.queryFn.mock.calls[0][1][3]).toBe(240);
   });
 
-  test('the recall never pushes the rail past the requested size, cross-brand cards first', async () => {
+  test('a full cross-brand rail still carries a short same-brand tail, the fallback if the cross-brand cards fail serving (review)', async () => {
     const many = Array.from({ length: 8 }, (_, i) => altEdge(i + 10, `Brand ${i}`, 0.9 - i / 100));
-    const { result } = await fetchRail([altEdge(1, 'Kosé', 0.99), ...many]);
-    expect(result.items).toHaveLength(4);
-    expect(result.items.every((item) => item.brand !== 'Kosé')).toBe(true);
+    const own = [1, 2, 4, 6].map((i) => altEdge(i, 'Kosé', 0.99 - i / 100));
+    const { result } = await fetchRail([...own, ...many]);
+    expect(ids(result.items)).toEqual(['candidate_10', 'candidate_11', 'candidate_12', 'candidate_13', 'candidate_1', 'candidate_2', 'candidate_4']);
+    // Every cross-brand card dropped downstream: the best same-brand one is served.
+    expect(ids(capSimilarSameBrandItems(result.items.filter((item) => item.similar_same_brand === true)))).toEqual(['candidate_1']);
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '0';
+    expect((await fetchRail([...own, ...many])).result.items).toHaveLength(4);
   });
 
   test('the cap is tunable by env: 0 serves no same-brand card, a negative value turns ordering and cap off', async () => {
@@ -275,6 +280,9 @@ describe('a similar rail keeps at most one same-brand card, after every cross-br
     // A non-Latin brand keeps its letters (an ASCII-only key would be empty and never match).
     expect(sameCount([edge('설화수', '설화수')])).toBe(1);
     expect(sameCount([edge('설화수', '라네즈')])).toBe(0);
+    // Kana voicing is part of the name (ガ is not カ); only Latin accents fold.
+    expect(sameCount([edge('ガロ', 'カロ')])).toBe(0);
+    expect(sameCount([edge('ガロ', 'ｶﾞﾛ')])).toBe(1);
     // A vendor can be a multi-brand reseller: two vendor-only snapshots are not the same brand.
     expect(sameCount([{ anchor_snapshot: { vendor: 'Ulta' }, candidate_snapshot: { vendor: 'Ulta' } }])).toBe(0);
     expect(sameCount([edge('', '')], { brand: '' })).toBe(0);

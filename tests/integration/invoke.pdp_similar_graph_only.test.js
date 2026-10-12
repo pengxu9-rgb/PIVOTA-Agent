@@ -66,6 +66,11 @@ const manyCards = Array.from({ length: 8 }, (_, i) => ({ ...graphCard, product_i
 const leakCard = { product_id: 'ext_leak_candidate', external_product_id: 'ext_leak_candidate', merchant_id: 'external_seed', title: 'Leaky Bottle',
   image_url: 'https://cdn.example.test/l.jpg', card_highlight: 'x', price: 3000, currency: 'JPY', source: 'relationship_graph',
   recommendation_source: 'relationship_graph', relationship_edge_id: 'prel_leak', relationship_type: 'competitive_alternative' };
+// Recall output for an anchor with 2 cross-brand and 3 same-brand edges (tagged by recall).
+const sameBrandRail = [
+  ...manyCards.slice(0, 2),
+  ...manyCards.slice(2, 5).map((card, i) => ({ ...card, title: `Own Brand ${i + 2}`, similar_same_brand: true })),
+];
 let graphAnchors = [];
 
 async function startServer({ graph = 'items', graphOnly, graphSurface = true } = {}) {
@@ -101,6 +106,7 @@ async function startServer({ graph = 'items', graphOnly, graphSurface = true } =
     ...actualRecall,
     fetchRelationshipGraphRecallForAnchor: jest.fn(async ({ anchorProduct }) => {
       graphAnchors.push(anchorProduct);
+      if (graph === 'sameBrand') return { edges: [], items: sameBrandRail, metadata: { enabled: true, edge_count: 5, item_count: 5, read_status: 'ready', read_reason: null } };
       if (graph === 'many') return { edges: [], items: manyCards, metadata: { enabled: true, edge_count: 8, item_count: 8, read_status: 'ready', read_reason: null } };
       if (graph === 'leak') return { edges: [], items: [graphCard, leakCard], metadata: { enabled: true, edge_count: 2, item_count: 2, read_status: 'ready', read_reason: null } };
       if (graph === 'throw') throw new Error('graph read exploded');
@@ -227,6 +233,32 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
       expect(recommendCalls).toHaveLength(0);
     } finally {
       await stopServer(server);
+    }
+  });
+
+  test('"load more" never lets a second same-brand card through: the cap is spent once a page showed one (review)', async () => {
+    for (const graphOnly of [undefined, false]) {
+      const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly });
+      try {
+        const post = (payload) => fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
+        const page = (exclude) => post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, ...(exclude ? { exclude_items: exclude } : {}), options: { cache_bypass: true } } });
+        const graphTitles = (body) => body.products.filter((p) => p.relationship_edge_id).map((p) => p.title);
+        const page1 = await page();
+        expect([graphOnly, graphTitles(page1)]).toEqual([graphOnly, ['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 2']]);
+        const page2 = await page(page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id })));
+        // (The mixed path, graph-only off, has never excluded shown graph cards on load-more: it repeats
+        // the cross-brand ones. Out of scope here; what matters is no second same-brand card.)
+        expect([graphOnly, graphTitles(page2).filter((title) => title.startsWith('Own Brand'))]).toEqual([graphOnly, []]);
+        if (graphOnly === undefined) expect(graphTitles(page2)).toEqual([]);
+        expect(JSON.stringify([page1, page2])).not.toContain('similar_same_brand');
+        // A bundle component riding in exclude_items was never shown: it does not spend the cap.
+        const component = { product_id: sameBrandRail[2].product_id, merchant_id: 'external_seed', retrieval_source: 'reviewed_component_ref' };
+        const withComponent = await page([component]);
+        if (graphOnly === undefined) expect(graphTitles(withComponent)).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 3']);
+        else expect(graphTitles(withComponent).filter((title) => title.startsWith('Own Brand'))).toHaveLength(1);
+      } finally {
+        await stopServer(server);
+      }
     }
   });
 
