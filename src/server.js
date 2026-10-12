@@ -27670,7 +27670,9 @@ function similarGraphCardPriceRef(item = {}) {
   if (!isRelationshipGraphSimilarProduct(item)) return '';
   if (readSimilarCardMoneyPair(item)) return '';
   const ref = firstNonEmptyString(item.relationship_price_ref);
-  return ref && (isExternalSeedProductId(ref) || isPivotaSignatureProductId(ref)) ? ref : '';
+  // A price belongs to the exact listing shown: an ext_ listing. A sig_ names a product, and the
+  // lookup answers it with the newest seed of ANY retailer carrying it (controller review of #2416).
+  return ref && isExternalSeedProductId(ref) ? ref : '';
 }
 
 // Copies the seed's price WITH its currency onto an unpriced graph card, nothing else: ids, link and
@@ -43446,6 +43448,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          canonicalProduct: fallbackProduct || productForPdp || {},
 	          checkoutToken,
 	          bypassCache: false,
+	          servingCurrency: pdpServingCurrency,
 	        }).catch((err) => {
 	          logger.debug?.(
 	            {

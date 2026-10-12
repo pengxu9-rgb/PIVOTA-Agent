@@ -458,6 +458,14 @@ describe('product relationship graph store helpers', () => {
       expect(relationshipEdgeToSimilarItem({ ...base, candidate_display_is_representative: false }).relationship_price_ref).toBeUndefined();
     });
 
+    test('a member named only by a signature names no price ref: a sig_ is a product, not the listing shown (controller review of #2416)', () => {
+      const shown = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_x', candidate_display_is_representative: false,
+        candidate_display_snapshot: { product_id: 'pg_catalog_x', pivota_signature_id: 'sig_only', name: 'Lip Oil' } };
+      expect(relationshipEdgeToSimilarItem(shown).relationship_price_ref).toBeUndefined();
+      const uncollapsed = approvedDupe({ candidate_product_ref: 'product:sig_only', candidate_snapshot: { ...approvedDupe().candidate_snapshot, product_id: 'sig_only' } });
+      expect(relationshipEdgeToSimilarItem(uncollapsed).relationship_price_ref).toBeUndefined();
+    });
+
     test('a display member with no seed id names no price ref', () => {
       const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1', candidate_display_snapshot: { product_id: 'pg_catalog_family1', name: 'Lip Oil', price: 30 } };
       expect(relationshipEdgeToSimilarItem(edge).relationship_price_ref).toBeUndefined();

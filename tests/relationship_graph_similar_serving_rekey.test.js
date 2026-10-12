@@ -709,12 +709,12 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
     expect(out[1].image_url).toBe(`https://cdn.example.test/${candidateId(6)}.jpg`);
   });
 
-  test('a sig_ price ref is priced through its signature seed row', async () => {
+  test('a sig_ price ref prices nothing: a sig_ names a product, not the listing shown (controller review of #2416)', async () => {
+    // The lookup would answer it with the newest seed of ANY retailer carrying that signature.
     state.seedSignatures = { [sigOf(7)]: candidateId(7) };
-    const [card] = await enrich([collapsed(7, { relationship_price_ref: sigOf(7) })]);
-    expect(card).toMatchObject({ price: 39, currency: 'USD', price_source: 'relationship_candidate_seed' });
-    const lookup = state.sql.find(({ text }) => text.includes('FROM external_product_seeds'));
-    expect(lookup.params[1]).toEqual([sigOf(7)]);
+    const out = await enrich([collapsed(7, { relationship_price_ref: sigOf(7) })]);
+    expect(out[0].price).toBeUndefined();
+    expect(out._enrichmentMetadata.card_enrichment_graph_price_attempted_count).toBe(0);
   });
 
   test('a seed lookup past its budget leaves the card unpriced and counts a graph-price timeout', async () => {
@@ -785,11 +785,15 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
     expect(card).toMatchObject({ currency: 'JPY' });
   });
 
-  test('a sig_ ref (newest seed of any retailer) is held to the serving currency too', async () => {
-    state.seedSignatures = { [sigOf(7)]: candidateId(7) };
-    state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
-    const [card] = await enrich([collapsed(7, { relationship_price_ref: sigOf(7) })]);
-    expect(card.price).toBeUndefined();
+  test('an SG request keeps SGD graph prices end to end on find_similar (review: a call site that drops the currency defaults to USD)', async () => {
+    state.edges = state.edges.map((edge) => ({ ...edge, price_evidence: {} }));
+    state.seed = () => ({ price_amount: '52', price_currency: 'SGD' });
+    const find = await request(app).post('/agent/shop/v1/invoke')
+      .send({ operation: 'find_similar_products', payload: { product_id: ANCHOR, limit: 12, options: { cache_bypass: true } }, metadata: { market: 'SG' } });
+    const graphCards = (find.body.products || []).filter((product) => product.relationship_edge_id);
+    expect(graphCards.length).toBeGreaterThan(0);
+    expect(graphCards.every((card) => card.currency === 'SGD' && Number(card.price?.amount ?? card.price) === 52)).toBe(true);
+    expect(find.body.metadata).toMatchObject({ card_enrichment_graph_price_currency_skipped_count: 0 });
   });
 
   test('the enrichment cache key is per serving currency', () => {

@@ -1290,9 +1290,7 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   };
   const seedIds = (...values) => Array.from(new Set(values.map(seedRef).filter(Boolean).map((id) => id.toLowerCase())));
   const isExt = (id) => id.startsWith('ext_');
-  // An exact listing (ext_) before a signature (sig_): the seed lookup answers a sig_ with the newest
-  // seed of any retailer carrying it.
-  const extFirst = (ids) => [...ids.filter(isExt), ...ids.filter((id) => !isExt(id))];
+  const listingRef = (ids) => ids.find(isExt) || '';
   const hasDisplaySnap = Object.keys(displaySnap).length > 0;
   const displayIds = isCollapsedEdge && hasDisplaySnap
     ? seedIds(
@@ -1315,9 +1313,11 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   // Internal only: stripSimilarInternalKeys removes it before any response.
   // A card showing the representative whose display snapshot names no seed id falls back to the edge's
   // own candidate (the same member).
+  // Only an exact listing (ext_) prices a card: a sig_ names a product, and its seed lookup answers
+  // with the newest seed of ANY retailer carrying it - not necessarily the listing shown.
   const priceRef = isCollapsedEdge && hasDisplaySnap
-    ? extFirst(displayIds)[0] || (displayIsRepresentative ? extFirst(seedIds(candidateRef, fallbackSnap.source_product_id, fallbackSnap.product_id))[0] || '' : '')
-    : extFirst(seedIds(productId, candidateRef))[0] || '';
+    ? listingRef(displayIds) || (displayIsRepresentative ? listingRef(seedIds(candidateRef, fallbackSnap.source_product_id, fallbackSnap.product_id)) : '')
+    : listingRef(seedIds(productId, candidateRef));
   return {
     product_id: productId,
     external_product_id: productId,
