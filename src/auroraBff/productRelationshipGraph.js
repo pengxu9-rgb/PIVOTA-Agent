@@ -1316,7 +1316,7 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   // Only an exact listing (ext_) prices a card: a sig_ names a product, and its seed lookup answers
   // with the newest seed of ANY retailer carrying it - not necessarily the listing shown.
   const priceRef = isCollapsedEdge && hasDisplaySnap
-    ? listingRef(displayIds) || (displayIsRepresentative ? listingRef(seedIds(candidateRef, fallbackSnap.source_product_id, fallbackSnap.product_id)) : '')
+    ? listingRef(displayIds) || (displayIsRepresentative ? listingRef(seedIds(candidateRef)) : '')
     : listingRef(seedIds(productId, candidateRef));
   return {
     product_id: productId,

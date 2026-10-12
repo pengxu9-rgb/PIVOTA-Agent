@@ -27677,19 +27677,11 @@ function similarGraphCardPriceRef(item = {}) {
 
 // Copies the seed's price WITH its currency onto an unpriced graph card, nothing else: ids, link and
 // presentation stay the card's own. A seed with no known currency prices nothing.
-// Only a price in the buyer's serving currency is copied. The recommendation surfaces keep an unpriced
-// card but drop one priced in another currency (filterProductsToServingCurrency), so a JPY/SGD seed
-// would turn a card that showed unpriced into a missing one. A sig_ ref matters most: the lookup
-// answers it with the newest seed of ANY retailer carrying that signature (no market or currency).
-function applySimilarGraphCardSeedPrice(item, seedSourcesById, metadata, servingCurrency) {
+function applySimilarGraphCardSeedPrice(item, seedSourcesById, metadata) {
   const ref = similarGraphCardPriceRef(item);
   if (!ref) return item;
   const pair = readSimilarCardMoneyPair(seedSourcesById?.get?.(ref));
   if (!pair) return item;
-  if (pair.currency !== String(servingCurrency || '').trim().toUpperCase()) {
-    if (metadata) metadata.card_enrichment_graph_price_currency_skipped_count += 1;
-    return item;
-  }
   if (metadata) metadata.card_enrichment_graph_price_hit_count += 1;
   return { ...item, price: pair.amount, currency: pair.currency, price_source: 'relationship_candidate_seed' };
 }
@@ -27705,7 +27697,6 @@ function buildSimilarCardEnrichmentCacheKey({
   items = [],
   maxItems = 0,
   allowDetailHydration = false,
-  servingCurrency = null,
 } = {}) {
   if (!PDP_SIMILAR_CARD_ENRICH_CACHE_ENABLED) return '';
   const list = Array.isArray(items) ? items : [];
@@ -27751,7 +27742,6 @@ function buildSimilarCardEnrichmentCacheKey({
     .update(JSON.stringify({
       max_items: normalizedMaxItems,
       allow_detail_hydration: allowDetailHydration === true,
-      serving_currency: servingCurrency || null,
       item_count: list.length,
       items: fingerprintItems,
     }))
@@ -27924,7 +27914,9 @@ function quotesSimilarCardAmount(record) {
   );
 }
 
-function mergeSimilarCardEnrichment(candidate = {}, detail = {}, { servingCurrency } = {}) {
+// copyPrice: false - take presentation only, never the detail's money (a graph card matched to the
+// detail by signature, not by its own listing).
+function mergeSimilarCardEnrichment(candidate = {}, detail = {}, { copyPrice = true } = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
     if (next[targetKey] != null && String(next[targetKey]).trim()) return;
@@ -27951,13 +27943,8 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}, { servingCurren
   // source carries its currency inside price{}; the currency guard then dropped the card. A card
   // without a complete pair of its own takes the detail's complete pair whole, never half of it.
   if (!readSimilarCardMoneyPair(next)) {
-    const detailMoney = readSimilarCardMoneyPair(detail);
-    // A graph card is a reviewed pick: a pair in another currency than the serving one would get it
-    // dropped by the currency guard, where unpriced it is served. (Heuristic cards keep the old rule.)
-    const foreignToGraphCard = Boolean(detailMoney) && servingCurrency !== undefined &&
-      isRelationshipGraphSimilarProduct(next) &&
-      detailMoney.currency !== String(servingCurrency || '').trim().toUpperCase();
-    if (detailMoney && !foreignToGraphCard) {
+    const detailMoney = copyPrice ? readSimilarCardMoneyPair(detail) : null;
+    if (detailMoney) {
       next.price = isPlainObject(detail.price) ? { ...detail.price } : detailMoney.amount;
       next.currency = detailMoney.currency;
     } else if (isRelationshipGraphSimilarProduct(next) && quotesSimilarCardAmount(next)) {
@@ -28309,10 +28296,7 @@ async function enrichSimilarProductsForPdpCards({
   productIntelBudgetMs = PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS,
   detailBudgetMs = PDP_SIMILAR_CARD_DETAIL_BUDGET_MS,
   allowDetailHydration = false,
-  servingCurrency,
 } = {}) {
-  // undefined = the deployment's default market; null = a market nothing is priced for.
-  const graphPriceCurrency = servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency;
   const list = Array.isArray(items) ? items : [];
   let head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
@@ -28321,7 +28305,6 @@ async function enrichSimilarProductsForPdpCards({
     : buildSimilarCardEnrichmentCacheKey({
         items: list,
         maxItems,
-        servingCurrency: graphPriceCurrency,
         allowDetailHydration,
       });
   const cachedCardEnrichment = readSimilarCardEnrichmentCache(cardEnrichmentCacheKey);
@@ -28407,7 +28390,6 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
     card_enrichment_graph_price_attempted_count: graphPriceRefs.filter((ref) => sentSeedIds.has(ref)).length,
     card_enrichment_graph_price_hit_count: 0,
-    card_enrichment_graph_price_currency_skipped_count: 0,
     card_enrichment_graph_price_timeout_count: 0,
     card_enrichment_graph_price_failed_count: 0,
     card_enrichment_detail_hydration_skipped_count: detailHydrationEnabled
@@ -28435,7 +28417,7 @@ async function enrichSimilarProductsForPdpCards({
     });
   }
   if (graphPriceRefs.length) {
-    head = head.map((item) => applySimilarGraphCardSeedPrice(item, officialSeedCardSourcesById, metadata, graphPriceCurrency));
+    head = head.map((item) => applySimilarGraphCardSeedPrice(item, officialSeedCardSourcesById, metadata));
     // The early exit and the budget-timeout path both answer with `fallback`: keep the prices.
     fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   }
@@ -28458,12 +28440,14 @@ async function enrichSimilarProductsForPdpCards({
           if (officialSeedProduct) {
             const alreadyHasTrustedPresentation =
               hasSimilarCardPresentation(item) && !isSellerOnlySimilarCardEvidence(item);
+            // A graph card's price belongs to its own listing. A sig_ key resolves to the newest seed of
+            // ANY retailer carrying the signature, so that seed lends presentation, never a price.
             const officialSeedEnriched = mergeSimilarCardEnrichment(
               alreadyHasTrustedPresentation
                 ? item
                 : applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
               officialSeedProduct,
-              { servingCurrency: graphPriceCurrency },
+              { copyPrice: !isRelationshipGraphSimilarProduct(item) || isExternalSeedProductId(externalSeedId) },
             );
             if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {
               metadata.card_enrichment_official_seed_hit_count += 1;
@@ -28507,7 +28491,7 @@ async function enrichSimilarProductsForPdpCards({
       if (!detail || typeof detail !== 'object') {
         return annotateSimilarCardStatus(item);
       }
-      return mergeSimilarCardEnrichment(item, detail, { servingCurrency: graphPriceCurrency });
+      return mergeSimilarCardEnrichment(item, detail);
     }),
   );
   const enriched = await withStageBudget(
@@ -29504,7 +29488,6 @@ async function prewarmPdpSimilarForProduct({
     items: relatedProducts,
     checkoutToken,
     bypassCache: false,
-    servingCurrency,
     maxItems: resolvePdpSimilarCardEnrichmentLimit(resolvePdpSimilarDisplayLimit(payload), candidateLimit),
   });
 }
@@ -45178,7 +45161,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          items: relatedProductsForEnrichment,
 	          checkoutToken,
 	          bypassCache,
-	          servingCurrency: pdpServingCurrency,
 	          maxItems: similarCardEnrichmentLimit,
 	        });
         markPdpV2Checkpoint('after_similar_card_enrichment');
@@ -49333,7 +49315,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               items: rawProducts,
               checkoutToken,
               bypassCache,
-              servingCurrency: similarServingCurrency,
               maxItems: resolvePdpSimilarCardEnrichmentLimit(limit, directCandidateLimit),
             });
             directRouteTimingMs.card_enrichment = Date.now() - cardEnrichmentStartedAt;
