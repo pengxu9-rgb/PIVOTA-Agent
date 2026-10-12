@@ -57,7 +57,7 @@ suite('primary offer constraints execute before the candidate cut', () => {
     await offer('valid_sibling','siblings',15);
     await product('fx_valid','fx');await offer('fx_valid_offer','fx_valid',10.9);
     await product('fx_expensive','fx');await offer('fx_expensive_offer','fx_expensive',10.91);
-    await product('fx_unsupported','fx');await offer('fx_unsupported_offer','fx_unsupported',1,{currency:'SGD'});
+    await product('fx_unsupported','fx');await offer('fx_unsupported_offer','fx_unsupported',1,{currency:'BRL'});
     await product('unknown','unknown');await offer('unknown_offer','unknown',12,{availability:null,quantity:null,market:null});
     for(const [merchant,options] of [['stockcap',{availability:'out_of_stock'}],['currencycap',{currency:'JPY'}],['marketcap',{market:'CA'}]]) {
       for(let i=0;i<35;i++) {await product(`${merchant}_${i}`,merchant);await offer(`${merchant}_offer_${i}`,`${merchant}_${i}`,11,options);}

@@ -146,7 +146,8 @@ export function sellerVariantGidOf(row, sellerHost, chosenVariantId) {
 }
 
 /**
- * The seller variant gid AND where it came from: `chosen` (the buyer picked it), `row_id` (a row-level or sole-variant
+ * The seller variant gid AND where it came from: `chosen` (the buyer picked it; `stored` true when the gid is the
+ * variant's stored seller id `source_variant_id` / `variant_gid`, false when it is the variant's own id), `row_id` (a row-level or sole-variant
  * seller id field), `url` (a seller-host link's `variant=`, possibly agreeing with the read), or `sole_variant_id` (the
  * read's single variant's own id with no link naming it — a DERIVED id, see refuseDerivedSoleVariant). `{gid: null}`
  * when there is none.
@@ -162,10 +163,13 @@ export function sellerVariantChoiceOf(row, sellerHost, chosenVariantId) {
     if (!v) return none;
     for (const raw of [own(v, "source_variant_id"), own(v, "variant_gid")]) {
       const gid = typeof raw === "string" ? toVariantGid(raw) : (Number.isSafeInteger(raw) && raw > 0 ? toVariantGid(String(raw)) : null);
-      if (gid) return { gid, source: "chosen" };
+      if (gid) return { gid, source: "chosen", stored: true };
     }
+    // `stored: false`: the variant's own id merely LOOKS like a Shopify id (6+ digits). A barcode copied into
+    // variant_id passes that test, so this gid is not evidence of what the seller sells (see ucpCheckoutEscalation's
+    // variant policy, which never refuses on it).
     const own_ = ownVariantIdGid(v, row);
-    return own_ ? { gid: own_, source: "chosen" } : none;
+    return own_ ? { gid: own_, source: "chosen", stored: false } : none;
   }
   const variants = Array.isArray(own(row, "variants")) ? own(row, "variants").filter(isPlainObject) : [];
   if (variants.length > 1) return none; // the buyer's choice is not carried on this door: never guess
@@ -485,8 +489,11 @@ function emit(log, level, detail) {
  * @param {{ items:{product_id:string, quantity:number}[], rows:Map, sellerHost:string|null, market?:string|null,
  *           cartId?:string, env?:object, merchantDoor?:object, budgetMs?:number, log?:object }} a
  *   `cartId` set = a RE-READ of a cart this door built (get_checkout): `get_cart`, never a new cart.
+ *   `signals` (optional out-param array): what the seller SAID while this door fell back, for the caller to act on.
+ *   Today one signal: `{ reason: "variant_invalid", lines }` — the seller's own door answered a create_cart with a
+ *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
@@ -559,6 +566,16 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     const soldOut = structured && reason === FAILURE_REASON.OUT_OF_STOCK && SELLER_OUT_OF_STOCK_RE.test(String(errorText ?? ""));
     emit(log, "info", { outcome: soldOut ? "refused" : "fallback", reason, seller_host: sellerHost });
     if (soldOut) throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
+    // THE SELLER SAYS IT DOES NOT KNOW THIS VARIANT. Same strictness as out-of-stock: only a structured 2xx tool
+    // error (the shared classifier reads free text, and an HTML "Page not found" once classified as variant_invalid).
+    // Not proof the PRODUCT is gone, so it is reported, never acted on here; a cart-level error names no line, so
+    // every line goes back. A re-read (`get_cart`) is not a claim about a variant.
+    if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
+      signals.push({
+        reason: "variant_invalid",
+        lines: wanted.map((w) => ({ product_id: w.product_id, gid: w.gid, chosen: Boolean(w.variant_id) })),
+      });
+    }
     return null;
   }
   const payload = unwrapPayload(result);
