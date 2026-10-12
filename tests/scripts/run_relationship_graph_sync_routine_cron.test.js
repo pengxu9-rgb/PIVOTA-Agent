@@ -127,6 +127,23 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(argValue(config.args, 'step-timeout-minutes')).toBe('11');
   });
 
+  test('the uncovered backfill travels to the routine and widens the build limit unless it is set', () => {
+    const base = { RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200', RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: 'true' };
+    const config = buildCronArgs(base, { now: NOW });
+    expect(argValue(config.args, 'uncovered-backfill-limit')).toBe('200');
+    expect(argValue(config.args, 'limit')).toBe('400');
+    expect(argValue(buildCronArgs({ ...base, RELGRAPH_SYNC_LIMIT: '250' }, { now: NOW }).args, 'limit')).toBe('250');
+    // Off by default: the recency selection alone, as before.
+    const off = buildCronArgs({}, { now: NOW });
+    expect(argValue(off.args, 'uncovered-backfill-limit')).toBe('');
+    expect(argValue(off.args, 'limit')).toBe('200');
+  });
+
+  test('the uncovered backfill requires prioritize-uncovered (its attempt cooldown rotates the backlog)', () => {
+    expect(() => buildCronArgs({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200' }, { now: NOW }))
+      .toThrow(/requires RELGRAPH_SYNC_PRIORITIZE_UNCOVERED=true/);
+  });
+
   test('buildCronArgs can disable persistent run ledger recording', () => {
     const config = buildCronArgs({
       RELGRAPH_SYNC_RUN_LEDGER_ENABLED: 'false',

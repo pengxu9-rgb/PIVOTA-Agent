@@ -212,6 +212,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     selectLimit: parseNumber(argValue(argv, 'select-limit'), DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 }),
+    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
     applySync,
     applyBuild,
@@ -424,8 +425,9 @@ function buildSyncRoutineSteps(options = {}) {
       options.affectedProductsFile,
     ];
     pushFlag(args, 'prioritize-uncovered', options.prioritizeUncovered);
-    if (options.prioritizeUncovered) pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+    if (options.prioritizeUncovered || options.uncoveredBackfillLimit > 0) pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
     if (options.prioritizeUncovered) pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
+    if (options.uncoveredBackfillLimit > 0) pushArg(args, 'uncovered-backfill-limit', options.uncoveredBackfillLimit);
     pushFlag(args, 'allow-empty-selection', options.allowEmptySelection);
     steps.push({
       id: 'affected_product_selector',

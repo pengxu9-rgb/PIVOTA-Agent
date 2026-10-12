@@ -128,6 +128,43 @@ describe('select-relationship-graph-affected-products', () => {
     expect(queryFn).toHaveBeenCalledTimes(2);
   });
 
+  test('the uncovered backfill adds never-labelled products FIRST, whenever they changed, and rotates by cooldown', async () => {
+    const recencyRow = { product_key: 'prod_recent', source_product_id: 'shopify_r', pivota_signature_id: 'sig_r', merchant_id: 'm', platform: 'shopify', title: 'Serum' };
+    const backfillRows = [
+      { product_key: 'prod_old_1', source_product_id: 'ext_old_1', pivota_signature_id: 'sig_old_1', merchant_id: 'external_seed', platform: 'external_seed', title: 'Toner' },
+      // Also in the recency window: kept once, as a recency row.
+      { ...recencyRow },
+    ];
+    const queryFn = jest.fn(async (sql) => {
+      if (sql.includes('relationship_graph_anchor_attempts')) return { rows: backfillRows };
+      if (sql.includes('FROM catalog_products cp') && !sql.includes('external_product_seeds')) return { rows: [recencyRow] };
+      return { rows: [] };
+    });
+    const manifest = await run(['--updated-since', '2026-06-07T00:00:00Z', '--uncovered-backfill-limit', '2', '--uncovered-cooldown-days', '5'], { queryFn, now: NOW });
+    expect(manifest.rows.map((row) => [row.source, row.product_key])).toEqual([
+      ['uncovered_backfill', 'prod_old_1'],
+      ['catalog_products', 'prod_recent'],
+    ]);
+    expect(manifest.selection.uncovered_backfill_limit).toBe(2);
+    expect(manifest.affected_refs).toEqual(expect.arrayContaining(['product:sig_old_1']));
+    const [sql, params] = queryFn.mock.calls.find(([text]) => text.includes('relationship_graph_anchor_attempts'));
+    expect(params[0]).toBe(2);
+    expect(params[2]).toBe('US');
+    // Never labelled on its signature or source ref; renderable now; not attempted within the cooldown;
+    // no recency predicate; a catalog-wide hash order.
+    expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM relationship_candidate_labels/);
+    expect(sql).toContain("interval '5 days'");
+    expect(sql).toContain('pdp_will_render IS TRUE');
+    expect(sql).not.toMatch(/updated_at >= \$/);
+    expect(sql).toContain('ORDER BY md5(cp.product_key)');
+  });
+
+  test('without --uncovered-backfill-limit no backfill query runs', async () => {
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await run(['--updated-since', '2026-06-07T00:00:00Z', '--allow-empty-selection'], { queryFn, now: NOW });
+    expect(queryFn.mock.calls.some(([sql]) => sql.includes('relationship_graph_anchor_attempts'))).toBe(false);
+  });
+
   test('run fails closed on empty selection unless allow-empty-selection is set', async () => {
     const queryFn = jest.fn(async () => ({ rows: [] }));
 

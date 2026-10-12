@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
 const { normalizeUncoveredCooldownDays, coverageCatalogJoinSql, normalizeCoverageSiblingRefs, loadCoverageSuppressedIds } = require('../src/auroraBff/relationshipGraphCoverage');
+const { activeCatalogProductSourceWhere } = require('../src/services/activeCatalogSourceSql');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 250;
@@ -328,12 +329,75 @@ async function fetchExternalSeedRows({
   return Array.isArray(res?.rows) ? res.rows : [];
 }
 
+// The recency selection only ever reaches products whose rows changed in the window, so a product that
+// is stable never gets candidates: prod 2026-10-13, 19,744 of 24,675 renderable beauty catalog products
+// (80%) had no relationship label at all, and 35 of the 45 sampled PDPs had none. The backfill adds up
+// to `limit` such products each run, regardless of when they changed: renderable now (the PDP render
+// probe, fresh within 7 days), active source, not suppressed, no label on their signature or source ref,
+// and not attempted within the cooldown (relationship_graph_anchor_attempts, written by the build even
+// for a zero-candidate attempt), so successive runs rotate through the backlog. Ordered by a hash of the
+// product key: a stable, catalog-wide spread rather than the newest rows again.
+async function fetchUncoveredBackfillRows({
+  queryFn = query,
+  market = DEFAULT_MARKET,
+  limit = 0,
+  uncoveredCooldownDays = 7,
+} = {}) {
+  const normalizedLimit = Math.max(0, Math.trunc(Number(limit) || 0));
+  if (!normalizedLimit) return [];
+  const days = normalizeUncoveredCooldownDays(uncoveredCooldownDays);
+  const res = await queryFn(
+    `
+      SELECT
+        cp.product_key,
+        cp.source_product_id,
+        cp.pivota_signature_id,
+        cp.content_key,
+        cp.merchant_id,
+        cp.platform,
+        cp.title,
+        cp.brand,
+        cp.canonical_url,
+        cp.pivota_canonical_url,
+        cp.updated_at,
+        cp.created_at
+      FROM catalog_products cp
+      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+      WHERE cp.pivota_signature_id IS NOT NULL
+        AND cp.pdp_will_render IS TRUE
+        AND cp.pdp_will_render_computed_at >= now() - interval '7 days'
+        AND cp.suppressed_at IS NULL AND cp.suppression_reason IS NULL
+        AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+        AND (
+          lower(concat_ws(' ', cp.title, cp.description, cp.brand, cp.product_type, cp.category, cp.category_path, cp.category_label))
+            LIKE ANY($2::text[])
+          OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($2::text[])
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM relationship_candidate_labels labels
+          WHERE lower(labels.anchor_ref) IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM relationship_graph_anchor_attempts attempt
+          WHERE attempt.anchor_ref IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
+            AND attempt.market = $3 AND attempt.vertical = 'beauty'
+            AND attempt.last_attempt_at >= now() - interval '${days} days'
+        )
+      ORDER BY md5(cp.product_key), cp.product_key
+      LIMIT $1
+    `,
+    [normalizedLimit, BEAUTY_TEXT_PATTERNS, normalizeString(market).toUpperCase() || DEFAULT_MARKET],
+  );
+  return Array.isArray(res?.rows) ? res.rows : [];
+}
+
 function buildAffectedProductsManifest({
   rows = [],
   market = DEFAULT_MARKET,
   updatedSince = '',
   sources = DEFAULT_SOURCES,
   limit = DEFAULT_LIMIT,
+  uncoveredBackfillLimit = 0,
   generatedAt = new Date().toISOString(),
 } = {}) {
   const normalizedRows = Array.isArray(rows) ? rows : [];
@@ -351,6 +415,7 @@ function buildAffectedProductsManifest({
       updated_since: updatedSince || null,
       sources,
       limit,
+      uncovered_backfill_limit: uncoveredBackfillLimit,
       source_counts: sourceCounts,
     },
     affected_count: normalizedRows.length,
@@ -383,6 +448,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     uncoveredCooldownDays: normalizeUncoveredCooldownDays(argValue(argv, 'uncovered-cooldown-days')),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit') || argValue(argv, 'select-limit'), DEFAULT_LIMIT, { min: 1, max: 5000 }),
+    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }),
     out: resolvePathMaybeRelative(argValue(argv, 'out'), cwd),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
   };
@@ -391,7 +457,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
 function usage() {
   return [
     'Usage:',
-    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path] [--prioritize-uncovered]',
+    '  node scripts/select-relationship-graph-affected-products.js --updated-since <timestamp> [--sources catalog_products,external_product_seeds] [--out path] [--prioritize-uncovered] [--uncovered-backfill-limit N]',
     '',
     'Read-only selector. Writes an affected-products manifest for relationship graph routines.',
   ].join('\n');
@@ -434,12 +500,24 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     rows.push(...seedRows.map((row) => buildExternalSeedAffectedRow(row, options.market)));
   }
 
+  // The backfill goes FIRST: the build takes the first --limit anchors of the manifest's universe.
+  const backfillRows = await fetchUncoveredBackfillRows({
+    queryFn,
+    market: options.market,
+    limit: options.uncoveredBackfillLimit,
+    uncoveredCooldownDays: options.uncoveredCooldownDays,
+  });
+  const recencyKeys = new Set(rows.map((row) => normalizeLower(row.product_key)).filter(Boolean));
+  const backfill = backfillRows
+    .filter((row) => !recencyKeys.has(normalizeLower(row.product_key)))
+    .map((row) => ({ ...buildCatalogAffectedRow(row, options.market), source: 'uncovered_backfill' }));
   const manifest = buildAffectedProductsManifest({
-    rows,
+    rows: [...backfill, ...rows],
     market: options.market,
     updatedSince: options.updatedSince,
     sources: options.sources,
     limit: options.limit,
+    uncoveredBackfillLimit: options.uncoveredBackfillLimit,
     generatedAt: now.toISOString(),
   });
 
@@ -470,6 +548,7 @@ module.exports = {
   buildExternalSeedAffectedRow,
   fetchCatalogProductRows,
   fetchExternalSeedRows,
+  fetchUncoveredBackfillRows,
   parseArgs,
   run,
 };
