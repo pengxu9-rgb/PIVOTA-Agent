@@ -205,6 +205,66 @@ async function findSimilar() {
   return res.body;
 }
 
+describe('find_similar_products keeps at most one card of the anchor brand, after the cross-brand cards', () => {
+  // The cap is a graph-only rule (the default serving path); this file otherwise runs the kill switch.
+  beforeEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'true'; });
+  afterEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
+  test('two higher-scored same-brand edges: only the best is served, and it comes last', async () => {
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
+      : edge));
+    const body = await findSimilar();
+    const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
+    expect(served).toEqual(['prel_rekey_4', 'prel_rekey_5', 'prel_rekey_2']);
+    // Measurable live: recall tagged two, none dropped for an earlier page.
+    expect(body.metadata).toMatchObject({ relationship_graph_same_brand_count: 2, relationship_graph_same_brand_spent_dropped_count: 0 });
+  });
+
+  test('with graph-only off the recall reads and serves exactly as with the cap off (main): same SQL, same order, no tag', async () => {
+    process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false';
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
+      : edge));
+    const run = async () => {
+      state.sql = [];
+      const body = await findSimilar();
+      const read = state.sql.find(({ text }) => text.includes('FROM product_relationship_edges'));
+      return { params: read.params, served: body.products.map((product) => product.relationship_edge_id || product.product_id), body };
+    };
+    const capped = await run();
+    const saved = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '-1';
+    try {
+      const main = await run();
+      expect(capped.params).toEqual(main.params);
+      expect(capped.served).toEqual(main.served);
+    } finally {
+      if (saved === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = saved;
+    }
+    // Score order, same-brand first as before: no reorder.
+    expect(capped.served.filter((id) => String(id).startsWith('prel_')).slice(0, 2)).toEqual(['prel_rekey_2', 'prel_rekey_3']);
+    expect(JSON.stringify(capped.body)).not.toContain('similar_same_brand');
+    expect(capped.body.metadata.relationship_graph_same_brand_count).toBeUndefined();
+  });
+
+  test('a rail of only same-brand cards whose best card is unrenderable serves the next one, not nothing (review)', async () => {
+    state.edges = state.edges
+      .filter((edge) => ['prel_rekey_2', 'prel_rekey_3', 'prel_rekey_4'].includes(edge.id))
+      .map((edge) => ({ ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' } }));
+    // The renderability gate says sig 2's product page will not serve (prod: no_us_offer).
+    state.render = () => [{
+      pivota_signature_id: sigOf(2), merchant_id: 'merch_obs_x', platform: 'external_seed', source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_x', content_key: 'ck_x', product_key: 'pk_x', sync_status: 'live', pdp_lifecycle_stage: 'published',
+      source_active: true, pdp_seed_route_ok: true, serving_eligible: false, blocker_code: 'no_us_offer', blocker_detail: null,
+      content_quality_score: 90, active_external_seed_source_match: true, mirror_seed_inactive: false,
+    }];
+    const body = await findSimilar();
+    expect(body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id)).toEqual(['prel_rekey_3']);
+    expect(JSON.stringify(body)).not.toContain('similar_same_brand');
+  });
+});
+
 describe('find_similar_products serves re-keyed external-seed graph candidates', () => {
   test('prod-shaped candidates resolve to their observed seller and public signature, priced as a pair', async () => {
     const body = await findSimilar();
