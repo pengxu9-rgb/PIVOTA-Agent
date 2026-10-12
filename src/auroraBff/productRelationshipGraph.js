@@ -1285,27 +1285,47 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     const ref = stripRelationshipRefPrefix(value);
     return /^(?:ext_|sig_)/i.test(ref) ? ref : '';
   };
-  const displayRef = isCollapsedEdge && Object.keys(displaySnap).length
-    ? pickFirstString(
-        seedRef(src.candidate_pivota_signature_id || src.candidatePivotaSignatureId),
-        seedRef(displaySnap.pivota_signature_id),
-        seedRef(displaySnap.source_product_id),
-        seedRef(displaySnap.external_product_id),
-        seedRef(displaySnap.product_id),
+  const seedIds = (...values) => Array.from(new Set(values.map(seedRef).filter(Boolean).map((id) => id.toLowerCase())));
+  const isExt = (id) => id.startsWith('ext_');
+  // An exact listing (ext_) before a signature (sig_): the seed lookup answers a sig_ with the newest
+  // seed of any retailer carrying it.
+  const extFirst = (ids) => [...ids.filter(isExt), ...ids.filter((id) => !isExt(id))];
+  const hasDisplaySnap = Object.keys(displaySnap).length > 0;
+  const displayIds = isCollapsedEdge && hasDisplaySnap
+    ? seedIds(
+        src.candidate_pivota_signature_id || src.candidatePivotaSignatureId,
+        displaySnap.pivota_signature_id,
+        displaySnap.source_product_id,
+        displaySnap.external_product_id,
+        displaySnap.product_id,
       )
-    : '';
-  const representativeIds = new Set([candidateRef, seedRef(fallbackSnap.pivota_signature_id), seedRef(fallbackSnap.product_id)]
-    .map((value) => String(value || '').toLowerCase()).filter(Boolean));
-  const displayIsRepresentative = !Object.keys(displaySnap).length || (displayRef && representativeIds.has(displayRef.toLowerCase()));
+    : [];
+  const representativeIds = seedIds(
+    candidateRef,
+    fallbackSnap.pivota_signature_id,
+    fallbackSnap.source_product_id,
+    fallbackSnap.external_product_id,
+    fallbackSnap.product_id,
+  );
+  // The catalog display snapshot names a member by its sig_ AND its listing ext_; the edge often names
+  // only one. They are the same member when the listings match (or, without a listing on one side, any
+  // shared id does).
+  const sameMember = (left, right) => {
+    const leftExt = left.filter(isExt);
+    const rightExt = right.filter(isExt);
+    if (leftExt.length && rightExt.length) return leftExt.some((id) => rightExt.includes(id));
+    return left.some((id) => right.includes(id));
+  };
+  const displayIsRepresentative = !hasDisplaySnap || sameMember(displayIds, representativeIds);
   const money = isCollapsedEdge && !displayIsRepresentative
     ? getCandidateMoneyPair({ ...edge, price_evidence: {} }, [snap])
-    : getCandidateMoneyPair(edge, isCollapsedEdge ? [snap, edge.candidate_snapshot] : [edge.candidate_snapshot]);
+    : getCandidateMoneyPair(edge, isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot]);
   // The seed card enrichment prices an unpriced card from (the shown member, never another one):
-  // collapsed -> the display member's ext_/sig_; otherwise the card's own id, else the edge candidate.
-  // Internal only: filterPublicVisibleSimilarProducts removes it before any response.
-  const priceRef = isCollapsedEdge && Object.keys(displaySnap).length
-    ? displayRef
-    : pickFirstString(seedRef(productId), seedRef(candidateRef));
+  // collapsed -> the display member's ids; otherwise the card's own id, else the edge candidate.
+  // Internal only: stripSimilarInternalKeys removes it before any response.
+  const priceRef = isCollapsedEdge && hasDisplaySnap
+    ? extFirst(displayIds)[0] || ''
+    : extFirst(seedIds(productId, candidateRef))[0] || '';
   return {
     product_id: productId,
     external_product_id: productId,

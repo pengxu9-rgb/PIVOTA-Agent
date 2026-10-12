@@ -5491,6 +5491,8 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+const SIMILAR_CARD_SEED_LOOKUP_MAX_IDS = 24;
+
 async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
   if (!process.env.DATABASE_URL) return new Map();
   const requestedIds = Array.from(
@@ -5499,7 +5501,7 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         .map((value) => String(value || '').trim())
         .filter((value) => isExternalSeedProductId(value) || isPivotaSignatureProductId(value)),
     ),
-  ).slice(0, 24);
+  ).slice(0, SIMILAR_CARD_SEED_LOOKUP_MAX_IDS);
   const directExternalProductIds = requestedIds.filter((id) => !isPivotaSignatureProductId(id));
   const signatureProductIds = requestedIds.filter((id) => isPivotaSignatureProductId(id));
   if (!directExternalProductIds.length && !signatureProductIds.length) return new Map();
@@ -27658,7 +27660,8 @@ function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, no
 
 function finishSimilarCardEnrichmentResult(items = [], metadata = {}, cacheKey = '') {
   const result = attachSimilarCardEnrichmentMetadata(items, metadata);
-  writeSimilarCardEnrichmentCache(cacheKey, result, metadata);
+  // A seed lookup that timed out left graph cards unpriced: answer, but do not pin that for the TTL.
+  if (!(metadata.card_enrichment_graph_price_timeout_count > 0)) writeSimilarCardEnrichmentCache(cacheKey, result, metadata);
   return result;
 }
 
@@ -28215,6 +28218,10 @@ async function enrichSimilarProductsForPdpCards({
       .filter(Boolean),
     ...graphPriceRefs,
   ]));
+  // The lookup takes the first SIMILAR_CARD_SEED_LOOKUP_MAX_IDS ids; a graph ref past them is not asked.
+  const sentSeedIds = new Set(officialSeedHydrationProductIds
+    .filter((id) => isExternalSeedProductId(id) || isPivotaSignatureProductId(id))
+    .slice(0, SIMILAR_CARD_SEED_LOOKUP_MAX_IDS));
   const metadata = {
     card_enrichment_budget_ms: normalizedBudgetMs,
     card_enrichment_detail_budget_ms: normalizedDetailBudgetMs,
@@ -28227,7 +28234,7 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
-    card_enrichment_graph_price_attempted_count: graphPriceRefs.length,
+    card_enrichment_graph_price_attempted_count: graphPriceRefs.filter((ref) => sentSeedIds.has(ref)).length,
     card_enrichment_graph_price_hit_count: 0,
     card_enrichment_graph_price_timeout_count: 0,
     card_enrichment_graph_price_failed_count: 0,
@@ -28247,10 +28254,10 @@ async function enrichSimilarProductsForPdpCards({
     ).catch((err) => {
       if (err?.code === 'STAGE_TIMEOUT') {
         metadata.card_enrichment_official_seed_timeout_count += officialSeedHydrationCandidates.length;
-        metadata.card_enrichment_graph_price_timeout_count += graphPriceRefs.length;
+        metadata.card_enrichment_graph_price_timeout_count += metadata.card_enrichment_graph_price_attempted_count;
       } else {
         metadata.card_enrichment_official_seed_failed_count += officialSeedHydrationCandidates.length;
-        metadata.card_enrichment_graph_price_failed_count += graphPriceRefs.length;
+        metadata.card_enrichment_graph_price_failed_count += metadata.card_enrichment_graph_price_attempted_count;
       }
       return new Map();
     });
@@ -28260,6 +28267,8 @@ async function enrichSimilarProductsForPdpCards({
     // The early exit and the budget-timeout path both answer with `fallback`: keep the prices.
     fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   }
+  if (metadata.card_enrichment_graph_price_timeout_count > 0) metadata.card_enrichment_status = 'budget_exceeded';
+  else if (metadata.card_enrichment_graph_price_failed_count > 0) metadata.card_enrichment_status = 'partial';
   if (
     officialSeedHydrationCandidates.length <= 0 &&
     !head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))
@@ -28349,12 +28358,14 @@ async function enrichSimilarProductsForPdpCards({
   const result = [...enriched, ...tail];
   if (
     metadata.card_enrichment_timeout_count > 0 ||
-    metadata.card_enrichment_official_seed_timeout_count > 0
+    metadata.card_enrichment_official_seed_timeout_count > 0 ||
+    metadata.card_enrichment_graph_price_timeout_count > 0
   ) {
     metadata.card_enrichment_status = 'budget_exceeded';
   } else if (
     metadata.card_enrichment_failed_count > 0 ||
     metadata.card_enrichment_official_seed_failed_count > 0 ||
+    metadata.card_enrichment_graph_price_failed_count > 0 ||
     result.some((item) => String(item?.card_image_status || '').trim() === 'image_missing')
   ) {
     metadata.card_enrichment_status = 'partial';

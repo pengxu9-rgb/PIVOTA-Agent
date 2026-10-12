@@ -654,6 +654,25 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
     expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 1, card_enrichment_graph_price_hit_count: 0, card_enrichment_graph_price_timeout_count: 1 });
   });
 
+  test('a graph-price timeout marks the rail budget_exceeded and is not cached (the next request prices it)', async () => {
+    state.seedDelayMs = 200;
+    const items = [collapsed(9)];
+    const slow = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 40, detailBudgetMs: 40 });
+    expect(slow._enrichmentMetadata.card_enrichment_status).toBe('budget_exceeded');
+    state.seedDelayMs = 0;
+    const next = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
+    expect(next[0]).toMatchObject({ price: 39, currency: 'USD' });
+  });
+
+  test('a graph ref past the seed lookup cap is not counted as attempted', async () => {
+    const heuristic = (i) => ({ product_id: `ext_0000000000000000000${String(i).padStart(5, '0')}`, merchant_id: 'external_seed',
+      title: `Pomade ${i}`, card_highlight: 'Strong hold', source: 'external' });
+    const out = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [...Array.from({ length: 24 }, (_, i) => heuristic(i + 10)), collapsed(1)], maxItems: 30, bypassCache: true,
+    });
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 0, card_enrichment_graph_price_hit_count: 0 });
+  });
+
   test('the enrichment cache key tells apart two cards that differ only in the member they price', () => {
     const key = (ref) => app._debug.buildSimilarCardEnrichmentCacheKey({ items: [collapsed(1, { relationship_price_ref: ref })], maxItems: 6 });
     expect(key(candidateId(1))).toBeTruthy();
