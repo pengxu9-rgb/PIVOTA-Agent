@@ -220,15 +220,32 @@ describe('find_similar_products keeps at most one card of the anchor brand, afte
     expect(body.metadata).toMatchObject({ relationship_graph_same_brand_count: 2, relationship_graph_same_brand_spent_dropped_count: 0 });
   });
 
-  test('with graph-only off (dynamic recall backfills behind the graph) the cap does not apply: that path serves as before', async () => {
+  test('with graph-only off the recall reads and serves exactly as with the cap off (main): same SQL, same order, no tag', async () => {
     process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false';
     state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
-      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' } }
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
       : edge));
-    const body = await findSimilar();
-    const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
-    expect(served).toEqual(expect.arrayContaining(['prel_rekey_2', 'prel_rekey_3']));
-    expect(JSON.stringify(body)).not.toContain('similar_same_brand');
+    const run = async () => {
+      state.sql = [];
+      const body = await findSimilar();
+      const read = state.sql.find(({ text }) => text.includes('FROM product_relationship_edges'));
+      return { params: read.params, served: body.products.map((product) => product.relationship_edge_id || product.product_id), body };
+    };
+    const capped = await run();
+    const saved = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '-1';
+    try {
+      const main = await run();
+      expect(capped.params).toEqual(main.params);
+      expect(capped.served).toEqual(main.served);
+    } finally {
+      if (saved === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = saved;
+    }
+    // Score order, same-brand first as before: no reorder.
+    expect(capped.served.filter((id) => String(id).startsWith('prel_')).slice(0, 2)).toEqual(['prel_rekey_2', 'prel_rekey_3']);
+    expect(JSON.stringify(capped.body)).not.toContain('similar_same_brand');
+    expect(capped.body.metadata.relationship_graph_same_brand_count).toBeUndefined();
   });
 
   test('a rail of only same-brand cards whose best card is unrenderable serves the next one, not nothing (review)', async () => {

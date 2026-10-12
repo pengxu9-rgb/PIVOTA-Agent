@@ -257,6 +257,14 @@ describe('a similar rail keeps at most one same-brand card, after every cross-br
     expect(resolveSimilarSameBrandMax({ AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX: '-1' })).toBe(Infinity);
   });
 
+  test('sameBrandCap: false reads exactly as without the cap: no reorder, over-read, tail or tag', async () => {
+    const { result, queryFn } = await fetchRail(rail(), { sameBrandCap: false });
+    expect(ids(result.items)).toEqual(['candidate_1', 'candidate_2', 'candidate_3', 'candidate_4']);
+    expect(result.items.some((item) => 'similar_same_brand' in item)).toBe(false);
+    expect(result.metadata.same_brand_max).toBeUndefined();
+    expect(queryFn.mock.calls[0][1][3]).toBe(8);
+  });
+
   test('a non-similar surface is neither reordered nor tagged', async () => {
     const { result } = await fetchRail(rail(), { surface: 'chat_alternatives' });
     expect(ids(result.items)).toEqual(['candidate_1', 'candidate_2', 'candidate_3', 'candidate_4']);

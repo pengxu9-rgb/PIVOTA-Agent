@@ -256,6 +256,21 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
     }
   });
 
+  test('recall is asked for the same-brand handling only on the graph-only path', async () => {
+    for (const [graphOnly, expected] of [[undefined, true], [false, false]]) {
+      const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly });
+      try {
+        const recall = require('../../src/services/relationshipGraphRecall');
+        await fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, options: { cache_bypass: true } } }) });
+        const calls = recall.fetchRelationshipGraphRecallForAnchor.mock.calls;
+        expect([graphOnly, calls.length > 0, calls.every(([args]) => args.sameBrandCap === expected)]).toEqual([graphOnly, true, true]);
+      } finally {
+        await stopServer(server);
+      }
+    }
+  });
+
   test('with graph-only off the same-brand cap does not apply (dynamic recall would backfill unreviewed same-brand cards)', async () => {
     const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly: false });
     try {

@@ -207,6 +207,9 @@ async function fetchRelationshipGraphRecallForAnchor({
   queryFn,
   enabled,
   logger,
+  // false: no same-brand ordering, over-read, tail or tag (a serving path where the cap does not apply
+  // reads exactly as before).
+  sameBrandCap = true,
 } = {}) {
   const startedAt = Date.now();
   const normalizedSurface = normalizeSurface(surface);
@@ -261,7 +264,7 @@ async function fetchRelationshipGraphRecallForAnchor({
 
   try {
     const requestedLimit = Math.max(1, Math.min(120, Number(limit) || 24));
-    const sameBrandMax = SIMILAR_SURFACES.has(normalizedSurface) ? resolveSimilarSameBrandMax() : Infinity;
+    const sameBrandMax = sameBrandCap !== false && SIMILAR_SURFACES.has(normalizedSurface) ? resolveSimilarSameBrandMax() : Infinity;
     const { edges: readEdges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
       anchorType: 'product',
       anchorRefs,

@@ -26949,6 +26949,8 @@ async function resolveSimilarFamilyDedupeContext({
   };
 }
 
+// The same-brand cap is a graph-only rule: with graph-only off, recall reads exactly as before it
+// (no reorder, over-read, tail or tag), so those rails do not change.
 async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
   return fetchRelationshipGraphRecallForAnchor({
     anchorProduct,
@@ -26956,6 +26958,7 @@ async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US'
     market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
     limit,
     logger,
+    sameBrandCap: isPdpSimilarGraphOnlyEnabled(),
   });
 }
 
