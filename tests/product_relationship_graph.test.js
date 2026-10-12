@@ -449,6 +449,15 @@ describe('product relationship graph store helpers', () => {
       expect(item.relationship_price_ref).toBe('ext_full');
     });
 
+    test('a card showing the representative whose display snapshot names no seed id falls back to the edge candidate (controller nit 2)', () => {
+      const base = { ...edgeTo('ext_mini', 'Mini', 0, 0.9, { price_evidence: {} }), candidate_canonical_entity_id: 'pg_catalog_x',
+        candidate_display_snapshot: { product_id: 'pg_catalog_x', name: 'Mini' } };
+      expect(relationshipEdgeToSimilarItem({ ...base, candidate_display_is_representative: true }).relationship_price_ref).toBe('ext_mini');
+      expect(relationshipEdgeToSimilarItem(base).relationship_price_ref).toBe('ext_mini');
+      // Another member on display: the edge candidate is not what the card shows.
+      expect(relationshipEdgeToSimilarItem({ ...base, candidate_display_is_representative: false }).relationship_price_ref).toBeUndefined();
+    });
+
     test('a display member with no seed id names no price ref', () => {
       const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1', candidate_display_snapshot: { product_id: 'pg_catalog_family1', name: 'Lip Oil', price: 30 } };
       expect(relationshipEdgeToSimilarItem(edge).relationship_price_ref).toBeUndefined();

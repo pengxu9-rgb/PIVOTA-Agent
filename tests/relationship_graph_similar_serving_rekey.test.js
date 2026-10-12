@@ -119,7 +119,8 @@ const defaultQuery = async (sql, params = []) => {
     if (state.seedDelayMs) await new Promise((resolve) => setTimeout(resolve, state.seedDelayMs));
     // A sig_ ref resolves through its catalog row to the seed (matched_signature_product_id).
     const sigRows = state.seedSignatures
-      ? (Array.isArray(params[1]) ? params[1] : []).map((sig) => ({ ...seedRow(state.seedSignatures[sig]), matched_signature_product_id: sig }))
+      ? (Array.isArray(params[1]) ? params[1] : []).map((sig) => ({ ...seedRow(state.seedSignatures[sig]), matched_signature_product_id: sig,
+        ...(typeof state.seed === 'function' ? state.seed(sig) : {}) }))
       : [];
     return { rows: [...ids.map((id) => ({ ...seedRow(id), ...(typeof state.seed === 'function' ? state.seed(id) : {}) })), ...sigRows] };
   }
@@ -698,6 +699,44 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
       items: [...Array.from({ length: 24 }, (_, i) => heuristic(i + 10)), collapsed(1)], maxItems: 30, bypassCache: true,
     });
     expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 0, card_enrichment_graph_price_hit_count: 0 });
+  });
+
+  test('a seed priced in another currency than the serving one prices nothing: the card stays, unpriced (controller nit 1)', async () => {
+    state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
+    const out = await enrich([collapsed(2)]);
+    expect(out[0].price).toBeUndefined();
+    expect(out[0].currency).toBeUndefined();
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_hit_count: 0, card_enrichment_graph_price_currency_skipped_count: 1 });
+    // The SG rail takes an SGD seed, and a US rail does not.
+    state.seed = () => ({ price_amount: '52', price_currency: 'SGD' });
+    const sg = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(2)], maxItems: 6, bypassCache: true, servingCurrency: 'SGD' });
+    expect(sg[0]).toMatchObject({ price: 52, currency: 'SGD' });
+    const us = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(2)], maxItems: 6, bypassCache: true, servingCurrency: 'USD' });
+    expect(us[0].price).toBeUndefined();
+    // A market nothing is priced for (null) prices nothing.
+    const none = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(2)], maxItems: 6, bypassCache: true, servingCurrency: null });
+    expect(none[0].price).toBeUndefined();
+  });
+
+  test('a sig_ ref (newest seed of any retailer) is held to the serving currency too', async () => {
+    state.seedSignatures = { [sigOf(7)]: candidateId(7) };
+    state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
+    const [card] = await enrich([collapsed(7, { relationship_price_ref: sigOf(7) })]);
+    expect(card.price).toBeUndefined();
+  });
+
+  test('the enrichment cache key is per serving currency', () => {
+    const key = (servingCurrency) => app._debug.buildSimilarCardEnrichmentCacheKey({ items: [collapsed(1)], maxItems: 6, servingCurrency });
+    expect(key('USD')).not.toBe(key('SGD'));
+  });
+
+  test('find_similar_products prices in the request\'s serving currency only', async () => {
+    state.edges = state.edges.map((edge) => ({ ...edge, price_evidence: {} }));
+    state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
+    const body = await findSimilar();
+    const graphCards = body.products.filter((product) => product.relationship_edge_id);
+    expect(graphCards.length).toBeGreaterThan(0);
+    expect(graphCards.every((card) => card.currency !== 'JPY')).toBe(true);
   });
 
   test('the enrichment cache key tells apart two cards that differ only in the member they price', () => {

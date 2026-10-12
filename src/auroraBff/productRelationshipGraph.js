@@ -1313,8 +1313,10 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   // The seed card enrichment prices an unpriced card from (the shown member, never another one):
   // collapsed -> the display member's ids; otherwise the card's own id, else the edge candidate.
   // Internal only: stripSimilarInternalKeys removes it before any response.
+  // A card showing the representative whose display snapshot names no seed id falls back to the edge's
+  // own candidate (the same member).
   const priceRef = isCollapsedEdge && hasDisplaySnap
-    ? extFirst(displayIds)[0] || ''
+    ? extFirst(displayIds)[0] || (displayIsRepresentative ? extFirst(seedIds(candidateRef, fallbackSnap.source_product_id, fallbackSnap.product_id))[0] || '' : '')
     : extFirst(seedIds(productId, candidateRef))[0] || '';
   return {
     product_id: productId,
