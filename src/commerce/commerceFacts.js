@@ -1,21 +1,25 @@
-const DEFAULT_CONTRACT_VERSION = 'commerce_facts.v1';
+const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
 
+const DEFAULT_CONTRACT_VERSION = 'commerce_facts.v1';
+// A row that names no market is a US row: external_product_seeds is written in the 'US' partition and
+// the seed writers default an absent market to 'US'. A market that IS named but is not one we know is
+// NOT US (ADR-026 P0): it normalizes to null, has no currency target, and the gate holds it.
+const DEFAULT_MARKET_ID = 'US';
+
+// Market -> the currency an offer must be priced in for that market. The ISO-3166 regions come from the
+// one gateway map that mirrors pivota-backend region_pricing (auroraBff/buyerRegion.js), so this module
+// stops being an eighth hand-kept copy; ADR-026 P1 replaces both with the generated market registry.
+// 'EU-DE' and 'CN' are this contract's own legacy market ids (EU-DE predates the per-country EUR regions).
 const MARKET_CURRENCY_TARGET = Object.freeze({
-  US: 'USD',
+  ...BUYER_REGION_CURRENCY,
   'EU-DE': 'EUR',
-  SG: 'SGD',
-  JP: 'JPY',
   CN: 'CNY',
-  KR: 'KRW',
 });
 
 const MARKET_COUNTRY = Object.freeze({
-  US: 'US',
+  ...Object.fromEntries(Object.keys(BUYER_REGION_CURRENCY).map((region) => [region, region])),
   'EU-DE': 'DE',
-  SG: 'SG',
-  JP: 'JP',
   CN: 'CN',
-  KR: 'KR',
 });
 
 function asPlainObject(value) {
@@ -26,9 +30,12 @@ function asString(value) {
   return String(value == null ? '' : value).trim();
 }
 
+// Blank -> 'US' (see DEFAULT_MARKET_ID); a known market -> itself; anything else -> null. It used to
+// return 'US' for every unknown market, so a GB seed was labelled US and checked against USD.
 function normalizeMarketId(value) {
-  const normalized = asString(value || 'US').toUpperCase();
-  return MARKET_CURRENCY_TARGET[normalized] ? normalized : 'US';
+  const normalized = asString(value).toUpperCase();
+  if (!normalized) return DEFAULT_MARKET_ID;
+  return MARKET_CURRENCY_TARGET[normalized] ? normalized : null;
 }
 
 function normalizeCurrency(value) {
@@ -80,7 +87,7 @@ function normalizeCommerceFactsV1(rawFacts, row = {}, options = {}) {
   const seedData = asPlainObject(row.seed_data);
   const snapshot = asPlainObject(seedData.snapshot);
   const marketId = normalizeMarketId(raw.market_id || row.market || options.market);
-  const currencyTarget = normalizeCurrency(raw.currency_target) || MARKET_CURRENCY_TARGET[marketId] || 'USD';
+  const currencyTarget = normalizeCurrency(raw.currency_target) || MARKET_CURRENCY_TARGET[marketId] || null;
   const capturedAt =
     asString(raw.captured_at) ||
     asString(snapshot.extracted_at) ||
@@ -114,7 +121,7 @@ function normalizeCommerceFactsV1(rawFacts, row = {}, options = {}) {
   return {
     contract_version: DEFAULT_CONTRACT_VERSION,
     market_id: marketId,
-    country: asString(raw.country) || MARKET_COUNTRY[marketId],
+    country: asString(raw.country) || MARKET_COUNTRY[marketId] || null,
     currency_target: currencyTarget,
     source_authority: sourceAuthority,
     captured_at: capturedAt,
@@ -222,8 +229,8 @@ function buildCommerceFactsFromSeedRow(row = {}, options = {}) {
   return normalizeCommerceFactsV1(
     {
       market_id: marketId,
-      country: MARKET_COUNTRY[marketId],
-      currency_target: MARKET_CURRENCY_TARGET[marketId],
+      country: MARKET_COUNTRY[marketId] || null,
+      currency_target: MARKET_CURRENCY_TARGET[marketId] || null,
       source_authority: options.sourceAuthority || 'catalog_extract_v2',
       captured_at: capturedAt,
       evidence_url: evidenceUrl,
@@ -239,8 +246,10 @@ function buildCommerceFactsFromSeedRow(row = {}, options = {}) {
         observed_currency: priceCurrency || null,
         price_type: 'unknown',
         confidence: priceCurrency ? 'medium' : 'low',
-        market_switch_status:
-          priceCurrency && priceCurrency === MARKET_CURRENCY_TARGET[marketId] ? 'ok' : priceCurrency ? 'mismatch' : 'unknown',
+        // No target (unknown market) cannot be judged either way: 'unknown', never 'mismatch' or 'ok'.
+        market_switch_status: !MARKET_CURRENCY_TARGET[marketId] || !priceCurrency
+          ? 'unknown'
+          : priceCurrency === MARKET_CURRENCY_TARGET[marketId] ? 'ok' : 'mismatch',
         source_url: evidenceUrl,
         captured_at: capturedAt,
       },
@@ -300,7 +309,7 @@ function attachCommerceFactsToSeedRow(row = {}, rawFacts = null, options = {}) {
 
 function validateCommerceFactsGateForSeedRow(row = {}, options = {}) {
   const marketId = normalizeMarketId(row.market || options.market);
-  const expectedCurrency = MARKET_CURRENCY_TARGET[marketId] || 'USD';
+  const expectedCurrency = MARKET_CURRENCY_TARGET[marketId] || null;
   const seedData = asPlainObject(row.seed_data);
   const facts = readCommerceFactsV1(row);
   const topCurrency = normalizeCurrency(row.price_currency || seedData.price_currency);
@@ -308,10 +317,15 @@ function validateCommerceFactsGateForSeedRow(row = {}, options = {}) {
   const marketSwitchStatus = normalizeMarketSwitchStatus(facts?.regional_price?.market_switch_status);
   const problems = [];
 
-  if (marketId === 'US' && topCurrency && topCurrency !== 'USD') {
+  // Every market's currency is checked, not only US's (ADR-024: priced FOR the market means priced in
+  // its currency). An unknown market has no expected currency: it is held, never waved through as US.
+  if (!marketId) {
+    problems.push('unknown_market');
+  }
+  if (expectedCurrency && topCurrency && topCurrency !== expectedCurrency) {
     problems.push('market_currency_mismatch');
   }
-  if (marketId === 'US' && observedCurrency && observedCurrency !== 'USD') {
+  if (expectedCurrency && observedCurrency && observedCurrency !== expectedCurrency) {
     problems.push('commerce_facts_currency_mismatch');
   }
   if (facts && ['mismatch', 'failed'].includes(marketSwitchStatus)) {
