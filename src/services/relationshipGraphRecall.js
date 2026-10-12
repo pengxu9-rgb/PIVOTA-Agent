@@ -497,8 +497,11 @@ function mapRelationshipGraphItemToDiscoveryProduct(item = {}, { rank = 0 } = {}
   if (!productId || !merchantId || !title) return null;
   const url = String(item.canonical_url || item.url || item.destination_url || '').trim();
   const category = String(item.category || item.product_type || '').trim();
+  // relationship_price_ref is an internal seed key for the similar-card enrichment; the feed spreads
+  // its candidates into responses, so it stops here.
+  const { relationship_price_ref: _internalPriceRef, ...publicItem } = item;
   return {
-    ...item,
+    ...publicItem,
     id: productId,
     product_id: productId,
     external_product_id: String(item.external_product_id || productId).trim(),

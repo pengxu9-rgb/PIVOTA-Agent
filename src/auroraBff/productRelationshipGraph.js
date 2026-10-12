@@ -1026,6 +1026,9 @@ function buildCollapsedRelationshipFamilyEdge(bucket) {
     candidate_offer_group_id: candidateContext.product_group_id || null,
     anchor_offer_group_id: bucket.anchorContext.product_group_id || null,
     candidate_display_snapshot: candidateSnapshot,
+    // Whether the card shows the representative edge's own member, whose price evidence the edge
+    // carries. The collapse knows it; ids cannot always tell (a merchant ref carries no ext_/sig_).
+    candidate_display_is_representative: candidateContext === representative.candidateContext,
     candidate_display_snapshot_source: candidateContext.display_snapshot_source || null,
     candidate_product_group_id: candidateContext.product_group_id || null,
     candidate_pivota_signature_id: candidateContext.pivota_signature_id || null,
@@ -1275,13 +1278,48 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
   const name = extractProductName(snap);
   const reason = pickFirstString(edge.why_candidate.summary, edge.display_label, edge.relation_type);
-  const money = getCandidateMoneyPair(
-    edge,
-    isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot],
-  );
+  // A collapsed card shows its DISPLAY member (title, image, link), which family collapse can pick
+  // apart from the representative edge whose candidate_product_ref and price evidence the edge
+  // carries (family keys strip shade/size: a 1.5ml mini and a 3ml full size share one bucket). Its
+  // price is the display member's own: the representative's evidence applies only when the display
+  // member IS the representative.
+  const candidateRef = stripRelationshipRefPrefix(edge.candidate_product_ref);
+  const seedRef = (value) => {
+    const ref = stripRelationshipRefPrefix(value);
+    return /^(?:ext_|sig_)/i.test(ref) ? ref : '';
+  };
+  const seedIds = (...values) => Array.from(new Set(values.map(seedRef).filter(Boolean).map((id) => id.toLowerCase())));
+  const isExt = (id) => id.startsWith('ext_');
+  // An exact listing (ext_) before a signature (sig_): the seed lookup answers a sig_ with the newest
+  // seed of any retailer carrying it.
+  const extFirst = (ids) => [...ids.filter(isExt), ...ids.filter((id) => !isExt(id))];
+  const hasDisplaySnap = Object.keys(displaySnap).length > 0;
+  const displayIds = isCollapsedEdge && hasDisplaySnap
+    ? seedIds(
+        src.candidate_pivota_signature_id || src.candidatePivotaSignatureId,
+        displaySnap.pivota_signature_id,
+        displaySnap.source_product_id,
+        displaySnap.external_product_id,
+        displaySnap.product_id,
+      )
+    : [];
+  // The collapse stamps whether the card shows the representative edge's own member (ids cannot always
+  // tell: a merchant ref carries no ext_/sig_). Unstamped, an edge keeps main's behaviour.
+  const stampedRepresentative = src.candidate_display_is_representative ?? src.candidateDisplayIsRepresentative;
+  const displayIsRepresentative = !hasDisplaySnap || stampedRepresentative !== false;
+  const money = isCollapsedEdge && !displayIsRepresentative
+    ? getCandidateMoneyPair({ ...edge, price_evidence: {} }, [snap])
+    : getCandidateMoneyPair(edge, isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot]);
+  // The seed card enrichment prices an unpriced card from (the shown member, never another one):
+  // collapsed -> the display member's ids; otherwise the card's own id, else the edge candidate.
+  // Internal only: stripSimilarInternalKeys removes it before any response.
+  const priceRef = isCollapsedEdge && hasDisplaySnap
+    ? extFirst(displayIds)[0] || ''
+    : extFirst(seedIds(productId, candidateRef))[0] || '';
   return {
     product_id: productId,
     external_product_id: productId,
+    ...(priceRef ? { relationship_price_ref: priceRef } : {}),
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     ...(name ? { title: name } : {}),
     ...(brand ? { brand } : {}),
