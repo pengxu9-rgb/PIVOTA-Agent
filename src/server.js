@@ -3711,6 +3711,10 @@ const PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS = Math.max(
   5_000,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS, 60_000),
 );
+// A result degraded by a seed-lookup timeout is cached only briefly: long enough that a slow
+// primary is not hit by every PDP view (the timed-out query is not cancelled), short enough that
+// prices come back soon after it recovers.
+const PDP_SIMILAR_CARD_ENRICH_DEGRADED_CACHE_TTL_MS = Math.min(PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS, 10_000);
 const PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES = Math.max(
   50,
   Number(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES || 1000) || 1000,
@@ -5492,6 +5496,8 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+const SIMILAR_CARD_SEED_LOOKUP_MAX_IDS = 24;
+
 async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
   if (!process.env.DATABASE_URL) return new Map();
   const requestedIds = Array.from(
@@ -5500,7 +5506,7 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         .map((value) => String(value || '').trim())
         .filter((value) => isExternalSeedProductId(value) || isPivotaSignatureProductId(value)),
     ),
-  ).slice(0, 24);
+  ).slice(0, SIMILAR_CARD_SEED_LOOKUP_MAX_IDS);
   const directExternalProductIds = requestedIds.filter((id) => !isPivotaSignatureProductId(id));
   const signatureProductIds = requestedIds.filter((id) => isPivotaSignatureProductId(id));
   if (!directExternalProductIds.length && !signatureProductIds.length) return new Map();
@@ -27617,6 +27623,28 @@ function shouldEnrichSimilarCard(item = {}, options = {}) {
   return isSimilarCardDetailHydrationAllowed(options) && !hasSimilarCardImage(item);
 }
 
+// A relationship-graph card whose public id is its canonical group (pg_) carries no seed id, so it
+// reached the rail unpriced even when its product has a price: prod 2026-10-12, 72 of 137 graph
+// cards on 40 rails had no price (Rare Beauty Soft Pinch Tinted Lip Oil: card unpriced, its group
+// PDP $24 USD). relationship_price_ref names the seed of the member the card SHOWS.
+function similarGraphCardPriceRef(item = {}) {
+  if (!isRelationshipGraphSimilarProduct(item)) return '';
+  if (readSimilarCardMoneyPair(item)) return '';
+  const ref = firstNonEmptyString(item.relationship_price_ref);
+  return ref && (isExternalSeedProductId(ref) || isPivotaSignatureProductId(ref)) ? ref : '';
+}
+
+// Copies the seed's price WITH its currency onto an unpriced graph card, nothing else: ids, link and
+// presentation stay the card's own. A seed with no known currency prices nothing.
+function applySimilarGraphCardSeedPrice(item, seedSourcesById, metadata) {
+  const ref = similarGraphCardPriceRef(item);
+  if (!ref) return item;
+  const pair = readSimilarCardMoneyPair(seedSourcesById?.get?.(ref));
+  if (!pair) return item;
+  if (metadata) metadata.card_enrichment_graph_price_hit_count += 1;
+  return { ...item, price: pair.amount, currency: pair.currency, price_source: 'relationship_candidate_seed' };
+}
+
 function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
   if (!item || typeof item !== 'object') return false;
   const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
@@ -27646,6 +27674,7 @@ function buildSimilarCardEnrichmentCacheKey({
         item.platform_product_id,
       ),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
+      price_ref: firstNonEmptyString(item.relationship_price_ref),
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -27719,13 +27748,13 @@ function readSimilarCardEnrichmentCache(cacheKey, nowMs = Date.now()) {
   return cloneSimilarCardEnrichmentResult(cached.items, cached.metadata);
 }
 
-function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, nowMs = Date.now()) {
+function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, nowMs = Date.now(), ttlMs = PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS) {
   if (!cacheKey) return;
   PDP_SIMILAR_CARD_ENRICH_CACHE.delete(cacheKey);
   PDP_SIMILAR_CARD_ENRICH_CACHE.set(cacheKey, {
     items: (Array.isArray(items) ? items : []).map((item) => cloneSimilarCardEnrichmentItem(item)),
     metadata: metadata && typeof metadata === 'object' ? { ...metadata } : {},
-    expiresAtMs: nowMs + PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS,
+    expiresAtMs: nowMs + ttlMs,
   });
   while (PDP_SIMILAR_CARD_ENRICH_CACHE.size > PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES) {
     const oldestKey = PDP_SIMILAR_CARD_ENRICH_CACHE.keys().next().value;
@@ -27736,7 +27765,10 @@ function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, no
 
 function finishSimilarCardEnrichmentResult(items = [], metadata = {}, cacheKey = '') {
   const result = attachSimilarCardEnrichmentMetadata(items, metadata);
-  writeSimilarCardEnrichmentCache(cacheKey, result, metadata);
+  // A seed lookup that timed out left graph cards unpriced: keep that only briefly.
+  const degraded = metadata.card_enrichment_graph_price_timeout_count > 0;
+  writeSimilarCardEnrichmentCache(cacheKey, result, metadata, Date.now(),
+    degraded ? PDP_SIMILAR_CARD_ENRICH_DEGRADED_CACHE_TTL_MS : PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS);
   return result;
 }
 
@@ -28272,7 +28304,7 @@ async function enrichSimilarProductsForPdpCards({
       'PDP similar product-intel card hydration failed',
     );
   }
-  const fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
+  let fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   const normalizedBudgetMs = Math.max(1, Number(budgetMs || 0) || 0);
   const normalizedDetailBudgetMs = Math.max(
     1,
@@ -28286,9 +28318,17 @@ async function enrichSimilarProductsForPdpCards({
     ),
   );
   const officialSeedHydrationCandidates = head.filter((item) => shouldHydrateSimilarCardFromOfficialSeed(item));
-  const officialSeedHydrationProductIds = officialSeedHydrationCandidates
-    .map((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0])
-    .filter(Boolean);
+  const graphPriceRefs = head.map((item) => similarGraphCardPriceRef(item)).filter(Boolean);
+  const officialSeedHydrationProductIds = Array.from(new Set([
+    ...officialSeedHydrationCandidates
+      .map((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0])
+      .filter(Boolean),
+    ...graphPriceRefs,
+  ]));
+  // The lookup takes the first SIMILAR_CARD_SEED_LOOKUP_MAX_IDS ids; a graph ref past them is not asked.
+  const sentSeedIds = new Set(officialSeedHydrationProductIds
+    .filter((id) => isExternalSeedProductId(id) || isPivotaSignatureProductId(id))
+    .slice(0, SIMILAR_CARD_SEED_LOOKUP_MAX_IDS));
   const metadata = {
     card_enrichment_budget_ms: normalizedBudgetMs,
     card_enrichment_detail_budget_ms: normalizedDetailBudgetMs,
@@ -28301,6 +28341,10 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
+    card_enrichment_graph_price_attempted_count: graphPriceRefs.filter((ref) => sentSeedIds.has(ref)).length,
+    card_enrichment_graph_price_hit_count: 0,
+    card_enrichment_graph_price_timeout_count: 0,
+    card_enrichment_graph_price_failed_count: 0,
     card_enrichment_detail_hydration_skipped_count: detailHydrationEnabled
       ? 0
       : head.filter((item) => item && typeof item === 'object' && !hasSimilarCardImage(item)).length,
@@ -28317,12 +28361,21 @@ async function enrichSimilarProductsForPdpCards({
     ).catch((err) => {
       if (err?.code === 'STAGE_TIMEOUT') {
         metadata.card_enrichment_official_seed_timeout_count += officialSeedHydrationCandidates.length;
+        metadata.card_enrichment_graph_price_timeout_count += metadata.card_enrichment_graph_price_attempted_count;
       } else {
         metadata.card_enrichment_official_seed_failed_count += officialSeedHydrationCandidates.length;
+        metadata.card_enrichment_graph_price_failed_count += metadata.card_enrichment_graph_price_attempted_count;
       }
       return new Map();
     });
   }
+  if (graphPriceRefs.length) {
+    head = head.map((item) => applySimilarGraphCardSeedPrice(item, officialSeedCardSourcesById, metadata));
+    // The early exit and the budget-timeout path both answer with `fallback`: keep the prices.
+    fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
+  }
+  // The early exit answers here; the full pass below re-derives the status with the same terms.
+  if (metadata.card_enrichment_graph_price_timeout_count > 0) metadata.card_enrichment_status = 'budget_exceeded';
   if (
     officialSeedHydrationCandidates.length <= 0 &&
     !head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))
@@ -28412,12 +28465,14 @@ async function enrichSimilarProductsForPdpCards({
   const result = [...enriched, ...tail];
   if (
     metadata.card_enrichment_timeout_count > 0 ||
-    metadata.card_enrichment_official_seed_timeout_count > 0
+    metadata.card_enrichment_official_seed_timeout_count > 0 ||
+    metadata.card_enrichment_graph_price_timeout_count > 0
   ) {
     metadata.card_enrichment_status = 'budget_exceeded';
   } else if (
     metadata.card_enrichment_failed_count > 0 ||
     metadata.card_enrichment_official_seed_failed_count > 0 ||
+    metadata.card_enrichment_graph_price_failed_count > 0 ||
     result.some((item) => String(item?.card_image_status || '').trim() === 'image_missing')
   ) {
     metadata.card_enrichment_status = 'partial';
@@ -29087,8 +29142,18 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalogBase(products, optio
 // `servingCurrency`: the buyer's (servingCurrencyFor). A caller with no request to read it from
 // gets the rule's silence -- the default market's currency -- so no similar surface can serve a
 // product priced in another one (Peng 2026-09-26).
+// relationship_price_ref is an internal seed key (often an ext_ id) for card enrichment; it never
+// leaves the gateway.
+function stripSimilarInternalKeys(products) {
+  return (Array.isArray(products) ? products : []).map((product) => {
+    if (!product || typeof product !== 'object' || !('relationship_price_ref' in product)) return product;
+    const { relationship_price_ref: _internal, ...rest } = product;
+    return rest;
+  });
+}
+
 function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
-  const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
+  const publicProducts = stripSimilarInternalKeys(products).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
     if (product.similar_render_status === 'not_renderable') return false;
@@ -38822,7 +38887,11 @@ function sanitizePdpSimilarResponseModules(modules, { servingCurrency } = {}) {
     if (!rawItems) return module;
     const publicItems = filterPublicVisibleSimilarProducts(rawItems, { servingCurrency });
     const filteredCount = Math.max(0, rawItems.length - publicItems.length);
-    if (filteredCount <= 0) return module;
+    if (filteredCount <= 0) {
+      // Nothing hidden, but the filter also drops internal keys: answer with its items.
+      const carriesInternalKeys = rawItems.some((item) => item && typeof item === 'object' && 'relationship_price_ref' in item);
+      return carriesInternalKeys ? { ...module, data: { ...module.data, items: publicItems } } : module;
+    }
     const currentMetadata =
       module.data.metadata && typeof module.data.metadata === 'object'
         ? module.data.metadata
@@ -39154,7 +39223,7 @@ async function resolveProductIntelInvokeContext({
       }).catch(() => null)
     : [];
   const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
-    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    products: stripSimilarInternalKeys(relatedProducts?.items),
     baseProduct: product,
     componentCandidates: componentSimilarCandidates,
   }).products;
@@ -52573,6 +52642,7 @@ module.exports._debug = {
   collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
+  buildSimilarCardEnrichmentCacheKey,
   mergeSimilarCardEnrichment,
   readSimilarCardMoneyPair,
   fetchSimilarProductsDeduped,

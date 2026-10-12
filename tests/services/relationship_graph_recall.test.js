@@ -138,7 +138,10 @@ describe('relationshipGraphRecall', () => {
       relationship_edge_id: 'edge_fixture',
       relationship_type: 'dupe',
       x_score: 0.91,
+      relationship_price_ref: 'ext_internal_seed',
     });
+    // The internal similar-card price key never reaches the feed (it spreads candidates into responses).
+    expect(product).not.toHaveProperty('relationship_price_ref');
 
     expect(product).toMatchObject({
       id: 'candidate_1',

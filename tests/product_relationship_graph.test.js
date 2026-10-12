@@ -287,6 +287,182 @@ describe('product relationship graph store helpers', () => {
     );
   });
 
+  describe('a collapsed card is priced as the member it shows (review: mini vs full size)', () => {
+    // Built by the real producers: catalog rows -> relationshipGraphResolutionContextFromRow (which
+    // stamps the display snapshot's sig_ AND listing ext_) -> collapseApprovedRelationshipEdgesToFamilies.
+    const { _internals: { relationshipGraphResolutionContextFromRow } } = require('../src/services/catalogEntityResolution');
+    const catalogRow = (ext, sig, title, extra = {}) => ({
+      input_ref: `product:${ext}`, normalized_ref: `product:${ext}`, source_product_id: ext, pivota_signature_id: sig,
+      title, brand: 'Rare Beauty', category: 'Lip Oil', product_type: 'lip oil', product_family_id: 'pf_soft_pinch_lip_oil',
+      ...extra,
+    });
+    const edgeTo = (ext, title, amount, score, extra = {}) => approvedDupe({
+      id: `prel_${ext}`,
+      candidate_product_ref: `product:${ext}`,
+      candidate_snapshot: { product_id: ext, brand: 'Rare Beauty', name: title, category_taxonomy: ['skincare', 'serum'] },
+      price_evidence: { ...approvedDupe().price_evidence, candidate_price_amount: amount, candidate_price_currency: 'USD' },
+      score_total: score,
+      ...extra,
+    });
+    const collapse = (edges, rows) => {
+      const resolutionMap = new Map();
+      for (const row of rows) resolutionMap.set(row.normalized_ref, relationshipGraphResolutionContextFromRow(row));
+      return collapseApprovedRelationshipEdgesToFamilies(edges, { resolutionMap, limit: 10 });
+    };
+    const miniRow = catalogRow('ext_mini', 'sig_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', { product_payload: { price_amount: '12', price_currency: 'USD' } });
+    const fullRow = catalogRow('ext_full', 'sig_full', 'Soft Pinch Tinted Lip Oil 3ml', { product_payload: { price_amount: '24', price_currency: 'USD' } });
+
+    test('a one-member family (display = representative, the common case) keeps the edge evidence (review r2: main priced it)', () => {
+      const [edge] = collapse([edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 11, 0.9)], [{ ...miniRow, product_payload: {} }]);
+      expect(edge.candidate_display_snapshot).toMatchObject({ pivota_signature_id: 'sig_mini', source_product_id: 'ext_mini' });
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 11, currency: 'USD', relationship_price_ref: 'ext_mini' });
+    });
+
+    test('another member on display takes its own catalog price pair, never the representative evidence', () => {
+      // The mini wins representative by score; the full size wins display as the group primary.
+      const collapsed = collapse(
+        [edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95), edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8)],
+        [{ ...miniRow, product_family_id: '', pdp_lifecycle_stage: 'draft' }, { ...fullRow, product_family_id: '', is_primary: true }]
+          .map((row) => ({ ...row, product_group_id: 'pg_catalog_soft_pinch' })),
+      );
+      expect(collapsed).toHaveLength(1);
+      expect(collapsed[0].id).toBe('prel_ext_mini');
+      expect(collapsed[0].candidate_display_snapshot.source_product_id).toBe('ext_full');
+      const item = relationshipEdgeToSimilarItem(collapsed[0]);
+      expect(item).toMatchObject({ title: 'Soft Pinch Tinted Lip Oil 3ml', price: 24, currency: 'USD', relationship_price_ref: 'ext_full' });
+    });
+
+    test('another member on display without a catalog price stays unpriced and names its own listing', () => {
+      // The representative's OWN snapshot quotes $12 USD too: it must not reach the other member's card.
+      const collapsed = collapse(
+        [
+          edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95, {
+            candidate_snapshot: { product_id: 'ext_mini', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml', price: 12, currency: 'USD' },
+          }),
+          edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8),
+        ],
+        [{ ...miniRow, product_family_id: '', pdp_lifecycle_stage: 'draft' }, { ...fullRow, product_payload: {}, product_family_id: '', is_primary: true }]
+          .map((row) => ({ ...row, product_group_id: 'pg_catalog_soft_pinch' })),
+      );
+      const item = relationshipEdgeToSimilarItem(collapsed[0]);
+      expect(item.price).toBeUndefined();
+      expect(item.currency).toBeUndefined();
+      expect(item.relationship_price_ref).toBe('ext_full');
+    });
+
+    test('a sig_-keyed edge whose display member carries that sig is the representative', () => {
+      const [edge] = collapse(
+        [edgeTo('sig_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 11, 0.9, { candidate_snapshot: { product_id: 'sig_mini', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml' } })],
+        [{ ...miniRow, input_ref: 'product:sig_mini', normalized_ref: 'product:sig_mini', product_payload: {} }],
+      );
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 11, currency: 'USD', relationship_price_ref: 'ext_mini' });
+    });
+
+    test('the representative keeps main\'s snapshot order: its own snapshot before the display one (review r2)', () => {
+      // Evidence names an amount without a currency: it borrows one only from a snapshot quoting that
+      // same amount, read edge snapshot first. A catalog row quoting another amount must not void it.
+      const [edge] = collapse(
+        [edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 11, 0.9, {
+          price_evidence: { candidate_price_amount: 11 },
+          candidate_snapshot: { product_id: 'ext_mini', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml', price: 11, currency: 'USD' },
+        })],
+        [miniRow],
+      );
+      expect(edge.candidate_display_snapshot).toMatchObject({ price: '12', currency: 'USD' });
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 11, currency: 'USD' });
+    });
+
+    test('two retailers\' listings under one signature: the listing on display is priced, not the representative\'s', () => {
+      const shared = (row) => ({ ...row, pivota_signature_id: 'sig_soft_pinch', product_family_id: '', product_group_id: 'pg_catalog_soft_pinch' });
+      const collapsed = collapse(
+        [
+          edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95, {
+            candidate_snapshot: { product_id: 'ext_mini', pivota_signature_id: 'sig_soft_pinch', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml' },
+          }),
+          edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8),
+        ],
+        [shared({ ...miniRow, pdp_lifecycle_stage: 'draft' }), shared({ ...fullRow, is_primary: true })],
+      );
+      expect(collapsed).toHaveLength(1);
+      expect(relationshipEdgeToSimilarItem(collapsed[0])).toMatchObject({ price: 24, currency: 'USD', relationship_price_ref: 'ext_full' });
+    });
+
+    test('an edge keyed by a legacy non-seed ref is matched to its display member by its snapshot listing', () => {
+      const [edge] = collapse(
+        [edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 11, 0.9, {
+          candidate_product_ref: 'product:legacy_mini',
+          candidate_snapshot: { product_id: 'legacy_mini', source_product_id: 'ext_mini', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml' },
+        })],
+        [{ ...miniRow, input_ref: 'product:legacy_mini', normalized_ref: 'product:legacy_mini', product_payload: {} }],
+      );
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 11, currency: 'USD' });
+    });
+
+    test('a one-member family keyed by a merchant ref keeps main\'s price, resolved or not (review r3)', () => {
+      const merchantEdge = () => edgeTo('ext_unused', 'Soft Pinch Tinted Lip Oil 1.5ml', 24, 0.9, {
+        candidate_product_ref: 'product:8812345',
+        candidate_snapshot: { product_id: '8812345', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml' },
+      });
+      const [unresolved] = collapse([merchantEdge()], []);
+      expect(relationshipEdgeToSimilarItem(unresolved)).toMatchObject({ price: 24, currency: 'USD' });
+      const [resolved] = collapse([merchantEdge()], [{ ...miniRow, input_ref: 'product:8812345', normalized_ref: 'product:8812345', product_payload: {} }]);
+      expect(resolved.candidate_display_snapshot.pivota_signature_id).toBe('sig_mini');
+      expect(relationshipEdgeToSimilarItem(resolved)).toMatchObject({ price: 24, currency: 'USD' });
+    });
+
+    test('an edge collapsed without the stamp keeps main\'s price; a false stamp prices the display member', () => {
+      const edge = { ...edgeTo('ext_mini', 'Mini', 24, 0.9), candidate_canonical_entity_id: 'pg_catalog_x',
+        candidate_display_snapshot: { product_id: 'pg_catalog_x', source_product_id: 'ext_full', price: 30, currency: 'USD' } };
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 24, currency: 'USD' });
+      expect(relationshipEdgeToSimilarItem({ ...edge, candidate_display_is_representative: false })).toMatchObject({ price: 30, currency: 'USD' });
+    });
+
+    test('a one-member sig_ family shown through another retailer\'s listing keeps the edge price (the collapse says it is the same member)', () => {
+      const [edge] = collapse(
+        [edgeTo('sig_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 24, 0.9, {
+          candidate_snapshot: { product_id: 'sig_mini', source_product_id: 'ext_retailer_c', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml' },
+        })],
+        [{ ...miniRow, input_ref: 'product:sig_mini', normalized_ref: 'product:sig_mini', source_product_id: 'ext_retailer_b' }],
+      );
+      expect(edge.candidate_display_is_representative).toBe(true);
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 24, currency: 'USD', relationship_price_ref: 'ext_retailer_b' });
+    });
+
+    test('a card with no display snapshot shows the representative and keeps its evidence, whatever the stamp says', () => {
+      const edge = { ...edgeTo('ext_mini', 'Mini', 24, 0.9), candidate_canonical_entity_id: 'pg_catalog_x', candidate_display_snapshot: {}, candidate_display_is_representative: false };
+      expect(relationshipEdgeToSimilarItem(edge)).toMatchObject({ price: 24, currency: 'USD' });
+    });
+
+    test('a display context resolved without a catalog snapshot shows its own edge snapshot: not the representative', () => {
+      const repContext = relationshipGraphResolutionContextFromRow({ ...miniRow, product_family_id: '', product_group_id: 'pg_catalog_soft_pinch', pdp_lifecycle_stage: 'draft' });
+      const fullContext = { ...relationshipGraphResolutionContextFromRow({ ...fullRow, product_family_id: '', product_group_id: 'pg_catalog_soft_pinch', is_primary: true }), display_snapshot: null };
+      const resolutionMap = new Map([[repContext.normalized_ref, repContext], [fullContext.normalized_ref, fullContext]]);
+      const [edge] = collapseApprovedRelationshipEdgesToFamilies(
+        [edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95), edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8)],
+        { resolutionMap, limit: 10 },
+      );
+      // Resolution falls back to the member's own edge snapshot, so the card shows the 3ml.
+      expect(edge.candidate_display_snapshot.name).toBe('Soft Pinch Tinted Lip Oil 3ml');
+      expect(edge.candidate_display_is_representative).toBe(false);
+      const item = relationshipEdgeToSimilarItem(edge);
+      expect(item.price).toBeUndefined();
+      expect(item.relationship_price_ref).toBe('ext_full');
+    });
+
+    test('a display member with no seed id names no price ref', () => {
+      const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1', candidate_display_snapshot: { product_id: 'pg_catalog_family1', name: 'Lip Oil', price: 30 } };
+      expect(relationshipEdgeToSimilarItem(edge).relationship_price_ref).toBeUndefined();
+    });
+
+    test('an uncollapsed card names its own listing, and nothing for a non-seed id', () => {
+      expect(relationshipEdgeToSimilarItem(edgeTo('ext_mini', 'Mini', 12, 0.9)).relationship_price_ref).toBe('ext_mini');
+      // The card's own listing, even when the edge names it by signature.
+      const bySig = edgeTo('ext_mini', 'Mini', 12, 0.9, { candidate_product_ref: 'product:sig_mini', candidate_snapshot: { product_id: 'ext_mini', brand: 'Rare Beauty', name: 'Mini' } });
+      expect(relationshipEdgeToSimilarItem(bySig).relationship_price_ref).toBe('ext_mini');
+      expect(relationshipEdgeToSimilarItem(approvedDupe()).relationship_price_ref).toBeUndefined();
+    });
+  });
+
   test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {
     const item = relationshipEdgeToSimilarItem(approvedDupe());
     expect(item).toMatchObject({
