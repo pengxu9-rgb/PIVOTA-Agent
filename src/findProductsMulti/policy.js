@@ -263,12 +263,19 @@ const COMPAT_CRITICAL_STRICT =
 const WEAK_QUOTA_DEFAULT = Number(
   process.env.FIND_PRODUCTS_MULTI_WEAK_QUOTA_DEFAULT || '2',
 );
+// USD per unit. Translates a shopper's stated BUDGET into each offer currency for recall and the budget
+// gate; it never prices an offer and never produces a displayed amount (ADR-024 commitment 5). Every SERVED
+// market's currency must be here: without SGD, an SG buyer's "under USD 25" resolved no SGD range, so the
+// mainline recall (offer scope = SGD) returned nothing (ADR-026 P0). SGD/AUD approximate 2026-10 (USD/SGD
+// ~1.27; AUD/SGD 0.888); FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES overrides any entry.
 const DEFAULT_BUDGET_FX_USD_RATES = Object.freeze({
   USD: 1,
   EUR: 1.09,
   GBP: 1.27,
   CNY: 0.14,
   JPY: 0.0067,
+  SGD: 0.79,
+  AUD: 0.7,
 });
 const FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES = (() => {
   const raw = String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim();
