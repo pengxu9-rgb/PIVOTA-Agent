@@ -1026,6 +1026,9 @@ function buildCollapsedRelationshipFamilyEdge(bucket) {
     candidate_offer_group_id: candidateContext.product_group_id || null,
     anchor_offer_group_id: bucket.anchorContext.product_group_id || null,
     candidate_display_snapshot: candidateSnapshot,
+    // Whether the card shows the representative edge's own member, whose price evidence the edge
+    // carries. The collapse knows it; ids cannot always tell (a merchant ref carries no ext_/sig_).
+    candidate_display_is_representative: candidateContext === representative.candidateContext,
     candidate_display_snapshot_source: candidateContext.display_snapshot_source || null,
     candidate_product_group_id: candidateContext.product_group_id || null,
     candidate_pivota_signature_id: candidateContext.pivota_signature_id || null,
@@ -1300,23 +1303,10 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
         displaySnap.product_id,
       )
     : [];
-  const representativeIds = seedIds(
-    candidateRef,
-    fallbackSnap.pivota_signature_id,
-    fallbackSnap.source_product_id,
-    fallbackSnap.external_product_id,
-    fallbackSnap.product_id,
-  );
-  // The catalog display snapshot names a member by its sig_ AND its listing ext_; the edge often names
-  // only one. They are the same member when the listings match (or, without a listing on one side, any
-  // shared id does).
-  const sameMember = (left, right) => {
-    const leftExt = left.filter(isExt);
-    const rightExt = right.filter(isExt);
-    if (leftExt.length && rightExt.length) return leftExt.some((id) => rightExt.includes(id));
-    return left.some((id) => right.includes(id));
-  };
-  const displayIsRepresentative = !hasDisplaySnap || sameMember(displayIds, representativeIds);
+  // The collapse stamps whether the card shows the representative edge's own member (ids cannot always
+  // tell: a merchant ref carries no ext_/sig_). Unstamped, an edge keeps main's behaviour.
+  const stampedRepresentative = src.candidate_display_is_representative ?? src.candidateDisplayIsRepresentative;
+  const displayIsRepresentative = !hasDisplaySnap || stampedRepresentative !== false;
   const money = isCollapsedEdge && !displayIsRepresentative
     ? getCandidateMoneyPair({ ...edge, price_evidence: {} }, [snap])
     : getCandidateMoneyPair(edge, isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot]);

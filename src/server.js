@@ -3710,6 +3710,10 @@ const PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS = Math.max(
   5_000,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS, 60_000),
 );
+// A result degraded by a seed-lookup timeout is cached only briefly: long enough that a slow
+// primary is not hit by every PDP view (the timed-out query is not cancelled), short enough that
+// prices come back soon after it recovers.
+const PDP_SIMILAR_CARD_ENRICH_DEGRADED_CACHE_TTL_MS = Math.min(PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS, 10_000);
 const PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES = Math.max(
   50,
   Number(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES || 1000) || 1000,
@@ -27643,13 +27647,13 @@ function readSimilarCardEnrichmentCache(cacheKey, nowMs = Date.now()) {
   return cloneSimilarCardEnrichmentResult(cached.items, cached.metadata);
 }
 
-function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, nowMs = Date.now()) {
+function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, nowMs = Date.now(), ttlMs = PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS) {
   if (!cacheKey) return;
   PDP_SIMILAR_CARD_ENRICH_CACHE.delete(cacheKey);
   PDP_SIMILAR_CARD_ENRICH_CACHE.set(cacheKey, {
     items: (Array.isArray(items) ? items : []).map((item) => cloneSimilarCardEnrichmentItem(item)),
     metadata: metadata && typeof metadata === 'object' ? { ...metadata } : {},
-    expiresAtMs: nowMs + PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS,
+    expiresAtMs: nowMs + ttlMs,
   });
   while (PDP_SIMILAR_CARD_ENRICH_CACHE.size > PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES) {
     const oldestKey = PDP_SIMILAR_CARD_ENRICH_CACHE.keys().next().value;
@@ -27660,8 +27664,10 @@ function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, no
 
 function finishSimilarCardEnrichmentResult(items = [], metadata = {}, cacheKey = '') {
   const result = attachSimilarCardEnrichmentMetadata(items, metadata);
-  // A seed lookup that timed out left graph cards unpriced: answer, but do not pin that for the TTL.
-  if (!(metadata.card_enrichment_graph_price_timeout_count > 0)) writeSimilarCardEnrichmentCache(cacheKey, result, metadata);
+  // A seed lookup that timed out left graph cards unpriced: keep that only briefly.
+  const degraded = metadata.card_enrichment_graph_price_timeout_count > 0;
+  writeSimilarCardEnrichmentCache(cacheKey, result, metadata, Date.now(),
+    degraded ? PDP_SIMILAR_CARD_ENRICH_DEGRADED_CACHE_TTL_MS : PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS);
   return result;
 }
 
@@ -28267,8 +28273,8 @@ async function enrichSimilarProductsForPdpCards({
     // The early exit and the budget-timeout path both answer with `fallback`: keep the prices.
     fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   }
+  // The early exit answers here; the full pass below re-derives the status with the same terms.
   if (metadata.card_enrichment_graph_price_timeout_count > 0) metadata.card_enrichment_status = 'budget_exceeded';
-  else if (metadata.card_enrichment_graph_price_failed_count > 0) metadata.card_enrichment_status = 'partial';
   if (
     officialSeedHydrationCandidates.length <= 0 &&
     !head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))

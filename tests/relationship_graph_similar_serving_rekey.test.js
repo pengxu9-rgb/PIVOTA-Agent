@@ -654,14 +654,32 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
     expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 1, card_enrichment_graph_price_hit_count: 0, card_enrichment_graph_price_timeout_count: 1 });
   });
 
-  test('a graph-price timeout marks the rail budget_exceeded and is not cached (the next request prices it)', async () => {
+  test('a graph-price timeout marks the rail budget_exceeded and is cached only briefly', async () => {
     state.seedDelayMs = 200;
     const items = [collapsed(9)];
     const slow = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 40, detailBudgetMs: 40 });
     expect(slow._enrichmentMetadata.card_enrichment_status).toBe('budget_exceeded');
     state.seedDelayMs = 0;
-    const next = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
-    expect(next[0]).toMatchObject({ price: 39, currency: 'USD' });
+    // Within the short window the degraded result is served (a slow primary is not re-hit per view).
+    const cached = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
+    expect(cached[0].price).toBeUndefined();
+    const realNow = Date.now;
+    const later = realNow() + 11_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      const next = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
+      expect(next[0]).toMatchObject({ price: 39, currency: 'USD' });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  test('a graph-price timeout on the full enrichment pass (a heuristic seed card beside it) reports budget_exceeded', async () => {
+    state.seedDelayMs = 200;
+    const heuristic = { product_id: candidateId(6), merchant_id: 'external_seed', title: 'Matte Clay Pomade 6', card_highlight: 'Strong hold', source: 'external' };
+    const out = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(8), heuristic], maxItems: 6, bypassCache: true, budgetMs: 40, detailBudgetMs: 40 });
+    expect(out[0].price).toBeUndefined();
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_timeout_count: 1, card_enrichment_status: 'budget_exceeded' });
   });
 
   test('a graph ref past the seed lookup cap is not counted as attempted', async () => {
