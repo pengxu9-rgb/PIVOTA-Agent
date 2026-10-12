@@ -1,6 +1,15 @@
 const { once } = require('events');
 const nock = require('nock');
 
+// These cases exercise dynamic recall beside the graph: the PDP_SIMILAR_GRAPH_ONLY_ENABLED=false kill-switch
+// path. The default graph-only contract is tests/integration/invoke.pdp_similar_graph_only.test.js.
+const PRIOR_PDP_SIMILAR_GRAPH_ONLY = process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+beforeAll(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
+afterAll(() => {
+  if (PRIOR_PDP_SIMILAR_GRAPH_ONLY === undefined) delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+  else process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = PRIOR_PDP_SIMILAR_GRAPH_ONLY;
+});
+
 function hasRuntimeDeps() {
   for (const dep of ['dotenv', 'express', 'axios']) {
     try {
