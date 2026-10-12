@@ -718,6 +718,13 @@ describe('a collapsed graph card is priced from its own candidate seed', () => {
     expect(none[0].price).toBeUndefined();
   });
 
+  test('the serving-currency rule is for graph cards: a heuristic card keeps the old merge (its own seed pair)', async () => {
+    state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
+    const heuristic = { product_id: candidateId(6), merchant_id: 'external_seed', title: 'Matte Clay Pomade 6', card_highlight: 'Strong hold', source: 'external' };
+    const [card] = await enrich([heuristic]);
+    expect(card).toMatchObject({ currency: 'JPY' });
+  });
+
   test('a sig_ ref (newest seed of any retailer) is held to the serving currency too', async () => {
     state.seedSignatures = { [sigOf(7)]: candidateId(7) };
     state.seed = () => ({ price_amount: '3900', price_currency: 'JPY' });
