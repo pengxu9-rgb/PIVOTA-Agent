@@ -27670,7 +27670,9 @@ function similarGraphCardPriceRef(item = {}) {
   if (!isRelationshipGraphSimilarProduct(item)) return '';
   if (readSimilarCardMoneyPair(item)) return '';
   const ref = firstNonEmptyString(item.relationship_price_ref);
-  return ref && (isExternalSeedProductId(ref) || isPivotaSignatureProductId(ref)) ? ref : '';
+  // A price belongs to the exact listing shown: an ext_ listing. A sig_ names a product, and the
+  // lookup answers it with the newest seed of ANY retailer carrying it (controller review of #2416).
+  return ref && isExternalSeedProductId(ref) ? ref : '';
 }
 
 // Copies the seed's price WITH its currency onto an unpriced graph card, nothing else: ids, link and
@@ -27912,7 +27914,9 @@ function quotesSimilarCardAmount(record) {
   );
 }
 
-function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
+// copyPrice: false - take presentation only, never the detail's money (a graph card matched to the
+// detail by signature, not by its own listing).
+function mergeSimilarCardEnrichment(candidate = {}, detail = {}, { copyPrice = true } = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
     if (next[targetKey] != null && String(next[targetKey]).trim()) return;
@@ -27939,7 +27943,7 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   // source carries its currency inside price{}; the currency guard then dropped the card. A card
   // without a complete pair of its own takes the detail's complete pair whole, never half of it.
   if (!readSimilarCardMoneyPair(next)) {
-    const detailMoney = readSimilarCardMoneyPair(detail);
+    const detailMoney = copyPrice ? readSimilarCardMoneyPair(detail) : null;
     if (detailMoney) {
       next.price = isPlainObject(detail.price) ? { ...detail.price } : detailMoney.amount;
       next.currency = detailMoney.currency;
@@ -28436,11 +28440,14 @@ async function enrichSimilarProductsForPdpCards({
           if (officialSeedProduct) {
             const alreadyHasTrustedPresentation =
               hasSimilarCardPresentation(item) && !isSellerOnlySimilarCardEvidence(item);
+            // A graph card's price belongs to its own listing. A sig_ key resolves to the newest seed of
+            // ANY retailer carrying the signature, so that seed lends presentation, never a price.
             const officialSeedEnriched = mergeSimilarCardEnrichment(
               alreadyHasTrustedPresentation
                 ? item
                 : applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
               officialSeedProduct,
+              { copyPrice: !isRelationshipGraphSimilarProduct(item) || isExternalSeedProductId(externalSeedId) },
             );
             if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {
               metadata.card_enrichment_official_seed_hit_count += 1;
@@ -43424,6 +43431,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          canonicalProduct: fallbackProduct || productForPdp || {},
 	          checkoutToken,
 	          bypassCache: false,
+	          servingCurrency: pdpServingCurrency,
 	        }).catch((err) => {
 	          logger.debug?.(
 	            {

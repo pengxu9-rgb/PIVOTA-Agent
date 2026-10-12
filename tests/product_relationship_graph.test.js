@@ -449,6 +449,29 @@ describe('product relationship graph store helpers', () => {
       expect(item.relationship_price_ref).toBe('ext_full');
     });
 
+    test('a card showing the representative whose display snapshot names no seed id falls back to the edge candidate (controller nit 2)', () => {
+      const base = { ...edgeTo('ext_mini', 'Mini', 0, 0.9, { price_evidence: {} }), candidate_canonical_entity_id: 'pg_catalog_x',
+        candidate_display_snapshot: { product_id: 'pg_catalog_x', name: 'Mini' } };
+      expect(relationshipEdgeToSimilarItem({ ...base, candidate_display_is_representative: true }).relationship_price_ref).toBe('ext_mini');
+      expect(relationshipEdgeToSimilarItem(base).relationship_price_ref).toBe('ext_mini');
+      // Another member on display: the edge candidate is not what the card shows.
+      expect(relationshipEdgeToSimilarItem({ ...base, candidate_display_is_representative: false }).relationship_price_ref).toBeUndefined();
+    });
+
+    test('the representative fallback names only the edge\'s own candidate listing, never another snapshot id (controller N1)', () => {
+      const pgEdge = { ...approvedDupe({ candidate_product_ref: 'product:pg_catalog_x', candidate_snapshot: { ...approvedDupe().candidate_snapshot, product_id: 'pg_catalog_x', source_product_id: 'ext_other_member' } }),
+        candidate_canonical_entity_id: 'pg_catalog_x', candidate_display_is_representative: true, candidate_display_snapshot: { product_id: 'pg_catalog_x', name: 'Lip Oil' } };
+      expect(relationshipEdgeToSimilarItem(pgEdge).relationship_price_ref).toBeUndefined();
+    });
+
+    test('a member named only by a signature names no price ref: a sig_ is a product, not the listing shown (controller review of #2416)', () => {
+      const shown = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_x', candidate_display_is_representative: false,
+        candidate_display_snapshot: { product_id: 'pg_catalog_x', pivota_signature_id: 'sig_only', name: 'Lip Oil' } };
+      expect(relationshipEdgeToSimilarItem(shown).relationship_price_ref).toBeUndefined();
+      const uncollapsed = approvedDupe({ candidate_product_ref: 'product:sig_only', candidate_snapshot: { ...approvedDupe().candidate_snapshot, product_id: 'sig_only' } });
+      expect(relationshipEdgeToSimilarItem(uncollapsed).relationship_price_ref).toBeUndefined();
+    });
+
     test('a display member with no seed id names no price ref', () => {
       const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1', candidate_display_snapshot: { product_id: 'pg_catalog_family1', name: 'Lip Oil', price: 30 } };
       expect(relationshipEdgeToSimilarItem(edge).relationship_price_ref).toBeUndefined();
