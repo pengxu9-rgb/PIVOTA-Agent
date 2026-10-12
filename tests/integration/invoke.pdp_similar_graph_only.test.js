@@ -73,7 +73,8 @@ const sameBrandRail = [
 ];
 let graphAnchors = [];
 
-async function startServer({ graph = 'items', graphOnly, graphSurface = true } = {}) {
+// graphOnly: true/false sets the flag; 'unset' removes it (the default is OFF); a string is set as is.
+async function startServer({ graph = 'items', graphOnly = true, graphSurface = true } = {}) {
   graphAnchors = [];
   jest.resetModules();
   nock.cleanAll();
@@ -83,7 +84,8 @@ async function startServer({ graph = 'items', graphOnly, graphSurface = true } =
   process.env.PIVOTA_API_BASE = API_BASE;
   process.env.PIVOTA_API_KEY = 'ak_live_0000000000000000000000000000000000000000000000000000000000000000';
   process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED = graphSurface ? 'true' : 'false';
-  if (graphOnly === undefined) delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+  if (graphOnly === 'unset') delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+  else if (typeof graphOnly === 'string') process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = graphOnly;
   else process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = graphOnly ? 'true' : 'false';
   delete process.env.DATABASE_URL;
   delete process.env.PGHOST;
@@ -148,7 +150,7 @@ async function bothSurfaces(baseUrl) {
 const ids = (items) => (items || []).map((item) => item.product_id).sort();
 
 describeIfRuntimeDeps('similar rails are served by the relationship graph only', () => {
-  test('by default only graph cards are served on both surfaces and dynamic recall is never called', async () => {
+  test('with graph-only on, only graph cards are served on both surfaces and dynamic recall is never called', async () => {
     const { server, baseUrl } = await startServer();
     try {
       const { pdpResponse, similarModule, findResponse, findBody } = await bothSurfaces(baseUrl);
@@ -159,6 +161,44 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
       expect(findBody.metadata).toMatchObject({ similar_main_route: 'relationship_graph', dynamic_recall_skipped: true });
       expect(recommendCalls).toHaveLength(0);
     } finally {
+      await stopServer(server);
+    }
+  });
+
+  test.each([['unset'], ['disabled'], ['ture'], ['0'], ['false']])('PDP_SIMILAR_GRAPH_ONLY_ENABLED=%s is off: graph + dynamic recall, as prod serves today (controller nits 1-2)', async (value) => {
+    const { server, baseUrl } = await startServer({ graphOnly: value });
+    try {
+      const { findBody } = await bothSurfaces(baseUrl);
+      expect([value, ids(findBody.products)]).toEqual([value, [FILLER_SIG, GRAPH_SIG].sort()]);
+      expect(recommendCalls.length).toBeGreaterThan(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test.each([['true'], ['1'], ['yes'], ['on'], ['enabled'], [' TRUE ']])('PDP_SIMILAR_GRAPH_ONLY_ENABLED=%s is on', async (value) => {
+    const { server, baseUrl } = await startServer({ graphOnly: value });
+    try {
+      const { findBody } = await bothSurfaces(baseUrl);
+      expect([value, ids(findBody.products)]).toEqual([value, [GRAPH_SIG]]);
+      expect(recommendCalls).toHaveLength(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('product intel (the 4th graph-only surface) answers without related products when the graph read fails, and says so in the log (controller nit 4)', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'throw' });
+    const logger = require('../../src/logger');
+    const warn = jest.spyOn(logger, 'warn');
+    try {
+      const response = await fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation: 'get_product_recommendation_intents_v1', payload: { product_ref: { merchant_id: MERCHANT_ID, product_id: PRODUCT_ID } } }) });
+      expect(response.status).toBe(200);
+      expect((await response.json()).recommendation_intents?.similar).toEqual([]);
+      expect(warn.mock.calls.some(([fields]) => fields?.event === 'product_intel_related_products_unavailable')).toBe(true);
+    } finally {
+      warn.mockRestore();
       await stopServer(server);
     }
   });
@@ -219,6 +259,9 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
       const shown = page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id }));
       const page2 = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, exclude_items: shown, options: { cache_bypass: true } } });
       expect(page2.products).toHaveLength(3);
+      // The read covers the shown cards too (they are dropped after it): k + shown (controller nit 3).
+      const readLimits = require('../../src/services/relationshipGraphRecall').fetchRelationshipGraphRecallForAnchor.mock.calls.map(([args]) => args.limit);
+      expect(readLimits[1]).toBe(Math.min(120, readLimits[0] + shown.length));
       expect(page2.products.map((p) => p.product_id).filter((id) => shown.some((s) => s.product_id === id))).toEqual([]);
       // Pages end when the graph is exhausted: 8 edges, pages of 3 -> 3, 3, 2.
       const shown2 = [...shown, ...page2.products.map((p) => ({ product_id: p.product_id }))];
@@ -257,7 +300,7 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
   });
 
   test('recall is asked for the same-brand handling only on the graph-only path', async () => {
-    for (const [graphOnly, expected] of [[undefined, true], [false, false]]) {
+    for (const [graphOnly, expected] of [[true, true], [false, false], ['unset', false]]) {
       const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly });
       try {
         const recall = require('../../src/services/relationshipGraphRecall');
