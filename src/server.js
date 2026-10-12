@@ -27070,7 +27070,9 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
     also_exclude: args?.pdp_product ? [args.pdp_product] : [],
   });
   items = excludeShownGraphSimilarItems(items, graphOptions, args?.pdp_product);
+  const beforeSpentDrop = items.length;
   items = dropSameBrandCardsAfterCapSpent(items, graphItems, graphOptions);
+  const sameBrandSpentDropped = beforeSpentDrop - items.length;
   if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
   return {
     status: items.length ? 'success' : 'empty',
@@ -27084,6 +27086,10 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
       ...relationshipGraphReadMetadata(graphRecall?.metadata),
       relationship_graph_curated_count: graphItems.length,
       relationship_graph_served_count: countRelationshipGraphSimilarProducts(items),
+      // The same-brand cap, measurable live: tagged cards recall returned, and those dropped because
+      // an earlier page already showed one (the public filter then keeps at most the cap of the rest).
+      relationship_graph_same_brand_count: graphItems.filter((item) => item?.similar_same_brand === true).length,
+      relationship_graph_same_brand_spent_dropped_count: sameBrandSpentDropped,
     },
   };
 }
@@ -27127,7 +27133,10 @@ async function fetchSimilarProductsDeduped(args = {}) {
     let curated = [];
     let relationshipGraphMeta;
     if (graphRecall) {
-      curated = graphItems;
+      // The cap is a graph-only rule. Here dynamic recall fills behind the graph cards, and its L1 lane
+      // (same brand + leaf + price) would backfill each dropped reviewed same-brand card with an
+      // unreviewed one: the tags are stripped, so this path serves as before.
+      curated = capSimilarSameBrandItems(graphItems, Infinity);
       if (graphRecall?.metadata?.enabled) {
         relationshipGraphMeta = {
           relationship_graph_enabled: true,
@@ -27156,8 +27165,6 @@ async function fetchSimilarProductsDeduped(args = {}) {
     if (curated.length) {
       // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
       // keeps the first occurrence, so curated wins on collisions.
-      mergedItems = dropSameBrandCardsAfterCapSpent(mergedItems, curated,
-        args?.options && typeof args.options === 'object' ? args.options : {});
       const k = Number(args?.k);
       if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
       relationshipGraphMeta = {
@@ -49277,6 +49284,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   edge_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_edge_count),
                   ...relationshipGraphReadMetadata({ read_status: rawSimilarMetadata.relationship_graph_read_status, read_reason: rawSimilarMetadata.relationship_graph_read_reason }),
                   curated_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_curated_count),
+                  same_brand_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_same_brand_count),
+                  same_brand_spent_dropped_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_same_brand_spent_dropped_count),
                   raw_served_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_served_count),
                   final_served_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_served_count),
                   filtered_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_filtered_count),

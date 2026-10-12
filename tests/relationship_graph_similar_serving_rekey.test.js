@@ -198,6 +198,9 @@ async function findSimilar() {
 }
 
 describe('find_similar_products keeps at most one card of the anchor brand, after the cross-brand cards', () => {
+  // The cap is a graph-only rule (the default serving path); this file otherwise runs the kill switch.
+  beforeEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'true'; });
+  afterEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
   test('two higher-scored same-brand edges: only the best is served, and it comes last', async () => {
     state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
       ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
@@ -205,6 +208,19 @@ describe('find_similar_products keeps at most one card of the anchor brand, afte
     const body = await findSimilar();
     const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
     expect(served).toEqual(['prel_rekey_4', 'prel_rekey_5', 'prel_rekey_2']);
+    // Measurable live: recall tagged two, none dropped for an earlier page.
+    expect(body.metadata).toMatchObject({ relationship_graph_same_brand_count: 2, relationship_graph_same_brand_spent_dropped_count: 0 });
+  });
+
+  test('with graph-only off (dynamic recall backfills behind the graph) the cap does not apply: that path serves as before', async () => {
+    process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false';
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' } }
+      : edge));
+    const body = await findSimilar();
+    const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
+    expect(served).toEqual(expect.arrayContaining(['prel_rekey_2', 'prel_rekey_3']));
+    expect(JSON.stringify(body)).not.toContain('similar_same_brand');
   });
 
   test('a rail of only same-brand cards whose best card is unrenderable serves the next one, not nothing (review)', async () => {

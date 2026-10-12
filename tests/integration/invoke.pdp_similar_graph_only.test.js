@@ -237,28 +237,35 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
   });
 
   test('"load more" never lets a second same-brand card through: the cap is spent once a page showed one (review)', async () => {
-    for (const graphOnly of [undefined, false]) {
-      const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly });
-      try {
-        const post = (payload) => fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
-        const page = (exclude) => post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, ...(exclude ? { exclude_items: exclude } : {}), options: { cache_bypass: true } } });
-        const graphTitles = (body) => body.products.filter((p) => p.relationship_edge_id).map((p) => p.title);
-        const page1 = await page();
-        expect([graphOnly, graphTitles(page1)]).toEqual([graphOnly, ['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 2']]);
-        const page2 = await page(page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id })));
-        // (The mixed path, graph-only off, has never excluded shown graph cards on load-more: it repeats
-        // the cross-brand ones. Out of scope here; what matters is no second same-brand card.)
-        expect([graphOnly, graphTitles(page2).filter((title) => title.startsWith('Own Brand'))]).toEqual([graphOnly, []]);
-        if (graphOnly === undefined) expect(graphTitles(page2)).toEqual([]);
-        expect(JSON.stringify([page1, page2])).not.toContain('similar_same_brand');
-        // A bundle component riding in exclude_items was never shown: it does not spend the cap.
-        const component = { product_id: sameBrandRail[2].product_id, merchant_id: 'external_seed', retrieval_source: 'reviewed_component_ref' };
-        const withComponent = await page([component]);
-        if (graphOnly === undefined) expect(graphTitles(withComponent)).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 3']);
-        else expect(graphTitles(withComponent).filter((title) => title.startsWith('Own Brand'))).toHaveLength(1);
-      } finally {
-        await stopServer(server);
-      }
+    const { server, baseUrl } = await startServer({ graph: 'sameBrand' });
+    try {
+      const post = (payload) => fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
+      const page = (exclude) => post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, ...(exclude ? { exclude_items: exclude } : {}), options: { cache_bypass: true } } });
+      const graphTitles = (body) => body.products.filter((p) => p.relationship_edge_id).map((p) => p.title);
+      const page1 = await page();
+      expect(graphTitles(page1)).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 2']);
+      const page2 = await page(page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id })));
+      expect(graphTitles(page2)).toEqual([]);
+      expect(page2.metadata).toMatchObject({ relationship_graph_same_brand_count: 3, relationship_graph_same_brand_spent_dropped_count: 2 });
+      expect(JSON.stringify([page1, page2])).not.toContain('similar_same_brand');
+      // A bundle component riding in exclude_items was never shown: it does not spend the cap.
+      const component = { product_id: sameBrandRail[2].product_id, merchant_id: 'external_seed', retrieval_source: 'reviewed_component_ref' };
+      expect(graphTitles(await page([component]))).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 3']);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('with graph-only off the same-brand cap does not apply (dynamic recall would backfill unreviewed same-brand cards)', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly: false });
+    try {
+      const body = await fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 6, options: { cache_bypass: true } } }) }).then((r) => r.json());
+      const ownBrand = body.products.filter((p) => String(p.title).startsWith('Own Brand'));
+      expect(ownBrand).toHaveLength(3);
+      expect(JSON.stringify(body)).not.toContain('similar_same_brand');
+    } finally {
+      await stopServer(server);
     }
   });
 
