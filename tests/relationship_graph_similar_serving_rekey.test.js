@@ -197,6 +197,17 @@ async function findSimilar() {
   return res.body;
 }
 
+describe('find_similar_products keeps at most one card of the anchor brand, after the cross-brand cards', () => {
+  test('two higher-scored same-brand edges: only the best is served, and it comes last', async () => {
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
+      : edge));
+    const body = await findSimilar();
+    const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
+    expect(served).toEqual(['prel_rekey_4', 'prel_rekey_5', 'prel_rekey_2']);
+  });
+});
+
 describe('find_similar_products serves re-keyed external-seed graph candidates', () => {
   test('prod-shaped candidates resolve to their observed seller and public signature, priced as a pair', async () => {
     const body = await findSimilar();

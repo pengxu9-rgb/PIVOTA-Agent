@@ -157,3 +157,105 @@ describe('relationshipGraphRecall', () => {
     });
   });
 });
+
+describe('a similar rail keeps at most one same-brand card, after every cross-brand card', () => {
+  // Prod 2026-10-12: 743 of 7,116 served alternatives were the anchor's own brand; on 221 rails every
+  // card was (Kose Clear Turn Collagen mask -> Kose Clear Turn Vitamin C mask).
+  const {
+    capSameBrandSimilarEdges,
+    resolveSimilarSameBrandMax,
+  } = require('../../src/services/relationshipGraphRecall');
+  const anchorProduct = { product_id: 'anchor_1', brand: 'Kosé', title: 'Clear Turn Collagen Mask' };
+  const altEdge = (i, brand, score) => approvedEdge({
+    id: `edge_${i}`,
+    relation_type: 'competitive_alternative',
+    display_label: null,
+    anchor_snapshot: { product_id: 'anchor_1', brand: 'Kosé', name: 'Clear Turn Collagen Mask' },
+    candidate_product_ref: `product:candidate_${i}`,
+    candidate_snapshot: { ...approvedEdge().candidate_snapshot, product_id: `candidate_${i}`, brand, name: `Sheet Mask ${i}`,
+      url: `https://example.test/c${i}`, image_url: `https://example.test/c${i}.jpg` },
+    score_total: score,
+  });
+  const rail = () => [
+    altEdge(1, 'KOSE', 0.95),
+    altEdge(2, 'Kosé', 0.94),
+    altEdge(3, 'Mediheal', 0.9),
+    altEdge(4, 'kose', 0.89),
+    altEdge(5, 'Dr. Jart+', 0.85),
+  ];
+  const fetchRail = (rows, extra = {}) => {
+    const queryFn = jest.fn(async () => ({ rows }));
+    return fetchRelationshipGraphRecallForAnchor({ anchorProduct, surface: 'pdp_similar', market: 'US', enabled: true, queryFn, limit: 4, ...extra })
+      .then((result) => ({ result, queryFn }));
+  };
+  const savedMax = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+  afterEach(() => {
+    if (savedMax === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+    else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = savedMax;
+  });
+
+  test('cross-brand cards keep their order and lead; only the best same-brand card follows them', async () => {
+    const { result } = await fetchRail(rail());
+    expect(result.items.map((item) => item.product_id)).toEqual(['candidate_3', 'candidate_5', 'candidate_1']);
+    expect(result.metadata).toMatchObject({ edge_count: 3, item_count: 3, same_brand_max: 1, same_brand_read_count: 3, same_brand_dropped_count: 2 });
+  });
+
+  test('the read goes past the rail size so the cross-brand cards behind dropped ones still fill it', async () => {
+    const { queryFn } = await fetchRail(rail());
+    // limit 4 -> read 8 (the uncollapsed reader then over-reads x2 in SQL).
+    expect(queryFn.mock.calls[0][1][3]).toBe(16);
+  });
+
+  test('a rail of only same-brand cards keeps one, never goes empty', async () => {
+    const { result } = await fetchRail([altEdge(1, 'Kosé', 0.9), altEdge(2, 'Kosé', 0.8)]);
+    expect(result.items.map((item) => item.product_id)).toEqual(['candidate_1']);
+  });
+
+  test('the cap never pushes the rail past the requested size', async () => {
+    const many = Array.from({ length: 8 }, (_, i) => altEdge(i + 10, `Brand ${i}`, 0.9 - i / 100));
+    const { result } = await fetchRail([...many, altEdge(1, 'Kosé', 0.5)]);
+    expect(result.items).toHaveLength(4);
+    expect(result.items.every((item) => item.brand !== 'Kosé')).toBe(true);
+  });
+
+  test('the cap is tunable by env: 0 drops every same-brand card, a negative value turns it off', async () => {
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '0';
+    expect((await fetchRail(rail())).result.items.map((item) => item.product_id)).toEqual(['candidate_3', 'candidate_5']);
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '-1';
+    const off = await fetchRail(rail());
+    expect(off.result.items.map((item) => item.product_id)).toEqual(['candidate_1', 'candidate_2', 'candidate_3', 'candidate_4']);
+    expect(off.result.metadata.same_brand_max).toBeUndefined();
+    expect(off.queryFn.mock.calls[0][1][3]).toBe(8);
+  });
+
+  test('an unparseable env value keeps the default of one', () => {
+    for (const value of [undefined, '', 'off', '1.5', 'two']) {
+      expect(resolveSimilarSameBrandMax({ AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX: value })).toBe(1);
+    }
+    expect(resolveSimilarSameBrandMax({ AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX: '3' })).toBe(3);
+    expect(resolveSimilarSameBrandMax({ AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX: '-1' })).toBe(Infinity);
+  });
+
+  test('a non-similar surface is not capped', async () => {
+    const { result } = await fetchRail(rail(), { surface: 'chat_alternatives' });
+    expect(result.items.map((item) => item.product_id)).toEqual(['candidate_1', 'candidate_2', 'candidate_3', 'candidate_4']);
+    expect(result.metadata.same_brand_max).toBeUndefined();
+  });
+
+  test('brand matching: case, accents and punctuation; the edge anchor snapshot or the PDP anchor; the display member', () => {
+    const edge = (candidate, anchorBrand = 'Other', extra = {}) => ({
+      anchor_snapshot: { brand: anchorBrand }, candidate_snapshot: { brand: candidate }, ...extra,
+    });
+    const sameCount = (edges, anchor = {}) => capSameBrandSimilarEdges(edges, { anchorProduct: anchor, max: 0 }).droppedCount;
+    expect(sameCount([edge('DR. JART+', 'Dr Jart')])).toBe(1);
+    expect(sameCount([edge('Decorté', 'DECORTE')])).toBe(1);
+    expect(sameCount([edge({ name: 'Kosé' })], { brand: 'KOSE' })).toBe(1);
+    expect(sameCount([edge('', 'Other', { candidate_display_snapshot: { brand: 'Kose' } })], { brand: 'Kosé' })).toBe(1);
+    expect(sameCount([edge('Mediheal', 'Kose')], { brand: 'Kose' })).toBe(0);
+    // A non-Latin brand keeps its letters (an ASCII-only key would be empty and never match).
+    expect(sameCount([edge('설화수', '설화수')])).toBe(1);
+    expect(sameCount([edge('설화수', '라네즈')])).toBe(0);
+    // No brand on the candidate: not counted as same-brand (the reviewer requires one on alternatives).
+    expect(sameCount([edge('', '')], { brand: '' })).toBe(0);
+  });
+});

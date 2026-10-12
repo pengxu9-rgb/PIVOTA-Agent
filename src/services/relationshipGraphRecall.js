@@ -76,6 +76,51 @@ function resolveServingRelationTypes(surface, relationTypes, env = process.env) 
   return configured.length ? Array.from(new Set(configured)) : [...DEFAULT_SIMILAR_RELATION_TYPES];
 }
 
+// A similar rail is for OTHER products a shopper could pick instead. Prod 2026-10-12: 743 of 7,116
+// served alternatives were the anchor's own brand, and on 221 of 2,634 rails every card was (Elizabeth
+// Arden Green Tea Pomegranate -> Red Door, Kose Clear Turn mask -> another Clear Turn mask). A rail
+// keeps at most AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX (default 1) same-brand cards,
+// placed after every cross-brand card, so no rail goes empty and none is a brand catalogue. A negative
+// value turns the cap off. Edges are not changed: the reviewer and the other surfaces still see them.
+const DEFAULT_SIMILAR_SAME_BRAND_MAX = 1;
+
+function resolveSimilarSameBrandMax(env = process.env) {
+  const raw = String(env?.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX ?? '').trim();
+  if (!/^-?\d+$/.test(raw)) return DEFAULT_SIMILAR_SAME_BRAND_MAX;
+  const value = Number(raw);
+  return value < 0 ? Infinity : value;
+}
+
+function brandKey(snapshot) {
+  const src = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? snapshot : {};
+  const brand = src.brand && typeof src.brand === 'object' ? src.brand.name : src.brand;
+  return String(brand || src.brand_name || src.brandName || src.vendor || '')
+    .normalize('NFKD') // decomposes an accent into its letter plus a mark the next line drops
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function isSameBrandSimilarEdge(edge = {}, anchorBrandKey = '') {
+  const candidateKeys = [brandKey(edge.candidate_display_snapshot), brandKey(edge.candidate_snapshot)].filter(Boolean);
+  const anchorKeys = [anchorBrandKey, brandKey(edge.anchor_snapshot)].filter(Boolean);
+  return candidateKeys.some((key) => anchorKeys.includes(key));
+}
+
+function capSameBrandSimilarEdges(edges = [], { anchorProduct = {}, max = DEFAULT_SIMILAR_SAME_BRAND_MAX } = {}) {
+  const list = Array.isArray(edges) ? edges : [];
+  if (!Number.isFinite(max)) return { edges: list, sameBrandCount: 0, droppedCount: 0 };
+  const anchorBrandKey = brandKey(anchorProduct);
+  const crossBrand = [];
+  const sameBrand = [];
+  for (const edge of list) (isSameBrandSimilarEdge(edge, anchorBrandKey) ? sameBrand : crossBrand).push(edge);
+  const kept = sameBrand.slice(0, Math.max(0, max));
+  return {
+    edges: [...crossBrand, ...kept],
+    sameBrandCount: sameBrand.length,
+    droppedCount: sameBrand.length - kept.length,
+  };
+}
+
 function buildRelationshipGraphFetchMetadata({
   surface,
   enabled,
@@ -189,35 +234,45 @@ async function fetchRelationshipGraphRecallForAnchor({
   }
 
   try {
-    const { edges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
+    const requestedLimit = Math.max(1, Math.min(120, Number(limit) || 24));
+    const sameBrandMax = SIMILAR_SURFACES.has(normalizedSurface) ? resolveSimilarSameBrandMax() : Infinity;
+    const { edges: readEdges, diagnostics } = await readApprovedRelationshipEdgesForAnchor({
       anchorType: 'product',
       anchorRefs,
       market,
       relationTypes: resolveServingRelationTypes(normalizedSurface, relationTypes),
-      limit: Math.max(1, Math.min(120, Number(limit) || 24)),
+      // Read past the cap so the cross-brand cards behind the dropped same-brand ones still fill the rail.
+      limit: Number.isFinite(sameBrandMax) ? Math.min(120, requestedLimit * 2) : requestedLimit,
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
-    const items = (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
+    const capped = capSameBrandSimilarEdges(readEdges, { anchorProduct: hydratedAnchor, max: sameBrandMax });
+    const edges = Number.isFinite(sameBrandMax) ? capped.edges.slice(0, requestedLimit) : capped.edges;
+    const items = edges.map(relationshipEdgeToSimilarItem).filter(Boolean);
     recordRelationshipGraphRecall({
       surface: normalizedSurface,
       status: diagnostics.read_status === 'unavailable' ? 'unavailable' : 'success',
       ...(diagnostics.read_status === 'unavailable' ? { error: diagnostics.read_reason } : {}),
       latencyMs: Date.now() - startedAt,
       anchorRefCount: anchorRefs.length,
-      edgeCount: Array.isArray(edges) ? edges.length : 0,
+      edgeCount: edges.length,
       itemCount: items.length,
     });
     return {
-      edges: Array.isArray(edges) ? edges : [],
+      edges,
       items,
-      metadata: buildRelationshipGraphFetchMetadata({
-        surface: normalizedSurface,
-        enabled: true,
-        anchorRefs,
-        edges,
-        items,
-        diagnostics,
-      }),
+      metadata: {
+        ...buildRelationshipGraphFetchMetadata({
+          surface: normalizedSurface,
+          enabled: true,
+          anchorRefs,
+          edges,
+          items,
+          diagnostics,
+        }),
+        ...(Number.isFinite(sameBrandMax)
+          ? { same_brand_max: sameBrandMax, same_brand_read_count: capped.sameBrandCount, same_brand_dropped_count: capped.droppedCount }
+          : {}),
+      },
     };
   } catch (err) {
     logger?.warn?.(
@@ -433,6 +488,8 @@ function mapRelationshipGraphItemToDiscoveryProduct(item = {}, { rank = 0 } = {}
 }
 
 module.exports = {
+  capSameBrandSimilarEdges,
+  resolveSimilarSameBrandMax,
   SURFACE_FLAGS,
   relationshipGraphReadMetadata,
   normalizeSurface,
