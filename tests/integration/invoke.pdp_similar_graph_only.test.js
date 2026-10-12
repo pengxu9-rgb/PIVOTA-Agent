@@ -66,6 +66,11 @@ const manyCards = Array.from({ length: 8 }, (_, i) => ({ ...graphCard, product_i
 const leakCard = { product_id: 'ext_leak_candidate', external_product_id: 'ext_leak_candidate', merchant_id: 'external_seed', title: 'Leaky Bottle',
   image_url: 'https://cdn.example.test/l.jpg', card_highlight: 'x', price: 3000, currency: 'JPY', source: 'relationship_graph',
   recommendation_source: 'relationship_graph', relationship_edge_id: 'prel_leak', relationship_type: 'competitive_alternative' };
+// Recall output for an anchor with 2 cross-brand and 3 same-brand edges (tagged by recall).
+const sameBrandRail = [
+  ...manyCards.slice(0, 2),
+  ...manyCards.slice(2, 5).map((card, i) => ({ ...card, title: `Own Brand ${i + 2}`, similar_same_brand: true })),
+];
 let graphAnchors = [];
 
 async function startServer({ graph = 'items', graphOnly, graphSurface = true } = {}) {
@@ -101,6 +106,7 @@ async function startServer({ graph = 'items', graphOnly, graphSurface = true } =
     ...actualRecall,
     fetchRelationshipGraphRecallForAnchor: jest.fn(async ({ anchorProduct }) => {
       graphAnchors.push(anchorProduct);
+      if (graph === 'sameBrand') return { edges: [], items: sameBrandRail, metadata: { enabled: true, edge_count: 5, item_count: 5, read_status: 'ready', read_reason: null } };
       if (graph === 'many') return { edges: [], items: manyCards, metadata: { enabled: true, edge_count: 8, item_count: 8, read_status: 'ready', read_reason: null } };
       if (graph === 'leak') return { edges: [], items: [graphCard, leakCard], metadata: { enabled: true, edge_count: 2, item_count: 2, read_status: 'ready', read_reason: null } };
       if (graph === 'throw') throw new Error('graph read exploded');
@@ -225,6 +231,54 @@ describeIfRuntimeDeps('similar rails are served by the relationship graph only',
       const byTitle = await post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 8, exclude_items: [{ title: 'Steel Bottle 0', brand: 'Pivota Test' }], options: { cache_bypass: true } } });
       expect(byTitle.products.map((p) => p.title)).not.toContain('Steel Bottle 0');
       expect(recommendCalls).toHaveLength(0);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('"load more" never lets a second same-brand card through: the cap is spent once a page showed one (review)', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'sameBrand' });
+    try {
+      const post = (payload) => fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
+      const page = (exclude) => post({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, ...(exclude ? { exclude_items: exclude } : {}), options: { cache_bypass: true } } });
+      const graphTitles = (body) => body.products.filter((p) => p.relationship_edge_id).map((p) => p.title);
+      const page1 = await page();
+      expect(graphTitles(page1)).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 2']);
+      const page2 = await page(page1.products.map((p) => ({ product_id: p.product_id, merchant_id: p.merchant_id })));
+      expect(graphTitles(page2)).toEqual([]);
+      expect(page2.metadata).toMatchObject({ relationship_graph_same_brand_count: 3, relationship_graph_same_brand_spent_dropped_count: 2 });
+      expect(JSON.stringify([page1, page2])).not.toContain('similar_same_brand');
+      // A bundle component riding in exclude_items was never shown: it does not spend the cap.
+      const component = { product_id: sameBrandRail[2].product_id, merchant_id: 'external_seed', retrieval_source: 'reviewed_component_ref' };
+      expect(graphTitles(await page([component]))).toEqual(['Steel Bottle 0', 'Steel Bottle 1', 'Own Brand 3']);
+    } finally {
+      await stopServer(server);
+    }
+  });
+
+  test('recall is asked for the same-brand handling only on the graph-only path', async () => {
+    for (const [graphOnly, expected] of [[undefined, true], [false, false]]) {
+      const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly });
+      try {
+        const recall = require('../../src/services/relationshipGraphRecall');
+        await fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 3, options: { cache_bypass: true } } }) });
+        const calls = recall.fetchRelationshipGraphRecallForAnchor.mock.calls;
+        expect([graphOnly, calls.length > 0, calls.every(([args]) => args.sameBrandCap === expected)]).toEqual([graphOnly, true, true]);
+      } finally {
+        await stopServer(server);
+      }
+    }
+  });
+
+  test('with graph-only off the same-brand cap does not apply (dynamic recall would backfill unreviewed same-brand cards)', async () => {
+    const { server, baseUrl } = await startServer({ graph: 'sameBrand', graphOnly: false });
+    try {
+      const body = await fetch(`${baseUrl}/agent/shop/v1/invoke`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation: 'find_similar_products', payload: { product_id: PRODUCT_ID, merchant_id: MERCHANT_ID, limit: 6, options: { cache_bypass: true } } }) }).then((r) => r.json());
+      const ownBrand = body.products.filter((p) => String(p.title).startsWith('Own Brand'));
+      expect(ownBrand).toHaveLength(3);
+      expect(JSON.stringify(body)).not.toContain('similar_same_brand');
     } finally {
       await stopServer(server);
     }

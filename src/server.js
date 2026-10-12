@@ -521,6 +521,8 @@ const {
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
 const {
+  capSimilarSameBrandItems,
+  resolveSimilarSameBrandMax,
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
   relationshipGraphReadMetadata,
@@ -26947,6 +26949,8 @@ async function resolveSimilarFamilyDedupeContext({
   };
 }
 
+// The same-brand cap is a graph-only rule: with graph-only off, recall reads exactly as before it
+// (no reorder, over-read, tail or tag), so those rails do not change.
 async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
   return fetchRelationshipGraphRecallForAnchor({
     anchorProduct,
@@ -26954,6 +26958,7 @@ async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US'
     market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
     limit,
     logger,
+    sameBrandCap: isPdpSimilarGraphOnlyEnabled(),
   });
 }
 
@@ -26965,9 +26970,7 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
   const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
   if (!graphItems.length) return null;
   const safeLimit = Number(limit);
-  const items = Number.isFinite(safeLimit) && safeLimit > 0
-    ? graphItems.slice(0, safeLimit)
-    : graphItems;
+  const items = sliceKeepingSameBrandTail(graphItems, safeLimit);
   return {
     status: 'success',
     strategy: 'relationship_graph',
@@ -27008,6 +27011,32 @@ function excludeShownGraphSimilarItems(items, options = {}, anchor = null) {
     const value = firstNonEmptyString(item?.[key]);
     return Boolean(value) && ids.has(value.toLowerCase());
   }));
+}
+
+// "Load more" re-reads the same top-k and drops the cards already shown, so the public filter's
+// same-brand cap would count afresh on every page and let one more same-brand card through each time.
+// Once the shown cards already spent the cap, the remaining same-brand cards leave here.
+// A k cut before the public filter would cut the same-brand fallback tail recall appended past the rail
+// (cross-brand first): with every cross-brand card then failing serving (dead PDP, currency), the rail
+// would empty where main served its same-brand card. The tagged tail rides past k; the public filter's
+// cap keeps at most the cap of it.
+function sliceKeepingSameBrandTail(items, k) {
+  const list = Array.isArray(items) ? items : [];
+  if (!(Number.isFinite(k) && k > 0)) return list;
+  return [...list.slice(0, k), ...list.slice(k).filter((item) => item?.similar_same_brand === true)];
+}
+
+// Bundle components ride in the same exclude_items (collectPdpComponentSimilarCandidates); they were
+// never shown, so they do not spend the cap.
+function dropSameBrandCardsAfterCapSpent(items, graphItems, options = {}) {
+  const tagged = (Array.isArray(graphItems) ? graphItems : []).filter((item) => item?.similar_same_brand === true);
+  if (!tagged.length) return items;
+  const shownOptions = Array.isArray(options?.exclude_items)
+    ? { exclude_items: options.exclude_items.filter((item) => item?.retrieval_source !== 'reviewed_component_ref') }
+    : options;
+  const shownSameBrand = tagged.length - excludeShownGraphSimilarItems(tagged, shownOptions, null).length;
+  if (shownSameBrand < resolveSimilarSameBrandMax()) return items;
+  return (Array.isArray(items) ? items : []).filter((item) => item?.similar_same_brand !== true);
 }
 
 async function fetchGraphOnlySimilarProducts(args = {}) {
@@ -27058,7 +27087,10 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
     also_exclude: args?.pdp_product ? [args.pdp_product] : [],
   });
   items = excludeShownGraphSimilarItems(items, graphOptions, args?.pdp_product);
-  if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
+  const beforeSpentDrop = items.length;
+  items = dropSameBrandCardsAfterCapSpent(items, graphItems, graphOptions);
+  const sameBrandSpentDropped = beforeSpentDrop - items.length;
+  items = sliceKeepingSameBrandTail(items, k);
   return {
     status: items.length ? 'success' : 'empty',
     strategy: 'relationship_graph',
@@ -27071,6 +27103,10 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
       ...relationshipGraphReadMetadata(graphRecall?.metadata),
       relationship_graph_curated_count: graphItems.length,
       relationship_graph_served_count: countRelationshipGraphSimilarProducts(items),
+      // The same-brand cap, measurable live: tagged cards recall returned, and those dropped because
+      // an earlier page already showed one (the public filter then keeps at most the cap of the rest).
+      relationship_graph_same_brand_count: graphItems.filter((item) => item?.similar_same_brand === true).length,
+      relationship_graph_same_brand_spent_dropped_count: sameBrandSpentDropped,
     },
   };
 }
@@ -27114,7 +27150,10 @@ async function fetchSimilarProductsDeduped(args = {}) {
     let curated = [];
     let relationshipGraphMeta;
     if (graphRecall) {
-      curated = graphItems;
+      // The cap is a graph-only rule. Here dynamic recall fills behind the graph cards, and its L1 lane
+      // (same brand + leaf + price) would backfill each dropped reviewed same-brand card with an
+      // unreviewed one: the tags are stripped, so this path serves as before.
+      curated = capSimilarSameBrandItems(graphItems, Infinity);
       if (graphRecall?.metadata?.enabled) {
         relationshipGraphMeta = {
           relationship_graph_enabled: true,
@@ -27684,6 +27723,8 @@ function buildSimilarCardEnrichmentCacheKey({
       ),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
       price_ref: firstNonEmptyString(item.relationship_price_ref),
+      // Cached cards carry the anchor-relative same-brand tag: two anchors must not share it.
+      same_brand: item.similar_same_brand === true,
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -27800,6 +27841,8 @@ function buildVisibleSimilarSigHydrationCacheKey(products = []) {
       ),
       external_ids: collectExternalSeedIdCandidatesForVisibleCatalogHydration(item),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
+      // Cached cards carry the anchor-relative same-brand tag: two anchors must not share it.
+      same_brand: item.similar_same_brand === true,
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -29173,7 +29216,7 @@ function stripSimilarInternalKeys(products) {
   });
 }
 
-function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
+function filterPublicVisibleSimilarProducts(products, { servingCurrency, capSameBrand = true } = {}) {
   const publicProducts = stripSimilarInternalKeys(products).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
@@ -29183,10 +29226,13 @@ function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) 
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
-  return filterProductsToServingCurrency(
+  const servable = filterProductsToServingCurrency(
     publicProducts,
     servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency,
   );
+  // The same-brand cap counts only cards that survived every filter above, so it never empties a rail.
+  // A caller with a later drop (bundle components) passes capSameBrand: false and caps after it.
+  return capSameBrand ? capSimilarSameBrandItems(servable) : servable;
 }
 
 function dedupeSimilarCandidatesByMerchantProductId(products) {
@@ -38911,7 +38957,8 @@ function sanitizePdpSimilarResponseModules(modules, { servingCurrency } = {}) {
     const filteredCount = Math.max(0, rawItems.length - publicItems.length);
     if (filteredCount <= 0) {
       // Nothing hidden, but the filter also drops internal keys: answer with its items.
-      const carriesInternalKeys = rawItems.some((item) => item && typeof item === 'object' && 'relationship_price_ref' in item);
+      const carriesInternalKeys = rawItems.some((item) => item && typeof item === 'object' &&
+        ('relationship_price_ref' in item || 'similar_same_brand' in item));
       return carriesInternalKeys ? { ...module, data: { ...module.data, items: publicItems } } : module;
     }
     const currentMetadata =
@@ -39244,11 +39291,11 @@ async function resolveProductIntelInvokeContext({
         },
       }).catch(() => null)
     : [];
-  const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
+  const filteredRelatedProducts = capSimilarSameBrandItems(excludeBundleComponentProductsFromSimilar({
     products: stripSimilarInternalKeys(relatedProducts?.items),
     baseProduct: product,
     componentCandidates: componentSimilarCandidates,
-  }).products;
+  }).products);
 
   return {
     canonicalProductRef,
@@ -45150,12 +45197,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         markPdpV2Checkpoint('after_similar_sig_hydration');
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates, {
           servingCurrency: pdpServingCurrency,
+          capSameBrand: false,
         });
         const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
           componentCandidates: componentSimilarCandidates,
         });
+        // Same-brand cards are the likeliest bundle components: cap only what is left after them.
+        componentFilteredSimilar.products = capSimilarSameBrandItems(componentFilteredSimilar.products);
         const displayableRelatedProducts = componentFilteredSimilar.products.slice(0, similarLimit);
         const publicExternalIdFilteredCount = Math.max(
           0,
@@ -49339,6 +49389,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   edge_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_edge_count),
                   ...relationshipGraphReadMetadata({ read_status: rawSimilarMetadata.relationship_graph_read_status, read_reason: rawSimilarMetadata.relationship_graph_read_reason }),
                   curated_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_curated_count),
+                  same_brand_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_same_brand_count),
+                  same_brand_spent_dropped_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_same_brand_spent_dropped_count),
                   raw_served_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_served_count),
                   final_served_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_served_count),
                   filtered_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_filtered_count),
