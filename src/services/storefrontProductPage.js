@@ -47,7 +47,7 @@ const HTML_HEADERS = Object.freeze({
 
 let defaultFetch = null;
 const goneCache = new Map(); // product .json URL -> { status, expires }
-const liveCache = new Map(); // product .json URL -> { variantIds, expires }
+const liveCache = new Map(); // product .json URL -> { variantIds, variantCodes, expires }
 
 function remember(map, key, value) {
   map.set(key, value);
@@ -112,6 +112,19 @@ function knownGone(jsonUrl, now = Date.now()) {
   return { status: hit.status };
 }
 
+/** The page's own variant barcodes and SKUs: an id the catalog stored that matches one is a catalog-id error. */
+function variantCodesOf(body) {
+  const variants = body && body.product && Array.isArray(body.product.variants) ? body.product.variants : [];
+  const codes = new Set();
+  for (const v of variants.slice(0, MAX_VARIANT_IDS)) {
+    for (const raw of [v && v.barcode, v && v.sku]) {
+      const code = raw == null ? '' : String(raw).trim();
+      if (code) codes.add(code);
+    }
+  }
+  return codes;
+}
+
 function variantIdsOf(body) {
   const variants = body && body.product && Array.isArray(body.product.variants) ? body.product.variants : null;
   if (!variants) return null;
@@ -122,7 +135,7 @@ function variantIdsOf(body) {
 /**
  * One bounded read of a storefront product page. Never throws.
  * @returns {Promise<{state:'gone'|'live'|'unknown', reason:string, host?:string, handle?:string, status?:number,
- *   variantIds?:Set<string>|null, cacheHit?:boolean, headless?:boolean}>}
+ *   variantIds?:Set<string>|null, variantCodes?:Set<string>, cacheHit?:boolean, headless?:boolean}>}
  *   `variantIds: null` on a live page = more than MAX_VARIANT_IDS variants: which ones are sold is not known.
  */
 async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, now = Date.now } = {}) {
@@ -132,7 +145,9 @@ async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAUL
   const gone = knownGone(page.jsonUrl, now());
   if (gone) return { ...base, state: 'gone', reason: `http_${gone.status}`, status: gone.status, cacheHit: true };
   const live = liveCache.get(page.jsonUrl);
-  if (live && live.expires > now()) return { ...base, state: 'live', reason: 'ok', variantIds: live.variantIds, cacheHit: true };
+  if (live && live.expires > now()) {
+    return { ...base, state: 'live', reason: 'ok', variantIds: live.variantIds, variantCodes: live.variantCodes, cacheHit: true };
+  }
 
   const doFetch = fetchImpl || (defaultFetch = defaultFetch || createPublicNetworkFetch());
   const controller = new AbortController();
@@ -158,8 +173,9 @@ async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAUL
     let variantIds = variantIdsOf(body);
     if (!variantIds) return { ...base, state: 'unknown', reason: 'no_variants' };
     if (variantIds === 'too_many') variantIds = null;
-    remember(liveCache, page.jsonUrl, { variantIds, expires: now() + TTL_MS });
-    return { ...base, state: 'live', reason: 'ok', variantIds };
+    const variantCodes = variantCodesOf(body);
+    remember(liveCache, page.jsonUrl, { variantIds, variantCodes, expires: now() + TTL_MS });
+    return { ...base, state: 'live', reason: 'ok', variantIds, variantCodes };
   } catch {
     return { ...base, state: 'unknown', reason: controller.signal.aborted ? 'timeout' : 'network_error' };
   } finally {

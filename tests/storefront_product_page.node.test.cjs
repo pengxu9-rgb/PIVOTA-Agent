@@ -193,3 +193,12 @@ test('a product with more variants than the cap is live with variantIds null (ca
   assert.equal(again.cacheHit, true);
   assert.equal(again.variantIds, null);
 });
+
+test('a live page carries its variants\' barcodes and SKUs, so a catalog id copied from one is recognizable', async () => {
+  const body = { product: { variants: [{ id: 51000000000001, barcode: '8809123456789', sku: 'SH-01' }, { id: 51000000000002, barcode: null, sku: '' }] } };
+  const fetchImpl = async () => new Response(JSON.stringify(body), { status: 200, headers: { 'powered-by': 'Shopify' } });
+  const got = await page.readStorefrontProductPage('https://codes.example/products/a', { fetchImpl });
+  assert.deepEqual([...got.variantCodes].sort(), ['8809123456789', 'SH-01']);
+  const again = await page.readStorefrontProductPage('https://codes.example/products/a', { fetchImpl });
+  assert.deepEqual([...again.variantCodes].sort(), ['8809123456789', 'SH-01']);
+});
