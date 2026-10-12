@@ -1,6 +1,15 @@
 const request = require('supertest');
 const nock = require('nock');
 
+// These cases exercise dynamic recall beside the graph: the PDP_SIMILAR_GRAPH_ONLY_ENABLED=false kill-switch
+// path. The default graph-only contract is tests/integration/invoke.pdp_similar_graph_only.test.js.
+const PRIOR_PDP_SIMILAR_GRAPH_ONLY = process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+beforeAll(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
+afterAll(() => {
+  if (PRIOR_PDP_SIMILAR_GRAPH_ONLY === undefined) delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+  else process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = PRIOR_PDP_SIMILAR_GRAPH_ONLY;
+});
+
 describe('find_similar_products mainline wrapper', () => {
   const apiBase = 'http://localhost:8080';
 
@@ -331,6 +340,91 @@ describe('find_similar_products mainline wrapper', () => {
   // `callerRequestedMerchantId`; this gate spells the same thing `merchantId`. The oracle suites
   // stayed green through the widening in both directions — they never covered this round trip,
   // which is precisely why the gap survived review.
+  it('graph-only: a resolved sig external-seed base is the graph anchor', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'true';
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED = 'true';
+    const graphAnchors = [];
+    jest.doMock('../src/services/relationshipGraphRecall', () => ({
+      ...jest.requireActual('../src/services/relationshipGraphRecall'),
+      fetchRelationshipGraphRecallForAnchor: jest.fn(async ({ anchorProduct }) => {
+        graphAnchors.push(anchorProduct);
+        return { edges: [], items: [], metadata: { enabled: true, edge_count: 0, item_count: 0, read_status: 'empty', read_reason: 'no_eligible_edges' } };
+      }),
+    }));
+    const dbQueryMock = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_source_1',
+          product_key: 'prod::external_seed::external_seed::ext_source_1',
+          pivota_signature_id: 'sig_source1',
+          content_key: 'tom-ford:test-content-key',
+          catalog_title: 'The Ordinary Alpha Arbutin Serum',
+          catalog_brand: 'The Ordinary',
+          category: 'Serum',
+          product_type: 'Serum',
+          category_path: 'beauty/skincare/serum',
+          catalog_image_url: 'https://cdn.example.test/base.jpg',
+        },
+      ],
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'ext_sim_1',
+          merchant_id: 'external_seed',
+          pivota_signature_id: 'sig_sim1',
+          title: 'Similar Product 1',
+          image_url: 'https://cdn.example.test/sim-1.jpg',
+          card_highlight: 'Same category with a comparable finish.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 1 },
+      },
+    });
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'sig_source1',
+          merchant_id: 'external_seed',
+          limit: 4,
+          options: { debug: true },
+        },
+      })
+      .expect(200);
+
+    expect(dbQueryMock).toHaveBeenCalledWith(expect.stringContaining('WHERE cp.pivota_signature_id = $1'), ['sig_source1']);
+    expect(recommendMock).not.toHaveBeenCalled();
+    expect(graphAnchors[0]).toEqual(expect.objectContaining({
+      merchant_id: 'external_seed',
+      product_id: 'ext_source_1',
+      external_product_id: 'ext_source_1',
+      pivota_signature_id: 'sig_source1',
+      requested_product_id: 'sig_source1',
+    }));
+    process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false';
+    delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED;
+    jest.dontMock('../src/services/relationshipGraphRecall');
+  });
+
   it('resolves a sig base echoed back under an OBSERVED seller (ADR-009 re-key)', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     const dbQueryMock = jest.fn().mockResolvedValue({
