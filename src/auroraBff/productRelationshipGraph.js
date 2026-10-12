@@ -1279,9 +1279,14 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     edge,
     isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot],
   );
+  // The edge's own candidate (ext_/sig_). A collapsed edge's public id is its canonical group, which
+  // no seed lookup answers; card enrichment prices the card from this ref instead (it is never a
+  // public id and the visible-id hydration does not read it).
+  const candidateRef = stripRelationshipRefPrefix(edge.candidate_product_ref);
   return {
     product_id: productId,
     external_product_id: productId,
+    ...(candidateRef ? { relationship_candidate_ref: candidateRef } : {}),
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     ...(name ? { title: name } : {}),
     ...(brand ? { brand } : {}),

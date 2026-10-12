@@ -27516,6 +27516,28 @@ function shouldEnrichSimilarCard(item = {}, options = {}) {
   return isSimilarCardDetailHydrationAllowed(options) && !hasSimilarCardImage(item);
 }
 
+// A relationship-graph card whose public id is its canonical group (pg_) carries no seed id, so it
+// reached the rail unpriced even when its product has a price: prod 2026-10-12, 72 of 137 graph
+// cards on 40 rails had no price (Rare Beauty Soft Pinch Tinted Lip Oil: card unpriced, its group
+// PDP $24 USD). The card's own candidate ref (relationship_candidate_ref) names the seed.
+function similarGraphCardPriceRef(item = {}) {
+  if (!isRelationshipGraphSimilarProduct(item)) return '';
+  if (readSimilarCardMoneyPair(item)) return '';
+  const ref = firstNonEmptyString(item.relationship_candidate_ref);
+  return ref && (isExternalSeedProductId(ref) || isPivotaSignatureProductId(ref)) ? ref : '';
+}
+
+// Copies the seed's price WITH its currency onto an unpriced graph card, nothing else: ids, link and
+// presentation stay the card's own. A seed with no known currency prices nothing.
+function applySimilarGraphCardSeedPrice(item, seedSourcesById, metadata) {
+  const ref = similarGraphCardPriceRef(item);
+  if (!ref) return item;
+  const pair = readSimilarCardMoneyPair(seedSourcesById?.get?.(ref));
+  if (!pair) return item;
+  if (metadata) metadata.card_enrichment_graph_price_hit_count += 1;
+  return { ...item, price: pair.amount, currency: pair.currency, price_source: 'relationship_candidate_seed' };
+}
+
 function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
   if (!item || typeof item !== 'object') return false;
   const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
@@ -28171,7 +28193,7 @@ async function enrichSimilarProductsForPdpCards({
       'PDP similar product-intel card hydration failed',
     );
   }
-  const fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
+  let fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   const normalizedBudgetMs = Math.max(1, Number(budgetMs || 0) || 0);
   const normalizedDetailBudgetMs = Math.max(
     1,
@@ -28185,9 +28207,13 @@ async function enrichSimilarProductsForPdpCards({
     ),
   );
   const officialSeedHydrationCandidates = head.filter((item) => shouldHydrateSimilarCardFromOfficialSeed(item));
-  const officialSeedHydrationProductIds = officialSeedHydrationCandidates
-    .map((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0])
-    .filter(Boolean);
+  const graphPriceRefs = head.map((item) => similarGraphCardPriceRef(item)).filter(Boolean);
+  const officialSeedHydrationProductIds = Array.from(new Set([
+    ...officialSeedHydrationCandidates
+      .map((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0])
+      .filter(Boolean),
+    ...graphPriceRefs,
+  ]));
   const metadata = {
     card_enrichment_budget_ms: normalizedBudgetMs,
     card_enrichment_detail_budget_ms: normalizedDetailBudgetMs,
@@ -28200,6 +28226,8 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
+    card_enrichment_graph_price_attempted_count: graphPriceRefs.length,
+    card_enrichment_graph_price_hit_count: 0,
     card_enrichment_detail_hydration_skipped_count: detailHydrationEnabled
       ? 0
       : head.filter((item) => item && typeof item === 'object' && !hasSimilarCardImage(item)).length,
@@ -28221,6 +28249,11 @@ async function enrichSimilarProductsForPdpCards({
       }
       return new Map();
     });
+  }
+  if (graphPriceRefs.length) {
+    head = head.map((item) => applySimilarGraphCardSeedPrice(item, officialSeedCardSourcesById, metadata));
+    // The early exit and the budget-timeout path both answer with `fallback`: keep the prices.
+    fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   }
   if (
     officialSeedHydrationCandidates.length <= 0 &&

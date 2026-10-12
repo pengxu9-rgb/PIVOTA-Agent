@@ -107,7 +107,7 @@ const defaultQuery = async (sql, params = []) => {
   }
   const ids = (params || []).flat().filter((value) => typeof value === 'string' && value.startsWith('ext_0000'));
   if (text.includes('FROM external_product_seeds') && !text.includes('pdp_identity_listing')) {
-    return { rows: ids.map(seedRow) };
+    return { rows: ids.map((id) => ({ ...seedRow(id), ...(typeof state.seed === 'function' ? state.seed(id) : {}) })) };
   }
   if (text.includes('FROM catalog_products') && text.includes('source_product_id = ANY')) {
     // Re-keyed data: no row is still under the sentinel merchant.
@@ -171,6 +171,7 @@ beforeEach(() => {
   state.catalog = (ids) => ids.map((id) => catalogRow(id));
   state.render = () => [];
   state.groups = () => [];
+  state.seed = null;
   state.recommend = null;
   state.sql = [];
   delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES;
@@ -578,3 +579,48 @@ describe('similar-surface relation allowlist', () => {
     })).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
   });
 });
+
+describe('a collapsed graph card is priced from its own candidate seed', () => {
+  // Prod 2026-10-12: 72 of 137 graph cards on 40 rails had no price. A collapsed edge's public id is
+  // its canonical group (pg_), which no seed lookup answers; its candidate ref names the seed.
+  const collapsed = (i, overrides = {}) => ({
+    product_id: `pg_catalog_card${i}`, external_product_id: `pg_catalog_card${i}`, relationship_candidate_ref: candidateId(i),
+    merchant_id: 'external_seed', title: `Matte Clay Pomade ${i}`, image_url: `https://cdn.example.test/c${i}.jpg`,
+    card_highlight: 'Strong hold', url: `https://agent.pivota.cc/products/pg_catalog_card${i}`,
+    source: 'relationship_graph', recommendation_source: 'relationship_graph', relationship_edge_id: `edge_c${i}`, ...overrides,
+  });
+  const enrich = (items) => app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, bypassCache: true });
+
+  test('price and currency come from the seed as a pair; ids, link and presentation stay the card own', async () => {
+    const [card] = await enrich([collapsed(1)]);
+    expect(card).toMatchObject({ product_id: 'pg_catalog_card1', external_product_id: 'pg_catalog_card1', url: 'https://agent.pivota.cc/products/pg_catalog_card1',
+      title: 'Matte Clay Pomade 1', price: 39, currency: 'USD', price_source: 'relationship_candidate_seed' });
+  });
+
+  test('a seed without a known currency prices nothing', async () => {
+    state.seed = () => ({ price_currency: '' });
+    const [card] = await enrich([collapsed(2)]);
+    expect(card.price).toBeUndefined();
+    expect(card.currency).toBeUndefined();
+  });
+
+  test('an already-priced graph card keeps its own pair and costs no lookup', async () => {
+    state.sql = [];
+    const [card] = await enrich([collapsed(3, { price: 12, currency: 'USD' })]);
+    expect(card).toMatchObject({ price: 12, currency: 'USD' });
+    expect(card.price_source).toBeUndefined();
+    expect(state.sql.some(({ text }) => text.includes('FROM external_product_seeds'))).toBe(false);
+  });
+
+  test('a heuristic card is not priced through this path', async () => {
+    const [card] = await enrich([collapsed(4, { source: 'external', recommendation_source: undefined, relationship_edge_id: undefined })]);
+    expect(card.price_source).toBeUndefined();
+  });
+
+  test('the priced card survives the enrichment early exit (nothing else to enrich)', async () => {
+    const out = await enrich([collapsed(5)]);
+    expect(out[0]).toMatchObject({ price: 39, currency: 'USD' });
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 1, card_enrichment_graph_price_hit_count: 1 });
+  });
+});
+

@@ -287,6 +287,13 @@ describe('product relationship graph store helpers', () => {
     );
   });
 
+  test('relationshipEdgeToSimilarItem keeps the edge candidate ref beside a collapsed canonical id', () => {
+    const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1' };
+    const item = relationshipEdgeToSimilarItem(edge);
+    expect(item.product_id).toBe('pg_catalog_family1');
+    expect(item.relationship_candidate_ref).toBe(String(approvedDupe().candidate_product_ref).replace(/^product:/, ''));
+  });
+
   test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {
     const item = relationshipEdgeToSimilarItem(approvedDupe());
     expect(item).toMatchObject({
