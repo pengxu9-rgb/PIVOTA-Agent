@@ -206,6 +206,22 @@ describe('find_similar_products keeps at most one card of the anchor brand, afte
     const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
     expect(served).toEqual(['prel_rekey_4', 'prel_rekey_5', 'prel_rekey_2']);
   });
+
+  test('a rail of only same-brand cards whose best card is unrenderable serves the next one, not nothing (review)', async () => {
+    state.edges = state.edges
+      .filter((edge) => ['prel_rekey_2', 'prel_rekey_3', 'prel_rekey_4'].includes(edge.id))
+      .map((edge) => ({ ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' } }));
+    // The renderability gate says sig 2's product page will not serve (prod: no_us_offer).
+    state.render = () => [{
+      pivota_signature_id: sigOf(2), merchant_id: 'merch_obs_x', platform: 'external_seed', source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_x', content_key: 'ck_x', product_key: 'pk_x', sync_status: 'live', pdp_lifecycle_stage: 'published',
+      source_active: true, pdp_seed_route_ok: true, serving_eligible: false, blocker_code: 'no_us_offer', blocker_detail: null,
+      content_quality_score: 90, active_external_seed_source_match: true, mirror_seed_inactive: false,
+    }];
+    const body = await findSimilar();
+    expect(body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id)).toEqual(['prel_rekey_3']);
+    expect(JSON.stringify(body)).not.toContain('similar_same_brand');
+  });
 });
 
 describe('find_similar_products serves re-keyed external-seed graph candidates', () => {

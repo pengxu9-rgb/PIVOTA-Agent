@@ -521,6 +521,7 @@ const {
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const { readPriceWithCurrency } = require('./auroraBff/relationshipPriceCurrency');
 const {
+  capSimilarSameBrandItems,
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
   relationshipGraphReadMetadata,
@@ -29097,10 +29098,11 @@ function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) 
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
-  return filterProductsToServingCurrency(
+  // The same-brand cap counts only cards that survived every filter above, so it never empties a rail.
+  return capSimilarSameBrandItems(filterProductsToServingCurrency(
     publicProducts,
     servingCurrency === undefined ? resolveServingCurrency(undefined) : servingCurrency,
-  );
+  ));
 }
 
 function dedupeSimilarCandidatesByMerchantProductId(products) {
@@ -39154,7 +39156,7 @@ async function resolveProductIntelInvokeContext({
       }).catch(() => null)
     : [];
   const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
-    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    products: capSimilarSameBrandItems(relatedProducts?.items),
     baseProduct: product,
     componentCandidates: componentSimilarCandidates,
   }).products;
