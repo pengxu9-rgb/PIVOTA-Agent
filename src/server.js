@@ -26970,9 +26970,7 @@ function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
   const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
   if (!graphItems.length) return null;
   const safeLimit = Number(limit);
-  const items = Number.isFinite(safeLimit) && safeLimit > 0
-    ? graphItems.slice(0, safeLimit)
-    : graphItems;
+  const items = sliceKeepingSameBrandTail(graphItems, safeLimit);
   return {
     status: 'success',
     strategy: 'relationship_graph',
@@ -27018,6 +27016,16 @@ function excludeShownGraphSimilarItems(items, options = {}, anchor = null) {
 // "Load more" re-reads the same top-k and drops the cards already shown, so the public filter's
 // same-brand cap would count afresh on every page and let one more same-brand card through each time.
 // Once the shown cards already spent the cap, the remaining same-brand cards leave here.
+// A k cut before the public filter would cut the same-brand fallback tail recall appended past the rail
+// (cross-brand first): with every cross-brand card then failing serving (dead PDP, currency), the rail
+// would empty where main served its same-brand card. The tagged tail rides past k; the public filter's
+// cap keeps at most the cap of it.
+function sliceKeepingSameBrandTail(items, k) {
+  const list = Array.isArray(items) ? items : [];
+  if (!(Number.isFinite(k) && k > 0)) return list;
+  return [...list.slice(0, k), ...list.slice(k).filter((item) => item?.similar_same_brand === true)];
+}
+
 // Bundle components ride in the same exclude_items (collectPdpComponentSimilarCandidates); they were
 // never shown, so they do not spend the cap.
 function dropSameBrandCardsAfterCapSpent(items, graphItems, options = {}) {
@@ -27082,7 +27090,7 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
   const beforeSpentDrop = items.length;
   items = dropSameBrandCardsAfterCapSpent(items, graphItems, graphOptions);
   const sameBrandSpentDropped = beforeSpentDrop - items.length;
-  if (Number.isFinite(k) && k > 0) items = items.slice(0, k);
+  items = sliceKeepingSameBrandTail(items, k);
   return {
     status: items.length ? 'success' : 'empty',
     strategy: 'relationship_graph',
