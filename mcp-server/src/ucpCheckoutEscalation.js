@@ -100,6 +100,9 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 // (Node resolves `src/services/*` against the repo-root package.json, which declares no `type`, so the
 // default interop import is the module's `module.exports` object.)
 import merchantPurchasability from "../../src/services/merchantPurchasabilityClient.js";
+// The storefront product-page check — CommonJS, shared with the search price overlay so a page either surface
+// found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
+import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
@@ -109,6 +112,13 @@ export const UCP_RESPONSE_VERSION = "2026-04-08";
 export const ESCALATION_ID_PREFIX = "esc_";
 export const ESCALATION_TTL_MS = 6 * 60 * 60 * 1000; // the spec's default TTL
 const MAX_ESCALATION_ITEMS = 50;
+// THE DEAD-PAGE CHECK (default OFF, read per call): before a catalog-priced checkout hands out a continue_url, read
+// the product page behind each line. A page SHOPIFY says is gone (404/410 stamped `powered-by: Shopify`) refuses the
+// checkout by name instead of sending the buyer to "page not found". Anything else, including a read that fails or
+// runs out of budget, hands out the link exactly as before. A seller-priced checkout is not checked: the seller just
+// built a cart for these variants, so the products exist.
+export const DEAD_PAGE_CHECK_FLAG = "AGENT_CHECKOUT_UCP_DEAD_PAGE_CHECK_ENABLED";
+export const DEAD_PAGE_CHECK_BUDGET_MS = 1500;
 const TERMS_URL = "https://pivota.cc/terms"; // measured 200, "Terms of Service | Pivota", 2026-08-18
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -537,7 +547,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, log }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -641,6 +651,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         return buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env });
       }
     }
+    await refuseGoneStorefrontPages({
+      items: normalized, links: normalized.map((it) => targets.get(it.product_id)), env, storefrontPage, log,
+    });
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
@@ -695,6 +708,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       });
       if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
     }
+    await refuseGoneStorefrontPages({ items: decoded, links: targets, env, storefrontPage, log });
     return buildEscalationCheckout({ id: sessionId, items: decoded, rows, continueUrl: link, now, env });
   }
 
@@ -790,6 +804,61 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   // exist to stop (a PayPal-only till). Fail closed: hosts yes, links no.
   const linksAllowed = !declined && !merchantPurchasability.isGateEnabled(env);
   throw storefrontRefusal(declined, [...targets.keys()], targets, linksAllowed);
+}
+
+// ---- the dead-page check ---------------------------------------------------------------------------------------
+
+export function deadPageCheckEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[DEAD_PAGE_CHECK_FLAG]) || "").trim());
+}
+
+/** Where a row's link lands: a Pivota hop's destination (one hop), else the link itself. Null when unreadable. */
+function landingUrlOf(link) {
+  let parsed;
+  try { parsed = new URL(link); } catch { return null; }
+  const hop = pivotaHopDestination(parsed);
+  if (!hop) return parsed.toString();
+  return hop.dest && /^https:\/\//i.test(hop.dest) ? hop.dest : null;
+}
+
+function emitPageCheck(log, level, detail) {
+  if (log && typeof log[level] === "function") {
+    try { log[level]({ event: "ucp_storefront_page_check", ...detail }); } catch { /* never throw the door */ }
+  }
+}
+
+/**
+ * Refuse a catalog-priced storefront checkout whose product page the store says is gone. `links[i]` is the row link
+ * for `items[i]`. Reads run in parallel, each bounded by DEAD_PAGE_CHECK_BUDGET_MS; only `gone` refuses.
+ */
+async function refuseGoneStorefrontPages({ items, links, env, storefrontPage, log }) {
+  if (!deadPageCheckEnabled(env)) return;
+  const read = typeof storefrontPage === "function"
+    ? storefrontPage
+    : (url) => storefrontProductPageModule.readStorefrontProductPage(url, { timeoutMs: DEAD_PAGE_CHECK_BUDGET_MS });
+  const pages = await Promise.all(items.map(async (it, idx) => {
+    const landing = landingUrlOf(links[idx]);
+    if (!landing) return null;
+    try { return { product_id: it.product_id, page: await read(landing) }; } catch { return null; }
+  }));
+  const gone = pages.filter((p) => p && p.page && p.page.state === "gone");
+  if (gone.length === 0) return;
+  const productIds = [...new Set(gone.map((p) => p.product_id))];
+  const hosts = [...new Set(gone.map((p) => p.page.host).filter(Boolean))];
+  emitPageCheck(log, "info", {
+    outcome: "refused", reason: "storefront_product_gone", seller_hosts: hosts, product_ids: productIds,
+    // The refresh hint: which store handles to re-verify. No buyer data.
+    handles: gone.map((p) => p.page.handle).filter(Boolean),
+  });
+  throw goneRefusal(productIds, hosts);
+}
+
+function goneRefusal(productIds, hosts) {
+  const where = hosts.length ? ` (${hosts.join(", ")})` : "";
+  return intakeRefusal("NO_MERCHANT_OFFER", "ucp_storefront_product_gone", [
+    `The seller's storefront${where} no longer has a product page for these items: ${productIds.join(", ")}.`,
+    "This will not change on retry; offer the buyer alternatives.",
+  ].join(" "), compact({ storefront_items: productIds, seller_hosts: hosts.length ? hosts : undefined }));
 }
 
 // THE SELLER'S HOST, NOT THE LINK'S. A row's storefront link may be Pivota's own attribution hop
