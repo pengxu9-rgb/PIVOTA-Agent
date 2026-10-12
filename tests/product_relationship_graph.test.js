@@ -333,8 +333,14 @@ describe('product relationship graph store helpers', () => {
     });
 
     test('another member on display without a catalog price stays unpriced and names its own listing', () => {
+      // The representative's OWN snapshot quotes $12 USD too: it must not reach the other member's card.
       const collapsed = collapse(
-        [edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95), edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8)],
+        [
+          edgeTo('ext_mini', 'Soft Pinch Tinted Lip Oil 1.5ml', 12, 0.95, {
+            candidate_snapshot: { product_id: 'ext_mini', brand: 'Rare Beauty', name: 'Soft Pinch Tinted Lip Oil 1.5ml', price: 12, currency: 'USD' },
+          }),
+          edgeTo('ext_full', 'Soft Pinch Tinted Lip Oil 3ml', 24, 0.8),
+        ],
         [{ ...miniRow, product_family_id: '', pdp_lifecycle_stage: 'draft' }, { ...fullRow, product_payload: {}, product_family_id: '', is_primary: true }]
           .map((row) => ({ ...row, product_group_id: 'pg_catalog_soft_pinch' })),
       );
