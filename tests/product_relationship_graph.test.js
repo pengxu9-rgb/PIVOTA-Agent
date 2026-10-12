@@ -287,11 +287,52 @@ describe('product relationship graph store helpers', () => {
     );
   });
 
-  test('relationshipEdgeToSimilarItem keeps the edge candidate ref beside a collapsed canonical id', () => {
-    const edge = { ...approvedDupe(), candidate_canonical_entity_id: 'pg_catalog_family1' };
-    const item = relationshipEdgeToSimilarItem(edge);
-    expect(item.product_id).toBe('pg_catalog_family1');
-    expect(item.relationship_candidate_ref).toBe(String(approvedDupe().candidate_product_ref).replace(/^product:/, ''));
+  describe('a collapsed card is priced as the member it shows (review: mini vs full size)', () => {
+    // Family keys strip size, so a 1.5ml mini (the representative edge, $12) and the 3ml full size
+    // (the display member, $24) collapse into one card that shows the full size.
+    const miniEdge = (overrides = {}) => approvedDupe({
+      candidate_product_ref: 'product:ext_mini',
+      candidate_snapshot: { ...approvedDupe().candidate_snapshot, product_id: 'ext_mini', name: 'Lip Oil Mini', price: 12, currency: 'USD' },
+      price_evidence: { ...approvedDupe().price_evidence, candidate_price_amount: 12, candidate_price_currency: 'USD' },
+      ...overrides,
+    });
+    const collapsedTo = (displaySnapshot, extra = {}) => ({
+      ...miniEdge(),
+      candidate_canonical_entity_id: 'pg_catalog_family1',
+      candidate_display_snapshot: { product_id: 'pg_catalog_family1', name: 'Lip Oil', ...displaySnapshot },
+      ...extra,
+    });
+
+    test('another display member takes its own price pair, never the representative evidence', () => {
+      const item = relationshipEdgeToSimilarItem(collapsedTo(
+        { pivota_signature_id: 'sig_full', source_product_id: 'ext_full', price: 24, currency: 'USD' },
+        { candidate_pivota_signature_id: 'sig_full' },
+      ));
+      expect(item).toMatchObject({ product_id: 'pg_catalog_family1', price: 24, currency: 'USD', relationship_price_ref: 'sig_full' });
+    });
+
+    test('another display member without a price stays unpriced and names its own seed for enrichment', () => {
+      const item = relationshipEdgeToSimilarItem(collapsedTo({ source_product_id: 'ext_full' }));
+      expect(item.price).toBeUndefined();
+      expect(item.currency).toBeUndefined();
+      expect(item.relationship_price_ref).toBe('ext_full');
+    });
+
+    test('a display member that IS the representative keeps the edge evidence', () => {
+      const item = relationshipEdgeToSimilarItem(collapsedTo({ source_product_id: 'ext_mini' }));
+      expect(item).toMatchObject({ price: 12, currency: 'USD', relationship_price_ref: 'ext_mini' });
+    });
+
+    test('a display member with no seed id names no price ref (nothing to price it from)', () => {
+      const item = relationshipEdgeToSimilarItem(collapsedTo({ price: 30 }));
+      expect(item.relationship_price_ref).toBeUndefined();
+      expect(item.price).toBeUndefined();
+    });
+
+    test('an uncollapsed card names its own seed id, and nothing for a non-seed id', () => {
+      expect(relationshipEdgeToSimilarItem(miniEdge()).relationship_price_ref).toBe('ext_mini');
+      expect(relationshipEdgeToSimilarItem(approvedDupe()).relationship_price_ref).toBeUndefined();
+    });
   });
 
   test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {

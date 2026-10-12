@@ -27519,11 +27519,11 @@ function shouldEnrichSimilarCard(item = {}, options = {}) {
 // A relationship-graph card whose public id is its canonical group (pg_) carries no seed id, so it
 // reached the rail unpriced even when its product has a price: prod 2026-10-12, 72 of 137 graph
 // cards on 40 rails had no price (Rare Beauty Soft Pinch Tinted Lip Oil: card unpriced, its group
-// PDP $24 USD). The card's own candidate ref (relationship_candidate_ref) names the seed.
+// PDP $24 USD). relationship_price_ref names the seed of the member the card SHOWS.
 function similarGraphCardPriceRef(item = {}) {
   if (!isRelationshipGraphSimilarProduct(item)) return '';
   if (readSimilarCardMoneyPair(item)) return '';
-  const ref = firstNonEmptyString(item.relationship_candidate_ref);
+  const ref = firstNonEmptyString(item.relationship_price_ref);
   return ref && (isExternalSeedProductId(ref) || isPivotaSignatureProductId(ref)) ? ref : '';
 }
 
@@ -27567,6 +27567,7 @@ function buildSimilarCardEnrichmentCacheKey({
         item.platform_product_id,
       ),
       title: firstNonEmptyString(item.card_title, item.title, item.name),
+      price_ref: firstNonEmptyString(item.relationship_price_ref),
       image_url: firstNonEmptyString(
         item.image_url,
         item.image,
@@ -28228,6 +28229,8 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
     card_enrichment_graph_price_attempted_count: graphPriceRefs.length,
     card_enrichment_graph_price_hit_count: 0,
+    card_enrichment_graph_price_timeout_count: 0,
+    card_enrichment_graph_price_failed_count: 0,
     card_enrichment_detail_hydration_skipped_count: detailHydrationEnabled
       ? 0
       : head.filter((item) => item && typeof item === 'object' && !hasSimilarCardImage(item)).length,
@@ -28244,8 +28247,10 @@ async function enrichSimilarProductsForPdpCards({
     ).catch((err) => {
       if (err?.code === 'STAGE_TIMEOUT') {
         metadata.card_enrichment_official_seed_timeout_count += officialSeedHydrationCandidates.length;
+        metadata.card_enrichment_graph_price_timeout_count += graphPriceRefs.length;
       } else {
         metadata.card_enrichment_official_seed_failed_count += officialSeedHydrationCandidates.length;
+        metadata.card_enrichment_graph_price_failed_count += graphPriceRefs.length;
       }
       return new Map();
     });
@@ -29019,8 +29024,18 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalogBase(products, optio
 // `servingCurrency`: the buyer's (servingCurrencyFor). A caller with no request to read it from
 // gets the rule's silence -- the default market's currency -- so no similar surface can serve a
 // product priced in another one (Peng 2026-09-26).
+// relationship_price_ref is an internal seed key (often an ext_ id) for card enrichment; it never
+// leaves the gateway.
+function stripSimilarInternalKeys(products) {
+  return (Array.isArray(products) ? products : []).map((product) => {
+    if (!product || typeof product !== 'object' || !('relationship_price_ref' in product)) return product;
+    const { relationship_price_ref: _internal, ...rest } = product;
+    return rest;
+  });
+}
+
 function filterPublicVisibleSimilarProducts(products, { servingCurrency } = {}) {
-  const publicProducts = (Array.isArray(products) ? products : []).filter((product) => {
+  const publicProducts = stripSimilarInternalKeys(products).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
     if (isSellerOnlySimilarCardEvidence(product)) return false;
     if (product.similar_render_status === 'not_renderable') return false;
@@ -38754,7 +38769,11 @@ function sanitizePdpSimilarResponseModules(modules, { servingCurrency } = {}) {
     if (!rawItems) return module;
     const publicItems = filterPublicVisibleSimilarProducts(rawItems, { servingCurrency });
     const filteredCount = Math.max(0, rawItems.length - publicItems.length);
-    if (filteredCount <= 0) return module;
+    if (filteredCount <= 0) {
+      // Nothing hidden, but the filter also drops internal keys: answer with its items.
+      const carriesInternalKeys = rawItems.some((item) => item && typeof item === 'object' && 'relationship_price_ref' in item);
+      return carriesInternalKeys ? { ...module, data: { ...module.data, items: publicItems } } : module;
+    }
     const currentMetadata =
       module.data.metadata && typeof module.data.metadata === 'object'
         ? module.data.metadata
@@ -39086,7 +39105,7 @@ async function resolveProductIntelInvokeContext({
       }).catch(() => null)
     : [];
   const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
-    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    products: stripSimilarInternalKeys(relatedProducts?.items),
     baseProduct: product,
     componentCandidates: componentSimilarCandidates,
   }).products;
@@ -52495,6 +52514,7 @@ module.exports._debug = {
   collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
+  buildSimilarCardEnrichmentCacheKey,
   mergeSimilarCardEnrichment,
   readSimilarCardMoneyPair,
   fetchSimilarProductsDeduped,
