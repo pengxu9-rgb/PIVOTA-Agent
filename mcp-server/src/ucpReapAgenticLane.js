@@ -1619,6 +1619,55 @@ export function selectedReapVariantKey(ucpArgs, row, productKey, { recovery = fa
   return `${productKey}${infix}${selected}`;
 }
 
+/**
+ * THE CART-LINK ROW RULES, as one pure answer, for a door that opens a purchase through the backend's rail-neutral
+ * create (mcp-server/src/orchestratedPurchaseTool.js). The same helpers and the same order as the cart-link half of
+ * `createReapCheckout` above; that function is left exactly as it is. Returns
+ * `{ productKey, merchantDomain, variantKey?, price: {amount, currency} }` for a row a cart link can buy, else
+ * `{ code }` naming why not. Never throws: a selected variant this row does not have is `{ code: "variant_unknown" }`.
+ *
+ * `selectedVariantId` is the buyer's choice (a numeric storefront variant id, as on the row's `variants`); omitted,
+ * the row must have at most one real variant. The backend proves the variant, the seller and the price again.
+ */
+export function resolveCartLinkPurchaseRow(row, { selectedVariantId, env = process.env } = {}) {
+  const target = escalationTargetOf(row);
+  if (!target) return { code: "native_row" };
+  const productKey = productKeyOf(row);
+  if (!productKey) return { code: "no_product_key" };
+  const enrichment = reapCartLinkEnrichmentEnabled(env) && isEnrichmentCartLinkRow(row, productKey);
+  if (!isShopifyRow(row, productKey) && !enrichment && !isSeedMirrorRow(row, productKey)) return { code: "row_key_unsupported" };
+  let variantKey;
+  if (selectedVariantId !== undefined) {
+    try {
+      variantKey = selectedReapVariantKey({ checkout: { reap: { selected_variant_id: selectedVariantId } } }, row, productKey);
+    } catch {
+      return { code: "variant_unknown" };
+    }
+  } else if (enrichment ? !enrichmentAtMostOneVariant(row) : realVariantCount(row) > 1) {
+    return { code: "variant_required" };
+  }
+  let price;
+  if (variantKey === undefined) {
+    price = rowPrice(row);
+  } else {
+    const chosen = row.variants.find((v) => String(v.variant_id ?? v.id) === String(selectedVariantId));
+    const variantPrice = own(chosen, "price");
+    const selectedPrice = isPlainObject(variantPrice) && own(variantPrice, "current") !== undefined
+      ? own(variantPrice, "current") : variantPrice;
+    price = rowPrice({
+      price: isPlainObject(selectedPrice) ? own(selectedPrice, "amount") : selectedPrice,
+      currency: isPlainObject(selectedPrice) ? own(selectedPrice, "currency") : own(chosen, "currency"),
+    });
+  }
+  if (!price) return { code: "row_unpriced" };
+  const merchantDomain = enrichment ? enrichmentCartLinkMerchantDomain(row).host : cartLinkMerchantDomain(row, target);
+  if (!merchantDomain) return { code: "no_merchant_domain" };
+  if (variantKey === undefined && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) {
+    return { code: "variant_unresolvable" };
+  }
+  return variantKey === undefined ? { productKey, merchantDomain, price } : { productKey, merchantDomain, variantKey, price };
+}
+
 // Read-only preparation shares the real catalog/proof authority with create, never a checkout executor.
 export async function prepareReapCheckout({ params, ctx, executor, ucpArgs, client, env = process.env, timeoutMs }) {
   const refuse = () => { throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason:"ucp_reap_selection_not_prepared" }); };

@@ -30712,6 +30712,19 @@ function buildAgentPurchaseReadClient(log, deps = {}) {
   });
 }
 
+// The rail-neutral purchase CREATE behind the native MCP door's `start_purchase` (mcp-server/src/
+// orchestratedPurchaseTool.js; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Same auth rule as
+// the read: the CALLER's agent key and buyer token, never the internal key.
+function buildAgentPurchaseCreateClient(log, deps = {}) {
+  const { createAgentPurchaseCreateClient } = require('./services/agentPurchaseCreateClient');
+  return createAgentPurchaseCreateClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => buildInvokeUpstreamAuthHeaders({ allowInternalFallback: false, forwardBuyerRef: false }),
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -32239,6 +32252,13 @@ async function getCommerceRemoteMcpAdapter() {
           // Recovery must not use get_product/get_pdp_v2: those can enrich from
           // merchants. This injected reader has only a parameterized SQL SELECT.
           recoveryIdentityReader: require('./services/reapRecoveryIdentity').createReapRecoveryIdentityReader({ query }),
+        },
+        // `start_purchase` (native MCP only; default OFF via ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call).
+        // Its answer is read back through the same rail-neutral read get_order uses; polling that purchase with
+        // get_order also needs AGENT_PURCHASE_ORDER_READ_ENABLED.
+        orchestratedPurchase: {
+          createClient: buildAgentPurchaseCreateClient(logger),
+          readClient: buildAgentPurchaseReadClient(logger),
         },
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).

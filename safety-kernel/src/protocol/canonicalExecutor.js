@@ -105,10 +105,10 @@ function refusalFor(opId) {
  *   mintAp2CheckoutJwt?: (input:{checkout_session_id:string, expires_at?:string}) => Promise<string>|string,
  * }} deps
  */
-// A rail purchase id: the backend's rail-neutral `pp_` id (pivota-backend db/agent_purchase_ledger.py) or a
-// Reap `rp_` id, which the backend read accepts too. Identical to src/services/agentPurchaseReadClient.js
-// (a test holds the two together).
-export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp)_[0-9a-f]{24}$/;
+// A rail purchase id: the backend's rail-neutral `pp_` id (pivota-backend db/agent_purchase_ledger.py), or a
+// rail's own id (Reap `rp_`, the A2A token rail `ap_`), which the backend read accepts too. Identical to
+// src/services/agentPurchaseReadClient.js (a test holds the two together).
+export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp|ap)_[0-9a-f]{24}$/;
 
 // Marks a get_order result that THIS mapper built from the backend's rail purchase read. A Symbol (registry key,
 // so the tool surface can read it without importing this module) cannot arrive in any JSON upstream body, so a
@@ -119,11 +119,14 @@ export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseRe
  * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
  * `{ kind, purchase?, code? }` (src/services/agentPurchaseReadClient.js).
  *
+ * Exported for the commerce surface's `start_purchase`, which answers with the SAME shape (so an agent polls the
+ * purchase it just opened with get_order and reads one vocabulary throughout).
+ *
  * not_found is QUOTE_NOT_FOUND / order_not_found: the SAME answer an untracked kernel order gets, so
  * the two id spaces cannot be told apart by probing. unavailable is retriable and says nothing about
  * the purchase; it must never read as "gone", or an agent would start a second purchase.
  */
-function agentPurchaseOrder(orderId, answered) {
+export function agentPurchaseOrder(orderId, answered) {
   switch (answered.kind) {
     case 'accepted': {
       const purchase = answered.purchase;

@@ -14,7 +14,7 @@
  * src/services/reapAgenticPurchaseClient.js, read the same way:
  *
  *   accepted         200 and the body is the purchase this id names (`purchase_id`, or `rail_purchase_id` for
- *                    an `rp_` id, echoes it; `purchase_id` is always a well-formed `pp_` id)
+ *                    a rail id (`rp_`, `ap_`), echoes it; `purchase_id` is always a well-formed `pp_` id)
  *   not_found        404 `purchase_not_found`: not this buyer's, or does not exist (one answer by design)
  *   unavailable      everything else, including 404 `not_available` (backend dial off), 503
  *                    `state_unmapped`, a timeout or a malformed body. Never a statement about the purchase.
@@ -29,9 +29,10 @@
 const { KIND, canonicalBackendReasonCode, headerValue, parseJson } = require('./reapAgenticPurchaseClient');
 
 const AGENT_PURCHASES_PATH = '/agent/v2/commerce/purchases';
-// `pp_` is the rail-neutral id; `rp_` is a Reap purchase id, which the backend read also accepts (and heals
-// its parent on first read). Kept identical to safety-kernel/src/protocol/canonicalExecutor.js (drift test).
-const AGENT_PURCHASE_ID_RE = /^(?:pp|rp)_[0-9a-f]{24}$/;
+// `pp_` is the rail-neutral id; `rp_` (Reap) and `ap_` (the A2A token rail) are rail purchase ids, which the
+// backend read also accepts (and heals their parent on first read). Kept identical to
+// safety-kernel/src/protocol/canonicalExecutor.js (drift test).
+const AGENT_PURCHASE_ID_RE = /^(?:pp|rp|ap)_[0-9a-f]{24}$/;
 const DEFAULT_TIMEOUT_MS = 2000;
 const MAX_TIMEOUT_MS = 2000;
 const MIN_TIMEOUT_MS = 50;

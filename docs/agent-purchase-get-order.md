@@ -1,9 +1,10 @@
-# `get_order` for rail purchases (`pp_…` / `rp_…`)
+# `get_order` for rail purchases (`pp_…` / `rp_…` / `ap_…`)
 
 `get_order` answers two kinds of id:
 
 - **Kernel orders** minted by this gateway: unchanged, ownership-gated by `kernel._requireOrder`.
-- **Rail purchases**: a backend rail-neutral id `pp_<24 hex>`, or a Reap id `rp_<24 hex>`. These are answered
+- **Rail purchases**: a backend rail-neutral id `pp_<24 hex>`, a Reap id `rp_<24 hex>`, or an A2A token rail id
+  `ap_<24 hex>` (the id `start_purchase` can return). These are answered
   by one owner-scoped backend read, `GET /agent/v2/commerce/purchases/{id}` (pivota-backend
   `docs/agent_purchases_routes.md`), made with the CALLER's `X-API-Key` and `X-Agent-User-JWT`. The
   internal key is never used.
@@ -15,7 +16,7 @@ Code: `src/services/agentPurchaseReadClient.js` (the read), `safety-kernel/src/p
 
 The backend's unified purchase body, plus:
 
-- `order_id`: always the `pp_` id, even when the caller asked with an `rp_` id.
+- `order_id`: always the `pp_` id, even when the caller asked with a rail id (`rp_`, `ap_`).
 - `status`: **the unified purchase state**, not a kernel order status. The values are `routing`,
   `needs_payment_method`, `locking`, `awaiting_buyer_authorization`, `placing`, `completed`, `failed`,
   `refused`, `expired`. A completed rail purchase is `completed`, never `paid`. `state` carries the same
