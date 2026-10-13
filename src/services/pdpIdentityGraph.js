@@ -28,6 +28,7 @@ const {
 const {
   upsertCatalogRowTrustForSourceListingRefs,
 } = require('./catalogRowTrustUpserter');
+const { isShadeLineCardCollapseEnabled } = require('./shadeLineCardCollapse');
 const {
   applyShadeLineGrouping,
   buildStoreKey: buildShadeLineStoreKey,
@@ -4383,8 +4384,12 @@ async function listLivePdpIdentityRowsForRefs({
           pil.review_family_id,
           pil.identity_status,
           pil.identity_confidence,
-          pil.match_basis,
-          pil.soft_identity->'shade_line' AS shade_line
+          pil.match_basis${
+            // The shade-line decision is read only for the card collapse (default off): off, this
+            // hot-path read is exactly what it was before the rule.
+            isShadeLineCardCollapseEnabled() ? `,
+          pil.soft_identity->'shade_line' AS shade_line` : ''
+          }
         FROM pdp_identity_listing pil
         WHERE pil.source_listing_ref = ANY($1::text[])
           AND EXISTS (
@@ -4412,12 +4417,13 @@ async function listLivePdpIdentityRowsForRefs({
   }
 }
 
-// Every public member of the given shade lines, for a line card's "N shades, from X". Prices and
-// stock come from the CURRENT seed columns (external_product_seeds.price_amount / price_currency /
-// availability, as hydrateIdentityRowsFromCurrentExternalSeeds reads them), never from the stored
-// source_payload, which is neither current nor cheap (it would detoast the whole payload). A member
-// with no current seed price carries none and is left out of the price and the count by the caller.
-// Deterministic order, and at most `perLineLimit` members per line.
+// The ACCEPTED members of the given shade lines (each row's own decision approves its stored
+// line), for a line card's shade counts. Stock and currency come from the CURRENT seed columns
+// (external_product_seeds.price_amount / price_currency / availability, as
+// hydrateIdentityRowsFromCurrentExternalSeeds reads them), never from the stored source_payload. The
+// per-line cap is applied FIRST, on the identity index alone; the seed join and the public-trust
+// check then run on at most `perLineLimit` rows per line (so a count is a lower bound for a line
+// larger than the cap). Deterministic order. Callers pass only lines a card is an accepted member of.
 async function listLiveShadeLineMembers({
   productLineIds = [],
   perLineLimit = 400,
@@ -4427,44 +4433,57 @@ async function listLiveShadeLineMembers({
   const ids = uniqueStrings(productLineIds, 200);
   if (!ids.length) return [];
   const sql = `
-        SELECT *
-        FROM (
-          SELECT
-            pil.source_listing_ref,
-            pil.merchant_id,
-            pil.product_id,
-            pil.sellable_item_group_id,
-            pil.product_line_id,
-            pil.soft_identity->'shade_line' AS shade_line,
-            seed.price_amount,
-            seed.price_currency,
-            seed.availability,
-            row_number() OVER (
-              PARTITION BY pil.product_line_id
-              ORDER BY pil.source_listing_ref
-            ) AS line_rank
-          FROM pdp_identity_listing pil
-          LEFT JOIN LATERAL (
-            SELECT e.price_amount, e.price_currency, e.availability
-            FROM external_product_seeds e
-            WHERE pil.source_kind = 'external_seed'
-              AND e.external_product_id = pil.product_id
-              AND e.status = 'active'
-            ORDER BY e.updated_at DESC NULLS LAST, e.id DESC
-            LIMIT 1
-          ) seed ON true
-          WHERE pil.product_line_id = ANY($1::text[])
-            AND pil.identity_status = 'approved'
-            AND EXISTS (
-              SELECT 1
-              FROM catalog_row_trust crt
-              WHERE crt.subject_type = 'product'
-                AND crt.source_listing_ref = pil.source_listing_ref
-                AND crt.serving_decision = 'public'
-            )
-        ) ranked
-        WHERE ranked.line_rank <= $2
-        ORDER BY ranked.product_line_id, ranked.source_listing_ref
+        WITH capped AS (
+          SELECT *
+          FROM (
+            SELECT
+              pil.source_listing_ref,
+              pil.merchant_id,
+              pil.product_id,
+              pil.source_kind,
+              pil.sellable_item_group_id,
+              pil.product_line_id,
+              pil.soft_identity->'shade_line' AS shade_line,
+              row_number() OVER (
+                PARTITION BY pil.product_line_id
+                ORDER BY pil.source_listing_ref
+              ) AS line_rank
+            FROM pdp_identity_listing pil
+            WHERE pil.product_line_id = ANY($1::text[])
+              AND pil.identity_status = 'approved'
+              AND pil.soft_identity->'shade_line'->>'status' = 'approved'
+              AND pil.soft_identity->'shade_line'->>'product_line_id' = pil.product_line_id
+          ) ranked
+          WHERE ranked.line_rank <= $2
+        )
+        SELECT
+          capped.source_listing_ref,
+          capped.merchant_id,
+          capped.product_id,
+          capped.sellable_item_group_id,
+          capped.product_line_id,
+          capped.shade_line,
+          seed.price_amount,
+          seed.price_currency,
+          seed.availability
+        FROM capped
+        LEFT JOIN LATERAL (
+          SELECT e.price_amount, e.price_currency, e.availability
+          FROM external_product_seeds e
+          WHERE capped.source_kind = 'external_seed'
+            AND e.external_product_id = capped.product_id
+            AND e.status = 'active'
+          ORDER BY e.updated_at DESC NULLS LAST, e.id DESC
+          LIMIT 1
+        ) seed ON true
+        WHERE EXISTS (
+          SELECT 1
+          FROM catalog_row_trust crt
+          WHERE crt.subject_type = 'product'
+            AND crt.source_listing_ref = capped.source_listing_ref
+            AND crt.serving_decision = 'public'
+        )
+        ORDER BY capped.product_line_id, capped.source_listing_ref
       `;
   try {
     const result = await queryFn(sql, [ids, Math.max(1, Math.min(2000, Number(perLineLimit) || 400))]);

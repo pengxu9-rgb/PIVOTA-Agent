@@ -47,6 +47,40 @@
 // sees the siblings it contains (`--only-uncovered` batches see none); the read-only census
 // (scripts/census-shade-lines.js) is the reconciliation.
 
+// WHAT CHANGES FOR THE RELATIONSHIP GRAPH WHEN THE RULE IS ON (for the relgraph owner; no relgraph
+// code is changed by this rule). The relgraph has no reader of pdp_identity_listing.product_line_id
+// of its own. It takes a product's FAMILY from the first of product_family_id / product_line_id /
+// variant_of on the object it is given:
+//   - catalog_products.product_payload ->> product_line_id (catalogEntityResolution ~:581/:628,
+//     productRelationshipGraphSources normalizeApprovedLiveExternalSeedRow ~:826-831): unchanged by
+//     this rule, which writes only pdp_identity_listing. (Nothing stamps that payload key today.)
+//   - a product / snapshot object that already carries product_line_id
+//     (productRelationshipGraphSources ~:731 candidate snapshots, productIdentityKeys ~:1925,
+//     familyIdentityKey ~:2082; productRelationshipGraph familyKeyFromRelationshipSnapshot ~:800).
+//     The PDP stamps the identity listing's product_line_id on its product (server.js
+//     decoratePdpPayloadWithIdentity ~:10693), so a PDP-built anchor or display snapshot of a shade the
+//     rule lined up carries the NEW line id.
+// For such a product, with the rule on:
+//   1. Its family key changes from the derived `family:v1:<brand>::<title minus shade/size>::<cat>`
+//      (or `family:<old per-page line id>`) to the explicit `family:<pl_ shade line id>`. Explicit
+//      keys are compatible only when equal (familyIdentityKeysCompatible), so the siblings of one
+//      shade line become ONE family exactly when each of them carries the line id -- and a sibling
+//      whose object carries no line id (derived key) is no longer compatible with one that does.
+//   2. Family grouping / same-family dedupe (dedupeNormalizedProducts, the raw-pool family index in
+//      buildCandidatesByAnchorFromSources, assignRelationshipFamilyBucket at serving) then collapses
+//      shades of one line into one candidate / bucket, and drops a candidate of the anchor's own
+//      line ("same product or variant") -- the intended effect, since a shade is not an alternative
+//      to its sibling. Shades of DIFFERENT stores stay separate families (the line is per store).
+//   3. fanOutCandidatesToSiblingAnchors (when enabled) shares one representative's candidates
+//      across every anchor of the line.
+//   4. The same-brand cap on similar rails (#2415, relationshipGraphRecall) is keyed on brand, not
+//      family, and reads no product_line_id; it is unchanged. Indirectly, fewer same-line sibling
+//      cards reach it (step 2 removes them first), so the one same-brand slot it allows is less
+//      often taken by a sibling shade.
+//   5. Edges already written keep the family they were built with until the next relgraph build
+//      rebuilds them; the line ids themselves move only for NEW listings (sticky ids; the re-key is
+//      a separate, approved step, see shadeLineCardCollapse.js).
+
 const { createHash } = require('crypto');
 
 const SHADE_LINE_RULE_FLAG = 'SHADE_LINE_RULE_V2_ENABLED';
@@ -69,6 +103,8 @@ const SHADE_LINE_REFUSALS = Object.freeze({
   PRICE_OUTLIER: 'price_outlier',
   DUPLICATE_SHADE: 'duplicate_shade_value',
   LINE_TOO_SMALL: 'line_too_small',
+  SHORT_CODE_UNCONFIRMED: 'short_code_unconfirmed',
+  SHORT_CODE_SKINCARE: 'short_code_skincare_line',
 });
 
 function isShadeLineRuleEnabled(env = process.env) {
@@ -124,16 +160,24 @@ function stripBracketTags(title) {
 const UNIT_TOKEN_RE = /^(?:ml|m\.?l\.?|l|g|gr|gram|grams|kg|mg|oz|fl|floz|fl\.?oz\.?|lb|lbs|mm|cm|pcs?|pieces?|pack|packs|ct|count|ea|caps|capsules|sheets?|x)$/i;
 const SUN_FACTOR_TOKEN_RE = /^(?:spf|pa|uv|upf)$/i;
 const YEAR_RE = /^(?:19|20)\d{2}$/;
+// A version or generation is not a shade: "Palette V2", "V12", "Mk2", "Version 3", "Gen 2".
+const VERSION_TOKEN_RE = /^(?:v|mk)\d+$/i;
+const VERSION_WORD_RE = /^(?:v|ver|version|gen|generation|mk|mark|edition|ed|series|vol|volume)\.?$/i;
+// A letter (or two) and ONE digit: the shortest code shape, confirmed per line (see the group pass).
+const SHORT_CODE_RE = /^([a-z]{1,2})\d$/i;
+const SHORT_CODE_SKINCARE_LINE_RE = /\b(?:serum|essence|ampoule|toner|cleanser|moisturi[sz]er|cream|lotion|mask|vitamin|treatment|booster|peel|spf)\b/;
 
 // A code is the short identifier a store prints in front of (or instead of) a shade name.
 // Returns the normalized code, or ''.
-function readCodeToken(token, previousToken = '', nextToken = '') {
+function readCodeToken(token, previousToken = '', nextToken = '', { last = false } = {}) {
   const raw = asString(token).replace(/[,:;)]+$/, '').replace(/^[(]+/, '');
   if (!raw) return '';
   if (SUN_FACTOR_TOKEN_RE.test(asString(previousToken))) return '';
   if (/^(?:spf|pa|uv|upf)\d/i.test(raw)) return '';
+  if (VERSION_TOKEN_RE.test(raw) || VERSION_WORD_RE.test(asString(previousToken))) return '';
   const nextIsUnit = UNIT_TOKEN_RE.test(asString(nextToken).replace(/[.,]+$/, ''));
-  let match = raw.match(/^(?:no\.?|n°|nº)(\d{1,4}[a-z]?)$/i);
+  // NO.884, NO.Q14, NO.Q6
+  let match = raw.match(/^(?:no\.?|n°|nº)([a-z]{0,2}\d{1,4}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
   match = raw.match(/^#([a-z]{0,2}\d{1,4}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
@@ -141,6 +185,13 @@ function readCodeToken(token, previousToken = '', nextToken = '') {
   // One- or two-letter prefix: K2207, RX318, T41.
   match = raw.match(/^([a-z]{1,2}\d{2,5}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
+  // A letter and ONE digit (R7) is a code only as the title's last token: "<LINE> R7". Inside a
+  // title it is too often part of the name (a vitamin, a step, a generation). Even then it must be
+  // confirmed by the line: see SHORT_CODE_UNCONFIRMED / SHORT_CODE_SKINCARE.
+  if (last) {
+    match = raw.match(/^([a-z]{1,2}\d)$/i);
+    if (match) return match[1].toLowerCase();
+  }
   // Bare number: 517, 88, 03N. Not a year ("Holiday 2024"), not a product descriptor
   // (24H / 10X / 3D / 24K), and not a size glued to its unit (15G / 30L) -- but a zero-padded
   // number is a code even when its letter is a unit letter (05G, 06L): no size is written "05 g".
@@ -178,7 +229,7 @@ function tokenizeTitle(title) {
 
 function findFirstCode(tokens, startIndex = 0) {
   for (let idx = startIndex; idx < tokens.length; idx += 1) {
-    const code = readCodeToken(tokens[idx], tokens[idx - 1], tokens[idx + 1]);
+    const code = readCodeToken(tokens[idx], tokens[idx - 1], tokens[idx + 1], { last: idx === tokens.length - 1 });
     if (code) return { index: idx, code };
   }
   return null;
@@ -200,7 +251,7 @@ function parseShadeLineTitle(rawTitle) {
       return { format: 'separator_name_hash_code', line, code: trailingHash[2].toLowerCase(), name: trailingHash[1].trim() };
     }
     const tailTokens = tokenizeTitle(tail);
-    const leading = tailTokens.length ? readCodeToken(tailTokens[0], '', tailTokens[1]) : '';
+    const leading = tailTokens.length ? readCodeToken(tailTokens[0], '', tailTokens[1], { last: tailTokens.length === 1 }) : '';
     if (leading) {
       tail = tailTokens.slice(1).join(' ');
       return { format: 'separator_code_name', line, code: leading, name: tail };
@@ -429,6 +480,15 @@ function extractShadeLineCandidate({
     .map((value, idx) => (value ? `${['size', 'volume', 'pack'][idx]}:${value}` : ''))
     .filter(Boolean)
     .join('|') || '-';
+  // The shortest code shape (a letter + one digit) on a skincare line is a vitamin or a formula
+  // number ("Glow Serum B5"), not a shade, whatever the category says.
+  // Only a BARE short code needs confirming: "NO.Q6" / "#Q6" are marked as codes by their prefix.
+  const lastToken = asString(tokenizeTitle(stripBracketTags(title)).slice(-1)[0]).replace(/[,:;)]+$/, '');
+  const shortCode = parsed.code && !parsed.name ? (lastToken.match(SHORT_CODE_RE) || [])[1] : '';
+  base.short_code_prefix = shortCode ? shortCode.toLowerCase() : '';
+  if (base.short_code_prefix && SHORT_CODE_SKINCARE_LINE_RE.test(lineNorm)) {
+    return { ...base, refused: SHADE_LINE_REFUSALS.SHORT_CODE_SKINCARE };
+  }
   if (!base.brand_norm) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_BRAND };
   const mid = asString(merchantId);
   if (!mid) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_STORE };
@@ -533,10 +593,15 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
     SHADE_LINE_REFUSALS.CATEGORY_MISMATCH,
   );
 
-  // One size across the line is fine; a member in another size (or sized where the line is not)
-  // is not a shade of it.
-  const sizeSignature = modalValue(baseline((candidate) => candidate.size_signature || '-'));
-  refuse((entry) => (entry.candidate.size_signature || '-') !== sizeSignature, SHADE_LINE_REFUSALS.SIZE_MISMATCH);
+  // One size across the line is fine, and a member that states NO size is compatible with it
+  // (stores often omit the size on some shade pages). Only two members that state DIFFERENT
+  // sizes disagree: the one that differs from the line's size is not a shade of it.
+  const sizedOrBlank = (candidate) => (candidate.size_signature && candidate.size_signature !== '-' ? candidate.size_signature : '');
+  const sizeSignature = modalValue(baseline(sizedOrBlank));
+  refuse(
+    (entry) => Boolean(sizeSignature && sizedOrBlank(entry.candidate) && sizedOrBlank(entry.candidate) !== sizeSignature),
+    SHADE_LINE_REFUSALS.SIZE_MISMATCH,
+  );
 
   const currency = modalValue(baseline((candidate) => candidate.price?.currency || ''));
   refuse(
@@ -556,6 +621,19 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
       return ratio > SHADE_LINE_MAX_PRICE_RATIO;
     }, SHADE_LINE_REFUSALS.PRICE_OUTLIER);
   }
+
+  // A short code (R7) groups only when the line confirms the shape: at least two members (counting
+  // the line's known v1 members) carry codes with the same letter prefix.
+  const shortPrefixCounts = new Map();
+  for (const candidate of [...alive.map((entry) => entry.candidate), ...reference]) {
+    if (candidate.short_code_prefix) {
+      shortPrefixCounts.set(candidate.short_code_prefix, (shortPrefixCounts.get(candidate.short_code_prefix) || 0) + 1);
+    }
+  }
+  refuse(
+    (entry) => Boolean(entry.candidate.short_code_prefix) && (shortPrefixCounts.get(entry.candidate.short_code_prefix) || 0) < 2,
+    SHADE_LINE_REFUSALS.SHORT_CODE_UNCONFIRMED,
+  );
 
   const shadeCounts = new Map();
   for (const key of adopt?.shade_keys || []) shadeCounts.set(key, (shadeCounts.get(key) || 0) + 1);
@@ -743,6 +821,7 @@ function applyShadeLineGrouping(listings, {
     for (const entry of decision.approved) {
       decisions.set(entry.index, {
         approved: true,
+        store: entry.candidate.store,
         line_key: decision.line_key,
         product_line_id: decision.product_line_id,
         review_family_id: decision.review_family_id,
@@ -775,6 +854,7 @@ function applyShadeLineGrouping(listings, {
         proposed_product_line_id: decision.product_line_id,
         proposed_review_family_id: decision.review_family_id,
         stored_product_line_id: storedLineId,
+        store: decision.store,
         shade_value: candidate.shade_value,
         ...(decision.v1_line_not_store_scoped ? { v1_line_not_store_scoped: decision.v1_line_not_store_scoped } : {}),
       });
@@ -795,6 +875,9 @@ function applyShadeLineGrouping(listings, {
         product_line_id: decision.product_line_id,
         review_family_id: decision.review_family_id,
         line_key: decision.line_key,
+        // The store (seller of record @ domain) this member was lined up in: card collapse buckets
+        // by it, so one card never folds another merchant's listings.
+        store: decision.store,
         shade_value: candidate.shade_value,
         format: candidate.format,
         ...(decision.adopted ? { adopted_v1_line: true } : {}),
