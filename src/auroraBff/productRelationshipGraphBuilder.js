@@ -23,6 +23,7 @@ const {
   neutralizeSnapshotClaims,
 } = require('./relationshipClaimPhrases');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+const { foldTokenText } = require('./relationshipTokenText');
 
 // One candidate may serve at most this many anchors as a dupe / competitive_alternative in ONE
 // BUILD. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
@@ -181,7 +182,7 @@ function toNumberOrNull(value) {
 
 function normalizeTokens(value) {
   const rawItems = Array.isArray(value) ? value : [value];
-  const items = rawItems.flatMap((item) => String(item == null ? '' : item).split(/[>,/|;:_\s-]+/g));
+  const items = rawItems.flatMap((item) => foldTokenText(item).split(/[>,/|;:_\s-]+/g));
   const out = [];
   const seen = new Set();
   for (const raw of items) {

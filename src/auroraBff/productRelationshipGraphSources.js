@@ -8,6 +8,7 @@ const {
 const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, loadCoverageSuppressedIds } = require('./relationshipGraphCoverage');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 const { withoutRelationshipPairContext } = require('./relationshipCandidatePairContext');
+const { foldTokenText } = require('./relationshipTokenText');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
@@ -2187,7 +2188,7 @@ function mergeFamilyDedupeCandidate(byFamily, index, candidate) {
 }
 
 function tokenSet(value) {
-  const text = normalizeTokenText(value).toLowerCase();
+  const text = foldTokenText(normalizeTokenText(value)).toLowerCase();
   return new Set(text.split(/[^a-z0-9]+/g).filter((token) => token.length >= 3));
 }
 
