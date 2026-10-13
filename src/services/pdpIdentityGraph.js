@@ -30,6 +30,8 @@ const {
 } = require('./catalogRowTrustUpserter');
 const {
   applyShadeLineGrouping,
+  buildStoreKey: buildShadeLineStoreKey,
+  collectAdoptableV1LineIds,
   extractShadeLineCandidate,
   isShadeLineRuleEnabled,
   SHADE_LINE_REFUSALS,
@@ -5753,8 +5755,10 @@ function uniqueRefs(values) {
 }
 
 // The batch's listings that already exist, with their stored (sticky) line: a stored member is
-// never moved, re-axed or re-familied by the shade-line rule. A read; on failure nothing is
-// treated as stored, which is safe because the upsert keeps a stored line id regardless.
+// never moved, re-axed or re-familied by the shade-line rule. FAILS CLOSED: on a read failure
+// this throws and the caller skips the whole shade-line pass for the batch. Treating "unknown"
+// as "not stored" would mark existing rows approved and give them a shade axis, and the upsert
+// writes variant_axes from the rebuilt row (EXCLUDED.variant_axes).
 async function loadStoredProductLines({ sourceListingRefs = [], queryFn = query } = {}) {
   const refs = uniqueRefs(sourceListingRefs);
   if (!refs.length || typeof queryFn !== 'function') return new Map();
@@ -5779,17 +5783,61 @@ async function loadStoredProductLines({ sourceListingRefs = [], queryFn = query 
     }
     return stored;
   } catch (err) {
-    if (!looksLikeRelationMissing(err)) {
-      logger.warn({ err: err?.message || String(err) }, 'shade line stored-line read failed');
+    // No identity table yet means no stored rows at all; anything else is unknown.
+    if (looksLikeRelationMissing(err)) return new Map();
+    throw err;
+  }
+}
+
+// Every store (merchant@domain) holding each given line OUTSIDE the batch, so a v2 shade adopts a
+// v1 line only when that line is one store's. On failure: null (unknown), which allows no adoption.
+async function loadLineStores({ productLineIds = [], excludeRefs = [], queryFn = query } = {}) {
+  const ids = uniqueStrings(productLineIds, 5000);
+  if (!ids.length) return new Map();
+  if (typeof queryFn !== 'function') return null;
+  try {
+    const result = await queryFn(
+      `
+        SELECT DISTINCT product_line_id, merchant_id, official_domain
+        FROM pdp_identity_listing
+        WHERE product_line_id = ANY($1::text[])
+          AND NOT (source_listing_ref = ANY($2::text[]))
+      `,
+      [ids, uniqueRefs(excludeRefs)],
+    );
+    const stores = new Map();
+    for (const row of result?.rows || []) {
+      const id = asString(row?.product_line_id);
+      if (!id) continue;
+      const list = stores.get(id) || [];
+      list.push(buildShadeLineStoreKey(row?.merchant_id, row?.official_domain));
+      stores.set(id, list);
     }
-    return new Map();
+    return stores;
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return new Map();
+    logger.warn({ err: err?.message || String(err) }, 'shade line line-store read failed; no v1 adoption this batch');
+    return null;
   }
 }
 
 async function groupShadeLinesForBatch(listings, { queryFn = query } = {}) {
   const refs = uniqueRefs((listings || []).map((listing) => listing?.source_listing_ref));
-  const storedLines = await loadStoredProductLines({ sourceListingRefs: refs, queryFn });
-  const first = applyShadeLineGrouping(listings, { storedLines });
+  let storedLines;
+  try {
+    storedLines = await loadStoredProductLines({ sourceListingRefs: refs, queryFn });
+  } catch (err) {
+    // Fail closed: without the stored lines the pass cannot tell new rows from existing ones, so
+    // it writes NO decision for this batch; the listings go out exactly as built (flag-off shape).
+    logger.warn({ err: err?.message || String(err) }, 'shade line stored-line read failed; shade-line pass skipped for this batch');
+    return { listings, stats: { skipped: 'stored_lines_unavailable' } };
+  }
+  const lineStores = await loadLineStores({
+    productLineIds: collectAdoptableV1LineIds(listings, { storedLines }),
+    excludeRefs: refs,
+    queryFn,
+  });
+  const first = applyShadeLineGrouping(listings, { storedLines, lineStores });
   const tooSmallIds = uniqueStrings(
     first.listings
       .map((listing) => asPlainObject(asPlainObject(listing?.soft_identity)?.shade_line))
@@ -5804,7 +5852,7 @@ async function groupShadeLinesForBatch(listings, { queryFn = query } = {}) {
     queryFn,
   });
   if (![...existingMemberCounts.values()].some((count) => count > 0)) return first;
-  return applyShadeLineGrouping(listings, { existingMemberCounts, storedLines });
+  return applyShadeLineGrouping(listings, { existingMemberCounts, storedLines, lineStores });
 }
 
 async function listPdpIdentityShadowRows({
@@ -6017,6 +6065,7 @@ module.exports = {
     clusterIdentityListings,
     countExistingShadeLineMembers,
     groupShadeLinesForBatch,
+    loadLineStores,
     loadStoredProductLines,
     fetchBackfillProducts,
     sanitizeJsonForPostgres,

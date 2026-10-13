@@ -37,7 +37,15 @@
 //               (sticky): this is the re-key backlog, see shadeLineCardCollapse.js
 //   refused   - with the named reason
 // Existing rows are never moved: their stored id, review family and variant axes are left as the
-// builder made them.
+// builder made them. The backfill FAILS CLOSED: if it cannot read which batch rows are already
+// stored, it skips the whole pass for the batch and writes no decision.
+//
+// V1 ADOPTION. A v2 shade whose same-store siblings live in a v1 line (rule v1 keys some titles
+// correctly already) joins that line instead of minting a second one -- but only when the v1 line
+// is this store's alone (no other merchant or domain holds it, in the batch or stored), and the
+// v1 siblings count in the brand / category / size / currency / price baselines. A batch only
+// sees the siblings it contains (`--only-uncovered` batches see none); the read-only census
+// (scripts/census-shade-lines.js) is the reconciliation.
 
 const { createHash } = require('crypto');
 
@@ -49,7 +57,7 @@ const SHADE_LINE_MIN_MEMBERS = 2;
 const SHADE_LINE_REFUSALS = Object.freeze({
   NO_CONTEXT: 'no_shade_context',
   NON_SHADE_SUFFIX: 'non_shade_suffix',
-  SIZE_AXIS: 'size_axis_present',
+  SIZE_MISMATCH: 'size_mismatch',
   MISSING_BRAND: 'missing_brand',
   MISSING_STORE: 'missing_store',
   NOT_APPROVED: 'identity_not_approved',
@@ -133,10 +141,12 @@ function readCodeToken(token, previousToken = '', nextToken = '') {
   // One- or two-letter prefix: K2207, RX318, T41.
   match = raw.match(/^([a-z]{1,2}\d{2,5}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
-  // Bare number: 517, 88, 03N. Not a year ("Holiday 2024"), and not a number whose letter is a
-  // unit or a product descriptor: 15G / 30L (a size), 24H / 10X / 3D / 24K.
+  // Bare number: 517, 88, 03N. Not a year ("Holiday 2024"), not a product descriptor
+  // (24H / 10X / 3D / 24K), and not a size glued to its unit (15G / 30L) -- but a zero-padded
+  // number is a code even when its letter is a unit letter (05G, 06L): no size is written "05 g".
   match = raw.match(/^(\d{2,4}[a-z]?)$/i);
-  if (match && !YEAR_RE.test(match[1]) && !/[hxdkgl]$/i.test(match[1])) return match[1].toLowerCase();
+  const gluedUnit = match && /[gl]$/i.test(match[1]) && !/^0/.test(match[1]);
+  if (match && !YEAR_RE.test(match[1]) && !/[hxdk]$/i.test(match[1]) && !gluedUnit) return match[1].toLowerCase();
   return '';
 }
 
@@ -226,12 +236,31 @@ const NON_SHADE_SUFFIX_RULES = [
     'product_noun',
     /\b(?:lipstick|lip gloss|mascara|foundation|concealer|serum|cleanser|toner|moisturi[sz]er|lotion|primer|brush|brushes|tool|tools|sticker|stickers|decal|decals)\b/,
   ],
-  // The nail SYSTEM around the colours: none of these is a shade, whatever its code.
-  [
-    'nail_system',
-    /\b(?:base|top|top coat|base coat|no wipe|builder|rubber|bond|bonder|dehydrator|prep|remover|acetone|cuticle|oil|lamp|file|files|buffer|glue|tip|tips|extension|polygel|poly gel|foil|stencil)\b/,
-  ],
 ];
+
+// The nail SYSTEM around the colours (base, top, builder, remover, cuticle oil, file, ...) is not
+// a shade, whatever its code. A system word inside a colour NAME is ("Rose Oil", "Base Camp
+// Beige", "Desert Tip"), so a name is refused only when it is a known system phrase, or when it
+// is made of system words and their qualifiers alone ("Base", "Matte Top", "Builder Gel Clear").
+const NAIL_SYSTEM_NOUNS = new Set([
+  'base', 'top', 'builder', 'rubber', 'bond', 'bonder', 'dehydrator', 'prep', 'remover', 'acetone',
+  'cuticle', 'oil', 'lamp', 'file', 'files', 'buffer', 'glue', 'tip', 'tips', 'extension', 'polygel',
+  'foil', 'stencil',
+]);
+const NAIL_SYSTEM_QUALIFIERS = new Set([
+  'gel', 'coat', 'no', 'wipe', 'free', 'clear', 'glass', 'nail', 'nails', 'uv', 'led', 'soak', 'off',
+  'hard', 'soft', 'poly', 'liquid', 'strong', 'strength', 'cover', 'gels',
+]);
+const NAIL_SYSTEM_PHRASE_RE = /\b(?:top coat|base coat|top gel|base gel|builder gel|rubber base|no wipe|cuticle oil|nail file|polish remover|gel remover|acetone|dehydrator|polygel|poly gel)\b/;
+
+function isNailSystemName(normalizedName) {
+  if (NAIL_SYSTEM_PHRASE_RE.test(normalizedName)) return true;
+  const words = normalizedName.split(' ').filter(Boolean);
+  return (
+    words.some((word) => NAIL_SYSTEM_NOUNS.has(word)) &&
+    words.every((word) => NAIL_SYSTEM_NOUNS.has(word) || NAIL_SYSTEM_QUALIFIERS.has(word) || FINISH_WORDS.has(word))
+  );
+}
 const FINISH_WORDS = new Set([
   'matte', 'matt', 'gloss', 'glossy', 'shine', 'shimmer', 'glitter', 'satin', 'cream', 'creme', 'metallic',
   'sheer', 'velvet', 'frost', 'frosted', 'pearl', 'pearly', 'chrome', 'jelly', 'neon', 'holo', 'holographic',
@@ -246,6 +275,7 @@ function detectNonShadeSuffix({ title, name }) {
   for (const [kind, pattern] of NON_SHADE_SUFFIX_RULES) {
     if (pattern.test(normalizedName)) return kind;
   }
+  if (isNailSystemName(normalizedName)) return 'nail_system';
   const words = normalizedName.split(' ').filter(Boolean);
   if (words.length && words.every((word) => FINISH_WORDS.has(word))) return 'finish_only';
   return '';
@@ -391,11 +421,14 @@ function extractShadeLineCandidate({
     return { ...base, refused: `${SHADE_LINE_REFUSALS.NON_SHADE_SUFFIX}:${suffix}` };
   }
   const safeAxes = asPlainObject(axes) || {};
-  // A sized item is not a shade, and a size axis on one member would turn the line's picker
-  // into a size picker (resolveProductLineOptionAxis prefers an implicit size baseline).
-  if (asString(safeAxes.size) || asString(safeAxes.volume) || asString(safeAxes.pack)) {
-    return { ...base, refused: SHADE_LINE_REFUSALS.SIZE_AXIS };
-  }
+  // Every shade of a line usually shares one size ("15 ml"); that is fine. Members whose sizes
+  // DIFFER are refused per group (size_mismatch): a second size would turn the line's picker into
+  // a size picker (resolveProductLineOptionAxis prefers an implicit size baseline).
+  base.size_signature = ['size', 'volume', 'pack']
+    .map((key) => normalizeLineText(safeAxes[key]))
+    .map((value, idx) => (value ? `${['size', 'volume', 'pack'][idx]}:${value}` : ''))
+    .filter(Boolean)
+    .join('|') || '-';
   if (!base.brand_norm) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_BRAND };
   const mid = asString(merchantId);
   if (!mid) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_STORE };
@@ -413,7 +446,7 @@ function extractShadeLineCandidate({
 
   // Rule v1 already strips the WHOLE shade for this title (its descriptor is the same value), so
   // its line key already groups these siblings. Leave it to v1; a v2 sibling in the same store
-  // line ADOPTS the v1 line (applyShadeLineGrouping) rather than minting a second one.
+  // line ADOPTS the v1 line when it is this store's alone (applyShadeLineGrouping).
   const v1Value = normalizeLineText(v1Family?.value);
   if (v1Value && v1Value === shadeValue) {
     return { ...candidate, superseded_by: 'variant_family_v1' };
@@ -456,13 +489,17 @@ function buildShadeLineKey({ store, brandNorm, lineNorm }) {
 /**
  * Decides one group (same store + same line text). Returns
  *   { approved: [entry], refused: [{ entry, reason }], line_key, product_line_id, review_family_id }
- * `adopt` ({ product_line_id, review_family_id, members, shade_keys }) is the v1 line that same-store
- * siblings of this line already live in: the group joins it. `existingMemberCountFor` is how many
- * listings outside the batch already hold the proposed line id.
+ * `adopt` ({ product_line_id, review_family_id, members, shade_keys, reference }) is the v1 line that
+ * same-store siblings of this line already live in: the group joins it, and its known members
+ * (`reference`: their candidates) count in the brand / category / size / currency / price
+ * baselines, so a new shade must agree with the line it joins. `existingMemberCountFor` is how
+ * many listings outside the batch already hold the proposed line id.
  */
 function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt = null } = {}) {
   const refused = [];
   let alive = entries.slice();
+  const reference = Array.isArray(adopt?.reference) ? adopt.reference : [];
+  const baseline = (pick) => [...alive.map((entry) => pick(entry.candidate)), ...reference.map(pick)];
   const refuse = (predicate, reason) => {
     const keep = [];
     for (const entry of alive) {
@@ -472,7 +509,7 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
     alive = keep;
   };
 
-  const brand = modalValue(alive.map((entry) => entry.candidate.brand_norm));
+  const brand = modalValue(baseline((candidate) => candidate.brand_norm));
   refuse((entry) => entry.candidate.brand_norm !== brand, SHADE_LINE_REFUSALS.BRAND_MISMATCH);
 
   // A brand-only line ("BRANDX 731 PAPAYA") would gather every coded item the brand sells at the
@@ -485,8 +522,8 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
     );
   }
 
-  const productType = modalValue(alive.map((entry) => entry.candidate.product_type));
-  const categoryKey = modalValue(alive.map((entry) => entry.candidate.category_path.join('/')));
+  const productType = modalValue(baseline((candidate) => candidate.product_type));
+  const categoryKey = modalValue(baseline((candidate) => candidate.category_path.join('/')));
   const modalCategory = categoryKey ? categoryKey.split('/') : [];
   // An unknown category or type is not a different one; only two KNOWN values disagree.
   refuse(
@@ -496,13 +533,21 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
     SHADE_LINE_REFUSALS.CATEGORY_MISMATCH,
   );
 
-  const currency = modalValue(alive.map((entry) => entry.candidate.price?.currency || ''));
+  // One size across the line is fine; a member in another size (or sized where the line is not)
+  // is not a shade of it.
+  const sizeSignature = modalValue(baseline((candidate) => candidate.size_signature || '-'));
+  refuse((entry) => (entry.candidate.size_signature || '-') !== sizeSignature, SHADE_LINE_REFUSALS.SIZE_MISMATCH);
+
+  const currency = modalValue(baseline((candidate) => candidate.price?.currency || ''));
   refuse(
     (entry) => Boolean(currency && entry.candidate.price && entry.candidate.price.currency !== currency),
     SHADE_LINE_REFUSALS.CURRENCY_MISMATCH,
   );
 
-  const lineMedian = median(alive.map((entry) => entry.candidate.price?.amount));
+  const lineMedian = median([
+    ...alive.map((entry) => entry.candidate.price?.amount),
+    ...reference.filter((candidate) => !currency || candidate.price?.currency === currency).map((candidate) => candidate.price?.amount),
+  ]);
   if (lineMedian) {
     refuse((entry) => {
       const amount = entry.candidate.price?.amount;
@@ -545,6 +590,38 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
   };
 }
 
+// "merch_x@shop.example": one store is one seller of record on one domain. An unknown domain
+// ('-') never matches anything, so a line whose store cannot be told is never treated as one store.
+function sameStore(left, right) {
+  const split = (value) => {
+    const text = asString(value);
+    const at = text.lastIndexOf('@');
+    const merchant = at >= 0 ? text.slice(0, at) : text;
+    const domain = (at >= 0 ? text.slice(at + 1) : '').toLowerCase().replace(/^www\./, '');
+    return { merchant, domain: domain === '-' ? '' : domain };
+  };
+  const a = split(left);
+  const b = split(right);
+  return Boolean(a.merchant && a.merchant === b.merchant && a.domain && a.domain === b.domain);
+}
+
+function buildStoreKey(merchantId, domain) {
+  return `${asString(merchantId)}@${asString(domain).toLowerCase() || '-'}`;
+}
+
+/** The v1 line ids that v2 shades in this batch could adopt (for the store-scope read). */
+function collectAdoptableV1LineIds(listings, { storedLines = new Map() } = {}) {
+  const ids = new Set();
+  for (const listing of Array.isArray(listings) ? listings : []) {
+    const candidate = asPlainObject(listing?.shade_line_candidate);
+    if (!candidate?.superseded_by) continue;
+    const stored = storedLines instanceof Map ? storedLines.get(asString(listing.source_listing_ref)) : null;
+    const lineId = asString(stored?.product_line_id) || asString(listing.product_line_id);
+    if (lineId) ids.add(lineId);
+  }
+  return [...ids];
+}
+
 function withShadeLineDecision(listing, decision) {
   const softIdentity = asPlainObject(listing.soft_identity) || {};
   return {
@@ -563,12 +640,16 @@ function withShadeLineDecision(listing, decision) {
  *   storedLines:          Map(source_listing_ref -> { product_line_id, review_family_id }) for the
  *                         batch's listings that already exist; their stored line is never moved.
  */
-function applyShadeLineGrouping(listings, { existingMemberCounts = new Map(), storedLines = new Map() } = {}) {
+function applyShadeLineGrouping(listings, {
+  existingMemberCounts = new Map(),
+  storedLines = new Map(),
+  lineStores = new Map(),
+} = {}) {
   const safe = Array.isArray(listings) ? listings : [];
   const groups = new Map();
   const v1Siblings = new Map();
   const decisions = new Map();
-  const stats = { candidates: 0, approved: 0, proposed: 0, adopted: 0, refused: {}, lines: 0 };
+  const stats = { candidates: 0, approved: 0, proposed: 0, adopted: 0, adoption_not_store_scoped: 0, refused: {}, lines: 0 };
   const countRefusal = (reason) => {
     stats.refused[reason] = (stats.refused[reason] || 0) + 1;
   };
@@ -612,21 +693,43 @@ function applyShadeLineGrouping(listings, { existingMemberCounts = new Map(), st
 
   const existingMemberCountFor = (lineId) =>
     existingMemberCounts instanceof Map ? existingMemberCounts.get(lineId) || 0 : 0;
+  // Every store that holds a line: the batch's own listings, plus the stored members outside the
+  // batch (`lineStores`; null = unknown, which never allows an adoption).
+  const lineIdOf = (listing) => asString(storedOf(listing)?.product_line_id) || asString(listing?.product_line_id);
+  const batchStoresByLine = new Map();
+  for (const listing of safe) {
+    const lineId = lineIdOf(listing);
+    if (!lineId) continue;
+    const stores = batchStoresByLine.get(lineId) || [];
+    stores.push(asString(asPlainObject(listing?.shade_line_candidate)?.store) || buildStoreKey(listing?.merchant_id, ''));
+    batchStoresByLine.set(lineId, stores);
+  }
+  const isStoreScopedLine = (lineId, store) => {
+    if (!(lineStores instanceof Map)) return false;
+    const stores = [...(batchStoresByLine.get(lineId) || []), ...(lineStores.get(lineId) || [])];
+    return stores.length > 0 && stores.every((other) => sameStore(other, store));
+  };
   for (const [groupKey, entries] of groups.entries()) {
     const siblings = v1Siblings.get(groupKey) || [];
-    const adopt = siblings.length
+    const v1LineId = siblings.length ? modalValue(siblings.map(({ listing }) => lineIdOf(listing))) : '';
+    // Adopt the v1 line only when it is THIS store's line. A v1 key is not store-scoped, so a v1
+    // line that also holds another seller's (or another domain's) pages is not widened with this
+    // store's shades: the store line is minted instead, and the census reports the v1 siblings.
+    const scoped = Boolean(v1LineId) && isStoreScopedLine(v1LineId, entries[0].candidate.store);
+    if (v1LineId && !scoped) stats.adoption_not_store_scoped += 1;
+    const adopt = scoped
       ? {
-          product_line_id: modalValue(
-            siblings.map(({ listing }) => asString(storedOf(listing)?.product_line_id) || asString(listing.product_line_id)),
-          ),
+          product_line_id: v1LineId,
           review_family_id: modalValue(
             siblings.map(({ listing }) => asString(storedOf(listing)?.review_family_id) || asString(listing.review_family_id)),
           ),
           members: siblings.length,
           shade_keys: siblings.map(({ candidate }) => candidate.shade_key),
+          reference: siblings.map(({ candidate }) => candidate),
         }
       : null;
     const decision = decideShadeLineGroup(entries, { existingMemberCountFor, adopt });
+    decision.v1_line_not_store_scoped = Boolean(v1LineId && !scoped) ? v1LineId : '';
     for (const { entry, reason } of decision.refused) {
       decisions.set(entry.index, {
         refused: reason,
@@ -644,6 +747,7 @@ function applyShadeLineGrouping(listings, { existingMemberCounts = new Map(), st
         product_line_id: decision.product_line_id,
         review_family_id: decision.review_family_id,
         adopted: decision.adopted,
+        v1_line_not_store_scoped: decision.v1_line_not_store_scoped,
       });
     }
   }
@@ -672,6 +776,7 @@ function applyShadeLineGrouping(listings, { existingMemberCounts = new Map(), st
         proposed_review_family_id: decision.review_family_id,
         stored_product_line_id: storedLineId,
         shade_value: candidate.shade_value,
+        ...(decision.v1_line_not_store_scoped ? { v1_line_not_store_scoped: decision.v1_line_not_store_scoped } : {}),
       });
     }
     stats.approved += 1;
@@ -693,6 +798,7 @@ function applyShadeLineGrouping(listings, { existingMemberCounts = new Map(), st
         shade_value: candidate.shade_value,
         format: candidate.format,
         ...(decision.adopted ? { adopted_v1_line: true } : {}),
+        ...(decision.v1_line_not_store_scoped ? { v1_line_not_store_scoped: decision.v1_line_not_store_scoped } : {}),
       },
     );
   });
@@ -741,6 +847,8 @@ module.exports = {
   SHADE_LINE_MIN_MEMBERS,
   SHADE_LINE_REFUSALS,
   applyShadeLineGrouping,
+  buildStoreKey,
+  collectAdoptableV1LineIds,
   decideShadeLineGroup,
   extractShadeLineCandidate,
   isShadeLineRuleEnabled,
@@ -758,6 +866,7 @@ module.exports = {
     readCategoryPath,
     readCodeToken,
     readProductType,
+    sameStore,
     stripBracketTags,
   },
 };

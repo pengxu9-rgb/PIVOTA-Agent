@@ -261,6 +261,80 @@ describe('shade line rule (shade_line_v2)', () => {
       expect(new Set(lineIds(mixed.listings)).size).toBe(1);
     });
 
+    test('a v1 line held by another seller (stored) or another store (in the batch) is not adopted: the store line is minted', () => {
+      const opts = { currency: 'USD', price: 22, productType: null };
+      const titles = ['BRANDF Satin Lipstick - Red', 'BRANDF Satin Lipstick - Nude', 'BRANDF Satin Lipstick - 517 Dune', 'BRANDF Satin Lipstick - 518 Clay'];
+      const built = titles.map((title) => buildListing(title, opts));
+      const v1Line = built[0].product_line_id;
+
+      const storedElsewhere = group(built, { lineStores: new Map([[v1Line, ['merch_obs_reseller@reseller.example']]]) });
+      const [red, nude, dune, clay] = storedElsewhere.listings;
+      expect(red.product_line_id).toBe(v1Line);
+      expect(nude.product_line_id).toBe(v1Line);
+      expect(dune.product_line_id).not.toBe(v1Line);
+      expect(dune.product_line_id).toBe(clay.product_line_id);
+      expect(decisionOf(dune)).toMatchObject({ status: 'approved', v1_line_not_store_scoped: v1Line });
+      expect(storedElsewhere.stats.adoption_not_store_scoped).toBe(1);
+
+      // Another store's page of the same v1 line inside the batch blocks the adoption too.
+      const otherStorePage = buildListing('BRANDF Satin Lipstick - Coral', { ...opts, domain: 'shop-two.example', merchantId: 'merch_obs_shoptwo' });
+      expect(otherStorePage.product_line_id).toBe(v1Line);
+      const inBatch = group([...built, otherStorePage]);
+      expect(inBatch.listings[2].product_line_id).not.toBe(v1Line);
+
+      // Unknown stores (the store read failed) allow no adoption either.
+      const unknown = group(built, { lineStores: null });
+      expect(unknown.listings[2].product_line_id).not.toBe(v1Line);
+
+      // Same seller of record, another domain: another store.
+      const otherDomain = group(built, { lineStores: new Map([[v1Line, ['merch_obs_shopone@other-domain.example']]]) });
+      expect(otherDomain.listings[2].product_line_id).not.toBe(v1Line);
+      // Same store, written with www.: still this store, so the line is adopted.
+      const sameStore = group(built, { lineStores: new Map([[v1Line, ['merch_obs_shopone@www.shop-one.example']]]) });
+      expect(sameStore.listings[2].product_line_id).toBe(v1Line);
+    });
+
+    test('the backfill reads the stores holding a v1 line before adopting it', async () => {
+      const { _internals } = require('../../src/services/pdpIdentityGraph');
+      const opts = { currency: 'USD', price: 22, productType: null };
+      const built = ['BRANDF Satin Lipstick - Red', 'BRANDF Satin Lipstick - Nude', 'BRANDF Satin Lipstick - 517 Dune'].map((title) =>
+        buildListing(title, opts),
+      );
+      const v1Line = built[0].product_line_id;
+      const run = (storeRows) =>
+        _internals.groupShadeLinesForBatch(built, {
+          queryFn: async (sql, params) => {
+            if (/SELECT DISTINCT product_line_id, merchant_id, official_domain/.test(sql)) {
+              expect(params[0]).toEqual([v1Line]);
+              return { rows: storeRows };
+            }
+            return { rows: [] };
+          },
+        });
+      const foreign = await run([{ product_line_id: v1Line, merchant_id: 'merch_obs_reseller', official_domain: 'reseller.example' }]);
+      expect(foreign.listings[2].product_line_id).not.toBe(v1Line);
+      const own = await run([{ product_line_id: v1Line, merchant_id: 'merch_obs_shopone', official_domain: 'shop-one.example' }]);
+      expect(own.listings[2].product_line_id).toBe(v1Line);
+    });
+
+    test('shades joining an adopted v1 line must agree with that line\'s known members on price, currency and type', () => {
+      const opts = { currency: 'USD', price: 22, productType: 'lipstick' };
+      const withSiblings = (extra) =>
+        group([
+          buildListing('BRANDF Satin Lipstick - Red', opts),
+          buildListing('BRANDF Satin Lipstick - Nude', opts),
+          buildListing('BRANDF Satin Lipstick - Rose', opts),
+          buildListing('BRANDF Satin Lipstick - 517 Dune', { ...opts, ...extra }),
+          buildListing('BRANDF Satin Lipstick - 518 Clay', { ...opts, ...extra }),
+        ]).listings;
+      // On their own the two new shades agree with each other; against the line they join they do not.
+      const fine = withSiblings({});
+      expect(fine[3].product_line_id).toBe(fine[0].product_line_id);
+      withSiblings({ price: 70 }).slice(3).forEach((listing) => expect(refusalOf(listing)).toBe('price_outlier'));
+      withSiblings({ currency: 'SGD' }).slice(3).forEach((listing) => expect(refusalOf(listing)).toBe('currency_mismatch'));
+      withSiblings({ productType: 'lip liner' }).slice(3).forEach((listing) => expect(refusalOf(listing)).toBe('category_mismatch'));
+    });
+
     test('a v2 page for a shade its v1 sibling already holds is a duplicate, the sibling keeps its place', () => {
       const opts = { currency: 'USD', price: 22, productType: null };
       const { listings: grouped } = group([
@@ -443,6 +517,9 @@ describe('shade line rule (shade_line_v2)', () => {
       ['nail_system', 'BRANDA Nail 03 Glass File'],
       ['nail_system', 'BRANDA Nail 12 Cuticle Oil'],
       ['nail_system', 'BRANDA Gel 07 Bond'],
+      // a system phrase inside a longer name
+      ['nail_system', 'BRANDA Gel 21 Pink Top Coat'],
+      ['nail_system', 'BRANDA Nail 22 Acetone Free Lavender'],
     ])('non_shade_suffix:%s refuses %s', (kind, title) => {
       const listing = buildListing(title, { productType: 'makeup' });
       expect(listing.shade_line_candidate.refused).toBe(`non_shade_suffix:${kind}`);
@@ -450,16 +527,38 @@ describe('shade line rule (shade_line_v2)', () => {
       expect(refusalOf(grouped[0])).toBe(`non_shade_suffix:${kind}`);
     });
 
-    test('size_axis_present: a sized member is never a shade (its axis would turn the picker into a size picker)', () => {
-      const sized = buildListing('BRANDA AURA K2207 SAFFRON', {
-        extraProduct: { variants: [{ variant_id: 'v1', option_name: 'Size', option_value: '15 ml' }, { variant_id: 'v2', option_name: 'Size', option_value: '30 ml' }] },
-      });
-      expect(sized.variant_axes.size || sized.variant_axes.volume).toBeTruthy();
-      expect(sized.shade_line_candidate.refused).toBe('size_axis_present');
-      const { listings: grouped } = group([sized, buildListing('BRANDA AURA T415 MOSS'), buildListing('BRANDA AURA P380 HARBOR')]);
-      expect(refusalOf(grouped[0])).toBe('size_axis_present');
-      expect(grouped[0].variant_axes).toEqual(sized.variant_axes);
-      expect(grouped[1].product_line_id).toBe(grouped[2].product_line_id);
+    test('one size shared by the whole line is allowed; members in different sizes are size_mismatch', () => {
+      const sized = (title, value) =>
+        buildListing(title, { extraProduct: { variants: [{ variant_id: `v-${title}`, option_name: 'Size', option_value: value }] } });
+      const uniform = [sized('BRANDA AURA K2207 SAFFRON', '15 ml'), sized('BRANDA AURA T415 MOSS', '15 ml'), sized('BRANDA AURA P380 HARBOR', '15ml')];
+      expect(uniform[0].variant_axes.volume || uniform[0].variant_axes.size).toBeTruthy();
+      const ok = group(uniform);
+      expect(new Set(lineIds(ok.listings)).size).toBe(1);
+      ok.listings.forEach((listing) => expect(decisionOf(listing).status).toBe('approved'));
+
+      const mixed = group([
+        sized('BRANDA AURA K2207 SAFFRON', '15 ml'),
+        sized('BRANDA AURA T415 MOSS', '15 ml'),
+        sized('BRANDA AURA P380 HARBOR', '30 ml'),
+        buildListing('BRANDA AURA R220 SLATE'),
+      ]);
+      expect(refusalOf(mixed.listings[2])).toBe('size_mismatch');
+      expect(refusalOf(mixed.listings[3])).toBe('size_mismatch');
+      expect(mixed.listings[2].variant_axes).toEqual(sized('BRANDA AURA P380 HARBOR', '30 ml').variant_axes);
+      expect(mixed.listings[0].product_line_id).toBe(mixed.listings[1].product_line_id);
+    });
+
+    test('a nail-system word inside a colour name is still a shade; codes like 05G / 06L are codes', () => {
+      const { parseShadeLineTitle } = require('../../src/services/shadeLineRule');
+      const { listings: grouped } = group([
+        buildListing('BRANDA AURA K2207 ROSE OIL'),
+        buildListing('BRANDA AURA T415 BASE CAMP BEIGE'),
+        buildListing('BRANDA AURA P380 DESERT TIP'),
+      ]);
+      grouped.forEach((listing) => expect(decisionOf(listing).status).toBe('approved'));
+      expect(new Set(lineIds(grouped)).size).toBe(1);
+      expect(parseShadeLineTitle('BRANDB LACQ 05G')).toMatchObject({ code: '05g' });
+      expect(parseShadeLineTitle('BRANDB LACQ 06L Ivory')).toMatchObject({ code: '06l', name: 'Ivory' });
     });
 
     test('identity_not_approved and reviewed merges are never re-lined', () => {
@@ -521,6 +620,51 @@ describe('shade line rule (shade_line_v2)', () => {
   });
 
   describe('existing rows, versioning and markers', () => {
+    test('fails closed: when the stored lines cannot be read, the batch gets no decision at all', async () => {
+      const { _internals } = require('../../src/services/pdpIdentityGraph');
+      const built = [buildListing('BRANDA AURA K2207 SAFFRON'), buildListing('BRANDA AURA T415 MOSS')];
+      const queryFn = jest.fn(async () => {
+        throw new Error('connection reset');
+      });
+      const result = await _internals.groupShadeLinesForBatch(built, { queryFn });
+      expect(result.stats).toEqual({ skipped: 'stored_lines_unavailable' });
+      expect(result.listings).toEqual(built);
+      result.listings.forEach((listing) => {
+        expect(decisionOf(listing)).toBeNull();
+        expect(listing.variant_axes.shade).toBeUndefined();
+      });
+    });
+
+    test('fails closed through the backfill: rows are written exactly as built, with no shade decision', async () => {
+      const { backfillPdpIdentityGraph } = require('../../src/services/pdpIdentityGraph');
+      const { seedRow } = require('../fixtures/shade_line_backfill_capture');
+      const seedRows = [seedRow({ code: 'aura-k2207', title: 'BRANDA AURA K2207 SAFFRON' }), seedRow({ code: 'aura-t415', title: 'BRANDA AURA T415 MOSS' })];
+      const queryFn = jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds e')) return { rows: seedRows };
+        if (text.includes('SELECT source_listing_ref, product_line_id, review_family_id')) throw new Error('statement timeout');
+        return { rows: [] };
+      });
+      const written = [];
+      const withClientFn = async (fn) =>
+        fn({
+          query: async (sql, params) => {
+            if (String(sql || '').includes('INSERT INTO pdp_identity_listing')) {
+              written.push({ product_line_id: params[7], variant_axes: JSON.parse(params[15]), soft_identity: JSON.parse(params[14]) });
+            }
+            return { rows: [] };
+          },
+        });
+      const result = await backfillPdpIdentityGraph({ queryFn, withClientFn });
+      expect(result.shade_lines).toEqual({ skipped: 'stored_lines_unavailable' });
+      expect(written).toHaveLength(2);
+      expect(written[0].product_line_id).not.toBe(written[1].product_line_id);
+      written.forEach((row) => {
+        expect(row.soft_identity.shade_line).toBeUndefined();
+        expect(row.variant_axes.shade).toBeUndefined();
+      });
+    });
+
     test('a stored member is never moved: its line, review family and axes stay; the rule only PROPOSES', () => {
       const built = [
         buildListing('BRANDA AURA K2207 SAFFRON'),

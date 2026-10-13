@@ -21,7 +21,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { SHADE_LINE_RULE_FLAG, applyShadeLineGrouping } = require('../src/services/shadeLineRule');
+const {
+  SHADE_LINE_RULE_FLAG,
+  applyShadeLineGrouping,
+  buildStoreKey,
+  collectAdoptableV1LineIds,
+} = require('../src/services/shadeLineRule');
 
 function argValues(name) {
   const out = [];
@@ -38,49 +43,73 @@ function asString(value) {
   return String(value).trim();
 }
 
-/**
- * Pure. `rows`: stored pdp_identity_listing rows (source_listing_ref, merchant_id, product_id,
- * source_kind, product_line_id, review_family_id, identity_status, matched_by_rule,
- * source_payload) with catalog_category_path / catalog_product_type joined in.
- */
-function censusShadeLines(rows) {
+function withRuleOn(fn) {
   const previous = process.env[SHADE_LINE_RULE_FLAG];
   process.env[SHADE_LINE_RULE_FLAG] = 'true';
   try {
-    const { buildIdentityListingFromProduct, _internals } = require('../src/services/pdpIdentityGraph');
-    const storedLines = new Map();
-    const built = [];
-    for (const row of Array.isArray(rows) ? rows : []) {
-      const ref = asString(row?.source_listing_ref);
-      if (!ref) continue;
-      const product = row?.source_payload && typeof row.source_payload === 'object' ? row.source_payload : null;
-      const listing = buildIdentityListingFromProduct({
-        merchantId: row.merchant_id,
-        productId: row.product_id,
-        product,
-        sourceKind: row.source_kind,
-        sourceMeta: {
-          catalog_category_path: row.catalog_category_path || null,
-          catalog_product_type: row.catalog_product_type || null,
-        },
-      });
-      if (!listing) continue;
-      if (asString(row.product_line_id)) {
-        storedLines.set(ref, {
-          product_line_id: asString(row.product_line_id),
-          review_family_id: asString(row.review_family_id),
-        });
-      }
-      // The stored decision fields win over the rebuilt ones: the census asks about the rows as
-      // they are.
-      built.push({
-        ...listing,
-        identity_status: asString(row.identity_status) || listing.identity_status,
-        matched_by_rule: asString(row.matched_by_rule) || listing.matched_by_rule,
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env[SHADE_LINE_RULE_FLAG];
+    else process.env[SHADE_LINE_RULE_FLAG] = previous;
+  }
+}
+
+/** The v1 line ids the census rows could adopt, for the store-scope read. */
+function adoptableLineIdsForRows(rows) {
+  return withRuleOn(() => {
+    const { built, storedLines } = buildCensusListings(rows);
+    return collectAdoptableV1LineIds(built, { storedLines });
+  });
+}
+
+function buildCensusListings(rows) {
+  const { buildIdentityListingFromProduct } = require('../src/services/pdpIdentityGraph');
+  const storedLines = new Map();
+  const built = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const ref = asString(row?.source_listing_ref);
+    if (!ref) continue;
+    const product = row?.source_payload && typeof row.source_payload === 'object' ? row.source_payload : null;
+    const listing = buildIdentityListingFromProduct({
+      merchantId: row.merchant_id,
+      productId: row.product_id,
+      product,
+      sourceKind: row.source_kind,
+      sourceMeta: {
+        catalog_category_path: row.catalog_category_path || null,
+        catalog_product_type: row.catalog_product_type || null,
+      },
+    });
+    if (!listing) continue;
+    if (asString(row.product_line_id)) {
+      storedLines.set(ref, {
+        product_line_id: asString(row.product_line_id),
+        review_family_id: asString(row.review_family_id),
       });
     }
+    // The stored decision fields win over the rebuilt ones: the census asks about the rows as
+    // they are.
+    built.push({
+      ...listing,
+      identity_status: asString(row.identity_status) || listing.identity_status,
+      matched_by_rule: asString(row.matched_by_rule) || listing.matched_by_rule,
+    });
+  }
+  return { built, storedLines };
+}
+
+/**
+ * Pure. `rows`: stored pdp_identity_listing rows (source_listing_ref, merchant_id, product_id,
+ * source_kind, product_line_id, review_family_id, identity_status, matched_by_rule,
+ * source_payload) with catalog_category_path / catalog_product_type joined in. `lineStores`:
+ * Map(v1 line id -> store keys of its members outside `rows`), as the backfill reads it.
+ */
+function censusShadeLines(rows, { lineStores = new Map() } = {}) {
+  return withRuleOn(() => {
+    const { _internals } = require('../src/services/pdpIdentityGraph');
+    const { built, storedLines } = buildCensusListings(rows);
     const clustered = _internals.clusterIdentityListings(built);
-    const { listings, stats } = applyShadeLineGrouping(clustered, { storedLines });
+    const { listings, stats } = applyShadeLineGrouping(clustered, { storedLines, lineStores });
     const lines = new Map();
     const refusals = {};
     for (const listing of listings) {
@@ -111,11 +140,15 @@ function censusShadeLines(rows) {
       refusals,
       stats,
     };
-  } finally {
-    if (previous === undefined) delete process.env[SHADE_LINE_RULE_FLAG];
-    else process.env[SHADE_LINE_RULE_FLAG] = previous;
-  }
+  });
 }
+
+const LINE_STORES_SQL = `
+  SELECT DISTINCT product_line_id, merchant_id, official_domain
+  FROM pdp_identity_listing
+  WHERE product_line_id = ANY($1::text[])
+    AND NOT (source_listing_ref = ANY($2::text[]))
+`;
 
 const CENSUS_SQL = `
   SELECT
@@ -156,12 +189,26 @@ async function main() {
   const out = argValues('out')[0] || '';
   const { closePool, withClient } = require('../src/db');
   try {
-    const rows = await withClient(async (client) => {
+    const { rows, lineStores } = await withClient(async (client) => {
       await client.query('BEGIN READ ONLY');
       try {
         const result = await client.query(CENSUS_SQL, [merchantIds, limit]);
+        const censusRows = result?.rows || [];
+        const adoptable = adoptableLineIdsForRows(censusRows);
+        const stores = new Map();
+        if (adoptable.length) {
+          const storeResult = await client.query(LINE_STORES_SQL, [
+            adoptable,
+            censusRows.map((row) => asString(row.source_listing_ref)).filter(Boolean),
+          ]);
+          for (const row of storeResult?.rows || []) {
+            const id = asString(row.product_line_id);
+            if (!id) continue;
+            stores.set(id, [...(stores.get(id) || []), buildStoreKey(row.merchant_id, row.official_domain)]);
+          }
+        }
         await client.query('COMMIT');
-        return result?.rows || [];
+        return { rows: censusRows, lineStores: stores };
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         throw err;
@@ -171,7 +218,7 @@ async function main() {
       ok: true,
       generated_at: new Date().toISOString(),
       input: { merchant_ids: merchantIds, limit },
-      ...censusShadeLines(rows),
+      ...censusShadeLines(rows, { lineStores }),
     };
     if (out) {
       const outPath = path.resolve(out);
@@ -191,4 +238,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CENSUS_SQL, censusShadeLines };
+module.exports = { CENSUS_SQL, LINE_STORES_SQL, adoptableLineIdsForRows, censusShadeLines };

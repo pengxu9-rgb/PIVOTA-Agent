@@ -38,34 +38,62 @@
 // PUBLIC PAYLOAD. `shade_line` = { product_line_id, rule_version, shade_count, in_stock_shade_count,
 // from_price, currency, collapsed_card_count } and `shade_count`. No member refs.
 //
+// BEFORE ENABLING SHADE_LINE_CARD_COLLAPSE_ENABLED (known gaps; not built yet, each needs a fix or
+// an explicit sign-off first):
+//   1. Buckets must be per store (merchant + domain), not per line. Once one store's v2 shades
+//      sit in a line that also holds other sellers' pages (a cross-merchant v1 line), every card
+//      of that line from every merchant folds into ONE card -- whose representative may be
+//      another merchant's listing -- and shade_count counts a shade sold at two stores twice.
+//      (The rule no longer adopts a v1 line that is not one store's, but lines adopted or
+//      re-keyed by hand, and older v1 lines, can still mix stores.)
+//   2. The refill after a fold works only if the upstream lane over-fetches past the requested
+//      page size. The find_products_multi test mocks a wide pool; verify the real lanes do.
+//   3. Pagination is contract-visible: a line card on page 1 can sit beside the same line's
+//      shades on page 2 (there is no cursor to reconcile), and `total` shrinks by folded cards.
+//   4. Member-read cost: listLiveShadeLineMembers resolves lines that are verified OR shared by
+//      two cards; it should resolve only v2-approved lines, and apply the per-line cap BEFORE the
+//      lateral seed join and the trust EXISTS (worst case today ~200 lines x 400 members).
+//
 // RE-KEYING THE LINES OLDER RULES MINTED (documented here, NOT done by this code; needs Peng's go):
 //   product_line_id is sticky on upsert (pdpIdentityGraph.writeIdentityRows keeps a stored
 //   non-empty id unless the new rule is reviewed_multi_offer_merge), so shade_line_v2 only lines
-//   up NEW listings. Existing listings keep their ids until an explicitly approved re-key.
-//   1. Census, read-only: scripts/census-shade-lines.js. It reads the stored rows in a READ ONLY
-//      transaction, rebuilds each listing IN MEMORY and runs the parser and the group guards with
-//      the stored lines as `storedLines`, and prints, per proposed line, the members, their stored
-//      line ids and every refusal. It writes nothing. (A backfill --dry-run cannot serve as the
-//      census: it persists nothing, and a non-dry rebuild is itself a prod write.)
-//   2. Re-key, with approval, the census's `proposed` rows by ONE of:
+//   up NEW listings. A rebuilt row that is stored in another line gets status 'proposed', with
+//   proposed_product_line_id / proposed_review_family_id in soft_identity.shade_line; it keeps
+//   its stored ids until an explicitly approved re-key.
+//   1. Census, read-only: scripts/census-shade-lines.js. It reads the stored rows (and the stores
+//      holding the v1 lines they could adopt) in a READ ONLY transaction, rebuilds each listing IN
+//      MEMORY, runs the parser and the group guards with the stored lines, and prints, per
+//      proposed line, the members, their stored ids, in_line / rekey, and every refusal. It writes
+//      nothing. (A backfill --dry-run persists nothing, and a non-dry rebuild is a prod write.)
+//      The census is also the reconciliation for `--only-uncovered` batches: those select only
+//      seeds with no listing yet, so a batch never sees the stored v1 siblings of a line and
+//      cannot adopt it; the census, which reads the stored rows, does.
+//   2. Re-key, with approval, the census's `rekey` rows by ONE of:
 //      a. the existing reviewed path, per row, in ONE transaction: write a `force_product_line`
 //         override (applyPdpIdentityOverride) with payload.target_product_line_id = the proposed
 //         pl_ id AND payload.target_review_family_id = the proposed rf_ id, and
 //         UPDATE pdp_identity_listing SET product_line_id = <pl_>, review_family_id = <rf_>,
-//         soft_identity = soft_identity || {shade_line: {status:'approved', ...}}, variant_axes
-//         gains shade only when the row has no size/volume/pack axis — the way
+//         soft_identity = soft_identity || {shade_line: {status:'approved', ...}}, and add the
+//         shade to variant_axes when the row has none -- the way
 //         scripts/review-and-link-same-canonical-product-line-identities.cjs pairs an override
 //         with a row update. The override alone does NOT move a row: applyIdentityOverrides sets
 //         the id on the rebuilt listing, but the upsert keeps the stored one.
-//      b. a versioned upsert branch: add
-//         `WHEN EXCLUDED.soft_identity->'shade_line'->>'status' = 'approved' AND <explicit
-//         re-key flag> THEN EXCLUDED.product_line_id` to the product_line_id CASE and the
-//         same branch (THEN EXCLUDED.review_family_id) to the review_family_id CASE, and run a
+//      b. a versioned upsert branch, keyed on the PROPOSAL (never on EXCLUDED.product_line_id,
+//         which for a stored row is just the rebuilt key, and never on status 'approved', which a
+//         row stored elsewhere never gets):
+//           product_line_id = CASE
+//             WHEN <explicit re-key flag>
+//              AND EXCLUDED.soft_identity->'shade_line'->>'status' = 'proposed'
+//              AND NULLIF(EXCLUDED.soft_identity->'shade_line'->>'proposed_product_line_id', '') IS NOT NULL
+//               THEN EXCLUDED.soft_identity->'shade_line'->>'proposed_product_line_id'
+//             ...existing branches...
+//         and the same branch reading proposed_review_family_id in the review_family_id CASE;
+//         the rebuilt row must also carry the shade axis for the re-keyed member. Then run a
 //         targeted (non --only-uncovered) backfill of the approved stores with that flag.
 //   review_family_id must move WITH product_line_id in both halves: the review summary
 //   aggregates by review_family_id, and a line whose members split across rf_ ids shows partial
 //   reviews. The rule mints rf_<hash of the same line key> (or, for an adopted v1 line, that
-//   line's own review family), and the census prints both ids for every proposed row.
+//   line's own review family), and the census prints both ids for every row.
 
 const { isPricedInServingCurrency } = require('./servingCurrencyGuard');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');

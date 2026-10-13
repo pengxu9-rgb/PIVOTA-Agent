@@ -93,4 +93,26 @@ describe('census-shade-lines', () => {
       expect.objectContaining({ stored_product_line_id: 'pl_page_l473', status: 'rekey' }),
     ]);
   });
+
+  test('a v1 line another seller also holds is not adopted in the census either: the store line is minted', () => {
+    const { censusShadeLines, LINE_STORES_SQL } = require('../../scripts/census-shade-lines');
+    const makeup = (code, title, lineId) => ({
+      ...storedRow(code, title, lineId),
+      source_payload: { ...storedRow(code, title, lineId).source_payload, brand: 'BRANDF', price: { amount: 22, currency: 'USD' }, currency: 'USD' },
+      catalog_product_type: null,
+    });
+    const rows = [
+      makeup('l471', 'BRANDF Lipstick 471', 'pl_v1_live_line'),
+      makeup('l472', 'BRANDF Lipstick 472', 'pl_v1_live_line'),
+      makeup('l473', 'BRANDF Lipstick 473 Blue', 'pl_page_l473'),
+      makeup('l474', 'BRANDF Lipstick 474 Pink', 'pl_page_l474'),
+    ];
+    const result = censusShadeLines(rows, { lineStores: new Map([['pl_v1_live_line', ['merch_obs_reseller@reseller.example']]]) });
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].product_line_id).not.toBe('pl_v1_live_line');
+    expect(result.lines[0].members.map((member) => member.status)).toEqual(['rekey', 'rekey']);
+    expect(result.stats.adoption_not_store_scoped).toBe(1);
+    expect(LINE_STORES_SQL).toMatch(/^\s*SELECT/);
+    expect(LINE_STORES_SQL).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/i);
+  });
 });
