@@ -60,6 +60,14 @@ import {
   UCP_REAP_RESUME_INPUT_SCHEMA,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
+import {
+  START_PURCHASE_INPUT_SCHEMA,
+  START_PURCHASE_TOOL,
+  START_PURCHASE_TOOL_DEFINITION,
+  orchestratedPurchaseToolEnabled,
+  startOrchestratedPurchase,
+  startPurchaseArgumentProblems,
+} from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
 
 export class UnknownToolError extends Error {
@@ -216,7 +224,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -274,6 +282,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
+    // `start_purchase` (native MCP only; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Off, the
+    // name falls through to the op lookup below and is an unknown tool, exactly as before it existed.
+    if (dialect === TOOL_DIALECTS.mcp && toolName === START_PURCHASE_TOOL && orchestratedPurchaseToolEnabled(process.env)) {
+      return callStartPurchase(toolArgs, sessionContext);
+    }
     const op = (dialect === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP)[toolName];
     if (!op) throw new UnknownToolError(toolName);
 
@@ -493,11 +506,58 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     }));
   }
 
+  /**
+   * `start_purchase`: the same door discipline as every other op, in the same order — the declared schema
+   * (undeclared arguments refused by name), the semantic checks, then the VERIFIED buyer (user_ref AND a verified
+   * session, as for every user-scoped op), then the purchase. Its answer takes the same money filter as a checkout
+   * result, with the buyer handoff (the rail's page) preserved. See orchestratedPurchaseTool.js.
+   */
+  async function callStartPurchase(toolArgs, sessionContext) {
+    if (toolArgs === undefined) toolArgs = {};
+    if (!isPlainObject(toolArgs)) throw new ToolValidationError("Tool arguments must be an object.");
+    const undeclared = findUndeclaredArguments(START_PURCHASE_INPUT_SCHEMA, toolArgs);
+    if (undeclared.length > 0) {
+      throw new ToolValidationError(
+        `${START_PURCHASE_TOOL}: unknown argument${undeclared.length > 1 ? "s" : ""} ` +
+          `${undeclared.map(({ path }) => `"${path}"`).join(", ")} — undeclared arguments are refused rather than ` +
+          `silently ignored. Accepted top-level arguments: ${Object.keys(START_PURCHASE_INPUT_SCHEMA.properties).join(", ")}.`,
+      );
+    }
+    const problems = startPurchaseArgumentProblems(toolArgs);
+    if (problems.length > 0) {
+      throw new ToolValidationError(
+        `${START_PURCHASE_TOOL}: ${problems.map(({ field, message }) => `${field} ${message}`).join("; ")}.`,
+      );
+    }
+    const ctx = buildContext(sessionContext);
+    if (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id)) throw new IdentityRequiredError();
+    const result = await startOrchestratedPurchase({
+      args: toolArgs,
+      ctx,
+      attested: attestedBuyerFromSession(sessionContext),
+      executor: memoizedProductReads(executor),
+      createClient: orchestratedPurchase && orchestratedPurchase.createClient,
+      readClient: orchestratedPurchase && orchestratedPurchase.readClient,
+      log: logger,
+    });
+    return sanitizeResult(result, { handoffAllowed: true });
+  }
+
   function isCommerceTool(name, dialect) {
+    if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
+      return orchestratedPurchaseToolEnabled(process.env);
+    }
     return Object.prototype.hasOwnProperty.call(opIndexFor(dialect), name);
   }
 
-  return { tools, callTool, isCommerceTool };
+  return {
+    // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
+    get tools() {
+      return orchestratedPurchaseToolEnabled(process.env) ? [...tools, { ...START_PURCHASE_TOOL_DEFINITION }] : tools;
+    },
+    callTool,
+    isCommerceTool,
+  };
 }
 
 // --- identity ---------------------------------------------------------------------------------------------
@@ -1297,6 +1357,19 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
+  // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
+  if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
+      && ["purchase_not_available", "purchase_refused", "agent_api_key_required", "caller_credentials_rejected",
+        "purchase_price_changed", "purchase_idempotency_conflict"].includes(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (typeof error.detail.refusal_code === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.refusal_code)) {
+      body.detail.refusal_code = error.detail.refusal_code;
+    }
+    if (error.detail.retry_of_unknown_outcome_may_exist === true) {
+      body.recovery = "nothing was sent for this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
+    }
+  }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"
       && typeof error.detail.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(error.detail.reconciliation_id)) {
     body.detail = {reason:"ucp_reap_attempt_retired",reconciliation_id:error.detail.reconciliation_id};
@@ -1306,7 +1379,7 @@ export function toToolError(error) {
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
-    body.detail = { reason: "ucp_reap_create_outcome_unknown" };
+    body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
