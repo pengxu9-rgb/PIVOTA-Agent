@@ -134,7 +134,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   const affectedProductsFileInput = normalizeString(argValue(argv, 'affected-products-file'), 2000);
   const externalProductIds = normalizeString(argValue(argv, 'external-product-ids'), 8000);
   const externalProductIdsFile = normalizeString(argValue(argv, 'external-product-ids-file'), 2000);
-  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
+  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 200 }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
     // The backfill relies on the prioritize-uncovered build: its coverage predicate and attempt cooldown.
     throw new Error('--uncovered-backfill-limit requires --prioritize-uncovered');
   }
@@ -216,7 +216,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     coverageSiblingRefs: argValue(argv, 'coverage-sibling-refs', 'true'),
     uncoveredCooldownDays: Math.trunc(parseNumber(argValue(argv, 'uncovered-cooldown-days'), 7, { min: 1, max: 90 })),
     selectLimit: parseNumber(argValue(argv, 'select-limit'), DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 }),
-    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }),
+    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 200 }),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
     applySync,
     applyBuild,

@@ -105,7 +105,10 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
 
   // Never-labelled products, whenever they last changed (see select-relationship-graph-affected-products.js).
   // 0 = off: the recency selection alone, as before.
-  const uncoveredBackfillLimit = Math.trunc(parseNumberEnv(env.RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT, 0, { min: 0, max: 2000 }));
+  // At most 200: target recall serves at most 400 anchors, 200 of them the recency build's.
+  const uncoveredBackfillLimit = Math.trunc(parseNumberEnv(env.RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT, 0, { min: 0, max: 200 }));
+  // The build takes at most --limit anchors: unless set, it makes room for the backfill too.
+  const buildLimit = parseNumberEnv(env.RELGRAPH_SYNC_LIMIT, DEFAULT_LIMIT + uncoveredBackfillLimit, { min: 1, max: 2000 });
   const skipReview = parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_REVIEW, false);
   const cutoff = normalizeString(env.RELGRAPH_SYNC_CUTOFF, 100) || selectUpdatedSince;
   if (!skipReview && Number.isNaN(new Date(cutoff).getTime())) {
@@ -150,8 +153,7 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     '--select-limit',
     String(parseNumberEnv(env.RELGRAPH_SYNC_SELECT_LIMIT, DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 })),
     '--limit',
-    // The build takes at most --limit anchors: unless set, it makes room for the backfill too.
-    String(parseNumberEnv(env.RELGRAPH_SYNC_LIMIT, DEFAULT_LIMIT + uncoveredBackfillLimit, { min: 1, max: 2000 })),
+    String(buildLimit),
     '--review-limit',
     String(parseNumberEnv(env.RELGRAPH_SYNC_REVIEW_LIMIT, DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 })),
     '--run-started-at',
@@ -181,7 +183,11 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'source-limit', env.RELGRAPH_SYNC_SOURCE_LIMIT);
   appendTargetRecallArgs(args, { expandTargetRecall: parseBooleanEnv(env.RELGRAPH_SYNC_EXPAND_TARGET_RECALL, false),
     targetRecallOptions: {
-      maxAnchors: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_ANCHORS,
+      // Target recall takes the first maxAnchors anchors, and backfilled ones sort last among the
+      // never-covered (recent rows first): unless set, it covers the backfill too, or those anchors would
+      // be built without recall, record an attempt and cool down (controller review of #2418).
+      maxAnchors: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_ANCHORS
+        || (uncoveredBackfillLimit > 0 ? String(Math.min(400, buildLimit)) : undefined),
       batchSize: env.RELGRAPH_SYNC_TARGET_RECALL_BATCH_SIZE,
       perAnchor: env.RELGRAPH_SYNC_TARGET_RECALL_PER_ANCHOR,
       maxCandidates: env.RELGRAPH_SYNC_TARGET_RECALL_MAX_CANDIDATES,

@@ -333,8 +333,10 @@ async function fetchExternalSeedRows({
 // is stable never gets candidates: prod 2026-10-13, 19,744 of 24,675 renderable beauty catalog products
 // (80%) had no relationship label at all, and 35 of the 45 sampled PDPs had none. The backfill adds up
 // to `limit` products the BUILD will treat as uncovered, whenever they last changed:
-// - a cheap window first: renderable now (fresh PDP render probe), active source, not suppressed, no
-//   live approved label and no label or attempt activity on their own refs within the cooldown;
+// - a cheap window first: renderable now (fresh PDP render probe), active source, not suppressed, and
+//   no live approved label and no label or attempt activity on their own refs within the cooldown, in
+//   this market (the window is a conservative pre-cut: a live approval the build would not count -
+//   serving-suppressed, an unreviewed dupe - still keeps a product out of the backfill);
 // - then the build's own coverage predicate (catalogCoverageSql: siblings, attached seeds, the group,
 //   serving-suppressed labels, the attempt cooldown) keeps only relgraph_priority > 0 - never-touched
 //   first (3), then labelled-but-uncovered (2) and terminal-only (1). A product the build would skip is
@@ -344,6 +346,9 @@ async function fetchExternalSeedRows({
 // Requires the prioritize-uncovered build: it records each attempt (the cooldown that rotates the
 // backlog) and orders priority-3 anchors first.
 const UNCOVERED_BACKFILL_WINDOW_FACTOR = 4;
+// Target recall serves at most 400 anchors and the recency build defaults to 200, so a backfill above
+// 200 would be built without recall; it also bounds the window (4x) well inside the statement timeout.
+const MAX_UNCOVERED_BACKFILL_LIMIT = 200;
 
 async function fetchUncoveredBackfillRows({
   queryFn = query,
@@ -377,6 +382,7 @@ async function fetchUncoveredBackfillRows({
           AND NOT EXISTS (
             SELECT 1 FROM relationship_candidate_labels labels
             WHERE lower(labels.anchor_ref) IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
+              AND lower(labels.market) = lower($4) AND labels.vertical = 'beauty'
               AND (
                 (labels.label_state IN ('ai_approved', 'human_approved') AND labels.last_verified_at IS NOT NULL AND labels.expires_at > now())
                 OR GREATEST(labels.created_at, labels.updated_at, labels.reviewed_at) >= now() - interval '${days} days'
@@ -465,7 +471,7 @@ function buildAffectedProductsManifest({
 
 function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = process.cwd() } = {}) {
   if (hasFlag(argv, 'help') || hasFlag(argv, 'h')) return { help: true };
-  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
+  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: MAX_UNCOVERED_BACKFILL_LIMIT }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
     // The backfill selects with the build's coverage predicate and relies on its attempt cooldown.
     throw new Error('--uncovered-backfill-limit requires --prioritize-uncovered');
   }
@@ -486,7 +492,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     uncoveredCooldownDays: normalizeUncoveredCooldownDays(argValue(argv, 'uncovered-cooldown-days')),
     market: normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase() || DEFAULT_MARKET,
     limit: parseNumber(argValue(argv, 'limit') || argValue(argv, 'select-limit'), DEFAULT_LIMIT, { min: 1, max: 5000 }),
-    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }),
+    uncoveredBackfillLimit: parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: MAX_UNCOVERED_BACKFILL_LIMIT }),
     out: resolvePathMaybeRelative(argValue(argv, 'out'), cwd),
     allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
   };
@@ -553,6 +559,10 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
   const backfill = backfillRows
     .filter((row) => !recencyKeys.has(normalizeLower(row.product_key)))
     .map((row) => ({ ...buildCatalogAffectedRow(row, options.market), source: 'uncovered_backfill' }));
+  if (options.uncoveredBackfillLimit > 0) {
+    // One line the routine's step log keeps (it keeps only the stdout tail, where the manifest is).
+    process.stderr.write(`relgraph uncovered backfill: selected ${backfill.length} of limit ${options.uncoveredBackfillLimit} (window ${backfillRows.length} after coverage)\n`);
+  }
   const manifest = buildAffectedProductsManifest({
     rows: [...backfill, ...rows],
     market: options.market,
