@@ -346,9 +346,10 @@ async function fetchExternalSeedRows({
 // Requires the prioritize-uncovered build: it records each attempt (the cooldown that rotates the
 // backlog) and orders priority-3 anchors first.
 const UNCOVERED_BACKFILL_WINDOW_FACTOR = 4;
-// Target recall serves at most 400 anchors and the recency build defaults to 200, so a backfill above
-// 200 would be built without recall; it also bounds the window (4x) well inside the statement timeout.
-const MAX_UNCOVERED_BACKFILL_LIMIT = 200;
+// Target recall serves at most 400 anchors, so a backfill above 400 would be built without recall; the
+// nightly cron keeps it at 200 (its recency build takes the other 200), a backfill-only drain batch may
+// use all 400. Also bounds the window (4x, 1,600 rows) well inside the statement timeout.
+const MAX_UNCOVERED_BACKFILL_LIMIT = 400;
 
 async function fetchUncoveredBackfillRows({
   queryFn = query,

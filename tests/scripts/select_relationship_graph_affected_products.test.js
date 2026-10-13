@@ -171,8 +171,8 @@ describe('select-relationship-graph-affected-products', () => {
     expect(sql).not.toMatch(/cp\.updated_at >= \$/);
   });
 
-  test('the backfill limit is capped at 200, and the run reports its count on stderr', async () => {
-    expect(parseArgs(['--updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered', '--uncovered-backfill-limit', '900'], { now: NOW }).uncoveredBackfillLimit).toBe(200);
+  test('the backfill limit is capped at 400 (target recall\'s maximum), and the run reports its count on stderr', async () => {
+    expect(parseArgs(['--updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered', '--uncovered-backfill-limit', '900'], { now: NOW }).uncoveredBackfillLimit).toBe(400);
     const queryFn = jest.fn(async (sql) => {
       if (sql.includes('schema_access')) return { rows: [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
       if (sql.includes('backfill_window')) return { rows: [{ product_key: 'prod_b', pivota_signature_id: 'sig_b', source_product_id: 'ext_b', relgraph_priority: 3 }] };

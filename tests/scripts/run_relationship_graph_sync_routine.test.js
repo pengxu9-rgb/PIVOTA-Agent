@@ -219,6 +219,12 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(selectorArgs).toContain('--uncovered-cooldown-days 5');
   });
 
+  test('a backfill-only drain batch may use up to 400 (target recall\'s maximum)', () => {
+    const options = parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered',
+      '--uncovered-backfill-limit', '900', '--out-dir', '/tmp/relgraph-sync-routine'], { now: NOW });
+    expect(options.uncoveredBackfillLimit).toBe(400);
+  });
+
   test('the sync routine refuses a backfill without the prioritize-uncovered build', () => {
     expect(() => parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--uncovered-backfill-limit', '150'], { now: NOW }))
       .toThrow(/requires --prioritize-uncovered/);
