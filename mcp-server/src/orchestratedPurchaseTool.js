@@ -269,11 +269,23 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
         throw new PivotaCommerceError("PRICE_CHANGED", { op: START_PURCHASE_TOOL, reason: "purchase_price_changed" });
       }
       if (created.code === "idempotency_conflict") {
-        throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { op: START_PURCHASE_TOOL, reason: "purchase_idempotency_conflict" });
+        // NOT the kernel's IDEMPOTENCY_CONFLICT ("Starting fresh" / "use a new idempotency_key"). The backend's
+        // fingerprint includes facts this tool fills from OUR catalog row (product_key, variant_key, the host), so a
+        // retry of an unknown outcome conflicts when that row changed in between, and the key's purchase EXISTS. The
+        // answer says so: check that purchase before starting another; a new key only for a different purchase.
+        throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_idempotency_conflict" });
       }
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_refused", refusal_code: created.code });
     case "unauthenticated":
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "agent_api_key_required" });
+    case "not_available":
+      // The backend door is dark (404 `not_available`), or an explicit rail choice cannot be honoured (404
+      // `not_available_on_this_rail`). Nothing is opened by this call, and retrying it cannot help, so it is a
+      // definite answer, not "retry the same key" (an agent would loop). The dark door answers BEFORE its key
+      // lookup, so the recovery keeps the warning that an earlier unknown-outcome purchase may exist.
+      throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+        op: START_PURCHASE_TOOL, reason: "purchase_unavailable", refusal_code: created.code, retry_of_unknown_outcome_may_exist: true,
+      });
     case "rejected":
       // The backend refused the caller's credentials before any write (401): no retry of this call can work.
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "caller_credentials_rejected" });

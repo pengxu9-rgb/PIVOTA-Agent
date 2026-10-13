@@ -50,12 +50,16 @@ yet, the answer carries the rail id with `status: "accepted"` and `read_pending:
 | `OPERATION_NOT_ALLOWED` / `purchase_not_available` + `refusal_code` | Our catalog row cannot be bought this way (e.g. `variant_required`, `variant_unresolvable`, `native_row`). Nothing was sent for THIS call; its `recovery` warns that if it retries an earlier call whose outcome was unknown, that purchase may still exist. |
 | `PRICE_CHANGED` / `purchase_price_changed` | The backend: the price is no longer the one shown, for a new attempt. |
 | `OPERATION_NOT_ALLOWED` / `purchase_refused` + `refusal_code` | The backend definitely opened nothing (e.g. `merchant_not_eligible`, `consent_required`, `amount_over_limit`). |
-| `IDEMPOTENCY_CONFLICT` / `purchase_idempotency_conflict` | This key was used for a different purchase. |
+| `OPERATION_NOT_ALLOWED` / `purchase_idempotency_conflict` | This key already opened a purchase, for details that no longer match the call. The details this tool sends include facts it fills from OUR catalog row, so a retry of an unknown outcome conflicts when that row changed in between: the purchase may exist. Check it before starting another; a new key only for a different purchase. (Deliberately not the kernel's IDEMPOTENCY_CONFLICT, whose wording says to start fresh.) |
+| `OPERATION_NOT_ALLOWED` / `purchase_unavailable` + `refusal_code` | The backend door is dark (`not_available`) or an explicit rail choice cannot be honoured (`not_available_on_this_rail`). Repeating the call cannot help; an earlier unknown-outcome purchase may still exist. |
 | `OPERATION_NOT_ALLOWED` / `agent_api_key_required` | This door has no agent key + buyer token to send. |
 | `OPERATION_NOT_ALLOWED` / `caller_credentials_rejected` | The backend refused the caller's credentials (401), before any write. |
-| `CHECKOUT_OUTCOME_UNKNOWN` / `purchase_outcome_unknown` | Anything else (timeout, 5xx, a 404 from a dark door or a rail choice the backend cannot honour). The purchase MAY exist: retry the exact call with the same `idempotency_key` (it replays the original on its original rail); never start another. |
+| `CHECKOUT_OUTCOME_UNKNOWN` / `purchase_outcome_unknown` | Anything else (timeout, 5xx, a malformed answer). The purchase MAY exist: retry the exact call with the same `idempotency_key` (it replays the original on its original rail); never start another. |
 
 The tool's backend idempotency keys are namespaced (`mcp-purchase-v1-…`), so a key used on another tool or door
 is a different attempt. For the same reason the backend's `409 opened_on_another_rail` (the Reap route's answer
 for a key that opened a purchase on another rail) cannot reach the UCP Reap lane through this tool; if it ever
 did, the Reap client reads it as an unknown outcome, which never opens a second purchase.
+
+Parity note: a Shopify row goes as `item_source: "cart_link"` (the backend's cart-link lane accepts Shopify and
+external-seed rows), while the UCP Reap lane sends a Shopify row through Reap's variant lane by default.

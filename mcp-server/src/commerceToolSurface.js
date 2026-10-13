@@ -1361,13 +1361,21 @@ export function toToolError(error) {
   // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
   if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
       && ["purchase_not_available", "purchase_refused", "agent_api_key_required", "caller_credentials_rejected",
-        "purchase_price_changed", "purchase_idempotency_conflict"].includes(error.detail.reason)) {
+        "purchase_price_changed", "purchase_idempotency_conflict", "purchase_unavailable"].includes(error.detail.reason)) {
     body.detail = { reason: error.detail.reason };
     if (typeof error.detail.refusal_code === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.refusal_code)) {
       body.detail.refusal_code = error.detail.refusal_code;
     }
     if (error.detail.retry_of_unknown_outcome_may_exist === true) {
-      body.recovery = "nothing was sent for this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
+    }
+    if (error.detail.reason === "purchase_idempotency_conflict") {
+      // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
+      body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
+      body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
+    }
+    if (error.detail.reason === "purchase_unavailable") {
+      body.message = "Purchases through this tool are not available right now.";
     }
   }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"

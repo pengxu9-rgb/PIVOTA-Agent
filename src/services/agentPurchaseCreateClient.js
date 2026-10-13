@@ -19,6 +19,9 @@
  *                    timeout, a malformed or oversized body. NEVER a statement that nothing was created: the caller
  *                    must treat the outcome as unknown and retry the SAME idempotency key, or read the purchase.
  *   rejected         401: the backend refused the caller's credentials, before any write (no retry can fix it)
+ *   not_available    404 `not_available` (the door is dark) or `not_available_on_this_rail` (an explicit rail choice
+ *                    it cannot honour), in the documented envelope: this call opened nothing, and repeating it cannot
+ *                    help. (A dark door answers before its key lookup: an EARLIER call's purchase may still exist.)
  *   unauthenticated  the request context has no agent key or no buyer token: no request is made, and the INTERNAL
  *                    key is never substituted (`allowInternalFallback: false` at the host)
  *
@@ -180,6 +183,10 @@ function createAgentPurchaseCreateClient(deps = {}) {
     if (status === 401) {
       log('info', { outcome: 'rejected', http_status: status });
       return { kind: 'rejected' };
+    }
+    if (status === 404 && (reason === 'not_available' || reason === 'not_available_on_this_rail')) {
+      log('info', { outcome: 'not_available', code: reason, http_status: status });
+      return { kind: 'not_available', code: reason, http_status: status };
     }
     if (reason && CREATE_REFUSALS[reason] === status) {
       log('info', { outcome: KIND.refused, code: reason, http_status: status });
