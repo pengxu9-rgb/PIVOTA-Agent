@@ -332,22 +332,65 @@ async function fetchExternalSeedRows({
 // The recency selection only ever reaches products whose rows changed in the window, so a product that
 // is stable never gets candidates: prod 2026-10-13, 19,744 of 24,675 renderable beauty catalog products
 // (80%) had no relationship label at all, and 35 of the 45 sampled PDPs had none. The backfill adds up
-// to `limit` such products each run, regardless of when they changed: renderable now (the PDP render
-// probe, fresh within 7 days), active source, not suppressed, no label on their signature or source ref,
-// and not attempted within the cooldown (relationship_graph_anchor_attempts, written by the build even
-// for a zero-candidate attempt), so successive runs rotate through the backlog. Ordered by a hash of the
-// product key: a stable, catalog-wide spread rather than the newest rows again.
+// to `limit` products the BUILD will treat as uncovered, whenever they last changed:
+// - a cheap window first: renderable now (fresh PDP render probe), active source, not suppressed, no
+//   live approved label and no label or attempt activity on their own refs within the cooldown;
+// - then the build's own coverage predicate (catalogCoverageSql: siblings, attached seeds, the group,
+//   serving-suppressed labels, the attempt cooldown) keeps only relgraph_priority > 0 - never-touched
+//   first (3), then labelled-but-uncovered (2) and terminal-only (1). A product the build would skip is
+//   never selected, so it cannot hold a slot; one whose labels sit unreviewed re-enters after the
+//   cooldown instead of staying in limbo.
+// The window's hash order changes daily, so a row the coverage step rejects is not at the head forever.
+// Requires the prioritize-uncovered build: it records each attempt (the cooldown that rotates the
+// backlog) and orders priority-3 anchors first.
+const UNCOVERED_BACKFILL_WINDOW_FACTOR = 4;
+
 async function fetchUncoveredBackfillRows({
   queryFn = query,
   market = DEFAULT_MARKET,
   limit = 0,
   uncoveredCooldownDays = 7,
+  coverageSiblingRefs = true,
+  coverageSuppressedIds = [],
+  rotationKey = new Date().toISOString().slice(0, 10),
 } = {}) {
   const normalizedLimit = Math.max(0, Math.trunc(Number(limit) || 0));
   if (!normalizedLimit) return [];
   const days = normalizeUncoveredCooldownDays(uncoveredCooldownDays);
+  const normalizedMarket = normalizeString(market).toUpperCase() || DEFAULT_MARKET;
   const res = await queryFn(
     `
+      WITH backfill_window AS MATERIALIZED (
+        SELECT cp.*
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        WHERE cp.pivota_signature_id IS NOT NULL
+          AND cp.pdp_will_render IS TRUE
+          AND cp.pdp_will_render_computed_at >= now() - interval '7 days'
+          AND cp.suppressed_at IS NULL AND cp.suppression_reason IS NULL
+          AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+          AND (
+            lower(concat_ws(' ', cp.title, cp.description, cp.brand, cp.product_type, cp.category, cp.category_path, cp.category_label))
+              LIKE ANY($3::text[])
+            OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($3::text[])
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM relationship_candidate_labels labels
+            WHERE lower(labels.anchor_ref) IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
+              AND (
+                (labels.label_state IN ('ai_approved', 'human_approved') AND labels.last_verified_at IS NOT NULL AND labels.expires_at > now())
+                OR GREATEST(labels.created_at, labels.updated_at, labels.reviewed_at) >= now() - interval '${days} days'
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM relationship_graph_anchor_attempts attempt
+            WHERE attempt.anchor_ref IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
+              AND attempt.market = $4 AND attempt.vertical = 'beauty'
+              AND attempt.last_attempt_at >= now() - interval '${days} days'
+          )
+        ORDER BY md5(cp.product_key || $6), cp.product_key
+        LIMIT $1
+      )
       SELECT
         cp.product_key,
         cp.source_product_id,
@@ -360,33 +403,24 @@ async function fetchUncoveredBackfillRows({
         cp.canonical_url,
         cp.pivota_canonical_url,
         cp.updated_at,
-        cp.created_at
-      FROM catalog_products cp
+        cp.created_at,
+        coverage.relgraph_priority,
+        coverage.relgraph_last_activity
+      FROM backfill_window cp
       LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
-      WHERE cp.pivota_signature_id IS NOT NULL
-        AND cp.pdp_will_render IS TRUE
-        AND cp.pdp_will_render_computed_at >= now() - interval '7 days'
-        AND cp.suppressed_at IS NULL AND cp.suppression_reason IS NULL
-        AND ${activeCatalogProductSourceWhere('cp', 'cm')}
-        AND (
-          lower(concat_ws(' ', cp.title, cp.description, cp.brand, cp.product_type, cp.category, cp.category_path, cp.category_label))
-            LIKE ANY($2::text[])
-          OR lower(to_jsonb(cp.product_payload)::text) LIKE ANY($2::text[])
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM relationship_candidate_labels labels
-          WHERE lower(labels.anchor_ref) IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM relationship_graph_anchor_attempts attempt
-          WHERE attempt.anchor_ref IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))
-            AND attempt.market = $3 AND attempt.vertical = 'beauty'
-            AND attempt.last_attempt_at >= now() - interval '${days} days'
-        )
-      ORDER BY md5(cp.product_key), cp.product_key
-      LIMIT $1
+      ${coverageCatalogJoinSql('cp', { marketSql: '$4', suppressedIdsSql: '$5::text[]', cooldownDays: days, coverageSiblingRefs })}
+      WHERE coverage.relgraph_priority > 0
+      ORDER BY coverage.relgraph_priority DESC, md5(cp.product_key || $6), cp.product_key
+      LIMIT $2
     `,
-    [normalizedLimit, BEAUTY_TEXT_PATTERNS, normalizeString(market).toUpperCase() || DEFAULT_MARKET],
+    [
+      normalizedLimit * UNCOVERED_BACKFILL_WINDOW_FACTOR,
+      normalizedLimit,
+      BEAUTY_TEXT_PATTERNS,
+      normalizedMarket,
+      Array.isArray(coverageSuppressedIds) ? coverageSuppressedIds : [],
+      normalizeString(rotationKey, 40),
+    ],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
 }
@@ -431,6 +465,10 @@ function buildAffectedProductsManifest({
 
 function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = process.cwd() } = {}) {
   if (hasFlag(argv, 'help') || hasFlag(argv, 'h')) return { help: true };
+  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
+    // The backfill selects with the build's coverage predicate and relies on its attempt cooldown.
+    throw new Error('--uncovered-backfill-limit requires --prioritize-uncovered');
+  }
   const hours = parseNumber(argValue(argv, 'hours') || argValue(argv, 'select-hours'), 0, { min: 0, max: 24 * 365 });
   const rawUpdatedSince =
     argValue(argv, 'updated-since') ||
@@ -500,12 +538,16 @@ async function run(argv = process.argv.slice(2), { queryFn = query, now = new Da
     rows.push(...seedRows.map((row) => buildExternalSeedAffectedRow(row, options.market)));
   }
 
-  // The backfill goes FIRST: the build takes the first --limit anchors of the manifest's universe.
+  // Manifest order does not decide what is built: the prioritize-uncovered build orders by coverage
+  // priority, and the cron widens its --limit by the backfill.
   const backfillRows = await fetchUncoveredBackfillRows({
     queryFn,
     market: options.market,
     limit: options.uncoveredBackfillLimit,
     uncoveredCooldownDays: options.uncoveredCooldownDays,
+    coverageSiblingRefs: options.coverageSiblingRefs,
+    coverageSuppressedIds,
+    rotationKey: now.toISOString().slice(0, 10),
   });
   const recencyKeys = new Set(rows.map((row) => normalizeLower(row.product_key)).filter(Boolean));
   const backfill = backfillRows

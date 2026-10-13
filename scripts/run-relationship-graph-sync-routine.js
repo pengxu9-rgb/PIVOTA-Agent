@@ -134,6 +134,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   const affectedProductsFileInput = normalizeString(argValue(argv, 'affected-products-file'), 2000);
   const externalProductIds = normalizeString(argValue(argv, 'external-product-ids'), 8000);
   const externalProductIdsFile = normalizeString(argValue(argv, 'external-product-ids-file'), 2000);
+  if (parseNumber(argValue(argv, 'uncovered-backfill-limit'), 0, { min: 0, max: 2000 }) > 0 && !hasFlag(argv, 'prioritize-uncovered')) {
+    // The backfill relies on the prioritize-uncovered build: its coverage predicate and attempt cooldown.
+    throw new Error('--uncovered-backfill-limit requires --prioritize-uncovered');
+  }
   const selectHours = parseNumber(argValue(argv, 'select-hours'), 0, { min: 0, max: 24 * 365 });
   const selectUpdatedSinceInput = normalizeString(
     argValue(argv, 'select-updated-since') || argValue(argv, 'updated-since') || argValue(argv, 'since'),
@@ -425,7 +429,7 @@ function buildSyncRoutineSteps(options = {}) {
       options.affectedProductsFile,
     ];
     pushFlag(args, 'prioritize-uncovered', options.prioritizeUncovered);
-    if (options.prioritizeUncovered || options.uncoveredBackfillLimit > 0) pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
+    if (options.prioritizeUncovered) pushArg(args, 'uncovered-cooldown-days', options.uncoveredCooldownDays);
     if (options.prioritizeUncovered) pushArg(args, 'coverage-sibling-refs', options.coverageSiblingRefs);
     if (options.uncoveredBackfillLimit > 0) pushArg(args, 'uncovered-backfill-limit', options.uncoveredBackfillLimit);
     pushFlag(args, 'allow-empty-selection', options.allowEmptySelection);

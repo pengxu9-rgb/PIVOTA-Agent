@@ -219,6 +219,11 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(selectorArgs).toContain('--uncovered-cooldown-days 5');
   });
 
+  test('the sync routine refuses a backfill without the prioritize-uncovered build', () => {
+    expect(() => parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--uncovered-backfill-limit', '150'], { now: NOW }))
+      .toThrow(/requires --prioritize-uncovered/);
+  });
+
   test('buildSyncRoutineSteps wires selector before the guarded routine', () => {
     const options = parseArgs([
       '--cutoff',
