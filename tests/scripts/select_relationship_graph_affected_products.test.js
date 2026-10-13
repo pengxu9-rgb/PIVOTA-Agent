@@ -162,11 +162,31 @@ describe('select-relationship-graph-affected-products', () => {
     expect(windowSql).toContain("cp.pdp_will_render_computed_at >= now() - interval '7 days'");
     expect(windowSql).toContain('cp.suppressed_at IS NULL AND cp.suppression_reason IS NULL');
     expect(windowSql).toContain("lower(labels.anchor_ref) IN (lower('product:' || cp.pivota_signature_id), lower('product:' || cp.source_product_id))");
+    // Only this market's labels keep a product out (a label in another market does not cover it here).
+    expect(windowSql).toContain("AND lower(labels.market) = lower($4) AND labels.vertical = 'beauty'");
     expect(windowSql).toContain("labels.label_state IN ('ai_approved', 'human_approved') AND labels.last_verified_at IS NOT NULL AND labels.expires_at > now()");
     expect(windowSql).toContain("GREATEST(labels.created_at, labels.updated_at, labels.reviewed_at) >= now() - interval '5 days'");
     expect(windowSql).toMatch(/attempt\.market = \$4 AND attempt\.vertical = 'beauty'/);
     expect(windowSql).toMatch(/ORDER BY md5\(cp\.product_key \|\| \$6\), cp\.product_key\s+LIMIT \$1/);
     expect(sql).not.toMatch(/cp\.updated_at >= \$/);
+  });
+
+  test('the backfill limit is capped at 400 (target recall\'s maximum), and the run reports its count on stderr', async () => {
+    expect(parseArgs(['--updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered', '--uncovered-backfill-limit', '900'], { now: NOW }).uncoveredBackfillLimit).toBe(400);
+    const queryFn = jest.fn(async (sql) => {
+      if (sql.includes('schema_access')) return { rows: [{ has_schema_usage: true, table_name: 'relationship_graph_anchor_attempts', can_insert: true, can_select: true, can_update: true }] };
+      if (sql.includes('backfill_window')) return { rows: [{ product_key: 'prod_b', pivota_signature_id: 'sig_b', source_product_id: 'ext_b', relgraph_priority: 3 }] };
+      return { rows: [] };
+    });
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await run(['--updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered', '--uncovered-backfill-limit', '3'], { queryFn, now: NOW });
+      expect(stderr.mock.calls.map(([line]) => String(line)).join('')).toContain('relgraph uncovered backfill: selected 1 of limit 3');
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
   });
 
   test('the backfill requires the prioritize-uncovered build', () => {

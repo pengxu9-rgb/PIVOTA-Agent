@@ -139,6 +139,21 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(argValue(off.args, 'limit')).toBe('200');
   });
 
+  test('target recall covers the backfill too: max-anchors follows the build limit, capped at 400 (controller review of #2418)', () => {
+    const base = { RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: 'true', RELGRAPH_SYNC_EXPAND_TARGET_RECALL: 'true' };
+    const maxAnchors = (env) => argValue(buildCronArgs({ ...base, ...env }, { now: NOW }).args, 'target-recall-max-anchors');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100' })).toBe('300');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200' })).toBe('400');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100', RELGRAPH_SYNC_LIMIT: '250' })).toBe('250');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100', RELGRAPH_SYNC_TARGET_RECALL_MAX_ANCHORS: '150' })).toBe('150');
+    // No backfill: recall's own default, as before.
+    expect(maxAnchors({})).toBe('200');
+    // The backfill is capped at 200 (recall serves at most 400 anchors, 200 of them the recency build's).
+    const capped = buildCronArgs({ ...base, RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '900' }, { now: NOW });
+    expect(argValue(capped.args, 'uncovered-backfill-limit')).toBe('200');
+    expect(argValue(capped.args, 'limit')).toBe('400');
+  });
+
   test('the uncovered backfill requires prioritize-uncovered (its attempt cooldown rotates the backlog)', () => {
     expect(() => buildCronArgs({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200' }, { now: NOW }))
       .toThrow(/requires RELGRAPH_SYNC_PRIORITIZE_UNCOVERED=true/);
