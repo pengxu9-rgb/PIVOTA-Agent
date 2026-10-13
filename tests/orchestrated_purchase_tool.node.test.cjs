@@ -161,7 +161,8 @@ async function withEnv(vars, fn) {
     }
   }
 }
-const ON = { [FLAG]: '1' };
+const READ_FLAG = 'AGENT_PURCHASE_ORDER_READ_ENABLED';
+const ON = { [FLAG]: '1', [READ_FLAG]: '1' };
 
 function args(over = {}) {
   return {
@@ -194,11 +195,13 @@ const posts = (backend) => backend.calls.filter((c) => c.method === 'POST');
 
 test('dark: not listed, and a call is an unknown tool, exactly as before the tool existed', async () => {
   const ctx = await build();
-  await withEnv({ [FLAG]: undefined }, async () => {
+  for (const env of [{ [FLAG]: undefined, [READ_FLAG]: '1' }, { [FLAG]: '1', [READ_FLAG]: undefined }]) await withEnv(env, async () => {
     assert.equal(ctx.surface.tools.some((t) => t.name === 'start_purchase'), false);
     assert.equal(ctx.surface.isCommerceTool('start_purchase'), false);
     await assert.rejects(ctx.surface.callTool('start_purchase', args(), SESSION), (err) => err.name === 'UnknownToolError');
   });
+  // The second case: the tool's own dial on but the get_order purchase read off. A purchase it opened could not
+  // be polled (get_order would answer "not found" for an existing purchase), so the tool stays dark.
   assert.equal(ctx.backend.calls.length, 0);
 });
 
@@ -279,7 +282,7 @@ test('an accepted purchase whose read-back fails still answers with its id, neve
   const ctx = await build({ backend });
   const { ok } = await withEnv(ON, () => call(ctx, args()));
   assert.equal(ok.order_id, AP);
-  assert.equal(ok.status, 'pending');
+  assert.equal(ok.status, 'accepted');
   assert.equal(ok.read_pending, true);
   assert.equal(posts(backend).length, 1);
 });
@@ -320,6 +323,9 @@ test('schema: undeclared arguments and bad values are refused by name, before an
     [args({ expected_currency: 'usd' }), 'expected_currency'],
     [args({ shipping_address: { name: 'Ada Lovelace', city: 'SF', country: 'US' } }), 'shipping_address.phone'],
     [args({ payment_preference: { rail: 'cash' } }), 'payment_preference.rail'],
+    [args({ variant_id: 111 }), 'variant_id'],
+    [args({ shipping_address: { ...args().shipping_address, name: 'Ada' } }), 'shipping_address.name'],
+    [args({ shipping_address: { ...args().shipping_address, postal_code: 94103 } }), 'shipping_address.postal_code'],
   ]) {
     const { err } = await withEnv(ON, () => call(ctx, bad));
     assert.ok(err && err.message.includes(needle), `${needle}: ${err && err.message}`);
@@ -338,12 +344,29 @@ test('no buyer email anywhere: an intake refusal naming the field, nothing read 
   assert.equal(ctx.backend.calls.length, 0);
 });
 
-test('the shown price must still be our price: PRICE_CHANGED, nothing sent', async () => {
-  const ctx = await build();
+test("the shown price is the backend's to judge: it is sent as given, never refused here", async () => {
+  const backend = fakeBackend();
+  backend.state.post = { status: 409, body: houseError('price_changed', 409) };
+  const ctx = await build({ backend });
   const { err } = await withEnv(ON, () => call(ctx, args({ expected_unit_price_minor: 899 })));
+  assert.equal(posts(backend).length, 1, 'sent: the backend looks the key up before it checks the price');
+  assert.equal(posts(backend)[0].body.expected_unit_price_minor, 899);
   assert.equal(err.code, 'PRICE_CHANGED');
-  assert.equal(err.detail.reason, 'purchase_price_changed');
-  assert.equal(ctx.backend.calls.length, 0);
+});
+
+test('a retry of an unknown outcome is SENT even after our price moved, so the backend replays the original', async () => {
+  const backend = fakeBackend();
+  backend.state.post = { status: 503, body: { error: 'checkout_outcome_unknown' } };
+  const rows = { [JUDY_ROW.product_id]: { ...JUDY_ROW } };
+  const ctx = await build({ backend, rows });
+  const first = await withEnv(ON, () => call(ctx, args()));
+  assert.equal(first.err.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  rows[JUDY_ROW.product_id] = { ...JUDY_ROW, price: 12.99 }; // our catalog re-priced in between
+  backend.state.post = { status: 202, body: { purchase_id: AP, rail: 'a2a', state: 'routing', rail_state: 'opened', poll_after_seconds: 5 } };
+  const retry = await withEnv(ON, () => call(ctx, args()));
+  assert.equal(posts(backend).length, 2);
+  assert.deepEqual(posts(backend)[1].body, posts(backend)[0].body, 'the identical body, so the backend matches the key');
+  assert.equal(retry.ok.rail_purchase_id, AP);
 });
 
 test('a row no cart link can buy is refused by name, nothing sent', async () => {
@@ -351,6 +374,8 @@ test('a row no cart link can buy is refused by name, nothing sent', async () => 
   const { err } = await withEnv(ON, () => call(ctx, args({ product_id: UNRESOLVABLE_ROW.product_id, expected_unit_price_minor: 4250, merchant_id: 'merch_obs_brand' })));
   assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
   assert.deepEqual(err.detail, { reason: 'purchase_not_available', refusal_code: 'variant_unresolvable' });
+  // A retry of an unknown outcome can meet this too (the row changed in between): the recovery never says "start over".
+  assert.match(err.recovery, /may exist: do not start another/);
   // A product our catalog does not have: the shared catalog read's own refusal, the one every checkout door gives.
   const missing = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_missing' })));
   assert.equal(missing.err.code, 'QUOTE_REQUIRED');
@@ -443,4 +468,24 @@ test('the create refusal vocabulary is the backend door\'s, statuses exact', () 
   assert.equal(CREATE_REFUSALS.consent_required, 400);
   assert.equal('not_available_on_this_rail' in CREATE_REFUSALS, false, 'a gate answer never says "nothing was opened"');
   assert.equal('opened_on_another_rail' in CREATE_REFUSALS, false);
+});
+
+
+test("a 401 on create is the caller's credentials refused: final, not \"retry the same key\"", async () => {
+  const backend = fakeBackend();
+  backend.state.post = { status: 401, body: houseError('agent_user_required', 401) };
+  const ctx = await build({ backend });
+  const { err } = await withEnv(ON, () => call(ctx, args()));
+  assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(err.detail.reason, 'caller_credentials_rejected');
+});
+
+test('a selected variant on a multi-variant row is sent as its catalog key', async () => {
+  const multi = { ...JUDY_ROW, product_id: 'sig_multi', variants: [{ variant_id: '4001', price: { current: { amount: 9.99, currency: 'USD' } } }, { variant_id: '4002', price: { current: { amount: 9.99, currency: 'USD' } } }] };
+  const ctx = await build({ rows: { sig_multi: multi } });
+  const none = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi' })));
+  assert.deepEqual(none.err.detail, { reason: 'purchase_not_available', refusal_code: 'variant_required' });
+  const chosen = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi', variant_id: '4002' })));
+  assert.ok(chosen.ok, JSON.stringify(chosen.err));
+  assert.equal(posts(ctx.backend)[0].body.variant_key, `${JUDY_ROW.product_key}::v::4002`);
 });

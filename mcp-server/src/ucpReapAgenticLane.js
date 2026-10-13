@@ -1660,7 +1660,14 @@ export function resolveCartLinkPurchaseRow(row, { selectedVariantId, env = proce
     });
   }
   if (!price) return { code: "row_unpriced" };
-  const merchantDomain = enrichment ? enrichmentCartLinkMerchantDomain(row).host : cartLinkMerchantDomain(row, target);
+  let merchantDomain;
+  if (enrichment) {
+    const resolvedHost = enrichmentCartLinkMerchantDomain(row);
+    if (!resolvedHost.host) return { code: resolvedHost.code || "no_merchant_domain" };
+    merchantDomain = resolvedHost.host;
+  } else {
+    merchantDomain = cartLinkMerchantDomain(row, target);
+  }
   if (!merchantDomain) return { code: "no_merchant_domain" };
   if (variantKey === undefined && !enrichment && !cartLinkVariantResolvable(row, target, merchantDomain)) {
     return { code: "variant_unresolvable" };

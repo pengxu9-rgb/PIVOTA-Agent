@@ -1360,11 +1360,14 @@ export function toToolError(error) {
   // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
   // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
   if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
-      && ["purchase_not_available", "purchase_refused", "agent_api_key_required", "purchase_price_changed",
-        "purchase_idempotency_conflict"].includes(error.detail.reason)) {
+      && ["purchase_not_available", "purchase_refused", "agent_api_key_required", "caller_credentials_rejected",
+        "purchase_price_changed", "purchase_idempotency_conflict"].includes(error.detail.reason)) {
     body.detail = { reason: error.detail.reason };
     if (typeof error.detail.refusal_code === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.refusal_code)) {
       body.detail.refusal_code = error.detail.refusal_code;
+    }
+    if (error.detail.retry_of_unknown_outcome_may_exist === true) {
+      body.recovery = "nothing was sent for this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
     }
   }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"

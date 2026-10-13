@@ -14,7 +14,7 @@ Code: `mcp-server/src/orchestratedPurchaseTool.js`, `src/services/agentPurchaseC
 | Switch | What it does |
 |---|---|
 | `ORCHESTRATED_PURCHASE_TOOL_ENABLED` (gateway, read per call) | Lists and serves `start_purchase` on the native MCP door (`/mcp`). Off: not listed, and a call is an unknown tool. The UCP door never lists it. |
-| `AGENT_PURCHASE_ORDER_READ_ENABLED` (gateway) | Lets `get_order` read the purchase back (needed to poll it). |
+| `AGENT_PURCHASE_ORDER_READ_ENABLED` (gateway) | Lets `get_order` read the purchase back. **Required**: `start_purchase` stays dark unless this is on too, because a purchase it opened must be one the agent can poll. |
 | `PAYMENT_ORCHESTRATOR_ENABLED`, `AGENT_PURCHASE_LEDGER_ENABLED` (backend) | The backend's create and read doors. Off: the create answers 404, which this tool reports as an unknown outcome. |
 | Backend rail dials (`A2A_RAIL_*`, `REAP_AGENTIC_*`) | Which rail may take the purchase; see the backend router. |
 
@@ -31,24 +31,28 @@ buyer's `X-Agent-User-JWT` for the backend (the internal key is never substitute
 
 What the tool derives itself, never from the caller: the storefront host, the catalog key and the variant
 key, from OUR catalog row (the Reap lane's cart-link row rules, `resolveCartLinkPurchaseRow`). The shown price
-must equal our row's price here, and the backend checks it against our catalog again.
+is sent as given and judged by the BACKEND, after its idempotency lookup: a retry of an unknown outcome
+replays the original purchase even if our price moved in between, and only a new attempt is refused
+(`PRICE_CHANGED`). The tool deliberately does not refuse a price itself: that would answer the retry
+"price changed" without asking, and an agent would re-quote and buy twice.
 
 ## The answer
 
 Exactly the shape `get_order` returns for a purchase (`order_id` = the `pp_` id, `status`, `rail`,
 `next_action.action_url`, …), so the agent polls with `get_order`. When `next_action.action_url` is present, the
 buyer must open it (add a card, or approve the purchase). If the purchase was opened but could not be read back
-yet, the answer carries the rail id with `status: "pending"` and `read_pending: true`.
+yet, the answer carries the rail id with `status: "accepted"` and `read_pending: true`; poll it with get_order.
 
 ## Errors
 
 | Error | Meaning |
 |---|---|
-| `OPERATION_NOT_ALLOWED` / `purchase_not_available` + `refusal_code` | Our catalog row cannot be bought this way (e.g. `variant_required`, `variant_unresolvable`, `native_row`). Nothing was sent. |
-| `PRICE_CHANGED` / `purchase_price_changed` | The price is no longer the one shown (here, or the backend's answer). |
+| `OPERATION_NOT_ALLOWED` / `purchase_not_available` + `refusal_code` | Our catalog row cannot be bought this way (e.g. `variant_required`, `variant_unresolvable`, `native_row`). Nothing was sent for THIS call; its `recovery` warns that if it retries an earlier call whose outcome was unknown, that purchase may still exist. |
+| `PRICE_CHANGED` / `purchase_price_changed` | The backend: the price is no longer the one shown, for a new attempt. |
 | `OPERATION_NOT_ALLOWED` / `purchase_refused` + `refusal_code` | The backend definitely opened nothing (e.g. `merchant_not_eligible`, `consent_required`, `amount_over_limit`). |
 | `IDEMPOTENCY_CONFLICT` / `purchase_idempotency_conflict` | This key was used for a different purchase. |
 | `OPERATION_NOT_ALLOWED` / `agent_api_key_required` | This door has no agent key + buyer token to send. |
+| `OPERATION_NOT_ALLOWED` / `caller_credentials_rejected` | The backend refused the caller's credentials (401), before any write. |
 | `CHECKOUT_OUTCOME_UNKNOWN` / `purchase_outcome_unknown` | Anything else (timeout, 5xx, a 404 from a dark door or a rail choice the backend cannot honour). The purchase MAY exist: retry the exact call with the same `idempotency_key` (it replays the original on its original rail); never start another. |
 
 The tool's backend idempotency keys are namespaced (`mcp-purchase-v1-…`), so a key used on another tool or door

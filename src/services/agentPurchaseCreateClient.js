@@ -18,6 +18,7 @@
  *   unavailable      everything else: a 404 (dark door, or a rail choice it cannot honour), a 401/403, a 5xx, a
  *                    timeout, a malformed or oversized body. NEVER a statement that nothing was created: the caller
  *                    must treat the outcome as unknown and retry the SAME idempotency key, or read the purchase.
+ *   rejected         401: the backend refused the caller's credentials, before any write (no retry can fix it)
  *   unauthenticated  the request context has no agent key or no buyer token: no request is made, and the INTERNAL
  *                    key is never substituted (`allowInternalFallback: false` at the host)
  *
@@ -28,8 +29,10 @@
 const { KIND, canonicalBackendReasonCode, headerValue, parseJson } = require('./reapAgenticPurchaseClient');
 
 const AGENT_PURCHASES_PATH = '/agent/v2/commerce/purchases';
-const DEFAULT_TIMEOUT_MS = 2000;
-const MAX_TIMEOUT_MS = 2000;
+// Longer than the read's 2 s: the backend create does more (eligibility, the catalog read, the click, one
+// transaction). Still well inside the edge's ~13 s first-byte limit, together with the 2 s read-back.
+const DEFAULT_TIMEOUT_MS = 5000;
+const MAX_TIMEOUT_MS = 5000;
 const MIN_TIMEOUT_MS = 50;
 const MAX_BODY_CHARS = 64 * 1024;
 // A rail's own purchase id: the A2A rail's (`ap_`) or Reap's (`rp_`), each `<prefix><24 hex>`.
@@ -174,6 +177,10 @@ function createAgentPurchaseCreateClient(deps = {}) {
       return { kind: KIND.unavailable, code: 'malformed', http_status: status };
     }
     const reason = canonicalBackendReasonCode(status, parsed);
+    if (status === 401) {
+      log('info', { outcome: 'rejected', http_status: status });
+      return { kind: 'rejected' };
+    }
     if (reason && CREATE_REFUSALS[reason] === status) {
       log('info', { outcome: KIND.refused, code: reason, http_status: status });
       return { kind: KIND.refused, code: reason, http_status: status };

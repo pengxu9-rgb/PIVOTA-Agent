@@ -15,8 +15,8 @@
 //
 // WHAT IS NEVER THE CALLER'S. The merchant's storefront host, the catalog key and the variant key are derived here
 // from OUR catalog row (the same row rules as the Reap lane's cart-link create, `resolveCartLinkPurchaseRow`); the
-// price is the buyer-shown money the caller binds (`expected_unit_price_minor`/`expected_currency`), checked
-// against our row here and against our catalog again by the backend. The buyer is the signed-in buyer: identity
+// price is the buyer-shown money the caller binds (`expected_unit_price_minor`/`expected_currency`), checked by the
+// backend against our catalog AFTER its idempotency lookup (so a retry replays, and only a new attempt is refused). The buyer is the signed-in buyer: identity
 // comes from the verified session, and an attested email wins over a body one.
 //
 // OUTCOMES. A definite backend refusal is a named, non-retriable error (`purchase_refused` + the backend's code,
@@ -38,8 +38,14 @@ export const START_PURCHASE_MAX_QUANTITY = 10;
 const CONSENT_MAX_CHARS = 32;
 const TRUTHY = new Set(["1", "true", "on", "yes"]);
 
+/** The get_order purchase read's dial (src/server.js `isAgentPurchaseOrderReadEnabled`): the tool needs it. */
+export const AGENT_PURCHASE_ORDER_READ_FLAG = "AGENT_PURCHASE_ORDER_READ_ENABLED";
+
+/** On only while BOTH its own dial and the get_order purchase read are on: a purchase this tool opens must be
+ * one the agent can poll, or get_order would answer an existing purchase with "not found". */
 export function orchestratedPurchaseToolEnabled(env = process.env) {
-  return TRUTHY.has(String(env[ORCHESTRATED_PURCHASE_TOOL_FLAG] || "").trim().toLowerCase());
+  const on = (name) => TRUTHY.has(String(env[name] || "").trim().toLowerCase());
+  return on(ORCHESTRATED_PURCHASE_TOOL_FLAG) && on(AGENT_PURCHASE_ORDER_READ_FLAG);
 }
 
 const PURCHASE_ADDRESS = {
@@ -118,7 +124,7 @@ export function startPurchaseArgumentProblems(args) {
   need("idempotency_key", nonEmpty(args.idempotency_key) && args.idempotency_key.length >= 8, "must be a string of at least 8 characters");
   need("merchant_id", nonEmpty(args.merchant_id), "is required");
   need("product_id", nonEmpty(args.product_id), "is required");
-  need("variant_id", args.variant_id === undefined || /^[1-9][0-9]{0,24}$/.test(String(args.variant_id)), "must be a storefront variant id (digits)");
+  need("variant_id", args.variant_id === undefined || (typeof args.variant_id === "string" && /^[1-9][0-9]{0,24}$/.test(args.variant_id)), "must be a storefront variant id (a string of digits)");
   need("quantity", Number.isSafeInteger(args.quantity) && args.quantity >= 1 && args.quantity <= START_PURCHASE_MAX_QUANTITY, `must be an integer from 1 to ${START_PURCHASE_MAX_QUANTITY}`);
   need("expected_unit_price_minor", Number.isSafeInteger(args.expected_unit_price_minor) && args.expected_unit_price_minor >= 1, "must be a positive integer (minor units)");
   need("expected_currency", typeof args.expected_currency === "string" && /^[A-Z]{3}$/.test(args.expected_currency), "must be a three-letter currency code");
@@ -129,6 +135,11 @@ export function startPurchaseArgumentProblems(args) {
     for (const field of PURCHASE_ADDRESS.required) {
       need(`shipping_address.${field}`, nonEmpty(address[field]), "is required");
     }
+    for (const field of ["address_line2", "state", "postal_code"]) {
+      need(`shipping_address.${field}`, address[field] === undefined || typeof address[field] === "string", "must be a string");
+    }
+    // The rail needs a given name AND a family name (it refuses an address without one): ask now, by name.
+    need("shipping_address.name", !nonEmpty(address.name) || /\S\s+\S/.test(address.name.trim()), "must be the recipient's full name (given and family name)");
     need("shipping_address.country", !nonEmpty(address.country) || /^[A-Za-z]{2}$/.test(address.country.trim()), "must be two letters");
   }
   const rail = isPlainObject(args.payment_preference) ? args.payment_preference.rail : undefined;
@@ -160,15 +171,19 @@ export function purchaseIdempotencyKey(toolKey) {
   return `mcp-purchase-v1-${digest.slice(0, 48)}`;
 }
 
+/** Our catalog row cannot be bought this way, decided BEFORE anything is sent. If this call retries one whose
+ * outcome was unknown, that earlier purchase may still exist (the row changed in between): the recovery says so. */
 function notAvailable(code) {
-  return new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_not_available", refusal_code: code });
+  return new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+    op: START_PURCHASE_TOOL, reason: "purchase_not_available", refusal_code: code, retry_of_unknown_outcome_may_exist: true,
+  });
 }
 
-/** A purchase the backend opened but could not read back yet: its id, and nothing claimed about its state. */
+/** A purchase the backend opened (it answered 202) but could not read back yet: its rail id and that it was
+ * accepted; its state is not claimed. Poll it with get_order. */
 function pendingRead(purchaseId, rail) {
   const out = {
-    order_id: purchaseId, purchase_id: purchaseId, rail, status: "pending", source: "agent_purchase", read_pending: true,
-    poll_after_seconds: 5,
+    order_id: purchaseId, purchase_id: purchaseId, rail, status: "accepted", source: "agent_purchase", read_pending: true,
   };
   Object.defineProperty(out, AGENT_PURCHASE_RESULT, { value: true, enumerable: false });
   return out;
@@ -206,9 +221,10 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
   if (!row) throw notAvailable("row_not_found");
   const resolved = resolveCartLinkPurchaseRow(row, { selectedVariantId: args.variant_id, env });
   if (resolved.code) throw notAvailable(resolved.code);
-  if (resolved.price.amount !== args.expected_unit_price_minor || resolved.price.currency !== args.expected_currency) {
-    throw new PivotaCommerceError("PRICE_CHANGED", { op: START_PURCHASE_TOOL, reason: "purchase_price_changed" });
-  }
+  // NO LOCAL PRICE REFUSAL. The shown price goes to the backend as given, and the backend decides: it looks the
+  // idempotency key up FIRST, so a retry of an unknown outcome replays the ORIGINAL purchase even if our price has
+  // moved since; only a NEW attempt is refused there (`409 price_changed`, definite, before any write). A refusal
+  // here would answer that retry "price changed" without asking, and an agent would re-quote and buy twice.
 
   const body = {
     item_source: "cart_link",
@@ -258,6 +274,9 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_refused", refusal_code: created.code });
     case "unauthenticated":
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "agent_api_key_required" });
+    case "rejected":
+      // The backend refused the caller's credentials before any write (401): no retry of this call can work.
+      throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "caller_credentials_rejected" });
     default:
       throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "purchase_outcome_unknown" });
   }
