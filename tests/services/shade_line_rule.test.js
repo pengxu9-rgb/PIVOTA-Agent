@@ -561,24 +561,52 @@ describe('shade line rule (shade_line_v2)', () => {
 
     test('a letter + ONE digit is a code only as the last token; NO. codes may carry letters', () => {
       const { parseShadeLineTitle } = require('../../src/services/shadeLineRule');
-      expect(parseShadeLineTitle('BRANDB LACQ W7')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ', code: 'w7' });
-      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.K14')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ GLOW', code: 'k14' });
-      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.K6')).toMatchObject({ code: 'k6' });
-      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO K6')).toMatchObject({ code: 'k6' });
+      expect(parseShadeLineTitle('BRANDB LACQ R7')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ', code: 'r7' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.Q14')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ GLOW', code: 'q14' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.Q6')).toMatchObject({ code: 'q6' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO Q6')).toMatchObject({ code: 'q6' });
       // Not as a mid-title token: "Vitamin B5 Serum" has no shade code.
       expect(parseShadeLineTitle('BRANDB Vitamin B5 Serum')).toBeNull();
       const { listings: grouped } = group([
-        buildListing('BRANDB LACQ W7'),
-        buildListing('BRANDB LACQ W8'),
-        buildListing('BRANDB LACQ GLOW NO.K14'),
-        buildListing('BRANDB LACQ GLOW NO.K6'),
+        buildListing('BRANDB LACQ R7'),
+        buildListing('BRANDB LACQ R8'),
+        buildListing('BRANDB LACQ GLOW NO.Q14'),
+        buildListing('BRANDB LACQ GLOW NO.Q6'),
       ]);
       expect(grouped[0].product_line_id).toBe(grouped[1].product_line_id);
       expect(grouped[2].product_line_id).toBe(grouped[3].product_line_id);
       expect(grouped[0].product_line_id).not.toBe(grouped[2].product_line_id);
       // Guards still apply to the new formats.
-      const sets = group([buildListing('BRANDB LACQ GLOW NO.K14'), buildListing('BRANDB LACQ GLOW NO.K15 GIFT SET')]);
+      const sets = group([buildListing('BRANDB LACQ GLOW NO.Q14'), buildListing('BRANDB LACQ GLOW NO.Q15 GIFT SET')]);
       expect(refusalOf(sets.listings[1])).toBe('non_shade_suffix:set');
+    });
+
+    test('a version or generation is never a shade code', () => {
+      const { parseShadeLineTitle } = require('../../src/services/shadeLineRule');
+      ['Acme Eyeshadow Palette V2', 'Acme Eyeshadow Palette v3', 'Acme Eyeshadow Palette V12', 'Acme Lip Kit Mk2', 'Acme Palette Version 12', 'Acme Palette Ver 12', 'Acme Palette Gen 22'].forEach((title) =>
+        expect(parseShadeLineTitle(title)).toBeNull(),
+      );
+      const eyes = { brand: 'ACME', productType: 'eyeshadow', categoryPath: 'beauty/makeup/eyes' };
+      const { listings: grouped, stats } = group([
+        buildListing('Acme Eyeshadow Palette V2', eyes),
+        buildListing('Acme Eyeshadow Palette V3', eyes),
+      ]);
+      expect(grouped[0].product_line_id).not.toBe(grouped[1].product_line_id);
+      expect(stats.approved).toBe(0);
+    });
+
+    test('a short code needs a sibling with the same letter prefix, and never groups on a skincare line', () => {
+      const lone = group([buildListing('BRANDB LACQ R7'), buildListing('BRANDB LACQ S3')]);
+      lone.listings.forEach((listing) => expect(refusalOf(listing)).toBe('short_code_unconfirmed'));
+      // Two shades of one prefix confirm the shape; a different-prefix third is still unconfirmed.
+      const confirmed = group([buildListing('BRANDB LACQ R7'), buildListing('BRANDB LACQ R8'), buildListing('BRANDB LACQ S3')]);
+      expect(confirmed.listings[0].product_line_id).toBe(confirmed.listings[1].product_line_id);
+      expect(refusalOf(confirmed.listings[2])).toBe('short_code_unconfirmed');
+      // Even in a shade category, "<serum> B5" / "B3" are formula numbers, not shades.
+      const serum = { brand: 'ACME', productType: 'face makeup', categoryPath: 'beauty/makeup/face' };
+      const serums = group([buildListing('Acme Glow Serum B5', serum), buildListing('Acme Glow Serum B3', serum)]);
+      serums.listings.forEach((listing) => expect(refusalOf(listing)).toBe('short_code_skincare_line'));
+      expect(serums.listings[0].product_line_id).not.toBe(serums.listings[1].product_line_id);
     });
 
     test('a nail-system word inside a colour name is still a shade; codes like 05G / 06L are codes', () => {

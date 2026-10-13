@@ -103,6 +103,8 @@ const SHADE_LINE_REFUSALS = Object.freeze({
   PRICE_OUTLIER: 'price_outlier',
   DUPLICATE_SHADE: 'duplicate_shade_value',
   LINE_TOO_SMALL: 'line_too_small',
+  SHORT_CODE_UNCONFIRMED: 'short_code_unconfirmed',
+  SHORT_CODE_SKINCARE: 'short_code_skincare_line',
 });
 
 function isShadeLineRuleEnabled(env = process.env) {
@@ -158,6 +160,12 @@ function stripBracketTags(title) {
 const UNIT_TOKEN_RE = /^(?:ml|m\.?l\.?|l|g|gr|gram|grams|kg|mg|oz|fl|floz|fl\.?oz\.?|lb|lbs|mm|cm|pcs?|pieces?|pack|packs|ct|count|ea|caps|capsules|sheets?|x)$/i;
 const SUN_FACTOR_TOKEN_RE = /^(?:spf|pa|uv|upf)$/i;
 const YEAR_RE = /^(?:19|20)\d{2}$/;
+// A version or generation is not a shade: "Palette V2", "V12", "Mk2", "Version 3", "Gen 2".
+const VERSION_TOKEN_RE = /^(?:v|mk)\d+$/i;
+const VERSION_WORD_RE = /^(?:v|ver|version|gen|generation|mk|mark|edition|ed|series|vol|volume)\.?$/i;
+// A letter (or two) and ONE digit: the shortest code shape, confirmed per line (see the group pass).
+const SHORT_CODE_RE = /^([a-z]{1,2})\d$/i;
+const SHORT_CODE_SKINCARE_LINE_RE = /\b(?:serum|essence|ampoule|toner|cleanser|moisturi[sz]er|cream|lotion|mask|vitamin|treatment|booster|peel|spf)\b/;
 
 // A code is the short identifier a store prints in front of (or instead of) a shade name.
 // Returns the normalized code, or ''.
@@ -166,8 +174,9 @@ function readCodeToken(token, previousToken = '', nextToken = '', { last = false
   if (!raw) return '';
   if (SUN_FACTOR_TOKEN_RE.test(asString(previousToken))) return '';
   if (/^(?:spf|pa|uv|upf)\d/i.test(raw)) return '';
+  if (VERSION_TOKEN_RE.test(raw) || VERSION_WORD_RE.test(asString(previousToken))) return '';
   const nextIsUnit = UNIT_TOKEN_RE.test(asString(nextToken).replace(/[.,]+$/, ''));
-  // NO.884, NO.K14, NO.K6
+  // NO.884, NO.Q14, NO.Q6
   let match = raw.match(/^(?:no\.?|n°|nº)([a-z]{0,2}\d{1,4}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
   match = raw.match(/^#([a-z]{0,2}\d{1,4}[a-z]?)$/i);
@@ -176,8 +185,9 @@ function readCodeToken(token, previousToken = '', nextToken = '', { last = false
   // One- or two-letter prefix: K2207, RX318, T41.
   match = raw.match(/^([a-z]{1,2}\d{2,5}[a-z]?)$/i);
   if (match) return match[1].toLowerCase();
-  // A letter and ONE digit (W7) is a code only as the title's last token: "<LINE> W7". Inside a
-  // title it is too often part of the name (a vitamin, a step, a generation).
+  // A letter and ONE digit (R7) is a code only as the title's last token: "<LINE> R7". Inside a
+  // title it is too often part of the name (a vitamin, a step, a generation). Even then it must be
+  // confirmed by the line: see SHORT_CODE_UNCONFIRMED / SHORT_CODE_SKINCARE.
   if (last) {
     match = raw.match(/^([a-z]{1,2}\d)$/i);
     if (match) return match[1].toLowerCase();
@@ -470,6 +480,15 @@ function extractShadeLineCandidate({
     .map((value, idx) => (value ? `${['size', 'volume', 'pack'][idx]}:${value}` : ''))
     .filter(Boolean)
     .join('|') || '-';
+  // The shortest code shape (a letter + one digit) on a skincare line is a vitamin or a formula
+  // number ("Glow Serum B5"), not a shade, whatever the category says.
+  // Only a BARE short code needs confirming: "NO.Q6" / "#Q6" are marked as codes by their prefix.
+  const lastToken = asString(tokenizeTitle(stripBracketTags(title)).slice(-1)[0]).replace(/[,:;)]+$/, '');
+  const shortCode = parsed.code && !parsed.name ? (lastToken.match(SHORT_CODE_RE) || [])[1] : '';
+  base.short_code_prefix = shortCode ? shortCode.toLowerCase() : '';
+  if (base.short_code_prefix && SHORT_CODE_SKINCARE_LINE_RE.test(lineNorm)) {
+    return { ...base, refused: SHADE_LINE_REFUSALS.SHORT_CODE_SKINCARE };
+  }
   if (!base.brand_norm) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_BRAND };
   const mid = asString(merchantId);
   if (!mid) return { ...base, refused: SHADE_LINE_REFUSALS.MISSING_STORE };
@@ -602,6 +621,19 @@ function decideShadeLineGroup(entries, { existingMemberCountFor = () => 0, adopt
       return ratio > SHADE_LINE_MAX_PRICE_RATIO;
     }, SHADE_LINE_REFUSALS.PRICE_OUTLIER);
   }
+
+  // A short code (R7) groups only when the line confirms the shape: at least two members (counting
+  // the line's known v1 members) carry codes with the same letter prefix.
+  const shortPrefixCounts = new Map();
+  for (const candidate of [...alive.map((entry) => entry.candidate), ...reference]) {
+    if (candidate.short_code_prefix) {
+      shortPrefixCounts.set(candidate.short_code_prefix, (shortPrefixCounts.get(candidate.short_code_prefix) || 0) + 1);
+    }
+  }
+  refuse(
+    (entry) => Boolean(entry.candidate.short_code_prefix) && (shortPrefixCounts.get(entry.candidate.short_code_prefix) || 0) < 2,
+    SHADE_LINE_REFUSALS.SHORT_CODE_UNCONFIRMED,
+  );
 
   const shadeCounts = new Map();
   for (const key of adopt?.shade_keys || []) shadeCounts.set(key, (shadeCounts.get(key) || 0) + 1);

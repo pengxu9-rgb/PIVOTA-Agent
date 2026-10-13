@@ -154,4 +154,15 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
     expect(products.filter((product) => product.shade_line)).toHaveLength(1);
     expect(products.filter((product) => ['n101', 'n102', 'n103'].includes(product.product_id))).toHaveLength(2);
   });
+
+  test('flag on: a pool of 12 for a page of 10 where the currency guard drops 2 cards still serves a full page', async () => {
+    process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
+    const usdOthers = ['n101', 'n102', 'n103', 'n104', 'n105', 'n106', 'n107'].map((id) => ({ ...shade(id, 20), title: `BRANDA Gel Polish Other ${id}` }));
+    const sgdOthers = ['s201', 's202'].map((id) => ({ ...shade(id, 20), currency: 'SGD', title: `BRANDA Gel Polish Import ${id}` }));
+    const resp = await search({ limit: 10, extra: [...usdOthers, ...sgdOthers] });
+    expect(resp.status).toBe(200);
+    const products = resp.body.products || [];
+    expect(products.some((product) => product.currency === 'SGD')).toBe(false);
+    expect(products).toHaveLength(10);
+  });
 });

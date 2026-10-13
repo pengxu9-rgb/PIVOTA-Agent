@@ -86,7 +86,7 @@ describe('shade line card collapse', () => {
     expect(resolver).not.toHaveBeenCalled();
   });
 
-  test('flag on: one store\'s accepted shades become one card at the best-ranked slot, with an in-stock representative and no borrowed price', async () => {
+  test('flag on: one store\'s accepted shades become one card at its in-stock representative\'s own rank, with no borrowed price', async () => {
     const input = [
       candidate('k2207', { inStock: false, price: 20 }),
       candidate('unrelated', { lineId: null }),
@@ -94,8 +94,9 @@ describe('shade line card collapse', () => {
       candidate('p380', { price: 31 }),
     ];
     const result = await discovery()(input, { servingCurrency: 'SGD', env: ON });
-    expect(result.candidates.map((entry) => entry.productId)).toEqual(['t415', 'unrelated']);
-    const card = result.candidates[0].raw;
+    // The out-of-stock top member does not lift the card above "unrelated", which outranked t415.
+    expect(result.candidates.map((entry) => entry.productId)).toEqual(['unrelated', 't415']);
+    const card = result.candidates[1].raw;
     expect(card.shade_line).toEqual({
       product_line_id: LINE,
       rule_version: 'shade_line_v2',
@@ -270,12 +271,12 @@ describe('shade line card collapse', () => {
       const products = pool();
       const body = { products, results: products, data: { products }, total: 40, metadata: { query_source: 'x' } };
       const out = await collapseSearchResponseBodyByShadeLine({ body, servingCurrency: 'SGD', requestedLimit: 3, identityRowsResolverFn: lineRows });
-      expect(out.products.map((entry) => entry.product_id)).toEqual(['t415', 'other', 'n1', 'n2']);
+      expect(out.products.map((entry) => entry.product_id)).toEqual(['other', 't415', 'n1', 'n2']);
       expect(out.results).toBe(out.products);
       expect(out.data.products).toBe(out.products);
       expect(out.total).toBe(40);
-      expect(out.products[0]).toMatchObject({ product_line_id: LINE, shade_count: 3, price: 33, shade_line: { in_stock_shade_count: 2 } });
-      expect(out.products[0].shade_line).not.toHaveProperty('from_price');
+      expect(out.products[1]).toMatchObject({ product_line_id: LINE, shade_count: 3, price: 33, shade_line: { in_stock_shade_count: 2 } });
+      expect(out.products[1].shade_line).not.toHaveProperty('from_price');
       expect(out.metadata).toMatchObject({ query_source: 'x', shade_line_collapse: { lines_collapsed: 1, cards_dropped: 2, pool_size: 6, requested_limit: 3 } });
     });
 
@@ -288,6 +289,41 @@ describe('shade line card collapse', () => {
       expect(short.products.some((entry) => entry.shade_line && entry.shade_line.collapsed_card_count > 1)).toBe(false);
       // No requested page size known: nothing folds either.
       const unknown = await collapseSearchResponseBodyByShadeLine({ body: { products: pool() }, servingCurrency: 'SGD', identityRowsResolverFn: lineRows });
+      expect(unknown.products).toHaveLength(6);
+    });
+
+    test('budgets only the cards that survive the door\'s guards; cards that will not survive never fold', async () => {
+      process.env[FLAG] = 'true';
+      const { collapseSearchResponseBodyByShadeLine } = require('../../src/services/shadeLineCardCollapse');
+      const keys = (ids) => new Set(ids.map((id) => `merch_obs_shopone:${id}`));
+      // Pool 6, page 3, but only 4 cards survive the guards: one spare card, the line needs two.
+      const tight = await collapseSearchResponseBodyByShadeLine({
+        body: { products: pool() },
+        servingCurrency: 'SGD',
+        requestedLimit: 3,
+        survivorKeys: keys(['k2207', 't415', 'p380', 'other']),
+        identityRowsResolverFn: lineRows,
+      });
+      expect(tight.products).toHaveLength(6);
+      expect(tight.products.some((entry) => entry.shade_line)).toBe(false);
+      // A member the guards will drop is not folded (nor chosen to represent the line).
+      const partial = await collapseSearchResponseBodyByShadeLine({
+        body: { products: pool() },
+        servingCurrency: 'SGD',
+        requestedLimit: 2,
+        survivorKeys: keys(['k2207', 't415', 'other', 'n1', 'n2']),
+        identityRowsResolverFn: lineRows,
+      });
+      expect(partial.products.map((entry) => entry.product_id)).toEqual(['other', 't415', 'p380', 'n1', 'n2']);
+      expect(partial.metadata.shade_line_collapse).toMatchObject({ cards_dropped: 1, surviving_pool_size: 5 });
+      // Unknown survivors (the probe failed): nothing folds.
+      const unknown = await collapseSearchResponseBodyByShadeLine({
+        body: { products: pool() },
+        servingCurrency: 'SGD',
+        requestedLimit: 2,
+        survivorKeys: null,
+        identityRowsResolverFn: lineRows,
+      });
       expect(unknown.products).toHaveLength(6);
     });
 

@@ -33,11 +33,17 @@
 // line's other members are read from the CURRENT seed columns (listLiveShadeLineMembers); a member
 // with no current price is not counted.
 //
-// SEARCH PAGES. find_products_multi folds on the candidate pool BEFORE the page-size trim, and only
-// as many cards as the pool holds BEYOND the requested page size (a line that would need more is
-// left unfolded), so a page is never shorter than it would be without the fold: a folded slot is
+// SEARCH PAGES. find_products_multi folds on the candidate pool before the door's guards and the
+// page-size trim, but it counts only the cards that SURVIVE those guards (the serving-currency
+// guard, the price and availability contracts, the product-group dedupe and the beauty near-dup
+// refine, run by the door on a copy of the body): only surviving cards fold, and only as many as
+// the surviving pool holds BEYOND the requested page size (a line that would need more is left
+// unfolded). So a page is never shorter than it would be without the fold: a folded slot is
 // refilled only from a real over-fetch. It folds on the FIRST page only (page 1, offset 0), and
 // `total` is left as the lane reported it (a count of listings, the same on every page).
+//
+// RANK. A line card sits at its representative's own rank (the best-ranked in-stock member, else
+// the best-ranked member): it is never lifted above cards that outranked the listing it shows.
 //
 // DEDUPE ORDER. This runs AFTER the existing same-item dedupe (discovery: sellable_item_group_id
 // buckets; search: the lane's own grouping), so members are counted by distinct sellable item.
@@ -144,8 +150,7 @@ function shadeLineBucketOf(row) {
 }
 
 /**
- * The pure core. `cards` keep their order; a bucket's card takes the slot of its highest-ranked
- * member.
+ * The pure core. `cards` keep their order; a bucket's card takes its representative's own slot.
  *
  * @param {Array} cards
  * @param {object} opts
@@ -157,9 +162,12 @@ function shadeLineBucketOf(row) {
  * @param {Map<string, Array>} [opts.lineMembers] line id -> rows from listLiveShadeLineMembers
  * @param {number} [opts.maxCardsDropped]        fold whole buckets, in rank order, while the cards
  *                                               they drop stay within this budget
+ * @param {(card)=>boolean} [opts.isEligible]    cards that may fold at all (search: the cards that
+ *                                               survive the door's guards); others stay as they are
  */
 function collapseCardsByShadeLine(cards, {
   bucketOf,
+  isEligible = () => true,
   productOf,
   memberKeyOf,
   decorate,
@@ -174,6 +182,7 @@ function collapseCardsByShadeLine(cards, {
 
   const buckets = new Map();
   list.forEach((card, index) => {
+    if (!isEligible(card)) return;
     const bucket = asString(bucketOf(card));
     if (!bucket) return;
     const product = productOf(card);
@@ -235,8 +244,13 @@ function collapseCardsByShadeLine(cards, {
       currency,
       collapsed_card_count: Math.max(entries.length, Number(previous?.collapsed_card_count) || 0),
     };
-    replacement.set(entries[0].index, decorate(representative.card, summary));
-    for (const entry of entries.slice(1)) dropped.add(entry.index);
+    // The line card sits at its REPRESENTATIVE's own rank. It is not lifted to the slot of a
+    // higher-ranked member that is out of stock: that would move the shown listing above cards
+    // that outranked it.
+    replacement.set(representative.index, decorate(representative.card, summary));
+    for (const entry of entries) {
+      if (entry.index !== representative.index) dropped.add(entry.index);
+    }
     lineCards += 1;
     if (drops > 0) {
       linesCollapsed += 1;
@@ -334,6 +348,7 @@ async function collapseSearchProductsByShadeLine(products, {
   identityRowsResolverFn = null,
   lineMembersResolverFn = null,
   maxCardsDropped = Infinity,
+  isEligible = () => true,
   env = process.env,
 } = {}) {
   const list = Array.isArray(products) ? products : [];
@@ -365,6 +380,7 @@ async function collapseSearchProductsByShadeLine(products, {
   const lineMembers = await loadLineMembers(lineIds, lineMembersResolverFn);
   const result = collapseCardsByShadeLine(list, {
     bucketOf,
+    isEligible,
     productOf: (product) => product,
     memberKeyOf: (product) =>
       asString(rowsByRef.get(refOf(product))?.sellable_item_group_id) || asString(product?.sellable_item_group_id) || refOf(product),
@@ -391,6 +407,11 @@ async function collapseSearchResponseBodyByShadeLine({
   requestedLimit = null,
   page = 1,
   offset = 0,
+  // The `merchant_id:product_id` keys of the pool cards that survive the door's own guards (serving
+  // currency, price and availability contracts, product-group dedupe, beauty near-dup refine),
+  // computed by the caller on a copy of this body. Only they fold, and the budget counts only
+  // them. null = unknown: nothing folds. Omitted (undefined): every card counts (unit callers).
+  survivorKeys = undefined,
   identityRowsResolverFn = null,
   lineMembersResolverFn = null,
   env = process.env,
@@ -402,14 +423,25 @@ async function collapseSearchResponseBodyByShadeLine({
   if ((Number(page) || 1) > 1 || (Number(offset) || 0) > 0) return body;
   const original = body.products;
   const limit = Number(requestedLimit);
-  // Without a known page size, or without an over-fetch, a fold could only shorten the page: then
-  // nothing folds (a single recalled member of a larger line is still labelled with its counts).
-  const maxCardsDropped = Number.isFinite(limit) && limit > 0 ? Math.max(0, original.length - limit) : 0;
+  const refOf = (product) => {
+    const merchantId = asString(product?.merchant_id || product?.merchantId);
+    const productId = asString(product?.product_id || product?.productId || product?.id);
+    return merchantId && productId ? `${merchantId}:${productId}` : '';
+  };
+  const survivors = survivorKeys instanceof Set ? survivorKeys : null;
+  const isEligible = survivors ? (product) => survivors.has(refOf(product)) : () => survivorKeys !== null;
+  // null survivors: isEligible refuses every card, so nothing folds.
+  const survivingCount = survivors ? original.filter(isEligible).length : original.length;
+  // The page is cut from the cards that SURVIVE the guards. Without a known page size, or without
+  // surviving cards beyond it, a fold could only shorten the page: then nothing folds (a single
+  // recalled member of a larger line is still labelled with its counts).
+  const maxCardsDropped = Number.isFinite(limit) && limit > 0 ? Math.max(0, survivingCount - limit) : 0;
   const { products, stats } = await collapseSearchProductsByShadeLine(original, {
     servingCurrency,
     identityRowsResolverFn,
     lineMembersResolverFn,
     maxCardsDropped,
+    isEligible,
     env,
   });
   if (!stats.applied || !stats.line_cards) return body;
@@ -420,7 +452,12 @@ async function collapseSearchResponseBodyByShadeLine({
   if (isPlainObject(body.data) && sameList(body.data.products)) next.data = { ...body.data, products };
   next.metadata = {
     ...(isPlainObject(body.metadata) ? body.metadata : {}),
-    shade_line_collapse: { ...stats, pool_size: original.length, requested_limit: Number.isFinite(limit) ? limit : null },
+    shade_line_collapse: {
+      ...stats,
+      pool_size: original.length,
+      surviving_pool_size: survivingCount,
+      requested_limit: Number.isFinite(limit) ? limit : null,
+    },
   };
   return next;
 }
