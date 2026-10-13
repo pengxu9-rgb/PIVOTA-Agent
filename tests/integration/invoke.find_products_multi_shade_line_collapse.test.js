@@ -39,7 +39,7 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
       identity_status: 'approved',
       identity_confidence: 0.8,
       match_basis: ['official_url:https://shop-one.example/products/x'],
-      shade_line: { rule_version: 'shade_line_v2', status: 'approved', product_line_id: LINE },
+      shade_line: { rule_version: 'shade_line_v2', status: 'approved', product_line_id: LINE, store: 'merch_shopone@shop-one.example' },
     });
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -83,7 +83,7 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
     image_url: `https://shop-one.example/images/${productId}.jpg`,
   });
 
-  async function search({ limit = 10, extra = [] } = {}) {
+  async function search({ limit = 10, extra = [], page = 1 } = {}) {
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query(true)
@@ -98,7 +98,7 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
       .post('/agent/shop/v1/invoke')
       .send({
         operation: 'find_products_multi',
-        payload: { search: { query: 'BRANDA gel polish', page: 1, limit, in_stock_only: true } },
+        payload: { search: { query: 'BRANDA gel polish', page, limit, in_stock_only: true } },
         metadata: { source: 'creator_agent' },
       });
   }
@@ -113,23 +113,35 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
     expect(identitySqlCalls).toBe(0);
   });
 
-  test('flag on: one line card in the buyer currency with the shade count', async () => {
+  test('flag on: one line card in the buyer currency with the shade count, priced as its own listing', async () => {
     process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
-    const resp = await search();
+    // A page of one over a pool of three: the pool spares two cards, exactly what the fold drops.
+    const resp = await search({ limit: 1 });
     expect(resp.status).toBe(200);
     expect(identitySqlCalls).toBeGreaterThan(0);
-    const lineCards = (resp.body.products || []).filter((product) => product.shade_line);
-    expect(lineCards).toHaveLength(1);
-    expect(lineCards[0].shade_line).toMatchObject({
-      product_line_id: LINE,
-      shade_count: 3,
-      from_price: { amount: 14, currency: 'USD' },
-    });
-    const shadeIds = (resp.body.products || [])
-      .map((product) => product.product_id)
-      .filter((id) => ['k2207', 't415', 'p380'].includes(id));
-    expect(shadeIds).toHaveLength(1);
+    const products = resp.body.products || [];
+    expect(products).toHaveLength(1);
+    expect(products[0].shade_line).toMatchObject({ product_line_id: LINE, shade_count: 3 });
+    expect(products[0].shade_line).not.toHaveProperty('from_price');
+    expect(products[0].price).toBe(18);
     expect(resp.body.metadata?.shade_line_collapse).toMatchObject({ applied: true, lines_collapsed: 1, cards_dropped: 2 });
+  });
+
+  test('flag on, no over-fetch (the pool is no wider than the page): nothing folds, the page stays full', async () => {
+    process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
+    const resp = await search({ limit: 10 });
+    const products = resp.body.products || [];
+    expect(products.map((product) => product.product_id)).toEqual(expect.arrayContaining(['k2207', 't415', 'p380']));
+    expect(products.some((product) => product.shade_line)).toBe(false);
+  });
+
+  test('flag on, page 2: nothing folds and no identity row is read for the collapse', async () => {
+    process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
+    const resp = await search({ limit: 1, page: 2 });
+    expect(resp.status).toBe(200);
+    expect((resp.body.products || []).some((product) => product.shade_line)).toBe(false);
+    expect(resp.body.metadata?.shade_line_collapse).toBeUndefined();
+    expect(identitySqlCalls).toBe(0);
   });
 
   test('flag on: the collapse runs on the wide pool before the page-size trim, so freed slots are refilled', async () => {
@@ -141,5 +153,16 @@ describe('/agent/shop/v1/invoke find_products_multi shade line collapse', () => 
     expect(products).toHaveLength(3);
     expect(products.filter((product) => product.shade_line)).toHaveLength(1);
     expect(products.filter((product) => ['n101', 'n102', 'n103'].includes(product.product_id))).toHaveLength(2);
+  });
+
+  test('flag on: a pool of 12 for a page of 10 where the currency guard drops 2 cards still serves a full page', async () => {
+    process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
+    const usdOthers = ['n101', 'n102', 'n103', 'n104', 'n105', 'n106', 'n107'].map((id) => ({ ...shade(id, 20), title: `BRANDA Gel Polish Other ${id}` }));
+    const sgdOthers = ['s201', 's202'].map((id) => ({ ...shade(id, 20), currency: 'SGD', title: `BRANDA Gel Polish Import ${id}` }));
+    const resp = await search({ limit: 10, extra: [...usdOthers, ...sgdOthers] });
+    expect(resp.status).toBe(200);
+    const products = resp.body.products || [];
+    expect(products.some((product) => product.currency === 'SGD')).toBe(false);
+    expect(products).toHaveLength(10);
   });
 });

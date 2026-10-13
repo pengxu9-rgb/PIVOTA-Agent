@@ -12896,6 +12896,47 @@ function finalizeCitableSupplementItem(item) {
 }
 
 // Final refinement preserves the selected primary lane and its eligibility rules.
+// The pool cards the door's own guards would keep -- the res.json interceptor runs them in this
+// order before the page-size trim: serving currency, then (shopping-agent find_products_multi)
+// the price contract, the availability contract and the product-group dedupe, then the beauty
+// near-dup refine -- as merchant_id:product_id keys, computed on a deep copy so nothing is touched.
+// The shade-line fold budgets against these, so a fold never leaves a page short. null on failure.
+function findProductsMultiGuardSurvivorKeys({ body, req, observation, queryText = '' } = {}) {
+  try {
+    if (!body || typeof body !== 'object' || !Array.isArray(body.products)) return null;
+    let probe = JSON.parse(JSON.stringify(body));
+    probe = enforceServingCurrency({
+      operation: 'find_products_multi',
+      observation,
+      payload: req?.body?.payload,
+      metadata: req?.body?.metadata,
+      body: probe,
+    });
+    if (isShoppingAgentFindProductsMultiRequest(req, 'find_products_multi')) {
+      probe = enforceFindProductsMultiPriceContract(probe);
+      probe = enforceFindProductsMultiAvailabilityContract(probe);
+      probe = dedupeFindProductsMultiProductGroups(probe);
+    }
+    probe = refineBeautyFindProductsMultiResponseBody(probe, queryText);
+    const products = Array.isArray(probe?.products)
+      ? probe.products
+      : Array.isArray(probe?.data?.products)
+        ? probe.data.products
+        : [];
+    return new Set(
+      products
+        .map((product) => {
+          const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+          const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
+          return merchantId && productId ? `${merchantId}:${productId}` : '';
+        })
+        .filter(Boolean),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '') {
   try {
     if (
@@ -51816,18 +51857,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryParams,
       });
       recordFpmStage('pdp_identity_rescue', pdpIdentityRescueStartedAt);
-      // One card per shade line (shadeLineCardCollapse.js). SHADE_LINE_CARD_COLLAPSE_ENABLED,
+      // One card per shade line per store (shadeLineCardCollapse.js). SHADE_LINE_CARD_COLLAPSE_ENABLED,
       // default off: off, this block does not run (no read, no stage recorded). Before the page-size
-      // contract, so a folded shade frees its slot; in the door's serving currency only.
+      // contract, first page only, folding only what the pool over-fetched past the page size; in
+      // the door's serving currency only.
       if (isShadeLineCardCollapseEnabled()) {
         const shadeLineCollapseStartedAt = Date.now();
         try {
+          // The same page parameters the page-size contract reads (enforceFindProductsMultiRequestedPageSize).
+          const collapsePayload =
+            req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+              ? req.body.payload
+              : {};
+          const collapseSearch =
+            collapsePayload.search && typeof collapsePayload.search === 'object' && !Array.isArray(collapsePayload.search)
+              ? collapsePayload.search
+              : collapsePayload;
+          const collapseLimitRaw = Math.floor(
+            Number(collapseSearch.page_size ?? collapseSearch.pageSize ?? collapseSearch.limit),
+          );
           maybePolicy = await collapseSearchResponseBodyByShadeLine({
             body: maybePolicy,
             servingCurrency: servingCurrencyFor({
               observation: marketObservation,
               payload: req?.body?.payload,
               metadata: req?.body?.metadata,
+            }),
+            requestedLimit:
+              Number.isFinite(collapseLimitRaw) && collapseLimitRaw > 0 ? Math.min(collapseLimitRaw, SEARCH_LIMIT_MAX) : null,
+            page: collapseSearch.page,
+            offset: collapseSearch.offset,
+            survivorKeys: findProductsMultiGuardSurvivorKeys({
+              body: maybePolicy,
+              req,
+              observation: marketObservation,
+              queryText: String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
             }),
             identityRowsResolverFn: listLivePdpIdentityRowsForRefs,
             lineMembersResolverFn: listLiveShadeLineMembers,

@@ -45,7 +45,7 @@ describe('discovery feed shade line collapse', () => {
     identity_confidence: 0.8,
     match_basis: ['official_url:https://shop-one.example/products/x'],
     // As listLivePdpIdentityRowsForRefs reads it: soft_identity->'shade_line' AS shade_line.
-    shade_line: { rule_version: 'shade_line_v2', status: 'approved', product_line_id: LINE },
+    shade_line: { rule_version: 'shade_line_v2', status: 'approved', product_line_id: LINE, store: 'merch_shopone@shop-one.example' },
   });
 
   async function run(extraRequest = {}, options = {}) {
@@ -87,7 +87,7 @@ describe('discovery feed shade line collapse', () => {
     expect(response.metadata.shade_line_collapse).toBeUndefined();
   });
 
-  test('flag on: one card for the line, in stock, from the lowest in-stock price, with the shade count', async () => {
+  test('flag on: one card for the line, in stock, priced as its own listing, with the shade count', async () => {
     process.env.SHADE_LINE_CARD_COLLAPSE_ENABLED = 'true';
     const response = await run();
     expect(response.products).toHaveLength(1);
@@ -95,8 +95,10 @@ describe('discovery feed shade line collapse', () => {
       product_line_id: LINE,
       shade_count: 4,
       in_stock_shade_count: 3,
-      from_price: { amount: 14, currency: 'USD' },
     });
+    // The card keeps its own listing's price; no "from" price from another shade.
+    expect(response.products[0].shade_line).not.toHaveProperty('from_price');
+    expect(response.products[0].price).toBe(18);
     expect(response.products[0].shade_count).toBe(4);
     expect(response.metadata.shade_line_collapse).toMatchObject({ applied: true, lines_collapsed: 1, cards_dropped: 2 });
   });
@@ -116,7 +118,7 @@ describe('discovery feed shade line collapse', () => {
     expect(response.products).toHaveLength(1);
     expect(response.products[0]).toMatchObject({
       shade_count: 4,
-      shade_line: { product_line_id: LINE, shade_count: 4, from_price: { amount: 14, currency: 'USD' } },
+      shade_line: { product_line_id: LINE, shade_count: 4 },
     });
   });
 

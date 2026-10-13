@@ -10,7 +10,17 @@
 // `storedLines`, runs the parser and the group guards exactly as the backfill would with the
 // rule on, and prints the result. It writes nothing, anywhere.
 //
-//   node scripts/census-shade-lines.js --merchant-id merch_obs_xxx [--merchant-id …] [--limit 5000] [--out file.json]
+//   node scripts/census-shade-lines.js --merchant-id merch_obs_xxx [--merchant-id …] [--limit 5000]
+//     [--batch-size 500] [--sleep-ms 250] [--statement-timeout-ms 15000] [--cpu-gate ./gate.js]
+//     [--out file.json]
+//
+// THROTTLED FOR THE 2-vCPU PRIMARY. The rows are read in keyset batches (--batch-size rows per
+// query, ordered by source_listing_ref), each in its own READ ONLY transaction with a LOCAL
+// statement_timeout (--statement-timeout-ms), with --sleep-ms between batches. --cpu-gate names a
+// module whose export is `async () => boolean`: it is awaited before every batch, and while it
+// returns false the census waits (5 s steps, up to 10 minutes, then gives up). Use it to hold the
+// census while the primary is busy, e.g. a gate that reads Cloud SQL CPU utilisation and returns
+// `cpu < 0.6`. Without it the census paces itself by --sleep-ms alone.
 //
 // Output, per proposed line: the line id and review family id the rule mints (or adopts from a
 // v1 line), its members with their stored line and review family ids and status
@@ -176,9 +186,93 @@ const CENSUS_SQL = `
   LEFT JOIN catalog_products cp
     ON cp.product_key = seed.attached_product_key
   WHERE pil.merchant_id = ANY($1::text[])
+    AND pil.source_listing_ref > $2
   ORDER BY pil.source_listing_ref
-  LIMIT $2
+  LIMIT $3
 `;
+
+const CPU_GATE_STEP_MS = 5000;
+const CPU_GATE_MAX_WAIT_MS = 10 * 60 * 1000;
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+
+async function waitForCpuGate(cpuGate, sleepFn) {
+  if (typeof cpuGate !== 'function') return;
+  let waited = 0;
+  // eslint-disable-next-line no-await-in-loop
+  while (!(await cpuGate())) {
+    if (waited >= CPU_GATE_MAX_WAIT_MS) throw new Error('SHADE_LINE_CENSUS_CPU_GATE_TIMEOUT');
+    // eslint-disable-next-line no-await-in-loop
+    await sleepFn(CPU_GATE_STEP_MS);
+    waited += CPU_GATE_STEP_MS;
+  }
+}
+
+// One statement in its own READ ONLY transaction, under a LOCAL statement_timeout.
+async function readOnlyQuery(withClientFn, statementTimeoutMs, sql, params) {
+  return withClientFn(async (client) => {
+    await client.query('BEGIN READ ONLY');
+    try {
+      await client.query("SELECT set_config('statement_timeout', $1, true)", [String(Math.max(1000, Number(statementTimeoutMs) || 15000))]);
+      const result = await client.query(sql, params);
+      await client.query('COMMIT');
+      return result?.rows || [];
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    }
+  });
+}
+
+/**
+ * Reads the census rows and the stores of the v1 lines they could adopt, throttled. Read only.
+ */
+async function readCensusInputsThrottled({
+  withClientFn,
+  merchantIds,
+  limit = 5000,
+  batchSize = 500,
+  sleepMs = 250,
+  statementTimeoutMs = 15000,
+  cpuGate = null,
+  sleepFn = defaultSleep,
+} = {}) {
+  const size = Math.max(1, Math.min(2000, Number(batchSize) || 500));
+  const rows = [];
+  let after = '';
+  let batches = 0;
+  while (rows.length < limit) {
+    // eslint-disable-next-line no-await-in-loop
+    await waitForCpuGate(cpuGate, sleepFn);
+    const take = Math.min(size, limit - rows.length);
+    // eslint-disable-next-line no-await-in-loop
+    const batch = await readOnlyQuery(withClientFn, statementTimeoutMs, CENSUS_SQL, [merchantIds, after, take]);
+    batches += 1;
+    rows.push(...batch);
+    if (batch.length < take) break;
+    after = asString(batch[batch.length - 1]?.source_listing_ref);
+    // eslint-disable-next-line no-await-in-loop
+    await sleepFn(sleepMs);
+  }
+  const lineStores = new Map();
+  const adoptable = adoptableLineIdsForRows(rows);
+  const refs = rows.map((row) => asString(row.source_listing_ref)).filter(Boolean);
+  for (let idx = 0; idx < adoptable.length; idx += 200) {
+    // eslint-disable-next-line no-await-in-loop
+    await waitForCpuGate(cpuGate, sleepFn);
+    // eslint-disable-next-line no-await-in-loop
+    const storeRows = await readOnlyQuery(withClientFn, statementTimeoutMs, LINE_STORES_SQL, [adoptable.slice(idx, idx + 200), refs]);
+    batches += 1;
+    for (const row of storeRows) {
+      const id = asString(row.product_line_id);
+      if (!id) continue;
+      lineStores.set(id, [...(lineStores.get(id) || []), buildStoreKey(row.merchant_id, row.official_domain)]);
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await sleepFn(sleepMs);
+  }
+  return { rows, lineStores, batches };
+}
 
 async function main() {
   const merchantIds = argValues('merchant-id');
@@ -187,37 +281,24 @@ async function main() {
   }
   const limit = Math.max(1, Math.min(20000, Number(argValues('limit')[0] || 5000) || 5000));
   const out = argValues('out')[0] || '';
+  const gatePath = argValues('cpu-gate')[0] || '';
+  // eslint-disable-next-line global-require, import/no-dynamic-require
+  const cpuGate = gatePath ? require(path.resolve(gatePath)) : null;
   const { closePool, withClient } = require('../src/db');
   try {
-    const { rows, lineStores } = await withClient(async (client) => {
-      await client.query('BEGIN READ ONLY');
-      try {
-        const result = await client.query(CENSUS_SQL, [merchantIds, limit]);
-        const censusRows = result?.rows || [];
-        const adoptable = adoptableLineIdsForRows(censusRows);
-        const stores = new Map();
-        if (adoptable.length) {
-          const storeResult = await client.query(LINE_STORES_SQL, [
-            adoptable,
-            censusRows.map((row) => asString(row.source_listing_ref)).filter(Boolean),
-          ]);
-          for (const row of storeResult?.rows || []) {
-            const id = asString(row.product_line_id);
-            if (!id) continue;
-            stores.set(id, [...(stores.get(id) || []), buildStoreKey(row.merchant_id, row.official_domain)]);
-          }
-        }
-        await client.query('COMMIT');
-        return { rows: censusRows, lineStores: stores };
-      } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw err;
-      }
+    const { rows, lineStores, batches } = await readCensusInputsThrottled({
+      withClientFn: withClient,
+      merchantIds,
+      limit,
+      batchSize: argValues('batch-size')[0] || 500,
+      sleepMs: argValues('sleep-ms')[0] || 250,
+      statementTimeoutMs: argValues('statement-timeout-ms')[0] || 15000,
+      cpuGate: typeof cpuGate === 'function' ? cpuGate : typeof cpuGate?.default === 'function' ? cpuGate.default : null,
     });
     const payload = {
       ok: true,
       generated_at: new Date().toISOString(),
-      input: { merchant_ids: merchantIds, limit },
+      input: { merchant_ids: merchantIds, limit, read_batches: batches },
       ...censusShadeLines(rows, { lineStores }),
     };
     if (out) {
@@ -238,4 +319,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CENSUS_SQL, LINE_STORES_SQL, adoptableLineIdsForRows, censusShadeLines };
+module.exports = {
+  CENSUS_SQL,
+  LINE_STORES_SQL,
+  adoptableLineIdsForRows,
+  censusShadeLines,
+  readCensusInputsThrottled,
+};
