@@ -26840,15 +26840,20 @@ function isPdpRelationshipGraphServingEnabled() {
 }
 
 // The similar rails (get_pdp_v2 similar module, find_similar_products, the legacy PDP
-// recommendations) are served by the relationship graph ONLY: reviewed alternative edges. The
+// recommendations, and product intel's related products) are served by the relationship graph ONLY
+// when this is on: reviewed alternative edges. The
 // dynamic recall lanes (L1 same brand+leaf+price, L2E, L3 leaf+price, L3E external leaf) are not
 // shown. Prod 2026-10-10, 45 sampled PDPs: those lanes filled 12 rails with category filler - four
 // different foundation PDPs showed the same 12 shades of one Fenty tint stick, three lipsticks the
 // same Fenty gloss stick, a shampoo a curl cream. A product without reviewed edges shows an empty
 // rail; a graph read that fails is an outage (503 / unavailable), never silently empty. Read per
-// call so the kill switch (=false restores graph + dynamic recall) needs no code change.
+// call, so the flip needs no code change.
+// Off unless set: a revision deployed without the variable serves graph + dynamic recall, the rails
+// prod serves today, so graph-only is always a deliberate flip. Only an explicit true value turns it
+// on; anything else ('disabled', a typo) is off (relationshipGraphRecall.parseBooleanFlag's words).
+const PDP_SIMILAR_GRAPH_ONLY_TRUE_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
 function isPdpSimilarGraphOnlyEnabled() {
-  return parseBooleanEnv(process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED, true);
+  return PDP_SIMILAR_GRAPH_ONLY_TRUE_VALUES.has(String(process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED ?? '').trim().toLowerCase());
 }
 const SIMILAR_FAMILY_DEDUPE_ENABLED =
   String(process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED || '').trim().toLowerCase() === 'true';
@@ -27058,10 +27063,17 @@ async function fetchGraphOnlySimilarProducts(args = {}) {
       metadata: { ...base, similar_status: 'empty', relationship_graph_enabled: false, empty_reason: 'relationship_graph_surface_disabled' },
     };
   }
+  // "Load more" drops the cards already shown AFTER the read, so the read covers them too: reading k
+  // alone capped the pageable cards at k. Bounded like recall (120).
+  const graphOptionsForRead = args?.options && typeof args.options === 'object' ? args.options : {};
+  const shownCount = Array.isArray(graphOptionsForRead.exclude_items)
+    ? graphOptionsForRead.exclude_items.length
+    : Array.isArray(graphOptionsForRead.exclude_ids) ? graphOptionsForRead.exclude_ids.length : 0;
+  const readLimit = Math.min(120, (Number.isFinite(k) && k > 0 ? k : 24) + shownCount);
   // No catch: a throw is the main route failing, and the callers' outage handling answers it.
   const graphRecall = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
     market: args?.pdp_product?.market || 'US',
-    limit: Number.isFinite(k) && k > 0 ? k : 24,
+    limit: readLimit,
   });
   const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
   // A read the graph itself reports as unavailable (no database, missing schema, timeout) is the main
@@ -39274,7 +39286,15 @@ async function resolveProductIntelInvokeContext({
           bypass_cache: similarCacheBypass,
           ...(componentSimilarCandidates.length > 0 ? { exclude_items: componentSimilarCandidates } : {}),
         },
-      }).catch(() => null)
+      }).catch((err) => {
+        // Product intel answers without related products rather than fail, but never silently: with
+        // graph-only on, this is the similar main route failing (SIMILAR_MAINLINE_UNAVAILABLE).
+        logger.warn(
+          { event: 'product_intel_related_products_unavailable', err: err?.message || String(err), code: err?.code || null },
+          'product intel related products unavailable; answering without them',
+        );
+        return null;
+      })
     : [];
   const filteredRelatedProducts = capSimilarSameBrandItems(excludeBundleComponentProductsFromSimilar({
     products: stripSimilarInternalKeys(relatedProducts?.items),
