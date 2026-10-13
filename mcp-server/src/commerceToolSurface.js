@@ -1373,6 +1373,11 @@ export function toToolError(error) {
       // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
       body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
       body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
+      // The backend names that purchase (the caller's own: its key lookup is scoped to the agent and the buyer).
+      if (typeof error.detail.purchase_id === "string" && /^(?:ap|rp)_[0-9a-f]{24}$/.test(error.detail.purchase_id)) {
+        body.detail.purchase_id = error.detail.purchase_id;
+        body.recovery = "this key already opened the purchase in detail.purchase_id: read it with get_order before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
+      }
     }
     if (error.detail.reason === "purchase_unavailable") {
       body.message = "Purchases through this tool are not available right now.";

@@ -519,3 +519,41 @@ test('a dark backend door, or an explicit rail it cannot honour, is a definite "
     assert.equal(err.retriable, false);
   }
 });
+
+
+test('a conflict that names the key\'s purchase hands its id to the agent, to read with get_order', async () => {
+  const backend = fakeBackend();
+  const named = houseError('idempotency_conflict', 409);
+  named.detail = { error: 'idempotency_conflict', purchase_id: AP, rail: 'a2a' };
+  named.error.details = { ...named.detail };
+  backend.state.post = { status: 409, body: named };
+  const ctx = await build({ backend });
+  const { err } = await withEnv(ON, () => call(ctx, args()));
+  assert.deepEqual(err.detail, { reason: 'purchase_idempotency_conflict', purchase_id: AP });
+  assert.match(err.recovery, /read it with get_order before starting another/);
+  // A malformed id is never handed on.
+  named.detail.purchase_id = 'refused:merchant_not_eligible';
+  named.error.details = { ...named.detail };
+  const second = await withEnv(ON, () => call(ctx, args({ idempotency_key: 'idem-purchase-0009' })));
+  assert.deepEqual(second.err.detail, { reason: 'purchase_idempotency_conflict' });
+});
+
+test('each layer vets a named purchase on its own: the client keeps only a rail id; the error mapper too', async () => {
+  // The client, alone.
+  const backend = fakeBackend();
+  const named = houseError('idempotency_conflict', 409);
+  named.detail = { error: 'idempotency_conflict', purchase_id: 'refused:merchant_not_eligible' };
+  named.error.details = { ...named.detail };
+  backend.state.post = { status: 409, body: named };
+  const client = createAgentPurchaseCreateClient({ baseUrl: 'https://backend.example', fetchImpl: backend.fetchImpl, authHeaders: FULL_AUTH });
+  const refused = await client.startPurchase({ any: 'body' });
+  assert.equal(refused.kind, 'refused');
+  assert.equal('existingPurchaseId' in refused, false);
+  // The error mapper, alone: a malformed id on the error itself is not surfaced.
+  const m = await mods();
+  const err = new m.errors.PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+    op: 'start_purchase', reason: 'purchase_idempotency_conflict', purchase_id: 'refused:merchant_not_eligible',
+  });
+  const wire = JSON.parse(m.surface.toToolError(err).content[0].text).error;
+  assert.deepEqual(wire.detail, { reason: 'purchase_idempotency_conflict' });
+});

@@ -273,7 +273,10 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
         // fingerprint includes facts this tool fills from OUR catalog row (product_key, variant_key, the host), so a
         // retry of an unknown outcome conflicts when that row changed in between, and the key's purchase EXISTS. The
         // answer says so: check that purchase before starting another; a new key only for a different purchase.
-        throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_idempotency_conflict" });
+        throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+          op: START_PURCHASE_TOOL, reason: "purchase_idempotency_conflict",
+          ...(created.existingPurchaseId ? { purchase_id: created.existingPurchaseId } : {}),
+        });
       }
       throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: START_PURCHASE_TOOL, reason: "purchase_refused", refusal_code: created.code });
     case "unauthenticated":
