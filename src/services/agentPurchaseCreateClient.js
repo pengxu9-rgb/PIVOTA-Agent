@@ -19,6 +19,9 @@
  *                    timeout, a malformed or oversized body. NEVER a statement that nothing was created: the caller
  *                    must treat the outcome as unknown and retry the SAME idempotency key, or read the purchase.
  *   rejected         401: the backend refused the caller's credentials, before any write (no retry can fix it)
+ *   not_available    404 `not_available` (the door is dark) or `not_available_on_this_rail` (an explicit rail choice
+ *                    it cannot honour), in the documented envelope: this call opened nothing, and repeating it cannot
+ *                    help. (A dark door answers before its key lookup: an EARLIER call's purchase may still exist.)
  *   unauthenticated  the request context has no agent key or no buyer token: no request is made, and the INTERNAL
  *                    key is never substituted (`allowInternalFallback: false` at the host)
  *
@@ -62,6 +65,14 @@ function clampTimeout(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.floor(n)));
+}
+
+/** The purchase a conflict answer names: `detail.purchase_id` (the app envelope) or a top-level `purchase_id`. */
+function conflictPurchaseId(body) {
+  if (!isPlainObject(body)) return null;
+  const candidates = [isPlainObject(body.detail) ? body.detail.purchase_id : undefined, body.purchase_id];
+  const found = candidates.find((value) => railOf(value) !== null);
+  return found || null;
 }
 
 /** The rail a purchase id belongs to, or null. */
@@ -181,9 +192,20 @@ function createAgentPurchaseCreateClient(deps = {}) {
       log('info', { outcome: 'rejected', http_status: status });
       return { kind: 'rejected' };
     }
+    if (status === 404 && (reason === 'not_available' || reason === 'not_available_on_this_rail')) {
+      log('info', { outcome: 'not_available', code: reason, http_status: status });
+      return { kind: 'not_available', code: reason, http_status: status };
+    }
     if (reason && CREATE_REFUSALS[reason] === status) {
       log('info', { outcome: KIND.refused, code: reason, http_status: status });
-      return { kind: KIND.refused, code: reason, http_status: status };
+      const refused = { kind: KIND.refused, code: reason, http_status: status };
+      // A 409 idempotency_conflict names the purchase the key opened (backend: owner-scoped, so the caller's own),
+      // when it opened one. Read from the documented places only, and only a well-formed rail id.
+      if (reason === 'idempotency_conflict') {
+        const existing = conflictPurchaseId(parsed);
+        if (existing) refused.existingPurchaseId = existing;
+      }
+      return refused;
     }
     const code = reason || (Number.isFinite(status) && status >= 500 ? 'http_5xx' : `http_${status}`);
     log('warn', { outcome: KIND.unavailable, code, http_status: status });

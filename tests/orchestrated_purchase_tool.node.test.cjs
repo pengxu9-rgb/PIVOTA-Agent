@@ -395,7 +395,7 @@ test('without the caller credentials the backend needs: refused, no request', as
 test('definite backend refusals are named and final; nothing is read back', async () => {
   for (const [code, status, wireCode, reason] of [
     ['price_changed', 409, 'PRICE_CHANGED', 'purchase_price_changed'],
-    ['idempotency_conflict', 409, 'IDEMPOTENCY_CONFLICT', 'purchase_idempotency_conflict'],
+    ['idempotency_conflict', 409, 'OPERATION_NOT_ALLOWED', 'purchase_idempotency_conflict'],
     ['merchant_not_eligible', 409, 'OPERATION_NOT_ALLOWED', 'purchase_refused'],
     ['amount_over_limit', 409, 'OPERATION_NOT_ALLOWED', 'purchase_refused'],
     ['consent_required', 400, 'OPERATION_NOT_ALLOWED', 'purchase_refused'],
@@ -414,7 +414,7 @@ test('definite backend refusals are named and final; nothing is read back', asyn
 test('every other answer is an UNKNOWN outcome: retry the same call, never start another', async () => {
   const cases = [
     ['503', (b) => { b.state.post = { status: 503, body: { error: 'checkout_outcome_unknown' } }; }],
-    ['404 dark or rail refused', (b) => { b.state.post = { status: 404, body: houseError('not_available_on_this_rail', 404) }; }],
+    ['404 without a documented reason', (b) => { b.state.post = { status: 404, body: { error: 'something_else' } }; }],
     ['refusal at the wrong status', (b) => { b.state.post = { status: 400, body: houseError('merchant_not_eligible', 400) }; }],
     ['malformed 202', (b) => { b.state.post = { status: 202, body: { purchase_id: 'ap_short', rail: 'a2a', rail_state: 'opened' } }; }],
     ['rail disagrees with id', (b) => { b.state.post = { status: 202, body: { purchase_id: AP, rail: 'reap', rail_state: 'opened' } }; }],
@@ -488,4 +488,72 @@ test('a selected variant on a multi-variant row is sent as its catalog key', asy
   const chosen = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi', variant_id: '4002' })));
   assert.ok(chosen.ok, JSON.stringify(chosen.err));
   assert.equal(posts(ctx.backend)[0].body.variant_key, `${JUDY_ROW.product_key}::v::4002`);
+});
+
+
+test('the controller sequence: unknown outcome, the row key changes, the retry conflicts -> "may exist", never "start fresh"', async () => {
+  const backend = fakeBackend();
+  backend.state.post = { status: 503, body: { error: 'checkout_outcome_unknown' } };
+  const rows = { [JUDY_ROW.product_id]: { ...JUDY_ROW } };
+  const ctx = await build({ backend, rows });
+  assert.equal((await withEnv(ON, () => call(ctx, args()))).err.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+  // Our catalog re-keys the product (a superseded seed): the retry's fingerprint no longer matches the key's.
+  rows[JUDY_ROW.product_id] = { ...JUDY_ROW, product_key: 'prod::external_seed::external_seed::ext_ffffffffffffffffffffffff' };
+  backend.state.post = { status: 409, body: houseError('idempotency_conflict', 409) };
+  const { err } = await withEnv(ON, () => call(ctx, args()));
+  assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(err.detail.reason, 'purchase_idempotency_conflict');
+  assert.doesNotMatch(`${err.message} ${err.recovery}`, /start(ing)? fresh|new idempotency_key for a new request/i);
+  assert.match(err.recovery, /may exist: check it before starting another/);
+});
+
+test('a dark backend door, or an explicit rail it cannot honour, is a definite "not available", not an endless retry', async () => {
+  for (const code of ['not_available', 'not_available_on_this_rail']) {
+    const backend = fakeBackend();
+    backend.state.post = { status: 404, body: houseError(code, 404) };
+    const ctx = await build({ backend });
+    const { err } = await withEnv(ON, () => call(ctx, args()));
+    assert.equal(err.code, 'OPERATION_NOT_ALLOWED', code);
+    assert.deepEqual(err.detail, { reason: 'purchase_unavailable', refusal_code: code });
+    assert.match(err.recovery, /may exist: do not start another/);
+    assert.equal(err.retriable, false);
+  }
+});
+
+
+test('a conflict that names the key\'s purchase hands its id to the agent, to read with get_order', async () => {
+  const backend = fakeBackend();
+  const named = houseError('idempotency_conflict', 409);
+  named.detail = { error: 'idempotency_conflict', purchase_id: AP, rail: 'a2a' };
+  named.error.details = { ...named.detail };
+  backend.state.post = { status: 409, body: named };
+  const ctx = await build({ backend });
+  const { err } = await withEnv(ON, () => call(ctx, args()));
+  assert.deepEqual(err.detail, { reason: 'purchase_idempotency_conflict', purchase_id: AP });
+  assert.match(err.recovery, /read it with get_order before starting another/);
+  // A malformed id is never handed on.
+  named.detail.purchase_id = 'refused:merchant_not_eligible';
+  named.error.details = { ...named.detail };
+  const second = await withEnv(ON, () => call(ctx, args({ idempotency_key: 'idem-purchase-0009' })));
+  assert.deepEqual(second.err.detail, { reason: 'purchase_idempotency_conflict' });
+});
+
+test('each layer vets a named purchase on its own: the client keeps only a rail id; the error mapper too', async () => {
+  // The client, alone.
+  const backend = fakeBackend();
+  const named = houseError('idempotency_conflict', 409);
+  named.detail = { error: 'idempotency_conflict', purchase_id: 'refused:merchant_not_eligible' };
+  named.error.details = { ...named.detail };
+  backend.state.post = { status: 409, body: named };
+  const client = createAgentPurchaseCreateClient({ baseUrl: 'https://backend.example', fetchImpl: backend.fetchImpl, authHeaders: FULL_AUTH });
+  const refused = await client.startPurchase({ any: 'body' });
+  assert.equal(refused.kind, 'refused');
+  assert.equal('existingPurchaseId' in refused, false);
+  // The error mapper, alone: a malformed id on the error itself is not surfaced.
+  const m = await mods();
+  const err = new m.errors.PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+    op: 'start_purchase', reason: 'purchase_idempotency_conflict', purchase_id: 'refused:merchant_not_eligible',
+  });
+  const wire = JSON.parse(m.surface.toToolError(err).content[0].text).error;
+  assert.deepEqual(wire.detail, { reason: 'purchase_idempotency_conflict' });
 });
