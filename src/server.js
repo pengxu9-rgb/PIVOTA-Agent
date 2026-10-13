@@ -216,6 +216,8 @@ const {
   maybeBuildLiveSyntheticPdp,
   resolveLivePdpIdentityGroupForPdp,
   searchPdpIdentityGroupsForQuery,
+  listLivePdpIdentityRowsForRefs,
+  listLiveShadeLineMembers,
   backfillPdpIdentityGraph,
   promotePdpIdentityLiveRead,
   listPdpIdentityShadowRows,
@@ -369,6 +371,10 @@ const {
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
+const {
+  collapseSearchResponseBodyByShadeLine,
+  isShadeLineCardCollapseEnabled,
+} = require('./services/shadeLineCardCollapse');
 
 // THE BUYER MARKET RIDES INTO THE DISCOVERY FEED (discoveryFeed.applyBuyerMarketFallback), read by
 // the SAME function the serving-currency guard judges the outgoing body with, so the feed and the
@@ -12589,6 +12595,12 @@ function projectSearchTransportProduct(product, stats = null) {
   }
   if (product.agent_safe_commerce_facts && typeof product.agent_safe_commerce_facts === 'object' && !Array.isArray(product.agent_safe_commerce_facts)) {
     projected.agent_safe_commerce_facts = safeCloneJson(product.agent_safe_commerce_facts);
+  }
+  // One card per shade line (shadeLineCardCollapse.js): present only when
+  // SHADE_LINE_CARD_COLLAPSE_ENABLED folded a line into this card, so off it is never projected.
+  if (product.shade_line && typeof product.shade_line === 'object' && !Array.isArray(product.shade_line)) {
+    projected.shade_line = safeCloneJson(product.shade_line);
+    if (Number.isFinite(Number(product.shade_count))) projected.shade_count = Number(product.shade_count);
   }
 
   const images = slicePlainArray(product.images, FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT);
@@ -51764,6 +51776,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryParams,
       });
       recordFpmStage('pdp_identity_rescue', pdpIdentityRescueStartedAt);
+      // One card per shade line (shadeLineCardCollapse.js). SHADE_LINE_CARD_COLLAPSE_ENABLED,
+      // default off: off, this block does not run (no read, no stage recorded). Before the page-size
+      // contract, so a folded shade frees its slot; in the door's serving currency only.
+      if (isShadeLineCardCollapseEnabled()) {
+        const shadeLineCollapseStartedAt = Date.now();
+        try {
+          maybePolicy = await collapseSearchResponseBodyByShadeLine({
+            body: maybePolicy,
+            servingCurrency: servingCurrencyFor({
+              observation: marketObservation,
+              payload: req?.body?.payload,
+              metadata: req?.body?.metadata,
+            }),
+            identityRowsResolverFn: listLivePdpIdentityRowsForRefs,
+            lineMembersResolverFn: listLiveShadeLineMembers,
+          });
+        } catch (err) {
+          logger.warn({ err: err?.message || String(err) }, 'find_products_multi shade line collapse failed; keeping cards');
+        }
+        recordFpmStage('shade_line_collapse', shadeLineCollapseStartedAt);
+      }
     }
 
     let enriched = maybePolicy;

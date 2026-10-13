@@ -64,7 +64,9 @@ const {
 const {
   buildSourceListingRef,
   listLivePdpIdentityRowsForRefs,
+  listLiveShadeLineMembers,
 } = require('./pdpIdentityGraph');
+const { collapseDiscoveryCandidatesByShadeLine } = require('./shadeLineCardCollapse');
 const {
   buildCatalogServingDoc,
   getCatalogServingIndexConfig,
@@ -12121,6 +12123,8 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(raw.sellable_item_group_id ? { sellable_item_group_id: raw.sellable_item_group_id } : {}),
       ...(raw.product_line_id ? { product_line_id: raw.product_line_id } : {}),
       ...(raw.review_family_id ? { review_family_id: raw.review_family_id } : {}),
+      // Set only by the shade-line card collapse (SHADE_LINE_CARD_COLLAPSE_ENABLED).
+      ...(raw.shade_line && typeof raw.shade_line === 'object' ? { shade_line: raw.shade_line, shade_count: raw.shade_count } : {}),
       ...(raw.identity_confidence != null ? { identity_confidence: raw.identity_confidence } : {}),
       ...(Array.isArray(raw.match_basis) ? { match_basis: raw.match_basis } : {}),
       ...(raw.canonical_scope ? { canonical_scope: raw.canonical_scope } : {}),
@@ -12286,6 +12290,9 @@ function annotateIdentityDiscoveryCandidate(candidate, row, groupMembers) {
   const safeGroupMembers = Array.isArray(groupMembers) ? groupMembers : [];
   return {
     ...candidate,
+    // The row's shade-line decision (soft_identity.shade_line) rides OUTSIDE raw, so no card ever
+    // projects it; only the shade-line card collapse reads it.
+    ...(row.shade_line ? { identityShadeLine: row.shade_line } : {}),
     raw: {
       ...(candidate.raw || {}),
       pivota_signature_id: row.sellable_item_group_id,
@@ -12863,6 +12870,7 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
       groups_collapsed: 0,
       duplicate_candidates_dropped: 0,
     };
+    let shadeLineCollapseStats = { applied: false };
     for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
       const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
       if (!normalized) continue;
@@ -12989,6 +12997,15 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
     });
     scopedCandidates = identityGraphDedupe.candidates;
     identityGraphDedupeStats = identityGraphDedupe.stats;
+    // One card per shade line (shadeLineCardCollapse.js; SHADE_LINE_CARD_COLLAPSE_ENABLED, default
+    // off: then this returns the same array and reads nothing). After the same-item dedupe, so
+    // members are distinct sellable items; in the buyer's currency only.
+    const shadeLineCollapse = await collapseDiscoveryCandidatesByShadeLine(scopedCandidates, {
+      servingCurrency: resolveServingCurrency(request.buyer_market || undefined),
+      lineMembersResolverFn: options.shadeLineMembersResolverFn || listLiveShadeLineMembers,
+    });
+    scopedCandidates = shadeLineCollapse.candidates;
+    shadeLineCollapseStats = shadeLineCollapse.stats;
     phaseTimer.mark('identity_dedupe');
     observeDiscoveryCandidateCount({
       surface: request.surface,
@@ -13287,6 +13304,11 @@ async function buildDiscoveryFeedOnce(payload = {}, options = {}) {
       ...(identityGraphDedupeStats?.applied
         ? {
             identity_graph: identityGraphDedupeStats,
+          }
+        : {}),
+      ...(shadeLineCollapseStats?.applied
+        ? {
+            shade_line_collapse: shadeLineCollapseStats,
           }
         : {}),
       ...(relationshipGraphDiscoveryStats?.enabled || relationshipGraphDiscoveryStats?.attempted

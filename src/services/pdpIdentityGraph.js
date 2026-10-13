@@ -28,6 +28,12 @@ const {
 const {
   upsertCatalogRowTrustForSourceListingRefs,
 } = require('./catalogRowTrustUpserter');
+const {
+  applyShadeLineGrouping,
+  extractShadeLineCandidate,
+  isShadeLineRuleEnabled,
+  SHADE_LINE_REFUSALS,
+} = require('./shadeLineRule');
 
 const normalizeResolverText =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
@@ -1641,6 +1647,22 @@ function buildIdentityListingFromProduct({
     strongIdentity.internal_product_group_id = canonicalCatalogIdentity.internal_product_group_id;
   }
   const variantFamily = extractMultiPageShadeFamilyCandidate(normalizedProduct);
+  // Rule shade_line_v2 (shadeLineRule.js), behind SHADE_LINE_RULE_V2_ENABLED (default off: no
+  // candidate, so the listing is exactly what it was before the rule). Parsed here, decided per
+  // batch by applyShadeLineGrouping; nothing about this listing's own keys changes here.
+  const shadeLineCandidate = isShadeLineRuleEnabled() ? extractShadeLineCandidate({
+    product: normalizedProduct,
+    sourceMeta,
+    axes,
+    merchantId: mid,
+    storeDomain: collectProductSourceDomains(normalizedProduct)[0] || '',
+    brandNorm: softIdentity.brand_norm || '',
+    // Lazy: this builder also runs at request time (serving index, live identity match), and
+    // most titles never parse as a shade line, so these are read only when one does.
+    makeupContext: () => allowsColorAxisForProduct(normalizedProduct) && hasShadeFamilyContext(normalizedProduct),
+    price: () => readListingPrice({ source_payload: normalizedProduct }),
+    v1Family: variantFamily,
+  }) : null;
   const sourceTier = chooseSourceTier(normalizedProduct, sourceKind);
   const identityConfidence = computeIdentityConfidence({
     sourceTier,
@@ -1757,6 +1779,8 @@ function buildIdentityListingFromProduct({
     review_reason_codes: reviewReasonCodes,
     source_payload: normalizedProduct,
     review_summary: reviewSummary,
+    // In-memory only (writeIdentityRows does not persist it): the batch pass reads it.
+    ...(shadeLineCandidate ? { shade_line_candidate: shadeLineCandidate } : {}),
     source_meta: {
       ...(asPlainObject(sourceMeta) || {}),
       ...(liveReadEligibility.eligible === false
@@ -4357,7 +4381,8 @@ async function listLivePdpIdentityRowsForRefs({
           pil.review_family_id,
           pil.identity_status,
           pil.identity_confidence,
-          pil.match_basis
+          pil.match_basis,
+          pil.soft_identity->'shade_line' AS shade_line
         FROM pdp_identity_listing pil
         WHERE pil.source_listing_ref = ANY($1::text[])
           AND EXISTS (
@@ -4380,6 +4405,88 @@ async function listLivePdpIdentityRowsForRefs({
         refs_count: refs.length,
       },
       'PDP identity graph discovery listing read failed',
+    );
+    return [];
+  }
+}
+
+// Every public member of the given shade lines, for a line card's "N shades, from X". Prices and
+// stock come from the CURRENT seed columns (external_product_seeds.price_amount / price_currency /
+// availability, as hydrateIdentityRowsFromCurrentExternalSeeds reads them), never from the stored
+// source_payload, which is neither current nor cheap (it would detoast the whole payload). A member
+// with no current seed price carries none and is left out of the price and the count by the caller.
+// Deterministic order, and at most `perLineLimit` members per line.
+async function listLiveShadeLineMembers({
+  productLineIds = [],
+  perLineLimit = 400,
+  queryFn = query,
+} = {}) {
+  if (!process.env.DATABASE_URL || typeof queryFn !== 'function') return [];
+  const ids = uniqueStrings(productLineIds, 200);
+  if (!ids.length) return [];
+  const sql = `
+        SELECT *
+        FROM (
+          SELECT
+            pil.source_listing_ref,
+            pil.merchant_id,
+            pil.product_id,
+            pil.sellable_item_group_id,
+            pil.product_line_id,
+            pil.soft_identity->'shade_line' AS shade_line,
+            seed.price_amount,
+            seed.price_currency,
+            seed.availability,
+            row_number() OVER (
+              PARTITION BY pil.product_line_id
+              ORDER BY pil.source_listing_ref
+            ) AS line_rank
+          FROM pdp_identity_listing pil
+          LEFT JOIN LATERAL (
+            SELECT e.price_amount, e.price_currency, e.availability
+            FROM external_product_seeds e
+            WHERE pil.source_kind = 'external_seed'
+              AND e.external_product_id = pil.product_id
+              AND e.status = 'active'
+            ORDER BY e.updated_at DESC NULLS LAST, e.id DESC
+            LIMIT 1
+          ) seed ON true
+          WHERE pil.product_line_id = ANY($1::text[])
+            AND pil.identity_status = 'approved'
+            AND EXISTS (
+              SELECT 1
+              FROM catalog_row_trust crt
+              WHERE crt.subject_type = 'product'
+                AND crt.source_listing_ref = pil.source_listing_ref
+                AND crt.serving_decision = 'public'
+            )
+        ) ranked
+        WHERE ranked.line_rank <= $2
+        ORDER BY ranked.product_line_id, ranked.source_listing_ref
+      `;
+  try {
+    const result = await queryFn(sql, [ids, Math.max(1, Math.min(2000, Number(perLineLimit) || 400))]);
+    return (result?.rows || []).map((row) => {
+      const amount = Number(row?.price_amount);
+      const currency = asString(row?.price_currency).toUpperCase();
+      return {
+        source_listing_ref: asString(row?.source_listing_ref),
+        merchant_id: asString(row?.merchant_id),
+        product_id: asString(row?.product_id),
+        sellable_item_group_id: asString(row?.sellable_item_group_id),
+        product_line_id: asString(row?.product_line_id),
+        shade_line: asPlainObject(row?.shade_line) || null,
+        card_facts: {
+          ...(Number.isFinite(amount) && amount > 0 && currency ? { price: amount, currency } : {}),
+          ...(asString(row?.availability) ? { availability: asString(row.availability) } : {}),
+        },
+      };
+    });
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return [];
+    logger.warn(
+      { err: err?.message || String(err), lines_count: ids.length },
+      'PDP identity graph shade line member read failed',
     );
     return [];
   }
@@ -4965,6 +5072,7 @@ async function fetchBackfillProducts({
   queryFn = query,
 } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
+  const shadeLineRuleEnabled = isShadeLineRuleEnabled();
   const exactExternalProductIds = normalizeExternalProductIdList(externalProductIds);
   const sourceLimit = exactExternalProductIds.length
     ? Math.max(normalizedLimit, exactExternalProductIds.length)
@@ -5157,7 +5265,9 @@ async function fetchBackfillProducts({
         cp.merchant_id AS catalog_merchant_id,
         cp.pivota_signature_id AS catalog_pivota_signature_id,
         cp.sync_status AS catalog_sync_status,
-        cp.pdp_lifecycle_stage AS catalog_pdp_lifecycle_stage,
+        cp.pdp_lifecycle_stage AS catalog_pdp_lifecycle_stage,${shadeLineRuleEnabled ? `
+        cp.category_path AS catalog_category_path,
+        cp.product_type AS catalog_product_type,` : ''}
         ips.serving_eligible AS index_serving_eligible,
         ips.pipeline_stage AS index_pipeline_stage,
         ips.blocker_code AS index_blocker_code,
@@ -5238,6 +5348,15 @@ async function fetchBackfillProducts({
         catalog_pivota_signature_id: row?.catalog_pivota_signature_id || null,
         catalog_sync_status: row?.catalog_sync_status || null,
         catalog_pdp_lifecycle_stage: row?.catalog_pdp_lifecycle_stage || null,
+        // Shade-line rule only (flag on): the seed payload's product_type is the placeholder
+        // 'external' and it carries no category, so the rule reads the catalog's own. Kept OUT
+        // of the payload so no other rule's input changes.
+        ...(shadeLineRuleEnabled
+          ? {
+              catalog_category_path: row?.catalog_category_path || null,
+              catalog_product_type: row?.catalog_product_type || null,
+            }
+          : {}),
       },
     });
   }
@@ -5569,8 +5688,15 @@ async function backfillPdpIdentityGraph({
       }),
     )
     .filter(Boolean);
-  const listings = clusterIdentityListings(applyReviewedMultiOfferMergeCandidates(builtListings))
-    .map((listing) => applyIdentityOverrides(listing, overrides));
+  const clusteredListings = clusterIdentityListings(applyReviewedMultiOfferMergeCandidates(builtListings));
+  // SHADE_LINE_RULE_V2_ENABLED off (the default): no shade-line pass, no extra read, and the
+  // written rows are byte-identical to the code before the rule.
+  const shadeLines = isShadeLineRuleEnabled()
+    ? await groupShadeLinesForBatch(clusteredListings, { queryFn })
+    : null;
+  const listings = (shadeLines ? shadeLines.listings : clusteredListings).map((listing) =>
+    applyIdentityOverrides(listing, overrides),
+  );
 
   const reviewQueueEntries = buildReviewQueueEntries(listings);
   const writeResult = await writeIdentityRows({
@@ -5585,8 +5711,100 @@ async function backfillPdpIdentityGraph({
     source_rows_scanned: sourceRows.length,
     identity_rows_built: listings.length,
     review_queue_rows_built: reviewQueueEntries.length,
+    ...(shadeLines ? { shade_lines: shadeLines.stats } : {}),
     ...writeResult,
   };
+}
+
+// How many listings OUTSIDE this batch already hold each proposed shade-line id, so a line minted
+// by an earlier batch still admits a single new shade (the minimum line size counts them). A read;
+// on any failure the batch is decided on its own members alone.
+async function countExistingShadeLineMembers({ productLineIds = [], excludeRefs = [], queryFn = query } = {}) {
+  const ids = uniqueStrings(productLineIds, 5000);
+  if (!ids.length || typeof queryFn !== 'function') return new Map();
+  try {
+    const result = await queryFn(
+      `
+        SELECT product_line_id, count(*)::int AS member_count
+        FROM pdp_identity_listing
+        WHERE product_line_id = ANY($1::text[])
+          AND NOT (source_listing_ref = ANY($2::text[]))
+          AND identity_status = 'approved'
+        GROUP BY product_line_id
+      `,
+      [ids, uniqueRefs(excludeRefs)],
+    );
+    const counts = new Map();
+    for (const row of result?.rows || []) {
+      const id = asString(row?.product_line_id);
+      if (id) counts.set(id, Number(row?.member_count) || 0);
+    }
+    return counts;
+  } catch (err) {
+    if (!looksLikeRelationMissing(err)) {
+      logger.warn({ err: err?.message || String(err) }, 'shade line existing-member count failed; batch decides alone');
+    }
+    return new Map();
+  }
+}
+
+function uniqueRefs(values) {
+  return Array.from(new Set((values || []).map((value) => asString(value)).filter(Boolean)));
+}
+
+// The batch's listings that already exist, with their stored (sticky) line: a stored member is
+// never moved, re-axed or re-familied by the shade-line rule. A read; on failure nothing is
+// treated as stored, which is safe because the upsert keeps a stored line id regardless.
+async function loadStoredProductLines({ sourceListingRefs = [], queryFn = query } = {}) {
+  const refs = uniqueRefs(sourceListingRefs);
+  if (!refs.length || typeof queryFn !== 'function') return new Map();
+  try {
+    const result = await queryFn(
+      `
+        SELECT source_listing_ref, product_line_id, review_family_id
+        FROM pdp_identity_listing
+        WHERE source_listing_ref = ANY($1::text[])
+          AND NULLIF(product_line_id, '') IS NOT NULL
+      `,
+      [refs],
+    );
+    const stored = new Map();
+    for (const row of result?.rows || []) {
+      const ref = asString(row?.source_listing_ref);
+      if (!ref) continue;
+      stored.set(ref, {
+        product_line_id: asString(row?.product_line_id),
+        review_family_id: asString(row?.review_family_id),
+      });
+    }
+    return stored;
+  } catch (err) {
+    if (!looksLikeRelationMissing(err)) {
+      logger.warn({ err: err?.message || String(err) }, 'shade line stored-line read failed');
+    }
+    return new Map();
+  }
+}
+
+async function groupShadeLinesForBatch(listings, { queryFn = query } = {}) {
+  const refs = uniqueRefs((listings || []).map((listing) => listing?.source_listing_ref));
+  const storedLines = await loadStoredProductLines({ sourceListingRefs: refs, queryFn });
+  const first = applyShadeLineGrouping(listings, { storedLines });
+  const tooSmallIds = uniqueStrings(
+    first.listings
+      .map((listing) => asPlainObject(asPlainObject(listing?.soft_identity)?.shade_line))
+      .filter((decision) => decision?.status === 'refused' && decision?.reason === SHADE_LINE_REFUSALS.LINE_TOO_SMALL)
+      .map((decision) => decision.proposed_product_line_id),
+    5000,
+  );
+  if (!tooSmallIds.length) return first;
+  const existingMemberCounts = await countExistingShadeLineMembers({
+    productLineIds: tooSmallIds,
+    excludeRefs: refs,
+    queryFn,
+  });
+  if (![...existingMemberCounts.values()].some((count) => count > 0)) return first;
+  return applyShadeLineGrouping(listings, { existingMemberCounts, storedLines });
 }
 
 async function listPdpIdentityShadowRows({
@@ -5766,6 +5984,7 @@ module.exports = {
   resolveLivePdpIdentityGroupForPdp,
   searchPdpIdentityGroupsForQuery,
   listLivePdpIdentityRowsForRefs,
+  listLiveShadeLineMembers,
   promotePdpIdentityLiveRead,
   summarizePdpIdentityCoverageByBrand,
   runPdpIdentityCoverageLift,
@@ -5796,6 +6015,9 @@ module.exports = {
     hydrateIdentityRowsFromCurrentExternalSeeds,
     pickDefaultCommerceListing,
     clusterIdentityListings,
+    countExistingShadeLineMembers,
+    groupShadeLinesForBatch,
+    loadStoredProductLines,
     fetchBackfillProducts,
     sanitizeJsonForPostgres,
     stringifyPostgresJsonb,
