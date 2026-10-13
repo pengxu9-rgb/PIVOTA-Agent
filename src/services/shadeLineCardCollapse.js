@@ -1,59 +1,65 @@
 'use strict';
 
-// ONE CARD PER SHADE LINE in search and discovery.
+// ONE CARD PER SHADE LINE (per store) in search and discovery.
 //
 // A store that lists every shade of a line as its own page fills a results page with one line:
 // many near-identical cards that differ only by colour. Once the identity graph has put those
-// pages in one product line (rule shade_line_v2, shadeLineRule.js), this collapses the line's
-// cards into ONE card: an in-stock representative, a "from" price and the shade count. Each shade
-// keeps its own sig_/PDP; the PDP's shade picker (buildProductLineOptions) links the siblings.
-// Nothing here changes a URL, an offer or a PDP.
+// pages in one product line (rule shade_line_v2, shadeLineRule.js), this folds one store's cards of
+// that line into ONE card: an in-stock representative (shown with ITS OWN listing price, never a
+// price borrowed from another shade) and the shade count. Each shade keeps its own sig_/PDP; the
+// PDP's shade picker (buildProductLineOptions) links the siblings. Nothing here changes a URL, an
+// offer, a price or a PDP.
 //
 // FLAG: SHADE_LINE_CARD_COLLAPSE_ENABLED=true (default OFF, read per call). Off, every caller
-// returns its input untouched and makes no extra read. Independent of the rule's own flag
-// (SHADE_LINE_RULE_V2_ENABLED): with the rule off no line is ever verified, so nothing collapses.
+// returns its input untouched and makes no extra read (the identity rows reader does not even
+// select the shade-line decision). Independent of the rule's flag (SHADE_LINE_RULE_V2_ENABLED):
+// with the rule off no row carries an approved decision, so nothing folds.
 //
-// WHAT COLLAPSES. A line is a shade line when at least one of its public rows carries the rule's
-// APPROVED decision naming that row's stored product_line_id (readVerifiedShadeLineId). Every card
-// whose STORED product_line_id is such a line is a member, whatever its own decision says: a
-// member refused on a later rebuild keeps its sticky line id, so it is still in the line (and
-// must not show up as a separate card next to its own line card), and v1 siblings a v2 line
-// adopted are in it too. A row whose rebuild only PROPOSES a line (sticky elsewhere) is in its
-// stored line, not the proposed one. Lines of other rules, with no approved v2 row, never collapse.
+// WHAT FOLDS. A card folds only on its OWN accepted decision: its identity row carries the rule's
+// APPROVED decision naming that row's stored product_line_id (readVerifiedShadeLineId), and the
+// decision's store (seller of record @ domain). Cards are bucketed by line AND store. So never:
+//   - a v1 sibling (or any member) without a v2 approval of its own -- it stays its own card;
+//   - a member a later rebuild refused (set, mini, size_mismatch, ...) or only PROPOSED for a line;
+//   - another merchant's (or another domain's) listing, even in the same line.
+// The representative is always an accepted member of its bucket.
+//
+// PRICE. No "from" price: a card's price is the price of the listing it links to (the #2416
+// rule). The line's other members only feed the shade counts.
 //
 // MARKET. The buyer's market is a currency here (buyerMarket.js: the seed `market` column is a
-// serving partition, not where the buyer is). A member counts only when it is priced in the
-// serving currency and no other (servingCurrencyGuard.isPricedInServingCurrency). Members in
-// another currency are never folded into a line card and never contribute a price; they are left
-// as they are for the door's currency guard to judge. No FX, ever. No serving currency, no
-// collapse. The line's other members are priced from the CURRENT seed columns
-// (listLiveShadeLineMembers); a member with no current price is left out of the count and price.
+// serving partition, not where the buyer is). A card folds, and a member counts, only when priced
+// in the serving currency and no other (servingCurrencyGuard.isPricedInServingCurrency). Others
+// are left as they are for the door's currency guard. No FX. No serving currency, no fold. The
+// line's other members are read from the CURRENT seed columns (listLiveShadeLineMembers); a member
+// with no current price is not counted.
+//
+// SEARCH PAGES. find_products_multi folds on the candidate pool BEFORE the page-size trim, and only
+// as many cards as the pool holds BEYOND the requested page size (a line that would need more is
+// left unfolded), so a page is never shorter than it would be without the fold: a folded slot is
+// refilled only from a real over-fetch. It folds on the FIRST page only (page 1, offset 0), and
+// `total` is left as the lane reported it (a count of listings, the same on every page).
 //
 // DEDUPE ORDER. This runs AFTER the existing same-item dedupe (discovery: sellable_item_group_id
-// buckets; search: the lane's own grouping), so members are counted by distinct sellable item, and
-// a card that already stands for several sellers of one shade is one member. In search it runs on
-// the wide candidate pool BEFORE the page-size trim, so a folded shade frees a slot the pool
-// refills, and `total` shrinks by the cards folded away. Running it twice is a no-op.
+// buckets; search: the lane's own grouping), so members are counted by distinct sellable item.
+// Running it twice is a no-op.
 //
 // PUBLIC PAYLOAD. `shade_line` = { product_line_id, rule_version, shade_count, in_stock_shade_count,
-// from_price, currency, collapsed_card_count } and `shade_count`. No member refs.
+// currency, collapsed_card_count } and `shade_count`. No member refs, no borrowed price.
 //
-// BEFORE ENABLING SHADE_LINE_CARD_COLLAPSE_ENABLED (known gaps; not built yet, each needs a fix or
-// an explicit sign-off first):
-//   1. Buckets must be per store (merchant + domain), not per line. Once one store's v2 shades
-//      sit in a line that also holds other sellers' pages (a cross-merchant v1 line), every card
-//      of that line from every merchant folds into ONE card -- whose representative may be
-//      another merchant's listing -- and shade_count counts a shade sold at two stores twice.
-//      (The rule no longer adopts a v1 line that is not one store's, but lines adopted or
-//      re-keyed by hand, and older v1 lines, can still mix stores.)
-//   2. The refill after a fold works only if the upstream lane over-fetches past the requested
-//      page size. The find_products_multi test mocks a wide pool; verify the real lanes do.
-//   3. Pagination is contract-visible: a line card on page 1 can sit beside the same line's
-//      shades on page 2 (there is no cursor to reconcile), and `total` shrinks by folded cards.
-//   4. Member-read cost: listLiveShadeLineMembers resolves lines that are verified OR shared by
-//      two cards; it should resolve only v2-approved lines, and apply the per-line cap BEFORE the
-//      lateral seed join and the trust EXISTS (worst case today ~200 lines x 400 members).
-//
+// STILL BLOCKING SHADE_LINE_CARD_COLLAPSE_ENABLED (documented, not built):
+//   1. Pages after the first. Without a cursor, page 2 comes from the lane's own offset over the
+//      unfolded list, so shades of a line folded on page 1 can reappear on page 2 as their own
+//      cards (or fold again into a second line card there -- which is why only page 1 folds).
+//      Needs a cursor/offset contract that skips the members a page-1 line card stands for.
+//   2. The over-fetch width is the lane's. The code comment on the page-size contract says the
+//      upstream "often returns ~50 rows"; that is not measured here. The budget above keeps pages
+//      full either way, but on a lane that returns exactly the page size nothing folds.
+//   3. `total` counts listings, not cards: a client that derives page counts from it will see
+//      fewer cards than `total` suggests on page 1.
+//   4. Member-read cost is bounded (only v2-approved lines, a per-line cap applied before the seed
+//      join and the trust check) but not measured on prod; the cap makes a shade count a lower
+//      bound for lines larger than the cap.
+
 // RE-KEYING THE LINES OLDER RULES MINTED (documented here, NOT done by this code; needs Peng's go):
 //   product_line_id is sticky on upsert (pdpIdentityGraph.writeIdentityRows keeps a stored
 //   non-empty id unless the new rule is reviewed_multi_offer_merge), so shade_line_v2 only lines
@@ -96,8 +102,7 @@
 //   line's own review family), and the census prints both ids for every row.
 
 const { isPricedInServingCurrency } = require('./servingCurrencyGuard');
-const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
-const { SHADE_LINE_RULE_VERSION, readVerifiedShadeLineId } = require('./shadeLineRule');
+const { SHADE_LINE_RULE_VERSION, readShadeLineDecision, readVerifiedShadeLineId } = require('./shadeLineRule');
 
 const SHADE_LINE_CARD_COLLAPSE_FLAG = 'SHADE_LINE_CARD_COLLAPSE_ENABLED';
 
@@ -123,105 +128,86 @@ function productInStock(product) {
   return true;
 }
 
-function priceInCurrency(product, servingCurrency) {
-  const priced = resolveCanonicalSearchProductPrice(product);
-  if (!priced || priced.currency !== servingCurrency) return null;
-  return { amount: priced.amount, currency: priced.currency };
-}
-
 function emptyStats(extra = {}) {
   return { applied: false, lines_collapsed: 0, cards_dropped: 0, line_cards: 0, ...extra };
 }
 
-// Which line ids are worth a member read: lines a card already verifies, and lines two or more
-// cards share (one of them may be a member whose own decision was later refused).
-function lineIdsToResolve(cards, storedLineOf, isVerifiedCard) {
-  const counts = new Map();
-  const verified = new Set();
-  for (const card of cards) {
-    const lineId = asString(storedLineOf(card));
-    if (!lineId) continue;
-    counts.set(lineId, (counts.get(lineId) || 0) + 1);
-    if (isVerifiedCard(card)) verified.add(lineId);
-  }
-  return [...new Set([...verified, ...[...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id)])];
+/**
+ * The bucket a stored identity row belongs to, or '': `<line id>|<store>` when the row's OWN
+ * decision is an approval of its stored line, with the store the rule lined it up in.
+ */
+function shadeLineBucketOf(row) {
+  const lineId = readVerifiedShadeLineId(row);
+  if (!lineId) return '';
+  const store = asString(readShadeLineDecision(row)?.store);
+  return store ? `${lineId}|${store}` : '';
 }
 
 /**
- * The pure core. `cards` keep their order; a line's card takes the slot of the line's
- * highest-ranked member.
+ * The pure core. `cards` keep their order; a bucket's card takes the slot of its highest-ranked
+ * member.
  *
  * @param {Array} cards
  * @param {object} opts
- * @param {(card)=>string} opts.storedLineOf   the card's STORED product_line_id (from its identity row)
- * @param {(card)=>boolean} opts.isVerifiedCard the card's own row carries the approved v2 decision
- * @param {(card)=>object} opts.productOf      the product object the card is built from
- * @param {(card)=>string} opts.memberKeyOf    distinct-member key (sellable item, else listing ref)
+ * @param {(card)=>string} opts.bucketOf        `<line id>|<store>` for an accepted member, else ''
+ * @param {(card)=>object} opts.productOf       the product object the card is built from
+ * @param {(card)=>string} opts.memberKeyOf     distinct-member key (sellable item, else listing ref)
  * @param {(card, summary)=>object} opts.decorate
- * @param {string|null} opts.servingCurrency   the buyer's currency; null = collapse nothing
- * @param {Map<string, Array>} [opts.lineMembers] lineId -> rows from listLiveShadeLineMembers
+ * @param {string|null} opts.servingCurrency    the buyer's currency; null = fold nothing
+ * @param {Map<string, Array>} [opts.lineMembers] line id -> rows from listLiveShadeLineMembers
+ * @param {number} [opts.maxCardsDropped]        fold whole buckets, in rank order, while the cards
+ *                                               they drop stay within this budget
  */
 function collapseCardsByShadeLine(cards, {
-  storedLineOf,
-  isVerifiedCard,
+  bucketOf,
   productOf,
   memberKeyOf,
   decorate,
   servingCurrency,
   lineMembers = new Map(),
+  maxCardsDropped = Infinity,
 } = {}) {
   const list = Array.isArray(cards) ? cards : [];
   const currency = asString(servingCurrency).toUpperCase();
   if (!list.length) return { cards: list, stats: emptyStats() };
   if (!currency) return { cards: list, stats: emptyStats({ reason: 'no_serving_currency' }) };
 
-  const verifiedLines = new Set();
-  for (const card of list) {
-    const lineId = asString(storedLineOf(card));
-    if (lineId && isVerifiedCard(card)) verifiedLines.add(lineId);
-  }
-  for (const [lineId, rows] of lineMembers.entries()) {
-    if ((rows || []).some((row) => readVerifiedShadeLineId(row) === lineId)) verifiedLines.add(lineId);
-  }
-  if (!verifiedLines.size) return { cards: list, stats: emptyStats({ reason: 'no_shade_lines' }) };
-
   const buckets = new Map();
   list.forEach((card, index) => {
-    const lineId = asString(storedLineOf(card));
-    if (!lineId || !verifiedLines.has(lineId)) return;
+    const bucket = asString(bucketOf(card));
+    if (!bucket) return;
     const product = productOf(card);
     if (!isPricedInServingCurrency(product, currency)) return;
-    const bucket = buckets.get(lineId) || [];
-    bucket.push({ card, index, product });
-    buckets.set(lineId, bucket);
+    const entries = buckets.get(bucket) || [];
+    entries.push({ card, index, product });
+    buckets.set(bucket, entries);
   });
+  if (!buckets.size) return { cards: list, stats: emptyStats({ reason: 'no_shade_lines' }) };
 
   let linesCollapsed = 0;
   let cardsDropped = 0;
   let lineCards = 0;
+  let budgetSkipped = 0;
+  const budget = Number.isFinite(Number(maxCardsDropped)) ? Math.max(0, Number(maxCardsDropped)) : Infinity;
   const replacement = new Map();
   const dropped = new Set();
-  for (const [lineId, entries] of buckets.entries()) {
-    // Members by distinct sellable item: recalled cards first, then the line's other public rows.
+  const ordered = [...buckets.entries()].sort((a, b) => a[1][0].index - b[1][0].index);
+  for (const [bucket, entries] of ordered) {
+    const [lineId] = bucket.split('|');
+    // Members by distinct sellable item: the bucket's cards, then the line's other accepted members
+    // of the SAME store in the buyer's currency.
     const members = new Map();
     for (const entry of entries) {
       const key = asString(memberKeyOf(entry.card)) || `card:${entry.index}`;
-      if (!members.has(key)) {
-        members.set(key, {
-          inStock: productInStock(entry.product),
-          price: priceInCurrency(entry.product, currency),
-        });
-      }
+      if (!members.has(key)) members.set(key, { inStock: productInStock(entry.product) });
     }
     for (const row of lineMembers.get(lineId) || []) {
+      if (shadeLineBucketOf(row) !== bucket) continue;
       const facts = isPlainObject(row.card_facts) ? row.card_facts : {};
       if (!isPricedInServingCurrency(facts, currency)) continue;
       const key = asString(row.sellable_item_group_id) || asString(row.source_listing_ref);
       if (!key || members.has(key)) continue;
-      members.set(key, {
-        inStock: productInStock(facts),
-        price: priceInCurrency(facts, currency),
-      });
+      members.set(key, { inStock: productInStock(facts) });
     }
 
     const previous = entries
@@ -229,16 +215,14 @@ function collapseCardsByShadeLine(cards, {
       .find((summary) => summary && summary.product_line_id === lineId);
     const shadeCount = Math.max(members.size, Number(previous?.shade_count) || 0);
     if (shadeCount < 2) continue;
+    const drops = entries.length - 1;
+    if (cardsDropped + drops > budget) {
+      // Folding this bucket would leave the page short: the pool has no more cards to refill it.
+      budgetSkipped += 1;
+      continue;
+    }
 
     const memberList = [...members.values()];
-    const inStockPrices = memberList.filter((member) => member.inStock && member.price).map((member) => member.price);
-    let fromPrice = inStockPrices.length
-      ? inStockPrices.reduce((best, price) => (price.amount < best.amount ? price : best), inStockPrices[0])
-      : null;
-    if (previous?.from_price && previous.from_price.currency === currency
-      && (!fromPrice || Number(previous.from_price.amount) < fromPrice.amount)) {
-      fromPrice = { amount: Number(previous.from_price.amount), currency };
-    }
     const representative = entries.find((entry) => productInStock(entry.product)) || entries[0];
     const summary = {
       product_line_id: lineId,
@@ -248,17 +232,15 @@ function collapseCardsByShadeLine(cards, {
         memberList.filter((member) => member.inStock).length,
         Number(previous?.in_stock_shade_count) || 0,
       ),
-      from_price: fromPrice,
       currency,
       collapsed_card_count: Math.max(entries.length, Number(previous?.collapsed_card_count) || 0),
     };
-    const slot = entries[0].index;
-    replacement.set(slot, decorate(representative.card, summary));
+    replacement.set(entries[0].index, decorate(representative.card, summary));
     for (const entry of entries.slice(1)) dropped.add(entry.index);
     lineCards += 1;
-    if (entries.length > 1) {
+    if (drops > 0) {
       linesCollapsed += 1;
-      cardsDropped += entries.length - 1;
+      cardsDropped += drops;
     }
   }
 
@@ -274,6 +256,7 @@ function collapseCardsByShadeLine(cards, {
       lines_collapsed: linesCollapsed,
       cards_dropped: cardsDropped,
       line_cards: lineCards,
+      ...(budgetSkipped ? { lines_left_unfolded_for_page_size: budgetSkipped } : {}),
       serving_currency: currency,
     },
   };
@@ -297,6 +280,11 @@ async function loadLineMembers(lineIds, lineMembersResolverFn) {
   return map;
 }
 
+// Only lines some card is an accepted member of are worth a member read.
+function verifiedLineIds(cards, bucketOf) {
+  return [...new Set(cards.map((card) => asString(bucketOf(card)).split('|')[0]).filter(Boolean))];
+}
+
 function decorateProduct(product, summary) {
   return {
     ...product,
@@ -308,7 +296,8 @@ function decorateProduct(product, summary) {
 /**
  * Discovery: candidates after applyIdentityGraphDiscoveryDedupe, which stamped the identity row's
  * line on `candidate.raw.identity_graph.product_line_id` and its shade-line decision on
- * `candidate.identityShadeLine` (outside `raw`, so it is never projected onto a card).
+ * `candidate.identityShadeLine` (outside `raw`, so it is never projected onto a card). The
+ * discovery pool is the whole candidate pool; pages are cut from it after this, so no budget.
  */
 async function collapseDiscoveryCandidatesByShadeLine(candidates, {
   servingCurrency,
@@ -317,15 +306,16 @@ async function collapseDiscoveryCandidatesByShadeLine(candidates, {
 } = {}) {
   const list = Array.isArray(candidates) ? candidates : [];
   if (!isShadeLineCardCollapseEnabled(env)) return { candidates: list, stats: emptyStats({ reason: 'flag_off' }) };
-  const storedLineOf = (candidate) => asString(candidate?.raw?.identity_graph?.product_line_id);
-  const isVerifiedCard = (candidate) =>
-    Boolean(readVerifiedShadeLineId({ product_line_id: storedLineOf(candidate), shade_line: candidate?.identityShadeLine }));
-  const lineIds = lineIdsToResolve(list, storedLineOf, isVerifiedCard);
+  const bucketOf = (candidate) =>
+    shadeLineBucketOf({
+      product_line_id: candidate?.raw?.identity_graph?.product_line_id,
+      shade_line: candidate?.identityShadeLine,
+    });
+  const lineIds = verifiedLineIds(list, bucketOf);
   if (!lineIds.length) return { candidates: list, stats: emptyStats({ reason: 'no_shade_lines' }) };
   const lineMembers = await loadLineMembers(lineIds, lineMembersResolverFn);
   const result = collapseCardsByShadeLine(list, {
-    storedLineOf,
-    isVerifiedCard,
+    bucketOf,
     productOf: (candidate) => candidate?.raw || {},
     memberKeyOf: (candidate) => asString(candidate?.raw?.sellable_item_group_id) || asString(candidate?.key),
     decorate: (candidate, summary) => ({ ...candidate, raw: decorateProduct(candidate.raw || {}, summary) }),
@@ -343,6 +333,7 @@ async function collapseSearchProductsByShadeLine(products, {
   servingCurrency,
   identityRowsResolverFn = null,
   lineMembersResolverFn = null,
+  maxCardsDropped = Infinity,
   env = process.env,
 } = {}) {
   const list = Array.isArray(products) ? products : [];
@@ -368,14 +359,12 @@ async function collapseSearchProductsByShadeLine(products, {
     const ref = asString(row?.source_listing_ref);
     if (ref) rowsByRef.set(ref, row);
   }
-  const storedLineOf = (product) => asString(rowsByRef.get(refOf(product))?.product_line_id);
-  const isVerifiedCard = (product) => Boolean(readVerifiedShadeLineId(rowsByRef.get(refOf(product))));
-  const lineIds = lineIdsToResolve(list, storedLineOf, isVerifiedCard);
+  const bucketOf = (product) => shadeLineBucketOf(rowsByRef.get(refOf(product)));
+  const lineIds = verifiedLineIds(list, bucketOf);
   if (!lineIds.length) return { products: list, stats: emptyStats({ reason: 'no_shade_lines' }) };
   const lineMembers = await loadLineMembers(lineIds, lineMembersResolverFn);
   const result = collapseCardsByShadeLine(list, {
-    storedLineOf,
-    isVerifiedCard,
+    bucketOf,
     productOf: (product) => product,
     memberKeyOf: (product) =>
       asString(rowsByRef.get(refOf(product))?.sellable_item_group_id) || asString(product?.sellable_item_group_id) || refOf(product),
@@ -385,30 +374,42 @@ async function collapseSearchProductsByShadeLine(products, {
     }),
     servingCurrency,
     lineMembers,
+    maxCardsDropped,
   });
   return { products: result.cards, stats: result.stats };
 }
 
 /**
  * A search response body (`products`, mirrored in `results` / `data.products` by some lanes),
- * BEFORE the page-size trim. Returns the body unchanged when the flag is off or nothing collapses;
- * otherwise a copy with the line cards, `total` reduced by the cards folded away, and
- * metadata.shade_line_collapse.
+ * BEFORE the page-size trim. Folds only on the first page, and only as many cards as the pool
+ * holds beyond `requestedLimit`. `total` is left as the lane reported it. Returns the body
+ * unchanged when the flag is off or nothing folds.
  */
 async function collapseSearchResponseBodyByShadeLine({
   body,
   servingCurrency,
+  requestedLimit = null,
+  page = 1,
+  offset = 0,
   identityRowsResolverFn = null,
   lineMembersResolverFn = null,
   env = process.env,
 } = {}) {
   if (!isShadeLineCardCollapseEnabled(env)) return body;
   if (!isPlainObject(body) || !Array.isArray(body.products) || body.products.length < 1) return body;
+  // Later pages are cut by the lane from the unfolded list; folding there could show a second card
+  // for a line page 1 already folded. See "STILL BLOCKING" above.
+  if ((Number(page) || 1) > 1 || (Number(offset) || 0) > 0) return body;
   const original = body.products;
+  const limit = Number(requestedLimit);
+  // Without a known page size, or without an over-fetch, a fold could only shorten the page: then
+  // nothing folds (a single recalled member of a larger line is still labelled with its counts).
+  const maxCardsDropped = Number.isFinite(limit) && limit > 0 ? Math.max(0, original.length - limit) : 0;
   const { products, stats } = await collapseSearchProductsByShadeLine(original, {
     servingCurrency,
     identityRowsResolverFn,
     lineMembersResolverFn,
+    maxCardsDropped,
     env,
   });
   if (!stats.applied || !stats.line_cards) return body;
@@ -417,25 +418,23 @@ async function collapseSearchResponseBodyByShadeLine({
   const next = { ...body, products };
   if (sameList(body.results)) next.results = products;
   if (isPlainObject(body.data) && sameList(body.data.products)) next.data = { ...body.data, products };
-  if (typeof body.total === 'number' && Number.isFinite(body.total)) {
-    next.total = Math.max(products.length, body.total - stats.cards_dropped);
-  }
   next.metadata = {
     ...(isPlainObject(body.metadata) ? body.metadata : {}),
-    shade_line_collapse: stats,
+    shade_line_collapse: { ...stats, pool_size: original.length, requested_limit: Number.isFinite(limit) ? limit : null },
   };
   return next;
 }
 
 module.exports = {
   SHADE_LINE_CARD_COLLAPSE_FLAG,
-  collapseSearchResponseBodyByShadeLine,
   collapseCardsByShadeLine,
   collapseDiscoveryCandidatesByShadeLine,
   collapseSearchProductsByShadeLine,
+  collapseSearchResponseBodyByShadeLine,
   isShadeLineCardCollapseEnabled,
+  shadeLineBucketOf,
   _internals: {
-    lineIdsToResolve,
     productInStock,
+    verifiedLineIds,
   },
 };

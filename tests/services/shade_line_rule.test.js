@@ -138,6 +138,7 @@ describe('shade line rule (shade_line_v2)', () => {
       const decision = decisionOf(grouped[0]);
       expect(decision).toMatchObject({ rule_version: 'shade_line_v2', status: 'approved', product_line_id: grouped[0].product_line_id });
       expect(decision.line_key).toBe('shade_line_v2:merch_obs_shopone@shop-one.example:branda:branda aura');
+      expect(decision.store).toBe('merch_obs_shopone@shop-one.example');
       expect(decision.line_key).not.toMatch(/saffron|moss|harbor|k2207/);
       expect(grouped.map((listing) => listing.variant_axes.shade)).toEqual(['k2207 saffron', 't415 moss', 'p380 harbor']);
       expect(new Set(grouped.map((listing) => listing.sellable_item_group_id)).size).toBe(3);
@@ -527,7 +528,7 @@ describe('shade line rule (shade_line_v2)', () => {
       expect(refusalOf(grouped[0])).toBe(`non_shade_suffix:${kind}`);
     });
 
-    test('one size shared by the whole line is allowed; members in different sizes are size_mismatch', () => {
+    test('one size shared by the whole line is allowed; a member with NO size is compatible; only a DIFFERENT size is size_mismatch', () => {
       const sized = (title, value) =>
         buildListing(title, { extraProduct: { variants: [{ variant_id: `v-${title}`, option_name: 'Size', option_value: value }] } });
       const uniform = [sized('BRANDA AURA K2207 SAFFRON', '15 ml'), sized('BRANDA AURA T415 MOSS', '15 ml'), sized('BRANDA AURA P380 HARBOR', '15ml')];
@@ -536,6 +537,16 @@ describe('shade line rule (shade_line_v2)', () => {
       expect(new Set(lineIds(ok.listings)).size).toBe(1);
       ok.listings.forEach((listing) => expect(decisionOf(listing).status).toBe('approved'));
 
+      // The census case: separator-format members that state no size beside sized siblings.
+      const withUnsized = group([
+        sized('BRANDA AURA K2207 SAFFRON', '15 ml'),
+        sized('BRANDA AURA T415 MOSS', '15 ml'),
+        buildListing('BRANDA AURA - PEAR SPRITZ #271'),
+        buildListing('BRANDA AURA - FIG TONIC #272'),
+      ]);
+      expect(new Set(lineIds(withUnsized.listings)).size).toBe(1);
+      withUnsized.listings.forEach((listing) => expect(decisionOf(listing).status).toBe('approved'));
+
       const mixed = group([
         sized('BRANDA AURA K2207 SAFFRON', '15 ml'),
         sized('BRANDA AURA T415 MOSS', '15 ml'),
@@ -543,9 +554,31 @@ describe('shade line rule (shade_line_v2)', () => {
         buildListing('BRANDA AURA R220 SLATE'),
       ]);
       expect(refusalOf(mixed.listings[2])).toBe('size_mismatch');
-      expect(refusalOf(mixed.listings[3])).toBe('size_mismatch');
+      expect(refusalOf(mixed.listings[3])).toBeNull();
       expect(mixed.listings[2].variant_axes).toEqual(sized('BRANDA AURA P380 HARBOR', '30 ml').variant_axes);
-      expect(mixed.listings[0].product_line_id).toBe(mixed.listings[1].product_line_id);
+      expect(new Set(lineIds([mixed.listings[0], mixed.listings[1], mixed.listings[3]])).size).toBe(1);
+    });
+
+    test('a letter + ONE digit is a code only as the last token; NO. codes may carry letters', () => {
+      const { parseShadeLineTitle } = require('../../src/services/shadeLineRule');
+      expect(parseShadeLineTitle('BRANDB LACQ W7')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ', code: 'w7' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.K14')).toMatchObject({ format: 'code_only', line: 'BRANDB LACQ GLOW', code: 'k14' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO.K6')).toMatchObject({ code: 'k6' });
+      expect(parseShadeLineTitle('BRANDB LACQ GLOW NO K6')).toMatchObject({ code: 'k6' });
+      // Not as a mid-title token: "Vitamin B5 Serum" has no shade code.
+      expect(parseShadeLineTitle('BRANDB Vitamin B5 Serum')).toBeNull();
+      const { listings: grouped } = group([
+        buildListing('BRANDB LACQ W7'),
+        buildListing('BRANDB LACQ W8'),
+        buildListing('BRANDB LACQ GLOW NO.K14'),
+        buildListing('BRANDB LACQ GLOW NO.K6'),
+      ]);
+      expect(grouped[0].product_line_id).toBe(grouped[1].product_line_id);
+      expect(grouped[2].product_line_id).toBe(grouped[3].product_line_id);
+      expect(grouped[0].product_line_id).not.toBe(grouped[2].product_line_id);
+      // Guards still apply to the new formats.
+      const sets = group([buildListing('BRANDB LACQ GLOW NO.K14'), buildListing('BRANDB LACQ GLOW NO.K15 GIFT SET')]);
+      expect(refusalOf(sets.listings[1])).toBe('non_shade_suffix:set');
     });
 
     test('a nail-system word inside a colour name is still a shade; codes like 05G / 06L are codes', () => {

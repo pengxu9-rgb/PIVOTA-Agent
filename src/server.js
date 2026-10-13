@@ -51796,12 +51796,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryParams,
       });
       recordFpmStage('pdp_identity_rescue', pdpIdentityRescueStartedAt);
-      // One card per shade line (shadeLineCardCollapse.js). SHADE_LINE_CARD_COLLAPSE_ENABLED,
+      // One card per shade line per store (shadeLineCardCollapse.js). SHADE_LINE_CARD_COLLAPSE_ENABLED,
       // default off: off, this block does not run (no read, no stage recorded). Before the page-size
-      // contract, so a folded shade frees its slot; in the door's serving currency only.
+      // contract, first page only, folding only what the pool over-fetched past the page size; in
+      // the door's serving currency only.
       if (isShadeLineCardCollapseEnabled()) {
         const shadeLineCollapseStartedAt = Date.now();
         try {
+          // The same page parameters the page-size contract reads (enforceFindProductsMultiRequestedPageSize).
+          const collapsePayload =
+            req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+              ? req.body.payload
+              : {};
+          const collapseSearch =
+            collapsePayload.search && typeof collapsePayload.search === 'object' && !Array.isArray(collapsePayload.search)
+              ? collapsePayload.search
+              : collapsePayload;
+          const collapseLimitRaw = Math.floor(
+            Number(collapseSearch.page_size ?? collapseSearch.pageSize ?? collapseSearch.limit),
+          );
           maybePolicy = await collapseSearchResponseBodyByShadeLine({
             body: maybePolicy,
             servingCurrency: servingCurrencyFor({
@@ -51809,6 +51822,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               payload: req?.body?.payload,
               metadata: req?.body?.metadata,
             }),
+            requestedLimit:
+              Number.isFinite(collapseLimitRaw) && collapseLimitRaw > 0 ? Math.min(collapseLimitRaw, SEARCH_LIMIT_MAX) : null,
+            page: collapseSearch.page,
+            offset: collapseSearch.offset,
             identityRowsResolverFn: listLivePdpIdentityRowsForRefs,
             lineMembersResolverFn: listLiveShadeLineMembers,
           });

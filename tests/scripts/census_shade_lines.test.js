@@ -115,4 +115,92 @@ describe('census-shade-lines', () => {
     expect(LINE_STORES_SQL).toMatch(/^\s*SELECT/);
     expect(LINE_STORES_SQL).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/i);
   });
+
+  describe('throttled read (2-vCPU primary)', () => {
+    const fakeDb = (pages, storeRows = []) => {
+      const statements = [];
+      let page = 0;
+      const withClientFn = async (fn) =>
+        fn({
+          query: async (sql, params) => {
+            statements.push({ sql: String(sql).replace(/\s+/g, ' ').trim().slice(0, 60), params });
+            if (/FROM pdp_identity_listing pil/.test(sql) && /source_listing_ref > \$2/.test(sql)) {
+              const rows = pages[page] || [];
+              page += 1;
+              return { rows };
+            }
+            if (/SELECT DISTINCT product_line_id, merchant_id, official_domain/.test(sql)) return { rows: storeRows };
+            return { rows: [] };
+          },
+        });
+      return { statements, withClientFn };
+    };
+
+    test('keyset batches, each READ ONLY under a LOCAL statement_timeout, with a sleep between batches', async () => {
+      const { readCensusInputsThrottled } = require('../../scripts/census-shade-lines');
+      const rows = (from, n) => Array.from({ length: n }, (_, i) => storedRow(`r${from + i}`, `BRANDA AURA K${2200 + from + i} SAFFRON`, `pl_page_${from + i}`));
+      const pages = [rows(0, 2), rows(2, 2), rows(4, 1)];
+      const { statements, withClientFn } = fakeDb(pages);
+      const sleepFn = jest.fn(async () => {});
+      const result = await readCensusInputsThrottled({
+        withClientFn,
+        merchantIds: ['merch_obs_shopone'],
+        limit: 100,
+        batchSize: 2,
+        sleepMs: 300,
+        statementTimeoutMs: 9000,
+        sleepFn,
+      });
+      expect(result.rows).toHaveLength(5);
+      expect(result.batches).toBe(3);
+      const reads = statements.filter((statement) => /source_listing_ref/.test(JSON.stringify(statement.params || [])) || statement.params?.length === 3);
+      expect(statements.filter((statement) => statement.sql === 'BEGIN READ ONLY')).toHaveLength(3);
+      expect(statements.filter((statement) => /set_config\('statement_timeout'/.test(statement.sql)).map((statement) => statement.params)).toEqual([['9000'], ['9000'], ['9000']]);
+      const batchParams = statements.filter((statement) => statement.params && statement.params.length === 3).map((statement) => statement.params);
+      expect(batchParams).toEqual([
+        [['merch_obs_shopone'], '', 2],
+        [['merch_obs_shopone'], 'merch_obs_shopone:golden:r1', 2],
+        [['merch_obs_shopone'], 'merch_obs_shopone:golden:r3', 2],
+      ]);
+      expect(reads.length).toBeGreaterThan(0);
+      expect(statements.some((statement) => /\b(INSERT|UPDATE|DELETE)\b/i.test(statement.sql))).toBe(false);
+      expect(sleepFn).toHaveBeenCalledWith(300);
+    });
+
+    test('the CPU gate is awaited before every batch, and the census waits while it says no', async () => {
+      const { readCensusInputsThrottled } = require('../../scripts/census-shade-lines');
+      const { withClientFn } = fakeDb([[storedRow('a', 'BRANDA AURA K2207 SAFFRON', 'pl_a')]]);
+      const answers = [false, false, true];
+      const cpuGate = jest.fn(async () => answers.shift() ?? true);
+      const sleepFn = jest.fn(async () => {});
+      await readCensusInputsThrottled({ withClientFn, merchantIds: ['m'], limit: 10, batchSize: 5, cpuGate, sleepFn });
+      expect(cpuGate).toHaveBeenCalledTimes(3);
+      expect(sleepFn.mock.calls.filter(([ms]) => ms === 5000)).toHaveLength(2);
+    });
+
+    test('a gate that never opens gives up instead of reading', async () => {
+      const { readCensusInputsThrottled } = require('../../scripts/census-shade-lines');
+      const { statements, withClientFn } = fakeDb([[]]);
+      await expect(
+        readCensusInputsThrottled({ withClientFn, merchantIds: ['m'], cpuGate: async () => false, sleepFn: async () => {} }),
+      ).rejects.toThrow('SHADE_LINE_CENSUS_CPU_GATE_TIMEOUT');
+      expect(statements).toHaveLength(0);
+    });
+
+    test('the stores of adoptable v1 lines are read the same way', async () => {
+      const { readCensusInputsThrottled } = require('../../scripts/census-shade-lines');
+      const makeup = (code, title, lineId) => ({
+        ...storedRow(code, title, lineId),
+        source_payload: { ...storedRow(code, title, lineId).source_payload, brand: 'BRANDF', price: { amount: 22, currency: 'USD' }, currency: 'USD' },
+        catalog_product_type: null,
+      });
+      const { statements, withClientFn } = fakeDb(
+        [[makeup('l471', 'BRANDF Lipstick 471', 'pl_v1_live_line'), makeup('l473', 'BRANDF Lipstick 473 Blue', 'pl_page_l473')]],
+        [{ product_line_id: 'pl_v1_live_line', merchant_id: 'merch_obs_reseller', official_domain: 'reseller.example' }],
+      );
+      const result = await readCensusInputsThrottled({ withClientFn, merchantIds: ['merch_obs_shopone'], limit: 10, batchSize: 5, sleepFn: async () => {} });
+      expect(result.lineStores.get('pl_v1_live_line')).toEqual(['merch_obs_reseller@reseller.example']);
+      expect(statements.filter((statement) => statement.sql === 'BEGIN READ ONLY')).toHaveLength(2);
+    });
+  });
 });
