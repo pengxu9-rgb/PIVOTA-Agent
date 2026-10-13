@@ -127,6 +127,38 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(argValue(config.args, 'step-timeout-minutes')).toBe('11');
   });
 
+  test('the uncovered backfill travels to the routine and widens the build limit unless it is set', () => {
+    const base = { RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200', RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: 'true' };
+    const config = buildCronArgs(base, { now: NOW });
+    expect(argValue(config.args, 'uncovered-backfill-limit')).toBe('200');
+    expect(argValue(config.args, 'limit')).toBe('400');
+    expect(argValue(buildCronArgs({ ...base, RELGRAPH_SYNC_LIMIT: '250' }, { now: NOW }).args, 'limit')).toBe('250');
+    // Off by default: the recency selection alone, as before.
+    const off = buildCronArgs({}, { now: NOW });
+    expect(argValue(off.args, 'uncovered-backfill-limit')).toBe('');
+    expect(argValue(off.args, 'limit')).toBe('200');
+  });
+
+  test('target recall covers the backfill too: max-anchors follows the build limit, capped at 400 (controller review of #2418)', () => {
+    const base = { RELGRAPH_SYNC_PRIORITIZE_UNCOVERED: 'true', RELGRAPH_SYNC_EXPAND_TARGET_RECALL: 'true' };
+    const maxAnchors = (env) => argValue(buildCronArgs({ ...base, ...env }, { now: NOW }).args, 'target-recall-max-anchors');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100' })).toBe('300');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200' })).toBe('400');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100', RELGRAPH_SYNC_LIMIT: '250' })).toBe('250');
+    expect(maxAnchors({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '100', RELGRAPH_SYNC_TARGET_RECALL_MAX_ANCHORS: '150' })).toBe('150');
+    // No backfill: recall's own default, as before.
+    expect(maxAnchors({})).toBe('200');
+    // The backfill is capped at 200 (recall serves at most 400 anchors, 200 of them the recency build's).
+    const capped = buildCronArgs({ ...base, RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '900' }, { now: NOW });
+    expect(argValue(capped.args, 'uncovered-backfill-limit')).toBe('200');
+    expect(argValue(capped.args, 'limit')).toBe('400');
+  });
+
+  test('the uncovered backfill requires prioritize-uncovered (its attempt cooldown rotates the backlog)', () => {
+    expect(() => buildCronArgs({ RELGRAPH_SYNC_UNCOVERED_BACKFILL_LIMIT: '200' }, { now: NOW }))
+      .toThrow(/requires RELGRAPH_SYNC_PRIORITIZE_UNCOVERED=true/);
+  });
+
   test('buildCronArgs can disable persistent run ledger recording', () => {
     const config = buildCronArgs({
       RELGRAPH_SYNC_RUN_LEDGER_ENABLED: 'false',
