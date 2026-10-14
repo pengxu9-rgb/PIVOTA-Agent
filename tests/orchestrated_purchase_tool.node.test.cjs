@@ -324,6 +324,7 @@ test('schema: undeclared arguments and bad values are refused by name, before an
     [args({ shipping_address: { name: 'Ada Lovelace', city: 'SF', country: 'US' } }), 'shipping_address.phone'],
     [args({ payment_preference: { rail: 'cash' } }), 'payment_preference.rail'],
     [args({ variant_id: 111 }), 'variant_id'],
+    [args({ variant_id: '1'.repeat(21) }), 'variant_id'],
     [args({ shipping_address: { ...args().shipping_address, name: 'Ada' } }), 'shipping_address.name'],
     [args({ shipping_address: { ...args().shipping_address, postal_code: 94103 } }), 'shipping_address.postal_code'],
   ]) {

@@ -125,7 +125,8 @@ export function startPurchaseArgumentProblems(args) {
   need("idempotency_key", nonEmpty(args.idempotency_key) && args.idempotency_key.length >= 8, "must be a string of at least 8 characters");
   need("merchant_id", nonEmpty(args.merchant_id), "is required");
   need("product_id", nonEmpty(args.product_id), "is required");
-  need("variant_id", args.variant_id === undefined || (typeof args.variant_id === "string" && /^[1-9][0-9]{0,24}$/.test(args.variant_id)), "must be a storefront variant id (a string of digits)");
+  // The backend's own bound (StartPurchaseRequest.variant_id, 20 digits): a longer id is refused HERE, before the row read.
+  need("variant_id", args.variant_id === undefined || (typeof args.variant_id === "string" && /^[1-9][0-9]{0,19}$/.test(args.variant_id)), "must be a storefront variant id (a string of digits)");
   need("quantity", Number.isSafeInteger(args.quantity) && args.quantity >= 1 && args.quantity <= START_PURCHASE_MAX_QUANTITY, `must be an integer from 1 to ${START_PURCHASE_MAX_QUANTITY}`);
   need("expected_unit_price_minor", Number.isSafeInteger(args.expected_unit_price_minor) && args.expected_unit_price_minor >= 1, "must be a positive integer (minor units)");
   need("expected_currency", typeof args.expected_currency === "string" && /^[A-Z]{3}$/.test(args.expected_currency), "must be a three-letter currency code");
