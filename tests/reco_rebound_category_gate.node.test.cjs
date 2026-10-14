@@ -415,6 +415,54 @@ test('end to end: a serum foundation is not grounded to a niacinamide serum, nor
   }
 });
 
+test('judgeRecoReboundCandidate: a need that ASKS FOR makeup or fragrance gets no substitute', () => {
+  const toner = { catalog_category_path: 'beauty/skincare/tone/toner', name: 'Hydrating Toner' };
+  const judge = (needText) => judgeRecoReboundCandidate({ requestedStep: 'toner', requestedText: 'toner Facial Mist', needText, candidate: toner });
+  for (const need of [
+    'a setting mist that keeps makeup in place all day', // the resolver reads this as toner: gap list
+    'a setting spray for oily skin',
+    'a setting-spray',
+    'a mist to set my makeup',
+    'a makeup fixing spray',
+    'a fixing spray for oily skin',
+    'long-wear setting powder', // the context mask would blank "wear setting powder"
+    'a long-wear foundation',
+    'an eyelash growth serum',
+    'a serum for thicker eyebrows',
+    'a body mist for summer',
+    'a light floral eau de toilette',
+    "a bronzer for fair skin that isn't too orange",
+    'a tinted moisturizer with SPF', // resolves to foundation: shade-led
+  ]) {
+    assert.deepEqual(judge(need), { accept: false, reason: 'shade_or_scent_led_need' }, need);
+  }
+  // A need is a sentence: these MENTION non-skin words and still ask for skincare. Mutant killed:
+  // holding the need to the item rule (every word) -- each of these lost its substitute in review.
+  for (const need of [
+    'a hydrating toner for dry skin',
+    'a toner that sits well under makeup',
+    'a toner to wear under foundation',
+    // Mutant killed: resolving the need unmasked -- "foundation" would be the only step left.
+    'something light to wear under my foundation',
+    // Mutant killed: scanning the need unmasked for the resolver gaps -- context is not an ask.
+    'a toner to use under my setting powder',
+    'a fragrance-free toner',
+    'a moisturizer for perioral dermatitis around my lips',
+    'a cleanser and moisturizer, plus something for chapped lips',
+    'a body lotion for dry hands and nails',
+    'a serum for frown lines between my brows',
+    'a firming and contouring neck cream',
+    'a soothing lotion for after tanning',
+    'moisturizer without fragrance or perfume',
+    'a body lotion with a light perfume',
+    'a face wash for men with facial hair',
+    'a serum to build a good foundation for my routine',
+    '',
+  ]) {
+    assert.deepEqual(judge(need), { accept: true, reason: 'catalog_category_compatible' }, need);
+  }
+});
+
 test('end to end: a fragrance mist plan is not grounded to a facial toner', async () => {
   const toner = searchRow({
     id: 'sig_4444444444444444444444444444dddd', title: 'Rose Hydrating Facial Toner', brand: 'Example',

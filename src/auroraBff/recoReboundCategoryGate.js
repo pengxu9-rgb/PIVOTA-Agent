@@ -99,6 +99,17 @@ const NON_SKIN_ITEM_DENIALS = Object.freeze([
   /\beye\s+contour\b/gi,
 ]);
 
+// Makeup, fragrance and lash/brow products the step resolver settles to a skincare step ("setting
+// mist" and "body mist" read as toner, "lash serum" as serum). Only these: a need is matched on what it
+// asks for, not on every word -- "frown lines between my brows" is a skincare need, "eyebrow serum" is
+// not. Matched on the MASKED need, so "a toner to use under my setting powder" stays a toner need.
+const NEED_RESOLVER_GAPS_RE = new RegExp(`\\b(?:${[
+  'setting[- ]?(?:sprays?|mists?|powders?)', 'set(?:s|ting)? (?:my |your |the )?make-?up',
+  'make-?up (?:setting|fixing|fixer) (?:sprays?|mists?)', 'fix(?:ing|er) (?:sprays?|mists?)',
+  'body mists?', 'fragrance mists?', 'body sprays?',
+  '(?:eye)?lash(?:es)?', 'eyebrows?', 'brow (?:serums?|gels?|growth|tints?|pencils?|powders?|pomades?)',
+].join('|')})\\b`, 'i');
+
 function maskNonSkinItemDenials(value) {
   let out = maskNonCategoryQualifiers(value);
   for (const pattern of NON_SKIN_ITEM_DENIALS) out = out.replace(pattern, (match) => ' '.repeat(match.length));
@@ -139,15 +150,32 @@ function underRoot(path, root) {
 
 /**
  * May `candidate` (a DIFFERENT product from the one the model named) ground an item that asked for
- * `requestedStep`? `requestedText` is the item's own type and name. Returns { accept, reason }; the
- * reason is a stable token for debug counters.
+ * `requestedStep`? `requestedText` is the item's own type and name; `needText` is the buyer's need when
+ * the door has one. Returns { accept, reason }; the reason is a stable token for debug counters.
  */
-function judgeRecoReboundCandidate({ requestedStep, requestedText = '', candidate } = {}) {
+function judgeRecoReboundCandidate({ requestedStep, requestedText = '', needText = '', candidate } = {}) {
   const step = normalizeRecoTargetStep(requestedStep);
   if (!step) return { accept: false, reason: 'requested_type_unresolved' };
   if (resolveRecoStepDomain(step) !== 'skincare') return { accept: false, reason: 'shade_or_scent_led_type' };
   if (NON_SKIN_ITEM_RE.test(maskNonSkinItemDenials(text(requestedText)))) {
     return { accept: false, reason: 'non_skin_item' };
+  }
+  // THE BUYER'S NEED, not only the model's item. Live 2026-10-14 "a setting mist that keeps makeup in
+  // place" grounded to a skincare serum mist: the model's own item was a facial mist typed toner, so
+  // the item said nothing non-skin, and a toner was a compatible substitute FOR THE ITEM. A need that
+  // ASKS FOR a makeup or fragrance product gets no substitute at all.
+  //
+  // Narrower than the item rule on purpose. A need is a sentence, not a product name: "a moisturizer
+  // for dry patches around my lips", "a serum for frown lines between my brows" and "a firming,
+  // contouring neck cream" are skincare asks that MENTION non-skin words, and the item rule would have
+  // refused every substitute in them (review of the first cut). So the need must RESOLVE to a single
+  // makeup or fragrance step, or name one of the few makeup/fragrance products the step resolver reads
+  // as skincare (NEED_RESOLVER_GAPS_RE).
+  // "long-wear foundation" is a product, not "wear foundation" as context: fold it before masking.
+  const maskedNeed = maskNonSkinItemDenials(text(needText).replace(/\blong[- ]wear(ing)?\b/gi, 'longwear$1'));
+  const needStep = extractRecoTargetStepFromText(maskedNeed);
+  if ((needStep && resolveRecoStepDomain(needStep) !== 'skincare') || NEED_RESOLVER_GAPS_RE.test(maskedNeed)) {
+    return { accept: false, reason: 'shade_or_scent_led_need' };
   }
   const row = candidate && typeof candidate === 'object' ? candidate : {};
   const title = text(row.name || row.title || row.display_name);

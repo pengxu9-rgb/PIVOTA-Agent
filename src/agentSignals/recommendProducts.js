@@ -947,8 +947,14 @@ function makeRecommendProducts(deps = {}) {
     //      the id is checked on its own terms.
     //
     // Lane order is preserved among the survivors.
-    const suppressed = { ungrounded: 0, unidentified: 0 };
-    const unresolvedArchetypes = [];
+    // Names the lane withheld before projection (a step-aware answer drops items the catalog could not
+    // supply; see groundRecoRecommendationsFromCatalog). They are ungrounded items like the ones dropped
+    // below, and are counted as such.
+    const laneWithheld = asStringArray(payload.unresolved_archetypes, MAX_UNRESOLVED_ARCHETYPES);
+    // Unnamed withheld items count too (the model gave no name to report).
+    const laneWithheldCount = Math.max(laneWithheld.length, Number.isInteger(payload.withheld_item_count) ? payload.withheld_item_count : 0);
+    const suppressed = { ungrounded: laneWithheldCount, unidentified: 0 };
+    const unresolvedArchetypes = laneWithheld.slice();
     let groundedSignals = [];
     for (const s of projected) {
       if (s.value.grounding !== 'catalog') {
@@ -1201,7 +1207,11 @@ function makeRecommendProducts(deps = {}) {
         // When the shortlist emptied because the resolvability pass dropped everything, say THAT —
         // 'no_recommendations' would blame the lane for items it actually produced.
         products_empty_reason: signals.length === 0
-          ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
+          // The lane's own step-aware reason ('no_viable_candidates_for_target') is computed over the
+          // list AFTER grounding withheld these items, so it blames the catalog's pool for what was a
+          // refusal to substitute. Withheld items mean the lane answered and nothing was buyable.
+          ? (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
+            || firstString(payload.products_empty_reason, result?.upstreamFailureCode)
             || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
             // The lane DID answer, but every item it produced was an archetype it could not resolve
             // (or carried no id). 'no_recommendations' would blame it for producing nothing when the

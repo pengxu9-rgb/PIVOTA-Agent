@@ -159,6 +159,25 @@ test('GATE 2: an ungrounded agent-door answer is NOT replaced by catalog rows', 
 // ---------------------------------------------------------------------------
 // The chat lane sets NO recoTriggerSource at all. Neither gate may catch it.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// The buyer's need reaches the rebound gate on the agent door ONLY. A chat message is conversation
+// ("I have dry lips and want a moisturizer"); read as a need it would refuse skincare substitutes.
+// ---------------------------------------------------------------------------
+test('the need text reaches grounding on the agent door, and on no other door', async () => {
+  const seen = [];
+  const ground = async ({ recommendations, needText }) => {
+    seen.push(needText);
+    return { recommendations, grounding_status: 'ungrounded', grounded_count: 0, ungrounded_count: recommendations.length, debug: {} };
+  };
+  const agent = makeEngine({ ...NO_CATALOG_FIRST, groundRecoRecommendationsFromCatalog: ground });
+  await agent.generateProductRecommendations(baseArgs({ recoTriggerSource: 'agent_tool' }));
+  const chat = makeEngine({ ...NO_CATALOG_FIRST, groundRecoRecommendationsFromCatalog: ground });
+  await chat.generateProductRecommendations(baseArgs({ entryType: 'chat', recoTriggerSource: null, message: 'I have dry lips' }));
+  const typed = makeEngine({ ...NO_CATALOG_FIRST, groundRecoRecommendationsFromCatalog: ground });
+  await typed.generateProductRecommendations(baseArgs({ recoTriggerSource: 'typed_reco' }));
+  assert.deepEqual(seen, ['a bronzer for contouring', '', '']);
+});
+
 test('GATE 1+2: the chat lane (no recoTriggerSource) is untouched by both door gates', async () => {
   const a = makeEngine();
   const outA = await a.generateProductRecommendations(baseArgs({ entryType: 'chat', recoTriggerSource: null }));
