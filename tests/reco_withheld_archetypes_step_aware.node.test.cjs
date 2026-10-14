@@ -248,7 +248,7 @@ const cleanser = (n, title, brand, price) => row({ id: `sig_cccccccccccccccccccc
 const FENTY = cleanser(1, "Total Cleans'r Remove-It-All Cleanser", 'Fenty Skin', 33);
 const JURLIQUE = cleanser(2, 'Revitalising Cleansing Gel', 'Jurlique', 44);
 const CERAVE = cleanser(3, 'Hydrating Facial Cleanser', 'CeraVe', 15);
-const VANICREAM = cleanser(4, 'Gentle Facial Cleanser', 'Vanicream', 9);
+const VANICREAM = { ...cleanser(4, 'Gentle Facial Cleanser', 'Vanicream', 9), product_group_id: 'pg_vanicream_gentle_cleanser', sku_id: 'sku_vanicream_gentle_cleanser_8oz' };
 const CLEANSER_PICKS = answer([
   { name: FENTY.name, brand: FENTY.brand, product_type: 'cleanser', score: 90 },
   { name: JURLIQUE.name, brand: JURLIQUE.brand, product_type: 'cleanser', score: 85 },
@@ -267,6 +267,11 @@ test('live repro: a skincare need under a price ceiling is served its conforming
   assert.deepEqual(filler.map((signal) => signal.value.product.product_id), [VANICREAM.product_id],
     `the $9 cleanser the top-up appended must be served; got ${JSON.stringify(served.map((p) => [p.title, p.price]))}`);
   assert.equal(filler[0].value.product.price, 9, 'filler carries its own catalog price');
+  // And its own catalog identity: the lane row keeps the raw product under `sku`, so normalizing only the
+  // row's top level lost the group id, and the door handed back product_ref null -- the ref get_product and
+  // the live price check open a product by.
+  assert.equal(filler[0].value.product.product_ref, VANICREAM.product_group_id,
+    `filler keeps its product group; product was ${JSON.stringify(filler[0].value.product)}`);
   // Each product once: CERAVE is both the KraveBeauty pick's substitute and a filler row.
   const ids = served.map((p) => p.product_id);
   assert.equal(new Set(ids).size, ids.length, `no product twice; got ${JSON.stringify(ids)}`);
