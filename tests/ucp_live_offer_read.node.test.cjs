@@ -426,7 +426,7 @@ test('the agent sees a currency mismatch named, and no total', async () => {
 
 test('get_offers: a named variant_id reaches the backend as the product sku_id', async () => {
   let fetched;
-  const getOffers = makeGetOffers({
+  const getOffers = makeGetOffers({ variantIdEnabled: true,
     fetchOffers: async (args) => { fetched = args; return { offers: [backendOffer()] }; },
   });
   await getOffers({ payload: { product_id: 'sig_rb', variant_id: HOPE, market: 'US' } });
@@ -435,18 +435,89 @@ test('get_offers: a named variant_id reaches the backend as the product sku_id',
   assert.equal('variant_id' in fetched, false, 'absent, the fetch is unchanged');
 });
 
+// ------------------------------------------------------------- PR controller review of #2438
+
+test('get_offers variant_id is IGNORED while GET_OFFERS_VARIANT_ID is off: not forwarded, not filtered', async () => {
+  let fetched;
+  const seedFallback = backendOffer({ execution_spec: { merchant_domain: 'other.com', variant_id: null }, source: { variant_id: HOPE } });
+  const res = await makeGetOffers({ fetchOffers: async (args) => { fetched = args; return { offers: [seedFallback] }; } })(
+    { payload: { product_id: 'sig_rb', variant_id: HOPE } },
+  );
+  assert.equal('variant_id' in fetched, false);
+  assert.equal(res.signals.length, 1);
+  assert.equal('withheld_other_variant_count' in res.metadata, false);
+  assert.equal(res.metadata.reason, undefined);
+});
+
+test('the get_offers tool declares, describes and forwards variant_id only with GET_OFFERS_VARIANT_ID on', () => {
+  const { spawnSync } = require('node:child_process');
+  const path = require('node:path');
+  const probe = (flag) => {
+    const env = { ...process.env };
+    delete env.GET_OFFERS_VARIANT_ID;
+    if (flag) env.GET_OFFERS_VARIANT_ID = flag;
+    const url = require('node:url').pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href;
+    const code = `const m = await import(${JSON.stringify(url)});
+      const t = m.commerceToolDefinitions.find((d) => d.name === 'get_offers');
+      console.log(JSON.stringify({ declared: 'variant_id' in t.inputSchema.properties, described: /variant_id/.test(t.description) }));`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout.trim().split('\n').pop());
+  };
+  assert.deepEqual(probe(''), { declared: false, described: false });
+  assert.deepEqual(probe('on'), { declared: true, described: true });
+});
+
+test('with no live read, a get_offers signal carries no live_read key at all (flags-off byte identity)', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(backendOffer(), {});
+  assert.equal('live_read' in sig.value, false);
+  const empty = offerToSignal(backendOffer({ live_read: {} }), {});
+  assert.equal('live_read' in empty.value, false);
+});
+
+test('one empty-answer reason, in filter order: variant first, then market currency', async () => {
+  const other = backendOffer({ currency: 'USD', execution_spec: { merchant_domain: RB, variant_id: BLISS } });
+  const both = await makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [other] }) })(
+    { payload: { product_id: 'sig_rb', variant_id: HOPE, market: 'SG' } },
+  );
+  assert.equal(both.metadata.reason, 'variant_not_offered');
+  const sameShadeWrongCcy = backendOffer({ currency: 'USD', execution_spec: { merchant_domain: RB, variant_id: HOPE } });
+  const ccy = await makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [sameShadeWrongCcy] }) })(
+    { payload: { product_id: 'sig_rb', variant_id: HOPE, market: 'SG' } },
+  );
+  assert.equal(ccy.metadata.reason, 'no_offer_in_market_currency');
+});
+
+test('a cart that is not exactly ONE readable line is a cart, and not the named variant', async () => {
+  const run = (cart_url) => makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({
+    offers: [backendOffer({ execution_spec: { merchant_domain: RB, variant_id: null, cart_url }, source: { variant_id: HOPE, variant_match: 'exact' } })],
+  }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  for (const cart of [
+    `https://${RB}/cart/${HOPE}:1,${BLISS}:1`,
+    `https://${RB}/cart/c/Z2NwLXVzLWNlbnRyYWwx`,
+    `https://${RB}/cart/add?id=${HOPE}`,
+    'not a url',
+  ]) {
+    const res = await run(cart);
+    assert.equal(res.signals.length, 0, cart);
+  }
+  const one = await run(`https://${RB}/cart/${HOPE}:2?country=US`);
+  assert.equal(one.signals.length, 1);
+});
+
 // ------------------------------------------------------------- review of #2438, round 2
 
 test('get_offers variant_id: only offers whose cart IS that variant; the seed fallback copy is withheld', async () => {
   const seedFallback = backendOffer({ execution_spec: { merchant_domain: 'other.com', variant_id: null }, source: { variant_id: HOPE } });
   const wrongInternal = backendOffer({ merchant_id: 'm_int', execution_spec: {}, internal_checkout_items: [{ variant_id: 'v_first' }] });
   const right = backendOffer({ execution_spec: { merchant_domain: RB, variant_id: HOPE } });
-  const getOffers = makeGetOffers({ fetchOffers: async () => ({ offers: [seedFallback, wrongInternal, right] }) });
+  const getOffers = makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [seedFallback, wrongInternal, right] }) });
   const res = await getOffers({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
   assert.equal(res.signals.length, 1);
   assert.equal(res.best_offer.value.execution_spec.variant_id, HOPE);
   assert.equal(res.metadata.withheld_other_variant_count, 2);
-  const none = await makeGetOffers({ fetchOffers: async () => ({ offers: [seedFallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  const none = await makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [seedFallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
   assert.equal(none.metadata.reason, 'variant_not_offered');
 });
 
@@ -463,7 +534,7 @@ test('get_offers variant_id: the backend marking an offer variant_match exact ke
   // A sold-out or non-Shopify seller of the variant: no cart, but the backend matched the variant.
   const exactNoCart = backendOffer({ execution_spec: { merchant_domain: 'other.com', variant_id: null }, source: { variant_id: HOPE, variant_match: 'exact' } });
   const fallback = backendOffer({ execution_spec: { merchant_domain: 'third.com', variant_id: null }, source: { variant_id: HOPE, variant_match: 'fallback' } });
-  const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [exactNoCart, fallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  const res = await makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [exactNoCart, fallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
   assert.equal(res.signals.length, 1);
   assert.equal(res.metadata.withheld_other_variant_count, 1);
 });
@@ -474,13 +545,13 @@ test('get_offers variant_id: a cart for ANOTHER shade is withheld even when the 
     execution_spec: { merchant_domain: RB, variant_id: BLISS, cart_url: `https://${RB}/cart/${BLISS}:1` },
     source: { variant_id: HOPE, variant_match: 'exact' },
   });
-  const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [wrongCart] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  const res = await makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [wrongCart] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
   assert.equal(res.signals.length, 0);
   assert.equal(res.metadata.reason, 'variant_not_offered');
 });
 
 test('get_offers variant_id: a cart permalink with no variant_id still decides (the cart is what is bought)', async () => {
-  const run = (offer) => makeGetOffers({ fetchOffers: async () => ({ offers: [offer] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  const run = (offer) => makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [offer] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
   const wrong = await run(backendOffer({
     execution_spec: { merchant_domain: RB, variant_id: null, cart_url: `https://${RB}/cart/${BLISS}:1?country=US` },
     source: { variant_id: HOPE, variant_match: 'exact' },

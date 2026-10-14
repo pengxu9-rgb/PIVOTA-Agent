@@ -9,7 +9,6 @@ const assert = require('node:assert/strict');
 
 const {
   createUcpLiveProductReader,
-  marketForCurrency,
   productHost,
   productVariantIds,
   STATUS,
@@ -92,15 +91,7 @@ test('the Laneige PDP: each flavour gets the merchant price and stock, the stale
   assert.equal(p.url, 'https://agent.pivota.cc/products/sig_130c8e7a', 'only merchant facts change');
 });
 
-test('no declared market: the listing is checked in its own currency home market', async () => {
-  const { r, calls } = reader(laneigeUS);
-  const pdp = laneigePdp({ currency: 'USD' });
-  const out = await r.readProduct(pdp, {});
-  assert.equal(out.product.live_read.market, 'US');
-  assert.ok(calls.some((c) => c[0] === 'lookup' && c[2] === 'US'));
-});
-
-test('no declared market and no single home market (EUR, or no currency): nothing is read', async () => {
+test('no declared market (USD, EUR, or no currency): nothing is read', async () => {
   const { r, calls } = reader(laneigeUS);
   const eur = laneigePdp({ currency: 'EUR' });
   const out = await r.readProduct(eur, {});
@@ -219,12 +210,10 @@ test('a slow merchant costs the read, not the product', async () => {
   assert.equal(out.product.price, null);
 });
 
-test('helpers: the merchant host is never our own, ids are numeric, EUR names no single market', () => {
+test('helpers: the merchant host is never our own, ids are numeric', () => {
   assert.equal(productHost({ url: 'https://agent.pivota.cc/p/1', destination_url: 'https://us.laneige.com/products/x' }), 'us.laneige.com');
   assert.equal(productHost({ destination_url: 'https://agent.pivota.cc/p/1' }), null);
   assert.deepEqual(productVariantIds({ default_variant_id: BERRY, variants: [{ variant_id: LEMON }, { variant_id: 'SKU-1' }, { variant_id: BERRY }] }), [BERRY, LEMON]);
-  assert.equal(marketForCurrency('USD'), 'US');
-  assert.equal(marketForCurrency('EUR'), null);
 });
 
 // ------------------------------------------------------------- review of #2438, round 2
@@ -285,12 +274,16 @@ test('a declared market Pivota does not price is refused, never swapped for the 
   assert.equal(calls.length, 0);
 });
 
-test('market_basis says whether the buyer declared the market or the listing home market was used', async () => {
-  const { r } = reader(laneigeUS);
+test('ADR-026: no declared market, no live read -- never a market inferred from the listing currency', async () => {
+  const { r, calls } = reader(laneigeUS);
   const declared = await r.readProduct(laneigePdp(), { market: 'US' });
   assert.equal(declared.product.live_read.market_basis, 'declared');
-  const home = await r.readProduct(laneigePdp({ currency: 'USD' }), {});
-  assert.equal(home.product.live_read.market_basis, 'listing_home');
+  const before = calls.length;
+  const none = await r.readProduct(laneigePdp({ currency: 'USD' }), {});
+  assert.equal(none.product.live_read.status, STATUS.SKIPPED);
+  assert.equal(none.product.live_read.reason, 'no_market');
+  assert.equal(calls.length, before, 'no merchant call');
+  assert.equal(none.product.price, laneigePdp({ currency: 'USD' }).product.price, 'nothing re-stamped');
 });
 
 test('re-pricing in another currency covers every variant or none (no mixed-currency page)', async () => {

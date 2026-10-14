@@ -32147,6 +32147,8 @@ async function getCommerceRemoteMcpAdapter() {
         // `offers[]` is already in offerToSignal shape; mapOffersResolveResponse normalizes the envelope.
         // Single-offer products yield best_offer + an empty competition set (no fabricated competition).
         get_offers: makeGetOffers({
+          // get_offers `variant_id` waits on pivota-backend #2622 (`source.variant_match`): off by default.
+          variantIdEnabled: /^(1|true|yes|on|enabled)$/i.test(String(process.env.GET_OFFERS_VARIANT_ID || '').trim()),
           // The merchant's own live price/stock for the offers this answer returns (UCP lookup_catalog,
           // services/ucpLiveOfferRead). UCP_LIVE_OFFER_READ=off (default) | shadow | enforce.
           readOffersLive: (offers, ctx) => {
