@@ -240,12 +240,20 @@ test('no variant id, or a store with no UCP endpoint: the .json read, unchanged'
   assert.equal(out.products[1].price, 30);
 });
 
-test('no declared market: each card is checked in its own home market', async () => {
+test('ADR-026: no declared market, no live read -- never a market inferred from the card currency', async () => {
   const calls = [];
   const h = uniq('blush');
-  const reads = await reader(storesFor(h), { calls }).readCards([card(rbUrl(h), BLISS)], {});
-  assert.equal(reads.get(0).market_basis, 'listing_home');
-  assert.deepEqual(calls.find((c) => c[0] === 'lookup').slice(3), ['US']);
+  const r = reader(storesFor(h), { calls });
+  assert.equal(r.plan([card(rbUrl(h), BLISS)], {}).size, 0);
+  assert.equal(await r.readCards([card(rbUrl(h), BLISS)], {}), null);
+  assert.equal(calls.length, 0);
+  const seen = [];
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(h), BLISS)] },
+    { ucpSearchReader: r, fetchImpl: jsonFetch('30.00', seen) },
+  );
+  assert.equal(out.products[0].live_read, undefined);
+  assert.equal(seen.length, 1, 'the .json read, as today');
 });
 
 test('a declared market Pivota does not price reads nothing', async () => {

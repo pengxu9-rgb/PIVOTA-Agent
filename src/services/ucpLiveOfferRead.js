@@ -880,7 +880,8 @@ function createUcpLiveSearchReader(deps = {}) {
     const planned = new Map();
     if (mode === MODES.OFF || !Array.isArray(cards)) return planned;
     const declared = str(ctx.market).toUpperCase();
-    if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return planned;
+    // ADR-026: only a market the request states is read, never one inferred from a card's currency.
+    if (!declared || !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return planned;
     cards.slice(0, maxCards).forEach((card, index) => {
       if (!card || typeof card !== 'object' || searchCardHeld(card)) return;
       if (!(Number(card.price) > 0)) return; // as the `.json` read: a $0 card is a held or unpriced one
@@ -888,10 +889,9 @@ function createUcpLiveSearchReader(deps = {}) {
       const host = cardHost(card);
       const handle = searchCardHandle(card); // no handle, no "same product" check: not read
       const cardCurrency = str(card.currency || card.price_currency).toUpperCase();
-      const country = declared || marketForCurrency(cardCurrency);
-      if (!id || !host || !handle || !country || !cardCurrency || backedOff(host)) return;
-      if (declared && currencyForBuyerRegion(declared) !== cardCurrency) return; // the card's currency never changes
-      planned.set(index, { host, country, currency: cardCurrency, basis: declared ? 'declared' : 'listing_home', id, handle });
+      if (!id || !host || !handle || !cardCurrency || backedOff(host)) return;
+      if (currencyForBuyerRegion(declared) !== cardCurrency) return; // the card's currency never changes
+      planned.set(index, { host, country: declared, currency: cardCurrency, basis: 'declared', id, handle });
     });
     return planned;
   }
