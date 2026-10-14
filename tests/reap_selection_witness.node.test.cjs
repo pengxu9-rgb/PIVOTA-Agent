@@ -29,11 +29,11 @@ async function armed(fn){const vars={REAP_AGENTIC_LANE_ENABLED:'1',REAP_AGENTIC_
 const SESSION={user_ref:'fixture-buyer',acp_session_id:'fixture-session',agent_id:'fixture-agent'};
 const posts=x=>x.calls.filter(c=>c.method==='POST'&&!c.path.endsWith('/prepare')&&!c.path.endsWith('/recover'));
 
-test('published read-only preparation exposes exact hashed SKU, then one selected first POST uses it',()=>armed(async()=>{
+test('published read-only preparation exposes exact hashed SKU, then one selected first POST sends its storefront id',()=>armed(async()=>{
  const x=await setup();const prepared=await x.surface.callTool('prepare_checkout',args(undefined),SESSION);
  assert.deepEqual(prepared,{selection:SELECTION});assert.equal(posts(x).length,0);
  const out=await x.surface.callTool('create_checkout',args(prepared.selection),SESSION);
- assert.match(out.id,/^reap_rp_/);assert.equal(posts(x).length,1);assert.equal(posts(x)[0].body.variant_key,SKU);
+ assert.match(out.id,/^reap_rp_/);assert.equal(posts(x).length,1);assert.equal(posts(x)[0].body.variant_id,ID);assert.equal(Object.hasOwn(posts(x)[0].body,'variant_key'),false);
  assert.equal(posts(x)[0].body.item_source,'cart_link');assert.equal(x.calls.filter(c=>c.path.endsWith('/prepare')).length,2);
  assert.ok(x.executorCalls.every(op=>op==='get_product'));
 }));
@@ -48,7 +48,7 @@ test('original canonical witness recovery is read-only after catalog, source, pr
  const x=await setup({row:{...ROW,variants:[],price:999,currency:'EUR'}});
  process.env.REAP_AGENTIC_CREATE_ENABLED='0';process.env.REAP_AGENTIC_CART_LINK_LANE_ENABLED='0';
  const out=await x.surface.callTool('recover_checkout',args(),SESSION);assert.match(out.id,/^reap_rp_/);
- assert.equal(x.calls.length,1);assert.ok(x.calls[0].path.endsWith('/recover'));assert.equal(x.calls[0].body.variant_key,SKU);
+ assert.equal(x.calls.length,1);assert.ok(x.calls[0].path.endsWith('/recover'));assert.equal(x.calls[0].body.variant_id,ID);
  assert.equal(x.calls[0].body.merchant_domain,'judydoll.com');assert.equal(x.calls[0].body.item_source,'cart_link');
  assert.equal(x.executorCalls.length,0);assert.equal(x.identityCalls.length,0);
 }));
@@ -80,7 +80,7 @@ test('new selected first backend body and paused read-only recovery preserve ori
  const x=await setup();await x.surface.callTool('create_checkout',args(),SESSION);const original=posts(x)[0].body;process.env.REAP_AGENTIC_CREATE_ENABLED='0';process.env.REAP_AGENTIC_CART_LINK_LANE_ENABLED='0';const counts=[x.executorCalls.length,x.identityCalls.length,x.calls.filter(c=>c.path.endsWith('/prepare')).length];await x.surface.callTool('recover_checkout',args(),SESSION);assert.deepEqual(x.calls.at(-1).body,original);assert.deepEqual([x.executorCalls.length,x.identityCalls.length,x.calls.filter(c=>c.path.endsWith('/prepare')).length],counts);assert.equal(posts(x).length,1);
 }));
 test('legacy original nine-field witness never infers price pair on recovery',()=>armed(async()=>{
- const x=await setup({row:{...ROW,price:1499,currency:'EUR',variants:[]}});const a=args();delete a.checkout.reap.expected_unit_price_minor;delete a.checkout.reap.expected_currency;process.env.REAP_AGENTIC_CREATE_ENABLED='0';await x.surface.callTool('recover_checkout',a,SESSION);const wire=x.calls[0].body;assert.equal(Object.hasOwn(wire,'expected_unit_price_minor'),false);assert.equal(Object.hasOwn(wire,'expected_currency'),false);assert.equal(wire.variant_key,SKU);assert.equal(x.calls.length,1);assert.equal(x.executorCalls.length,0);assert.equal(x.identityCalls.length,0);
+ const x=await setup({row:{...ROW,price:1499,currency:'EUR',variants:[]}});const a=args();delete a.checkout.reap.expected_unit_price_minor;delete a.checkout.reap.expected_currency;process.env.REAP_AGENTIC_CREATE_ENABLED='0';await x.surface.callTool('recover_checkout',a,SESSION);const wire=x.calls[0].body;assert.equal(Object.hasOwn(wire,'expected_unit_price_minor'),false);assert.equal(Object.hasOwn(wire,'expected_currency'),false);assert.equal(wire.variant_id,ID);assert.equal(x.calls.length,1);assert.equal(x.executorCalls.length,0);assert.equal(x.identityCalls.length,0);
 }));
 test('new sole/default primary request carries pair without inventing a selected witness or SKU',()=>armed(async()=>{
  const row={...ROW,variants:[ROW.variants[0]],price:13.99,currency:'USD',source_variant_id:ID};const x=await setup({row});const a=args();delete a.checkout.reap.selection;delete a.checkout.reap.selected_variant_id;await x.surface.callTool('create_checkout',a,SESSION);const body=posts(x)[0].body;assert.equal(body.expected_unit_price_minor,1399);assert.equal(body.expected_currency,'USD');assert.equal(Object.hasOwn(body,'variant_key'),false);assert.equal(x.calls.filter(c=>c.path.endsWith('/prepare')).length,0);
