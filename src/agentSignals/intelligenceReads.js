@@ -395,6 +395,8 @@ function makeGetOffers(deps = {}) {
     const res = await fetchOffers({
       merchant_id: p.merchant_id,
       product_id: p.product_id,
+      // A listing's option named for its own cart (one offer per listing lists them in `variants`).
+      ...(nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
       product_group_id: p.product_group_id,
       currency: p.currency,
       // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market

@@ -44,7 +44,13 @@ function fakeClient(store, { discover = true, calls = [] } = {}) {
       const byCountry = store[context.address_country] || store['*'] || [];
       const wanted = new Set(ids);
       const variants = byCountry.filter((v) => wanted.has(v.id));
-      return toolResult({ products: variants.length ? [{ id: 'gid://shopify/Product/1', variants }] : [] });
+      // Shopify names each id it does not have (live, rarebeauty.com 2026-10-14).
+      const missing = ids.filter((id) => !variants.some((v) => v.id === id));
+      return toolResult({
+        ucp: { version: '2026-08-25' },
+        products: variants.length ? [{ id: 'gid://shopify/Product/1', variants }] : [],
+        messages: missing.map((id) => ({ type: 'info', code: 'not_found', content: id })),
+      });
     },
   };
 }
@@ -63,7 +69,7 @@ function offer(extra = {}) {
     price: 25,
     currency: 'USD',
     in_stock: true,
-    execution_spec: { merchant_domain: RB, variant_id: BLISS, cart_url: `https://${RB}/cart/${BLISS}:1` },
+    execution_spec: { merchant_domain: RB, variant_id: BLISS, cart_url: `https://${RB}/cart/${BLISS}:1?country=US` },
     ...extra,
   };
 }
@@ -97,7 +103,7 @@ test('the merchant price and stock replace the stored ones, and both flags say w
   assert.equal(o.in_stock, true);
   assert.equal(o.stock_verified, true);
   assert.equal(o.merchant_price_verified, true);
-  assert.equal(o.execution_spec.expected_item_total, 25);
+  assert.equal(o.execution_spec.expected_item_total, 25, 'the cart is pinned to US, so the total is offered');
   assert.equal(o.execution_spec.expected_currency, 'USD');
   assert.equal(o.execution_spec.expected_quantity, 1);
   assert.ok(Date.parse(o.execution_spec.expected_total_expires_at) > Date.now());
@@ -121,7 +127,10 @@ test('the SG buyer gets the merchant SGD price for each listed shade', async () 
 
 test('a merchant that answers another currency for the market is not a verified price', async () => {
   const { r } = reader(rareBeauty);
-  const { offers } = await r.readOffers([offer({ currency: 'GBP', price: 20 })], { market: 'GB', currency: 'GBP' });
+  const gb = offer({ currency: 'GBP', price: 20 });
+  // A total the backend had offered for this offer cannot stand beside "could not be compared".
+  gb.execution_spec = { ...gb.execution_spec, expected_item_total: 20, expected_currency: 'GBP', expected_quantity: 1 };
+  const { offers } = await r.readOffers([gb], { market: 'GB', currency: 'GBP' });
   const [o] = offers;
   assert.equal(o.live_read.status, STATUS.CURRENCY_MISMATCH);
   assert.equal(o.live_read.merchant_currency, 'USD');
@@ -129,15 +138,56 @@ test('a merchant that answers another currency for the market is not a verified 
   assert.equal(o.price, 20, 'the stored price is not replaced by a price in another currency');
   assert.equal(o.currency, 'GBP');
   assert.equal(o.stock_verified, undefined);
+  assert.equal(o.execution_spec.expected_item_total, undefined, 'a mismatch clears any expected total');
 });
 
-test('a variant the merchant no longer returns is out of stock, checked', async () => {
+test('a variant the merchant says it does not have is out of stock, checked', async () => {
   const { r } = reader({ US: [] });
   const { offers } = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
   assert.equal(offers[0].live_read.status, STATUS.VARIANT_GONE);
   assert.equal(offers[0].in_stock, false);
-  assert.equal(offers[0].stock_verified, false);
+  assert.equal(offers[0].stock_verified, true, 'we asked, and the merchant said it does not have it');
   assert.equal(offers[0].merchant_price_verified, undefined, 'price was not compared');
+});
+
+test('a 200 that carries an error, not the variant, is an error, never gone (review of #2438)', async () => {
+  const client = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() {
+      // An error that ALSO lists the variant: the error wins.
+      return toolResult({
+        ucp: { status: 'error' },
+        products: [{ id: 'gid://shopify/Product/1', variants: [variant(BLISS, 100, 'USD', false)] }],
+        messages: [{ type: 'error', code: 'rate_limited', content: 'slow down' }],
+      });
+    },
+  };
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  const { offers } = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  assert.equal(offers[0].live_read.status, STATUS.ERROR);
+  assert.equal(offers[0].in_stock, true, 'stock untouched');
+  assert.equal(offers[0].stock_verified, undefined);
+});
+
+test('an offer naming no variant of its own is not priced from a listed option (review of #2438)', async () => {
+  const { r, calls } = reader(rareBeauty);
+  const o = offer({ variants: [{ variant_id: HOPE, title: 'Hope' }] });
+  delete o.execution_spec.variant_id;
+  const { offers } = await r.readOffers([o], { market: 'US', currency: 'USD' });
+  assert.equal(offers[0].live_read.status, STATUS.SKIPPED);
+  assert.equal(offers[0].price, 25);
+  assert.equal(calls.filter((c) => c[0] === 'lookup').length, 0);
+});
+
+test('a verified price beside a cart NOT pinned to the market offers no expected total (review of #2438)', async () => {
+  const { r } = reader(rareBeauty);
+  const o = offer();
+  o.execution_spec = { ...o.execution_spec, cart_url: `https://${RB}/cart/${BLISS}:1`, expected_item_total: 22, expected_currency: 'USD' };
+  const { offers } = await r.readOffers([o], { market: 'US', currency: 'USD' });
+  assert.equal(offers[0].live_read.status, STATUS.VERIFIED);
+  assert.equal(offers[0].execution_spec.expected_item_total, undefined);
+  assert.equal(offers[0].execution_spec.expected_currency, undefined);
+  assert.equal(offers[0].live_read.expected_total_withheld, 'cart_not_pinned_to_market');
 });
 
 test('a store with no UCP endpoint changes nothing', async () => {
@@ -157,16 +207,76 @@ test('no declared market: nothing is read', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('shadow reads and logs what enforce would change, and returns the offers untouched', async () => {
-  const { r, logs } = reader(rareBeauty, { mode: 'shadow' });
+test('shadow answers at once, untouched and with no stats, and logs the comparison afterwards (review of #2438)', async () => {
+  let release;
+  const gate = new Promise((res) => { release = res; });
+  const slowFirst = fakeClient(rareBeauty);
+  const realLookup = slowFirst.lookupCatalog;
+  slowFirst.lookupCatalog = async (...args) => { await gate; return realLookup(...args); };
+  const logs = [];
+  const r = createUcpLiveOfferReader({ ucpClient: slowFirst, mode: 'shadow', log: (e, f) => logs.push({ event: e, ...f }) });
   const input = [offer({ price: 22 })];
   const { offers, stats } = await r.readOffers(input, { market: 'US', currency: 'USD' });
-  assert.equal(offers, input);
-  assert.equal(stats.mode, 'shadow');
-  assert.deepEqual(stats.by_status, { verified: 1 });
-  assert.equal(stats.price_changed, 1);
+  assert.equal(offers, input, 'answered while the merchant had not replied yet');
+  assert.equal(stats, null, 'nothing about the comparison reaches the answer');
+  assert.equal(logs.length, 0);
+  release();
+  for (let i = 0; i < 5 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
   assert.equal(logs[0].event, 'get_offers_ucp_live_read');
+  assert.equal(logs[0].mode, 'shadow');
+  assert.equal(logs[0].price_changed, 1);
   assert.deepEqual(logs[0].hosts, [{ host: RB, status: 'verified' }]);
+});
+
+test('a failure to ASK the store is not remembered as "not a UCP store" (review of #2438)', async () => {
+  let attempts = 0;
+  const client = {
+    async discoverEndpoint(base) {
+      attempts += 1;
+      if (attempts === 1) throw new Error('ETIMEDOUT');
+      return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 };
+    },
+    lookupCatalog: fakeClient(rareBeauty).lookupCatalog,
+  };
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  const first = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  assert.equal(first.offers[0].live_read.status, STATUS.ERROR);
+  const second = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  assert.equal(second.offers[0].live_read.status, STATUS.VERIFIED);
+});
+
+test('a store answering discovery 429 or 5xx is asked again next time, not remembered as non-UCP', async () => {
+  let attempts = 0;
+  const client = {
+    async discoverEndpoint(base) {
+      attempts += 1;
+      return attempts === 1 ? { mcpEndpoint: undefined, status: 503 } : { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 };
+    },
+    lookupCatalog: fakeClient(rareBeauty).lookupCatalog,
+  };
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  assert.equal((await r.readOffers([offer()], { market: 'US', currency: 'USD' })).offers[0].live_read.status, STATUS.ERROR);
+  assert.equal((await r.readOffers([offer()], { market: 'US', currency: 'USD' })).offers[0].live_read.status, STATUS.VERIFIED);
+});
+
+test('a store that ANSWERED with no UCP endpoint is remembered as non-UCP', async () => {
+  let attempts = 0;
+  const client = {
+    async discoverEndpoint() { attempts += 1; return { mcpEndpoint: undefined, status: 404 }; },
+    lookupCatalog: fakeClient(rareBeauty).lookupCatalog,
+  };
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  const second = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  assert.equal(second.offers[0].live_read.status, STATUS.NOT_UCP);
+  assert.equal(attempts, 1);
+});
+
+test('concurrent identical reads share one discovery and one lookup (review of #2438)', async () => {
+  const { r, calls } = reader(rareBeauty);
+  await Promise.all(Array.from({ length: 5 }, () => r.readOffers([offer()], { market: 'US', currency: 'USD' })));
+  assert.equal(calls.filter((c) => c[0] === 'discover').length, 1);
+  assert.equal(calls.filter((c) => c[0] === 'lookup').length, 1);
 });
 
 test('off reads nothing', async () => {
@@ -205,9 +315,10 @@ test('only the first maxOffers offers are read', async () => {
   const many = Array.from({ length: 5 }, () => offer());
   await r.readOffers(many, { market: 'US', currency: 'USD' });
   // Same host+ids coalesce; the bound is on what is ATTEMPTED (3 by default).
-  const { stats } = await createUcpLiveOfferReader({ ucpClient: fakeClient(rareBeauty), mode: 'shadow' })
+  const { stats, offers } = await createUcpLiveOfferReader({ ucpClient: fakeClient(rareBeauty), mode: 'enforce' })
     .readOffers(many, { market: 'US', currency: 'USD' });
   assert.equal(stats.read, 3);
+  assert.equal(offers[3].live_read, undefined, 'the 4th offer is not read');
   assert.ok(calls.length >= 1);
 });
 
@@ -278,4 +389,48 @@ test('listed shades priced in another currency are never relabelled as the buyer
   const hope = offers[0].variants.find((v) => v.variant_id === HOPE);
   assert.equal(hope.live_verified, undefined, 'a USD answer is not an SGD price');
   assert.equal(hope.price, undefined);
+});
+
+// ------------------------------------------------------------- what reaches the agent (review of #2438)
+
+test('the agent sees live_read, the listing variants and a live observed_at', async () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const { r } = reader(rareBeauty);
+  const o = offer({
+    updated_at: '2026-09-01T00:00:00Z',
+    price: 22,
+    variant_count: 2,
+    variants: [{ variant_id: BLISS, title: 'Bliss' }, { variant_id: HOPE, title: 'Hope' }],
+  });
+  const { offers } = await r.readOffers([o], { market: 'US', currency: 'USD' });
+  const sig = offerToSignal(offers[0], { productId: 'sig_rb' });
+  assert.equal(sig.value.live_read.status, 'verified');
+  assert.equal(sig.value.live_read.stored_price, 22);
+  assert.ok(sig.value.live_read.checked_at);
+  assert.equal(sig.freshness.observed_at, sig.value.live_read.checked_at, 'observed when the merchant answered, not at crawl time');
+  assert.equal(sig.value.variant_count, 2);
+  assert.deepEqual(sig.value.variants, [
+    { variant_id: BLISS, title: 'Bliss', price: 25, currency: 'USD', in_stock: true, live_verified: true },
+    { variant_id: HOPE, title: 'Hope', price: 25, currency: 'USD', in_stock: false, live_verified: true },
+  ]);
+});
+
+test('the agent sees a currency mismatch named, and no total', async () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const { r } = reader(rareBeauty);
+  const { offers } = await r.readOffers([offer({ currency: 'GBP', price: 20 })], { market: 'GB', currency: 'GBP' });
+  const sig = offerToSignal(offers[0], {});
+  assert.deepEqual({ status: sig.value.live_read.status, merchant_currency: sig.value.live_read.merchant_currency }, { status: 'currency_mismatch', merchant_currency: 'USD' });
+  assert.equal(sig.value.merchant_price_verified, false);
+});
+
+test('get_offers: a named variant_id reaches the backend as the product sku_id', async () => {
+  let fetched;
+  const getOffers = makeGetOffers({
+    fetchOffers: async (args) => { fetched = args; return { offers: [backendOffer()] }; },
+  });
+  await getOffers({ payload: { product_id: 'sig_rb', variant_id: HOPE, market: 'US' } });
+  assert.equal(fetched.variant_id, HOPE);
+  await getOffers({ payload: { product_id: 'sig_rb' } });
+  assert.equal('variant_id' in fetched, false, 'absent, the fetch is unchanged');
 });

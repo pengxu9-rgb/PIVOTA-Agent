@@ -524,7 +524,10 @@ function createUcpBuyerAgentClient(options = {}) {
   // Trust tier is derived by descending capability: TOKEN (a static Bearer token OR self-serve client
   // credentials we can exchange for one) beats a signing key (SIGNED) beats nothing (ANONYMOUS).
   // complete_checkout is refused at ALL of them by this client.
-  const hasTokenTierCredential = Boolean(credential) || hasClientCredentials;
+  // `allowTokenTier: false` caps the client at SIGNED: a read-only caller that fans out to every merchant host
+  // (services/ucpLiveOfferRead) must never hand a Shopify Bearer token to whatever endpoint a host's
+  // `/.well-known/ucp` names.
+  const hasTokenTierCredential = options.allowTokenTier !== false && (Boolean(credential) || hasClientCredentials);
   const tier = hasTokenTierCredential
     ? TRUST_TIER.TOKEN
     : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);

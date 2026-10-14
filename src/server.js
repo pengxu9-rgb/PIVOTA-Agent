@@ -30806,6 +30806,21 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
+// UCP live product read (get_product variants). Same lazy, off-by-default construction as the offer reader
+// below, with its own flag so the two roll out independently.
+let _ucpLiveProductReader;
+function getUcpLiveProductReader() {
+  if (_ucpLiveProductReader !== undefined) return _ucpLiveProductReader;
+  const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
+  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
+  _ucpLiveProductReader = createUcpLiveProductReader({
+    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLiveProductReader;
+}
+
 // UCP live offer read (get_offers). Built on first use, and only when the mode is not off, so an unset
 // UCP_LIVE_OFFER_READ costs nothing and makes no outbound connection. One reader per process: its
 // discovery memo is per host.
@@ -30816,7 +30831,7 @@ function getUcpLiveOfferReader() {
   if (readMode() === MODES.OFF) return null;
   const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0 }),
+    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveOfferReader;
@@ -32074,6 +32089,12 @@ async function getCommerceRemoteMcpAdapter() {
         }
       };
       const localReads = {
+        // The merchant's own live price/stock for a product's variants (UCP lookup_catalog,
+        // services/ucpLiveOfferRead). UCP_LIVE_PRODUCT_READ=off (default) | shadow | enforce.
+        live_product_read: (result, ctx) => {
+          const reader = getUcpLiveProductReader();
+          return reader ? reader.readProduct(result, ctx) : null;
+        },
         get_alternatives: makeGetAlternatives({
           listApprovedRelationshipEdgesForAnchor,
           buildAnchorRefsFromProduct,
@@ -32132,10 +32153,11 @@ async function getCommerceRemoteMcpAdapter() {
             const reader = getUcpLiveOfferReader();
             return reader ? reader.readOffers(offers, ctx) : null;
           },
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
-                product: { product_id, merchant_id },
+                // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
+                product: { product_id, merchant_id, ...(variant_id ? { sku_id: variant_id } : {}) },
                 limit: Math.min(Math.max(Number(limit) || 10, 1), 30),
                 commerceSurface: 'agent_api',
                 // The buyer market the caller STATED (makeGetOffers.getOffersBuyerMarket: ISO-2, priceable,

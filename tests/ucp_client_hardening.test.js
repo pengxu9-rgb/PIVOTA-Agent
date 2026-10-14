@@ -238,6 +238,19 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     profileUrl: 'https://ucp.pivota.cc/.well-known/ucp-agent', fetchImpl,
   });
 
+  test('allowTokenTier:false never sends a Bearer token, even with a credential configured', async () => {
+    const seen = [];
+    const client = createUcpBuyerAgentClient({
+      profileUrl: 'https://ucp.pivota.cc/.well-known/ucp-agent', fetchImpl: capture(seen),
+      credential: 'tok_should_not_leave', allowTokenTier: false,
+    });
+    expect(client.tier).not.toBe('token');
+    await client.lookupCatalog(ENDPOINT, { ids: ['gid://shopify/ProductVariant/1'] });
+    const headers = seen[0] && (seen[0].headers || (seen[0].init && seen[0].init.headers)) || {};
+    const auth = Object.entries(headers).find(([k]) => k.toLowerCase() === 'authorization');
+    expect(auth).toBeUndefined();
+  });
+
   test('lookupCatalog sends catalog.ids (+ context) to lookup_catalog, and refuses 0 or 11 ids', async () => {
     const seen = [];
     const ids = ['gid://shopify/ProductVariant/43734829564039', 'gid://shopify/ProductVariant/43734829695111'];

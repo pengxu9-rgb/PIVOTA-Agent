@@ -1101,7 +1101,9 @@ test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offe
   const start = src.indexOf('get_offers: makeGetOffers({');
   assert.ok(start > 0, 'the get_offers wiring moved');
   const block = src.slice(start, start + 2500);
-  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market \}\)/);
+  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, variant_id \}\)/);
+  // A named variant rides as the product's sku_id, and only when named.
+  assert.match(block, /product: \{ product_id, merchant_id, \.\.\.\(variant_id \? \{ sku_id: variant_id \} : \{\}\) \}/);
   assert.match(block, /invokeCommerceKernelRawUpstream\('offers\.resolve', \{[\s\S]*?\.\.\.\(market \? \{ market \} : \{\}\),/);
 });
 

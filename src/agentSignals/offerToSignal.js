@@ -87,6 +87,30 @@ function toExecutionSpec(raw) {
   };
 }
 
+const trimmed = (v) => String(v).trim();
+
+function toLiveRead(lr) {
+  if (!lr || typeof lr !== 'object' || !nonEmptyString(lr.status)) return null;
+  const out = { status: trimmed(lr.status) };
+  if (nonEmptyString(lr.checked_at)) out.checked_at = trimmed(lr.checked_at);
+  if (nonEmptyString(lr.merchant_currency)) out.merchant_currency = trimmed(lr.merchant_currency);
+  if (nonEmptyString(lr.expected_total_withheld)) out.expected_total_withheld = trimmed(lr.expected_total_withheld);
+  if (lr.stored_price != null && Number.isFinite(Number(lr.stored_price))) out.stored_price = Number(lr.stored_price);
+  return out;
+}
+
+function toVariantOption(v) {
+  if (!v || typeof v !== 'object' || !nonEmptyString(v.variant_id)) return null;
+  const out = { variant_id: trimmed(v.variant_id), title: nonEmptyString(v.title) ? trimmed(v.title) : null };
+  if (v.price != null && Number.isFinite(Number(v.price))) {
+    out.price = Number(v.price);
+    out.currency = nonEmptyString(v.currency) ? trimmed(v.currency) : null;
+  }
+  out.in_stock = v.in_stock === true ? true : v.in_stock === false ? false : null;
+  if (v.live_verified === true) out.live_verified = true;
+  return out;
+}
+
 function offerToSignal(offer, { productId = null } = {}) {
   if (!offer || typeof offer !== 'object') return null;
   const merchantId = nonEmptyString(offer.merchant_id) ? offer.merchant_id : null;
@@ -160,6 +184,16 @@ function offerToSignal(offer, { productId = null } = {}) {
       // The rest of the execution spec. `cart_prefilled` above answers "is there a cart"; this answers
       // "where exactly, with what in it, until when, and how is the click attributed".
       execution_spec: toExecutionSpec(offer.execution_spec),
+      // WHAT THE MERCHANT SAID JUST NOW (services/ucpLiveOfferRead). `status` is verified, currency_mismatch
+      // (the merchant does not price for this market; `merchant_currency` names what it answered),
+      // variant_gone, or a failure to ask (not_ucp / timeout / error / skipped). `stored_price` is our
+      // crawl's price when the merchant's differed; `expected_total_withheld` says why no total was offered.
+      live_read: toLiveRead(offer.live_read),
+      // ONE SELLER LISTING's options (pivota-backend #2622): name one as `variant_id` on get_offers for its
+      // own cart. No links here.
+      ...(Array.isArray(offer.variants) && offer.variants.length
+        ? { variant_count: Number.isInteger(offer.variant_count) ? offer.variant_count : offer.variants.length, variants: offer.variants.map(toVariantOption).filter(Boolean) }
+        : {}),
     },
     evidence: {
       grade: null,
@@ -169,7 +203,12 @@ function offerToSignal(offer, { productId = null } = {}) {
       method: 'merchant_reported',
       sources: [],
     },
-    freshness: { observed_at: offer.updated_at || null, fresh_until: null },
+    // A price the merchant answered moments ago is observed THEN, not when our crawl last wrote the row.
+    freshness: {
+      observed_at:
+        (offer.live_read && offer.live_read.status === 'verified' && offer.live_read.checked_at) || offer.updated_at || null,
+      fresh_until: null,
+    },
     seller_trust: null, // FUTURE: return_rate / shipping_rating from the agent_signal store
     visibility: 'buyer_safe',
   };
