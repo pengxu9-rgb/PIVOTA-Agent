@@ -29642,9 +29642,14 @@ async function groundRecoRecommendationsFromCatalog({
   defaultTargetContext = null,
   // The buyer's need, when the door has one (agent door only); a substitute must not contradict it.
   needText = '',
+  // The rows applyStrictConformingTopUp appended, by object identity (see the loop below).
+  catalogFillerRows = [],
   // Tests only: stands in for the catalog search on the live (non-cache) recall path.
   searchFn = null,
 } = {}) {
+  const trustedFillerItems = new Set(Array.isArray(catalogFillerRows) ? catalogFillerRows : []);
+  // rec -> the catalog row it was normalized from, for filler only.
+  const fillerSourceByRec = new WeakMap();
   // The name the MODEL gave each item, before normalization fills a blank one from its use case or a
   // humanized type ("skincare product"). Only a model-given name is reported as a withheld archetype.
   const modelNameByRec = new WeakMap();
@@ -29659,6 +29664,7 @@ async function groundRecoRecommendationsFromCatalog({
       const modelName = isPlainObject(item) && !catalogFiller ? pickFirstTrimmed(item.display_name, item.name, item.title) : '';
       if (isPlainObject(rec) && modelName) modelNameByRec.set(rec, modelName);
       if (isPlainObject(rec) && catalogFiller) catalogFillerRecs.add(rec);
+      if (isPlainObject(rec) && trustedFillerItems.has(item)) fillerSourceByRec.set(rec, item);
       return rec;
     })
     .filter((item) => isPlainObject(item));
@@ -29740,6 +29746,24 @@ async function groundRecoRecommendationsFromCatalog({
   const reboundRejectedByReason = {};
 
   for (const rec of recs) {
+    // CATALOG FILLER GROUNDS AS ITSELF. The strict top-up appended this row from the lane's own catalog
+    // answer, so it already IS a catalog product; searching for it again by name lost it. Each item's
+    // search keeps a short, price-blind shortlist, so the cheap rows a price ceiling's filler exists to
+    // supply were rarely on it: live 2026-10-14, "a gentle cleanser for sensitive skin" under $20 got
+    // its conforming cleansers appended and then dropped as ungrounded, and the buyer was served only
+    // the model's over-ceiling picks. A product an earlier item already grounded to is a duplicate, not
+    // a withheld pick, and is left out.
+    const fillerSource = fillerSourceByRec.get(rec);
+    if (fillerSource) {
+      const normalized = normalizeRecoCatalogProduct(fillerSource);
+      const productId = isPlainObject(normalized) ? pickFirstTrimmed(normalized.product_id, normalized.productId) : '';
+      if (productId && !usedProductIds.has(productId)) {
+        usedProductIds.add(productId);
+        candidateCountAfterFilter += 1;
+        next.push(mergeRecoPlanWithGroundedCandidate(rec, normalized));
+      }
+      continue;
+    }
     const seedTerms = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
     const itemTargetContext = resolveRecommendationTargetContext({
       explicitStep: pickFirstTrimmed(rec.product_type, rec.step, defaultTargetContext && defaultTargetContext.resolved_target_step),

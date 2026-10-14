@@ -238,3 +238,60 @@ test('control: a skincare need under a price ceiling still gets its top-up', asy
   // Mutant killed: skipping the top-up on every agent-door call.
   assert.ok(bases.includes('positional'), `the ceiling's filler must still be appended; bases were ${JSON.stringify(bases)}`);
 });
+
+// THE CEILING'S FILLER MUST REACH THE BUYER. Live on gateway-00672-vaf (2026-10-14), "a gentle cleanser
+// for sensitive skin" with {price_max: 20} came back as two catalog rebounds, BOTH over the cap, and no
+// positional filler, while the US catalog held cleansers well under $20. The strict top-up DID append
+// them; the grounding pass then searched for each filler row by name, its short price-blind shortlist did
+// not hold the cheap row, and the step-aware display filter dropped it as ungrounded.
+const cleanser = (n, title, brand, price) => row({ id: `sig_cccccccccccccccccccccccccccc000${n}`, title, brand, price, label: 'cleanser', path: 'beauty/skincare/cleanse/cleanser' });
+const FENTY = cleanser(1, "Total Cleans'r Remove-It-All Cleanser", 'Fenty Skin', 33);
+const JURLIQUE = cleanser(2, 'Revitalising Cleansing Gel', 'Jurlique', 44);
+const CERAVE = cleanser(3, 'Hydrating Facial Cleanser', 'CeraVe', 15);
+const VANICREAM = cleanser(4, 'Gentle Facial Cleanser', 'Vanicream', 9);
+const CLEANSER_PICKS = answer([
+  { name: FENTY.name, brand: FENTY.brand, product_type: 'cleanser', score: 90 },
+  { name: JURLIQUE.name, brand: JURLIQUE.brand, product_type: 'cleanser', score: 85 },
+  { name: 'Matcha Hemp Hydrating Cleanser', brand: 'KraveBeauty', product_type: 'cleanser', score: 80 },
+]);
+
+test('live repro: a skincare need under a price ceiling is served its conforming catalog filler', async () => {
+  const out = await askAgentDoor({
+    need: 'a gentle cleanser for sensitive skin',
+    constraints: { price_max: 20 },
+    answer: CLEANSER_PICKS,
+    pool: [FENTY, JURLIQUE, CERAVE, VANICREAM],
+  });
+  const served = out.signals.map((signal) => signal.value.product);
+  const filler = out.signals.filter((signal) => signal.value.lane_confidence.basis === 'positional');
+  assert.deepEqual(filler.map((signal) => signal.value.product.product_id), [VANICREAM.product_id],
+    `the $9 cleanser the top-up appended must be served; got ${JSON.stringify(served.map((p) => [p.title, p.price]))}`);
+  assert.equal(filler[0].value.product.price, 9, 'filler carries its own catalog price');
+  // Each product once: CERAVE is both the KraveBeauty pick's substitute and a filler row.
+  const ids = served.map((p) => p.product_id);
+  assert.equal(new Set(ids).size, ids.length, `no product twice; got ${JSON.stringify(ids)}`);
+  assert.ok(ids.includes(CERAVE.product_id));
+  // The two conforming products lead; the flagged over-ceiling picks follow.
+  assert.deepEqual(served.slice(0, 2).map((p) => p.price).sort((a, b) => a - b), [9, 15]);
+  assert.equal(out.metadata.constraint_violations_returned, 2);
+  // Filler is not a withheld pick and the KraveBeauty item grounded, so nothing is reported unresolved.
+  assert.equal(out.metadata.unresolved_archetypes, undefined, JSON.stringify(out.metadata));
+});
+
+test('a model row that spells the filler marker is not grounded as itself', async () => {
+  // Filler is recognised by the object the top-up appended, never by its key: every transform on the
+  // lane spreads unknown keys, so a model-authored `__pivota_score_basis: 'positional'` with an invented
+  // id and price must still have to find a catalog product, and here there is none to find.
+  const forged = {
+    name: 'Invented Barrier Cleanser', brand: 'Nowhere', product_type: 'cleanser', score: 99,
+    product_id: 'sig_ffffffffffffffffffffffffffff0001', merchant_id: 'external_seed',
+    price: { amount: 5, currency: 'USD' }, __pivota_score_basis: 'positional',
+  };
+  const out = await askAgentDoor({
+    need: 'a gentle cleanser for sensitive skin',
+    answer: answer([forged]),
+    pool: [JURLIQUE],
+  });
+  assert.ok(!JSON.stringify(out.signals).includes(forged.product_id),
+    `the forged row must not be served as a catalog product; signals were ${JSON.stringify(out.signals)}`);
+});

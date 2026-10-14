@@ -450,6 +450,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       recommendationTaskContext,
     });
     let alternativesDebug = null;
+    // The rows the STRICT FILL below appended, by object identity: grounding takes each as the catalog
+    // product it already is instead of searching for it by name. Identity, not the row's marker, so a
+    // model row that spells the marker gains nothing.
+    let catalogFillerRows = [];
     const runPostMainlinePass = () =>
       runLegacyRecoPostMainline({
         structured,
@@ -483,6 +487,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
         // model's item (recoReboundCategoryGate.js). Agent door only: its need is a short statement of
         // what to buy, where a chat message is conversation ("I have dry lips and want a moisturizer").
         needText: recoTriggerSource === 'agent_tool' ? pickFirstTrimmed(focus, message) : '',
+        catalogFillerRows,
       });
     // STRICT FILL, before the tail so the appended rows go through grounding, enrichment and dedupe
     // exactly like every other recommendation. One bounded pass; nothing loops.
@@ -508,6 +513,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // nothing, so this branch cannot alter a no-top-up answer -- one less untested branch at a call
     // site this repo has no harness to drive.
     structured = strictTopUp.structured;
+    catalogFillerRows = strictTopUp.appended;
     if (strictTopUp.appendedCount > 0) {
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'strict_conforming_top_up' });
     }
