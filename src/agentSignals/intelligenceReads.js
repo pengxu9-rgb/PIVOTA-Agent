@@ -318,16 +318,48 @@ function makeGetAlternatives(deps = {}) {
  *   with `offers_source_unavailable` (no fabricated competition) until the backend op is wired.
  */
 /**
+ * THE MARKET A get_offers CALLER DECLARED, whether or not anything is priced for it: the ISO-2 code,
+ * or null when the caller declared none or sent something that is not a market at all ('USA', 'en-US',
+ * a list). Invalid input is absent input (buyerRegion.js); a well-formed code is a declaration.
+ */
+function getOffersDeclaredMarket(p) {
+  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
+  return normalizeBuyerRegion(raw) || null;
+}
+
+/**
  * THE BUYER MARKET A get_offers CALLER STATED, or null. ISO-2 and priceable only (the repo's one
  * normaliser, ADR-024): a locale, a list, a three-letter code or a well-formed code nothing is priced
- * for is not a market. Never defaulted: get_offers resolves offers through the backend's
+ * for is never forwarded (makeGetOffers answers the last with no offers). Never defaulted: get_offers resolves offers through the backend's
  * `offers.resolve`, whose cart-minting gate (pivota-backend #2411) keys on `payload.market`, and a
  * caller that states none gets the referral-only answer it always got.
  */
 function getOffersBuyerMarket(p) {
-  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
-  const region = normalizeBuyerRegion(raw);
+  const region = getOffersDeclaredMarket(p);
   return region && currencyForBuyerRegion(region) ? region : null;
+}
+
+/**
+ * THE OFFERS A DECLARED BUYER MARKET MAY BE SHOWN (ADR-026): only those priced in that market's
+ * currency. The backend's offers.resolve does not filter on `payload.market` — it keys only its
+ * cart-minting gate on it — so before this a market=US caller was handed a GBP seed's offer, and a KRW
+ * one, each as `buyer_safe`. The offer's OWN currency is compared against the market's; a market is
+ * never inferred from the currency. An offer with no currency cannot be shown to be in the market's
+ * currency, and is withheld with the others.
+ *
+ * `marketCurrency` comes from `currencyForBuyerRegion`, the gateway's one market -> currency map
+ * (ADR-024; equal to the registry's pricing-region currencies, and the function the generated
+ * registry projection replaces under ADR-026 P1).
+ */
+function offersInMarketCurrency(offers, marketCurrency) {
+  const kept = [];
+  let withheld = 0;
+  for (const offer of offers) {
+    const currency = offer && typeof offer.currency === 'string' ? offer.currency.trim().toUpperCase() : '';
+    if (currency && currency === marketCurrency) kept.push(offer);
+    else withheld += 1;
+  }
+  return { kept, withheld };
 }
 
 function makeGetOffers(deps = {}) {
@@ -339,23 +371,65 @@ function makeGetOffers(deps = {}) {
       return { subject, best_offer: null, signals: [], metadata: { reason: 'offers_source_unavailable' } };
     }
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
+    const declared = getOffersDeclaredMarket(p);
+    const marketCurrency = declared ? currencyForBuyerRegion(declared) : '';
+    // A declared market nothing is priced in has no offer it may be shown (the door serves it nothing,
+    // as search does: buyerMarket.resolveServingCurrency). Answered here, without a backend call.
+    if (declared && !marketCurrency) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: p.product_group_id || null,
+          market: declared,
+          market_currency: null,
+          reason: 'market_not_priced',
+        },
+      };
+    }
     const market = getOffersBuyerMarket(p);
     const res = await fetchOffers({
       merchant_id: p.merchant_id,
       product_id: p.product_id,
       product_group_id: p.product_group_id,
       currency: p.currency,
+      // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
+      // can get fewer in-currency offers than exist; over-fetching would fix that here but the backend
+      // records every link offers.resolve returns as issued to the agent (ADR-025), withheld ones too.
+      // Filtering before the cut belongs inside offers.resolve.
       limit,
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
     });
-    const offers = res && Array.isArray(res.offers) ? res.offers : [];
+    const fetched = res && Array.isArray(res.offers) ? res.offers : [];
+    // No market declared: today's referral-only answer, every offer the backend returned.
+    const { kept, withheld } = market
+      ? offersInMarketCurrency(fetched, marketCurrency)
+      : { kept: fetched, withheld: 0 };
+    // A declared market's offers are cut to the caller's limit BEFORE projecting: offersToSignals picks
+    // best_offer from every offer it is handed and only then caps signals, so an uncut list can name a
+    // best_offer that is not among the signals returned. offer_count is then the count returned. (No
+    // market: the list is passed as it always was.)
+    const offers = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
     return {
       subject,
       best_offer,
       signals,
-      metadata: { offer_count: offers.length, product_group_id: (res && res.product_group_id) || p.product_group_id || null },
+      metadata: {
+        offer_count: offers.length,
+        product_group_id: (res && res.product_group_id) || p.product_group_id || null,
+        ...(market
+          ? {
+              market,
+              market_currency: marketCurrency,
+              withheld_other_currency_count: withheld,
+              ...(offers.length === 0 && withheld > 0 ? { reason: 'no_offer_in_market_currency' } : {}),
+            }
+          : {}),
+      },
     };
   };
 }

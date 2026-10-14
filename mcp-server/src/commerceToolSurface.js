@@ -974,7 +974,7 @@ const INPUT_SCHEMAS = Object.freeze({
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
       product_group_id: { type: "string" }, currency: { type: "string" },
-      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market. Absent, no market is claimed and offers come back referral-only." },
+      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market, and only offers priced in that market's currency are returned (metadata.withheld_other_currency_count counts the rest; a market Pivota prices nothing in returns no offers, reason market_not_priced). Absent, no market is claimed and offers come back referral-only, in whatever currency each is priced." },
       limit: { type: "integer", minimum: 1, maximum: 10 },
     },
   },
