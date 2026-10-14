@@ -19,9 +19,11 @@
 //
 //   1. MAKEUP AND FRAGRANCE NEVER REBOUND. For these types the need IS the shade, finish or scent, and
 //      a substitute's fit on those axes was never assessed by anyone. The item stays ungrounded and the
-//      agent door lists it under metadata.unresolved_archetypes. The model's OWN pick still grounds:
-//      by id (sameRecommendationProduct), or by name when the model named a product without an id --
-//      the prompt forbids inventing ids, so that is its usual way of naming one (isRecoNamedProductMatch).
+//      agent door lists it under metadata.unresolved_archetypes. The model's own pick still grounds when
+//      it carries the catalog id, as a pick from the candidates the model was shown does
+//      (sameRecommendationProduct). A product named WITHOUT an id is not matched by name: a review of
+//      that rule found brand + name words could not tell "MAC Retro Matte Lipstick" (Ruby Woo) from
+//      "Retro Matte Lipstick - Velvet Teddy", which is the nude-for-red swap this gate exists to stop.
 //   2. AN ITEM THAT NAMES FRAGRANCE, HAIR, SCALP OR LIPS IS NOT FACE/BODY SKINCARE, whatever step its
 //      words resolve to. The step resolver reads "body mist" and "fragrance mist" as toner, "hair
 //      treatment" as treatment and "lip mask" as mask, so the domain check alone would let a facial
@@ -63,21 +65,27 @@ const SKINCARE_LEAF_STEP = Object.freeze({
 // devices, tools, sets -- is a different kind of product.
 const SKINCARE_COMPATIBLE_ROOTS = Object.freeze(['beauty/skincare', 'beauty/body']);
 
-// Words that make a skincare-step word name a different kind of product (rule 2). Run over text that
-// maskNonCategoryQualifiers has already cleared of denials, so "fragrance-free cleanser" is not caught.
-const NON_SKIN_ITEM_RE = /\b(?:fragrances?|perfumes?|parfums?|eau de (?:parfum|toilette|cologne)|colognes?|body mists?|body sprays?|hair|scalp|lips?)\b/i;
+// Product nouns that make a skincare-step word name a different kind of product (rule 2). Not the bare
+// word "fragrance": a body lotion "with a light fragrance" is still a body lotion. Run over text cleared
+// of denials (maskNonCategoryQualifiers, plus the phrasings below), so "fragrance-free", "sans parfum",
+// "ingrown hairs" and "eye & lip contour cream" stay skincare.
+const NON_SKIN_ITEM_RE = /\b(?:perfumes?|parfums?|eau de (?:parfum|toilette|cologne)|colognes?|fragrance mists?|body mists?|body sprays?|hairs?|scalp|lips?)\b/i;
+const NON_SKIN_ITEM_DENIALS = Object.freeze([
+  /\bsans\s+parfum\b/gi,
+  /\b0\s*%\s*(?:fragrance|parfum|perfume)\b/gi,
+  /\bingrown\s+hairs?\b/gi,
+  /\bhair[-\s]?removal\b/gi,
+  /\beyes?\s*(?:&|and|\+|\/)\s*lips?\b/gi,
+]);
+
+function maskNonSkinItemDenials(value) {
+  let out = maskNonCategoryQualifiers(value);
+  for (const pattern of NON_SKIN_ITEM_DENIALS) out = out.replace(pattern, (match) => ' '.repeat(match.length));
+  return out;
+}
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function tokens(value) {
-  return text(value)
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean);
 }
 
 // The product's own taxonomy path as 'beauty/makeup/lip/balm', from either spelling the search emits:
@@ -108,36 +116,6 @@ function underRoot(path, root) {
   return path === root || path.startsWith(`${root}/`);
 }
 
-function brandTokensAgree(left, right) {
-  if (!left.length || !right.length) return false;
-  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
-  return shorter.every((token, index) => longer[index] === token);
-}
-
-/**
- * Is `candidate` the product the model NAMED, though the model gave no id for it? Same brand ("Tom
- * Ford" and "Tom Ford Beauty" agree), and every word of the model's product name -- at least two once
- * the brand's words are removed -- appears in the catalog title. The catalog title may carry more (a
- * shade the catalog row is filed under); a model name with a word the title lacks is a different
- * product or a different shade, and does not match.
- */
-function isRecoNamedProductMatch(plan, candidate) {
-  if (!plan || !candidate) return false;
-  const planBrand = tokens(plan.brand);
-  const candidateBrand = tokens(candidate.brand);
-  if (!brandTokensAgree(planBrand, candidateBrand)) return false;
-  const brandWords = new Set([...planBrand, ...candidateBrand]);
-  const nameWords = tokens(text(plan.name) || text(plan.display_name) || text(plan.title))
-    .filter((token) => !brandWords.has(token));
-  if (nameWords.length < 2) return false;
-  const titleWords = new Set([
-    ...tokens(candidate.name),
-    ...tokens(candidate.title),
-    ...tokens(candidate.display_name),
-  ]);
-  return nameWords.every((token) => titleWords.has(token));
-}
-
 /**
  * May `candidate` (a DIFFERENT product from the one the model named) ground an item that asked for
  * `requestedStep`? `requestedText` is the item's own type and name. Returns { accept, reason }; the
@@ -147,7 +125,7 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', candidat
   const step = normalizeRecoTargetStep(requestedStep);
   if (!step) return { accept: false, reason: 'requested_type_unresolved' };
   if (resolveRecoStepDomain(step) !== 'skincare') return { accept: false, reason: 'shade_or_scent_led_type' };
-  if (NON_SKIN_ITEM_RE.test(maskNonCategoryQualifiers(text(requestedText)))) {
+  if (NON_SKIN_ITEM_RE.test(maskNonSkinItemDenials(text(requestedText)))) {
     return { accept: false, reason: 'non_skin_item' };
   }
 
@@ -164,13 +142,17 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', candidat
   }
 
   // No path on the row (a pool cached before the path was persisted, or a row the catalog never
-  // filed). Its own type, else its title, must name a compatible step -- a substitute nothing
-  // identifies is not evidence of anything. (A makeup or fragrance step is never in a skincare step's
-  // family, so the relation alone refutes those.)
-  const ownStep = normalizeRecoTargetStep(text(candidate && candidate.category) || text(candidate && candidate.product_type))
-    || extractRecoTargetStepFromText(
-      maskNonCategoryQualifiers(text(candidate && (candidate.name || candidate.title || candidate.display_name))),
-    );
+  // filed). Its own category, product type or title must name a compatible step -- a substitute nothing
+  // identifies is not evidence of anything. Each is tried in turn: "Moisturizers" maps to no step and
+  // must not hide a product_type of "cream". On a row the search marked as inferred, category and
+  // product_type may themselves be the request (the hint fills them when empty), so only the title
+  // counts. (A makeup or fragrance step is never in a skincare step's family, so the relation alone
+  // refutes those.)
+  const row = candidate && typeof candidate === 'object' ? candidate : {};
+  const inferred = row.category_path_inferred_from_query === true;
+  const ownStep = (inferred ? null : normalizeRecoTargetStep(text(row.category)))
+    || (inferred ? null : normalizeRecoTargetStep(text(row.product_type)))
+    || extractRecoTargetStepFromText(maskNonCategoryQualifiers(text(row.name || row.title || row.display_name)));
   if (!ownStep) return { accept: false, reason: 'no_category_evidence' };
   if (getRecoTargetFamilyRelation(step, ownStep) === 'incompatible_family') {
     return { accept: false, reason: 'own_type_incompatible' };
@@ -181,6 +163,5 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', candidat
 module.exports = {
   SKINCARE_LEAF_STEP,
   readCatalogCategoryPath,
-  isRecoNamedProductMatch,
   judgeRecoReboundCandidate,
 };

@@ -1590,10 +1590,10 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // makeup and fragrance substitute and judges a skincare one by the catalog's own category path, and
   // the merge no longer stamps the requested type on a substitute -- so the description promises that
   // instead. If either half is loosened, this fails until the sentence is.
-  assert.ok(/A MAKEUP OR FRAGRANCE ITEM IS NEVER SWAPPED FOR A DIFFERENT PRODUCT/.test(src)
+  assert.ok(/A MAKEUP OR FRAGRANCE ITEM IS NEVER A `catalog_rebound`/.test(src)
     && /its name appears in `metadata.unresolved_archetypes`/.test(src)
-    && /the product the model named without an id, matched by brand and every word of its name/.test(src)
-    && /Every other `catalog_rebound` row is face or body skincare/.test(src)
+    && /the catalog product the model itself picked, by its catalog id/.test(src)
+    && /A `catalog_rebound` row is always face or body skincare/.test(src)
     && /grounding does not copy the requested type onto the row's `product_type` or `category`/.test(src),
     'the description must state the rebound rule the gate enforces');
   assert.ok(!/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
@@ -1607,10 +1607,10 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     for (const step of shadeOrScentSteps) {
       // A candidate filed under the very step asked for: even the best-case substitute is refused.
       const verdict = judgeRecoReboundCandidate({ requestedStep: step, candidate: { category: step } });
-      assert.equal(verdict.accept, false, `"never swapped for a different product" is false for ${step}`);
+      assert.equal(verdict.accept, false, `"never a catalog_rebound" is false for ${step}`);
     }
-    // "Every other rebound is face or body skincare": a fragrance mist that resolves to the toner step
-    // is still refused a facial toner.
+    // "Always face or body skincare": a fragrance mist that resolves to the toner step is still refused
+    // a facial toner.
     assert.equal(judgeRecoReboundCandidate({
       requestedStep: 'toner', requestedText: 'body mist Fragrance Mist', candidate: { catalog_category_path: 'beauty/skincare/tone/toner' },
     }).accept, false);

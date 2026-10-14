@@ -411,7 +411,7 @@ const {
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
-const { judgeRecoReboundCandidate, isRecoNamedProductMatch, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
+const { judgeRecoReboundCandidate, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -5019,6 +5019,8 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
     ...(String(productType || '').trim() ? { product_type: String(productType).trim() } : {}),
     ...(catalogCategoryPath ? { catalog_category_path: catalogCategoryPath } : {}),
+    // The search filled this row's path -- and possibly its empty category/type -- from the QUERY.
+    ...(base.category_path_inferred_from_query === true ? { category_path_inferred_from_query: true } : {}),
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
@@ -29827,9 +29829,8 @@ async function groundRecoRecommendationsFromCatalog({
       if (!isPlainObject(normalized)) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
       if (productId && usedProductIds.has(productId)) continue;
-      // The model's own pick, by id or (it may not invent ids) by brand and full name, is not a
-      // substitute; anything else is, and must pass the gate.
-      if (!sameRecommendationProduct(rec, normalized) && !isRecoNamedProductMatch(rec, normalized)) {
+      // The model's own pick (same catalog id) is not a substitute; anything else is, and must pass.
+      if (!sameRecommendationProduct(rec, normalized)) {
         const verdict = judgeRecoReboundCandidate({ requestedStep, requestedText, candidate: normalized });
         if (!verdict.accept) {
           reboundRejectedByReason[verdict.reason] = (reboundRejectedByReason[verdict.reason] || 0) + 1;
