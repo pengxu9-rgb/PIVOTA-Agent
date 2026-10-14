@@ -1420,7 +1420,8 @@ const GET_OFFERS_DESCRIPTION = [
   "`{ subject, best_offer, signals[], metadata }` — real competition only when it exists; a single-offer product",
   "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
   "`insights.market` (the buyer's market, ISO-3166-1 alpha-2, only when known: offers and their cart links are",
-  "then decided for that market; absent, no market is claimed), `insights.limit` (1..10).",
+  "then decided for that market, and only offers priced in its currency are returned; absent, no market is",
+  "claimed), `insights.limit` (1..10).",
 ].join(" ");
 
 const GET_INTEL_DESCRIPTION = [
