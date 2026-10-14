@@ -20,9 +20,14 @@
 // source: recall would fail closed and KB would return no intel, silently.
 const RUN_SCOPED_TABLE_LOST = 'RELGRAPH_RUN_SCOPED_TABLE_LOST';
 
+// A session without the table reports either 42P01 naming it (SELECT, INSERT) or, on a backend
+// that never created a temp schema, 3F000 schema "pg_temp" does not exist, which names no table
+// (ANALYZE pg_temp.<name>). Both mean the table is gone. A missing SOURCE table never names pg_temp.
 function lostTableError(err, name) {
   const message = String(err?.message || '');
-  if (!(String(err?.code || '') === '42P01' || /does not exist/i.test(message)) || !message.includes(name)) return null;
+  const code = String(err?.code || '');
+  const missing = code === '42P01' || code === '3F000' || /does not exist/i.test(message);
+  if (!missing || !(message.includes(name) || /\bpg_temp\b/i.test(message))) return null;
   // The original text stays in cause only: "relation ... does not exist" in this message would
   // match isSourceMissingError and be swallowed after all.
   const lost = new Error(`relgraph run-scoped table ${name} is gone from its session (lost connection or transaction-mode pooler)`);
