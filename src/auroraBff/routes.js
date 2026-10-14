@@ -29755,7 +29755,12 @@ async function groundRecoRecommendationsFromCatalog({
     // a withheld pick, and is left out.
     const fillerSource = fillerSourceByRec.get(rec);
     if (fillerSource) {
-      const normalized = normalizeRecoCatalogProduct(fillerSource);
+      // The lane's catalog row keeps the raw product (group id, sku id) under `sku`; its own top-level
+      // fields win where both carry one.
+      const normalized = normalizeRecoCatalogProduct({
+        ...(isPlainObject(fillerSource.sku) ? fillerSource.sku : {}),
+        ...fillerSource,
+      });
       const productId = isPlainObject(normalized) ? pickFirstTrimmed(normalized.product_id, normalized.productId) : '';
       if (productId && !usedProductIds.has(productId)) {
         usedProductIds.add(productId);
