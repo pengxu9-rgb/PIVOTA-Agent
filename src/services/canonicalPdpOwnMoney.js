@@ -3,6 +3,7 @@
 const { buildCanonicalOwnOfferSellerSql } = require('./canonicalOwnOfferSellerSql');
 const { buildVariants, pickDefaultVariant } = require('../pdpBuilder');
 const { computeOfferTotal, prioritizeOffers } = require('../offers/offersPriority');
+const logger = require('../logger');
 
 const CANONICAL_PRODUCT = Symbol('canonical-product');
 
@@ -78,7 +79,7 @@ function usesCanonicalOwnMoney(ref, market, currency) {
 async function readCanonicalOwnMoney({ ref, query }) {
   const result = await query(`
     SELECT co.offer_id, co.sku_key, s.source_variant_id,
-      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount
+      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount, co.price_checked_at
     FROM catalog_products own_cp
     JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
       AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
@@ -96,7 +97,74 @@ async function readCanonicalOwnMoney({ ref, query }) {
       AND coalesce(co.merchant_effective_price, co.list_price) > 0
     ORDER BY s.source_variant_id, co.offer_id
   `, [ref.product_key, ref.merchant_id]);
-  return moneyFromOwnRows(result.rows || [], ref.product_key);
+  return currentMoneyFromOwnRows(result.rows || [], ref.product_key, { productKey: ref.product_key, merchantId: ref.merchant_id });
+}
+
+// FRESHNESS. `catalog_offers.price_checked_at` is when the offer's price was last READ from its page
+// (pivota-backend migration 246): stamped only by a writer that read it, cleared when the price moves
+// without a read, NULL = no read on record. Never `updated_at`, which every bulk write moves. A row whose
+// read is older than the window (or was never made) is not current money: in `enforce` it is left out,
+// so its variant renders unpriced, and a listing with no fresh row at all is CURRENT_OWN_OFFER_UNAVAILABLE.
+// `shadow` serves exactly what `off` does and logs what `enforce` would change.
+// Measured on prod 2026-10-14 over 1,992 verified PDPs, 14 days: 76 unavailable + 280 with some variant
+// unpriced; nearly all of them never-read rows (drain-written variants the refresh cannot match, dead pages).
+const OWN_MONEY_FRESHNESS_MODES = new Set(['off', 'shadow', 'enforce']);
+const DEFAULT_OWN_MONEY_MAX_AGE_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A stamp ahead of the gateway clock by more than this is not a read we can date.
+const FUTURE_PRICE_CHECK_TOLERANCE_MS = 10 * 60 * 1000;
+
+function ownMoneyFreshnessMode(env = process.env) {
+  const mode = String(env.CANONICAL_OWN_MONEY_FRESHNESS || '').trim().toLowerCase();
+  return OWN_MONEY_FRESHNESS_MODES.has(mode) ? mode : 'off';
+}
+
+function ownMoneyMaxAgeDays(env = process.env) {
+  const raw = String(env.CANONICAL_OWN_MONEY_MAX_AGE_DAYS || '').trim();
+  const days = raw ? Number(raw) : DEFAULT_OWN_MONEY_MAX_AGE_DAYS;
+  return Number.isFinite(days) && days > 0 ? days : DEFAULT_OWN_MONEY_MAX_AGE_DAYS;
+}
+
+function isFreshOwnRow(row, { now, maxAgeDays }) {
+  const checked = row?.price_checked_at;
+  if (checked === null || checked === undefined || checked === '') return false;
+  const at = checked instanceof Date ? checked.getTime() : Date.parse(String(checked));
+  return Number.isFinite(at) && at >= now - maxAgeDays * DAY_MS && at <= now + FUTURE_PRICE_CHECK_TOLERANCE_MS;
+}
+
+// moneyFromOwnRows under the freshness mode. Throws exactly as moneyFromOwnRows does; in `enforce` a listing
+// whose eligible rows are all stale throws CURRENT_OWN_OFFER_UNAVAILABLE.
+function currentMoneyFromOwnRows(rows, productKey, logContext = {}, {
+  mode = ownMoneyFreshnessMode(), maxAgeDays = ownMoneyMaxAgeDays(), now = Date.now(),
+} = {}) {
+  if (mode === 'off') return moneyFromOwnRows(rows, productKey);
+  const fresh = rows.filter(row => isFreshOwnRow(row, { now, maxAgeDays }));
+  if (mode === 'enforce') {
+    if (rows.length && !fresh.length) throw unavailable('Current own listing money has no price read within its freshness window');
+    return moneyFromOwnRows(fresh, productKey);
+  }
+  const served = moneyFromOwnRows(rows, productKey);
+  let enforced = null;
+  try {
+    enforced = moneyFromOwnRows(fresh, productKey);
+  } catch {
+    enforced = null;
+  }
+  const lostKeys = [...served.keys()].filter(key => !enforced?.has(key));
+  if (lostKeys.length) {
+    logger.info({
+      event: 'pdp_own_money_freshness_shadow',
+      would: enforced ? 'variants_unpriced' : 'unavailable',
+      product_key: logContext.productKey || productKey || null,
+      merchant_id: logContext.merchantId || null,
+      listing_product_id: logContext.listingProductId || null,
+      stale_rows: rows.length - fresh.length,
+      rows: rows.length,
+      unpriced_keys: lostKeys.length,
+      max_age_days: maxAgeDays,
+    }, 'own listing money older than its freshness window (shadow: still served)');
+  }
+  return served;
 }
 
 // One rule for turning eligible own-offer rows into money per variant, shared by the selected listing
@@ -157,7 +225,7 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
     )
     SELECT l.merchant_id AS listing_merchant_id, l.product_id AS listing_product_id,
       own_cp.product_key, co.offer_id, co.sku_key, s.source_variant_id,
-      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount
+      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount, co.price_checked_at
     FROM listing l
     JOIN catalog_products own_cp ON own_cp.product_key = l.product_key
     JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
@@ -186,7 +254,8 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
     if (productKeys.size !== 1) continue;
     const [productKey] = productKeys;
     try {
-      verified.set(key, moneyFromOwnRows(rows, productKey));
+      verified.set(key, currentMoneyFromOwnRows(rows, productKey, {
+        productKey, merchantId: rows[0].listing_merchant_id, listingProductId: rows[0].listing_product_id }));
     } catch {
       // Conflicting or malformed money: this listing stays unverified, the others are unaffected.
     }
@@ -420,4 +489,5 @@ module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney, readCanonicalSe
   MAX_VERIFIED_SELLER_LISTINGS, withoutCanonicalPurchaseActions,
   projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain, isOwnImplicitVariantId,
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
-  withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED };
+  withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED,
+  currentMoneyFromOwnRows, ownMoneyFreshnessMode, ownMoneyMaxAgeDays };
