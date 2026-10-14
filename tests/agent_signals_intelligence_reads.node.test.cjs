@@ -1081,10 +1081,15 @@ test('makeGetOffers: a stated market reaches fetchOffers as `market`; absent or 
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
   assert.deepEqual(seen[1], today);
   assert.equal(Object.prototype.hasOwnProperty.call(seen[1], 'market'), false, 'no market key at all when none is stated');
-  for (const junk of ['USA', 'en-US', 'ZZ', '']) {
+  for (const junk of ['USA', 'en-US', '']) {
     await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: junk } });
     assert.deepEqual(seen[seen.length - 1], today, junk);
   }
+  // A well-formed market nothing is priced in is a declaration, not junk: answered with no offers, no fetch.
+  const before = seen.length;
+  const zz = await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: 'ZZ' } });
+  assert.equal(seen.length, before, 'no fetch for an unpriced market');
+  assert.equal(zz.metadata.reason, 'market_not_priced');
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1', buyer_market: 'JP' } });
   assert.equal(seen[seen.length - 1].market, 'JP');
 });
