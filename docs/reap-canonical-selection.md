@@ -24,8 +24,33 @@ no alternate checkout route.
 this witness, it consults no current catalog, variant, price, proof or source
 configuration. The backend's owner and immutable request hash decide whether the
 original purchase matches. Invalid or missing mappings remain unknown; they do
-not authorize another create. Legacy numeric-only recovery retains its exact
-historic key derivation and never guesses a new hashed key.
+not authorize another create.
+
+## Numeric-only selection (no witness)
+
+A selected `cart_link` create without `checkout.reap.selection` still runs the
+same strict preparation (price, quantity, seller and market must agree), but its
+body carries the storefront id as `variant_id` and no `variant_key`. The backend
+resolves the id to its own SKU and requires the proven variant to be that id
+(pivota-backend#2605); its fingerprint holds `variant_id:<n>`, the id as sent.
+The gateway never spells a key itself: the catalog writes one variant as
+`::sku_<hash>`, `::v:<n>`, `::v::<n>` or `::v:retailer-<hash>`.
+
+Recovery and resume of a numeric-only attempt cannot know which gateway created
+it, so in the cart-link key namespace they probe the two spellings an attempt
+may carry under one idempotency key: `variant_id` first, then the historic
+`<product_key>::v::<id>` (mirror) or `::v:<id>` key sent before this change.
+The backend stored one fingerprint per key, so at most one spelling matches;
+the other answers `idempotency_conflict` and is passed over. No match under
+either spelling, or a conflict with no match, stays unknown. The matched body
+is the one a resume continues with. The variant-lane namespace and witness
+attempts probe exactly one spelling, as before. A selector over 20 digits was
+never prepared, so only its historic key is probed.
+
+**Deploy gate.** A backend without #2605 ignores `variant_id` and can open a
+cart for another variant at the same price. Deploy this gateway change only
+after #2605 serves 100% of `web`, and never roll the backend below it while
+this change is live.
 
 The new witness protocol supports selected `cart_link` only. Unsupported selected
 sources refuse before a checkout POST. Existing unselected native checkouts and

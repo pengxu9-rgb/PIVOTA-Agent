@@ -37,11 +37,11 @@ test('published read-only preparation exposes exact hashed SKU, then one selecte
  assert.equal(posts(x)[0].body.item_source,'cart_link');assert.equal(x.calls.filter(c=>c.path.endsWith('/prepare')).length,2);
  assert.ok(x.executorCalls.every(op=>op==='get_product'));
 }));
-test('numeric-only create cannot fabricate hashed mirror key after authoritative preparation; legacy recovery retains original spelling',()=>armed(async()=>{
+test('numeric-only create sends the storefront id after authoritative preparation, never a fabricated key',()=>armed(async()=>{
  const x=await setup();const old=args();delete old.checkout.reap.selection;
- await assert.rejects(x.surface.callTool('create_checkout',old,SESSION));assert.equal(posts(x).length,0);
- await x.surface.callTool('recover_checkout',old,SESSION);
- const recovery=x.calls.find(c=>c.path.endsWith('/recover'));assert.equal(recovery.body.variant_key,KEY+'::v::'+ID);
+ const out=await x.surface.callTool('create_checkout',old,SESSION);assert.match(out.id,/^reap_rp_/);
+ assert.equal(posts(x).length,1);const body=posts(x)[0].body;
+ assert.equal(body.variant_id,ID);assert.equal(Object.hasOwn(body,'variant_key'),false);assert.equal(body.item_source,'cart_link');
  assert.equal(x.calls.filter(c=>c.path.endsWith('/prepare')).length,1);
 }));
 test('original canonical witness recovery is read-only after catalog, source, price and create gates drift',()=>armed(async()=>{

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectedReapVariantKey, tryReapAgenticCheckout, decodeReapCheckoutId } from '../src/ucpReapAgenticLane.js';
+import { selectedReapVariantKey, selectedReapVariantSelector, tryReapAgenticCheckout, decodeReapCheckoutId } from '../src/ucpReapAgenticLane.js';
 import { toToolError } from '../src/commerceToolSurface.js';
 import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
 import { readFileSync } from 'node:fs';
@@ -42,6 +42,14 @@ test('recovery derives the same selector without present-day variant reads',()=>
  assert.equal(selectedReapVariantKey(args('42199434526795'),{},key,{recovery:true}),selection('42199434526795').variant_key);
  const legacy=args('42199434526795');delete legacy.checkout.reap.selection;assert.equal(selectedReapVariantKey(legacy,{},key,{recovery:true}),`${key}::v::42199434526795`);
  assert.equal(selectedReapVariantKey(args(),{},key,{recovery:true}),undefined);
+});
+
+test('a create selector is the witness sku or the storefront id, never a guessed key',()=>{
+ assert.deepEqual(selectedReapVariantSelector(args('42199434526795'),row,key),{variant_key:selection('42199434526795').variant_key});
+ const numeric=args('42199434526795');delete numeric.checkout.reap.selection;
+ assert.deepEqual(selectedReapVariantSelector(numeric,row,key),{variant_id:'42199434526795'});
+ assert.equal(selectedReapVariantSelector(args(),row,key),undefined);
+ assert.throws(()=>selectedReapVariantSelector(args('999'),row,key),e=>e.detail?.reason==='ucp_reap_variant_not_created');
 });
 
 for (const code of ['create_disabled', 'pilot_scope_invalid', 'reap_create_paused']) {
