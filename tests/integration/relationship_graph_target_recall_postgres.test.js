@@ -14,9 +14,15 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
   const run = (name, args) => execFileSync(path.join(BIN, name), args, { env, stdio: 'pipe' });
   const anchor = { product_ref: 'product:sig_anchor', product_key: 'anchor', name: 'Gentle Hyaluronic Face Serum',
     category: 'Face Serum', brand: 'House', description: 'Gentle hydration hyaluronic acid serum' };
-  const queryFn = jest.fn((sql, params) => client.query(sql, params));
+  // Every statement's duration, both modes: the deadline below is per statement, as prod's is.
+  const statementMs = [];
+  const timedQuery = async (sql, params) => {
+    const startedAt = Date.now();
+    try { return await client.query(sql, params); } finally { statementMs.push(Date.now() - startedAt); }
+  };
+  const queryFn = jest.fn(timedQuery);
   // Build-once mode runs on one dedicated connection (src/db withClient in the job).
-  const clientQuery = jest.fn((sql, params) => client.query(sql, params));
+  const clientQuery = jest.fn(timedQuery);
   const withClientFn = jest.fn((fn) => fn({ query: clientQuery }));
   let mode = 'per-call';
   beforeAll(async () => {
@@ -55,7 +61,7 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
     finally { if (started) run('pg_ctl', ['-D', dir, '-m', 'immediate', '-w', 'stop']); if (dir) fs.rmSync(dir, { recursive: true, force: true }); }
   });
   beforeEach(async () => {
-    queryFn.mockClear(); clientQuery.mockClear(); withClientFn.mockClear();
+    queryFn.mockClear(); clientQuery.mockClear(); withClientFn.mockClear(); statementMs.length = 0;
     await client.query('TRUNCATE catalog_products,catalog_row_trust,merchant_stores,external_product_seeds');
   });
   async function product(key, overrides = {}) {
@@ -193,12 +199,15 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
         product_ref: `product:sig_stress_anchor_${index}`, product_key: `stress_anchor_${index}`,
         description: Array.from({ length: 24 }, (_, token) => `missingword${token}`).join(' ') }));
       // A database statement deadline is independent of Jest's timer and catches
-      // unbounded anchor x text work even when the returned candidates are capped.
+      // unbounded anchor x text work even when the returned candidates are capped. prod's 30 s
+      // statement_timeout is per statement: per-call this load is one statement; build-once it is
+      // the one-time eligible build plus a much cheaper ranking query, each under the deadline.
       await client.query('SET statement_timeout=30000');
       try {
-        const startedAt = Date.now();
+        statementMs.length = 0;
         const loaded = await load({ anchors, perAnchor: 25, maxPages: 1 });
-        expect(Date.now() - startedAt).toBeLessThan(30000);
+        expect(statementMs.length).toBeGreaterThan(0);
+        expect(Math.max(...statementMs)).toBeLessThan(30000);
         expect(loaded.diagnostics).toMatchObject({ query_count: 1, candidate_count: 500, rows_read: 500 });
         expect(Object.values(loaded.candidatesByAnchor).map((list) => list.length)).toEqual(Array(20).fill(25));
       } finally {
