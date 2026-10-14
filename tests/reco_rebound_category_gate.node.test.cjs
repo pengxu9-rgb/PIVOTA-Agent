@@ -415,13 +415,40 @@ test('end to end: a serum foundation is not grounded to a niacinamide serum, nor
   }
 });
 
-test('judgeRecoReboundCandidate: the buyer\'s need is held to the same rule as the item', () => {
+test('judgeRecoReboundCandidate: a need that ASKS FOR makeup or fragrance gets no substitute', () => {
   const toner = { catalog_category_path: 'beauty/skincare/tone/toner', name: 'Hydrating Toner' };
   const judge = (needText) => judgeRecoReboundCandidate({ requestedStep: 'toner', requestedText: 'toner Facial Mist', needText, candidate: toner });
-  assert.deepEqual(judge('a setting mist that keeps makeup in place all day'), { accept: false, reason: 'non_skin_need' });
-  assert.deepEqual(judge('a light floral eau de toilette'), { accept: false, reason: 'non_skin_need' });
-  assert.deepEqual(judge('something for chapped lips'), { accept: false, reason: 'non_skin_need' });
-  for (const need of ['a hydrating toner for dry skin', 'a toner that sits well under makeup', 'a fragrance-free toner', 'a toner to wear under foundation', '']) {
+  for (const need of [
+    'a setting mist that keeps makeup in place all day', // the resolver reads this as toner: gap list
+    'a setting spray for oily skin',
+    'a body mist for summer',
+    'a light floral eau de toilette',
+    "a bronzer for fair skin that isn't too orange",
+    'a tinted moisturizer with SPF', // resolves to foundation: shade-led
+  ]) {
+    assert.deepEqual(judge(need), { accept: false, reason: 'shade_or_scent_led_need' }, need);
+  }
+  // A need is a sentence: these MENTION non-skin words and still ask for skincare. Mutant killed:
+  // holding the need to the item rule (every word) -- each of these lost its substitute in review.
+  for (const need of [
+    'a hydrating toner for dry skin',
+    'a toner that sits well under makeup',
+    'a toner to wear under foundation',
+    // Mutant killed: resolving the need unmasked -- "foundation" would be the only step left.
+    'something light to wear under my foundation',
+    'a fragrance-free toner',
+    'a moisturizer for perioral dermatitis around my lips',
+    'a cleanser and moisturizer, plus something for chapped lips',
+    'a body lotion for dry hands and nails',
+    'a serum for frown lines between my brows',
+    'a firming and contouring neck cream',
+    'a soothing lotion for after tanning',
+    'moisturizer without fragrance or perfume',
+    'a body lotion with a light perfume',
+    'a face wash for men with facial hair',
+    'a serum to build a good foundation for my routine',
+    '',
+  ]) {
     assert.deepEqual(judge(need), { accept: true, reason: 'catalog_category_compatible' }, need);
   }
 });

@@ -99,6 +99,10 @@ const NON_SKIN_ITEM_DENIALS = Object.freeze([
   /\beye\s+contour\b/gi,
 ]);
 
+// Makeup and fragrance products the step resolver settles to a skincare step ("setting mist" and
+// "body mist" read as toner). Only these: a need is matched on what it asks for, not on every word.
+const NEED_RESOLVER_GAPS_RE = /\b(?:setting (?:sprays?|mists?|powders?)|body mists?|fragrance mists?|body sprays?)\b/i;
+
 function maskNonSkinItemDenials(value) {
   let out = maskNonCategoryQualifiers(value);
   for (const pattern of NON_SKIN_ITEM_DENIALS) out = out.replace(pattern, (match) => ' '.repeat(match.length));
@@ -152,9 +156,18 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', needText
   // THE BUYER'S NEED, not only the model's item. Live 2026-10-14 "a setting mist that keeps makeup in
   // place" grounded to a skincare serum mist: the model's own item was a facial mist typed toner, so
   // the item said nothing non-skin, and a toner was a compatible substitute FOR THE ITEM. A need that
-  // names makeup, fragrance or another non-skin kind gets no substitute at all.
-  if (NON_SKIN_ITEM_RE.test(maskNonSkinItemDenials(text(needText)))) {
-    return { accept: false, reason: 'non_skin_need' };
+  // ASKS FOR a makeup or fragrance product gets no substitute at all.
+  //
+  // Narrower than the item rule on purpose. A need is a sentence, not a product name: "a moisturizer
+  // for dry patches around my lips", "a serum for frown lines between my brows" and "a firming,
+  // contouring neck cream" are skincare asks that MENTION non-skin words, and the item rule would have
+  // refused every substitute in them (review of the first cut). So the need must RESOLVE to a single
+  // makeup or fragrance step, or name one of the few makeup/fragrance products the step resolver reads
+  // as skincare (NEED_RESOLVER_GAPS_RE).
+  const maskedNeed = maskNonSkinItemDenials(text(needText));
+  const needStep = extractRecoTargetStepFromText(maskedNeed);
+  if ((needStep && resolveRecoStepDomain(needStep) !== 'skincare') || NEED_RESOLVER_GAPS_RE.test(maskedNeed)) {
+    return { accept: false, reason: 'shade_or_scent_led_need' };
   }
   const row = candidate && typeof candidate === 'object' ? candidate : {};
   const title = text(row.name || row.title || row.display_name);

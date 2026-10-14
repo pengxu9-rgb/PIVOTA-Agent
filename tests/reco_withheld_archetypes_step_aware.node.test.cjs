@@ -74,6 +74,22 @@ test('live repro: a step-aware bronzer need whose pick is withheld still names i
   assert.ok(!JSON.stringify(out).includes(LIP_BALM.product_id));
   assert.deepEqual(out.metadata.unresolved_archetypes, ['Hoola Matte Bronzer'],
     `the withheld pick must be named; metadata was ${JSON.stringify(out.metadata)}`);
+  // And the reason says the lane answered with nothing buyable -- not that the catalog pool was empty,
+  // which is what the step-aware reason computed over the already-emptied list would claim.
+  assert.equal(out.metadata.products_empty_reason, 'no_grounded_recommendations');
+  assert.equal(out.metadata.ungrounded_suppressed, 1);
+});
+
+test('an item the model gave no name is not reported under a placeholder', async () => {
+  // Normalization fills a blank name from the use case or a humanized type ("skincare product") --
+  // text no partner should read as a product the model chose, least of all on a bronzer need.
+  const out = await askAgentDoor({
+    need: "a bronzer for fair skin that isn't too orange",
+    answer: answer([{ product_type: 'bronzer', use_case: 'warm undertone', score: 80 }]),
+    pool: [LIP_BALM],
+  });
+  assert.deepEqual(out.signals, []);
+  assert.equal(out.metadata.unresolved_archetypes, undefined, JSON.stringify(out.metadata));
 });
 
 test('the setting-mist NEED is not answered with a skincare toner, whatever the model typed', async () => {
@@ -91,8 +107,8 @@ test('the setting-mist NEED is not answered with a skincare toner, whatever the 
 });
 
 test('a need that only DESCRIBES makeup is still a skincare need, and keeps its substitute', async () => {
-  // "under makeup" is context, not a category (maskNonCategoryQualifiers). Mutant killed: testing the
-  // need unmasked -- every "primer-friendly" or "under makeup" skincare ask would lose its substitute.
+  // End-to-end control for the need rule: "under makeup" is context, not an ask. (The unmasked-need
+  // mutant is killed by the gate's unit test on "a toner to wear under foundation".)
   const out = await askAgentDoor({
     need: 'a hydrating toner that sits well under makeup',
     answer: answer([{ name: 'Supple Preparation Facial Toner', brand: 'Dear, Klairs', product_type: 'toner', score: 85 }]),
@@ -111,4 +127,51 @@ test('control: a skincare need still gets its compatible substitute', async () =
   assert.equal(out.signals.length, 1);
   assert.equal(out.signals[0].value.product.product_id, TONER.product_id);
   assert.equal(out.signals[0].value.lane_confidence.basis, 'catalog_rebound');
+});
+
+test('the door keeps every withheld name, up to its own cap -- not the 6-item default', async () => {
+  const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts');
+  const names = Array.from({ length: 9 }, (_, i) => `Withheld Pick ${i + 1}`);
+  const out = await makeRecommendProducts({
+    isEnabled: () => true,
+    generate: async () => ({ norm: { payload: { recommendations: [], unresolved_archetypes: names } } }),
+  })({ need: 'a bronzer' });
+  // Mutant killed: asStringArray(payload.unresolved_archetypes) with its default max of 6.
+  assert.deepEqual(out.metadata.unresolved_archetypes, names);
+  assert.equal(out.metadata.ungrounded_suppressed, 9);
+});
+
+test('withheld names reach the lane payload on the agent door only; typed and chat gain no field', async () => {
+  // The REAL lane, called the way each door calls it. Mutant killed: setting the field whatever the door.
+  const runLane = async (doorArgs) => {
+    delete require.cache[ROUTES_ID];
+    delete require.cache[CLIENT_ID];
+    const client = require('../src/auroraBff/auroraDecisionClient');
+    const originalChat = client.auroraChat;
+    const originalQuery = dbModule.query;
+    client.auroraChat = async () => ({ answer: JSON.stringify(answer([{ name: 'Hoola Matte Bronzer', brand: 'Benefit', product_type: 'bronzer', score: 90 }])) });
+    dbModule.query = async (sql) => (/SELECT payload/.test(sql)
+      ? { rows: [{ payload: [LIP_BALM], refreshed_at: new Date().toISOString() }] }
+      : { rows: [], rowCount: 0 });
+    try {
+      const { __internal } = require('../src/auroraBff/routes');
+      const need = "a bronzer for fair skin that isn't too orange";
+      const out = await __internal.generateProductRecommendations({
+        ctx: { request_id: 'r', lang: 'EN' }, profile: null, recentLogs: [], message: need, focus: need,
+        includeAlternatives: false, debug: false, logger: null, promptDomainScope: 'beauty', ...doorArgs,
+      });
+      return out && out.norm && out.norm.payload;
+    } finally {
+      client.auroraChat = originalChat;
+      dbModule.query = originalQuery;
+      delete require.cache[ROUTES_ID];
+      delete require.cache[CLIENT_ID];
+    }
+  };
+  const agent = await runLane({ recoTriggerSource: 'agent_tool', entryType: 'direct' });
+  assert.deepEqual(agent.unresolved_archetypes, ['Hoola Matte Bronzer']);
+  const typed = await runLane({ recoTriggerSource: 'typed_reco', entryType: 'direct' });
+  assert.equal(typed.unresolved_archetypes, undefined);
+  const chat = await runLane({ recoTriggerSource: null, entryType: 'chat' });
+  assert.equal(chat.unresolved_archetypes, undefined);
 });

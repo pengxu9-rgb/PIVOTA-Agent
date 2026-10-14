@@ -92,8 +92,9 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
     const norm = normalizeRecoGenerate(mapped);
     // Items the grounding pass dropped from a step-aware answer because nothing in the catalog could
     // stand for them. normalizeRecoGenerate keeps an allowlist, so they are set after it; the agent
-    // door reports them as metadata.unresolved_archetypes rather than as a bare empty list.
-    if (Array.isArray(groundingResult?.withheld_archetypes) && groundingResult.withheld_archetypes.length) {
+    // door reports them as metadata.unresolved_archetypes rather than as a bare empty list. Agent door
+    // only (it is the one door with needText): the chat and typed payloads gain no new field.
+    if (needText && Array.isArray(groundingResult?.withheld_archetypes) && groundingResult.withheld_archetypes.length) {
       norm.payload.unresolved_archetypes = groundingResult.withheld_archetypes.slice();
     }
     const viablePoolState = isPlainObject(catalogCandidateState)

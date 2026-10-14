@@ -29645,8 +29645,16 @@ async function groundRecoRecommendationsFromCatalog({
   // Tests only: stands in for the catalog search on the live (non-cache) recall path.
   searchFn = null,
 } = {}) {
+  // The name the MODEL gave each item, before normalization fills a blank one from its use case or a
+  // humanized type ("skincare product"). Only a model-given name is reported as a withheld archetype.
+  const modelNameByRec = new WeakMap();
   const recs = (Array.isArray(recommendations) ? recommendations : [])
-    .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
+    .map((item, index) => {
+      const rec = normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index });
+      const modelName = isPlainObject(item) ? pickFirstTrimmed(item.display_name, item.name, item.title) : '';
+      if (isPlainObject(rec) && modelName) modelNameByRec.set(rec, modelName);
+      return rec;
+    })
     .filter((item) => isPlainObject(item));
 
   if (!recs.length) {
@@ -29860,7 +29868,7 @@ async function groundRecoRecommendationsFromCatalog({
   // bare empty list (live 2026-10-14).
   const withheldArchetypes = next
     .filter((item) => !nextForDisplay.includes(item))
-    .map((item) => pickFirstTrimmed(item.display_name, item.name, item.title))
+    .map((item) => modelNameByRec.get(item) || '')
     .filter(Boolean);
   const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
   const ungroundedCount = Math.max(0, nextForDisplay.length - groundedCount);
