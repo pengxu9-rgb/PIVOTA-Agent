@@ -9,7 +9,7 @@ const DATABASE_URL = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const BIN = process.env.RELGRAPH_TEST_POSTGRES_BIN || '/opt/homebrew/opt/postgresql@15/bin';
 const postgresDescribe = (DATABASE_URL || process.env.RELGRAPH_TEST_POSTGRES === '1') ? describe : describe.skip;
 postgresDescribe('full-catalog target recall on isolated Postgres', () => {
-  let dir; let client; let started = false;
+  let dir; let client; let clientConfig; let started = false;
   const env = { ...process.env, LANG: 'C', LC_ALL: 'C' };
   const run = (name, args) => execFileSync(path.join(BIN, name), args, { env, stdio: 'pipe' });
   const anchor = { product_ref: 'product:sig_anchor', product_key: 'anchor', name: 'Gentle Hyaluronic Face Serum',
@@ -28,7 +28,8 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
   beforeAll(async () => {
     if (DATABASE_URL) {
       if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(DATABASE_URL).hostname)) throw new Error('target recall Postgres tests require local database');
-      client = new Client({ connectionString: DATABASE_URL });
+      clientConfig = { connectionString: DATABASE_URL };
+      client = new Client(clientConfig);
     } else {
       const net = require('node:net');
       const port = await new Promise((resolve, reject) => {
@@ -39,7 +40,8 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
       run('initdb', ['-D', dir, '-A', 'trust', '--no-locale', '--encoding=UTF8']);
       run('pg_ctl', ['-D', dir, '-l', path.join(dir, 'server.log'), '-o', `-k /tmp -c listen_addresses=127.0.0.1 -p ${port}`, '-w', 'start']);
       started = true;
-      client = new Client({ host: '127.0.0.1', port, user: process.env.USER, database: 'postgres' });
+      clientConfig = { host: '127.0.0.1', port, user: process.env.USER, database: 'postgres' };
+      client = new Client(clientConfig);
     }
     await client.connect();
     await client.query('CREATE SCHEMA relgraph_target_recall_test; SET search_path TO relgraph_target_recall_test');
@@ -282,6 +284,7 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
     } }));
     await expect(loadProductRelationshipGraphTargetRecall({ queryFn, withClientFn: failing, anchors, market: 'US' }))
       .rejects.toThrow('boom');
+    expect(failing).toHaveBeenCalledTimes(1); // not a connection error: no retry
     expect((await client.query("SELECT to_regclass('pg_temp.relgraph_target_recall_eligible') AS t")).rows[0].t).toBeNull();
     expect((await client.query('SELECT 1 AS ok')).rows[0].ok).toBe(1); // the connection stays usable
   });
@@ -316,5 +319,81 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
     } finally {
       delete process.env.RELGRAPH_RUN_SCOPED_TABLES_DISABLED;
     }
+  });
+
+  // A connection that fails on the Nth shared recall query of its first stage attempt.
+  function flakyConnection(onFailure) {
+    let attempts = 0;
+    const fn = jest.fn((stage) => {
+      attempts += 1;
+      const attempt = attempts;
+      let recallQueries = 0;
+      return stage({ query: async (sql, params) => {
+        if (sql === TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL) {
+          recallQueries += 1;
+          const failure = await onFailure(attempt, recallQueries);
+          if (failure) throw failure;
+        }
+        return client.query(sql, params);
+      } });
+    });
+    return fn;
+  }
+  const recallOptions = (anchors) => ({ anchors, existingProducts: anchors.slice(0, 5), market: 'US', perAnchor: 6 });
+  const stripScans = ({ eligible_scan_count: _scans, ...rest }) => rest;
+
+  test('build-once retries the stage once on a fresh connection after a transient connection error', async () => {
+    const anchors = await mixedCatalog();
+    const perCall = await loadProductRelationshipGraphTargetRecall({ queryFn, ...recallOptions(anchors) });
+    const flaky = flakyConnection(async (attempt, n) => (attempt === 1 && n === 2
+      ? Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }) : null));
+    const retried = await loadProductRelationshipGraphTargetRecall({ queryFn: jest.fn(), withClientFn: flaky, ...recallOptions(anchors) });
+    expect(flaky).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.candidatesByAnchor).toEqual(perCall.candidatesByAnchor);
+    expect(stripScans(retried.diagnostics)).toEqual(stripScans(perCall.diagnostics));
+  });
+
+  test('a lost run-scoped table is retried once, never read as a missing source', async () => {
+    const anchors = await mixedCatalog();
+    const perCall = await loadProductRelationshipGraphTargetRecall({ queryFn, ...recallOptions(anchors) });
+    // The session "loses" its temp table before the second recall query of the first attempt.
+    const dropOnce = flakyConnection(async (attempt, n) => {
+      if (attempt === 1 && n === 2) await client.query('DROP TABLE pg_temp.relgraph_target_recall_eligible');
+      return null;
+    });
+    const retried = await loadProductRelationshipGraphTargetRecall({ queryFn: jest.fn(), withClientFn: dropOnce, ...recallOptions(anchors) });
+    expect(dropOnce).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.diagnostics.skipped).toBeUndefined();
+
+    const dropAlways = flakyConnection(async (_attempt, n) => {
+      if (n === 2) await client.query('DROP TABLE pg_temp.relgraph_target_recall_eligible');
+      return null;
+    });
+    await expect(loadProductRelationshipGraphTargetRecall({ queryFn: jest.fn(), withClientFn: dropAlways, ...recallOptions(anchors) }))
+      .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
+    expect(dropAlways).toHaveBeenCalledTimes(2);
+  });
+
+  // A client that opens a NEW backend session for every statement, as a transaction-mode pooler
+  // would: a temp table never survives to the next statement.
+  const perStatementSession = () => ({ query: async (sql, params) => {
+    const session = new Client(clientConfig);
+    await session.connect();
+    try {
+      await session.query('SET search_path TO relgraph_target_recall_test');
+      return await session.query(sql, params);
+    } finally {
+      await session.end();
+    }
+  } });
+
+  test('a temp table that never survives its statement is LOST, never a missing source', async () => {
+    const anchors = await mixedCatalog();
+    const perSession = jest.fn((stage) => stage(perStatementSession()));
+    await expect(loadProductRelationshipGraphTargetRecall({ queryFn: jest.fn(), withClientFn: perSession, ...recallOptions(anchors) }))
+      .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
+    expect(perSession).toHaveBeenCalledTimes(2);
   });
 });

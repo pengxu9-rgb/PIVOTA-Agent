@@ -10,7 +10,7 @@ const DATABASE_URL = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const BIN = process.env.RELGRAPH_TEST_POSTGRES_BIN || '/opt/homebrew/opt/postgresql@15/bin';
 const postgresDescribe = (DATABASE_URL || process.env.RELGRAPH_TEST_POSTGRES === '1') ? describe : describe.skip;
 postgresDescribe('KB document identity built once per run on isolated Postgres', () => {
-  let dir; let client; let started = false;
+  let dir; let client; let clientConfig; let started = false;
   const env = { ...process.env, LANG: 'C', LC_ALL: 'C' };
   const run = (name, args) => execFileSync(path.join(BIN, name), args, { env, stdio: 'pipe' });
   const queryFn = jest.fn((sql, params) => client.query(sql, params));
@@ -20,7 +20,8 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
   beforeAll(async () => {
     if (DATABASE_URL) {
       if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(DATABASE_URL).hostname)) throw new Error('KB identity Postgres tests require local database');
-      client = new Client({ connectionString: DATABASE_URL });
+      clientConfig = { connectionString: DATABASE_URL };
+      client = new Client(clientConfig);
     } else {
       const net = require('node:net');
       const port = await new Promise((resolve, reject) => {
@@ -31,7 +32,8 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
       run('initdb', ['-D', dir, '-A', 'trust', '--no-locale', '--encoding=UTF8']);
       run('pg_ctl', ['-D', dir, '-l', path.join(dir, 'server.log'), '-o', `-k /tmp -c listen_addresses=127.0.0.1 -p ${port}`, '-w', 'start']);
       started = true;
-      client = new Client({ host: '127.0.0.1', port, user: process.env.USER, database: 'postgres' });
+      clientConfig = { host: '127.0.0.1', port, user: process.env.USER, database: 'postgres' };
+      client = new Client(clientConfig);
     }
     await client.connect();
     await client.query('CREATE SCHEMA relgraph_kb_identity_test; SET search_path TO relgraph_kb_identity_test');
@@ -171,8 +173,10 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
       if (/document_identity AS \(/.test(sql) && (intelCalls += 1) === 2) return Promise.reject(new Error('boom'));
       return client.query(sql, params);
     } });
-    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: failing, products, market: 'US', limit: 500 }))
+    const failingFn = jest.fn(failing);
+    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: failingFn, products, market: 'US', limit: 500 }))
       .rejects.toThrow('boom');
+    expect(failingFn).toHaveBeenCalledTimes(1); // not a connection error: no retry
     expect(await leftover()).toBeNull();
   });
 
@@ -201,5 +205,98 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
     } finally {
       delete process.env.RELGRAPH_RUN_SCOPED_TABLES_DISABLED;
     }
+  });
+
+  // A connection whose first stage attempt (or every attempt) loses the identity table before
+  // its second targeted intel query.
+  function droppingConnection({ everyAttempt }) {
+    let attempts = 0;
+    return jest.fn((stage) => {
+      attempts += 1;
+      const attempt = attempts;
+      let intelQueries = 0;
+      return stage({ query: async (sql, params) => {
+        if (/document_identity AS \(/.test(sql) && (intelQueries += 1) === 2 && (everyAttempt || attempt === 1)) {
+          await client.query('DROP TABLE pg_temp.relgraph_kb_document_identity');
+        }
+        return client.query(sql, params);
+      } });
+    });
+  }
+
+  test('a lost identity table is retried once, and never yields silently empty intel', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    const dropOnce = droppingConnection({ everyAttempt: false });
+    const retried = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn: dropOnce, ...options });
+    expect(dropOnce).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.intelRows).toEqual(perCall.intelRows);
+    const dropAlways = droppingConnection({ everyAttempt: true });
+    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: dropAlways, ...options }))
+      .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
+    expect(dropAlways).toHaveBeenCalledTimes(2);
+  });
+
+  test('a transient connection error retries the KB stage once on a fresh connection', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    let attempts = 0;
+    const flaky = jest.fn((stage) => {
+      attempts += 1;
+      const attempt = attempts;
+      let intelQueries = 0;
+      return stage({ query: (sql, params) => {
+        if (attempt === 1 && /document_identity AS \(/.test(sql) && (intelQueries += 1) === 3) {
+          return Promise.reject(Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' }));
+        }
+        return client.query(sql, params);
+      } });
+    });
+    const retried = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn: flaky, ...options });
+    expect(flaky).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.intelRows).toEqual(perCall.intelRows);
+  });
+
+  test('a one-connection pool keeps the per-call identity scan (the stage would wait on itself)', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    const previous = process.env.DB_POOL_MAX;
+    process.env.DB_POOL_MAX = '1';
+    try {
+      const loaded = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn, ...options });
+      expect(withClientFn).not.toHaveBeenCalled();
+      expect(loaded.products).toEqual(perCall.products);
+      expect(loaded.diagnostics.kb_document_identity_scan_count).toBe(3);
+    } finally {
+      if (previous === undefined) delete process.env.DB_POOL_MAX; else process.env.DB_POOL_MAX = previous;
+    }
+  });
+
+  // A client that opens a NEW backend session for every statement, as a transaction-mode pooler
+  // would: a temp table never survives to the next statement.
+  const perStatementSession = () => ({ query: async (sql, params) => {
+    const session = new Client(clientConfig);
+    await session.connect();
+    try {
+      await session.query('SET search_path TO relgraph_kb_identity_test');
+      return await session.query(sql, params);
+    } finally {
+      await session.end();
+    }
+  } });
+
+  test('an identity table that never survives its statement is LOST, never empty intel', async () => {
+    // CTAS succeeds; the ANALYZE on the next session fails with 3F000 schema "pg_temp" does not
+    // exist, which names no table.
+    const products = await fixture();
+    const perSession = jest.fn((stage) => stage(perStatementSession()));
+    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: perSession, products, market: 'US', limit: 500 }))
+      .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
+    expect(perSession).toHaveBeenCalledTimes(2);
   });
 });

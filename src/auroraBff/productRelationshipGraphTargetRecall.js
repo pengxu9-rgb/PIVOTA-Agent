@@ -4,7 +4,7 @@ const { activeCatalogProductSourceWhere } = require('../services/activeCatalogSo
 const { externalSeedCatalogBindingSql } = require('../services/externalSeedCatalogBindingSql');
 const { PDP_RENDER_FRESHNESS_DAYS } = require('./relationshipGraphCoverage');
 const { brand, optionRole, isSameFamilyVariant } = require('./relationshipPairPolicy');
-const { runScopedTable, runScopedTablesDisabled } = require('./relationshipGraphRunScopedTable');
+const { runScopedTable, runScopedTablesDisabled, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
 
 const DEFAULT_TARGET_RECALL_OPTIONS = Object.freeze({
   maxAnchors: 200,
@@ -203,21 +203,18 @@ async function loadProductRelationshipGraphTargetRecall({ queryFn, withClientFn,
     return runTargetRecall({ anchors, existingProducts, market, caps, eligibleScanCount: () => undefined,
       recallQuery: typeof queryFn === 'function' ? (params) => queryFn(TARGET_RECALL_SQL, params) : null });
   }
-  return withClientFn(async (client) => {
+  return withRunScopedConnection(withClientFn, async (client) => {
     const eligible = runScopedTable(client, { name: SHARED_ELIGIBLE_TABLE, columns: SHARED_ELIGIBLE_COLUMNS,
       populateSql: eligibleCatalogSelectSql('$1'), params: [String(market || 'US').trim().toUpperCase()] });
     try {
       // Built on the first recall query, so a missing catalog/trust source fails inside the same
       // fail-closed path, with the same diagnostics, as the per-call mode's first query.
       return await runTargetRecall({ anchors, existingProducts, market, caps, eligibleScanCount: () => eligible.scanCount(),
-        recallQuery: async (params) => {
-          await eligible.ensure();
-          return client.query(TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL, params);
-        } });
+        recallQuery: (params) => eligible.query(TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL, params) });
     } finally {
       await eligible.drop().catch(() => {});
     }
-  });
+  }, { label: 'relgraph_target_recall' });
 }
 
 async function runTargetRecall({ anchors, existingProducts, market, caps, recallQuery, eligibleScanCount }) {

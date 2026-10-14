@@ -1,4 +1,4 @@
-const { runScopedTable, runScopedTablesDisabled } = require('./relationshipGraphRunScopedTable');
+const { runScopedTable, runScopedTablesDisabled, configuredDbPoolMax, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
 const { brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const {
   isSameProductOrVariant,
@@ -2471,22 +2471,24 @@ function enrichProductsWithEvidence(products = [], { intelRows = [], ingredientR
 // RELGRAPH_RUN_SCOPED_TABLES_DISABLED) every batch re-materializes it, as before. Both modes return
 // the same rows (tests/integration/relationship_graph_kb_document_identity_postgres.test.js).
 async function enrichProductRelationshipGraphProducts({ queryFn, withClientFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET } = {}) {
+  // The stage holds its connection while the ingredient loads and seller lane query the pool
+  // alongside it, so a one-connection pool would wait on itself: such a pool keeps per-call.
   const shared = typeof withClientFn === 'function' && typeof queryFn === 'function' &&
-    !runScopedTablesDisabled() && products.length > 0;
+    !runScopedTablesDisabled() && products.length > 0 && configuredDbPoolMax() >= 2;
   if (!shared) return enrichProductsInBatches({ queryFn, products, limit, market, documentIdentity: null });
-  return withClientFn(async (client) => {
+  return withRunScopedConnection(withClientFn, async (client) => {
     const identity = runScopedTable(client, { name: KB_DOCUMENT_IDENTITY_TABLE, populateSql: KB_DOCUMENT_IDENTITY_SELECT });
     try {
       const result = await enrichProductsInBatches({ queryFn, products, limit, market, documentIdentity: {
         table: identity.table,
-        queryFn: async (sql, params) => { await identity.ensure(); return client.query(sql, params); },
+        queryFn: (sql, params) => identity.query(sql, params),
       } });
       result.diagnostics.kb_document_identity_scan_count = identity.scanCount();
       return result;
     } finally {
       await identity.drop().catch(() => {});
     }
-  });
+  }, { label: 'relgraph_kb_enrichment' });
 }
 
 async function enrichProductsInBatches({ queryFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET, documentIdentity }) {
