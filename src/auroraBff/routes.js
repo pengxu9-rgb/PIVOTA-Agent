@@ -29648,11 +29648,17 @@ async function groundRecoRecommendationsFromCatalog({
   // The name the MODEL gave each item, before normalization fills a blank one from its use case or a
   // humanized type ("skincare product"). Only a model-given name is reported as a withheld archetype.
   const modelNameByRec = new WeakMap();
+  const catalogFillerRecs = new WeakSet();
   const recs = (Array.isArray(recommendations) ? recommendations : [])
     .map((item, index) => {
       const rec = normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index });
-      const modelName = isPlainObject(item) ? pickFirstTrimmed(item.display_name, item.name, item.title) : '';
+      // Catalog filler appended before grounding (applyStrictConformingTopUp stamps it 'positional') is
+      // not a model pick: its title names a buyable product, and reporting it as a withheld archetype
+      // would hand a partner the exact substitute the gate refused.
+      const catalogFiller = isPlainObject(item) && item.__pivota_score_basis === 'positional';
+      const modelName = isPlainObject(item) && !catalogFiller ? pickFirstTrimmed(item.display_name, item.name, item.title) : '';
       if (isPlainObject(rec) && modelName) modelNameByRec.set(rec, modelName);
+      if (isPlainObject(rec) && catalogFiller) catalogFillerRecs.add(rec);
       return rec;
     })
     .filter((item) => isPlainObject(item));
@@ -29866,8 +29872,8 @@ async function groundRecoRecommendationsFromCatalog({
   // that the catalog could not supply (makeup and fragrance never take a substitute), and the agent
   // door promises to name them in unresolved_archetypes. Dropped silently, a bronzer need came back as a
   // bare empty list (live 2026-10-14).
-  const withheldArchetypes = next
-    .filter((item) => !nextForDisplay.includes(item))
+  const withheldItems = next.filter((item) => !nextForDisplay.includes(item) && !catalogFillerRecs.has(item));
+  const withheldArchetypes = withheldItems
     .map((item) => modelNameByRec.get(item) || '')
     .filter(Boolean);
   const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
@@ -29892,6 +29898,8 @@ async function groundRecoRecommendationsFromCatalog({
   return {
     recommendations: nextForDisplay,
     withheld_archetypes: withheldArchetypes,
+    // Every withheld model item, named or not: an unnamed one still means "answered, nothing buyable".
+    withheld_count: withheldItems.length,
     grounding_status: groundingStatus,
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,

@@ -951,7 +951,9 @@ function makeRecommendProducts(deps = {}) {
     // supply; see groundRecoRecommendationsFromCatalog). They are ungrounded items like the ones dropped
     // below, and are counted as such.
     const laneWithheld = asStringArray(payload.unresolved_archetypes, MAX_UNRESOLVED_ARCHETYPES);
-    const suppressed = { ungrounded: laneWithheld.length, unidentified: 0 };
+    // Unnamed withheld items count too (the model gave no name to report).
+    const laneWithheldCount = Math.max(laneWithheld.length, Number.isInteger(payload.withheld_item_count) ? payload.withheld_item_count : 0);
+    const suppressed = { ungrounded: laneWithheldCount, unidentified: 0 };
     const unresolvedArchetypes = laneWithheld.slice();
     let groundedSignals = [];
     for (const s of projected) {
@@ -1208,7 +1210,7 @@ function makeRecommendProducts(deps = {}) {
           // The lane's own step-aware reason ('no_viable_candidates_for_target') is computed over the
           // list AFTER grounding withheld these items, so it blames the catalog's pool for what was a
           // refusal to substitute. Withheld items mean the lane answered and nothing was buyable.
-          ? (laneWithheld.length > 0 ? 'no_grounded_recommendations' : null)
+          ? (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
             || firstString(payload.products_empty_reason, result?.upstreamFailureCode)
             || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
             // The lane DID answer, but every item it produced was an archetype it could not resolve

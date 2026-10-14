@@ -1595,7 +1595,7 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     && /the catalog product the model itself picked, by its catalog id/.test(src)
     && /A `catalog_rebound` row is always face or body skincare/.test(src)
     && /Grounding does not copy the requested type onto the row's `product_type` or `category`/.test(src)
-    && /Nothing is substituted when your need asks for a makeup or fragrance product \(a setting spray or body mist counts\), or when the model's item or the candidate names makeup, fragrance, hair, lips, lashes, brows, nails or self-tan/.test(src),
+    && /Nothing is substituted when your need asks for a makeup, fragrance, lash or brow product \(a setting spray, body mist or lash serum counts\), or when the model's item or the candidate names makeup, fragrance, hair, lips, lashes, brows, nails or self-tan/.test(src),
     'the description must state the rebound rule the gate enforces');
   assert.ok(!/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
     && !/drop or re-check `catalog_rebound` rows/.test(src),

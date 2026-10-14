@@ -97,6 +97,9 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
     if (needText && Array.isArray(groundingResult?.withheld_archetypes) && groundingResult.withheld_archetypes.length) {
       norm.payload.unresolved_archetypes = groundingResult.withheld_archetypes.slice();
     }
+    if (needText && Number(groundingResult?.withheld_count) > 0) {
+      norm.payload.withheld_item_count = Math.trunc(Number(groundingResult.withheld_count));
+    }
     const viablePoolState = isPlainObject(catalogCandidateState)
       ? catalogCandidateState
       : frameworkMode

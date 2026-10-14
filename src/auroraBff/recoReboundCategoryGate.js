@@ -99,9 +99,16 @@ const NON_SKIN_ITEM_DENIALS = Object.freeze([
   /\beye\s+contour\b/gi,
 ]);
 
-// Makeup and fragrance products the step resolver settles to a skincare step ("setting mist" and
-// "body mist" read as toner). Only these: a need is matched on what it asks for, not on every word.
-const NEED_RESOLVER_GAPS_RE = /\b(?:setting (?:sprays?|mists?|powders?)|body mists?|fragrance mists?|body sprays?)\b/i;
+// Makeup, fragrance and lash/brow products the step resolver settles to a skincare step ("setting
+// mist" and "body mist" read as toner, "lash serum" as serum). Only these: a need is matched on what it
+// asks for, not on every word -- "frown lines between my brows" is a skincare need, "eyebrow serum" is
+// not. Matched on the MASKED need, so "a toner to use under my setting powder" stays a toner need.
+const NEED_RESOLVER_GAPS_RE = new RegExp(`\\b(?:${[
+  'setting[- ]?(?:sprays?|mists?|powders?)', 'set(?:s|ting)? (?:my |your |the )?make-?up',
+  'make-?up (?:setting|fixing|fixer) (?:sprays?|mists?)', 'fix(?:ing|er) (?:sprays?|mists?)',
+  'body mists?', 'fragrance mists?', 'body sprays?',
+  '(?:eye)?lash(?:es)?', 'eyebrows?', 'brow (?:serums?|gels?|growth|tints?|pencils?|powders?|pomades?)',
+].join('|')})\\b`, 'i');
 
 function maskNonSkinItemDenials(value) {
   let out = maskNonCategoryQualifiers(value);
@@ -164,7 +171,8 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', needText
   // refused every substitute in them (review of the first cut). So the need must RESOLVE to a single
   // makeup or fragrance step, or name one of the few makeup/fragrance products the step resolver reads
   // as skincare (NEED_RESOLVER_GAPS_RE).
-  const maskedNeed = maskNonSkinItemDenials(text(needText));
+  // "long-wear foundation" is a product, not "wear foundation" as context: fold it before masking.
+  const maskedNeed = maskNonSkinItemDenials(text(needText).replace(/\blong[- ]wear(ing)?\b/gi, 'longwear$1'));
   const needStep = extractRecoTargetStepFromText(maskedNeed);
   if ((needStep && resolveRecoStepDomain(needStep) !== 'skincare') || NEED_RESOLVER_GAPS_RE.test(maskedNeed)) {
     return { accept: false, reason: 'shade_or_scent_led_need' };

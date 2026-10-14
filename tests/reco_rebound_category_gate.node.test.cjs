@@ -421,6 +421,14 @@ test('judgeRecoReboundCandidate: a need that ASKS FOR makeup or fragrance gets n
   for (const need of [
     'a setting mist that keeps makeup in place all day', // the resolver reads this as toner: gap list
     'a setting spray for oily skin',
+    'a setting-spray',
+    'a mist to set my makeup',
+    'a makeup fixing spray',
+    'a fixing spray for oily skin',
+    'long-wear setting powder', // the context mask would blank "wear setting powder"
+    'a long-wear foundation',
+    'an eyelash growth serum',
+    'a serum for thicker eyebrows',
     'a body mist for summer',
     'a light floral eau de toilette',
     "a bronzer for fair skin that isn't too orange",
@@ -436,6 +444,8 @@ test('judgeRecoReboundCandidate: a need that ASKS FOR makeup or fragrance gets n
     'a toner to wear under foundation',
     // Mutant killed: resolving the need unmasked -- "foundation" would be the only step left.
     'something light to wear under my foundation',
+    // Mutant killed: scanning the need unmasked for the resolver gaps -- context is not an ask.
+    'a toner to use under my setting powder',
     'a fragrance-free toner',
     'a moisturizer for perioral dermatitis around my lips',
     'a cleanser and moisturizer, plus something for chapped lips',

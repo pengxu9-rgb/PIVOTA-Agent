@@ -35,7 +35,7 @@ const row = ({ id, title, brand, price, label, path }) => ({
 const LIP_BALM = row({ id: 'sig_3388a5e139e21623163e558d86e66741', title: 'Lip Moisturising Stick', brand: 'NUXE', price: 9.2, label: 'Bronzer', path: 'beauty/makeup/lip/balm' });
 const TONER = row({ id: 'sig_4ae2f3eb519adb37a98c4b39cfe1aa7e', title: 'Black Rice Probiotics Barrier Serum Mist', brand: 'Example', price: 24, label: 'toner', path: 'beauty/skincare/tone/toner' });
 
-async function askAgentDoor({ need, answer, pool }) {
+async function askAgentDoor({ need, answer, pool, constraints }) {
   delete require.cache[ROUTES_ID];
   delete require.cache[CLIENT_ID];
   const client = require('../src/auroraBff/auroraDecisionClient');
@@ -53,7 +53,7 @@ async function askAgentDoor({ need, answer, pool }) {
       isEnabled: () => true,
       budgetMs: 6000,
     });
-    return await handler({ payload: { need } }, { agent_id: 'partner_test' });
+    return await handler({ payload: { need, ...(constraints ? { constraints } : {}) } }, { agent_id: 'partner_test' });
   } finally {
     client.auroraChat = originalChat;
     dbModule.query = originalQuery;
@@ -90,6 +90,38 @@ test('an item the model gave no name is not reported under a placeholder', async
   });
   assert.deepEqual(out.signals, []);
   assert.equal(out.metadata.unresolved_archetypes, undefined, JSON.stringify(out.metadata));
+  // Unnamed, but still withheld: the answer says nothing buyable, not "the catalog pool was empty".
+  assert.equal(out.metadata.products_empty_reason, 'no_grounded_recommendations');
+  assert.equal(out.metadata.ungrounded_suppressed, 1);
+});
+
+test('a price ceiling\'s catalog top-up never surfaces as a withheld archetype', async () => {
+  // applyStrictConformingTopUp appends catalog rows to the model's answer BEFORE grounding. Their titles
+  // name buyable products -- here the very toner the gate refused for this need. Reported as withheld
+  // archetypes, a partner could search_catalog the name and serve what the gate blocked.
+  const out = await askAgentDoor({
+    need: 'a setting mist that keeps makeup in place',
+    constraints: { price_max: 30 },
+    answer: answer([{ name: 'All Nighter Setting Spray', brand: 'Urban Decay', product_type: 'setting spray', score: 88 }]),
+    pool: [TONER],
+  });
+  assert.ok(!JSON.stringify(out).includes(TONER.name), JSON.stringify(out.metadata));
+  assert.deepEqual(out.metadata.unresolved_archetypes, ['All Nighter Setting Spray']);
+  assert.equal(out.metadata.ungrounded_suppressed, 1);
+});
+
+test('a non-step-aware answer counts its ungrounded item once', async () => {
+  // Without a step-aware target the ungrounded row is NOT dropped by grounding: it reaches the door and
+  // is counted there. Mutant killed: computing withheld names on every answer -- the same item would be
+  // counted twice and named twice before dedupe.
+  const out = await askAgentDoor({
+    need: 'something to make my face look glowy for a party',
+    answer: answer([{ name: 'Radiance Glow Drops', brand: 'Example', score: 80 }]),
+    pool: [],
+  });
+  assert.deepEqual(out.signals, []);
+  assert.deepEqual(out.metadata.unresolved_archetypes, ['Radiance Glow Drops']);
+  assert.equal(out.metadata.ungrounded_suppressed, 1);
 });
 
 test('the setting-mist NEED is not answered with a skincare toner, whatever the model typed', async () => {
