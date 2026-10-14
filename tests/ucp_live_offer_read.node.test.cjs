@@ -478,3 +478,18 @@ test('get_offers variant_id: a cart for ANOTHER shade is withheld even when the 
   assert.equal(res.signals.length, 0);
   assert.equal(res.metadata.reason, 'variant_not_offered');
 });
+
+test('get_offers variant_id: a cart permalink with no variant_id still decides (the cart is what is bought)', async () => {
+  const run = (offer) => makeGetOffers({ fetchOffers: async () => ({ offers: [offer] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  const wrong = await run(backendOffer({
+    execution_spec: { merchant_domain: RB, variant_id: null, cart_url: `https://${RB}/cart/${BLISS}:1?country=US` },
+    source: { variant_id: HOPE, variant_match: 'exact' },
+  }));
+  assert.equal(wrong.signals.length, 0);
+  assert.equal(wrong.metadata.reason, 'variant_not_offered');
+  const same = await run(backendOffer({
+    execution_spec: { merchant_domain: RB, variant_id: '', cart_url: `https://${RB}/cart/${HOPE}:2` },
+    source: { variant_id: HOPE, variant_match: 'fallback' },
+  }));
+  assert.equal(same.signals.length, 1);
+});

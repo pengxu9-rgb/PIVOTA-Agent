@@ -363,15 +363,22 @@ function offersInMarketCurrency(offers, marketCurrency) {
 }
 
 /**
- * Does this offer sell exactly variant `vid`? Only what the offer would BUY counts: the variant its cart is
- * built for (execution_spec.variant_id), or every internal checkout item naming it. NOT `source.variant_id`:
- * the seed lane's fallback offer for an unmatched sku_id copies the requested id there while selling no
- * particular variant.
+ * Does this offer sell exactly variant `vid`? What the offer would BUY decides: the variant its cart is built
+ * for (execution_spec.variant_id, else the cart permalink's own /cart/<id>:<qty>). With no cart, the
+ * backend's `source.variant_match: 'exact'` statement, or every internal checkout item naming it.
+ * `source.variant_id` alone never counts: the seed lane's fallback offer for an unmatched sku_id copies the
+ * requested id there while selling no particular variant.
  */
+function offerCartVariant(offer) {
+  const spec = (offer && offer.execution_spec) || {};
+  if (spec.variant_id != null && String(spec.variant_id).trim()) return String(spec.variant_id).trim();
+  const m = String(spec.cart_url || '').match(/\/cart\/(\d{6,20}):\d+/);
+  return m ? m[1] : '';
+}
+
 function offerIsVariant(offer, vid) {
   if (!offer || typeof offer !== 'object') return false;
-  const cartVariant = offer.execution_spec && offer.execution_spec.variant_id;
-  const cart = cartVariant != null && String(cartVariant).trim() ? String(cartVariant).trim() : '';
+  const cart = offerCartVariant(offer);
   // WHEN THERE IS A CART, THE CART DECIDES: it is what the buyer would buy. An attached seed can build its
   // cart from the operator's attached variant whatever shade was asked for, while the backend still calls
   // the offer an `exact` match -- so a different cart is never this variant (review round 4 of #2438).
