@@ -18885,6 +18885,9 @@ function applySearchQualityContractResponseHints(product = {}, contract = null, 
     ...product,
     catalog_category_path: inferredPath,
     category_path: inferredPath,
+    // This path is the QUERY's category, not the product's. The reco lane's rebound gate
+    // (src/auroraBff/recoReboundCategoryGate.js) must not read it as the product's own filing.
+    category_path_inferred_from_query: true,
   };
   if (!firstNonEmptyString(next.category, next.product_type)) {
     next.category = inferredPath.split('/').filter(Boolean).slice(-1)[0] || 'Beauty';
@@ -52648,6 +52651,11 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Exported so the reco rebound gate can be tested against the rows the search actually emits: a seed
+  // row's real path (a string) and a path the response hint inferred from the query (marked).
+  buildBeautyExternalSeedMainlineProduct,
+  compactBeautyMainlineProductForResponse,
+  applySearchQualityContractResponseHints,
   // Exported because the credential-exfiltration property cannot be asserted over the wire. This
   // function sends a LIVE Shopify Admin token to a host named by a database column, and the thing
   // under test is that a bad row produces NO packet at all — a refusal that is indistinguishable, in
