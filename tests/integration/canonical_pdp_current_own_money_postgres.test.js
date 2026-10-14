@@ -1,6 +1,7 @@
 const { Client } = require('pg');
 const {
   readCanonicalOwnMoney, projectCanonicalProductMoney, currentOwnMoneyReasonCode, withholdCanonicalProductMoney,
+  resetOwnMoneyPriceCheckStateForTests,
 } = require('../../src/services/canonicalPdpOwnMoney');
 const { buildPdpPayload } = require('../../src/pdpBuilder');
 
@@ -33,7 +34,8 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       CREATE TABLE catalog_offers(offer_id text PRIMARY KEY,sku_key text,product_key text,merchant_id text,currency text,
         market text,availability text,merchant_effective_price numeric,list_price numeric,source_system text,
         source_domain text,source_ref text,offer_type text,is_first_party boolean,offer_mode text,catalog_track text,
-        truth_tier text,readiness_tier text,offer_payload jsonb,suppressed_at timestamptz,suppression_reason text);`);
+        truth_tier text,readiness_tier text,offer_payload jsonb,suppressed_at timestamptz,suppression_reason text,
+        price_checked_at timestamptz);`);
   });
   afterAll(async () => {
     try { await client?.query('ROLLBACK'); } finally { await client?.end(); }
@@ -129,5 +131,53 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     await client.query(`INSERT INTO catalog_offers SELECT (jsonb_populate_record(NULL::catalog_offers,
       to_jsonb(co)||'{"offer_id":"conflict","merchant_effective_price":59}'::jsonb)).* FROM catalog_offers co`);
     await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+  });
+  // pivota-backend #2601 follow-up (b): under enforce, money is a price READ (price_checked_at, migration 246)
+  // inside the window; NULL is no read on record. Off (the default) is unchanged: the rows above are all NULL.
+  describe('CANONICAL_OWN_MONEY_FRESHNESS=enforce', () => {
+    beforeEach(() => { process.env.CANONICAL_OWN_MONEY_FRESHNESS = 'enforce'; });
+    afterEach(() => { delete process.env.CANONICAL_OWN_MONEY_FRESHNESS; });
+    test('a never-read own listing is a gap, never its unread price', async () => {
+      await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+    });
+    test('a read 13 days ago is current money; a read 15 days ago is a gap', async () => {
+      await client.query("UPDATE catalog_offers SET price_checked_at = clock_timestamp() - interval '13 days'");
+      expect(projectCanonicalProductMoney(product, await read()).price.amount).toBe(49);
+      await client.query("UPDATE catalog_offers SET price_checked_at = clock_timestamp() - interval '15 days'");
+      await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+    });
+    test('an unread row at the same price is harmless; an unread row at another price still refuses, as off does', async () => {
+      await client.query("UPDATE catalog_offers SET price_checked_at = clock_timestamp() - interval '1 day'");
+      await client.query(`INSERT INTO catalog_offers SELECT (jsonb_populate_record(NULL::catalog_offers,
+        to_jsonb(co)||'{"offer_id":"unread","price_checked_at":null}'::jsonb)).* FROM catalog_offers co`);
+      expect(projectCanonicalProductMoney(product, await read()).price.amount).toBe(49);
+      await client.query("UPDATE catalog_offers SET merchant_effective_price = 59 WHERE offer_id = 'unread'");
+      await expect(read()).rejects.toMatchObject({ code: 'CURRENT_OWN_OFFER_UNAVAILABLE' });
+    });
+    test('a database without the column serves the money as off, never a failed read', async () => {
+      resetOwnMoneyPriceCheckStateForTests();
+      await client.query('SAVEPOINT no_price_check');
+      try {
+        await client.query('ALTER TABLE catalog_offers DROP COLUMN price_checked_at');
+        // The gateway's pool runs each statement on its own; here one savepoint per statement stands in for
+        // that, so Postgres's own 42703 on the first statement does not abort the retry.
+        const statementAlone = async (sql, args) => {
+          await client.query('SAVEPOINT own_money_statement');
+          try {
+            const result = await client.query(sql, args);
+            await client.query('RELEASE SAVEPOINT own_money_statement');
+            return result;
+          } catch (error) {
+            await client.query('ROLLBACK TO SAVEPOINT own_money_statement');
+            throw error;
+          }
+        };
+        const money = await readCanonicalOwnMoney({ ref, query: statementAlone });
+        expect(projectCanonicalProductMoney(product, money).price.amount).toBe(49);
+      } finally {
+        await client.query('ROLLBACK TO SAVEPOINT no_price_check');
+        resetOwnMoneyPriceCheckStateForTests();
+      }
+    });
   });
 });
