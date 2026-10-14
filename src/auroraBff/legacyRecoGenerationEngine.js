@@ -5,6 +5,7 @@ const {
   createLegacyRecoRecommendationPostFiltersRuntime,
 } = require('./legacyRecoRecommendationPostFilters');
 const { deriveRecoConfidenceBasis } = require('./recoConfidenceBasis');
+const { recoNeedAsksForNonSkinProduct } = require('./recoReboundCategoryGate');
 const {
   createLegacyRecoGenerationResultRuntime,
 } = require('./legacyRecoGenerationResult');
@@ -485,14 +486,24 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       });
     // STRICT FILL, before the tail so the appended rows go through grounding, enrichment and dedupe
     // exactly like every other recommendation. One bounded pass; nothing loops.
-    const strictTopUp = applyStrictConformingTopUp({
-      structured,
-      catalogStructured,
-      preLlmCatalogStructured: mainlineExecution.preLlmCatalogStructured,
-      priceCeiling,
-      shortlistTarget,
-      requestedStep: (targetContext && targetContext.resolved_target_step) || '',
-    });
+    //
+    // NOT FOR A MAKEUP OR FRAGRANCE NEED on the agent door. The filler is catalog rows of the requested
+    // step, and they ground as themselves, so the rebound gate never sees them. Live 2026-10-14 "a setting
+    // mist that keeps makeup in place" with price_max 30 resolved its step to toner (the resolver reads
+    // "mist" as toner) and was served a skincare toner as item 1. Such a need never takes a substitute,
+    // and filler is a substitute by another route. (Only the agent bridge threads a priceCeiling, so the
+    // top-up is a no-op elsewhere; the door check keeps a chat message from ever being read as a need.)
+    const topUpNeedText = recoTriggerSource === 'agent_tool' ? pickFirstTrimmed(focus, message) : '';
+    const strictTopUp = topUpNeedText && recoNeedAsksForNonSkinProduct(topUpNeedText)
+      ? { structured, appended: [], appendedCount: 0 }
+      : applyStrictConformingTopUp({
+        structured,
+        catalogStructured,
+        preLlmCatalogStructured: mainlineExecution.preLlmCatalogStructured,
+        priceCeiling,
+        shortlistTarget,
+        requestedStep: (targetContext && targetContext.resolved_target_step) || '',
+      });
     // Unconditional assignment: applyStrictConformingTopUp returns the SAME object when it appends
     // nothing, so this branch cannot alter a no-top-up answer -- one less untested branch at a call
     // site this repo has no harness to drive.

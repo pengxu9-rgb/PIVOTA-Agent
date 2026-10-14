@@ -110,6 +110,19 @@ const NEED_RESOLVER_GAPS_RE = new RegExp(`\\b(?:${[
   '(?:eye)?lash(?:es)?', 'eyebrows?', 'brow (?:serums?|gels?|growth|tints?|pencils?|powders?|pomades?)',
 ].join('|')})\\b`, 'i');
 
+/**
+ * Does the buyer's need ASK FOR a makeup, fragrance, lash or brow product? (See rule 2 in the header:
+ * the need must resolve to a single makeup/fragrance step, or name a product the step resolver reads as
+ * skincare.) Shared by the rebound gate and the agent door's price-ceiling top-up, which must not fill
+ * such a need with skincare catalog rows either.
+ */
+function recoNeedAsksForNonSkinProduct(needText) {
+  // "long-wear foundation" is a product, not "wear foundation" as context: fold it before masking.
+  const maskedNeed = maskNonSkinItemDenials(text(needText).replace(/\blong[- ]wear(ing)?\b/gi, 'longwear$1'));
+  const needStep = extractRecoTargetStepFromText(maskedNeed);
+  return Boolean((needStep && resolveRecoStepDomain(needStep) !== 'skincare') || NEED_RESOLVER_GAPS_RE.test(maskedNeed));
+}
+
 function maskNonSkinItemDenials(value) {
   let out = maskNonCategoryQualifiers(value);
   for (const pattern of NON_SKIN_ITEM_DENIALS) out = out.replace(pattern, (match) => ' '.repeat(match.length));
@@ -171,10 +184,7 @@ function judgeRecoReboundCandidate({ requestedStep, requestedText = '', needText
   // refused every substitute in them (review of the first cut). So the need must RESOLVE to a single
   // makeup or fragrance step, or name one of the few makeup/fragrance products the step resolver reads
   // as skincare (NEED_RESOLVER_GAPS_RE).
-  // "long-wear foundation" is a product, not "wear foundation" as context: fold it before masking.
-  const maskedNeed = maskNonSkinItemDenials(text(needText).replace(/\blong[- ]wear(ing)?\b/gi, 'longwear$1'));
-  const needStep = extractRecoTargetStepFromText(maskedNeed);
-  if ((needStep && resolveRecoStepDomain(needStep) !== 'skincare') || NEED_RESOLVER_GAPS_RE.test(maskedNeed)) {
+  if (recoNeedAsksForNonSkinProduct(needText)) {
     return { accept: false, reason: 'shade_or_scent_led_need' };
   }
   const row = candidate && typeof candidate === 'object' ? candidate : {};
@@ -221,4 +231,5 @@ module.exports = {
   SKINCARE_LEAF_STEP,
   readCatalogCategoryPath,
   judgeRecoReboundCandidate,
+  recoNeedAsksForNonSkinProduct,
 };

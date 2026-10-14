@@ -207,3 +207,34 @@ test('withheld names reach the lane payload on the agent door only; typed and ch
   const chat = await runLane({ recoTriggerSource: null, entryType: 'chat' });
   assert.equal(chat.unresolved_archetypes, undefined);
 });
+
+const TONER_2 = row({ id: 'sig_8888888888888888888888888888bbbb', title: 'Rose Water Hydrating Toner', brand: 'Example Two', price: 18, label: 'toner', path: 'beauty/skincare/tone/toner' });
+
+test('a price ceiling does not top up a setting-mist need with skincare toners', async () => {
+  // Live on gateway-00669-wof (2026-10-14), {price_max: 30} on "a setting mist that keeps makeup in
+  // place" served a toner as item 1, basis 'positional': applyStrictConformingTopUp filled the
+  // shortlist with catalog rows of the resolved step (toner -- the resolver reads "mist" as toner), and
+  // filler grounds as itself, so the rebound gate never saw it.
+  const out = await askAgentDoor({
+    need: 'a setting mist that keeps makeup in place',
+    constraints: { price_max: 30 },
+    answer: answer([{ name: 'All Nighter Setting Spray', brand: 'Urban Decay', product_type: 'setting spray', score: 88 }]),
+    pool: [TONER, TONER_2],
+  });
+  const served = JSON.stringify(out.signals);
+  assert.ok(!served.includes(TONER.product_id) && !served.includes(TONER_2.product_id),
+    `no toner may be served for a setting-mist need; signals were ${served}`);
+  assert.ok(!JSON.stringify(out).includes(TONER.name) && !JSON.stringify(out).includes(TONER_2.name));
+});
+
+test('control: a skincare need under a price ceiling still gets its top-up', async () => {
+  const out = await askAgentDoor({
+    need: 'a hydrating toner for dry skin',
+    constraints: { price_max: 30 },
+    answer: answer([{ name: 'Supple Preparation Facial Toner', brand: 'Dear, Klairs', product_type: 'toner', score: 85 }]),
+    pool: [TONER, TONER_2],
+  });
+  const bases = out.signals.map((signal) => signal.value.lane_confidence.basis);
+  // Mutant killed: skipping the top-up on every agent-door call.
+  assert.ok(bases.includes('positional'), `the ceiling's filler must still be appended; bases were ${JSON.stringify(bases)}`);
+});
