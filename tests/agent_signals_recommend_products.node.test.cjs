@@ -1568,16 +1568,30 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
   // id is registered upstream and the default flips, this fails until the sentence is updated with
   // it — which is the point.
-  // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Those are different today: the loaded prompt
-  // allows makeup and fragrance, and buildRecoGenerateUserAsk (routes.js:71251) still frames every
-  // request as "Recommend a few skincare products for me" — a FIFTH copy of the domain rule, and the
-  // one nobody threaded. Live probes 2026-09-10: four consecutive makeup/fragrance needs returned
-  // zero, each citing that framing. Promising partners the prompt's domain would be the description
-  // running ahead of the code again, which is what this test exists to stop.
-  assert.ok(/SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES/.test(src),
+  // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Until #2177 they differed: the loaded prompt
+  // allowed makeup and fragrance, but buildRecoGenerateUserAsk framed every request as "Recommend a few
+  // skincare products for me", and four makeup/fragrance needs came back empty (live, 2026-09-10).
+  // #2177 made the ask follow the grant; this sentence stayed on the old behaviour for a month because
+  // this test pinned it. So the domain claim is now checked against the ask the ARMED door builds, not
+  // against the prompt alone: if the framing ever narrows again, this fails until the sentence does.
+  assert.ok(/THIS DOOR SERVES SKINCARE \(INCLUDING BODY CARE\), MAKEUP AND FRAGRANCE/.test(src),
     'the description must state what the door SERVES, not merely what its prompt allows');
-  assert.ok(/frames every request to the model as/.test(src),
-    'and it must name the cause, or the next reader will "fix" the prompt and change nothing');
+  assert.ok(!/SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES/.test(src)
+    && !/frames every request to the model as/.test(src),
+    'the pre-#2177 claim that makeup and fragrance come back empty must not return while the ask says beauty');
+  const armedAsk = withRoutesEnv(
+    { RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: 'reco_main_v1_3' },
+    (internal) => internal.buildRecoGenerateUserAsk({ focus: 'a bronzer', lang: 'EN', promptDomainScope: 'beauty' }),
+  );
+  assert.match(armedAsk, /^Recommend a few beauty products for me/,
+    'the door the description promises makeup for must actually ask the model for beauty, not skincare');
+  // THE REBOUND CAVEAT IS LOAD-BEARING. A substituted row keeps the REQUESTED type
+  // (mergeRecoPlanWithGroundedCandidate: sku.product_type = plan.product_type, and category falls back
+  // to it), so live on 2026-10-14 a lip balm came back as product_type "Bronzer". A description that
+  // let an agent check the match by type would hand it the wrong answer with a matching label.
+  assert.ok(/on a rebound row those repeat the type that was ASKED\s+FOR/.test(src)
+    && /drop or re-check `catalog_rebound` rows/.test(src),
+    'the description must say a rebound row\'s type is the requested one, and what to do about it');
   // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
   // Measured on the live agent door 2026-09-10: four consecutive calls answered from the CATALOG path,
   // which reads no prompt, and a makeup / haircare / fragrance need each came back with cleansers. A
