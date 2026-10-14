@@ -12,6 +12,7 @@ jest.mock('../../src/auroraBff/productRelationshipGraphTargetRecall', () => ({
 const sources = require('../../src/auroraBff/productRelationshipGraphSources');
 const recall = require('../../src/auroraBff/productRelationshipGraphTargetRecall');
 const { buildInputsFromDb } = require('../../scripts/build-product-relationship-graph');
+const db = require('../../src/db');
 const a = { product_ref: 'product:anchor', product_key: 'a', name: 'Hydrating serum', brand: 'House', category: 'Serum', price:18, price_currency:'CAD' };
 const base = { product_ref: 'product:base', product_key: 'b', name: 'Hydrating serum', brand: 'Other', category: 'Serum', price:18, price_currency:'CAD' };
 const target = { product_ref: 'product:older', product_key: 'old', name: 'Hydrating serum', brand: 'Older', category: 'Serum', price:18, price_currency:'CAD' };
@@ -32,7 +33,13 @@ beforeEach(() => {
 test.each([false, true])('only final selected anchors and candidates are hydrated before rescore (expand %s)', async (expandTargetRecall) => {
   const payload = await buildInputsFromDb({ limit: 1, affectedRefs: ['anchor'], includeNeedNodes: false, expandTargetRecall });
   expect(recall.loadProductRelationshipGraphTargetRecall).toHaveBeenCalledTimes(Number(expandTargetRecall));
+  // Target recall scans the eligible catalog once per run on a dedicated connection.
+  if (expandTargetRecall) {
+    expect(recall.loadProductRelationshipGraphTargetRecall).toHaveBeenCalledWith(expect.objectContaining({
+      queryFn: db.query, withClientFn: db.withClient }));
+  }
   const requested = sources.enrichProductRelationshipGraphProducts.mock.calls[0][0].products.map((product) => product.product_ref);
+  expect(sources.enrichProductRelationshipGraphProducts.mock.calls[0][0]).toMatchObject({ queryFn: db.query, withClientFn: db.withClient });
   expect(requested).toEqual(expandTargetRecall ? [a.product_ref, base.product_ref, target.product_ref] : [a.product_ref, base.product_ref]);
   const rescore = sources.buildCandidatesByAnchorFromSources.mock.calls[1][0];
   expect(rescore.products).toEqual([]);

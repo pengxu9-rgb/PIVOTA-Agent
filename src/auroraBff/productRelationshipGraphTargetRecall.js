@@ -4,6 +4,7 @@ const { activeCatalogProductSourceWhere } = require('../services/activeCatalogSo
 const { externalSeedCatalogBindingSql } = require('../services/externalSeedCatalogBindingSql');
 const { PDP_RENDER_FRESHNESS_DAYS } = require('./relationshipGraphCoverage');
 const { brand, optionRole, isSameFamilyVariant } = require('./relationshipPairPolicy');
+const { runScopedTable, runScopedTablesDisabled } = require('./relationshipGraphRunScopedTable');
 
 const DEFAULT_TARGET_RECALL_OPTIONS = Object.freeze({
   maxAnchors: 200,
@@ -78,11 +79,9 @@ function targetRecallProfile(anchor, existingProducts = []) {
 // opportunity set. Only compact retrieval fields enter the scan; full payloads
 // are fetched for the bounded winners. Brand rank diversifies retrieval, never
 // contributes to the relationship similarity score or review approval.
-const TARGET_RECALL_SQL = `
-  WITH anchors AS (
-    SELECT * FROM jsonb_to_recordset($1::jsonb) AS a(anchor_ref text, identity_keys text[],
-      brand text, categories text[], job_pattern text, evidence_tokens text[], known_brands text[])
-  ), eligible AS MATERIALIZED (
+// The eligible-catalog scan. marketParam is the bind placeholder that carries the market.
+function eligibleCatalogSelectSql(marketParam) {
+  return `
     SELECT cp.product_key, cp.source_product_id, cp.pivota_signature_id, cp.content_key,
       lower(btrim(coalesce(nullif(cp.brand, ''), cp.product_payload->>'brand', ''))) AS brand,
       ARRAY[lower(regexp_replace(coalesce(cp.category, ''), '[_-]+', ' ', 'g')),
@@ -107,16 +106,16 @@ const TARGET_RECALL_SQL = `
       AND btrim(coalesce(cp.title, '')) <> ''
       AND (
         upper(coalesce(nullif(btrim(cp.recall_market), ''), nullif(btrim(cp.product_payload->>'market'), ''),
-          nullif(btrim(cp.product_payload#>>'{snapshot,market}'), ''))) = $2
+          nullif(btrim(cp.product_payload#>>'{snapshot,market}'), ''))) = ${marketParam}
         OR (coalesce(nullif(btrim(cp.recall_market), ''), nullif(btrim(cp.product_payload->>'market'), ''),
           nullif(btrim(cp.product_payload#>>'{snapshot,market}'), '')) IS NULL
           AND EXISTS (SELECT 1 FROM external_product_seeds eps
-            WHERE eps.status = 'active' AND upper(btrim(eps.market)) = $2
+            WHERE eps.status = 'active' AND upper(btrim(eps.market)) = ${marketParam}
               AND ${externalSeedCatalogBindingSql('eps', 'cp')}))
       )
       AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY[cp.recall_market, cp.product_payload->>'market',
         cp.product_payload#>>'{snapshot,market}']) known_market(value)
-        WHERE nullif(btrim(known_market.value), '') IS NOT NULL AND upper(btrim(known_market.value)) <> $2)
+        WHERE nullif(btrim(known_market.value), '') IS NOT NULL AND upper(btrim(known_market.value)) <> ${marketParam})
       AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY[cp.recall_availability,
         cp.product_payload->>'availability', cp.product_payload->>'availability_status', cp.product_payload->>'availabilityStatus',
         cp.product_payload#>>'{snapshot,availability}', cp.product_payload#>>'{snapshot,availability_status}',
@@ -126,7 +125,15 @@ const TARGET_RECALL_SQL = `
       -- cannot turn it into one full trust-table scan per catalog row.
       AND coalesce(cp.product_key IN (SELECT crt.subject_key FROM catalog_row_trust crt
         WHERE crt.subject_type = 'product' AND crt.serving_decision = 'public'), false)
-  ), matches AS (
+`;
+}
+
+function targetRecallSql(eligibleCte) {
+  return `
+  WITH anchors AS (
+    SELECT * FROM jsonb_to_recordset($1::jsonb) AS a(anchor_ref text, identity_keys text[],
+      brand text, categories text[], job_pattern text, evidence_tokens text[], known_brands text[])
+  ), ${eligibleCte}  ), matches AS (
     SELECT a.anchor_ref, e.product_key, e.brand,
       (a.brand <> '' AND e.brand <> '' AND e.brand <> a.brand) AS cross_brand,
       (e.brand <> '' AND NOT e.brand = ANY(a.known_brands)) AS unseen_brand,
@@ -151,6 +158,20 @@ const TARGET_RECALL_SQL = `
   WHERE r.candidate_rank > $3 AND r.candidate_rank <= $4
   ORDER BY r.anchor_ref, r.candidate_rank
 `;
+}
+
+const TARGET_RECALL_SQL = targetRecallSql(`eligible AS MATERIALIZED (${eligibleCatalogSelectSql('$2')}`);
+
+// Build-once mode. The eligible scan word-tokenizes the whole live catalog, and as a per-call CTE it
+// cost a flat ~6.7 s on prod for every batch and page (31-40 calls a nightly run, the first relgraph
+// CPU burst: 2026-10-14 Query Insights). Each anchor's candidates depend only on that anchor and the
+// eligible set, so scanning once per run into a run-scoped temp table and ranking every batch
+// against it returns the same rows. $2 keeps the per-call parameter list unchanged.
+const SHARED_ELIGIBLE_TABLE = 'relgraph_target_recall_eligible';
+const SHARED_ELIGIBLE_COLUMNS = `product_key text, source_product_id text, pivota_signature_id text,
+  content_key text, brand text, categories text[], job_text text, evidence_token_set jsonb`;
+const TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL = targetRecallSql(
+  `eligible AS (\n    SELECT * FROM pg_temp.${SHARED_ELIGIBLE_TABLE} WHERE $2::text IS NOT NULL\n`);
 
 function structurallyCompatible(anchor, candidate) {
   const policy = require('./productRelationshipGraphBuilder').__internal;
@@ -162,11 +183,45 @@ function structurallyCompatible(anchor, candidate) {
     policy.setCompositionCompatibility(anchor, candidate).compatible;
 }
 
-async function loadProductRelationshipGraphTargetRecall({ queryFn, anchors = [], existingProducts = [], market = 'US', ...options } = {}) {
-  const caps = normalizeTargetRecallOptions(options);
+function usableRecallAnchors(anchors, existingProducts, caps) {
   const selected = anchors.slice(0, Math.min(caps.maxAnchors, caps.maxCandidates));
   const usable = selected.map((anchor) => ({ anchor, profile: targetRecallProfile(anchor, existingProducts) }))
     .filter(({ profile }) => profile.anchor_ref && (profile.categories.length || profile.job_pattern));
+  return { selected, usable };
+}
+
+// withClientFn(fn) runs fn(client) on one dedicated connection (src/db withClient). Given one, the
+// eligible scan runs once per call of this function, into a run-scoped temp table on that
+// connection; without one (or with RELGRAPH_RUN_SCOPED_TABLES_DISABLED) every batch and page
+// re-scans the catalog as before. Both modes return the same products, lists and diagnostics,
+// except eligible_scan_count (tests/integration/relationship_graph_target_recall_postgres.test.js).
+async function loadProductRelationshipGraphTargetRecall({ queryFn, withClientFn, anchors = [], existingProducts = [], market = 'US', ...options } = {}) {
+  const caps = normalizeTargetRecallOptions(options);
+  const shared = typeof withClientFn === 'function' && !runScopedTablesDisabled() &&
+    usableRecallAnchors(anchors, existingProducts, caps).usable.length > 0;
+  if (!shared) {
+    return runTargetRecall({ anchors, existingProducts, market, caps, eligibleScanCount: () => undefined,
+      recallQuery: typeof queryFn === 'function' ? (params) => queryFn(TARGET_RECALL_SQL, params) : null });
+  }
+  return withClientFn(async (client) => {
+    const eligible = runScopedTable(client, { name: SHARED_ELIGIBLE_TABLE, columns: SHARED_ELIGIBLE_COLUMNS,
+      populateSql: eligibleCatalogSelectSql('$1'), params: [String(market || 'US').trim().toUpperCase()] });
+    try {
+      // Built on the first recall query, so a missing catalog/trust source fails inside the same
+      // fail-closed path, with the same diagnostics, as the per-call mode's first query.
+      return await runTargetRecall({ anchors, existingProducts, market, caps, eligibleScanCount: () => eligible.scanCount(),
+        recallQuery: async (params) => {
+          await eligible.ensure();
+          return client.query(TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL, params);
+        } });
+    } finally {
+      await eligible.drop().catch(() => {});
+    }
+  });
+}
+
+async function runTargetRecall({ anchors, existingProducts, market, caps, recallQuery, eligibleScanCount }) {
+  const { selected, usable } = usableRecallAnchors(anchors, existingProducts, caps);
   const byRef = new Map(usable.map(({ anchor }) => [anchor.product_ref, anchor]));
   const candidatesByAnchor = Object.fromEntries(usable.map(({ anchor }) => [anchor.product_ref, []]));
   const diagnostics = { enabled: true, caps, selected_anchor_count: selected.length,
@@ -174,7 +229,7 @@ async function loadProductRelationshipGraphTargetRecall({ queryFn, anchors = [],
     query_count: 0, rows_read: 0, candidate_count: 0, unique_candidate_count: 0, structural_rejected_count: 0,
     max_query_count: MAX_TARGET_RECALL_QUERIES,
     eligibility: 'live_catalog_public_trust_fresh_render_probe', verified_fresh_offer: false };
-  if (!usable.length || typeof queryFn !== 'function') return { products: [], candidatesByAnchor, diagnostics };
+  if (!usable.length || typeof recallQuery !== 'function') return { products: [], candidatesByAnchor, diagnostics };
   const { normalizeCatalogProductRow, isSourceMissingError } = require('./productRelationshipGraphSources');
   const perAnchor = Math.min(caps.perAnchor, Math.max(1, Math.floor(caps.maxCandidates / usable.length)));
   diagnostics.per_anchor_budget = perAnchor;
@@ -188,7 +243,7 @@ async function loadProductRelationshipGraphTargetRecall({ queryFn, anchors = [],
       try {
         diagnostics.query_count += 1;
         for (const { anchor } of pending) queriedRefs.add(anchor.product_ref);
-        rows = (await queryFn(TARGET_RECALL_SQL, [JSON.stringify(pending.map(({ profile }) => profile)),
+        rows = (await recallQuery([JSON.stringify(pending.map(({ profile }) => profile)),
           String(market || 'US').trim().toUpperCase(), page * perAnchor, (page + 1) * perAnchor])).rows || [];
       } catch (error) {
         if (!isSourceMissingError(error)) throw error;
@@ -196,7 +251,8 @@ async function loadProductRelationshipGraphTargetRecall({ queryFn, anchors = [],
         // earlier page. Existing global retrieval remains available to the caller.
         return { products: [], candidatesByAnchor: {}, diagnostics: { ...diagnostics,
           queried_anchor_count: queriedRefs.size, unqueried_anchor_count: anchors.length - queriedRefs.size,
-          skipped: 'required_catalog_source_missing', candidate_count: 0, unique_candidate_count: 0 } };
+          skipped: 'required_catalog_source_missing', candidate_count: 0, unique_candidate_count: 0,
+          eligible_scan_count: eligibleScanCount() ?? diagnostics.query_count } };
       }
       diagnostics.rows_read += rows.length;
       const pageCounts = new Map();
@@ -223,8 +279,11 @@ async function loadProductRelationshipGraphTargetRecall({ queryFn, anchors = [],
   diagnostics.queried_anchor_count = queriedRefs.size;
   diagnostics.unqueried_anchor_count = anchors.length - queriedRefs.size;
   diagnostics.query_cap_reached = diagnostics.query_count >= MAX_TARGET_RECALL_QUERIES;
+  // How many times the catalog was scanned: once per query per-call, once per run build-once.
+  diagnostics.eligible_scan_count = eligibleScanCount() ?? diagnostics.query_count;
   return { products, candidatesByAnchor, diagnostics };
 }
 
 module.exports = { DEFAULT_TARGET_RECALL_OPTIONS, normalizeTargetRecallOptions,
-  loadProductRelationshipGraphTargetRecall, __internal: { TARGET_RECALL_SQL, targetRecallProfile, structurallyCompatible } };
+  loadProductRelationshipGraphTargetRecall, __internal: { TARGET_RECALL_SQL, TARGET_RECALL_FROM_SHARED_ELIGIBLE_SQL, SHARED_ELIGIBLE_TABLE,
+    targetRecallProfile, structurallyCompatible } };
