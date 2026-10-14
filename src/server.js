@@ -30806,6 +30806,22 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
+// UCP live offer read (get_offers). Built on first use, and only when the mode is not off, so an unset
+// UCP_LIVE_OFFER_READ costs nothing and makes no outbound connection. One reader per process: its
+// discovery memo is per host.
+let _ucpLiveOfferReader;
+function getUcpLiveOfferReader() {
+  if (_ucpLiveOfferReader !== undefined) return _ucpLiveOfferReader;
+  const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode() === MODES.OFF) return null;
+  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
+  _ucpLiveOfferReader = createUcpLiveOfferReader({
+    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0 }),
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLiveOfferReader;
+}
+
 let _merchantVariantSource = null;
 function buildMerchantVariantSource(logger) {
   if (_merchantVariantSource) return _merchantVariantSource;
@@ -32110,6 +32126,12 @@ async function getCommerceRemoteMcpAdapter() {
         // `offers[]` is already in offerToSignal shape; mapOffersResolveResponse normalizes the envelope.
         // Single-offer products yield best_offer + an empty competition set (no fabricated competition).
         get_offers: makeGetOffers({
+          // The merchant's own live price/stock for the offers this answer returns (UCP lookup_catalog,
+          // services/ucpLiveOfferRead). UCP_LIVE_OFFER_READ=off (default) | shadow | enforce.
+          readOffersLive: (offers, ctx) => {
+            const reader = getUcpLiveOfferReader();
+            return reader ? reader.readOffers(offers, ctx) : null;
+          },
           fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {

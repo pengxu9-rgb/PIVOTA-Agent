@@ -55,9 +55,13 @@ const TOOL = Object.freeze({
   GET_PRODUCT: 'get_product',
   // `search_catalog` is a DISTINCT tool from `get_product` — free text vs one id — and this client used to
   // send a `query` to the latter, which has no such member. Both names are verbatim from a live `tools/list`
-  // (cosrx, 2026-08-13). `lookup_catalog` (batch by `catalog.ids`) exists there too and is deliberately not
-  // listed: nothing here calls it, and an unused constant is a shape nobody has verified against a caller.
+  // (cosrx, 2026-08-13).
   SEARCH_CATALOG: 'search_catalog',
+  // `lookup_catalog`: a batch read by `catalog.ids` (product OR variant GIDs, 1-10), priced for
+  // `catalog.context.address_country`. Live 2026-10-14 (rarebeauty.com, UCP 2026-08-25): three
+  // `gid://shopify/ProductVariant/<n>` ids came back as exactly those three variants, 2500 USD for US and
+  // 3700 SGD for SG, each with `availability.available`. See ucpLiveOfferRead.
+  LOOKUP_CATALOG: 'lookup_catalog',
   CREATE_CART: 'create_cart',
   GET_CART: 'get_cart',
   CREATE_CHECKOUT: 'create_checkout',
@@ -69,7 +73,7 @@ const TOOL = Object.freeze({
 // READ-ONLY / idempotent tools that MAY be retried on a transient error. Everything else (create/update cart &
 // checkout) is state-changing and must never be blind-retried.
 const IDEMPOTENT_TOOLS = Object.freeze(new Set([
-  TOOL.GET_PRODUCT, TOOL.SEARCH_CATALOG, TOOL.GET_CART, TOOL.GET_CHECKOUT,
+  TOOL.GET_PRODUCT, TOOL.SEARCH_CATALOG, TOOL.LOOKUP_CATALOG, TOOL.GET_CART, TOOL.GET_CHECKOUT,
 ]));
 
 // H1 error taxonomy — canonical fallback reasons. EVERY warm-handoff failure maps to one of these, then to a
@@ -996,6 +1000,27 @@ function createUcpBuyerAgentClient(options = {}) {
   }
 
   /**
+   * Batch read by id — `lookup_catalog`: `{ meta, catalog: { ids, context? } }`, ids 1-10 product or variant
+   * GIDs. `context.address_country` asks for the buyer's market price; the ANSWER's currency is what the
+   * merchant actually priced in (a store not selling to that country answers its own currency, silently —
+   * live 2026-10-14: us.laneige.com answers USD for SG and GB), so callers must check it, not assume it.
+   *
+   * The targeting caveat on getProduct/searchCatalog is out of date for Shopify stores: since Shopify moved
+   * its storefront catalog onto UCP (deprecated /api/mcp catalog tools 2026-04-22), the per-store
+   * `/api/ucp/mcp` endpoint serves `search_catalog`, `lookup_catalog` and `get_product` (20-store probe,
+   * 2026-10-14).
+   */
+  async function lookupCatalog(mcpEndpoint, { ids, context } = {}) {
+    const list = Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim()) : [];
+    if (list.length < 1 || list.length > 10) {
+      throw new Error('lookupCatalog requires 1-10 string ids (catalog.ids minItems 1, maxItems 10)');
+    }
+    const catalog = { ids: list };
+    if (isPlainObjectLocal(context)) catalog.context = context;
+    return callTool(mcpEndpoint, TOOL.LOOKUP_CATALOG, { catalog }, { retry: true });
+  }
+
+  /**
    * Build a cart. line_items = [{ item: { id: "gid://shopify/ProductVariant/<n>" }, quantity }].
    * LIVE-VERIFIED (cosrx, 2026-07-13): create_cart's tool field is a `cart` object wrapping `line_items`,
    * i.e. arguments = { meta, cart: { line_items: [...] } }. Cart tools accept unauthenticated (anonymous)
@@ -1147,6 +1172,7 @@ function createUcpBuyerAgentClient(options = {}) {
     callTool,
     getProduct,
     searchCatalog,
+    lookupCatalog,
     createCart,
     createCheckout,
     updateCheckout,

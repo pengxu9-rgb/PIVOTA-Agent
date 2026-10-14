@@ -238,6 +238,17 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     profileUrl: 'https://ucp.pivota.cc/.well-known/ucp-agent', fetchImpl,
   });
 
+  test('lookupCatalog sends catalog.ids (+ context) to lookup_catalog, and refuses 0 or 11 ids', async () => {
+    const seen = [];
+    const ids = ['gid://shopify/ProductVariant/43734829564039', 'gid://shopify/ProductVariant/43734829695111'];
+    await newClient(capture(seen)).lookupCatalog(ENDPOINT, { ids, context: { address_country: 'SG' } });
+    expect(nameOf(seen)).toBe('lookup_catalog');
+    expect(argsOf(seen).catalog).toEqual({ ids, context: { address_country: 'SG' } });
+    await expect(newClient(capture([])).lookupCatalog(ENDPOINT, { ids: [] })).rejects.toThrow(/1-10/);
+    const eleven = Array.from({ length: 11 }, (_, i) => `gid://shopify/ProductVariant/${i + 1}`);
+    await expect(newClient(capture([])).lookupCatalog(ENDPOINT, { ids: eleven })).rejects.toThrow(/1-10/);
+  });
+
   test('getProduct nests the id under `catalog` and calls get_product', async () => {
     const seen = [];
     await newClient(capture(seen)).getProduct(ENDPOINT, { productId: 'gid://shopify/Product/42' });
@@ -307,8 +318,9 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     // The set is the whole guard against blind-retrying a mutating call (a duplicate cart, or a re-priced
     // checkout replayed after the merchant already applied it). Pinned by NAME so an addition has to be
     // deliberate: adding update_checkout/create_cart here previously passed the entire suite.
+    // lookup_catalog added deliberately (2026-10-14): a batch READ by id, the UCP live offer read.
     expect([...IDEMPOTENT_TOOLS].sort()).toEqual(
-      ['get_cart', 'get_checkout', 'get_product', 'search_catalog'],
+      ['get_cart', 'get_checkout', 'get_product', 'lookup_catalog', 'search_catalog'],
     );
     for (const mutating of [TOOL.CREATE_CART, TOOL.CREATE_CHECKOUT, TOOL.UPDATE_CHECKOUT, TOOL.COMPLETE_CHECKOUT]) {
       expect(IDEMPOTENT_TOOLS.has(mutating)).toBe(false);

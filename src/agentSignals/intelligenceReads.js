@@ -363,7 +363,9 @@ function offersInMarketCurrency(offers, marketCurrency) {
 }
 
 function makeGetOffers(deps = {}) {
-  const { fetchOffers } = deps;
+  // `readOffersLive` (optional): the merchant's own live read of the offers this answer returns, for a
+  // DECLARED market (services/ucpLiveOfferRead). Absent, or answering nothing, the answer is unchanged.
+  const { fetchOffers, readOffersLive } = deps;
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
@@ -412,7 +414,21 @@ function makeGetOffers(deps = {}) {
     // best_offer from every offer it is handed and only then caps signals, so an uncut list can name a
     // best_offer that is not among the signals returned. offer_count is then the count returned. (No
     // market: the list is passed as it always was.)
-    const offers = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
+    const cut = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
+    // THE MERCHANT'S OWN ANSWER, at decision time. After the cut (only what this answer returns is read)
+    // and before projection (so best_offer ranks on what the merchant said). Fail-open: a reader that
+    // throws costs the live read, never the answer.
+    let offers = cut;
+    let liveRead = null;
+    if (market && typeof readOffersLive === 'function' && cut.length) {
+      try {
+        const res = await readOffersLive(cut, { market, currency: marketCurrency });
+        if (res && Array.isArray(res.offers) && res.offers.length === cut.length) offers = res.offers;
+        liveRead = (res && res.stats) || null;
+      } catch {
+        liveRead = { error: 'live_read_failed' };
+      }
+    }
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
     return {
       subject,
@@ -427,6 +443,7 @@ function makeGetOffers(deps = {}) {
               market_currency: marketCurrency,
               withheld_other_currency_count: withheld,
               ...(offers.length === 0 && withheld > 0 ? { reason: 'no_offer_in_market_currency' } : {}),
+              ...(liveRead ? { live_read: liveRead } : {}),
             }
           : {}),
       },
