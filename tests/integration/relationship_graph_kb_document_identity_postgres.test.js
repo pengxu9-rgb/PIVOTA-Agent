@@ -171,8 +171,10 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
       if (/document_identity AS \(/.test(sql) && (intelCalls += 1) === 2) return Promise.reject(new Error('boom'));
       return client.query(sql, params);
     } });
-    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: failing, products, market: 'US', limit: 500 }))
+    const failingFn = jest.fn(failing);
+    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: failingFn, products, market: 'US', limit: 500 }))
       .rejects.toThrow('boom');
+    expect(failingFn).toHaveBeenCalledTimes(1); // not a connection error: no retry
     expect(await leftover()).toBeNull();
   });
 
@@ -200,6 +202,76 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
       expect(loaded.diagnostics.kb_document_identity_scan_count).toBe(3);
     } finally {
       delete process.env.RELGRAPH_RUN_SCOPED_TABLES_DISABLED;
+    }
+  });
+
+  // A connection whose first stage attempt (or every attempt) loses the identity table before
+  // its second targeted intel query.
+  function droppingConnection({ everyAttempt }) {
+    let attempts = 0;
+    return jest.fn((stage) => {
+      attempts += 1;
+      const attempt = attempts;
+      let intelQueries = 0;
+      return stage({ query: async (sql, params) => {
+        if (/document_identity AS \(/.test(sql) && (intelQueries += 1) === 2 && (everyAttempt || attempt === 1)) {
+          await client.query('DROP TABLE pg_temp.relgraph_kb_document_identity');
+        }
+        return client.query(sql, params);
+      } });
+    });
+  }
+
+  test('a lost identity table is retried once, and never yields silently empty intel', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    const dropOnce = droppingConnection({ everyAttempt: false });
+    const retried = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn: dropOnce, ...options });
+    expect(dropOnce).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.intelRows).toEqual(perCall.intelRows);
+    const dropAlways = droppingConnection({ everyAttempt: true });
+    await expect(enrichProductRelationshipGraphProducts({ queryFn, withClientFn: dropAlways, ...options }))
+      .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
+    expect(dropAlways).toHaveBeenCalledTimes(2);
+  });
+
+  test('a transient connection error retries the KB stage once on a fresh connection', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    let attempts = 0;
+    const flaky = jest.fn((stage) => {
+      attempts += 1;
+      const attempt = attempts;
+      let intelQueries = 0;
+      return stage({ query: (sql, params) => {
+        if (attempt === 1 && /document_identity AS \(/.test(sql) && (intelQueries += 1) === 3) {
+          return Promise.reject(Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' }));
+        }
+        return client.query(sql, params);
+      } });
+    });
+    const retried = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn: flaky, ...options });
+    expect(flaky).toHaveBeenCalledTimes(2);
+    expect(retried.products).toEqual(perCall.products);
+    expect(retried.intelRows).toEqual(perCall.intelRows);
+  });
+
+  test('a one-connection pool keeps the per-call identity scan (the stage would wait on itself)', async () => {
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const perCall = await legacyEnrichment(options);
+    const previous = process.env.DB_POOL_MAX;
+    process.env.DB_POOL_MAX = '1';
+    try {
+      const loaded = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn, ...options });
+      expect(withClientFn).not.toHaveBeenCalled();
+      expect(loaded.products).toEqual(perCall.products);
+      expect(loaded.diagnostics.kb_document_identity_scan_count).toBe(3);
+    } finally {
+      if (previous === undefined) delete process.env.DB_POOL_MAX; else process.env.DB_POOL_MAX = previous;
     }
   });
 });

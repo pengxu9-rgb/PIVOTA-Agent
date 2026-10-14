@@ -636,6 +636,7 @@ module.exports = {
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
+  isTransientDbError,
   query,
   queryWithBudget,
   queryWithStatementTimeout,
