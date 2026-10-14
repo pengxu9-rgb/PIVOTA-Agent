@@ -47,6 +47,7 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
     upstreamDebug = null,
     ingredientContext = null,
     needText = '',
+    catalogFillerRows = [],
   } = {}) {
     let mapped =
       structured && typeof structured === 'object' && !Array.isArray(structured)
@@ -67,6 +68,7 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
         logger,
         defaultTargetContext: targetContext,
         needText,
+        catalogFillerRows,
       });
       mapped = {
         ...mapped,
