@@ -411,7 +411,7 @@ const {
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
-const { judgeRecoReboundCandidate, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
+const { judgeRecoReboundCandidate, isRecoNamedProductMatch, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -29820,14 +29820,17 @@ async function groundRecoRecommendationsFromCatalog({
     // The type this item asked for, for judging a SUBSTITUTE (recoReboundCategoryGate.js). The item's own
     // product_type first; the step resolved from its name and query terms when the type says nothing.
     const requestedStep = normalizeRecoTargetStep(rec.product_type) || itemTargetContext?.resolved_target_step || '';
+    const requestedText = [rec.product_type, rec.name, rec.display_name].filter(Boolean).join(' ');
     let groundedProduct = null;
     for (const candidate of viableCandidates) {
       const normalized = normalizeRecoCatalogProduct(candidate);
       if (!isPlainObject(normalized)) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
       if (productId && usedProductIds.has(productId)) continue;
-      if (!sameRecommendationProduct(rec, normalized)) {
-        const verdict = judgeRecoReboundCandidate({ requestedStep, candidate: normalized });
+      // The model's own pick, by id or (it may not invent ids) by brand and full name, is not a
+      // substitute; anything else is, and must pass the gate.
+      if (!sameRecommendationProduct(rec, normalized) && !isRecoNamedProductMatch(rec, normalized)) {
+        const verdict = judgeRecoReboundCandidate({ requestedStep, requestedText, candidate: normalized });
         if (!verdict.accept) {
           reboundRejectedByReason[verdict.reason] = (reboundRejectedByReason[verdict.reason] || 0) + 1;
           continue;

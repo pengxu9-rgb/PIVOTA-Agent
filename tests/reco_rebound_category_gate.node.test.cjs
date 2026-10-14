@@ -34,6 +34,7 @@ const { sanitizeRecoRecallPoolCandidates } = require('../src/auroraBff/recoRecal
 const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts');
 const {
   judgeRecoReboundCandidate,
+  isRecoNamedProductMatch,
   readCatalogCategoryPath,
   SKINCARE_LEAF_STEP,
 } = require('../src/auroraBff/recoReboundCategoryGate');
@@ -297,10 +298,10 @@ test('judgeRecoReboundCandidate: path roots, leaves and the no-path fallback', (
   // The path outranks the label in both directions.
   assert.equal(judge('cleanser', { catalog_category_path: 'beauty/skincare/cleanse/cleanser', category: 'lipstick' }).accept, true);
   assert.equal(judge('cleanser', { catalog_category_path: 'beauty/makeup/lip/balm', category: 'cleanser' }).accept, false);
-  // The search's response hint writes the REQUESTED prefix into a row that has no path, as a string.
-  // Mutant killed: reading that string as the product's own category -- it would approve this lipstick
+  // The search's response hint writes the REQUESTED prefix into a row that has no path, and marks it.
+  // Mutant killed: reading that path as the product's own category -- it would approve this lipstick
   // as a cleanser, since the hint says cleanser.
-  const hinted = { category_path: 'beauty/skincare/cleanse/cleanser', catalog_category_path: 'beauty/skincare/cleanse/cleanser', category: 'lipstick' };
+  const hinted = { category_path: 'beauty/skincare/cleanse/cleanser', catalog_category_path: 'beauty/skincare/cleanse/cleanser', category_path_inferred_from_query: true, category: 'lipstick' };
   assert.equal(readCatalogCategoryPath(hinted), '');
   assert.deepEqual(judge('cleanser', hinted), { accept: false, reason: 'own_type_incompatible' });
   // A requested type that resolves to no step has nothing to be compatible with. (End to end such an
@@ -308,11 +309,114 @@ test('judgeRecoReboundCandidate: path roots, leaves and the no-path fallback', (
   // pass currently reaches.)
   assert.deepEqual(judge('other', { catalog_category_path: 'beauty/skincare/moisturize/cream' }), { accept: false, reason: 'requested_type_unresolved' });
   assert.deepEqual(judge('', {}), { accept: false, reason: 'requested_type_unresolved' });
-  // No path: the row's own type can still refute, and is otherwise trusted to the classifier upstream.
+  // No path: the row's own type, else its title, must name a compatible step.
   assert.deepEqual(judge('cleanser', { category: 'lipstick' }), { accept: false, reason: 'own_type_incompatible' });
   assert.deepEqual(judge('cleanser', { product_type: 'serum' }), { accept: false, reason: 'own_type_incompatible' });
-  assert.deepEqual(judge('cleanser', { category: 'cleanser' }), { accept: true, reason: 'no_catalog_path' });
-  assert.deepEqual(judge('cleanser', {}), { accept: true, reason: 'no_catalog_path' });
+  assert.deepEqual(judge('cleanser', { category: 'cleanser' }), { accept: true, reason: 'own_type_compatible' });
+  // A seed row's type is 'external'; its title is then the witness, in both directions.
+  assert.deepEqual(judge('cleanser', { product_type: 'external', name: 'Gentle Foaming Cleanser' }), { accept: true, reason: 'own_type_compatible' });
+  assert.deepEqual(judge('cleanser', { product_type: 'external', name: 'Velvet Matte Lipstick' }), { accept: false, reason: 'own_type_incompatible' });
+  // A title that reads as two kinds at once ("Blush" and "Eau de Parfum") names neither.
+  assert.deepEqual(judge('cleanser', { product_type: 'external', name: 'Santal Blush Eau de Parfum' }), { accept: false, reason: 'no_category_evidence' });
+  // Mutant killed: accepting a substitute nothing identifies -- the "always skincare" promise would
+  // then rest on a row typed 'external' with a title no step pattern reads.
+  assert.deepEqual(judge('cleanser', { product_type: 'external', name: 'The Daily Ritual' }), { accept: false, reason: 'no_category_evidence' });
+  assert.deepEqual(judge('cleanser', {}), { accept: false, reason: 'no_category_evidence' });
+});
+
+test('judgeRecoReboundCandidate: an item naming fragrance, hair, scalp or lips is not face/body skincare', () => {
+  // The step resolver reads these as skincare steps ("body mist" -> toner, "hair treatment" ->
+  // treatment, "lip mask" -> mask), so the domain check alone let a facial toner stand in for a mist.
+  const toner = { catalog_category_path: 'beauty/skincare/tone/toner' };
+  for (const [requestedStep, requestedText] of [
+    ['toner', 'body mist Cheirosa 62 Hair & Body Fragrance Mist'],
+    ['toner', 'fragrance mist'],
+    ['treatment', 'hair treatment Bond Repair Treatment'],
+    ['serum', 'scalp serum'],
+    ['mask', 'lip mask Lip Sleeping Mask'],
+  ]) {
+    assert.deepEqual(judgeRecoReboundCandidate({ requestedStep, requestedText, candidate: toner }),
+      { accept: false, reason: 'non_skin_item' }, requestedText);
+  }
+  // A denial is not a category: "fragrance-free" is a skincare claim.
+  assert.equal(judgeRecoReboundCandidate({ requestedStep: 'toner', requestedText: 'toner Fragrance-Free Hydrating Toner', candidate: toner }).accept, true);
+  assert.equal(judgeRecoReboundCandidate({ requestedStep: 'toner', requestedText: 'toner with no added fragrance', candidate: toner }).accept, true);
+});
+
+test('end to end: a fragrance mist plan is not grounded to a facial toner', async () => {
+  const toner = searchRow({
+    id: 'sig_4444444444444444444444444444dddd', title: 'Rose Hydrating Facial Toner', brand: 'Example',
+    price: 22, label: 'toner', path: 'beauty/skincare/tone/toner',
+  });
+  // The type alone ('mist') reads as toner; only the NAME says fragrance. Mutant killed: judging the
+  // item's type without its name.
+  const out = await ground([{ name: 'Cheirosa 62 Hair & Body Fragrance Mist', brand: 'Sol de Janeiro', product_type: 'mist', score: 85 }], [toner]);
+  assert.equal(out.recommendations[0].grounding_status, 'ungrounded');
+  assert.equal(out.debug.rebound_rejected_by_reason.non_skin_item, 1);
+});
+
+test('isRecoNamedProductMatch: same brand and every word of the named product', () => {
+  const match = (plan, candidate) => isRecoNamedProductMatch(plan, candidate);
+  const hoola = { brand: 'Benefit Cosmetics', name: 'Hoola Matte Bronzer — Hoola Lite' };
+  assert.equal(match({ brand: 'Benefit', name: 'Hoola Matte Bronzer' }, hoola), true, 'brand words agree as a prefix');
+  assert.equal(match({ brand: 'Benefit', name: 'Benefit Hoola Matte Bronzer' }, hoola), true, 'brand words in the name are ignored');
+  assert.equal(match({ brand: 'Benefit', name: 'Hoola Matte Bronzer Hoola Lite' }, hoola), true);
+  assert.equal(match({ brand: 'Benefit', name: 'Hoola Matte Bronzer Hoola Caramel' }, hoola), false, 'a different shade is a different product');
+  assert.equal(match({ brand: 'Fenty Beauty', name: 'Hoola Matte Bronzer' }, hoola), false, 'a different brand');
+  // Brands agree as a word PREFIX, not on any shared word: "Beauty" is in half the brand names.
+  assert.equal(match({ brand: 'Fenty Beauty', name: 'Pro Filtr Foundation' }, { brand: 'Tom Ford Beauty', name: 'Pro Filtr Foundation' }), false);
+  assert.equal(match({ name: 'Hoola Matte Bronzer' }, hoola), false, 'no brand, no identity');
+  assert.equal(match({ brand: 'Benefit', name: 'Bronzer' }, hoola), false, 'one word is a category, not a product');
+  // The live blush case: the word the model's product shares with the perfume is the category itself.
+  assert.equal(match({ brand: 'Tom Ford', name: 'Shade and Illuminate Blush' }, { brand: 'Tom Ford Beauty', name: 'Santal Blush Eau de Parfum' }), false);
+  assert.equal(match({ brand: 'Lancôme', name: 'Idôle Eau de Parfum' }, { brand: 'Lancome', name: 'Idole Eau de Parfum' }), true, 'accents fold');
+});
+
+test('the model\'s makeup pick named WITHOUT an id still grounds (the prompt forbids inventing ids)', async () => {
+  const hoola = searchRow({
+    id: 'sig_5555555555555555555555555555eeee', title: 'Hoola Matte Bronzer — Hoola Lite', brand: 'Benefit Cosmetics',
+    price: 34, label: 'Bronzer', path: 'beauty/makeup/face/bronzer',
+  });
+  for (const run of Object.values(PATHS)) {
+    const out = await run([LIVE[0].plan], [LIVE[0].row, hoola]);
+    const item = out.recommendations[0];
+    // Mutant killed: gating the named match too -- the model's own bronzer would be withheld as an
+    // "unresolved archetype" although the catalog carries it.
+    assert.equal(item.grounding_status, 'grounded');
+    assert.equal(item.product_id, hoola.product_id, 'the lip balm ahead of it is still refused');
+  }
+});
+
+test('real search rows: a seed row\'s own string path is read; a path the search inferred from the query is not', () => {
+  const debug = require('../src/server')._debug;
+  const seed = (catalogCategoryPath) => debug.compactBeautyMainlineProductForResponse(debug.buildBeautyExternalSeedMainlineProduct({
+    id: 'eps_x', external_product_id: 'ext_abc', title: 'Barrier Repair Face Moisturizer Stick', brand: 'Example',
+    domain: 'example.com', canonical_url: 'https://example.com/products/x', market: 'US', availability: 'in_stock',
+    price_amount: 19, price_currency: 'USD', catalog_category_path: catalogCategoryPath,
+    seed_data: { snapshot: { title: 'Barrier Repair Face Moisturizer Stick', brand: 'Example', price: 19, currency: 'USD' } },
+  }), null, 'moisturizer');
+  const asCandidate = (row) => __internal.normalizeRecoCatalogProduct({ ...row, product_id: 'sig_3333333333333333333333333333cccc' });
+  const request = { requestedStep: 'moisturizer', requestedText: 'moisturizer Cicaplast Baume B5' };
+
+  // The seed builder writes the row's REAL path as a string into both fields. Mutant killed: treating
+  // a string category_path as the hint's -- the foundation would pass on its "Moisturizer" title.
+  const filed = seed('beauty/makeup/face/foundation');
+  assert.equal(typeof filed.category_path, 'string');
+  assert.deepEqual(judgeRecoReboundCandidate({ ...request, candidate: asCandidate(filed) }),
+    { accept: false, reason: 'catalog_category_other_domain' });
+
+  // A row with no path gets the QUERY's prefix from the response hint, marked as inferred.
+  const contract = {
+    contract_version: 'search_quality_contract_v1', target_domain: 'beauty', query_class: 'category_browse',
+    effective_query: 'moisturizer', hard_constraints: { category_path_prefix: 'beauty/skincare/moisturize/cream/' }, soft_preferences: {},
+  };
+  const hinted = debug.applySearchQualityContractResponseHints(seed(null), contract, 'moisturizer');
+  assert.equal(hinted.catalog_category_path, 'beauty/skincare/moisturize/cream', 'the hint ran');
+  assert.equal(hinted.category_path_inferred_from_query, true);
+  const candidate = asCandidate(hinted);
+  assert.equal(candidate.catalog_category_path, undefined, 'the inferred path is not carried as the product\'s own');
+  // Judged on its own title instead.
+  assert.deepEqual(judgeRecoReboundCandidate({ ...request, candidate }), { accept: true, reason: 'own_type_compatible' });
 });
 
 test('every skincare leaf maps to a real step, and the table covers the captured taxonomy', () => {
@@ -330,6 +434,8 @@ test('readCatalogCategoryPath reads both spellings and normalises them', () => {
   assert.equal(readCatalogCategoryPath({ category_path: ['Beauty', 'Makeup', 'Lip', 'Balm'] }), 'beauty/makeup/lip/balm');
   assert.equal(readCatalogCategoryPath({ catalog_category_path: 'beauty/fragrance/perfume' }), 'beauty/fragrance/perfume');
   assert.equal(readCatalogCategoryPath({ catalog_category_path: 'beauty/fragrance/perfume', category_path: ['beauty', 'makeup'] }), 'beauty/fragrance/perfume');
+  assert.equal(readCatalogCategoryPath({ category_path: 'beauty/makeup/face/foundation' }), 'beauty/makeup/face/foundation', 'a seed row spells it as a string');
+  assert.equal(readCatalogCategoryPath({ catalog_category_path: 'beauty/makeup/face/foundation', category_path_inferred_from_query: true }), '');
   assert.equal(readCatalogCategoryPath({}), '');
   assert.equal(readCatalogCategoryPath(null), '');
 });
