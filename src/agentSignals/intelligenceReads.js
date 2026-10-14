@@ -371,10 +371,14 @@ function offersInMarketCurrency(offers, marketCurrency) {
 function offerIsVariant(offer, vid) {
   if (!offer || typeof offer !== 'object') return false;
   const cartVariant = offer.execution_spec && offer.execution_spec.variant_id;
-  if (cartVariant != null && String(cartVariant).trim() === vid) return true;
-  // The backend's own statement that this offer IS the named variant even with no cart (sold out, a
-  // non-Shopify store, a referral-only downgrade): `source.variant_match: 'exact'` (pivota-backend #2622).
-  // Its fallback offer for an unmatched sku_id says 'fallback' and is withheld (review round 3 of #2438).
+  const cart = cartVariant != null && String(cartVariant).trim() ? String(cartVariant).trim() : '';
+  // WHEN THERE IS A CART, THE CART DECIDES: it is what the buyer would buy. An attached seed can build its
+  // cart from the operator's attached variant whatever shade was asked for, while the backend still calls
+  // the offer an `exact` match -- so a different cart is never this variant (review round 4 of #2438).
+  if (cart) return cart === vid;
+  // No cart (sold out, a non-Shopify store, a referral-only downgrade): the backend's own statement that
+  // the offer IS the named variant, `source.variant_match: 'exact'` (pivota-backend #2622). Its fallback
+  // offer for an unmatched sku_id says 'fallback' and is withheld (review round 3 of #2438).
   if (offer.source && offer.source.variant_match === 'exact' && String(offer.source.variant_id || '').trim() === vid) return true;
   const items = Array.isArray(offer.internal_checkout_items) ? offer.internal_checkout_items : [];
   return items.length > 0 && items.every((it) => it && String(it.variant_id || '').trim() === vid);

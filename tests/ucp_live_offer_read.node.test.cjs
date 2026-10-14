@@ -467,3 +467,14 @@ test('get_offers variant_id: the backend marking an offer variant_match exact ke
   assert.equal(res.signals.length, 1);
   assert.equal(res.metadata.withheld_other_variant_count, 1);
 });
+
+test('get_offers variant_id: a cart for ANOTHER shade is withheld even when the backend says exact (round 4)', async () => {
+  // An attached seed builds its cart from the operator's attached shade whatever was asked (backend repro).
+  const wrongCart = backendOffer({
+    execution_spec: { merchant_domain: RB, variant_id: BLISS, cart_url: `https://${RB}/cart/${BLISS}:1` },
+    source: { variant_id: HOPE, variant_match: 'exact' },
+  });
+  const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [wrongCart] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  assert.equal(res.signals.length, 0);
+  assert.equal(res.metadata.reason, 'variant_not_offered');
+});
