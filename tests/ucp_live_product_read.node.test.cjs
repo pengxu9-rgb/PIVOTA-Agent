@@ -336,3 +336,58 @@ test('at most MAX_CONCURRENT_LOOKUPS lookups are in flight at once', async () =>
   await Promise.all(Array.from({ length: 6 }, (_, i) => core.lookup('h.com', 'https://h.com/api/ucp/mcp', [String(600000000 + i)], 'US')));
   assert.equal(peak, 2);
 });
+
+// ------------------------------------------------------------- review of #2438, round 3
+
+test('THROUGH THE REAL PRODUCER: a product pdpBuilder suppressed is never read or un-blocked', async () => {
+  const { buildPdpPayload } = require('../src/pdpBuilder');
+  const base = {
+    product_id: 'ext_lsm', merchant_id: 'external_seed', source: 'external_seed', title: 'Lip Sleeping Mask',
+    image_url: 'https://cdn.example/lsm.jpg', price: { amount: 24, currency: 'USD' }, currency: 'USD',
+    destination_url: 'https://us.laneige.com/products/lip-sleeping-mask',
+    variants: [{ variant_id: LEMON, title: 'Lemon Sorbet', price: { amount: 24, currency: 'USD' } }],
+  };
+  const blocked = buildPdpPayload({ product: { ...base, transaction_ready: false }, relatedProducts: [], entryPoint: 'agent' });
+  assert.equal(blocked.product.commerce_suppressed, true, 'the producer states its verdict on the product');
+  // What get_product actually returns: the detail normalizer keeps `product` only (no `actions`).
+  const { r, calls } = reader(laneigeUS);
+  assert.equal(await r.readProduct({ product: blocked.product }, { market: 'US' }), null);
+  assert.equal(calls.length, 0);
+  const open = buildPdpPayload({ product: base, relatedProducts: [], entryPoint: 'agent' });
+  assert.equal(open.product.commerce_suppressed, undefined, 'an open product carries no flag');
+});
+
+test('re-pricing into another currency with ANY variant unanswered changes nothing (no mixed page)', async () => {
+  const { r } = reader({ SG: [variant(LEMON, 3700, 'SGD', true), variant(BERRY, 3700, 'SGD', true)] }, { quiet: true });
+  const pdp = laneigePdp({ currency: 'USD', price: 24 });
+  pdp.product.variants = pdp.product.variants.map((v) => ({ ...v, price: { current: { amount: 24, currency: 'USD' } } }));
+  const out = await r.readProduct(pdp, { market: 'SG' });
+  assert.equal(out.product.live_read.status, STATUS.SKIPPED);
+  assert.equal(out.product.live_read.reason, 'incomplete_reprice');
+  assert.deepEqual(out.product.variants.map((v) => v.price.current.currency), ['USD', 'USD', 'USD']);
+  assert.equal(out.product.price, 24);
+});
+
+test('the lookup queue refuses a waiter that outlived every budget, and refuses at once when full', async () => {
+  const { createLookupCore } = require('../src/services/ucpLiveOfferRead');
+  let t = 0;
+  const pending = [];
+  const client = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    lookupCatalog: () => new Promise((res) => pending.push(() => res(toolResult({ products: [] })))),
+  };
+  const core = createLookupCore({ ucpClient: client, now: () => t, endpointTtlMs: 1e9, memoTtlMs: 0, maxConcurrent: 1 });
+  const first = core.lookup('h.com', 'https://h.com/api/ucp/mcp', ['700000001'], 'US');
+  const stale = core.lookup('h.com', 'https://h.com/api/ucp/mcp', ['700000002'], 'US');
+  await new Promise((res) => setImmediate(res));
+  t += 4000; // the queued caller's budget is long gone
+  pending.shift()();
+  await first;
+  // Bounded wait: a guard that lets the stale waiter run leaves it pending (its lookup is never answered here).
+  const outcome = await Promise.race([
+    stale.then(() => 'ran', (e) => e.code),
+    new Promise((res) => setTimeout(() => res('still_pending'), 50)),
+  ]);
+  assert.equal(outcome, 'timeout');
+  assert.equal(pending.length, 0, 'the stale lookup was never sent');
+});

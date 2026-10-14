@@ -185,16 +185,34 @@ const MAX_CONCURRENT_LOOKUPS = 16;
 function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS }) {
   const negativeEndpointTtlMs = 10 * 60 * 1000;
   let inFlight = 0;
-  const waiting = [];
+  const waiting = []; // { resolve, reject, at }
+  // A waiter older than any caller's budget has already given up: it is refused, never run (it would take
+  // a slot for an answer nobody reads). A full queue refuses at once (review round 3 of #2438).
+  const MAX_WAIT_MS = 3000;
+  const MAX_QUEUE = 200;
+  function release() {
+    inFlight -= 1;
+    while (waiting.length) {
+      const next = waiting.shift();
+      if (now() - next.at <= MAX_WAIT_MS) {
+        inFlight += 1;
+        next.resolve();
+        return;
+      }
+      next.reject(Object.assign(new Error('timeout'), { code: 'timeout' }));
+    }
+  }
   async function withSlot(run) {
-    if (inFlight >= maxConcurrent) await new Promise((resolve) => waiting.push(resolve));
-    inFlight += 1;
+    if (inFlight >= maxConcurrent) {
+      if (waiting.length >= MAX_QUEUE) throw Object.assign(new Error('lookup_queue_full'), { code: 'timeout' });
+      await new Promise((resolve, reject) => waiting.push({ resolve, reject, at: now() }));
+    } else {
+      inFlight += 1;
+    }
     try {
       return await run();
     } finally {
-      inFlight -= 1;
-      const next = waiting.shift();
-      if (next) next();
+      release();
     }
   }
   const endpoints = new Map(); // host -> { endpoint|null, until }
@@ -476,6 +494,9 @@ function withLiveStock(availability, inStock) {
  * `availability: { in_stock: false, available_quantity: 0 }`. A live answer must never un-block it.
  */
 function commerceBlocked(result, product) {
+  // pdpBuilder's own verdict, carried on the product (the get_product detail normalizer keeps `product`
+  // only): the one marker the real path delivers (review round 3 of #2438).
+  if (product && product.commerce_suppressed === true) return true;
   if (result && Array.isArray(result.actions) && result.actions.length === 0) return true;
   if (product && product.transaction_ready === false) return true;
   if (product && product.source_unavailable_v1) return true;
@@ -559,7 +580,8 @@ function createUcpLiveProductReader(deps = {}) {
     if (!country || !currency) return { status: STATUS.SKIPPED, reason: 'no_market', basis };
     if (!host || !ids.length) return { status: STATUS.SKIPPED, reason: !host ? 'no_host' : 'no_variant_id', country, currency, basis };
     const allVariants = Array.isArray(product.variants) ? product.variants : [];
-    if (currency !== homeCurrency && homeCurrency && allVariants.length > ids.length) {
+    const allVariantIds = allVariants.map((v) => numericVariantId(v && v.variant_id));
+    if (currency !== homeCurrency && homeCurrency && (allVariants.length > ids.length || allVariantIds.some((id) => !id))) {
       // Re-pricing in another currency must cover EVERY variant, or the page would mix currencies.
       return { status: STATUS.SKIPPED, reason: 'too_many_variants_to_reprice', country, currency, basis };
     }
@@ -585,6 +607,15 @@ function createUcpLiveProductReader(deps = {}) {
       if (live.size === 0) {
         if (notFound.size) return { status: STATUS.VARIANT_GONE, host, country, currency, basis, live, notFound, askedIds: ids };
         return { status: STATUS.ERROR, host, country, currency, basis, reason: 'nothing_answered' };
+      }
+      if (currency !== homeCurrency && homeCurrency) {
+        // Re-pricing into ANOTHER currency needs a priced, stocked answer for EVERY variant; one variant left
+        // at its stored price would make a mixed-currency page (review round 3 of #2438).
+        const complete = allVariantIds.every((id) => {
+          const v = live.get(id);
+          return v && v.currency === currency && v.amount !== null && v.available !== null;
+        });
+        if (!complete) return { status: STATUS.SKIPPED, reason: 'incomplete_reprice', host, country, currency, basis };
       }
       const answeredCurrencies = new Set([...live.values()].map((v) => v.currency).filter(Boolean));
       if (answeredCurrencies.size !== 1 || !answeredCurrencies.has(currency)) {

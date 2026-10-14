@@ -458,3 +458,12 @@ test('a listed shade whose stock the merchant did not state is not marked live-v
   const hope = offers[0].variants.find((v) => v.variant_id === HOPE);
   assert.equal(hope.live_verified, undefined);
 });
+
+test('get_offers variant_id: the backend marking an offer variant_match exact keeps it with no cart (round 3)', async () => {
+  // A sold-out or non-Shopify seller of the variant: no cart, but the backend matched the variant.
+  const exactNoCart = backendOffer({ execution_spec: { merchant_domain: 'other.com', variant_id: null }, source: { variant_id: HOPE, variant_match: 'exact' } });
+  const fallback = backendOffer({ execution_spec: { merchant_domain: 'third.com', variant_id: null }, source: { variant_id: HOPE, variant_match: 'fallback' } });
+  const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [exactNoCart, fallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  assert.equal(res.signals.length, 1);
+  assert.equal(res.metadata.withheld_other_variant_count, 1);
+});

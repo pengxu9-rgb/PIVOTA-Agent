@@ -5292,6 +5292,9 @@ function buildPdpPayload(args) {
         : {}),
       ...(!commerceSuppressed && defaultVariant?.price ? { price: defaultVariant.price } : {}),
       availability: commerceSuppressed ? { in_stock: false, available_quantity: 0 } : productAvailability,
+      // The suppression VERDICT itself, so a consumer that only sees `product` (the get_product detail
+      // normalizer drops `actions`) can tell a deliberately blocked product from a sold-out one. Additive.
+      ...(commerceSuppressed ? { commerce_suppressed: true } : {}),
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
       ...pickSavingsPresentationFields(product),
