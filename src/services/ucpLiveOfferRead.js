@@ -311,7 +311,7 @@ function createUcpLiveOfferReader(deps = {}) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
 
-  const core = createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs });
+  const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs });
   const { endpointFor, lookup } = core;
 
   /** The live read of one offer: { status, live?, liveVariants? }. Never throws. */
@@ -754,7 +754,152 @@ function createUcpLiveProductReader(deps = {}) {
   return { mode, readProduct, applyProductRead, readLive };
 }
 
+/*
+ * LIVE SEARCH-CARD READ (search_catalog, the cards an agent sees first). Same source and rules as the offer
+ * and product reads. Cards from one store are batched: one lookup per (store, country, 10 variants), so a
+ * page of cards from a few stores costs a few calls.
+ *
+ * WHY. Search's existing overlay (liveMerchantSearchPrice) reads `/products/<handle>.json` with no country,
+ * replaces PRICE only and never stock: us.laneige.com Lip Sleeping Mask showed $24 in stock in search while
+ * the PDP said every flavour unavailable (2026-10-14). A UCP lookup prices for the buyer's market and states
+ * availability per variant.
+ *
+ * Per card (index -> read): verified { amount, currency, available } | variant_gone | skipped / not_ucp /
+ * error / timeout / currency_mismatch. The overlay applies verified and variant_gone, and leaves every other
+ * card to its own `.json` read, unchanged.
+ */
+function cardHost(card) {
+  return productHost({
+    destination_url: card && card.destination_url,
+    source_url: card && card.source_url,
+    merchant_canonical_url: card && card.merchant_canonical_url,
+  });
+}
+
+/**
+ * @param {{ ucpClient, mode?, budgetMs?, maxCards?, now?, log?, core? }} deps
+ *   mode defaults to env UCP_LIVE_SEARCH_READ (off | shadow | enforce).
+ */
+function createUcpLiveSearchReader(deps = {}) {
+  const { ucpClient } = deps;
+  if (!ucpClient || typeof ucpClient.discoverEndpoint !== 'function' || typeof ucpClient.lookupCatalog !== 'function') {
+    throw new Error('createUcpLiveSearchReader requires a ucp client with discoverEndpoint() and lookupCatalog()');
+  }
+  const mode = deps.mode || readMode(process.env, 'UCP_LIVE_SEARCH_READ');
+  // Inside search's own 2.5s page deadline (liveMerchantSearchPrice PAGE_DEADLINE_MS), leaving the `.json`
+  // fallback room for the cards this read could not answer.
+  const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 1800;
+  const maxCards = Number.isInteger(deps.maxCards) ? deps.maxCards : 20;
+  const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  const log = typeof deps.log === 'function' ? deps.log : () => {};
+  const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000 });
+
+  /** @returns {Promise<Map<number, object>>} index -> read, for the cards this read could place. Never throws. */
+  async function readAll(cards, ctx) {
+    const reads = new Map();
+    const declared = str(ctx && ctx.market).toUpperCase();
+    if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return reads; // not priced: not read
+    const groups = new Map(); // `${host}|${country}` -> { host, country, currency, basis, items: [{ index, id }] }
+    cards.slice(0, maxCards).forEach((card, index) => {
+      if (!card || typeof card !== 'object') return;
+      const id = numericVariantId(card.source_variant_id);
+      const host = cardHost(card);
+      const cardCurrency = str(card.currency || card.price_currency).toUpperCase();
+      const basis = declared ? 'declared' : 'listing_home';
+      const country = declared || marketForCurrency(cardCurrency);
+      const currency = declared ? currencyForBuyerRegion(declared) : cardCurrency;
+      if (!id || !host || !country || !currency) {
+        reads.set(index, { status: STATUS.SKIPPED, reason: !id ? 'no_variant_id' : !host ? 'no_host' : 'no_market' });
+        return;
+      }
+      const key = `${host}|${country}`;
+      if (!groups.has(key)) groups.set(key, { host, country, currency, basis, items: [] });
+      groups.get(key).items.push({ index, id });
+    });
+    const deadline = now() + budgetMs;
+    await Promise.all([...groups.values()].map(async (g) => {
+      try {
+        const endpoint = await withDeadline(core.endpointFor(g.host), deadline, now);
+        if (!endpoint) {
+          for (const it of g.items) reads.set(it.index, { status: STATUS.NOT_UCP, host: g.host });
+          return;
+        }
+        const ids = [...new Set(g.items.map((it) => it.id))];
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
+        const parsed = await withDeadline(
+          Promise.all(chunks.map((chunk) => core.lookup(g.host, endpoint, chunk, g.country).then(parseLookup))),
+          deadline,
+          now,
+        );
+        if (parsed.some((p) => p.error)) {
+          for (const it of g.items) reads.set(it.index, { status: STATUS.ERROR, host: g.host, reason: 'merchant_error' });
+          return;
+        }
+        const live = new Map();
+        const notFound = new Set();
+        for (const p of parsed) {
+          for (const [id, v] of p.variants) live.set(id, v);
+          for (const id of p.notFound) notFound.add(id);
+        }
+        for (const it of g.items) {
+          const v = live.get(it.id);
+          const base = { host: g.host, market: g.country, market_basis: g.basis };
+          if (!v) {
+            reads.set(it.index, notFound.has(it.id)
+              ? { status: STATUS.VARIANT_GONE, ...base }
+              : { status: STATUS.ERROR, ...base, reason: 'variant_not_answered' });
+          } else if (v.currency !== g.currency) {
+            reads.set(it.index, { status: STATUS.CURRENCY_MISMATCH, ...base, merchant_currency: v.currency });
+          } else if (v.amount === null || v.available === null) {
+            reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'unreadable_variant' });
+          } else {
+            reads.set(it.index, { status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, g.currency), currency: g.currency, available: v.available });
+          }
+        }
+      } catch (e) {
+        const status = e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR;
+        for (const it of g.items) reads.set(it.index, { status, host: g.host, reason: str(e && e.message).slice(0, 80) });
+      }
+    }));
+    return reads;
+  }
+
+  function summarize(cards, reads) {
+    const stats = { mode, read: reads.size, by_status: {}, price_changed: 0, stock_changed: 0 };
+    for (const [index, r] of reads) {
+      stats.by_status[r.status] = (stats.by_status[r.status] || 0) + 1;
+      if (r.status !== STATUS.VERIFIED) continue;
+      const card = cards[index] || {};
+      if (Math.abs(Number(card.price) - r.amount) > 0.01) stats.price_changed += 1;
+      const stored = card.in_stock === true ? true : card.in_stock === false ? false : null;
+      if (stored !== r.available) stats.stock_changed += 1;
+    }
+    return stats;
+  }
+
+  /**
+   * @returns {Promise<Map<number, object>|null>} enforce: index -> read; shadow and off: null (cards
+   *   unchanged; shadow logs the comparison after the page is served).
+   */
+  async function readCards(cards, ctx = {}) {
+    if (mode === MODES.OFF || !Array.isArray(cards) || !cards.length) return null;
+    if (mode === MODES.SHADOW) {
+      readAll(cards, ctx)
+        .then((reads) => log('search_ucp_live_read', summarize(cards, reads)))
+        .catch(() => {});
+      return null;
+    }
+    const reads = await readAll(cards, ctx);
+    log('search_ucp_live_read', summarize(cards, reads));
+    return reads;
+  }
+
+  return { mode, readCards };
+}
+
 module.exports = {
+  createUcpLiveSearchReader,
   MAX_CONCURRENT_LOOKUPS,
   commerceBlocked,
   parseLookup,

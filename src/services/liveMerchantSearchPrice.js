@@ -166,7 +166,47 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // Limit both page size and per-domain concurrency. All jobs are awaited before the response
   // leaves unless the whole-page deadline expires. A failed read keeps stored-price provenance.
   const cards = [...response.products];
+  // FIRST, the merchant's own UCP catalog (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ): price AND
+  // stock, for the buyer's market, batched per store. A card it verified or the merchant says is gone is
+  // settled here; every other card takes the `.json` read below exactly as before. Shadow and off return
+  // null and change nothing. Bounded by this page's own deadline.
+  const ucp = { verified: 0, gone: 0, drifted: 0, stockChanged: 0 };
+  const settledByUcp = new Set();
+  if (options.ucpSearchReader && typeof options.ucpSearchReader.readCards === 'function') {
+    let reads = null;
+    try {
+      reads = await Promise.race([
+        options.ucpSearchReader.readCards(cards, { market: options.market }),
+        pageExpired.then(() => null),
+      ]);
+    } catch {
+      reads = null;
+    }
+    const asOf = new Date().toISOString();
+    for (const [index, read] of reads instanceof Map ? reads : []) {
+      const card = cards[index];
+      if (!card || typeof card !== 'object') continue;
+      const liveRead = { status: read.status, market: read.market || null, market_basis: read.market_basis || null, source: 'merchant_ucp_lookup_catalog', checked_at: asOf };
+      if (read.status === 'verified') {
+        ucp.verified += 1;
+        if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
+        if ((card.in_stock === true) !== read.available) ucp.stockChanged += 1;
+        cards[index] = {
+          ...card, price: read.amount, price_amount: read.amount,
+          currency: read.currency, price_currency: read.currency,
+          in_stock: read.available, availability: read.available ? 'in_stock' : 'out_of_stock',
+          price_source: 'merchant_live', price_as_of: asOf, live_read: liveRead,
+        };
+        settledByUcp.add(index);
+      } else if (read.status === 'variant_gone') {
+        ucp.gone += 1;
+        cards[index] = { ...card, in_stock: false, availability: 'out_of_stock', live_read: liveRead };
+        settledByUcp.add(index);
+      }
+    }
+  }
   for (let index = 0; index < Math.min(20, cards.length); index += 1) {
+    if (settledByUcp.has(index)) continue;
     const card = cards[index];
     if (!card || typeof card !== 'object') continue;
     const target = targetOf(card);
@@ -224,6 +264,9 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
         gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
+        ...(options.ucpSearchReader
+          ? { ucp: { verified_count: ucp.verified, variant_gone_count: ucp.gone, drift_count: ucp.drifted, stock_changed_count: ucp.stockChanged } }
+          : {}),
       },
     },
   };

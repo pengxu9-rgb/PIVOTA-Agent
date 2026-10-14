@@ -13980,7 +13980,11 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
       },
     };
   }
-  return overlayLiveMerchantSearchPrices(response);
+  return overlayLiveMerchantSearchPrices(response, {
+    // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
+    ucpSearchReader: getUcpLiveSearchReader(),
+    market: typeof search.market === 'string' ? search.market : undefined,
+  });
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -30806,6 +30810,35 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
+// ONE client and lookup core for every UCP live read in this process: one discovery memo per host, one
+// in-flight memo, and one cap on concurrent merchant lookups (MAX_CONCURRENT_LOOKUPS) across get_offers,
+// get_product and search. Built only when a reader is first needed.
+let _ucpLiveShared;
+function getUcpLiveShared() {
+  if (_ucpLiveShared) return _ucpLiveShared;
+  const { createLookupCore } = require('./services/ucpLiveOfferRead');
+  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
+  const ucpClient = createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false });
+  _ucpLiveShared = {
+    ucpClient,
+    core: createLookupCore({ ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000 }),
+  };
+  return _ucpLiveShared;
+}
+
+// UCP live search-card read (search_catalog). Same lazy, off-by-default construction; its own flag.
+let _ucpLiveSearchReader;
+function getUcpLiveSearchReader() {
+  if (_ucpLiveSearchReader !== undefined) return _ucpLiveSearchReader;
+  const { createUcpLiveSearchReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
+  _ucpLiveSearchReader = createUcpLiveSearchReader({
+    ...getUcpLiveShared(),
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLiveSearchReader;
+}
+
 // UCP live product read (get_product variants). Same lazy, off-by-default construction as the offer reader
 // below, with its own flag so the two roll out independently.
 let _ucpLiveProductReader;
@@ -30813,9 +30846,8 @@ function getUcpLiveProductReader() {
   if (_ucpLiveProductReader !== undefined) return _ucpLiveProductReader;
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
-  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   _ucpLiveProductReader = createUcpLiveProductReader({
-    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
+    ...getUcpLiveShared(),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveProductReader;
@@ -30829,9 +30861,8 @@ function getUcpLiveOfferReader() {
   if (_ucpLiveOfferReader !== undefined) return _ucpLiveOfferReader;
   const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode() === MODES.OFF) return null;
-  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
+    ...getUcpLiveShared(),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveOfferReader;
