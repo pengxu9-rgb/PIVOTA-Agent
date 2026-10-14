@@ -77,9 +77,9 @@ function usesCanonicalOwnMoney(ref, market, currency) {
 }
 
 async function readCanonicalOwnMoney({ ref, query }) {
-  const result = await query(`
+  const { rows, freshness } = await queryOwnMoneyRows(query, priceCheck => `
     SELECT co.offer_id, co.sku_key, s.source_variant_id,
-      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount, co.price_checked_at
+      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount${priceCheck}
     FROM catalog_products own_cp
     JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
       AND own_trust.subject_key = own_cp.product_key AND own_trust.serving_decision = 'public'
@@ -97,7 +97,7 @@ async function readCanonicalOwnMoney({ ref, query }) {
       AND coalesce(co.merchant_effective_price, co.list_price) > 0
     ORDER BY s.source_variant_id, co.offer_id
   `, [ref.product_key, ref.merchant_id]);
-  return currentMoneyFromOwnRows(result.rows || [], ref.product_key, { productKey: ref.product_key, merchantId: ref.merchant_id });
+  return currentMoneyFromOwnRows(rows, ref.product_key, freshness);
 }
 
 // FRESHNESS. `catalog_offers.price_checked_at` is when the offer's price was last READ from its page
@@ -105,14 +105,19 @@ async function readCanonicalOwnMoney({ ref, query }) {
 // without a read, NULL = no read on record. Never `updated_at`, which every bulk write moves. A row whose
 // read is older than the window (or was never made) is not current money: in `enforce` it is left out,
 // so its variant renders unpriced, and a listing with no fresh row at all is CURRENT_OWN_OFFER_UNAVAILABLE.
-// `shadow` serves exactly what `off` does and logs what `enforce` would change.
+// A stale DEFAULT variant therefore makes the whole listing unavailable (projectCanonicalProductMoney), as
+// any other default without money does. `shadow` serves exactly what `off` does, and the projections log
+// what `enforce` would have served (pdp_own_money_freshness_shadow).
 // Measured on prod 2026-10-14 over 1,992 verified PDPs, 14 days: 76 unavailable + 280 with some variant
 // unpriced; nearly all of them never-read rows (drain-written variants the refresh cannot match, dead pages).
 const OWN_MONEY_FRESHNESS_MODES = new Set(['off', 'shadow', 'enforce']);
 const DEFAULT_OWN_MONEY_MAX_AGE_DAYS = 14;
+const MIN_OWN_MONEY_MAX_AGE_DAYS = 1;
+const MAX_OWN_MONEY_MAX_AGE_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A stamp ahead of the gateway clock by more than this is not a read we can date.
 const FUTURE_PRICE_CHECK_TOLERANCE_MS = 10 * 60 * 1000;
+const FRESHNESS_SHADOW = Symbol('own-money-freshness-shadow');
 
 function ownMoneyFreshnessMode(env = process.env) {
   const mode = String(env.CANONICAL_OWN_MONEY_FRESHNESS || '').trim().toLowerCase();
@@ -122,7 +127,42 @@ function ownMoneyFreshnessMode(env = process.env) {
 function ownMoneyMaxAgeDays(env = process.env) {
   const raw = String(env.CANONICAL_OWN_MONEY_MAX_AGE_DAYS || '').trim();
   const days = raw ? Number(raw) : DEFAULT_OWN_MONEY_MAX_AGE_DAYS;
-  return Number.isFinite(days) && days > 0 ? days : DEFAULT_OWN_MONEY_MAX_AGE_DAYS;
+  if (!Number.isFinite(days)) return DEFAULT_OWN_MONEY_MAX_AGE_DAYS;
+  return Math.min(MAX_OWN_MONEY_MAX_AGE_DAYS, Math.max(MIN_OWN_MONEY_MAX_AGE_DAYS, days));
+}
+
+// THE COLUMN IS READ ONLY WHEN A MODE IS ON, AND ITS ABSENCE DEGRADES TO `off`, NEVER TO A FAILED READ. A
+// rolled-back migration 246, a deferred schema_guard heal or a database without the column make Postgres
+// reject the statement (42703), which would turn every canonical PDP into a gap. The same contract as
+// canonicalCatalogSearch's price_as_of: run once more without the column, and do not try it again for
+// OWN_MONEY_PRICE_CHECK_RETRY_MS.
+const OWN_MONEY_PRICE_CHECK_RETRY_MS = 10 * 60 * 1000;
+const ownMoneyPriceCheckState = { unavailableUntil: 0 };
+
+function isMissingPriceCheckedAtColumn(err) {
+  return String(err?.code || '') === '42703' && /price_checked_at/.test(String(err?.message || ''));
+}
+
+async function queryOwnMoneyRows(query, buildSql, params) {
+  const freshness = { mode: ownMoneyFreshnessMode(), maxAgeDays: ownMoneyMaxAgeDays() };
+  const read = async withPriceCheck => (await query(buildSql(withPriceCheck ? ', co.price_checked_at' : ''), params)).rows || [];
+  const off = { ...freshness, mode: 'off' };
+  if (freshness.mode === 'off' || Date.now() < ownMoneyPriceCheckState.unavailableUntil) return { rows: await read(false), freshness: off };
+  try {
+    return { rows: await read(true), freshness };
+  } catch (err) {
+    if (!isMissingPriceCheckedAtColumn(err)) throw err;
+    ownMoneyPriceCheckState.unavailableUntil = Date.now() + OWN_MONEY_PRICE_CHECK_RETRY_MS;
+    logger.warn(
+      { event: 'pdp_own_money_freshness_unavailable', mode: freshness.mode, retry_ms: OWN_MONEY_PRICE_CHECK_RETRY_MS, error: err.message },
+      'CANONICAL_OWN_MONEY_FRESHNESS is on but catalog_offers.price_checked_at is missing; serving own money as off',
+    );
+    return { rows: await read(false), freshness: off };
+  }
+}
+
+function resetOwnMoneyPriceCheckStateForTests() {
+  ownMoneyPriceCheckState.unavailableUntil = 0;
 }
 
 function isFreshOwnRow(row, { now, maxAgeDays }) {
@@ -132,39 +172,36 @@ function isFreshOwnRow(row, { now, maxAgeDays }) {
   return Number.isFinite(at) && at >= now - maxAgeDays * DAY_MS && at <= now + FUTURE_PRICE_CHECK_TOLERANCE_MS;
 }
 
-// moneyFromOwnRows under the freshness mode. Throws exactly as moneyFromOwnRows does; in `enforce` a listing
-// whose eligible rows are all stale throws CURRENT_OWN_OFFER_UNAVAILABLE.
-function currentMoneyFromOwnRows(rows, productKey, logContext = {}, {
+// moneyFromOwnRows under the freshness mode. Every mode first validates ALL eligible rows, so a stale row
+// still refuses a conflicting price exactly as it does in `off`; freshness only then drops rows. In
+// `enforce` a listing with no fresh row throws CURRENT_OWN_OFFER_UNAVAILABLE. In `shadow` the served money
+// carries what enforce would have served, for the projections to log.
+function currentMoneyFromOwnRows(rows, productKey, {
   mode = ownMoneyFreshnessMode(), maxAgeDays = ownMoneyMaxAgeDays(), now = Date.now(),
 } = {}) {
-  if (mode === 'off') return moneyFromOwnRows(rows, productKey);
-  const fresh = rows.filter(row => isFreshOwnRow(row, { now, maxAgeDays }));
-  if (mode === 'enforce') {
-    if (rows.length && !fresh.length) throw unavailable('Current own listing money has no price read within its freshness window');
-    return moneyFromOwnRows(fresh, productKey);
-  }
   const served = moneyFromOwnRows(rows, productKey);
+  if (mode === 'off') return served;
+  const fresh = rows.filter(row => isFreshOwnRow(row, { now, maxAgeDays }));
   let enforced = null;
   try {
-    enforced = moneyFromOwnRows(fresh, productKey);
+    enforced = fresh.length ? moneyFromOwnRows(fresh, productKey) : null;
   } catch {
     enforced = null;
   }
-  const lostKeys = [...served.keys()].filter(key => !enforced?.has(key));
-  if (lostKeys.length) {
-    logger.info({
-      event: 'pdp_own_money_freshness_shadow',
-      would: enforced ? 'variants_unpriced' : 'unavailable',
-      product_key: logContext.productKey || productKey || null,
-      merchant_id: logContext.merchantId || null,
-      listing_product_id: logContext.listingProductId || null,
-      stale_rows: rows.length - fresh.length,
-      rows: rows.length,
-      unpriced_keys: lostKeys.length,
-      max_age_days: maxAgeDays,
-    }, 'own listing money older than its freshness window (shadow: still served)');
+  if (mode === 'enforce') {
+    if (!enforced) throw unavailable('Current own listing money has no price read within its freshness window');
+    return enforced;
+  }
+  if (!enforced || enforced.size < served.size) {
+    Object.defineProperty(served, FRESHNESS_SHADOW, { value: {
+      enforced, productKey, staleRows: rows.length - fresh.length, rows: rows.length, maxAgeDays } });
   }
   return served;
+}
+
+function logFreshnessShadow(fields, shadow) {
+  logger.info({ event: 'pdp_own_money_freshness_shadow', ...fields, stale_rows: shadow.staleRows, rows: shadow.rows,
+    max_age_days: shadow.maxAgeDays }, 'own listing money older than its freshness window (shadow: still served)');
 }
 
 // One rule for turning eligible own-offer rows into money per variant, shared by the selected listing
@@ -212,7 +249,7 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
   }
   const verified = new Map();
   if (!unique.length) return verified;
-  const result = await query(`
+  const { rows: listingRows, freshness } = await queryOwnMoneyRows(query, priceCheck => `
     WITH wanted AS (
       SELECT * FROM unnest($1::text[], $2::text[]) AS w(merchant_id, product_id)
     ), listing AS (
@@ -225,7 +262,7 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
     )
     SELECT l.merchant_id AS listing_merchant_id, l.product_id AS listing_product_id,
       own_cp.product_key, co.offer_id, co.sku_key, s.source_variant_id,
-      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount, co.price_checked_at
+      co.currency, coalesce(co.merchant_effective_price, co.list_price) AS amount${priceCheck}
     FROM listing l
     JOIN catalog_products own_cp ON own_cp.product_key = l.product_key
     JOIN catalog_row_trust own_trust ON own_trust.subject_type = 'product'
@@ -244,7 +281,7 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
     ORDER BY l.merchant_id, l.product_id, s.source_variant_id, co.offer_id
   `, [unique.map(item => item.merchantId), unique.map(item => item.productId)]);
   const grouped = new Map();
-  for (const row of result.rows || []) {
+  for (const row of listingRows) {
     const key = `${row.listing_merchant_id}\u0000${row.listing_product_id}`;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(row);
@@ -254,8 +291,7 @@ async function readCanonicalSellerOffersMoney({ listings, query }) {
     if (productKeys.size !== 1) continue;
     const [productKey] = productKeys;
     try {
-      verified.set(key, currentMoneyFromOwnRows(rows, productKey, {
-        productKey, merchantId: rows[0].listing_merchant_id, listingProductId: rows[0].listing_product_id }));
+      verified.set(key, currentMoneyFromOwnRows(rows, productKey, freshness));
     } catch {
       // Conflicting or malformed money: this listing stays unverified, the others are unaffected.
     }
@@ -310,7 +346,32 @@ function isCanonicalProductGrain(product, ref) {
   return id === laneProductVariantId(ref);
 }
 
-function projectCanonicalProductMoney(product, moneyByVariant, { ref = null } = {}) {
+function projectCanonicalProductMoney(product, moneyByVariant, options = {}) {
+  const projected = projectCanonicalProductMoneyWith(product, moneyByVariant, options);
+  const shadow = moneyByVariant?.[FRESHNESS_SHADOW];
+  if (shadow) {
+    // What enforce would have served, through the same projection: a stale default variant is a whole-PDP
+    // gap, not a variant gap. Variants are counted, so a numeric alias never counts twice.
+    let enforcedProduct = null;
+    try {
+      enforcedProduct = shadow.enforced ? projectCanonicalProductMoneyWith(product, shadow.enforced, options) : null;
+    } catch {
+      enforcedProduct = null;
+    }
+    const servedVariants = Array.isArray(projected.variants) ? projected.variants : [];
+    const unpricedVariants = enforcedProduct ? servedVariants.filter((variant, index) =>
+      variant?.current_own_offer_status !== 'unavailable' &&
+      enforcedProduct.variants?.[index]?.current_own_offer_status === 'unavailable').length : servedVariants.length;
+    if (!enforcedProduct || unpricedVariants) {
+      logFreshnessShadow({ scope: 'selected_listing', would: enforcedProduct ? 'variants_unpriced' : 'unavailable',
+        product_key: options.ref?.product_key || shadow.productKey || null, merchant_id: options.ref?.merchant_id || null,
+        unpriced_variants: unpricedVariants }, shadow);
+    }
+  }
+  return projected;
+}
+
+function projectCanonicalProductMoneyWith(product, moneyByVariant, { ref = null } = {}) {
   const nativeVariants = buildVariants(product);
   const selected = pickDefaultVariant(product, nativeVariants);
   const productGrain = isCanonicalProductGrain(product, ref);
@@ -364,6 +425,39 @@ function projectCanonicalOffersMoney(data, ref, moneyByVariant, { productGrain =
 // of stock and says why, so it can never be bought on a stale cache price. The selected listing is
 // already projected by projectCanonicalOffersMoney and is left untouched here.
 function projectSellerOffersMoney(data, ref, verifiedByListing) {
+  const projected = projectSellerOffersMoneyWith(data, ref, verifiedByListing);
+  const shadowed = [...(verifiedByListing?.entries() || [])].filter(([, money]) => money?.[FRESHNESS_SHADOW]);
+  if (shadowed.length) {
+    // What enforce would have verified, through the same projection: a stale selected variant leaves the
+    // whole seller offer unverified.
+    const enforcedByListing = new Map(verifiedByListing);
+    for (const [key, money] of shadowed) {
+      if (money[FRESHNESS_SHADOW].enforced) enforcedByListing.set(key, money[FRESHNESS_SHADOW].enforced);
+      else enforcedByListing.delete(key);
+    }
+    const enforced = projectSellerOffersMoneyWith(data, ref, enforcedByListing);
+    const countByListing = offers => offers.reduce((counts, offer) => {
+      const key = sellerListingKey(offer);
+      counts.set(key, (counts.get(key) || 0) + 1);
+      return counts;
+    }, new Map());
+    const servedCounts = countByListing(projected.verifiedOffers);
+    const enforcedCounts = countByListing(enforced.verifiedOffers);
+    for (const [key, money] of shadowed) {
+      const served = servedCounts.get(key) || 0;
+      const kept = enforcedCounts.get(key) || 0;
+      if (served > kept) {
+        const [merchantId, productId] = key.split(' ');
+        logFreshnessShadow({ scope: 'seller_listing', would: kept ? 'variants_unpriced' : 'unavailable',
+          product_key: money[FRESHNESS_SHADOW].productKey || null, merchant_id: merchantId, listing_product_id: productId,
+          unpriced_variants: served - kept }, money[FRESHNESS_SHADOW]);
+      }
+    }
+  }
+  return projected;
+}
+
+function projectSellerOffersMoneyWith(data, ref, verifiedByListing) {
   if (!data || !Array.isArray(data.offers)) return { data, verifiedOffers: [] };
   const verifiedOffers = [];
   const offers = data.offers.map(offer => {
@@ -490,4 +584,4 @@ module.exports = { usesCanonicalOwnMoney, readCanonicalOwnMoney, readCanonicalSe
   projectCanonicalProductMoney, projectCanonicalOffersMoney, storedNumericVariant, isCanonicalProductGrain, isOwnImplicitVariantId,
   currentOwnMoneyReasonCode, withholdCanonicalProductMoney, withholdCanonicalPdpPayloadMoney, withholdVariantSelectorMoney,
   withholdCanonicalOffersMoney, CURRENT_OWN_OFFER_UNAVAILABLE, CURRENT_OWN_OFFER_READ_FAILED,
-  currentMoneyFromOwnRows, ownMoneyFreshnessMode, ownMoneyMaxAgeDays };
+  currentMoneyFromOwnRows, ownMoneyFreshnessMode, ownMoneyMaxAgeDays, resetOwnMoneyPriceCheckStateForTests };
