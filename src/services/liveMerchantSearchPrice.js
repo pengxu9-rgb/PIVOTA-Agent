@@ -138,7 +138,6 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   let expirePage;
   const pageExpired = new Promise((resolve) => { expirePage = resolve; });
   const pageTimer = setTimeout(() => { pageController.abort(); expirePage(); }, pageDeadlineMs);
-  const perHost = new Map();
   const pageFetches = new Map();
   const eligible = new Set();
   const processed = new Set();
@@ -166,83 +165,104 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // Limit both page size and per-domain concurrency. All jobs are awaited before the response
   // leaves unless the whole-page deadline expires. A failed read keeps stored-price provenance.
   const cards = [...response.products];
-  // FIRST, the merchant's own UCP catalog (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ): price AND
-  // stock, for the buyer's market, batched per store. A card it verified or the merchant says is gone is
-  // settled here; every other card takes the `.json` read below exactly as before. Shadow and off return
-  // null and change nothing. Bounded by this page's own deadline.
-  const ucp = { verified: 0, gone: 0, drifted: 0, stockChanged: 0 };
-  const settledByUcp = new Set();
-  if (options.ucpSearchReader && typeof options.ucpSearchReader.readCards === 'function') {
-    let reads = null;
-    try {
-      reads = await Promise.race([
-        options.ucpSearchReader.readCards(cards, { market: options.market }),
-        pageExpired.then(() => null),
-      ]);
-    } catch {
-      reads = null;
-    }
-    const asOf = new Date().toISOString();
-    for (const [index, read] of reads instanceof Map ? reads : []) {
-      const card = cards[index];
-      if (!card || typeof card !== 'object') continue;
-      const liveRead = { status: read.status, market: read.market || null, market_basis: read.market_basis || null, source: 'merchant_ucp_lookup_catalog', checked_at: asOf };
-      if (read.status === 'verified') {
-        ucp.verified += 1;
-        if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
-        if ((card.in_stock === true) !== read.available) ucp.stockChanged += 1;
-        cards[index] = {
-          ...card, price: read.amount, price_amount: read.amount,
-          currency: read.currency, price_currency: read.currency,
-          in_stock: read.available, availability: read.available ? 'in_stock' : 'out_of_stock',
-          price_source: 'merchant_live', price_as_of: asOf, live_read: liveRead,
-        };
-        settledByUcp.add(index);
-      } else if (read.status === 'variant_gone') {
-        ucp.gone += 1;
-        cards[index] = { ...card, in_stock: false, availability: 'out_of_stock', live_read: liveRead };
-        settledByUcp.add(index);
-      }
-    }
-  }
+  const jsonTargets = new Map(); // index -> { card, target } for cards the `.json` read can check
   for (let index = 0; index < Math.min(20, cards.length); index += 1) {
-    if (settledByUcp.has(index)) continue;
     const card = cards[index];
     if (!card || typeof card !== 'object') continue;
     const target = targetOf(card);
     if (!target || !(Number(card.price) > 0) || !/^[A-Z]{3}$/.test(String(card.currency || ''))) continue;
-    eligible.add(index);
-    const host = new URL(target.url).hostname;
-    if (!perHost.has(host)) perHost.set(host, []);
-    perHost.get(host).push({ index, card, target });
+    jsonTargets.set(index, { card, target });
   }
-  await Promise.race([Promise.all([...perHost.values()].map(async (queue) => {
-    let cursor = 0;
-    async function worker() {
-      while (cursor < queue.length && !closed && !pageController.signal.aborted) {
-        const { index, card, target } = queue[cursor++];
-        const fetched = await getProductJson(target);
-        if (closed || pageController.signal.aborted) return;
-        processed.add(index);
-        if (fetched.cacheHit) cacheHits += 1;
-        if (fetched.gone) goneIndexes.add(index);
-        const price = fetched.body && verifiedPrice(fetched.body, target.variant);
-        if (!price || price.currency !== String(card.currency).toUpperCase()) {
-          cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
-          countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
-          continue;
-        }
-        verified += 1;
-        if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
-        cards[index] = {
-          ...card, price: price.amount, price_amount: price.amount,
-          currency: price.currency, price_currency: price.currency,
-          price_source: 'merchant_live', price_as_of: fetched.asOf,
-        };
-      }
+  // THE MERCHANT'S OWN UCP CATALOG (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ). It CONFIRMS or
+  // CORRECTS the card's variant price in the card's own currency and may RAISE a card to in stock; it never
+  // lowers or drops a card (review of #2439). `plan` names the cards it will try, synchronously, so every
+  // other card's `.json` read starts NOW, alongside it; a planned card it does not settle takes its `.json`
+  // read afterwards. Shadow and off settle nothing.
+  const reader = options.ucpSearchReader && typeof options.ucpSearchReader.plan === 'function' ? options.ucpSearchReader : null;
+  let planned = new Map();
+  try {
+    if (reader) planned = reader.plan(cards, { market: options.market }) || new Map();
+  } catch {
+    planned = new Map();
+  }
+  const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0 };
+  const runJson = (entries) => {
+    const perHost = new Map();
+    for (const [index, { target }] of entries) {
+      eligible.add(index);
+      const host = new URL(target.url).hostname;
+      if (!perHost.has(host)) perHost.set(host, []);
+      perHost.get(host).push({ index, target });
     }
-    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
-  })), pageExpired]);
+    return Promise.all([...perHost.values()].map(async (queue) => {
+      let cursor = 0;
+      async function worker() {
+        while (cursor < queue.length && !closed && !pageController.signal.aborted) {
+          const { index, target } = queue[cursor++];
+          const card = cards[index];
+          const fetched = await getProductJson(target);
+          if (closed || pageController.signal.aborted) return;
+          processed.add(index);
+          if (fetched.cacheHit) cacheHits += 1;
+          if (fetched.gone) goneIndexes.add(index);
+          const price = fetched.body && verifiedPrice(fetched.body, target.variant);
+          if (!price || price.currency !== String(card.currency).toUpperCase()) {
+            cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
+            countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
+            continue;
+          }
+          verified += 1;
+          if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
+          cards[index] = {
+            ...card, price: price.amount, price_amount: price.amount,
+            currency: price.currency, price_currency: price.currency,
+            price_source: 'merchant_live', price_as_of: fetched.asOf,
+          };
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
+    }));
+  };
+  const ucpThenJson = async () => {
+    if (!planned.size) return;
+    let reads = null;
+    try {
+      reads = await reader.readCards(cards, { market: options.market }, planned);
+    } catch {
+      reads = null;
+    }
+    if (closed || pageController.signal.aborted) return;
+    const asOf = new Date().toISOString();
+    const settled = new Set();
+    for (const [index, read] of reads instanceof Map ? reads : []) {
+      const card = cards[index];
+      if (!card || typeof card !== 'object' || read.status !== 'verified') continue;
+      ucp.verified += 1;
+      if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
+      const raise = read.available === true && card.in_stock !== true;
+      if (raise) ucp.stockRaised += 1;
+      cards[index] = {
+        ...card, price: read.amount, price_amount: read.amount,
+        price_source: 'merchant_live', price_as_of: asOf,
+        ...(raise ? { in_stock: true, availability: 'in_stock' } : {}),
+        // variant_in_stock is the merchant's answer for THIS variant only; the card speaks for the product
+        // (any shade), so a false answer is reported here and never written over the card.
+        live_read: {
+          status: read.status, market: read.market || null, market_basis: read.market_basis || null,
+          variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: asOf,
+        },
+      };
+      settled.add(index);
+    }
+    await runJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
+  };
+  await Promise.race([
+    Promise.all([
+      runJson([...jsonTargets].filter(([i]) => !planned.has(i))),
+      ucpThenJson(),
+    ]),
+    pageExpired,
+  ]);
   closed = true;
   clearTimeout(pageTimer);
   if (pageController.signal.aborted) {
@@ -260,12 +280,12 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     metadata: {
       ...(response.metadata || {}),
       live_merchant_price: {
-        attempted: eligible.size > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
+        attempted: eligible.size > 0 || ucp.planned > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
         gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
-        ...(options.ucpSearchReader
-          ? { ucp: { verified_count: ucp.verified, variant_gone_count: ucp.gone, drift_count: ucp.drifted, stock_changed_count: ucp.stockChanged } }
+        ...(reader
+          ? { ucp: { mode: reader.mode || null, planned_count: ucp.planned, verified_count: ucp.verified, drift_count: ucp.drifted, stock_raised_count: ucp.stockRaised } }
           : {}),
       },
     },

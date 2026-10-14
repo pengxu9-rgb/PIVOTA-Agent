@@ -35,7 +35,7 @@
  * nothing is written back. Pivota stores its own judgement and reads merchant facts live (2026-10-14).
  */
 
-const { currencyExponent, majorUnitsOf } = require('./merchantVariantSource');
+const { currencyExponent, majorUnitsOf, isRestatedProductId } = require('./merchantVariantSource');
 const { unwrapToolPayload } = require('./ucpBuyerAgentClient');
 
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
@@ -141,6 +141,7 @@ function parseLookup(payload) {
 function liveVariantsFrom(payload) {
   const out = new Map();
   for (const product of Array.isArray(payload && payload.products) ? payload.products : []) {
+    const handle = str(product && product.handle).toLowerCase() || null;
     for (const v of Array.isArray(product && product.variants) ? product.variants : []) {
       const id = numericVariantId(v && v.id);
       if (!id) continue;
@@ -150,6 +151,7 @@ function liveVariantsFrom(payload) {
         amount: money ? money.amount : null,
         currency: str(v.price && v.price.currency).toUpperCase() || null,
         available,
+        handle,
       });
     }
   }
@@ -182,7 +184,7 @@ function roundTo(amount, currency) {
 // wait their turn (each still bounded by its caller's deadline).
 const MAX_CONCURRENT_LOOKUPS = 16;
 
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS }) {
+function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache }) {
   const negativeEndpointTtlMs = 10 * 60 * 1000;
   let inFlight = 0;
   const waiting = []; // { resolve, reject, at }
@@ -202,10 +204,26 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
       next.reject(Object.assign(new Error('timeout'), { code: 'timeout' }));
     }
   }
-  async function withSlot(run) {
+  async function withSlot(run, deadline) {
     if (inFlight >= maxConcurrent) {
       if (waiting.length >= MAX_QUEUE) throw Object.assign(new Error('lookup_queue_full'), { code: 'timeout' });
-      await new Promise((resolve, reject) => waiting.push({ resolve, reject, at: now() }));
+      await new Promise((resolve, reject) => {
+        const entry = { resolve, reject, at: now() };
+        waiting.push(entry);
+        // A caller with its own deadline gives up its place at that deadline, not at MAX_WAIT_MS.
+        if (Number.isFinite(deadline)) {
+          const t = setTimeout(() => {
+            const i = waiting.indexOf(entry);
+            if (i >= 0) {
+              waiting.splice(i, 1);
+              reject(Object.assign(new Error('timeout'), { code: 'timeout' }));
+            }
+          }, Math.max(1, deadline - now()));
+          if (typeof t.unref === 'function') t.unref();
+          const settle = entry.resolve;
+          entry.resolve = () => { clearTimeout(t); settle(); };
+        }
+      });
     } else {
       inFlight += 1;
     }
@@ -215,7 +233,8 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
       release();
     }
   }
-  const endpoints = new Map(); // host -> { endpoint|null, until }
+  // A core may share its discovery memo with another (search has its own lookup pool, not its own memo).
+  const endpoints = endpointCache instanceof Map ? endpointCache : new Map(); // host -> { endpoint|null, until }
   const memo = new Map(); // `${host}|${country}|${ids}` -> { promise, until }
 
   const discovering = new Map(); // host -> in-flight discovery promise (concurrent callers share it)
@@ -245,7 +264,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
   }
 
   /** One lookup per (host, country, ids) at a time: concurrent callers share the in-flight promise. */
-  function lookup(host, endpoint, ids, country) {
+  function lookup(host, endpoint, ids, country, { deadline } = {}) {
     const key = `${host}|${country}|${ids.join(',')}`;
     const hit = memo.get(key);
     if (hit && hit.until > now()) return hit.promise;
@@ -260,7 +279,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
         throw err;
       }
       return unwrapToolPayload(res);
-    });
+    }, deadline);
     memo.set(key, { promise, until: now() + memoTtlMs });
     promise.catch(() => {
       if (memo.get(key) && memo.get(key).promise === promise) memo.delete(key);
@@ -755,19 +774,50 @@ function createUcpLiveProductReader(deps = {}) {
 }
 
 /*
- * LIVE SEARCH-CARD READ (search_catalog, the cards an agent sees first). Same source and rules as the offer
- * and product reads. Cards from one store are batched: one lookup per (store, country, 10 variants), so a
- * page of cards from a few stores costs a few calls.
+ * LIVE SEARCH-CARD READ (search_catalog). Same source as the offer and product reads, with the narrower
+ * claim a search card can carry (review of #2439):
  *
- * WHY. Search's existing overlay (liveMerchantSearchPrice) reads `/products/<handle>.json` with no country,
- * replaces PRICE only and never stock: us.laneige.com Lip Sleeping Mask showed $24 in stock in search while
- * the PDP said every flavour unavailable (2026-10-14). A UCP lookup prices for the buyer's market and states
- * availability per variant.
+ *   - A card stands for the PRODUCT; it names one variant (its cheapest stored offer). So the read CONFIRMS
+ *     or CORRECTS that variant's price in the card's own currency, and may RAISE the card to in stock when
+ *     the merchant says that variant is available -- it never lowers a card to out of stock and never drops
+ *     one: one sold-out shade is not a sold-out product, and `in_stock_only` pages were filtered on stock
+ *     before this runs. A gone page stays the `.json` overlay's to judge (storefrontProductPage).
+ *   - Only a REAL variant: `source_variant_id` that restates the product (the same filter as the `.json`
+ *     overlay's targetOf), else the URL's `?variant=`. And the merchant's answer must be for the SAME product
+ *     page (its `handle`), or it is not this card's.
+ *   - The card's currency never changes: a declared market whose currency is not the card's is not read.
  *
- * Per card (index -> read): verified { amount, currency, available } | variant_gone | skipped / not_ucp /
- * error / timeout / currency_mismatch. The overlay applies verified and variant_gone, and leaves every other
- * card to its own `.json` read, unchanged.
+ * `plan(cards, ctx)` says, synchronously, which cards this read will try, so the overlay can start the
+ * `.json` reads for the rest at once instead of after it.
  */
+function searchCardVariantId(card) {
+  let own = str(card && card.source_variant_id);
+  const productKey = str(card && (card.product_key || card.catalog_product_key));
+  const sourceProductId = str(card && card.source_product_id);
+  if (own && (isRestatedProductId(own, productKey) || isRestatedProductId(own, sourceProductId)
+    || own === 'default' || own.endsWith('-default'))) own = '';
+  if (!own) {
+    try {
+      own = new URL(str(card && card.destination_url)).searchParams.get('variant') || '';
+    } catch {
+      own = '';
+    }
+  }
+  return numericVariantId(own);
+}
+
+function searchCardHandle(card) {
+  for (const key of ['destination_url', 'merchant_canonical_url', 'source_url']) {
+    try {
+      const m = new URL(str(card && card[key])).pathname.match(/^\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
+      if (m) return m[1].toLowerCase();
+    } catch {
+      /* not a url */
+    }
+  }
+  return null;
+}
+
 function cardHost(card) {
   return productHost({
     destination_url: card && card.destination_url,
@@ -786,120 +836,116 @@ function createUcpLiveSearchReader(deps = {}) {
     throw new Error('createUcpLiveSearchReader requires a ucp client with discoverEndpoint() and lookupCatalog()');
   }
   const mode = deps.mode || readMode(process.env, 'UCP_LIVE_SEARCH_READ');
-  // Inside search's own 2.5s page deadline (liveMerchantSearchPrice PAGE_DEADLINE_MS), leaving the `.json`
-  // fallback room for the cards this read could not answer.
+  // Inside search's own 2.5s page deadline (liveMerchantSearchPrice PAGE_DEADLINE_MS).
   const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 1800;
   const maxCards = Number.isInteger(deps.maxCards) ? deps.maxCards : 20;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
-  const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000 });
+  // Search fans out per page: its own, smaller lookup pool, so it cannot starve the offer/product reads.
+  const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000, maxConcurrent: 8 });
 
-  /** @returns {Promise<Map<number, object>>} index -> read, for the cards this read could place. Never throws. */
-  async function readAll(cards, ctx) {
-    const reads = new Map();
-    const declared = str(ctx && ctx.market).toUpperCase();
-    if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return reads; // not priced: not read
-    const groups = new Map(); // `${host}|${country}` -> { host, country, currency, basis, items: [{ index, id }] }
+  /** index -> { host, country, currency, basis, id, handle } for the cards this read will try. Sync, pure. */
+  function plan(cards, ctx = {}) {
+    const planned = new Map();
+    if (mode === MODES.OFF || !Array.isArray(cards)) return planned;
+    const declared = str(ctx.market).toUpperCase();
+    if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return planned;
     cards.slice(0, maxCards).forEach((card, index) => {
       if (!card || typeof card !== 'object') return;
-      const id = numericVariantId(card.source_variant_id);
+      const id = searchCardVariantId(card);
       const host = cardHost(card);
       const cardCurrency = str(card.currency || card.price_currency).toUpperCase();
-      const basis = declared ? 'declared' : 'listing_home';
       const country = declared || marketForCurrency(cardCurrency);
-      const currency = declared ? currencyForBuyerRegion(declared) : cardCurrency;
-      if (!id || !host || !country || !currency) {
-        reads.set(index, { status: STATUS.SKIPPED, reason: !id ? 'no_variant_id' : !host ? 'no_host' : 'no_market' });
-        return;
-      }
-      const key = `${host}|${country}`;
-      if (!groups.has(key)) groups.set(key, { host, country, currency, basis, items: [] });
-      groups.get(key).items.push({ index, id });
+      if (!id || !host || !country || !cardCurrency) return;
+      if (declared && currencyForBuyerRegion(declared) !== cardCurrency) return; // the card's currency never changes
+      planned.set(index, { host, country, currency: cardCurrency, basis: declared ? 'declared' : 'listing_home', id, handle: searchCardHandle(card) });
     });
+    return planned;
+  }
+
+  /** @returns {Promise<Map<number, object>>} index -> read, for planned cards. Never throws. */
+  async function readAll(planned) {
+    const reads = new Map();
+    const groups = new Map();
+    for (const [index, p] of planned) {
+      const key = `${p.host}|${p.country}`;
+      if (!groups.has(key)) groups.set(key, { host: p.host, country: p.country, items: [] });
+      groups.get(key).items.push({ index, ...p });
+    }
     const deadline = now() + budgetMs;
     await Promise.all([...groups.values()].map(async (g) => {
       try {
         const endpoint = await withDeadline(core.endpointFor(g.host), deadline, now);
         if (!endpoint) {
-          for (const it of g.items) reads.set(it.index, { status: STATUS.NOT_UCP, host: g.host });
+          for (const it of g.items) reads.set(it.index, { status: STATUS.NOT_UCP });
           return;
         }
         const ids = [...new Set(g.items.map((it) => it.id))];
         const chunks = [];
         for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
         const parsed = await withDeadline(
-          Promise.all(chunks.map((chunk) => core.lookup(g.host, endpoint, chunk, g.country).then(parseLookup))),
+          Promise.all(chunks.map((chunk) => core.lookup(g.host, endpoint, chunk, g.country, { deadline }).then(parseLookup))),
           deadline,
           now,
         );
         if (parsed.some((p) => p.error)) {
-          for (const it of g.items) reads.set(it.index, { status: STATUS.ERROR, host: g.host, reason: 'merchant_error' });
+          for (const it of g.items) reads.set(it.index, { status: STATUS.ERROR, reason: 'merchant_error' });
           return;
         }
         const live = new Map();
-        const notFound = new Set();
-        for (const p of parsed) {
-          for (const [id, v] of p.variants) live.set(id, v);
-          for (const id of p.notFound) notFound.add(id);
-        }
+        for (const p of parsed) for (const [id, v] of p.variants) live.set(id, v);
         for (const it of g.items) {
           const v = live.get(it.id);
-          const base = { host: g.host, market: g.country, market_basis: g.basis };
-          if (!v) {
-            reads.set(it.index, notFound.has(it.id)
-              ? { status: STATUS.VARIANT_GONE, ...base }
-              : { status: STATUS.ERROR, ...base, reason: 'variant_not_answered' });
-          } else if (v.currency !== g.currency) {
-            reads.set(it.index, { status: STATUS.CURRENCY_MISMATCH, ...base, merchant_currency: v.currency });
-          } else if (v.amount === null || v.available === null) {
-            reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'unreadable_variant' });
-          } else {
-            reads.set(it.index, { status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, g.currency), currency: g.currency, available: v.available });
-          }
+          const base = { market: it.country, market_basis: it.basis };
+          if (!v) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'variant_not_answered' });
+          else if (it.handle && v.handle && v.handle !== it.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'other_product' });
+          else if (v.currency !== it.currency) reads.set(it.index, { status: STATUS.CURRENCY_MISMATCH, ...base });
+          else if (v.amount === null || v.available === null) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'unreadable_variant' });
+          else reads.set(it.index, { status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, it.currency), currency: it.currency, available: v.available });
         }
       } catch (e) {
         const status = e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR;
-        for (const it of g.items) reads.set(it.index, { status, host: g.host, reason: str(e && e.message).slice(0, 80) });
+        for (const it of g.items) reads.set(it.index, { status, reason: str(e && e.message).slice(0, 80) });
       }
     }));
     return reads;
   }
 
   function summarize(cards, reads) {
-    const stats = { mode, read: reads.size, by_status: {}, price_changed: 0, stock_changed: 0 };
+    const stats = { mode, read: reads.size, by_status: {}, price_changed: 0, stock_raised: 0 };
     for (const [index, r] of reads) {
       stats.by_status[r.status] = (stats.by_status[r.status] || 0) + 1;
       if (r.status !== STATUS.VERIFIED) continue;
       const card = cards[index] || {};
       if (Math.abs(Number(card.price) - r.amount) > 0.01) stats.price_changed += 1;
-      const stored = card.in_stock === true ? true : card.in_stock === false ? false : null;
-      if (stored !== r.available) stats.stock_changed += 1;
+      if (r.available === true && card.in_stock !== true) stats.stock_raised += 1;
     }
     return stats;
   }
 
   /**
-   * @returns {Promise<Map<number, object>|null>} enforce: index -> read; shadow and off: null (cards
-   *   unchanged; shadow logs the comparison after the page is served).
+   * @returns {Promise<Map<number, object>|null>} enforce: index -> read for planned cards; shadow/off: null
+   *   at once (shadow logs the comparison after the page is served).
    */
-  async function readCards(cards, ctx = {}) {
-    if (mode === MODES.OFF || !Array.isArray(cards) || !cards.length) return null;
+  async function readCards(cards, ctx = {}, planned = plan(cards, ctx)) {
+    if (mode === MODES.OFF || !planned.size) return null;
     if (mode === MODES.SHADOW) {
-      readAll(cards, ctx)
-        .then((reads) => log('search_ucp_live_read', summarize(cards, reads)))
-        .catch(() => {});
+      const before = cards.slice(); // the caller rewrites its cards while this read is in flight
+      readAll(planned).then((reads) => log('search_ucp_live_read', summarize(before, reads))).catch(() => {});
       return null;
     }
-    const reads = await readAll(cards, ctx);
-    log('search_ucp_live_read', summarize(cards, reads));
+    const before = cards.slice();
+    const reads = await readAll(planned);
+    log('search_ucp_live_read', summarize(before, reads));
     return reads;
   }
 
-  return { mode, readCards };
+  return { mode, plan, readCards };
 }
 
 module.exports = {
   createUcpLiveSearchReader,
+  searchCardVariantId,
   MAX_CONCURRENT_LOOKUPS,
   commerceBlocked,
   parseLookup,

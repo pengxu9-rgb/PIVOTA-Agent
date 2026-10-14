@@ -13962,7 +13962,7 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
   );
 }
 
-function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null } = {}) {
+function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
   if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
   // The mainline has already applied this constraint to stored prices. Repricing now
@@ -13983,7 +13983,8 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
   return overlayLiveMerchantSearchPrices(response, {
     // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
     ucpSearchReader: getUcpLiveSearchReader(),
-    market: typeof search.market === 'string' ? search.market : undefined,
+    // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
+    market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   });
 }
 
@@ -23370,7 +23371,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  }, search, { intent, budgetConstraint });
+  }, search, { intent, budgetConstraint, buyerMarket: search.market || metadata.market });
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -30832,8 +30833,16 @@ function getUcpLiveSearchReader() {
   if (_ucpLiveSearchReader !== undefined) return _ucpLiveSearchReader;
   const { createUcpLiveSearchReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
+  const { createLookupCore } = require('./services/ucpLiveOfferRead');
+  const shared = getUcpLiveShared();
   _ucpLiveSearchReader = createUcpLiveSearchReader({
-    ...getUcpLiveShared(),
+    ucpClient: shared.ucpClient,
+    // Search fans out per page: its OWN lookup pool (8), sharing only the discovery memo, so a burst of
+    // searches cannot starve get_offers / get_product (review of #2439).
+    core: createLookupCore({
+      ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
+      maxConcurrent: 8, endpointCache: shared.core.endpoints,
+    }),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveSearchReader;
@@ -42850,7 +42859,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
         return res.status(200).json(await maybeOverlayLiveSearchPrice(
-          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget },
+          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: publicBeautySearch.market || metadata.market },
         ));
       } catch (err) {
         logger.warn(
