@@ -234,3 +234,19 @@ test('a conflict in one namespace is never outvoted by a match in the other',()=
   const x=await setup({ledger});
   await assert.rejects(x.surface.callTool('recover_checkout',args({source:null}),SESSION),unknown);
 }));
+
+// A selector that is not a positive decimal string could never have been sent by a create: create refuses it before
+// any backend call, so recovery may answer the same `ucp_reap_variant_not_created` and must not probe any spelling of
+// it. Two layers refuse it: the UCP adapter (empty, number, null) and the lane's own selector check (the strings).
+for (const [selected,layer] of [['Default','lane'],['abc','lane'],['0123','lane'],['12a','lane'],['-1','lane'],[' 123','lane'],['1'.repeat(26),'lane'],['',"adapter"],[12345,'adapter'],[null,'adapter']]) {
+  test(`recovery refuses selected_variant_id ${JSON.stringify(selected)} (${layer}) exactly as create does, with no backend call`,()=>armed(async()=>{
+    const outcomes=[];
+    for (const [tool,create] of [['recover_checkout','0'],['create_checkout','1']]) {
+      const x=await setup();process.env.REAP_AGENTIC_CREATE_ENABLED=create;
+      const a=args();a.checkout.reap.selected_variant_id=selected;
+      await assert.rejects(x.surface.callTool(tool,a,SESSION),e=>{outcomes.push([e.code,e.detail?.reason]);return true;});
+      assert.deepEqual(x.calls,[],`${tool} reached the backend`);
+    }
+    assert.deepEqual(outcomes,[['QUOTE_REQUIRED','ucp_reap_variant_not_created'],['QUOTE_REQUIRED','ucp_reap_variant_not_created']]);
+  }));
+}

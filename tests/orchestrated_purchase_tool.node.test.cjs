@@ -324,6 +324,7 @@ test('schema: undeclared arguments and bad values are refused by name, before an
     [args({ shipping_address: { name: 'Ada Lovelace', city: 'SF', country: 'US' } }), 'shipping_address.phone'],
     [args({ payment_preference: { rail: 'cash' } }), 'payment_preference.rail'],
     [args({ variant_id: 111 }), 'variant_id'],
+    [args({ variant_id: '1'.repeat(21) }), 'variant_id'],
     [args({ shipping_address: { ...args().shipping_address, name: 'Ada' } }), 'shipping_address.name'],
     [args({ shipping_address: { ...args().shipping_address, postal_code: 94103 } }), 'shipping_address.postal_code'],
   ]) {
@@ -480,14 +481,30 @@ test("a 401 on create is the caller's credentials refused: final, not \"retry th
   assert.equal(err.detail.reason, 'caller_credentials_rejected');
 });
 
-test('a selected variant on a multi-variant row is sent as its catalog key', async () => {
+test('a selected variant on a multi-variant row is sent as its storefront id, never a spelled sku key', async () => {
   const multi = { ...JUDY_ROW, product_id: 'sig_multi', variants: [{ variant_id: '4001', price: { current: { amount: 9.99, currency: 'USD' } } }, { variant_id: '4002', price: { current: { amount: 9.99, currency: 'USD' } } }] };
   const ctx = await build({ rows: { sig_multi: multi } });
   const none = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi' })));
   assert.deepEqual(none.err.detail, { reason: 'purchase_not_available', refusal_code: 'variant_required' });
   const chosen = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi', variant_id: '4002' })));
   assert.ok(chosen.ok, JSON.stringify(chosen.err));
-  assert.equal(posts(ctx.backend)[0].body.variant_key, `${JUDY_ROW.product_key}::v::4002`);
+  const sent = posts(ctx.backend)[0].body;
+  assert.equal(sent.variant_id, '4002');
+  assert.equal('variant_key' in sent, false);
+  // An id this row does not list is refused here, before any backend call.
+  const other = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_multi', variant_id: '4003', idempotency_key: 'key-other-variant' })));
+  assert.deepEqual(other.err.detail, { reason: 'purchase_not_available', refusal_code: 'variant_unknown' });
+  assert.equal(posts(ctx.backend).length, 1);
+});
+
+test('a one-variant mirror row with its variant selected sends the id (the staging trial: its sku is ::sku_<hash>)', async () => {
+  const one = { ...JUDY_ROW, product_id: 'sig_one', variants: [{ variant_id: '49819267301653', price: { current: { amount: 13.99, currency: 'USD' } } }] };
+  const ctx = await build({ rows: { sig_one: one } });
+  const chosen = await withEnv(ON, () => call(ctx, args({ product_id: 'sig_one', variant_id: '49819267301653' })));
+  assert.ok(chosen.ok, JSON.stringify(chosen.err));
+  const sent = posts(ctx.backend)[0].body;
+  assert.equal(sent.variant_id, '49819267301653');
+  assert.equal('variant_key' in sent, false);
 });
 
 
