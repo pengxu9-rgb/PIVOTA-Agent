@@ -29,8 +29,10 @@ Required: `idempotency_key`, `merchant_id`, `product_id`, `quantity` (1–10), `
 It needs the verified buyer and session (as every user-scoped op), and the caller's agent API key plus the
 buyer's `X-Agent-User-JWT` for the backend (the internal key is never substituted).
 
-What the tool derives itself, never from the caller: the storefront host, the catalog key and the variant
-key, from OUR catalog row (the Reap lane's cart-link row rules, `resolveCartLinkPurchaseRow`). The shown price
+What the tool derives itself, never from the caller: the storefront host and the catalog key, from OUR catalog
+row (the Reap lane's cart-link row rules, `resolveCartLinkPurchaseRow`), which must also list the selected
+`variant_id`. The variant goes to the backend as that storefront id (`variant_id`), never as a sku key spelled
+here: the backend resolves it to the catalog's own sku, however the catalog spells that variant. The shown price
 is sent as given and judged by the BACKEND, after its idempotency lookup: a retry of an unknown outcome
 replays the original purchase even if our price moved in between, and only a new attempt is refused
 (`PRICE_CHANGED`). The tool deliberately does not refuse a price itself: that would answer the retry
