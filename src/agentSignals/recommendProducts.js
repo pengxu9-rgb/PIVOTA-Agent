@@ -1011,6 +1011,7 @@ function makeRecommendProducts(deps = {}) {
       ));
       verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
       const unresolvableSignals = new Set();
+      const currencySwitchedSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
         const probe = async () => {
@@ -1050,7 +1051,21 @@ function makeRecommendProducts(deps = {}) {
           verification.unavailable += 1;
           return;
         }
-        const changed = product.price !== livePrice || str(product.currency).toUpperCase() !== liveCurrency;
+        // A LIVE CHECK THAT CHANGES THE CURRENCY IS WITHHELD, NOT RELABELLED. The snapshot and the live
+        // read are two reads of one product's price, and they disagree on its UNIT -- so neither is a
+        // price this buyer can be quoted. Live 2026-10-14 (gateway-00675-kis): a USD buyer's cleanser
+        // shortlist served "11.9 USD -> 11.9 AUD" at rank 3, the catalog row's USD label having passed
+        // the ceiling and the live check then moving it to the currency the store actually sells in.
+        // Rewriting the currency served an AUD price into a USD market; keeping the snapshot would
+        // quote a USD figure the store never charges. Every grounded row is checked here, the model's
+        // own picks and the price ceiling's catalog filler alike, and the slot backfills below. A
+        // snapshot with NO currency that the live check fills is not a change of unit and is updated.
+        const snapshotCurrency = str(product.currency).toUpperCase();
+        if (snapshotCurrency && snapshotCurrency !== liveCurrency) {
+          currencySwitchedSignals.add(s);
+          return;
+        }
+        const changed = product.price !== livePrice || snapshotCurrency !== liveCurrency;
         if (changed) {
           // Said out loud on the item: a partner that cached the snapshot price learns it moved.
           s.value.watchouts = dedupe([
@@ -1076,6 +1091,17 @@ function makeRecommendProducts(deps = {}) {
           'recommend_products dropped items unresolvable on the read chain',
         );
         groundedSignals = groundedSignals.filter((s) => !unresolvableSignals.has(s));
+      }
+      if (currencySwitchedSignals.size > 0) {
+        // Counted only when it happens, so every answer without one is unchanged.
+        verification.currency_switched = currencySwitchedSignals.size;
+        logger?.warn?.(
+          {
+            product_ids: [...currencySwitchedSignals].map((s) => s.value.product?.product_id ?? null),
+          },
+          'recommend_products withheld items whose live check changed the price currency',
+        );
+        groundedSignals = groundedSignals.filter((s) => !currencySwitchedSignals.has(s));
       }
     }
 
@@ -1213,6 +1239,7 @@ function makeRecommendProducts(deps = {}) {
           ? (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
             || firstString(payload.products_empty_reason, result?.upstreamFailureCode)
             || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
+            || (verification && verification.currency_switched > 0 ? 'live_price_currency_changed' : null)
             // The lane DID answer, but every item it produced was an archetype it could not resolve
             // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
             // truth is that nothing it produced was buyable — a different problem with a different fix.
@@ -1242,9 +1269,10 @@ function makeRecommendProducts(deps = {}) {
         ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
         ...(identityMismatchSuppressed > 0 ? { identity_mismatch_suppressed: identityMismatchSuppressed } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
-        // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
-        // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
-        // price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
+        // checked = confirmed + updated + unavailable + unresolvable (+ currency_switched, present only
+        // when non-zero: items WITHHELD because the live check moved their price to another currency);
+        // `updated` items carry the corrected price and a watchout naming the move; `unavailable` items
+        // keep the snapshot with price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
         // answers PRODUCT_NOT_FOUND on the read chain get_product serves, so they never reach the
         // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
         // even in a diagnostic field).

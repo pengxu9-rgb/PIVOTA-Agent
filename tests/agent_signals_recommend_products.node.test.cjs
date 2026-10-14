@@ -1894,3 +1894,54 @@ test('8k. `fit` is a deprecated alias of `lane_confidence` and cannot drift from
   // SafetyKernel -> commerce surface -> sanitizeResult path and asserts `lane_confidence` there,
   // which is the only place that claim can honestly be made.
 });
+
+// A LIVE CHECK THAT CHANGES THE CURRENCY WITHHOLDS THE ROW. Live 2026-10-14 (gateway-00675-kis), a USD
+// buyer's "gentle cleanser" under $20 served a catalog filler row at rank 3 with "price updated by live
+// check: 11.9 USD -> 11.9 AUD": the row's USD label had passed the ceiling, and the live check then
+// relabelled it into a currency the buyer's market does not use.
+test('6n. a live check that moves the price to another currency withholds the row, model pick or filler; the slot backfills', async () => {
+  const pick = { ...ITEM_FULL, sku: { product_id: 'sig_pick_aud', name: 'Model Pick' }, price: { amount: 30, currency: 'USD' } };
+  const filler = { ...ITEM_FULL, sku: { product_id: 'sig_fill_aud', name: 'Filler' }, price: { amount: 11.9, currency: 'USD' }, __pivota_score_basis: 'positional' };
+  for (const constraints of [{ price_max: 40 }, undefined]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([pick, filler, ITEM_FULL, ITEM_INTERNAL]),
+      isEnabled: () => true,
+      verifyPrice: async ({ product_id }) => (product_id.endsWith('_aud')
+        ? { price: product_id === 'sig_pick_aud' ? 30 : 11.9, currency: 'AUD' }
+        : { price: product_id === 'sig_int' ? 18.5 : 35, currency: 'USD' }),
+    });
+    const res = await h({ payload: { need: 'exfoliant', limit: 2, ...(constraints ? { constraints } : {}) } }, { agent_id: 'agent_a' });
+    const label = constraints ? 'with a ceiling' : 'without a ceiling';
+    assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int'], `${label}: both switched rows are withheld and the next grounded items take the slots`);
+    assert.equal(JSON.stringify(res.signals).includes('AUD'), false, `${label}: no AUD price is served`);
+    assert.equal(res.metadata.price_verification.currency_switched, 2, label);
+    assert.equal(res.metadata.price_verification.updated, 0, `${label}: a currency switch is not counted as an update`);
+  }
+});
+
+test('6o. a currency the snapshot lacked is filled by the live check, and the same unit in another case is no switch', async () => {
+  const bare = { ...ITEM_FULL, sku: { product_id: 'sig_bare' }, price: { amount: 35 } };
+  const lower = { ...ITEM_FULL, sku: { product_id: 'sig_lower' }, price: { amount: 35, currency: 'usd' } };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([bare, lower]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ price: 35, currency: 'USD' }),
+  });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_bare', 'sig_lower']);
+  assert.equal(res.signals[0].value.product.currency, 'USD');
+  assert.equal(res.metadata.price_verification.currency_switched, undefined, 'the key appears only when a row was withheld');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+});
+
+test('6p. a shortlist emptied by currency switches says so', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ price: 35, currency: 'AUD' }),
+  });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals, []);
+  assert.equal(res.metadata.products_empty_reason, 'live_price_currency_changed');
+  assert.equal(res.metadata.price_verification.currency_switched, 1);
+});
