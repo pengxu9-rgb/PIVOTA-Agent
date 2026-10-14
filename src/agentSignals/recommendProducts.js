@@ -16,9 +16,9 @@ const { recommendationIdentityConflict } = require('../shared/recoProductIdentit
 //    for SKINCARE. This bridge asks for the wider beauty prompt (promptDomainScope 'beauty'), but that ask
 //    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template DIFFERENT from the chat lane's
 //    (it inherits that id, so they match unless someone sets it) — the decision service 400s on an id it
-//    does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
-//    makeup/haircare/fragrance need still comes back with skincare picks, which is what the tool
-//    description says;
+//    does not know, so v1_3 is off by default in code (see the constant in routes.js). Prod pins it on,
+//    so makeup and fragrance needs are served; haircare is still out. The tool description says so, and
+//    tells the agent to route to search_catalog if a makeup need ever comes back empty citing skincare;
 //    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
 //    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
 //    and will happily answer a trading-card need with a cleanser;
