@@ -847,7 +847,8 @@ async function buildInputsFromDb({
   if (expandTargetRecall && anchors.length) {
     const recallCaps = normalizeTargetRecallOptions(targetRecallOptions);
     targetRecall = await loadProductRelationshipGraphTargetRecall({
-      queryFn: query, anchors, existingProducts: products, market, ...recallCaps,
+      // withClient: the eligible catalog is scanned once per run on one connection, not per batch.
+      queryFn: query, withClientFn: withClient, anchors, existingProducts: products, market, ...recallCaps,
       maxCandidates: Math.min(recallCaps.maxCandidates, Math.max(1, 5000 - anchors.length)),
     });
     if (isRelationshipGraphCanonicalAnchorEnabled() && targetRecall.products.length) {
@@ -911,7 +912,8 @@ async function buildInputsFromDb({
     }
     const evidenceUniverse = [...uniqueEvidenceProducts.values()];
     const evidenceTargets = evidenceUniverse.slice(0, 5000);
-    targetedEvidence = await enrichProductRelationshipGraphProducts({ queryFn: query,
+    // withClient: the KB document identity set is built once per run, not once per 200-product batch.
+    targetedEvidence = await enrichProductRelationshipGraphProducts({ queryFn: query, withClientFn: withClient,
       products: evidenceTargets, market, limit: evidenceTargets.length });
     targetedEvidence.diagnostics = { ...targetedEvidence.diagnostics,
       requested_product_count: evidenceUniverse.length, hydration_product_count: evidenceTargets.length,

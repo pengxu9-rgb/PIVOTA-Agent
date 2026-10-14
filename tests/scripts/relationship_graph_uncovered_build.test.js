@@ -1,6 +1,10 @@
 // The general candidate pool can contain cooled-down products. Only the eligible anchor lane
 // may supply anchors; attempts must be recorded even when a build emits no edges.
-jest.mock('../../src/db', () => ({ query: jest.fn(async () => ({ rows: [] })), closePool: jest.fn(), withClient: jest.fn() }));
+// withClient runs its callback on a client, as src/db does (KB enrichment builds its identity set on one).
+jest.mock('../../src/db', () => {
+  const query = jest.fn(async () => ({ rows: [] }));
+  return { query, closePool: jest.fn(), withClient: jest.fn(async (fn) => fn({ query })) };
+});
 jest.mock('../../src/auroraBff/productRelationshipGraphSources', () => ({
   ...jest.requireActual('../../src/auroraBff/productRelationshipGraphSources'),
   loadProductRelationshipGraphSourceInputs: jest.fn(),
