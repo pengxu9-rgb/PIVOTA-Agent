@@ -362,11 +362,6 @@ function offersInMarketCurrency(offers, marketCurrency) {
   return { kept, withheld };
 }
 
-// With a declared market the currency filter runs AFTER the backend's cut, so ask for the most the
-// wiring allows (it clamps to 30): a cut at the caller's limit could keep only out-of-market offers and
-// drop an in-market one behind them. The caller's limit still caps what is returned.
-const MARKET_FILTER_FETCH_LIMIT = 30;
-
 function makeGetOffers(deps = {}) {
   const { fetchOffers } = deps;
   return async function getOffers(params = {}) {
@@ -400,15 +395,24 @@ function makeGetOffers(deps = {}) {
       product_id: p.product_id,
       product_group_id: p.product_group_id,
       currency: p.currency,
-      limit: market ? Math.max(limit, MARKET_FILTER_FETCH_LIMIT) : limit,
+      // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
+      // can get fewer in-currency offers than exist; over-fetching would fix that here but the backend
+      // records every link offers.resolve returns as issued to the agent (ADR-025), withheld ones too.
+      // Filtering before the cut belongs inside offers.resolve.
+      limit,
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
     });
     const fetched = res && Array.isArray(res.offers) ? res.offers : [];
     // No market declared: today's referral-only answer, every offer the backend returned.
-    const { kept: offers, withheld } = market
+    const { kept, withheld } = market
       ? offersInMarketCurrency(fetched, marketCurrency)
       : { kept: fetched, withheld: 0 };
+    // A declared market's offers are cut to the caller's limit BEFORE projecting: offersToSignals picks
+    // best_offer from every offer it is handed and only then caps signals, so an uncut list can name a
+    // best_offer that is not among the signals returned. offer_count is then the count returned. (No
+    // market: the list is passed as it always was.)
+    const offers = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
     return {
       subject,

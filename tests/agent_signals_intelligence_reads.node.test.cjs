@@ -1076,8 +1076,7 @@ test('makeGetOffers: a stated market reaches fetchOffers as `market`; absent or 
   const seen = [];
   const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers: [sampleOffer({ price: 12 })] }; } });
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: 'sg', limit: 5 } });
-  // A stated market fetches the wiring's widest page (30): the currency filter runs after the backend's cut.
-  assert.deepEqual(seen[0], { merchant_id: 'm1', product_id: 'p1', product_group_id: undefined, currency: undefined, limit: 30, market: 'SG' });
+  assert.deepEqual(seen[0], { merchant_id: 'm1', product_id: 'p1', product_group_id: undefined, currency: undefined, limit: 5, market: 'SG' });
   const today = { merchant_id: 'm1', product_id: 'p1', product_group_id: undefined, currency: undefined, limit: 10 };
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
   assert.deepEqual(seen[1], today);

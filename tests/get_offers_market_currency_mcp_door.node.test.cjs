@@ -179,12 +179,23 @@ test('a declared market nothing is priced in returns no offer and makes no backe
   assert.equal(out.metadata.reason, 'market_not_priced');
 });
 
-test('the filter runs on the widest page the wiring allows, and the caller\'s limit still caps the answer', async () => {
-  const many = [...Array.from({ length: 6 }, (_, i) => referral(`gb_${i}`, 10 + i, 'GBP')), referral('us_0', 30, 'USD'), referral('us_1', 31, 'USD')];
-  const { out, upstream } = await callGetOffers({ merchant_id: 'm', product_id: 'p', market: 'US', limit: 1 }, many);
-  assert.equal(upstream.payload.limit, 30, 'a declared market fetches the full page before filtering');
-  assert.deepEqual(currencies(out), ['USD']);
-  assert.equal(out.metadata.offer_count, 2);
-  const silent = await callGetOffers({ merchant_id: 'm', product_id: 'p', limit: 1 }, many);
-  assert.equal(silent.upstream.payload.limit, 1, 'no market: the fetch is unchanged');
+test('a declared market fetches at the caller\'s limit, as a silent call does (every returned link is recorded as issued)', async () => {
+  const page = [referral('gb_0', 10, 'GBP'), referral('us_0', 30, 'USD')];
+  const declared = await callGetOffers({ merchant_id: 'm', product_id: 'p', market: 'US', limit: 2 }, page);
+  assert.equal(declared.upstream.payload.limit, 2);
+  assert.deepEqual(currencies(declared.out), ['USD']);
+  const silent = await callGetOffers({ merchant_id: 'm', product_id: 'p', limit: 2 }, page);
+  assert.equal(silent.upstream.payload.limit, 2);
+});
+
+test('best_offer is always one of the signals returned, and offer_count is the count returned', async () => {
+  // More in-currency offers than the caller asked for, the cheapest far down the page: an uncut list
+  // let best_offer name an offer outside the signals and offer_count report the backend's page.
+  const page = Array.from({ length: 30 }, (_, i) => referral(`m${i}`, i === 25 ? 1 : 50 + i, 'USD'));
+  const { out } = await callGetOffers({ merchant_id: 'm', product_id: 'p', market: 'US', limit: 3 }, page);
+  assert.equal(out.signals.length, 3);
+  assert.equal(out.metadata.offer_count, out.signals.length);
+  const ids = out.signals.map((s) => s.value.merchant_id);
+  assert.deepEqual(ids, ['m0', 'm1', 'm2'], 'the backend\'s order is kept');
+  assert.ok(ids.includes(out.best_offer.value.merchant_id), `best_offer ${out.best_offer.value.merchant_id} is in ${ids}`);
 });
