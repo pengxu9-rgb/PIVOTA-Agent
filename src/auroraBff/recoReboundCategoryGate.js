@@ -139,15 +139,22 @@ function underRoot(path, root) {
 
 /**
  * May `candidate` (a DIFFERENT product from the one the model named) ground an item that asked for
- * `requestedStep`? `requestedText` is the item's own type and name. Returns { accept, reason }; the
- * reason is a stable token for debug counters.
+ * `requestedStep`? `requestedText` is the item's own type and name; `needText` is the buyer's need when
+ * the door has one. Returns { accept, reason }; the reason is a stable token for debug counters.
  */
-function judgeRecoReboundCandidate({ requestedStep, requestedText = '', candidate } = {}) {
+function judgeRecoReboundCandidate({ requestedStep, requestedText = '', needText = '', candidate } = {}) {
   const step = normalizeRecoTargetStep(requestedStep);
   if (!step) return { accept: false, reason: 'requested_type_unresolved' };
   if (resolveRecoStepDomain(step) !== 'skincare') return { accept: false, reason: 'shade_or_scent_led_type' };
   if (NON_SKIN_ITEM_RE.test(maskNonSkinItemDenials(text(requestedText)))) {
     return { accept: false, reason: 'non_skin_item' };
+  }
+  // THE BUYER'S NEED, not only the model's item. Live 2026-10-14 "a setting mist that keeps makeup in
+  // place" grounded to a skincare serum mist: the model's own item was a facial mist typed toner, so
+  // the item said nothing non-skin, and a toner was a compatible substitute FOR THE ITEM. A need that
+  // names makeup, fragrance or another non-skin kind gets no substitute at all.
+  if (NON_SKIN_ITEM_RE.test(maskNonSkinItemDenials(text(needText)))) {
+    return { accept: false, reason: 'non_skin_need' };
   }
   const row = candidate && typeof candidate === 'object' ? candidate : {};
   const title = text(row.name || row.title || row.display_name);

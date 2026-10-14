@@ -29640,6 +29640,8 @@ async function groundRecoRecommendationsFromCatalog({
   ctx,
   logger,
   defaultTargetContext = null,
+  // The buyer's need, when the door has one (agent door only); a substitute must not contradict it.
+  needText = '',
   // Tests only: stands in for the catalog search on the live (non-cache) recall path.
   searchFn = null,
 } = {}) {
@@ -29831,7 +29833,7 @@ async function groundRecoRecommendationsFromCatalog({
       if (productId && usedProductIds.has(productId)) continue;
       // The model's own pick (same catalog id) is not a substitute; anything else is, and must pass.
       if (!sameRecommendationProduct(rec, normalized)) {
-        const verdict = judgeRecoReboundCandidate({ requestedStep, requestedText, candidate: normalized });
+        const verdict = judgeRecoReboundCandidate({ requestedStep, requestedText, needText, candidate: normalized });
         if (!verdict.accept) {
           reboundRejectedByReason[verdict.reason] = (reboundRejectedByReason[verdict.reason] || 0) + 1;
           continue;
@@ -29852,6 +29854,14 @@ async function groundRecoRecommendationsFromCatalog({
     defaultTargetContext && defaultTargetContext.step_aware_intent
       ? next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded')
       : next;
+  // WHAT THE STEP-AWARE FILTER DROPS IS STILL AN ANSWER. Those items are the products the model chose
+  // that the catalog could not supply (makeup and fragrance never take a substitute), and the agent
+  // door promises to name them in unresolved_archetypes. Dropped silently, a bronzer need came back as a
+  // bare empty list (live 2026-10-14).
+  const withheldArchetypes = next
+    .filter((item) => !nextForDisplay.includes(item))
+    .map((item) => pickFirstTrimmed(item.display_name, item.name, item.title))
+    .filter(Boolean);
   const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
   const ungroundedCount = Math.max(0, nextForDisplay.length - groundedCount);
   const groundingStatus =
@@ -29873,6 +29883,7 @@ async function groundRecoRecommendationsFromCatalog({
 
   return {
     recommendations: nextForDisplay,
+    withheld_archetypes: withheldArchetypes,
     grounding_status: groundingStatus,
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,

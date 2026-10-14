@@ -478,6 +478,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
         includeAlternatives,
         upstreamDebug,
         ingredientContext,
+        // The buyer's own words, for judging a catalog substitute against the NEED as well as the
+        // model's item (recoReboundCategoryGate.js). Agent door only: its need is a short statement of
+        // what to buy, where a chat message is conversation ("I have dry lips and want a moisturizer").
+        needText: recoTriggerSource === 'agent_tool' ? pickFirstTrimmed(focus, message) : '',
       });
     // STRICT FILL, before the tail so the appended rows go through grounding, enrichment and dedupe
     // exactly like every other recommendation. One bounded pass; nothing loops.

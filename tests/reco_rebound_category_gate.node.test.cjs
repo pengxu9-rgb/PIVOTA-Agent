@@ -415,6 +415,17 @@ test('end to end: a serum foundation is not grounded to a niacinamide serum, nor
   }
 });
 
+test('judgeRecoReboundCandidate: the buyer\'s need is held to the same rule as the item', () => {
+  const toner = { catalog_category_path: 'beauty/skincare/tone/toner', name: 'Hydrating Toner' };
+  const judge = (needText) => judgeRecoReboundCandidate({ requestedStep: 'toner', requestedText: 'toner Facial Mist', needText, candidate: toner });
+  assert.deepEqual(judge('a setting mist that keeps makeup in place all day'), { accept: false, reason: 'non_skin_need' });
+  assert.deepEqual(judge('a light floral eau de toilette'), { accept: false, reason: 'non_skin_need' });
+  assert.deepEqual(judge('something for chapped lips'), { accept: false, reason: 'non_skin_need' });
+  for (const need of ['a hydrating toner for dry skin', 'a toner that sits well under makeup', 'a fragrance-free toner', 'a toner to wear under foundation', '']) {
+    assert.deepEqual(judge(need), { accept: true, reason: 'catalog_category_compatible' }, need);
+  }
+});
+
 test('end to end: a fragrance mist plan is not grounded to a facial toner', async () => {
   const toner = searchRow({
     id: 'sig_4444444444444444444444444444dddd', title: 'Rose Hydrating Facial Toner', brand: 'Example',

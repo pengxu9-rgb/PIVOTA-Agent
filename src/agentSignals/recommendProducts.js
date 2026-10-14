@@ -948,7 +948,9 @@ function makeRecommendProducts(deps = {}) {
     //
     // Lane order is preserved among the survivors.
     const suppressed = { ungrounded: 0, unidentified: 0 };
-    const unresolvedArchetypes = [];
+    // Names the lane withheld before projection (a step-aware answer drops items the catalog could not
+    // supply; see groundRecoRecommendationsFromCatalog) join the ones dropped below.
+    const unresolvedArchetypes = asStringArray(payload.unresolved_archetypes, MAX_UNRESOLVED_ARCHETYPES);
     let groundedSignals = [];
     for (const s of projected) {
       if (s.value.grounding !== 'catalog') {
