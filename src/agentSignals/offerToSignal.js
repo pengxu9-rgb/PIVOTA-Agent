@@ -188,7 +188,8 @@ function offerToSignal(offer, { productId = null } = {}) {
       // (the merchant does not price for this market; `merchant_currency` names what it answered),
       // variant_gone, or a failure to ask (not_ucp / timeout / error / skipped). `stored_price` is our
       // crawl's price when the merchant's differed; `expected_total_withheld` says why no total was offered.
-      live_read: toLiveRead(offer.live_read),
+      // Only when a read happened: with every live-read flag off the signal is byte-identical to before.
+      ...(toLiveRead(offer.live_read) ? { live_read: toLiveRead(offer.live_read) } : {}),
       // ONE SELLER LISTING's options (pivota-backend #2622): name one as `variant_id` on get_offers for its
       // own cart. No links here.
       ...(Array.isArray(offer.variants) && offer.variants.length

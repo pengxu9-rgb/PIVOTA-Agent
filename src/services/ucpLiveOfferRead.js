@@ -57,23 +57,6 @@ function readMode(env = process.env, key = 'UCP_LIVE_OFFER_READ') {
   return v === MODES.SHADOW || v === MODES.ENFORCE ? v : MODES.OFF;
 }
 
-// The markets a currency is priced in (buyerRegion's one map), for currencies exactly ONE market uses.
-// EUR (FR/HR/FI) names no single market and so gets none.
-const SINGLE_MARKET_FOR_CURRENCY = (() => {
-  const byCurrency = new Map();
-  for (const region of ['US', 'GB', 'JP', 'FR', 'HR', 'FI', 'AU', 'SE', 'KR', 'HK', 'SG', 'CA']) {
-    const c = currencyForBuyerRegion(region);
-    if (!c) continue;
-    byCurrency.set(c, byCurrency.has(c) ? null : region);
-  }
-  return byCurrency;
-})();
-
-/** The market a listing priced in `currency` is the home listing for, or null (none, or ambiguous). */
-function marketForCurrency(currency) {
-  return SINGLE_MARKET_FOR_CURRENCY.get(str(currency).toUpperCase()) || null;
-}
-
 function str(v) {
   return v == null ? '' : String(v).trim();
 }
@@ -602,12 +585,14 @@ function createUcpLiveProductReader(deps = {}) {
       // (get_offers answers the same input `market_not_priced`).
       return { status: STATUS.SKIPPED, reason: 'market_not_priced', basis: 'declared' };
     }
-    const basis = declared ? 'declared' : 'listing_home';
-    const country = declared || marketForCurrency(homeCurrency);
-    const currency = declared ? currencyForBuyerRegion(declared) : country ? homeCurrency : '';
+    // ADR-026: a market is data the buyer states, never inferred from a listing's currency (a USD price may
+    // only mean the crawl's US vantage). No declared market, no live read.
+    if (!declared) return { status: STATUS.SKIPPED, reason: 'no_market' };
+    const basis = 'declared';
+    const country = declared;
+    const currency = currencyForBuyerRegion(declared);
     const host = productHost(product);
     const ids = productVariantIds(product);
-    if (!country || !currency) return { status: STATUS.SKIPPED, reason: 'no_market', basis };
     if (!host || !ids.length) return { status: STATUS.SKIPPED, reason: !host ? 'no_host' : 'no_variant_id', country, currency, basis };
     const allVariants = Array.isArray(product.variants) ? product.variants : [];
     const allVariantIds = allVariants.map((v) => numericVariantId(v && v.variant_id));
@@ -1011,7 +996,6 @@ module.exports = {
   createUcpLiveOfferReader,
   createUcpLiveProductReader,
   createLookupCore,
-  marketForCurrency,
   productHost,
   productVariantIds,
   readMode,

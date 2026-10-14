@@ -369,11 +369,23 @@ function offersInMarketCurrency(offers, marketCurrency) {
  * `source.variant_id` alone never counts: the seed lane's fallback offer for an unmatched sku_id copies the
  * requested id there while selling no particular variant.
  */
+// A cart that names no single variant we can read (several lines, a token cart, an add-to-cart form) is
+// still a cart: it decides, and it is not the named variant.
+const UNREADABLE_CART = '\u0000unreadable-cart';
+
 function offerCartVariant(offer) {
   const spec = (offer && offer.execution_spec) || {};
   if (spec.variant_id != null && String(spec.variant_id).trim()) return String(spec.variant_id).trim();
-  const m = String(spec.cart_url || '').match(/\/cart\/(\d{6,20}):\d+/);
-  return m ? m[1] : '';
+  const raw = String(spec.cart_url || '').trim();
+  if (!raw) return '';
+  let path = '';
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    return UNREADABLE_CART;
+  }
+  const m = path.match(/^\/cart\/(\d{1,20}):\d+\/?$/); // exactly ONE line: /cart/<id>:<qty>
+  return m ? m[1] : UNREADABLE_CART;
 }
 
 function offerIsVariant(offer, vid) {
@@ -394,7 +406,9 @@ function offerIsVariant(offer, vid) {
 function makeGetOffers(deps = {}) {
   // `readOffersLive` (optional): the merchant's own live read of the offers this answer returns, for a
   // DECLARED market (services/ucpLiveOfferRead). Absent, or answering nothing, the answer is unchanged.
-  const { fetchOffers, readOffersLive } = deps;
+  // `variantIdEnabled`: honour `variant_id` (GET_OFFERS_VARIANT_ID; needs pivota-backend #2622 live). Off,
+  // the argument is ignored entirely: not forwarded, not filtered on.
+  const { fetchOffers, readOffersLive, variantIdEnabled = false } = deps;
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
@@ -425,7 +439,7 @@ function makeGetOffers(deps = {}) {
       merchant_id: p.merchant_id,
       product_id: p.product_id,
       // A listing's option named for its own cart (one offer per listing lists them in `variants`).
-      ...(nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
+      ...(variantIdEnabled && nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
       product_group_id: p.product_group_id,
       currency: p.currency,
       // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
@@ -441,7 +455,7 @@ function makeGetOffers(deps = {}) {
     // with no matching variant falls back to a variant-less offer at the row price, and the internal lane
     // picks its own first eligible variant -- either would hand the agent another shade's cart (review of
     // #2438). Matched on the offer's own variant (execution_spec / source) or its checkout items.
-    const namedVariant = nonEmpty(p.variant_id) ? String(p.variant_id).trim() : '';
+    const namedVariant = variantIdEnabled && nonEmpty(p.variant_id) ? String(p.variant_id).trim() : '';
     const fetched = namedVariant ? fetchedAll.filter((o) => offerIsVariant(o, namedVariant)) : fetchedAll;
     const withheldOtherVariant = fetchedAll.length - fetched.length;
     // No market declared: today's referral-only answer, every offer the backend returned.
@@ -468,6 +482,13 @@ function makeGetOffers(deps = {}) {
       }
     }
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
+    // ONE reason for an empty answer, in filter order: the variant filter runs first, so when it left
+    // nothing the currency filter had nothing to judge.
+    let emptyReason = null;
+    if (offers.length === 0) {
+      if (namedVariant && fetched.length === 0 && withheldOtherVariant > 0) emptyReason = 'variant_not_offered';
+      else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
+    }
     return {
       subject,
       best_offer,
@@ -479,7 +500,6 @@ function makeGetOffers(deps = {}) {
           ? {
               variant_id: namedVariant,
               withheld_other_variant_count: withheldOtherVariant,
-              ...(offers.length === 0 && withheldOtherVariant > 0 ? { reason: 'variant_not_offered' } : {}),
             }
           : {}),
         ...(market
@@ -487,10 +507,10 @@ function makeGetOffers(deps = {}) {
               market,
               market_currency: marketCurrency,
               withheld_other_currency_count: withheld,
-              ...(offers.length === 0 && withheld > 0 ? { reason: 'no_offer_in_market_currency' } : {}),
               ...(liveRead ? { live_read: liveRead } : {}),
             }
           : {}),
+        ...(emptyReason ? { reason: emptyReason } : {}),
       },
     };
   };
