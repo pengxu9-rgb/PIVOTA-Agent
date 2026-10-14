@@ -1,6 +1,6 @@
 'use strict';
-// A numeric-only selected cart-link create (no prepare witness) sends the storefront id as `variant_id`, never a
-// spelled sku key; recovery and resume probe exactly the spellings an attempt may have been created with. The fake
+// A selected cart-link create sends the storefront id as `variant_id`, never a spelled sku key -- with a prepare
+// witness too; recovery and resume probe exactly the spellings an attempt may have been created with. The fake
 // backend below keeps ONE fingerprint per idempotency key, spelled the way pivota-backend's `_variant_selector`
 // spells it (`variant_id:<n>`, else the sent `variant_key`), and answers a different body with
 // `409 idempotency_conflict` — so a retry that does not hash the same as its original body fails here.
@@ -34,13 +34,13 @@ function canonical(value){return Array.isArray(value)?'['+value.map(canonical).j
 // The backend's conflict body names the purchase the key opened (`_refused`, owner-scoped).
 const CONFLICT={error:'idempotency_conflict',purchase_id:PID,rail:'reap'};
 function json(status,body){return{status,text:async()=>JSON.stringify(body)};}
-async function setup({ledger=new Map(),view=VIEW}={}) {
+async function setup({ledger=new Map(),view=VIEW,selection=SELECTION}={}) {
   const m=await import('../mcp-server/src/commerceToolSurface.js');
   const calls=[];
   const lookup=(body)=>{const held=ledger.get(body.idempotency_key);return !held?'absent':held.hash===fingerprint(body)?'match':'conflict';};
   const client=createReapAgenticPurchaseClient({baseUrl:'https://backend.invalid',authHeaders:()=>({'X-API-Key':'ak_fixture','X-Agent-User-JWT':'synthetic-token'}),fetchImpl:async(url,init)=>{
     const path=new URL(url).pathname;const body=init.body?JSON.parse(init.body):null;calls.push({path,method:init.method,body});
-    if(path.endsWith('/prepare'))return json(200,{selection:SELECTION});
+    if(path.endsWith('/prepare'))return json(200,{selection});
     if(path.endsWith('/recover')){const hit=lookup(body);return hit==='absent'?json(404,{error:'purchase_not_found'}):hit==='match'?json(200,view):json(409,CONFLICT);}
     if(path.endsWith('/resume')){return lookup(body)==='match'?json(202,{purchase_id:PID,status:'resolving'}):json(409,{error:'idempotency_conflict'});}
     if(init.method==='POST'){
@@ -65,6 +65,10 @@ const LEGACY_BODY={merchant_domain:'fixture-store.com',product_key:KEY,quantity:
   idempotency_key:'ucp-reap-v1-f00a66ff39227d741319966c657bb798578a625a92912761',expected_unit_price_minor:1399,expected_currency:'USD',
   variant_key:LEGACY_KEY,item_source:'cart_link'};
 async function legacyOriginalBody(){return structuredClone(LEGACY_BODY);}
+// EXACTLY what the gateway sent for a WITNESS create before creates sent `variant_id`: captured from PIVOTA-Agent#2426's
+// lane (1495d0439) -- the numeric-only legacy body, its selector the witness's own sku.
+const LEGACY_WITNESS_BODY={...LEGACY_BODY,variant_key:SKU};
+function witnessArgs(selection=SELECTION){const a=args();a.checkout.reap.selection={...selection};return a;}
 const seeded=body=>new Map([[body.idempotency_key,{hash:fingerprint(body)}]]);
 const unknown=e=>e.code==='CHECKOUT_OUTCOME_UNKNOWN';
 
@@ -141,15 +145,63 @@ test('no attempt under either spelling stays unknown, never permission to start 
   assert.deepEqual(recovers(x).map(c=>c.body.variant_id??c.body.variant_key),[ID,LEGACY_KEY]);
 }));
 
-test('a witness attempt probes only its own sku, even on a conflict',()=>armed(async()=>{
+test('a witness create sends variant_id with the witness money, never the witness sku',()=>armed(async()=>{
+  const x=await setup();const out=await x.surface.callTool('create_checkout',witnessArgs(),SESSION);
+  assert.match(out.id,/^reap_rp_/);
+  assert.equal(creates(x).length,1);
+  const {variant_key:_sku,...rest}=LEGACY_WITNESS_BODY;
+  assert.deepEqual(creates(x)[0].body,{...rest,variant_id:ID},'only the selector differs from the legacy witness body');
+}));
+
+test('a witness naming the ::canonical placeholder still creates by variant_id',()=>armed(async()=>{
+  // The backend prepares a sole variant priced only on its placeholder through the no-key path; a create NAMING the
+  // placeholder beside a real sku is refused there, so the body must carry the storefront id.
+  const placeholder={...SELECTION,variant_key:KEY+'::canonical'};
+  const x=await setup({selection:placeholder});
+  await x.surface.callTool('create_checkout',witnessArgs(placeholder),SESSION);
+  assert.equal(creates(x).length,1);
+  assert.equal(creates(x)[0].body.variant_id,ID);
+  assert.equal(Object.hasOwn(creates(x)[0].body,'variant_key'),false);
+}));
+
+test('a witness create still refuses before any POST when fresh preparation differs from the witness',()=>armed(async()=>{
+  const x=await setup({selection:{...SELECTION,variant_key:KEY+'::canonical'}});
+  await assert.rejects(x.surface.callTool('create_checkout',witnessArgs(),SESSION),e=>e.detail?.reason==='ucp_reap_variant_not_created');
+  assert.equal(creates(x).length,0);
+}));
+
+test('a variant_id witness attempt recovers with the identical body: one probe',()=>armed(async()=>{
+  const x=await setup();const created=await x.surface.callTool('create_checkout',witnessArgs(),SESSION);
+  const original=creates(x)[0].body;
+  process.env.REAP_AGENTIC_CREATE_ENABLED='0';
+  const out=await x.surface.callTool('recover_checkout',witnessArgs(),SESSION);
+  assert.equal(out.id,created.id);
+  assert.equal(recovers(x).length,1);
+  assert.deepEqual(recovers(x)[0].body,original);
+}));
+
+test('a legacy witness attempt keyed with the witness sku recovers by that sku, and resumes with it',()=>armed(async()=>{
+  const legacy=structuredClone(LEGACY_WITNESS_BODY);
+  const view={...VIEW,checkout_dispatch_state:'not_dispatched',contact_reentry_required:true};
+  const x=await setup({ledger:seeded(legacy),view});
+  const recovered=await x.surface.callTool('recover_checkout',witnessArgs(),SESSION);
+  const probes=recovers(x);
+  assert.equal(probes.length,2);
+  assert.equal(probes[0].body.variant_id,ID,'the current spelling is probed first and conflicts');
+  assert.deepEqual(probes[1].body,legacy,'the legacy witness body is reconstructed byte for byte');
+  await x.surface.callTool('resume_checkout',{...witnessArgs(),checkout_id:recovered.id},SESSION);
+  const resumes=x.calls.filter(c=>c.path.endsWith('/resume'));
+  assert.equal(resumes.length,1);
+  assert.deepEqual(resumes[0].body,legacy);
+  assert.equal(creates(x).length,0);
+}));
+
+test('a witness attempt never probes a guessed key, even on a conflict',()=>armed(async()=>{
   const legacy=await legacyOriginalBody();
   const x=await setup({ledger:seeded(legacy)});
   process.env.REAP_AGENTIC_CREATE_ENABLED='0';
-  const a=args();a.checkout.reap.selection={...SELECTION};
-  await assert.rejects(x.surface.callTool('recover_checkout',a,SESSION),unknown);
-  assert.equal(recovers(x).length,1);
-  assert.equal(recovers(x)[0].body.variant_key,SKU);
-  assert.equal(Object.hasOwn(recovers(x)[0].body,'variant_id'),false);
+  await assert.rejects(x.surface.callTool('recover_checkout',witnessArgs(),SESSION),unknown);
+  assert.deepEqual(recovers(x).map(c=>c.body.variant_id??c.body.variant_key),[ID,SKU]);
 }));
 
 test('a selector longer than the backend bound recovers by its legacy key alone',()=>armed(async()=>{

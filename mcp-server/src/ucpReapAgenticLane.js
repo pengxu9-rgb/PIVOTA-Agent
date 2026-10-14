@@ -1525,14 +1525,15 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   // classification cannot decide which attempt existed. The owner hash decides.
   const cartDomain = cartLinkMerchantDomain(row, target);
   const selectedSource = own(own(own(ucpArgs, "checkout"), "reap"), "item_source");
-  // THE SELECTOR SPELLINGS an attempt in each key namespace may have been created with. A witness attempt sent the
-  // witness's SKU. A numeric-only cart-link attempt sent `variant_id` or, created before the lane sent it, the legacy
-  // guessed key; the variant lane never sent `variant_id` (it is cart-link only). The spellings of one namespace
-  // share its idempotency key and the backend stored ONE fingerprint for it, so at most one can match: another
-  // answers `idempotency_conflict`, never a second purchase.
-  const legacyKey = selector === undefined ? undefined : (selector.variant_key ?? legacyGuessedVariantKey(productKey, selector.variant_id));
+  // THE SELECTOR SPELLINGS an attempt in each key namespace may have been created with. A cart-link attempt sent
+  // `variant_id`, or, created before the lane sent it, a key: the witness's SKU when it had a witness, else the
+  // legacy guessed key. The variant lane never sent `variant_id` (it is cart-link only) and never had a witness. The
+  // spellings of one namespace share its idempotency key and the backend stored ONE fingerprint for it, so at most
+  // one can match: another answers `idempotency_conflict`, never a second purchase.
+  const legacyKey = selector === undefined ? undefined
+    : (originalSelection?.variant_key ?? legacyGuessedVariantKey(productKey, selector.variant_id));
   const variantSpellings = selector === undefined ? [{}] : [{ variant_key: legacyKey }];
-  const cartSpellings = selector === undefined ? [{}] : selector.variant_key !== undefined ? [{ variant_key: selector.variant_key }]
+  const cartSpellings = selector === undefined ? [{}]
     : [...(CART_VARIANT_ID_RE.test(selector.variant_id) ? [{ variant_id: selector.variant_id }] : []), { variant_key: legacyKey }];
   const namespaces = [
     !originalSelection && selectedSource !== "cart_link" && variantDomain && variantSpellings.map((spelling) => ({ ...base, ...spelling, merchant_domain: variantDomain, idempotency_key: reapIdempotencyKey(params.idempotency_key) })),
@@ -1617,10 +1618,13 @@ const CART_VARIANT_ID_RE = /^[1-9][0-9]{0,19}$/;
 // The selected id is a catalog selector, never provider authority. The backend must
 // find this exact product SKU and validate its storefront proof and price.
 //
-// What a create body carries for the buyer's selected variant: `undefined` (none selected), the prepare witness's
-// own SKU as `{ variant_key }`, or, with no witness, the storefront id itself as `{ variant_id }`, which the backend
-// resolves to its own SKU and then requires the proven variant to be (pivota-backend#2605). The catalog spells one
-// variant `::sku_<hash>`, `::v:<n>`, `::v::<n>` or `::v:retailer-<hash>`, so no key is ever guessed for a create.
+// What a create body carries for the buyer's selected variant: `undefined` (none selected), else the storefront id
+// itself as `{ variant_id }`, WITH OR WITHOUT a prepare witness. The backend resolves it to its own SKU by the same
+// rule `/purchases/prepare` used (pivota-backend#2605, #2608) and requires the proven variant to be it. The catalog
+// spells one variant `::sku_<hash>`, `::v:<n>`, `::v::<n>` or `::v:retailer-<hash>`, so no key is ever guessed for a
+// create -- and the witness's SKU is not sent either: a sole variant priced only on its `::canonical` placeholder
+// is prepared through the no-key path, and a create NAMING that placeholder beside a real SKU is refused. The witness
+// still binds the create: fresh preparation must equal it, and its money is the create's expected money.
 export function selectedReapVariantSelector(ucpArgs, row, productKey, { recovery = false } = {}) {
   const reap = own(own(ucpArgs, "checkout"), "reap");
   const selected = own(reap, "selected_variant_id");
@@ -1636,7 +1640,7 @@ export function selectedReapVariantSelector(ucpArgs, row, productKey, { recovery
     const variants = own(row, "variants");
     if (!Array.isArray(variants) || variants.filter(v => String(own(v, "variant_id") ?? own(v, "id")) === selected).length !== 1) refuse();
   }
-  return witness ? { variant_key: witness.variant_key } : { variant_id: selected };
+  return { variant_id: selected };
 }
 
 // The key a numeric-only attempt was created with BEFORE creates sent `variant_id`. Recovery only: a retry must
@@ -1648,11 +1652,12 @@ function legacyGuessedVariantKey(productKey, variantId) {
 }
 
 // The selected variant as one sku key: the witness's, else the legacy guessed spelling. Kept for recovery's legacy
-// bodies and the row resolver; a create body never carries the guess (see selectedReapVariantSelector).
+// bodies and the row resolver; a create body never carries a key (see selectedReapVariantSelector).
 export function selectedReapVariantKey(ucpArgs, row, productKey, { recovery = false } = {}) {
   const selector = selectedReapVariantSelector(ucpArgs, row, productKey, { recovery });
   if (selector === undefined) return undefined;
-  return selector.variant_key ?? legacyGuessedVariantKey(productKey, selector.variant_id);
+  const witness = readSelectionWitness(own(own(own(ucpArgs, "checkout"), "reap"), "selection"));
+  return witness?.variant_key ?? legacyGuessedVariantKey(productKey, selector.variant_id);
 }
 
 /**
@@ -1894,9 +1899,9 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     }
     const witness=readSelectionWitness(ucpArgs.checkout?.reap?.selection);
     const actual=prepared.selection;
-    // With a witness the body carries its SKU, so preparation must name that SKU. Without one the body carries the
-    // storefront id, which the backend resolves itself; the prepared SKU is not compared to any spelling of ours.
-    if ((witness && !sameSelection(witness,actual)) || (selector.variant_key!==undefined && actual.variant_key!==selector.variant_key)
+    // The body carries the storefront id, which the backend resolves by preparation's own rule. A witness must
+    // still equal fresh preparation, field for field; the prepared SKU is never compared to a spelling of ours.
+    if ((witness && !sameSelection(witness,actual))
       || actual.unit_price_minor!==price.amount || actual.currency!==price.currency
       || actual.quantity!==quantity || !cartLinkDirect) {
       throw new PivotaCommerceError("QUOTE_REQUIRED", {reason:"ucp_reap_variant_not_created"});

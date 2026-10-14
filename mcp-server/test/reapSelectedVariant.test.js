@@ -21,7 +21,8 @@ for (const [id,minor] of [['677289689108',1600],['42199434526795',2700]]) {
   let body;
   const client={preparePurchase,hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async b=>{body=b;return {kind:'accepted',purchase:{id:'rp_'+'a'.repeat(24),state:'resolving',product_key:key,quantity:1,totals:{currency:'USD',our_price_minor:minor}}};}};
   const view=await call(id,client);
-  assert.equal(body.variant_key,selection(id).variant_key);
+  assert.equal(body.variant_id,id);
+  assert.equal(Object.hasOwn(body,'variant_key'),false,'the witness sku is never sent');
   assert.equal(body.item_source,'cart_link');
   assert.equal(decodeReapCheckoutId(view.id).unitMinor,minor);
  });
@@ -44,8 +45,8 @@ test('recovery derives the same selector without present-day variant reads',()=>
  assert.equal(selectedReapVariantKey(args(),{},key,{recovery:true}),undefined);
 });
 
-test('a create selector is the witness sku or the storefront id, never a guessed key',()=>{
- assert.deepEqual(selectedReapVariantSelector(args('42199434526795'),row,key),{variant_key:selection('42199434526795').variant_key});
+test('a create selector is the storefront id, with or without a witness, never a sku key',()=>{
+ assert.deepEqual(selectedReapVariantSelector(args('42199434526795'),row,key),{variant_id:'42199434526795'});
  const numeric=args('42199434526795');delete numeric.checkout.reap.selection;
  assert.deepEqual(selectedReapVariantSelector(numeric,row,key),{variant_id:'42199434526795'});
  assert.equal(selectedReapVariantSelector(args(),row,key),undefined);
@@ -79,7 +80,8 @@ for (const [id,minor] of [['677289689108',1600],['42199434526795',2700]]) {
   let body;
   const client={preparePurchase,hasCallerCredentials:()=>true,getPurchase:async()=>{},startPurchase:async b=>{body=b;return {kind:'accepted',purchase:{id:'rp_'+'b'.repeat(24),state:'resolving',product_key:key,quantity:1,totals:{currency:'USD',our_price_minor:minor}}};}};
   const view=await call(id,client,{executor:{execute:async()=>({product:capturedRow})}});
-  assert.equal(body.variant_key,selection(id).variant_key);
+  assert.equal(body.variant_id,id);
+  assert.equal(Object.hasOwn(body,'variant_key'),false);
   assert.equal(decodeReapCheckoutId(view.id).unitMinor,minor);
  });
  test(`captured ${id} reaches pause and publishes a definitive wire refusal`,async()=>{
