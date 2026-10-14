@@ -13,8 +13,9 @@
 // DARK BY DEFAULT. `ORCHESTRATED_PURCHASE_TOOL_ENABLED` (read per call) off: the tool is not listed and a call to
 // it is an unknown tool, exactly as before it existed. Native MCP dialect only.
 //
-// WHAT IS NEVER THE CALLER'S. The merchant's storefront host, the catalog key and the variant key are derived here
-// from OUR catalog row (the same row rules as the Reap lane's cart-link create, `resolveCartLinkPurchaseRow`); the
+// WHAT IS NEVER THE CALLER'S. The merchant's storefront host and the catalog key are derived here from OUR catalog
+// row (the same row rules as the Reap lane's cart-link create, `resolveCartLinkPurchaseRow`), which must also list
+// the selected variant; that variant goes to the backend as its storefront id, and the backend picks the sku; the
 // price is the buyer-shown money the caller binds (`expected_unit_price_minor`/`expected_currency`), checked by the
 // backend against our catalog AFTER its idempotency lookup (so a retry replays, and only a new attempt is refused). The buyer is the signed-in buyer: identity
 // comes from the verified session, and an attested email wins over a body one.
@@ -240,7 +241,12 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
     expected_unit_price_minor: args.expected_unit_price_minor,
     expected_currency: args.expected_currency,
   };
-  if (resolved.variantKey !== undefined) body.variant_key = resolved.variantKey;
+  // THE BUYER'S VARIANT AS THE STOREFRONT NUMBERS IT, never a sku key spelled here: the catalog spells one variant
+  // several ways (`::sku_<hash>`, `::v:<n>`, `::v::<n>`, a seller-scoped `::v:retailer-<hash>`), and a key we
+  // guessed that is not there is `row_not_found` (prod 2026-10-13: 878 of 6,336 variants on the Tier B domains).
+  // The backend resolves it to its own sku. `resolveCartLinkPurchaseRow` above has already checked that the id is
+  // one of THIS row's variants and priced it.
+  if (args.variant_id !== undefined) body.variant_id = args.variant_id;
   const rail = isPlainObject(args.payment_preference) ? args.payment_preference.rail : undefined;
   if (rail !== undefined) body.payment_preference = { rail };
 
@@ -270,7 +276,7 @@ export async function startOrchestratedPurchase({ args, ctx, attested, executor,
       }
       if (created.code === "idempotency_conflict") {
         // NOT the kernel's IDEMPOTENCY_CONFLICT ("Starting fresh" / "use a new idempotency_key"). The backend's
-        // fingerprint includes facts this tool fills from OUR catalog row (product_key, variant_key, the host), so a
+        // fingerprint includes facts this tool fills from OUR catalog row (product_key, the host), so a
         // retry of an unknown outcome conflicts when that row changed in between, and the key's purchase EXISTS. The
         // answer says so: check that purchase before starting another; a new key only for a different purchase.
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
