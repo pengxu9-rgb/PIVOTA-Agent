@@ -469,6 +469,54 @@ test('readers share discovery in flight across their own pools', async () => {
   assert.equal(calls.filter((c) => c[0] === 'discover').length, 1);
 });
 
+test('a planned card handed to .json just as the host queue empties is still read (no lost wakeup)', async () => {
+  // A reader that settles nothing within a couple of microtasks, and a .json read with no real I/O: the
+  // first phase's worker is exiting exactly when the second phase enqueues on the same host.
+  for (const ticks of [0, 1, 2, 3, 4, 6, 8]) {
+    const planned = new Map([[1, {}]]);
+    const quick = {
+      mode: 'enforce',
+      plan: () => planned,
+      readCards: async () => {
+        for (let i = 0; i < ticks; i += 1) await Promise.resolve();
+        return new Map([[1, { status: STATUS.NOT_UCP }]]);
+      },
+    };
+    const instant = async () => ({ ok: true, status: 200, headers: new Map(), async json() { return { product: { variants: JSON_IDS.map((id) => ({ id: Number(id), price: '30.00', price_currency: 'USD' })) } }; } });
+    const out = await overlayLiveMerchantSearchPrices(
+      { products: [card(rbUrl(uniq('first')), ''), card(rbUrl(uniq('second')), BLISS)] },
+      { ucpSearchReader: quick, market: 'US', fetchImpl: instant },
+    );
+    assert.equal(out.products[1].price, 30, `ticks=${ticks}`);
+    assert.equal(out.products[1].price_source, 'merchant_live', `ticks=${ticks}`);
+    assert.equal(out.metadata.live_merchant_price.verified_count, 2, `ticks=${ticks}`);
+  }
+});
+
+test('a known-gone card the catalog answered is counted known_gone, not verified', async () => {
+  const h = uniq('gone');
+  storefrontProductPage.noteGone(`https://www.rarebeauty.com/products/${h}.json`, 404);
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(h), BLISS)] },
+    { ucpSearchReader: reader(storesFor(h)), market: 'US', fetchImpl: jsonFetch() },
+  );
+  assert.deepEqual(out.metadata.live_merchant_price.ucp.by_status, { known_gone: 1 });
+});
+
+test('a slow but healthy discovery that outran the budget does not back the store off once cached', async () => {
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const client = { ...fakeClient(storesFor('x')), async discoverEndpoint(base) { await gate; return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; } };
+  const r = createUcpLiveSearchReader({ ucpClient: client, mode: 'enforce', budgetMs: 20 });
+  const c = [card(rbUrl('x'), BLISS)];
+  const reads = await r.readCards(c, { market: 'US' });
+  assert.equal(reads.get(0).status, STATUS.TIMEOUT);
+  assert.equal(r.plan(c, { market: 'US' }).size, 0, 'backed off while discovery is still out');
+  open();
+  for (let i = 0; i < 10; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(r.plan(c, { market: 'US' }).size, 1, 'the endpoint is cached now');
+});
+
 test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the search lane resolved', () => {
   const fs = require('node:fs');
   const path = require('node:path');

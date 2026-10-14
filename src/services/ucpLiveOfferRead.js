@@ -879,6 +879,12 @@ function createUcpLiveSearchReader(deps = {}) {
   const backedOff = (host) => {
     const until = backoff.get(host);
     if (until === undefined) return false;
+    // A slow but healthy discovery that outran this read's budget has since cached its endpoint: no backoff.
+    const known = core.endpoints && core.endpoints.get(host);
+    if (known && known.until > now()) {
+      backoff.delete(host);
+      return false;
+    }
     if (until > now()) return true;
     backoff.delete(host);
     return false;

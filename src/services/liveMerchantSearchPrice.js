@@ -189,20 +189,23 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   const settled = new Set();
   // ONE queue per host for the page, fed by both phases (unplanned cards now, unsettled planned cards after
   // the UCP read), drained by at most 4 workers: the per-domain cap holds across phases (review round 2).
-  const hostQueues = new Map(); // host -> { queue, cursor, workers: Set<Promise> }
+  // `active` counts workers still in their loop and drops in the SAME tick a worker sees the queue empty, so
+  // a later enqueue never counts an exiting worker as alive (lost wakeup, review round 3 of #2439).
+  const hostQueues = new Map(); // host -> { queue, cursor, active, workers: Set<Promise> }
   const enqueueJson = (entries) => {
     const hosts = new Set();
     for (const [index, { target }] of entries) {
       eligible.add(index);
       const host = new URL(target.url).hostname;
-      if (!hostQueues.has(host)) hostQueues.set(host, { queue: [], cursor: 0, workers: new Set() });
+      if (!hostQueues.has(host)) hostQueues.set(host, { queue: [], cursor: 0, active: 0, workers: new Set() });
       hostQueues.get(host).queue.push({ index, target });
       hosts.add(host);
     }
     const waits = [];
     for (const host of hosts) {
       const q = hostQueues.get(host);
-      while (q.workers.size < 4 && q.workers.size < q.queue.length - q.cursor) {
+      while (q.active < 4 && q.active < q.queue.length - q.cursor) {
+        q.active += 1;
         const w = jsonWorker(q).finally(() => q.workers.delete(w));
         q.workers.add(w);
       }
@@ -211,27 +214,32 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     return Promise.all(waits);
   };
   async function jsonWorker(q) {
-    while (q.cursor < q.queue.length && !closed && !pageController.signal.aborted) {
-      const { index, target } = q.queue[q.cursor++];
-      const card = cards[index];
-      const fetched = await getProductJson(target);
-      if (closed || pageController.signal.aborted) return;
-      processed.add(index);
-      if (fetched.cacheHit) cacheHits += 1;
-      if (fetched.gone) goneIndexes.add(index);
-      const price = fetched.body && verifiedPrice(fetched.body, target.variant);
-      if (!price || price.currency !== String(card.currency).toUpperCase()) {
-        cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
-        countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
-        continue;
+    // The decrement runs in the same tick the loop sees the queue empty (no await between them).
+    try {
+      while (q.cursor < q.queue.length && !closed && !pageController.signal.aborted) {
+        const { index, target } = q.queue[q.cursor++];
+        const card = cards[index];
+        const fetched = await getProductJson(target);
+        if (closed || pageController.signal.aborted) return;
+        processed.add(index);
+        if (fetched.cacheHit) cacheHits += 1;
+        if (fetched.gone) goneIndexes.add(index);
+        const price = fetched.body && verifiedPrice(fetched.body, target.variant);
+        if (!price || price.currency !== String(card.currency).toUpperCase()) {
+          cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
+          countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
+          continue;
+        }
+        verified += 1;
+        if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
+        cards[index] = {
+          ...card, price: price.amount, price_amount: price.amount,
+          currency: price.currency, price_currency: price.currency,
+          price_source: 'merchant_live', price_as_of: fetched.asOf,
+        };
       }
-      verified += 1;
-      if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
-      cards[index] = {
-        ...card, price: price.amount, price_amount: price.amount,
-        currency: price.currency, price_currency: price.currency,
-        price_source: 'merchant_live', price_as_of: fetched.asOf,
-      };
+    } finally {
+      q.active -= 1;
     }
   }
   const ucpThenJson = async () => {
@@ -245,13 +253,14 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     if (closed || pageController.signal.aborted) return;
     const asOf = new Date().toISOString();
     for (const [index, read] of reads instanceof Map ? reads : []) {
-      ucp.byStatus[read.status] = (ucp.byStatus[read.status] || 0) + 1;
       const card = cards[index];
-      if (!card || typeof card !== 'object' || read.status !== 'verified') continue;
       // A page the storefront already said is gone (this or another read's 404/410, shared memo) is never
       // confirmed by the catalog: it takes the `.json` read, which marks it gone (and DROP_GONE drops it).
       const json = jsonTargets.get(index);
-      if (json && storefrontProductPage.knownGone(json.target.url)) continue;
+      const status = read.status === 'verified' && json && storefrontProductPage.knownGone(json.target.url)
+        ? 'known_gone' : read.status;
+      ucp.byStatus[status] = (ucp.byStatus[status] || 0) + 1;
+      if (!card || typeof card !== 'object' || status !== 'verified') continue;
       ucp.verified += 1;
       if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
       const raise = read.available === true && card.in_stock !== true;
