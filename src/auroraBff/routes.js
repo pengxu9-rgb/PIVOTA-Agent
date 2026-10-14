@@ -29819,9 +29819,9 @@ async function groundRecoRecommendationsFromCatalog({
       candidateCountBeforeFilter += products.length;
     }
     const viableCandidates = Array.isArray(poolState.selected_recommendations) ? poolState.selected_recommendations : [];
-    // The type this item asked for, for judging a SUBSTITUTE (recoReboundCategoryGate.js). The item's own
-    // product_type first; the step resolved from its name and query terms when the type says nothing.
-    const requestedStep = normalizeRecoTargetStep(rec.product_type) || itemTargetContext?.resolved_target_step || '';
+    // The type this item asked for, for judging a SUBSTITUTE (recoReboundCategoryGate.js): the step the
+    // grounding pass already resolved for it (its product_type, else its name and query terms).
+    const requestedStep = itemTargetContext?.resolved_target_step || '';
     const requestedText = [rec.product_type, rec.name, rec.display_name].filter(Boolean).join(' ');
     let groundedProduct = null;
     for (const candidate of viableCandidates) {

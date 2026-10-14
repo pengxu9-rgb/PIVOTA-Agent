@@ -1594,7 +1594,8 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     && /its name appears in `metadata.unresolved_archetypes`/.test(src)
     && /the catalog product the model itself picked, by its catalog id/.test(src)
     && /A `catalog_rebound` row is always face or body skincare/.test(src)
-    && /grounding does not copy the requested type onto the row's `product_type` or `category`/.test(src),
+    && /Grounding does not copy the requested type onto the row's `product_type` or `category`/.test(src)
+    && /An item or substitute whose name says makeup, fragrance, hair, lips, lashes, brows, nails or self-tan is never substituted/.test(src),
     'the description must state the rebound rule the gate enforces');
   assert.ok(!/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
     && !/drop or re-check `catalog_rebound` rows/.test(src),
@@ -1613,6 +1614,11 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     // a facial toner.
     assert.equal(judgeRecoReboundCandidate({
       requestedStep: 'toner', requestedText: 'body mist Fragrance Mist', candidate: { catalog_category_path: 'beauty/skincare/tone/toner' },
+    }).accept, false);
+    // ...and a serum foundation, typed "serum", is still refused a serum.
+    assert.equal(judgeRecoReboundCandidate({
+      requestedStep: 'serum', requestedText: 'serum Liquid Touch Serum Foundation',
+      candidate: { catalog_category_path: 'beauty/skincare/treat/serum', name: 'Niacinamide 10% + Zinc 1%' },
     }).accept, false);
     const merged = withRoutesEnv({}, (internal) => internal.mergeRecoPlanWithGroundedCandidate(
       { name: 'Hoola Matte Bronzer', product_type: 'bronzer' },
