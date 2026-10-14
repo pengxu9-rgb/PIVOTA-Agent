@@ -266,7 +266,13 @@ export function createCanonicalExecutor({
         // (services/ucpLiveOfferRead); null means "serve the result unchanged". Best-effort like the
         // decision block: a failure never affects the product result.
         try {
-          const liveRead = localReads && typeof localReads.live_product_read === 'function' ? localReads.live_product_read : null;
+          // OPT-IN per call (`params.live_read === true`, set by the agent's own get_product tool call). Never
+          // for internal reads through this executor -- checkout's default-variant resolver
+          // (buyerIntake.createDefaultVariantResolver) runs get_product under a 3s deadline, and a merchant
+          // round trip inside it would refuse creates with `resolution_unavailable` (review of #2438).
+          const liveRead = params && params.live_read === true && localReads && typeof localReads.live_product_read === 'function'
+            ? localReads.live_product_read
+            : null;
           if (liveRead && result && typeof result === 'object') {
             const market = typeof _liveReadMarket === 'string' ? _liveReadMarket : undefined;
             const served = await liveRead(result, { market });

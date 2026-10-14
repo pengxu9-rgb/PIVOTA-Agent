@@ -362,6 +362,20 @@ function offersInMarketCurrency(offers, marketCurrency) {
   return { kept, withheld };
 }
 
+/**
+ * Does this offer sell exactly variant `vid`? Only what the offer would BUY counts: the variant its cart is
+ * built for (execution_spec.variant_id), or every internal checkout item naming it. NOT `source.variant_id`:
+ * the seed lane's fallback offer for an unmatched sku_id copies the requested id there while selling no
+ * particular variant.
+ */
+function offerIsVariant(offer, vid) {
+  if (!offer || typeof offer !== 'object') return false;
+  const cartVariant = offer.execution_spec && offer.execution_spec.variant_id;
+  if (cartVariant != null && String(cartVariant).trim() === vid) return true;
+  const items = Array.isArray(offer.internal_checkout_items) ? offer.internal_checkout_items : [];
+  return items.length > 0 && items.every((it) => it && String(it.variant_id || '').trim() === vid);
+}
+
 function makeGetOffers(deps = {}) {
   // `readOffersLive` (optional): the merchant's own live read of the offers this answer returns, for a
   // DECLARED market (services/ucpLiveOfferRead). Absent, or answering nothing, the answer is unchanged.
@@ -407,7 +421,14 @@ function makeGetOffers(deps = {}) {
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
     });
-    const fetched = res && Array.isArray(res.offers) ? res.offers : [];
+    const fetchedAll = res && Array.isArray(res.offers) ? res.offers : [];
+    // A NAMED VARIANT gets only offers that ARE that variant. offers.resolve does not guarantee it: a seed
+    // with no matching variant falls back to a variant-less offer at the row price, and the internal lane
+    // picks its own first eligible variant -- either would hand the agent another shade's cart (review of
+    // #2438). Matched on the offer's own variant (execution_spec / source) or its checkout items.
+    const namedVariant = nonEmpty(p.variant_id) ? String(p.variant_id).trim() : '';
+    const fetched = namedVariant ? fetchedAll.filter((o) => offerIsVariant(o, namedVariant)) : fetchedAll;
+    const withheldOtherVariant = fetchedAll.length - fetched.length;
     // No market declared: today's referral-only answer, every offer the backend returned.
     const { kept, withheld } = market
       ? offersInMarketCurrency(fetched, marketCurrency)
@@ -439,6 +460,13 @@ function makeGetOffers(deps = {}) {
       metadata: {
         offer_count: offers.length,
         product_group_id: (res && res.product_group_id) || p.product_group_id || null,
+        ...(namedVariant
+          ? {
+              variant_id: namedVariant,
+              withheld_other_variant_count: withheldOtherVariant,
+              ...(offers.length === 0 && withheldOtherVariant > 0 ? { reason: 'variant_not_offered' } : {}),
+            }
+          : {}),
         ...(market
           ? {
               market,

@@ -434,3 +434,27 @@ test('get_offers: a named variant_id reaches the backend as the product sku_id',
   await getOffers({ payload: { product_id: 'sig_rb' } });
   assert.equal('variant_id' in fetched, false, 'absent, the fetch is unchanged');
 });
+
+// ------------------------------------------------------------- review of #2438, round 2
+
+test('get_offers variant_id: only offers whose cart IS that variant; the seed fallback copy is withheld', async () => {
+  const seedFallback = backendOffer({ execution_spec: { merchant_domain: 'other.com', variant_id: null }, source: { variant_id: HOPE } });
+  const wrongInternal = backendOffer({ merchant_id: 'm_int', execution_spec: {}, internal_checkout_items: [{ variant_id: 'v_first' }] });
+  const right = backendOffer({ execution_spec: { merchant_domain: RB, variant_id: HOPE } });
+  const getOffers = makeGetOffers({ fetchOffers: async () => ({ offers: [seedFallback, wrongInternal, right] }) });
+  const res = await getOffers({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  assert.equal(res.signals.length, 1);
+  assert.equal(res.best_offer.value.execution_spec.variant_id, HOPE);
+  assert.equal(res.metadata.withheld_other_variant_count, 2);
+  const none = await makeGetOffers({ fetchOffers: async () => ({ offers: [seedFallback] }) })({ payload: { product_id: 'sig_rb', variant_id: HOPE } });
+  assert.equal(none.metadata.reason, 'variant_not_offered');
+});
+
+test('a listed shade whose stock the merchant did not state is not marked live-verified', async () => {
+  const store = { US: [variant(BLISS, 2500, 'USD', true), { ...variant(HOPE, 2500, 'USD', true), availability: {} }] };
+  const { r } = reader(store);
+  const o = offer({ variants: [{ variant_id: BLISS, title: 'Bliss' }, { variant_id: HOPE, title: 'Hope' }] });
+  const { offers } = await r.readOffers([o], { market: 'US', currency: 'USD' });
+  const hope = offers[0].variants.find((v) => v.variant_id === HOPE);
+  assert.equal(hope.live_verified, undefined);
+});

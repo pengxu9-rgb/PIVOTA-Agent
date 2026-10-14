@@ -126,7 +126,7 @@ test('a flavour the merchant says it does not have, among ones it does, is out o
   pdp.product.variants[1].availability = { in_stock: true };
   const out = await r.readProduct(pdp, { market: 'US' });
   const berry = out.product.variants.find((v) => v.variant_id === BERRY);
-  assert.equal(berry.live_read.status, 'gone');
+  assert.equal(berry.live_read.status, STATUS.VARIANT_GONE);
   assert.equal(berry.availability.in_stock, false);
   assert.equal(out.product.live_read.gone, 2);
 });
@@ -225,4 +225,114 @@ test('helpers: the merchant host is never our own, ids are numeric, EUR names no
   assert.deepEqual(productVariantIds({ default_variant_id: BERRY, variants: [{ variant_id: LEMON }, { variant_id: 'SKU-1' }, { variant_id: BERRY }] }), [BERRY, LEMON]);
   assert.equal(marketForCurrency('USD'), 'US');
   assert.equal(marketForCurrency('EUR'), null);
+});
+
+// ------------------------------------------------------------- review of #2438, round 2
+
+test('STRUCTURAL: only the agent get_product tool call opts into the live read', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js'), 'utf8');
+  const start = src.indexOf('    case "get_product":');
+  const block = src.slice(start, start + 900);
+  assert.match(block, /live_read: true,/);
+  assert.equal((src.match(/live_read: true/g) || []).length, 1, 'no other tool opts in');
+});
+
+test('a product whose commerce the PDP blocked is never read or un-blocked', async () => {
+  const { r, calls, logs } = reader(laneigeUS);
+  const blocked = { ...laneigePdp(), actions: [] };
+  blocked.product.availability = { in_stock: false, available_quantity: 0 };
+  assert.equal(await r.readProduct(blocked, { market: 'US' }), null);
+  assert.equal(calls.length, 0);
+  assert.equal(logs[0].reason, 'commerce_blocked');
+  const held = laneigePdp({ transaction_ready: false });
+  assert.equal(await r.readProduct(held, { market: 'US' }), null);
+});
+
+test('stale siblings of a live value go: quantity, compare-at, inventory count', async () => {
+  const { r } = reader(laneigeUS);
+  const pdp = laneigePdp();
+  pdp.product.availability = { in_stock: false, available_quantity: 0 };
+  pdp.product.variants[0] = {
+    ...pdp.product.variants[0],
+    price: { current: { amount: 20, currency: 'USD' }, compare_at: { amount: 30, currency: 'USD' } },
+    availability: { in_stock: false, available_quantity: 0 },
+    inventory_quantity: 0,
+  };
+  const out = await r.readProduct(pdp, { market: 'US' });
+  const lemon = out.product.variants[0];
+  assert.deepEqual(lemon.price, { current: { amount: 24, currency: 'USD' } });
+  assert.deepEqual(lemon.availability, { in_stock: true });
+  assert.equal(lemon.inventory_quantity, undefined);
+  assert.deepEqual(out.product.availability, { in_stock: true });
+});
+
+test('a scalar variant price stays a scalar', async () => {
+  const { r } = reader(laneigeUS);
+  const pdp = laneigePdp();
+  pdp.product.variants[0] = { ...pdp.product.variants[0], price: '20.00', currency: 'USD' };
+  const out = await r.readProduct(pdp, { market: 'US' });
+  assert.equal(out.product.variants[0].price, 24);
+  assert.equal(out.product.variants[0].currency, 'USD');
+});
+
+test('a declared market Pivota does not price is refused, never swapped for the home market', async () => {
+  const { r, calls } = reader(laneigeUS);
+  const out = await r.readProduct(laneigePdp({ currency: 'USD' }), { market: 'DE' });
+  assert.equal(out.product.live_read.status, STATUS.SKIPPED);
+  assert.equal(out.product.live_read.reason, 'market_not_priced');
+  assert.equal(calls.length, 0);
+});
+
+test('market_basis says whether the buyer declared the market or the listing home market was used', async () => {
+  const { r } = reader(laneigeUS);
+  const declared = await r.readProduct(laneigePdp(), { market: 'US' });
+  assert.equal(declared.product.live_read.market_basis, 'declared');
+  const home = await r.readProduct(laneigePdp({ currency: 'USD' }), {});
+  assert.equal(home.product.live_read.market_basis, 'listing_home');
+});
+
+test('re-pricing in another currency covers every variant or none (no mixed-currency page)', async () => {
+  const many = Array.from({ length: 35 }, (_, i) => String(500000000 + i));
+  const { r, calls } = reader({ SG: many.map((id) => variant(id, 3700, 'SGD', true)) });
+  const pdp = laneigePdp({ currency: 'USD', default_variant_id: many[0], variants: many.map((id) => storedVariant(id, id)) });
+  const out = await r.readProduct(pdp, { market: 'SG' });
+  assert.equal(out.product.live_read.status, STATUS.SKIPPED);
+  assert.equal(out.product.live_read.reason, 'too_many_variants_to_reprice');
+  assert.equal(calls.length, 0);
+});
+
+test('a gone variant is named variant_gone, like the offer read', async () => {
+  const { r } = reader({ US: [variant(LEMON, 2400, 'USD', true)] });
+  const out = await r.readProduct(laneigePdp(), { market: 'US' });
+  assert.equal(out.product.variants.find((v) => v.variant_id === BERRY).live_read.status, STATUS.VARIANT_GONE);
+});
+
+test('a product with no variants list keeps none', async () => {
+  const { r } = reader(laneigeUS);
+  const pdp = laneigePdp();
+  delete pdp.product.variants;
+  pdp.product.default_variant_id = LEMON;
+  const out = await r.readProduct(pdp, { market: 'US' });
+  assert.equal('variants' in out.product, false);
+});
+
+test('at most MAX_CONCURRENT_LOOKUPS lookups are in flight at once', async () => {
+  const { createLookupCore } = require('../src/services/ucpLiveOfferRead');
+  let inFlight = 0;
+  let peak = 0;
+  const client = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((res) => setTimeout(res, 5));
+      inFlight -= 1;
+      return toolResult({ products: [] });
+    },
+  };
+  const core = createLookupCore({ ucpClient: client, now: () => Date.now(), endpointTtlMs: 1000, memoTtlMs: 1, maxConcurrent: 2 });
+  await Promise.all(Array.from({ length: 6 }, (_, i) => core.lookup('h.com', 'https://h.com/api/ucp/mcp', [String(600000000 + i)], 'US')));
+  assert.equal(peak, 2);
 });

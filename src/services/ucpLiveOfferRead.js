@@ -178,8 +178,25 @@ function roundTo(amount, currency) {
  * Discovery + lookup shared by the offer and product readers: one endpoint memo per host (an hour; a host
  * with no UCP endpoint, 10 minutes) and a lookup memo that only coalesces (seconds).
  */
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs }) {
+// At most this many merchant lookups in flight per process, across every reader and request; the rest
+// wait their turn (each still bounded by its caller's deadline).
+const MAX_CONCURRENT_LOOKUPS = 16;
+
+function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS }) {
   const negativeEndpointTtlMs = 10 * 60 * 1000;
+  let inFlight = 0;
+  const waiting = [];
+  async function withSlot(run) {
+    if (inFlight >= maxConcurrent) await new Promise((resolve) => waiting.push(resolve));
+    inFlight += 1;
+    try {
+      return await run();
+    } finally {
+      inFlight -= 1;
+      const next = waiting.shift();
+      if (next) next();
+    }
+  }
   const endpoints = new Map(); // host -> { endpoint|null, until }
   const memo = new Map(); // `${host}|${country}|${ids}` -> { promise, until }
 
@@ -214,7 +231,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs }) {
     const key = `${host}|${country}|${ids.join(',')}`;
     const hit = memo.get(key);
     if (hit && hit.until > now()) return hit.promise;
-    const promise = (async () => {
+    const promise = withSlot(async () => {
       const res = await ucpClient.lookupCatalog(endpoint, {
         ids: ids.map(variantGid),
         context: { address_country: country },
@@ -225,7 +242,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs }) {
         throw err;
       }
       return unwrapToolPayload(res);
-    })();
+    });
     memo.set(key, { promise, until: now() + memoTtlMs });
     promise.catch(() => {
       if (memo.get(key) && memo.get(key).promise === promise) memo.delete(key);
@@ -234,7 +251,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs }) {
     return promise;
   }
 
-  return { endpointFor, lookup, endpoints, memo };
+  return { endpointFor, lookup, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length }) };
 }
 
 function withDeadline(promise, deadline, now) {
@@ -368,7 +385,7 @@ function createUcpLiveOfferReader(deps = {}) {
     if (read.liveVariants && Array.isArray(offer.variants) && read.status !== STATUS.CURRENCY_MISMATCH) {
       out.variants = offer.variants.map((v) => {
         const live = read.liveVariants.get(numericVariantId(v && v.variant_id));
-        if (!live || live.currency !== currency || live.amount === null) return v;
+        if (!live || live.currency !== currency || live.amount === null || live.available === null) return v;
         return { ...v, price: roundTo(live.amount, currency), currency, in_stock: live.available, live_verified: true };
       });
     }
@@ -447,6 +464,24 @@ function createUcpLiveOfferReader(deps = {}) {
  */
 const MAX_PRODUCT_VARIANT_IDS = 30;
 
+/** An availability object with the merchant's live flag, and no stored quantity left to contradict it. */
+function withLiveStock(availability, inStock) {
+  const { available_quantity: _staleQuantity, ...rest } = availability && typeof availability === 'object' ? availability : {};
+  return { ...rest, in_stock: inStock };
+}
+
+/**
+ * A result whose commerce the PDP DELIBERATELY blocked: pdpBuilder's `commerceSuppressed` (non-merch, a dead
+ * page's `source_unavailable_v1` hold, `transaction_ready: false`) ships no actions and
+ * `availability: { in_stock: false, available_quantity: 0 }`. A live answer must never un-block it.
+ */
+function commerceBlocked(result, product) {
+  if (result && Array.isArray(result.actions) && result.actions.length === 0) return true;
+  if (product && product.transaction_ready === false) return true;
+  if (product && product.source_unavailable_v1) return true;
+  return false;
+}
+
 function productTarget(result) {
   if (!result || typeof result !== 'object') return null;
   return result.product && typeof result.product === 'object' ? result.product : result;
@@ -510,18 +545,28 @@ function createUcpLiveProductReader(deps = {}) {
   /** { status, country, currency, host, live: Map, askedIds } — never throws. */
   async function readLive(product, ctx) {
     const declared = str(ctx && ctx.market).toUpperCase();
-    const declaredCurrency = /^[A-Z]{2}$/.test(declared) ? currencyForBuyerRegion(declared) : '';
     const homeCurrency = productCurrency(product);
-    const country = declaredCurrency ? declared : marketForCurrency(homeCurrency);
-    const currency = declaredCurrency || (country ? homeCurrency : '');
+    if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) {
+      // A market the caller named and Pivota does not price is not quietly swapped for another one
+      // (get_offers answers the same input `market_not_priced`).
+      return { status: STATUS.SKIPPED, reason: 'market_not_priced', basis: 'declared' };
+    }
+    const basis = declared ? 'declared' : 'listing_home';
+    const country = declared || marketForCurrency(homeCurrency);
+    const currency = declared ? currencyForBuyerRegion(declared) : country ? homeCurrency : '';
     const host = productHost(product);
     const ids = productVariantIds(product);
-    if (!country || !currency) return { status: STATUS.SKIPPED, reason: 'no_market' };
-    if (!host || !ids.length) return { status: STATUS.SKIPPED, reason: !host ? 'no_host' : 'no_variant_id', country, currency };
+    if (!country || !currency) return { status: STATUS.SKIPPED, reason: 'no_market', basis };
+    if (!host || !ids.length) return { status: STATUS.SKIPPED, reason: !host ? 'no_host' : 'no_variant_id', country, currency, basis };
+    const allVariants = Array.isArray(product.variants) ? product.variants : [];
+    if (currency !== homeCurrency && homeCurrency && allVariants.length > ids.length) {
+      // Re-pricing in another currency must cover EVERY variant, or the page would mix currencies.
+      return { status: STATUS.SKIPPED, reason: 'too_many_variants_to_reprice', country, currency, basis };
+    }
     const deadline = now() + budgetMs;
     try {
       const endpoint = await withDeadline(core.endpointFor(host), deadline, now);
-      if (!endpoint) return { status: STATUS.NOT_UCP, host, country, currency };
+      if (!endpoint) return { status: STATUS.NOT_UCP, host, country, currency, basis };
       const chunks = [];
       for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
       const payloads = await withDeadline(
@@ -533,21 +578,21 @@ function createUcpLiveProductReader(deps = {}) {
       const notFound = new Set();
       for (const payload of payloads) {
         const parsed = parseLookup(payload);
-        if (parsed.error) return { status: STATUS.ERROR, host, country, currency, reason: 'merchant_error' };
+        if (parsed.error) return { status: STATUS.ERROR, host, country, currency, basis, reason: 'merchant_error' };
         for (const [id, v] of parsed.variants) live.set(id, v);
         for (const id of parsed.notFound) notFound.add(id);
       }
       if (live.size === 0) {
-        if (notFound.size) return { status: STATUS.VARIANT_GONE, host, country, currency, live, notFound, askedIds: ids };
-        return { status: STATUS.ERROR, host, country, currency, reason: 'nothing_answered' };
+        if (notFound.size) return { status: STATUS.VARIANT_GONE, host, country, currency, basis, live, notFound, askedIds: ids };
+        return { status: STATUS.ERROR, host, country, currency, basis, reason: 'nothing_answered' };
       }
       const answeredCurrencies = new Set([...live.values()].map((v) => v.currency).filter(Boolean));
       if (answeredCurrencies.size !== 1 || !answeredCurrencies.has(currency)) {
-        return { status: STATUS.CURRENCY_MISMATCH, host, country, currency, merchantCurrency: [...answeredCurrencies].join(',') };
+        return { status: STATUS.CURRENCY_MISMATCH, host, country, currency, basis, merchantCurrency: [...answeredCurrencies].join(',') };
       }
-      return { status: STATUS.VERIFIED, host, country, currency, live, notFound, askedIds: ids };
+      return { status: STATUS.VERIFIED, host, country, currency, basis, live, notFound, askedIds: ids };
     } catch (e) {
-      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, reason: str(e && e.message).slice(0, 80) };
+      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) };
     }
   }
 
@@ -555,16 +600,27 @@ function createUcpLiveProductReader(deps = {}) {
   function applyProductRead(product, read) {
     const checkedAt = new Date(now()).toISOString();
     const out = { ...product };
-    const summary = { status: read.status, market: read.country || null, source: 'merchant_ucp_lookup_catalog', checked_at: checkedAt };
+    const summary = {
+      status: read.status,
+      market: read.country || null,
+      market_basis: read.basis || null,
+      ...(read.reason ? { reason: read.reason } : {}),
+      source: 'merchant_ucp_lookup_catalog',
+      checked_at: checkedAt,
+    };
     if (read.status === STATUS.CURRENCY_MISMATCH) summary.merchant_currency = read.merchantCurrency;
     if (read.status !== STATUS.VERIFIED && read.status !== STATUS.VARIANT_GONE) {
+      out.live_read = summary;
+      return out;
+    }
+    if (!Array.isArray(product.variants)) {
       out.live_read = summary;
       return out;
     }
     const asked = new Set(read.askedIds || []);
     let verified = 0;
     let gone = 0;
-    out.variants = (Array.isArray(product.variants) ? product.variants : []).map((v) => {
+    out.variants = product.variants.map((v) => {
       const id = numericVariantId(v && v.variant_id);
       if (!id || !asked.has(id)) return v;
       const live = read.live.get(id);
@@ -572,17 +628,26 @@ function createUcpLiveProductReader(deps = {}) {
         // Gone only when the merchant SAID so (a `not_found` naming this id); silence is not evidence.
         if (!read.notFound || !read.notFound.has(id)) return v;
         gone += 1;
-        return { ...v, availability: { ...(v.availability || {}), in_stock: false }, live_read: { status: 'gone' } };
+        return { ...v, availability: withLiveStock(v.availability, false), live_read: { status: STATUS.VARIANT_GONE } };
       }
       if (live.amount === null || live.available === null) return v;
       verified += 1;
+      const amount = roundTo(live.amount, read.currency);
       const next = {
         ...v,
-        price: { ...(v.price || {}), current: { amount: roundTo(live.amount, read.currency), currency: read.currency } },
-        availability: { ...(v.availability || {}), in_stock: live.available },
+        availability: withLiveStock(v.availability, live.available),
         live_read: { status: STATUS.VERIFIED },
       };
+      if (v.price == null || typeof v.price === 'object') {
+        // The stored compare-at is a different read's number (and maybe currency): not shown beside a live one.
+        const { compare_at: _staleCompareAt, ...priceRest } = v.price || {};
+        next.price = { ...priceRest, current: { amount, currency: read.currency } };
+      } else {
+        next.price = amount; // a scalar price stays a scalar
+        next.currency = read.currency;
+      }
       delete next.current_own_offer_status;
+      delete next.inventory_quantity; // a stored count beside a live in/out-of-stock flag would contradict it
       return next;
     });
     const defaultId = numericVariantId(product.default_variant_id) || (out.variants[0] && numericVariantId(out.variants[0].variant_id));
@@ -594,8 +659,8 @@ function createUcpLiveProductReader(deps = {}) {
     }
     const allAsked = (Array.isArray(product.variants) ? product.variants : []).every((v) => asked.has(numericVariantId(v && v.variant_id)));
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
-    if (anyInStock) out.availability = { ...(product.availability || {}), in_stock: true };
-    else if (verified + gone > 0 && allAsked) out.availability = { ...(product.availability || {}), in_stock: false };
+    if (anyInStock) out.availability = withLiveStock(product.availability, true);
+    else if (verified + gone > 0 && allAsked) out.availability = withLiveStock(product.availability, false);
     out.live_read = { ...summary, checked: asked.size, verified, gone };
     return out;
   }
@@ -609,6 +674,10 @@ function createUcpLiveProductReader(deps = {}) {
     if (mode === MODES.OFF) return null;
     const product = productTarget(result);
     if (!product) return null;
+    if (commerceBlocked(result, product)) {
+      log('get_product_ucp_live_read', { mode, product_id: product.product_id || null, status: STATUS.SKIPPED, reason: 'commerce_blocked' });
+      return null;
+    }
     if (mode === MODES.SHADOW) {
       // Shadow never touches the answer, its latency included: the read runs after it is served.
       readAndLog(result, product, ctx).catch(() => {});
@@ -626,17 +695,18 @@ function createUcpLiveProductReader(deps = {}) {
       market: read.country || null,
       status: read.status,
       reason: read.reason || null,
+      market_basis: read.basis || null,
     };
     if (read.status === STATUS.VERIFIED || read.status === STATUS.VARIANT_GONE) {
       const preview = applyProductRead(product, read);
       const byId = new Map((Array.isArray(product.variants) ? product.variants : []).map((v) => [numericVariantId(v && v.variant_id), v]));
       stats.verified = preview.live_read.verified;
       stats.gone = preview.live_read.gone;
-      stats.stock_changed = preview.variants.filter((v) => {
+      stats.stock_changed = (preview.variants || []).filter((v) => {
         const before = byId.get(numericVariantId(v && v.variant_id));
         return v && v.live_read && before && (before.availability || {}).in_stock !== (v.availability || {}).in_stock;
       }).length;
-      stats.price_changed = preview.variants.filter((v) => {
+      stats.price_changed = (preview.variants || []).filter((v) => {
         const before = byId.get(numericVariantId(v && v.variant_id));
         const b = before && before.price && before.price.current && before.price.current.amount;
         const a = v && v.live_read && v.price && v.price.current && v.price.current.amount;
@@ -654,6 +724,8 @@ function createUcpLiveProductReader(deps = {}) {
 }
 
 module.exports = {
+  MAX_CONCURRENT_LOOKUPS,
+  commerceBlocked,
   parseLookup,
   cartPinnedTo,
   createUcpLiveOfferReader,
