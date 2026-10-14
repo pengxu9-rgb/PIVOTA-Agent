@@ -1584,14 +1584,38 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   );
   assert.match(armedAsk, /^Recommend a few beauty products for me/,
     'the door the description promises makeup for must actually ask the model for beauty, not skincare');
-  // THE REBOUND CAVEAT IS LOAD-BEARING. A substituted row keeps the REQUESTED type
-  // (mergeRecoPlanWithGroundedCandidate: sku.product_type = plan.product_type, and category falls back
-  // to it; the catalog row's own type wins only when it has one), so live on 2026-10-14 a lip balm
-  // came back as product_type "Bronzer". A description that
-  // let an agent check the match by type would hand it the wrong answer with a matching label.
-  assert.ok(/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
-    && /drop or re-check `catalog_rebound` rows/.test(src),
-    'the description must say a rebound row\'s type is the requested one, and what to do about it');
+  // THE REBOUND CLAIMS ARE CHECKED AGAINST THE GATE, not against themselves. Live 2026-10-14 four
+  // makeup/fragrance needs each carried a rebound of the wrong kind (a lip balm labelled "Bronzer"), and
+  // the description told agents to distrust rebound rows. recoReboundCategoryGate.js now refuses every
+  // makeup and fragrance substitute and judges a skincare one by the catalog's own category path, and
+  // the merge no longer stamps the requested type on a substitute -- so the description promises that
+  // instead. If either half is loosened, this fails until the sentence is.
+  assert.ok(/A MAKEUP OR FRAGRANCE ITEM IS NEVER A `catalog_rebound`/.test(src)
+    && /its name appears in `metadata.unresolved_archetypes`/.test(src)
+    && /A `catalog_rebound` row is always skincare \(including body care\)/.test(src)
+    && /come from the catalog row, never from the request/.test(src),
+    'the description must state the rebound rule the gate enforces');
+  assert.ok(!/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
+    && !/drop or re-check `catalog_rebound` rows/.test(src),
+    'the pre-gate caveat that a rebound row carries the requested type must not return while the gate holds');
+  {
+    const { STEP_DOMAIN_MAP } = require('../src/auroraBff/recoTargetStep');
+    const { judgeRecoReboundCandidate } = require('../src/auroraBff/recoReboundCategoryGate');
+    const shadeOrScentSteps = Object.keys(STEP_DOMAIN_MAP);
+    assert.ok(shadeOrScentSteps.includes('fragrance') && shadeOrScentSteps.includes('lip_colour'));
+    for (const step of shadeOrScentSteps) {
+      // A candidate filed under the very step asked for: even the best-case substitute is refused.
+      const verdict = judgeRecoReboundCandidate({ requestedStep: step, candidate: { category: step } });
+      assert.equal(verdict.accept, false, `"never a catalog_rebound" is false for ${step}`);
+    }
+    const merged = withRoutesEnv({}, (internal) => internal.mergeRecoPlanWithGroundedCandidate(
+      { name: 'Hoola Matte Bronzer', product_type: 'bronzer' },
+      { product_id: 'sig_3388a5e139e21623163e558d86e66741', merchant_id: 'external_seed', name: 'Lip Moisturising Stick' },
+    ));
+    assert.equal(merged.__pivota_score_basis, 'catalog_rebound');
+    assert.ok(merged.category !== 'bronzer' && merged.sku.product_type !== 'bronzer' && merged.product_type !== 'bronzer',
+      '"never from the request" is false: the substitute carries the requested type');
+  }
   // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
   // Measured on the live agent door 2026-09-10: four consecutive calls answered from the CATALOG path,
   // which reads no prompt, and a makeup / haircare / fragrance need each came back with cleansers. A

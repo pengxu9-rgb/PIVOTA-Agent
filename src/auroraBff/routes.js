@@ -411,6 +411,7 @@ const {
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
+const { judgeRecoReboundCandidate, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -4839,6 +4840,9 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.product_type === 'string' && base.product_type) ||
     (typeof base.productType === 'string' && base.productType) ||
     '';
+  // The reviewed taxonomy leaf. Kept apart from `category`/`product_type`, which on a seed row are a
+  // guess from the title ("Santal Blush Eau de Parfum" -> Blush); see recoReboundCategoryGate.js.
+  const catalogCategoryPath = readCatalogCategoryPath(base);
   const sourceToken =
     (typeof base.source === 'string' && base.source) ||
     (base.source && typeof base.source === 'object' && !Array.isArray(base.source) && typeof base.source.type === 'string'
@@ -5014,6 +5018,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
     ...(String(productType || '').trim() ? { product_type: String(productType).trim() } : {}),
+    ...(catalogCategoryPath ? { catalog_category_path: catalogCategoryPath } : {}),
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
@@ -29466,10 +29471,11 @@ function deriveRecoPlanQueryTerms(item, lang = 'EN') {
     }
   }
   if (productType) out.push(productType);
-  if (String(lang || '').toUpperCase() === 'CN' && productType) {
-    out.push(`${productType} 护肤`);
-  } else if (productType) {
-    out.push(`${productType} skincare`);
+  // "bronzer skincare" is not a query a bronzer is titled by. The suffix is for the skincare lane this
+  // was written for; a makeup or fragrance type gets no domain word at all.
+  const suffixDomain = resolveRecoStepDomain(productType);
+  if (productType && suffixDomain !== 'makeup' && suffixDomain !== 'fragrance') {
+    out.push(String(lang || '').toUpperCase() === 'CN' ? `${productType} 护肤` : `${productType} skincare`);
   }
   return normalizeRecoPlanQueryTerms(out, 4);
 }
@@ -29561,10 +29567,13 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   // Grounding can substitute a different catalog product. Carry only the requested slot/category,
   // not the old product's URL, identity, notes, formula claims, or nested evidence bundles.
   // Same-identity rationale may survive; all identity and catalog fields still come from the candidate.
+  // THE REQUESTED TYPE IS NOT THE SUBSTITUTE'S TYPE. Stamping plan.product_type onto a different product
+  // lets a lip balm grounded for a bronzer read as a bronzer (live 2026-10-14), and the agent door then
+  // reports that label as the product's own. A substitute carries its own catalog type or none.
   const planning = {
     slot: plan.slot,
     step: plan.step,
-    product_type: plan.product_type,
+    ...(sameProduct ? { product_type: plan.product_type } : {}),
     query_terms: sameProduct ? plan.query_terms : [],
     score: sameProduct ? plan.score : null,
     ...(sameProduct
@@ -29604,7 +29613,12 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title),
     title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name),
     display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name),
-    category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
+    category: pickFirstTrimmed(
+      normalizedProduct.category,
+      normalizedProduct.category_name,
+      normalizedProduct.product_type,
+      sameProduct ? plan.product_type : '',
+    ) || null,
     retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
     retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
     ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
@@ -29614,7 +29628,7 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     reasons: mergedReasons,
     sku: {
       ...normalizedProduct,
-      ...(plan.product_type ? { product_type: plan.product_type } : {}),
+      ...(sameProduct && plan.product_type ? { product_type: plan.product_type } : {}),
     },
   };
 }
@@ -29624,6 +29638,8 @@ async function groundRecoRecommendationsFromCatalog({
   ctx,
   logger,
   defaultTargetContext = null,
+  // Tests only: stands in for the catalog search on the live (non-cache) recall path.
+  searchFn = null,
 } = {}) {
   const recs = (Array.isArray(recommendations) ? recommendations : [])
     .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
@@ -29703,6 +29719,7 @@ async function groundRecoRecommendationsFromCatalog({
   let sameFamilyViableCount = 0;
   let softMismatchCount = 0;
   let hardRejectCount = 0;
+  const reboundRejectedByReason = {};
 
   for (const rec of recs) {
     const seedTerms = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
@@ -29767,6 +29784,7 @@ async function groundRecoRecommendationsFromCatalog({
         limit: 6,
         usePurchasableFallback: false,
         authHeaders: ctx?.backend_auth_headers || null,
+        searchFn,
       });
       if (itemPoolCacheKey) {
         const itemPool = extractRecoRecallPoolForCache(collected);
@@ -29799,12 +29817,22 @@ async function groundRecoRecommendationsFromCatalog({
       candidateCountBeforeFilter += products.length;
     }
     const viableCandidates = Array.isArray(poolState.selected_recommendations) ? poolState.selected_recommendations : [];
+    // The type this item asked for, for judging a SUBSTITUTE (recoReboundCategoryGate.js). The item's own
+    // product_type first; the step resolved from its name and query terms when the type says nothing.
+    const requestedStep = normalizeRecoTargetStep(rec.product_type) || itemTargetContext?.resolved_target_step || '';
     let groundedProduct = null;
     for (const candidate of viableCandidates) {
       const normalized = normalizeRecoCatalogProduct(candidate);
       if (!isPlainObject(normalized)) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
       if (productId && usedProductIds.has(productId)) continue;
+      if (!sameRecommendationProduct(rec, normalized)) {
+        const verdict = judgeRecoReboundCandidate({ requestedStep, candidate: normalized });
+        if (!verdict.accept) {
+          reboundRejectedByReason[verdict.reason] = (reboundRejectedByReason[verdict.reason] || 0) + 1;
+          continue;
+        }
+      }
       groundedProduct = normalized;
       if (productId) usedProductIds.add(productId);
       candidateCountAfterFilter += 1;
@@ -29859,6 +29887,7 @@ async function groundRecoRecommendationsFromCatalog({
       soft_mismatch_count: softMismatchCount,
       hard_reject_count: hardRejectCount,
       pool_cache_served_item_count: poolCacheServedItemCount,
+      rebound_rejected_by_reason: reboundRejectedByReason,
       fail_fast_open: failFastOpen,
       step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -105960,6 +105989,7 @@ const __internal = {
   buildRecoGenerateFromCatalog,
   groundRecoRecommendationsFromCatalog,
   mergeRecoPlanWithGroundedCandidate,
+  deriveRecoPlanQueryTerms,
   buildRecoCollectedFromCachedPool,
   extractRecoRecallPoolForCache,
   getRecoRecallPoolCache,
