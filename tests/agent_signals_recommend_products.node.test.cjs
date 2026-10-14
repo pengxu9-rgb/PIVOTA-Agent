@@ -1562,12 +1562,11 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   assert.ok(/`fit` is a DEPRECATED alias/.test(src),
     'the alias must be advertised as deprecated, or partners never migrate off it');
   // THE DOMAIN SENTENCE IS CHECKED AGAINST THE PROMPT THE DOOR ACTUALLY LOADS, not against itself.
-  // #2162 widened this to beauty and had to be rolled back: AURORA_DECISION_BASE_URL validates
-  // PROMPT_TEMPLATE_ID and answered 400 for reco_main_v1_3, killing the LLM leg in prod. The wide
-  // template is default-off, so the door is back on the skincare-bounded reco_main_v1_2 and the
-  // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
-  // id is registered upstream and the default flips, this fails until the sentence is updated with
-  // it — which is the point.
+  // #2162 widened this to beauty and had to be rolled back once (the decision service 400'd on an id it
+  // did not know), so the wide template is still default-off in code. Prod pins
+  // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3, so the door loads it, and the description now
+  // carries a fallback clause for the day that pin is lost. Reading the file the scope RESOLVES TO,
+  // under the armed config below, keeps the sentence and the prompt honest with each other.
   // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Until #2177 they differed: the loaded prompt
   // allowed makeup and fragrance, but buildRecoGenerateUserAsk framed every request as "Recommend a few
   // skincare products for me", and four makeup/fragrance needs came back empty (live, 2026-09-10).
@@ -1587,9 +1586,10 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the door the description promises makeup for must actually ask the model for beauty, not skincare');
   // THE REBOUND CAVEAT IS LOAD-BEARING. A substituted row keeps the REQUESTED type
   // (mergeRecoPlanWithGroundedCandidate: sku.product_type = plan.product_type, and category falls back
-  // to it), so live on 2026-10-14 a lip balm came back as product_type "Bronzer". A description that
+  // to it; the catalog row's own type wins only when it has one), so live on 2026-10-14 a lip balm
+  // came back as product_type "Bronzer". A description that
   // let an agent check the match by type would hand it the wrong answer with a matching label.
-  assert.ok(/on a rebound row those repeat the type that was ASKED\s+FOR/.test(src)
+  assert.ok(/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
     && /drop or re-check `catalog_rebound` rows/.test(src),
     'the description must say a rebound row\'s type is the requested one, and what to do about it');
   // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
@@ -1602,12 +1602,12 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the category promise must stay bounded to the path that actually reads the prompt');
   assert.ok(/a bare empty answer is treated as a gap the catalog may fill/.test(src),
     'the empty-answer promise must say what it requires, since a bare empty answer does not qualify');
-  // AND THE OTHER TWO CLAIMS GO WITH IT. v1_2 — the template the door actually loads while the wide
-  // one is inert — has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
+  // AND THE OTHER TWO CLAIMS GO WITH IT (history: when the wide template was inert, the door loaded
+  // v1_2, which has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
   // section is "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices,
   // fragrance, haircare, or supplements." So promising a partner that the lane answers in the category
   // it names, or answers a tool request empty rather than off-category, would be exactly the
-  // description-ahead-of-the-prompt defect this file exists to prevent. They return when v1_3 does.
+  // description-ahead-of-the-prompt defect this file exists to prevent. They returned with v1_3.)
   // INVERTED 2026-09-10. These were negative because v1_3 was default-off and the promises would have
   // been ahead of the loaded prompt. Prod now pins RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3
   // and the door resolves to it, so the promises are BEHIND the prompt instead — the description had
@@ -1662,7 +1662,7 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
   // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
   // sentence for a bronzer or a brush set (this axis must stay out however the prompt is pointed —
-  // #2162's widening is shipped but default-off), and acting on it emptied the shortlist for in-vertical
+  // #2162's widening is default-off in code and pinned on in prod), and acting on it emptied the shortlist for in-vertical
   // buyers while telling them their beauty need was not beauty.
   for (const [need, warning] of [
     ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],
