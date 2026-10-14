@@ -30811,20 +30811,27 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
-// ONE client and lookup core for every UCP live read in this process: one discovery memo per host, one
-// in-flight memo, and one cap on concurrent merchant lookups (MAX_CONCURRENT_LOOKUPS) across get_offers,
-// get_product and search. Built only when a reader is first needed.
+// ONE UCP client and ONE discovery (endpoint memo + in-flight discoveries) for every UCP live read in this
+// process; each reader -- get_offers, get_product, search -- has its OWN lookup pool and lookup memo, so a
+// burst on one cannot starve the others (review round 2 of #2439). Built only when a reader is first needed.
 let _ucpLiveShared;
 function getUcpLiveShared() {
   if (_ucpLiveShared) return _ucpLiveShared;
-  const { createLookupCore } = require('./services/ucpLiveOfferRead');
   const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   const ucpClient = createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false });
-  _ucpLiveShared = {
-    ucpClient,
-    core: createLookupCore({ ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000 }),
-  };
+  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
   return _ucpLiveShared;
+}
+function ucpLiveReaderDeps(maxConcurrent) {
+  const { createLookupCore } = require('./services/ucpLiveOfferRead');
+  const shared = getUcpLiveShared();
+  return {
+    ucpClient: shared.ucpClient,
+    core: createLookupCore({
+      ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
+      maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+    }),
+  };
 }
 
 // UCP live search-card read (search_catalog). Same lazy, off-by-default construction; its own flag.
@@ -30833,16 +30840,9 @@ function getUcpLiveSearchReader() {
   if (_ucpLiveSearchReader !== undefined) return _ucpLiveSearchReader;
   const { createUcpLiveSearchReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
-  const { createLookupCore } = require('./services/ucpLiveOfferRead');
-  const shared = getUcpLiveShared();
   _ucpLiveSearchReader = createUcpLiveSearchReader({
-    ucpClient: shared.ucpClient,
-    // Search fans out per page: its OWN lookup pool (8), sharing only the discovery memo, so a burst of
-    // searches cannot starve get_offers / get_product (review of #2439).
-    core: createLookupCore({
-      ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
-      maxConcurrent: 8, endpointCache: shared.core.endpoints,
-    }),
+    // Search fans out per page: the smallest pool (8).
+    ...ucpLiveReaderDeps(8),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveSearchReader;
@@ -30856,7 +30856,7 @@ function getUcpLiveProductReader() {
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
   _ucpLiveProductReader = createUcpLiveProductReader({
-    ...getUcpLiveShared(),
+    ...ucpLiveReaderDeps(16),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveProductReader;
@@ -30871,7 +30871,7 @@ function getUcpLiveOfferReader() {
   const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode() === MODES.OFF) return null;
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ...getUcpLiveShared(),
+    ...ucpLiveReaderDeps(16),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveOfferReader;

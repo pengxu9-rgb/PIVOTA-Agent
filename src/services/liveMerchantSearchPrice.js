@@ -185,44 +185,55 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   } catch {
     planned = new Map();
   }
-  const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0 };
-  const runJson = (entries) => {
-    const perHost = new Map();
+  const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0, byStatus: {} };
+  const settled = new Set();
+  // ONE queue per host for the page, fed by both phases (unplanned cards now, unsettled planned cards after
+  // the UCP read), drained by at most 4 workers: the per-domain cap holds across phases (review round 2).
+  const hostQueues = new Map(); // host -> { queue, cursor, workers: Set<Promise> }
+  const enqueueJson = (entries) => {
+    const hosts = new Set();
     for (const [index, { target }] of entries) {
       eligible.add(index);
       const host = new URL(target.url).hostname;
-      if (!perHost.has(host)) perHost.set(host, []);
-      perHost.get(host).push({ index, target });
+      if (!hostQueues.has(host)) hostQueues.set(host, { queue: [], cursor: 0, workers: new Set() });
+      hostQueues.get(host).queue.push({ index, target });
+      hosts.add(host);
     }
-    return Promise.all([...perHost.values()].map(async (queue) => {
-      let cursor = 0;
-      async function worker() {
-        while (cursor < queue.length && !closed && !pageController.signal.aborted) {
-          const { index, target } = queue[cursor++];
-          const card = cards[index];
-          const fetched = await getProductJson(target);
-          if (closed || pageController.signal.aborted) return;
-          processed.add(index);
-          if (fetched.cacheHit) cacheHits += 1;
-          if (fetched.gone) goneIndexes.add(index);
-          const price = fetched.body && verifiedPrice(fetched.body, target.variant);
-          if (!price || price.currency !== String(card.currency).toUpperCase()) {
-            cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
-            countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
-            continue;
-          }
-          verified += 1;
-          if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
-          cards[index] = {
-            ...card, price: price.amount, price_amount: price.amount,
-            currency: price.currency, price_currency: price.currency,
-            price_source: 'merchant_live', price_as_of: fetched.asOf,
-          };
-        }
+    const waits = [];
+    for (const host of hosts) {
+      const q = hostQueues.get(host);
+      while (q.workers.size < 4 && q.workers.size < q.queue.length - q.cursor) {
+        const w = jsonWorker(q).finally(() => q.workers.delete(w));
+        q.workers.add(w);
       }
-      await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
-    }));
+      waits.push(...q.workers);
+    }
+    return Promise.all(waits);
   };
+  async function jsonWorker(q) {
+    while (q.cursor < q.queue.length && !closed && !pageController.signal.aborted) {
+      const { index, target } = q.queue[q.cursor++];
+      const card = cards[index];
+      const fetched = await getProductJson(target);
+      if (closed || pageController.signal.aborted) return;
+      processed.add(index);
+      if (fetched.cacheHit) cacheHits += 1;
+      if (fetched.gone) goneIndexes.add(index);
+      const price = fetched.body && verifiedPrice(fetched.body, target.variant);
+      if (!price || price.currency !== String(card.currency).toUpperCase()) {
+        cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
+        countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
+        continue;
+      }
+      verified += 1;
+      if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
+      cards[index] = {
+        ...card, price: price.amount, price_amount: price.amount,
+        currency: price.currency, price_currency: price.currency,
+        price_source: 'merchant_live', price_as_of: fetched.asOf,
+      };
+    }
+  }
   const ucpThenJson = async () => {
     if (!planned.size) return;
     let reads = null;
@@ -233,18 +244,21 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     }
     if (closed || pageController.signal.aborted) return;
     const asOf = new Date().toISOString();
-    const settled = new Set();
     for (const [index, read] of reads instanceof Map ? reads : []) {
+      ucp.byStatus[read.status] = (ucp.byStatus[read.status] || 0) + 1;
       const card = cards[index];
       if (!card || typeof card !== 'object' || read.status !== 'verified') continue;
+      // A page the storefront already said is gone (this or another read's 404/410, shared memo) is never
+      // confirmed by the catalog: it takes the `.json` read, which marks it gone (and DROP_GONE drops it).
+      const json = jsonTargets.get(index);
+      if (json && storefrontProductPage.knownGone(json.target.url)) continue;
       ucp.verified += 1;
       if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
       const raise = read.available === true && card.in_stock !== true;
       if (raise) ucp.stockRaised += 1;
-      cards[index] = {
+      const next = {
         ...card, price: read.amount, price_amount: read.amount,
         price_source: 'merchant_live', price_as_of: asOf,
-        ...(raise ? { in_stock: true, availability: 'in_stock' } : {}),
         // variant_in_stock is the merchant's answer for THIS variant only; the card speaks for the product
         // (any shade), so a false answer is reported here and never written over the card.
         live_read: {
@@ -252,13 +266,23 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
           variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: asOf,
         },
       };
+      if (raise) {
+        // Every stock field the availability contract reads must agree, not only the first one it checks.
+        next.in_stock = true;
+        next.availability = 'in_stock';
+        if (typeof card.available === 'boolean') next.available = true;
+        for (const k of ['inventory_quantity', 'inventoryQuantity', 'quantity']) {
+          if (k in next && !(Number(next[k]) > 0)) delete next[k];
+        }
+      }
+      cards[index] = next;
       settled.add(index);
     }
-    await runJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
+    await enqueueJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
   };
   await Promise.race([
     Promise.all([
-      runJson([...jsonTargets].filter(([i]) => !planned.has(i))),
+      enqueueJson([...jsonTargets].filter(([i]) => !planned.has(i))),
       ucpThenJson(),
     ]),
     pageExpired,
@@ -266,6 +290,8 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   closed = true;
   clearTimeout(pageTimer);
   if (pageController.signal.aborted) {
+    // A planned card still waiting on the UCP read when the page expired is as unchecked as a queued one.
+    for (const index of planned.keys()) if (!settled.has(index) && jsonTargets.has(index)) eligible.add(index);
     for (const index of eligible) {
       if (processed.has(index)) continue;
       const card = cards[index];
@@ -285,7 +311,13 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
         gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
         ...(reader
-          ? { ucp: { mode: reader.mode || null, planned_count: ucp.planned, verified_count: ucp.verified, drift_count: ucp.drifted, stock_raised_count: ucp.stockRaised } }
+          ? {
+            ucp: {
+              mode: reader.mode || null, planned_count: ucp.planned, settled_count: settled.size,
+              verified_count: ucp.verified, drift_count: ucp.drifted, stock_raised_count: ucp.stockRaised,
+              by_status: ucp.byStatus,
+            },
+          }
           : {}),
       },
     },

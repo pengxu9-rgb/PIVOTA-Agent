@@ -184,7 +184,7 @@ function roundTo(amount, currency) {
 // wait their turn (each still bounded by its caller's deadline).
 const MAX_CONCURRENT_LOOKUPS = 16;
 
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache }) {
+function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight }) {
   const negativeEndpointTtlMs = 10 * 60 * 1000;
   let inFlight = 0;
   const waiting = []; // { resolve, reject, at }
@@ -233,11 +233,13 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
       release();
     }
   }
-  // A core may share its discovery memo with another (search has its own lookup pool, not its own memo).
+  // Cores may share discovery (the endpoint memo and the in-flight discoveries) while each keeps its own
+  // lookup pool: get_offers, get_product and search each have one (review round 2 of #2439).
   const endpoints = endpointCache instanceof Map ? endpointCache : new Map(); // host -> { endpoint|null, until }
   const memo = new Map(); // `${host}|${country}|${ids}` -> { promise, until }
 
-  const discovering = new Map(); // host -> in-flight discovery promise (concurrent callers share it)
+  // host -> in-flight discovery promise (concurrent callers share it, across cores when shared)
+  const discovering = discoveryInFlight instanceof Map ? discoveryInFlight : new Map();
 
   function endpointFor(host) {
     const hit = endpoints.get(host);
@@ -264,10 +266,19 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
   }
 
   /** One lookup per (host, country, ids) at a time: concurrent callers share the in-flight promise. */
-  function lookup(host, endpoint, ids, country, { deadline } = {}) {
+  function lookup(host, endpoint, ids, country, { deadline, retried = false } = {}) {
     const key = `${host}|${country}|${ids.join(',')}`;
     const hit = memo.get(key);
-    if (hit && hit.until > now()) return hit.promise;
+    if (hit && hit.until > now()) {
+      if (retried || !Number.isFinite(deadline)) return hit.promise;
+      // The shared promise may still be QUEUED for a slot under another caller's earlier deadline. When it
+      // gives up on that deadline, this caller, whose own has not passed, asks once more on its own
+      // (review round 2 of #2439). The memo entry is gone by then: its own catch runs first.
+      return hit.promise.catch((e) => {
+        if (e && e.code === 'timeout' && deadline > now()) return lookup(host, endpoint, ids, country, { deadline, retried: true });
+        throw e;
+      });
+    }
     const promise = withSlot(async () => {
       const res = await ucpClient.lookupCatalog(endpoint, {
         ids: ids.map(variantGid),
@@ -809,13 +820,30 @@ function searchCardVariantId(card) {
 function searchCardHandle(card) {
   for (const key of ['destination_url', 'merchant_canonical_url', 'source_url']) {
     try {
-      const m = new URL(str(card && card[key])).pathname.match(/^\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
+      // Markets subfolders and collection paths carry the same handle: /en-us/products/x, /collections/c/products/x.
+      const m = new URL(str(card && card[key])).pathname
+        .match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
       if (m) return m[1].toLowerCase();
     } catch {
       /* not a url */
     }
   }
   return null;
+}
+
+/**
+ * A card search serves as NOT buyable: a transaction hold, a dead-source hold, a suppressed PDP, a citation.
+ * The live read never touches one (it would raise a held card back to buyable; review round 2 of #2439).
+ */
+function searchCardHeld(card) {
+  if (!card || typeof card !== 'object') return true;
+  return card.commerce_suppressed === true
+    || card.transaction_ready === false
+    || card.buyable === false
+    || Boolean(card.non_merch_terminal_hold_v1)
+    || Boolean(card.transaction_readiness_blocker_v1)
+    || Boolean(card.source_unavailable_v1)
+    || str(card.catalog_track).toLowerCase() === 'citation';
 }
 
 function cardHost(card) {
@@ -836,13 +864,25 @@ function createUcpLiveSearchReader(deps = {}) {
     throw new Error('createUcpLiveSearchReader requires a ucp client with discoverEndpoint() and lookupCatalog()');
   }
   const mode = deps.mode || readMode(process.env, 'UCP_LIVE_SEARCH_READ');
-  // Inside search's own 2.5s page deadline (liveMerchantSearchPrice PAGE_DEADLINE_MS).
-  const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 1800;
+  // Inside search's own 2.5s page deadline (liveMerchantSearchPrice PAGE_DEADLINE_MS), leaving a planned card
+  // UCP does not settle ~1.3s for its `.json` read. A warm lookup answers in ~0.8s (probe 2026-10-14).
+  const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 1200;
   const maxCards = Number.isInteger(deps.maxCards) ? deps.maxCards : 20;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
   // Search fans out per page: its own, smaller lookup pool, so it cannot starve the offer/product reads.
   const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000, maxConcurrent: 8 });
+  // A store whose discovery failed to ANSWER (timeout, 5xx; never cached by the core) is not planned for a
+  // minute, so one hanging well-known does not cost every search page the whole budget.
+  const DISCOVERY_BACKOFF_MS = 60 * 1000;
+  const backoff = new Map(); // host -> until
+  const backedOff = (host) => {
+    const until = backoff.get(host);
+    if (until === undefined) return false;
+    if (until > now()) return true;
+    backoff.delete(host);
+    return false;
+  };
 
   /** index -> { host, country, currency, basis, id, handle } for the cards this read will try. Sync, pure. */
   function plan(cards, ctx = {}) {
@@ -851,14 +891,16 @@ function createUcpLiveSearchReader(deps = {}) {
     const declared = str(ctx.market).toUpperCase();
     if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) return planned;
     cards.slice(0, maxCards).forEach((card, index) => {
-      if (!card || typeof card !== 'object') return;
+      if (!card || typeof card !== 'object' || searchCardHeld(card)) return;
+      if (!(Number(card.price) > 0)) return; // as the `.json` read: a $0 card is a held or unpriced one
       const id = searchCardVariantId(card);
       const host = cardHost(card);
+      const handle = searchCardHandle(card); // no handle, no "same product" check: not read
       const cardCurrency = str(card.currency || card.price_currency).toUpperCase();
       const country = declared || marketForCurrency(cardCurrency);
-      if (!id || !host || !country || !cardCurrency) return;
+      if (!id || !host || !handle || !country || !cardCurrency || backedOff(host)) return;
       if (declared && currencyForBuyerRegion(declared) !== cardCurrency) return; // the card's currency never changes
-      planned.set(index, { host, country, currency: cardCurrency, basis: declared ? 'declared' : 'listing_home', id, handle: searchCardHandle(card) });
+      planned.set(index, { host, country, currency: cardCurrency, basis: declared ? 'declared' : 'listing_home', id, handle });
     });
     return planned;
   }
@@ -875,7 +917,14 @@ function createUcpLiveSearchReader(deps = {}) {
     const deadline = now() + budgetMs;
     await Promise.all([...groups.values()].map(async (g) => {
       try {
-        const endpoint = await withDeadline(core.endpointFor(g.host), deadline, now);
+        let endpoint;
+        try {
+          endpoint = await withDeadline(core.endpointFor(g.host), deadline, now);
+        } catch (e) {
+          backoff.set(g.host, now() + DISCOVERY_BACKOFF_MS);
+          if (backoff.size > 2000) backoff.delete(backoff.keys().next().value);
+          throw e;
+        }
         if (!endpoint) {
           for (const it of g.items) reads.set(it.index, { status: STATUS.NOT_UCP });
           return;
@@ -898,7 +947,8 @@ function createUcpLiveSearchReader(deps = {}) {
           const v = live.get(it.id);
           const base = { market: it.country, market_basis: it.basis };
           if (!v) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'variant_not_answered' });
-          else if (it.handle && v.handle && v.handle !== it.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'other_product' });
+          else if (!it.handle || !v.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'handle_unknown' });
+          else if (v.handle !== it.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'other_product' });
           else if (v.currency !== it.currency) reads.set(it.index, { status: STATUS.CURRENCY_MISMATCH, ...base });
           else if (v.amount === null || v.available === null) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'unreadable_variant' });
           else reads.set(it.index, { status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, it.currency), currency: it.currency, available: v.available });
@@ -946,6 +996,8 @@ function createUcpLiveSearchReader(deps = {}) {
 module.exports = {
   createUcpLiveSearchReader,
   searchCardVariantId,
+  searchCardHandle,
+  searchCardHeld,
   MAX_CONCURRENT_LOOKUPS,
   commerceBlocked,
   parseLookup,

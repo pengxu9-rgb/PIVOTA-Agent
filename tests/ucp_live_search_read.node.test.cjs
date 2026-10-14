@@ -10,7 +10,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createUcpLiveSearchReader, createLookupCore, searchCardVariantId, STATUS } = require('../src/services/ucpLiveOfferRead');
+const { createUcpLiveSearchReader, createLookupCore, searchCardVariantId, searchCardHandle, STATUS } = require('../src/services/ucpLiveOfferRead');
+const storefrontProductPage = require('../src/services/storefrontProductPage');
 const { overlayLiveMerchantSearchPrices } = require('../src/services/liveMerchantSearchPrice');
 
 const BERRY = '31760703160372';
@@ -93,7 +94,8 @@ test('a verified card takes the merchant price; the .json read never fetches it'
   assert.equal(c.live_read.market_basis, 'declared');
   assert.equal(seen.length, 0);
   assert.deepEqual(out.metadata.live_merchant_price.ucp, {
-    mode: 'enforce', planned_count: 1, verified_count: 1, drift_count: 1, stock_raised_count: 0,
+    mode: 'enforce', planned_count: 1, settled_count: 1, verified_count: 1, drift_count: 1, stock_raised_count: 0,
+    by_status: { verified: 1 },
   });
   assert.equal(out.metadata.live_merchant_price.attempted, true);
 });
@@ -313,6 +315,160 @@ test('search\'s own pool shares discovery only, and a waiter gives up at ITS dea
   assert.equal(b.stats().waiting, 0);
 });
 
+// ---- review round 2 ----------------------------------------------------------------------------------
+
+test('a held, suppressed, citation or $0 card is never read (it would be raised back to buyable)', () => {
+  const r = reader(storesFor('x'));
+  const dest = rbUrl('x');
+  const held = [
+    { price: 0 }, { transaction_ready: false }, { buyable: false }, { commerce_suppressed: true },
+    { non_merch_terminal_hold_v1: { status: 'held' } }, { transaction_readiness_blocker_v1: { reason: 'x' } },
+    { source_unavailable_v1: { status: 'gone' } }, { catalog_track: 'citation' },
+  ];
+  for (const extra of held) assert.equal(r.plan([card(dest, BLISS, extra)], { market: 'US' }).size, 0, JSON.stringify(extra));
+  assert.equal(r.plan([card(dest, BLISS)], { market: 'US' }).size, 1);
+});
+
+test('the real held-card shape stays held through the overlay', async () => {
+  const h = uniq('held');
+  const heldCard = card(`${rbUrl(h)}?variant=${BLISS}`, '', {
+    price: 0, in_stock: false, available: false, availability: 'out_of_stock', inventory_quantity: 0,
+    transaction_ready: false, non_merch_terminal_hold_v1: { status: 'held' },
+  });
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [heldCard] },
+    { ucpSearchReader: reader(storesFor(h)), market: 'US', fetchImpl: jsonFetch() },
+  );
+  assert.equal(out.products[0].in_stock, false);
+  assert.equal(out.products[0].price, 0);
+  assert.equal(out.products[0].live_read, undefined);
+});
+
+test('a raise makes every stock field agree (available, zero quantity)', async () => {
+  const h = uniq('blush');
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(h), BLISS, { in_stock: false, available: false, availability: 'out_of_stock', inventory_quantity: 0 })] },
+    { ucpSearchReader: reader(storesFor(h)), market: 'US', fetchImpl: jsonFetch() },
+  );
+  const c = out.products[0];
+  assert.equal(c.in_stock, true);
+  assert.equal(c.available, true);
+  assert.equal('inventory_quantity' in c, false);
+});
+
+test('a page the storefront already said is gone is never confirmed by the catalog; DROP_GONE still drops it', async () => {
+  const h = uniq('gone');
+  storefrontProductPage.noteGone(`https://www.rarebeauty.com/products/${h}.json`, 404);
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(h), BLISS)] },
+    { ucpSearchReader: reader(storesFor(h)), market: 'US', fetchImpl: jsonFetch(), env: { SERVE_LIVE_MERCHANT_PRICE_DROP_GONE: 'true' } },
+  );
+  assert.equal(out.products.length, 0);
+  assert.equal(out.metadata.live_merchant_price.ucp.verified_count, 0);
+  assert.equal(out.metadata.live_merchant_price.gone_count, 1);
+});
+
+test('the handle is read from Markets subfolder and collection URLs; no handle on either side is refused', async () => {
+  assert.equal(searchCardHandle({ destination_url: 'https://s.example/en-us/products/full-size' }), 'full-size');
+  assert.equal(searchCardHandle({ destination_url: 'https://s.example/collections/lips/products/full-size' }), 'full-size');
+  assert.equal(searchCardHandle({ destination_url: 'https://s.example/pages/full-size' }), null);
+  const h = uniq('full-size');
+  // Subfolder card, variant answered under ANOTHER product: refused.
+  const r = reader(storesFor('some-other-product-mini'));
+  const reads = await r.readCards([card(`https://www.rarebeauty.com/en-us/products/${h}`, BLISS)], { market: 'US' });
+  assert.equal(reads.get(0).reason, 'other_product');
+  // An answer carrying no handle: refused, never verified.
+  const noHandle = reader(storesFor(undefined));
+  const reads2 = await noHandle.readCards([card(rbUrl(h), BLISS)], { market: 'US' });
+  assert.equal(reads2.get(0).status, STATUS.ERROR);
+  assert.equal(reads2.get(0).reason, 'handle_unknown');
+  // A card with no handle at all is not planned.
+  assert.equal(r.plan([card('https://www.rarebeauty.com/pages/x', BLISS)], { market: 'US' }).size, 0);
+});
+
+test('the per-domain .json cap (4) holds across both phases', async () => {
+  let active = 0;
+  let peak = 0;
+  const fetchImpl = async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((res) => setTimeout(res, 15));
+    active -= 1;
+    return { ok: true, status: 200, headers: new Map(), async json() { return { product: { variants: JSON_IDS.map((id) => ({ id: Number(id), price: '30.00', price_currency: 'USD' })) } }; } };
+  };
+  const products = [];
+  // 8 planned cards the merchant does not answer (they fall to .json after UCP) + 8 unplanned cards.
+  for (let i = 0; i < 8; i += 1) products.push(card(rbUrl(uniq('miss')), '99999999999'));
+  for (let i = 0; i < 8; i += 1) products.push(card(rbUrl(uniq('plain')), ''));
+  const slowStores = storesFor('x');
+  const slow = createUcpLiveSearchReader({
+    ucpClient: { ...fakeClient(slowStores), async lookupCatalog(ep, args) { await new Promise((res) => setTimeout(res, 20)); return fakeClient(slowStores).lookupCatalog(ep, args); } },
+    mode: 'enforce',
+  });
+  const out = await overlayLiveMerchantSearchPrices({ products }, { ucpSearchReader: slow, market: 'US', fetchImpl });
+  assert.ok(peak <= 4, `peak ${peak} concurrent .json fetches to one store`);
+  assert.equal(out.metadata.live_merchant_price.verified_count, 16);
+  assert.equal(out.metadata.live_merchant_price.ucp.settled_count, 0);
+});
+
+test('a planned card still waiting on UCP at the page deadline is stamped and counted', async () => {
+  const pending = { mode: 'enforce', plan: () => new Map([[0, {}]]), readCards: () => new Promise(() => {}) };
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(uniq('wait')), BLISS)] },
+    { ucpSearchReader: pending, market: 'US', fetchImpl: jsonFetch(), pageDeadlineMs: 40 },
+  );
+  assert.equal(out.products[0].price_source, 'catalog_offer');
+  assert.equal(out.metadata.live_merchant_price.failure_reasons.deadline_exceeded, 1);
+  assert.equal(out.metadata.live_merchant_price.deadline_exceeded, true);
+});
+
+test('a caller sharing a lookup queued under an EARLIER deadline retries on its own', async () => {
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const calls = [];
+  const core = createLookupCore({ ucpClient: fakeClient(storesFor('x'), calls, { gate }), now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 5000, maxConcurrent: 1 });
+  const ep = await core.endpointFor('www.rarebeauty.com');
+  const holder = core.lookup('www.rarebeauty.com', ep, [BERRY], 'US'); // takes the only slot
+  const early = core.lookup('www.rarebeauty.com', ep, [BLISS], 'US', { deadline: Date.now() + 30 });
+  const late = core.lookup('www.rarebeauty.com', ep, [BLISS], 'US', { deadline: Date.now() + 3000 });
+  await assert.rejects(early, (e) => e.code === 'timeout');
+  setTimeout(open, 30);
+  await holder;
+  const payload = await late;
+  assert.ok(payload, 'the later caller got its own answer, not the earlier caller\'s timeout');
+});
+
+test('a store whose discovery fails to answer is not planned for a minute', async () => {
+  let t = 1000;
+  const client = { async discoverEndpoint() { return { status: 503 }; }, async lookupCatalog() { throw new Error('unreached'); } };
+  const r = createUcpLiveSearchReader({ ucpClient: client, mode: 'enforce', now: () => t });
+  const c = [card(rbUrl('x'), BLISS)];
+  assert.equal(r.plan(c, { market: 'US' }).size, 1);
+  const reads = await r.readCards(c, { market: 'US' });
+  assert.equal(reads.get(0).status, STATUS.ERROR);
+  assert.equal(r.plan(c, { market: 'US' }).size, 0);
+  t += 61 * 1000;
+  assert.equal(r.plan(c, { market: 'US' }).size, 1);
+});
+
+test('readers share discovery in flight across their own pools', async () => {
+  const calls = [];
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const client = fakeClient(storesFor('x'), calls);
+  const slowDiscover = { ...client, async discoverEndpoint(base) { calls.push(['discover', base]); await gate; return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; } };
+  const endpoints = new Map();
+  const discovering = new Map();
+  const mk = (n) => createLookupCore({ ucpClient: slowDiscover, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 1000, maxConcurrent: n, endpointCache: endpoints, discoveryInFlight: discovering });
+  const a = mk(16);
+  const b = mk(8);
+  const pa = a.endpointFor('www.rarebeauty.com');
+  const pb = b.endpointFor('www.rarebeauty.com');
+  open();
+  assert.equal(await pa, await pb);
+  assert.equal(calls.filter((c) => c[0] === 'discover').length, 1);
+});
+
 test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the search lane resolved', () => {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -326,11 +482,12 @@ test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the searc
   assert.match(src, /buyerMarket: publicBeautySearch\.market \|\| metadata\.market \}/);
   const s = src.indexOf('function getUcpLiveSearchReader()');
   assert.ok(s > 0);
-  const sblock = src.slice(s, s + 1400);
-  assert.match(sblock, /maxConcurrent: 8, endpointCache: shared\.core\.endpoints/);
+  assert.match(src.slice(s, s + 900), /\.\.\.ucpLiveReaderDeps\(8\),/);
   for (const getter of ['getUcpLiveProductReader', 'getUcpLiveOfferReader']) {
     const i = src.indexOf(`function ${getter}()`);
     assert.ok(i > 0, getter);
-    assert.match(src.slice(i, i + 900), /\.\.\.getUcpLiveShared\(\),/, `${getter} uses the shared client and core`);
+    assert.match(src.slice(i, i + 900), /\.\.\.ucpLiveReaderDeps\(16\),/, `${getter} has its own pool`);
   }
+  const d = src.indexOf('function ucpLiveReaderDeps(');
+  assert.match(src.slice(d, d + 700), /maxConcurrent, endpointCache: shared\.endpoints, discoveryInFlight: shared\.discovering/);
 });
