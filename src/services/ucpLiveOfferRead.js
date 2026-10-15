@@ -444,7 +444,7 @@ function createUcpLiveOfferReader(deps = {}) {
         return { status: STATUS.CURRENCY_MISMATCH, host, live: own, liveVariants };
       }
       if (own.amount === null || own.available === null || !own.currency) return { status: STATUS.ERROR, host, reason: 'unreadable_variant' };
-      return { status: STATUS.VERIFIED, host, live: own, liveVariants };
+      return { status: STATUS.VERIFIED, host, variantId: ids[0], live: own, liveVariants };
     } catch (e) {
       return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, reason: str(e && e.message).slice(0, 80) };
     }
@@ -474,6 +474,17 @@ function createUcpLiveOfferReader(deps = {}) {
       out.stock_verified = true;
       out.merchant_price_verified = true;
       out.price_source = 'merchant_live';
+      // WHAT THE MERCHANT ANSWERED, kept beside the annotation (the agent's signal never shows these:
+      // offerToSignal.toLiveRead projects only status/checked_at/...). get_offers signs exactly these when
+      // it asks offers.resolve to mint a flagged offer's cart (services/offerLiveVerification).
+      Object.assign(out.live_read, {
+        amount: price,
+        currency,
+        available,
+        variant_id: read.variantId || null,
+        host: read.host || null,
+        handle: (read.live && read.live.handle) || null,
+      });
       // THE TOTAL A CHECKOUT MUST SHOW, offered only when the cart the buyer follows is PINNED to this
       // market (`country=<CC>`, pivota-backend #2622). An unpinned cart prices by the session's geolocation,
       // and the get_offers contract tells the agent to abort a handoff whose total differs -- so a total in
@@ -1184,6 +1195,7 @@ module.exports = {
   productVariantIds,
   readMode,
   lookupIdsFor,
+  flaggedOfferHandle,
   liveVariantsFrom,
   numericVariantId,
   hostOf,

@@ -32303,7 +32303,14 @@ async function getCommerceRemoteMcpAdapter() {
             const reader = getUcpLiveOfferReader();
             return Boolean(reader && reader.mode === 'enforce');
           },
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification }) =>
+          // A flagged offer the live read just verified is asked for again with a signed assertion of the
+          // merchant's answer, so offers.resolve mints its cart (services/offerLiveVerification).
+          // GET_OFFERS_LIVE_CART=off (default) | shadow | on; nothing is signed without
+          // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
+          liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
+          liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
+          log: (event, fields) => logger.info({ event, ...fields }, event),
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -32316,6 +32323,8 @@ async function getCommerceRemoteMcpAdapter() {
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
+                // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
+                ...(Array.isArray(live_verifications) && live_verifications.length ? { liveVerifications: live_verifications } : {}),
               }),
               product_group_id || null,
             ),
