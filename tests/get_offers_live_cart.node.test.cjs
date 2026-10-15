@@ -207,7 +207,7 @@ function fakeBackend(offers, { mint = mintedOffer, secondPass = null, calls = []
         if (c && c.vid === o.requires_live_verification.lookup_variant_id && c.m === 'US' && c.c === 'USD') return mint(o, c);
         return { ...clone(o), affiliate_url: `${o.affiliate_url}-second` };
       }),
-      live_verification_assertions: { received: args.live_verifications.length, accepted: accepted.size, rejected: {} },
+      live_verification_assertions: { received: args.live_verifications.length, accepted: accepted.size, rejected: args.live_verifications.length - accepted.size },
     };
   };
   return { fetchOffers, calls };
@@ -296,7 +296,7 @@ test('shadow: the second call is made with the same arguments plus the tokens (a
   assert.equal(logs[0].cart_minted, 1);
   assert.ok(Number.isFinite(logs[0].ms));
   assert.deepEqual(logs[0].would_replace, [{ seed_id: 'eps_rb', cart_minted: true, expected_item_total: 25, expected_currency: 'USD' }]);
-  assert.deepEqual(logs[0].backend, { received: 1, accepted: 1, rejected: {} });
+  assert.deepEqual(logs[0].backend, { received: 1, accepted: 1, rejected: 0 }, 'plain counts, rejected a number');
 });
 
 test('shadow never waits for the second call: the answer returns at once, the log comes when it settles', { timeout: 5000 }, async () => {
@@ -626,8 +626,8 @@ test('at most 10 assertions per call', async () => {
 // ------------------------------------------------------------------------------------ wiring and schemas
 
 test('mapOffersResolveResponse keeps the backend\'s assertion counts, only when present', () => {
-  assert.deepEqual(mapOffersResolveResponse({ offers: [], metadata: { live_verification_assertions: { received: 1, accepted: 0, rejected: { expired: 1 } } } }), {
-    offers: [], product_group_id: null, live_verification_assertions: { received: 1, accepted: 0, rejected: { expired: 1 } },
+  assert.deepEqual(mapOffersResolveResponse({ offers: [], metadata: { live_verification_assertions: { received: 1, accepted: 0, rejected: 1 } } }), {
+    offers: [], product_group_id: null, live_verification_assertions: { received: 1, accepted: 0, rejected: 1 },
   });
   assert.deepEqual(mapOffersResolveResponse({ offers: [] }), { offers: [], product_group_id: null });
 });
@@ -659,4 +659,113 @@ test('the get_offers tool input schemas never accept live_verifications from an 
   const ucp = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'ucpArgumentAdapter.js')).href);
   const schema = ucp.ucpInputSchemasFor({}).get_offers;
   assert.doesNotMatch(JSON.stringify(schema), /live_?verifications/i);
+});
+
+// ------------------------------------------------------------- the backend's golden second-pass offer
+// tests/fixtures/offer_live_verification_unlocked_offer.json is copied BYTE FOR BYTE from pivota-backend #2632
+// (6743f6fc1): the offer its offers.resolve returns for an accepted assertion. `<token>`, `<click_id>` and
+// `<iso>` are the backend's normalisations, filled here with realistic values.
+
+const fs = require('node:fs');
+const GOLDEN_PATH = path.join(__dirname, 'fixtures', 'offer_live_verification_unlocked_offer.json');
+const SPEC_VID = '41234567890001';
+
+function goldenOffer() {
+  const raw = fs.readFileSync(GOLDEN_PATH, 'utf8')
+    .replace(/<token>/g, 'eyJ2IjoxfQ.sig')
+    .replace(/<click_id>/g, '8f3a2c1d9e7b')
+    .replace(/<iso>/g, new Date(Date.now() + 10 * 60 * 1000).toISOString());
+  return JSON.parse(raw);
+}
+
+/** The first pass's flagged offer for the same seed, as offers.resolve returns it to an opted-in caller. */
+function goldenFlagged() {
+  const g = goldenOffer();
+  const { live_verification: _lv, ...rest } = g;
+  return {
+    ...rest,
+    price: 26,
+    in_stock: undefined,
+    availability: 'unknown',
+    cart_prefilled: false,
+    affiliate_url: 'https://api.pivota.cc/r?token=first',
+    execution_spec: { merchant_domain: 'brand.com', variant_id: null, cart_url: null },
+    requires_live_verification: { reasons: ['stale_snapshot'], price_stale: true, lookup_variant_id: SPEC_VID },
+    variants: g.variants.map(({ in_stock: _s, ...v }) => ({ ...v, price_stale: true })),
+  };
+}
+
+const brandStore = { US: [liveVariant(SPEC_VID, 2750, 'USD', true)], handle: 'serum' };
+const GOLDEN_CLAIMS = { a: 27.5, av: true, c: 'USD', h: 'brand.com', m: 'US', sid: 'eps_spec', v: 1, vid: SPEC_VID };
+
+test('GOLDEN: the backend\'s real unlocked offer, through mapOffersResolveResponse, is accepted and adopted with its cart', () => {
+  const raw = fs.readFileSync(GOLDEN_PATH, 'utf8');
+  assert.match(raw, /<token>/, 'the fixture is the backend\'s normalised file, unedited');
+  const g = goldenOffer();
+  assert.equal(typeof g.price, 'number');
+  assert.equal(g.price, 27.5);
+  // The same mapping the real second pass takes (server.js: mapOffersResolveResponse(invoke(...))).
+  const mapped = mapOffersResolveResponse({
+    offers: [g],
+    metadata: { live_verification_assertions: { received: 1, accepted: 1, rejected: 0 } },
+    mapping: { canonical_product_group_id: 'pg_spec' },
+  });
+  assert.deepEqual(mapped.live_verification_assertions, { received: 1, accepted: 1, rejected: 0 });
+  const accepted = acceptedSecondPassOffer(mapped.offers, GOLDEN_CLAIMS);
+  assert.equal(accepted, mapped.offers[0], 'accepted as the backend returns it');
+  const first = {
+    ...goldenFlagged(),
+    currency: 'USD',
+    live_read: { status: 'verified', source: 'merchant_ucp_lookup_catalog', checked_at: '2026-10-15T12:00:00.000Z', stored_price: 26, expected_total_withheld: 'no_cart', amount: 27.5, currency: 'USD', available: true, variant_id: SPEC_VID, host: 'brand.com', handle: 'serum' },
+  };
+  const out = adoptLiveCartOffer(first, accepted, { market: 'US' });
+  assert.equal(out.execution_spec.cart_url, g.execution_spec.cart_url);
+  assert.equal(out.execution_spec.variant_id, SPEC_VID);
+  assert.equal(out.execution_spec.expected_item_total, 27.5, 'the cart is pinned to US (country=US): the total is kept');
+  assert.equal(out.execution_spec.expected_currency, 'USD');
+  assert.equal(out.affiliate_url, g.affiliate_url);
+  assert.equal(out.live_read.checked_at, '2026-10-15T12:00:00.000Z', 'the first pass\'s live read');
+  assert.equal(out.live_read.expected_total_withheld, undefined);
+  assert.equal(out.price, 27.5);
+  // The bare variant number lives only in execution_spec / live_verification; source and options carry the
+  // stored JSON-LD offer-id URLs, and nothing here compares against them.
+  assert.match(out.source.variant_id, /^https:\/\/brand\.com\/products\/serum\?variant=41234567890001#offer$/);
+  // Any one fact off, and it is not ours.
+  for (const [name, c] of Object.entries({ vid: { vid: '41234567890002' }, a: { a: 27 }, sid: { sid: 'eps_x' }, av: { av: false }, c: { c: 'CAD' } })) {
+    assert.equal(acceptedSecondPassOffer(mapped.offers, { ...GOLDEN_CLAIMS, ...c }), null, name);
+  }
+});
+
+test('GOLDEN end to end (on): the real reader verifies the flagged offer, signs these claims, and serves the backend\'s cart', async () => {
+  let asserted = null;
+  const fetchOffers = async (args) => {
+    if (!args.live_verifications) return mapOffersResolveResponse({ offers: [goldenFlagged()] });
+    asserted = verifyToken(args.live_verifications[0]);
+    return mapOffersResolveResponse({ offers: [goldenOffer()], metadata: { live_verification_assertions: { received: 1, accepted: 1, rejected: 0 } } });
+  };
+  const logs = [];
+  const res = await makeGetOffers({
+    fetchOffers,
+    readOffersLive: realReader(brandStore),
+    liveVerificationOptIn: () => true,
+    liveCartMode: () => 'on',
+    liveVerificationSecret: () => SECRET,
+    log: (event, fields) => logs.push({ event, ...fields }),
+  })({ payload: { product_id: 'sig_spec', market: 'US' } });
+  const { iat, exp, ...claims } = asserted;
+  assert.deepEqual(claims, GOLDEN_CLAIMS);
+  assert.equal(exp - iat, 120);
+  const v = res.best_offer.value;
+  const g = goldenOffer();
+  assert.equal(v.execution_spec.cart_url, g.execution_spec.cart_url);
+  assert.equal(v.execution_spec.variant_id, SPEC_VID);
+  assert.equal(v.execution_spec.expected_item_total, 27.5);
+  assert.equal(v.price, 27.5);
+  assert.equal(v.in_stock, true);
+  assert.equal(v.stock_verified, true);
+  assert.equal(v.merchant_price_verified, true);
+  assert.equal(v.live_read.status, 'verified');
+  assert.equal(logs[0].accepted, 1);
+  assert.equal(logs[0].cart_minted, 1);
+  assert.deepEqual(logs[0].backend, { received: 1, accepted: 1, rejected: 0 });
 });
