@@ -449,9 +449,8 @@ function createUcpLiveOfferReader(deps = {}) {
  * `current_own_offer_status: unavailable` with no price (2026-10-14), while the merchant's lookup answered
  * Berry in stock at $24.
  *
- * MARKET. The caller's declared market when it names one; otherwise the listing's own home market, from
- * its currency when exactly one market prices in it (USD -> US, SGD -> SG, GBP -> GB; EUR names none).
- * The second asks "is what we show still what the merchant sells this listing for", which needs no buyer.
+ * MARKET. Only the market the caller declares (ADR-026: a market is data, never inferred from a listing's
+ * currency). No declared market, no live read (`no_market`).
  *
  * PER VARIANT (`variant.live_read.status`):
  *   verified   price.current and availability.in_stock replaced by the merchant's; the gateway's own-money
