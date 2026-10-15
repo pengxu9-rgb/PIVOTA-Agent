@@ -45,7 +45,11 @@ function liveCartMode(env = process.env, key = 'GET_OFFERS_LIVE_CART') {
   return v === MODES.SHADOW || v === MODES.ON ? v : MODES.OFF;
 }
 
-/** The signing secret, or '' when it is unset or shorter than 32 bytes (then nothing is signed). */
+/**
+ * The signing secret, TRIMMED, or '' when it is unset or shorter than 32 bytes once trimmed (then nothing is
+ * signed). The backend does the same (services/offer_live_verification.py `_usable_secret`: `.strip()`, then
+ * >= 32 utf-8 bytes), so whitespace or a newline from Secret Manager cannot make the two disagree.
+ */
 function readOfferLiveVerificationSecret(env = process.env) {
   const s = env && typeof env.OFFER_LIVE_VERIFICATION_SECRET === 'string' ? env.OFFER_LIVE_VERIFICATION_SECRET.trim() : '';
   return Buffer.byteLength(s, 'utf8') >= MIN_SECRET_BYTES ? s : '';
@@ -65,7 +69,9 @@ function text(v) {
  * missing or of the wrong type -- the same claims the backend would reject are never sent.
  */
 function signOfferLiveVerification(claims, { secret, now } = {}) {
-  const s = typeof secret === 'string' ? secret : '';
+  // Trimmed exactly as the reader below and the backend verifier (Python `.strip()`, then >= 32 bytes) do,
+  // so a Secret Manager value with a trailing newline signs what the backend verifies.
+  const s = typeof secret === 'string' ? secret.trim() : '';
   if (Buffer.byteLength(s, 'utf8') < MIN_SECRET_BYTES) return null;
   const c = claims && typeof claims === 'object' ? claims : null;
   if (!c) return null;
@@ -142,9 +148,33 @@ function acceptedSecondPassOffer(secondOffers, claims) {
   if (o.in_stock !== claims.av) return null;
   // Defence in depth: a cart for another variant, or a total other than the asserted amount, is not ours.
   const spec = o.execution_spec && typeof o.execution_spec === 'object' ? o.execution_spec : {};
-  if (spec.variant_id != null && String(spec.variant_id) !== claims.vid) return null;
-  if (spec.expected_item_total != null && Number(spec.expected_item_total) !== claims.a) return null;
+  if (spec.variant_id != null) {
+    if (String(spec.variant_id) !== claims.vid) return null;
+  } else if (typeof spec.cart_url === 'string' && spec.cart_url.trim()) {
+    // A cart with no variant_id named beside it: the cart's own line decides. Unreadable -> not ours.
+    if (cartPermalinkVariant(spec.cart_url) !== claims.vid) return null;
+  }
+  if (spec.expected_item_total != null) {
+    if (Number(spec.expected_item_total) !== claims.a) return null;
+    if (String(spec.expected_currency || '').trim().toUpperCase() !== claims.c) return null;
+  }
   return o;
+}
+
+/**
+ * The ONE variant a Shopify cart permalink buys: `/cart/<id>:<qty>`, exactly one line (the shape
+ * intelligenceReads' offerCartVariant reads). Anything else -- several lines, a token cart, not a url -- is
+ * null: unreadable.
+ */
+function cartPermalinkVariant(cartUrl) {
+  let path;
+  try {
+    path = new URL(String(cartUrl).trim()).pathname;
+  } catch {
+    return null;
+  }
+  const m = path.match(/^\/cart\/(\d{1,20}):\d+\/?$/);
+  return m ? m[1] : null;
 }
 
 const EXPECTED_TOTAL_KEYS = ['expected_item_total', 'expected_currency', 'expected_quantity', 'expected_total_expires_at'];
@@ -189,4 +219,5 @@ module.exports = {
   acceptedSecondPassOffer,
   adoptLiveCartOffer,
   hasCart,
+  cartPermalinkVariant,
 };

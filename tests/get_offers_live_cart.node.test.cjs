@@ -61,6 +61,9 @@ test('nothing is signed with a short secret, or for a claim the backend would re
   assert.equal(signOfferLiveVerification(ok, { secret: 'x'.repeat(31), now: 0 }), null, '31 bytes');
   assert.ok(signOfferLiveVerification(ok, { secret: 'x'.repeat(32), now: 0 }), '32 bytes');
   assert.equal(signOfferLiveVerification(ok, { now: 0 }), null, 'no secret');
+  // Trimmed like the backend (`.strip()`): a Secret Manager newline signs what the backend verifies.
+  assert.equal(signOfferLiveVerification(ok, { secret: ` ${SECRET}\n`, now: 0 }), signOfferLiveVerification(ok, { secret: SECRET, now: 0 }));
+  assert.equal(signOfferLiveVerification(ok, { secret: `${'x'.repeat(31)}\n`, now: 0 }), null, '31 bytes once trimmed');
   const bad = [
     { a: 0 }, { a: -1 }, { a: Infinity }, { a: '24' }, { av: 'true' }, { av: undefined }, { c: 'usd' }, { c: 'US' },
     { m: 'USA' }, { m: 'us' }, { sid: '' }, { sid: 42 }, { vid: 'gid://shopify/ProductVariant/1' }, { vid: 1234567 },
@@ -82,6 +85,8 @@ test('GET_OFFERS_LIVE_CART is off unless shadow or on; the secret needs 32 bytes
   assert.equal(readOfferLiveVerificationSecret({}), '');
   assert.equal(readOfferLiveVerificationSecret({ OFFER_LIVE_VERIFICATION_SECRET: 'short' }), '');
   assert.equal(readOfferLiveVerificationSecret({ OFFER_LIVE_VERIFICATION_SECRET: ` ${SECRET} ` }), SECRET);
+  assert.equal(readOfferLiveVerificationSecret({ OFFER_LIVE_VERIFICATION_SECRET: `${SECRET}\n` }), SECRET);
+  assert.equal(readOfferLiveVerificationSecret({ OFFER_LIVE_VERIFICATION_SECRET: `${'x'.repeat(31)}\n ` }), '', '31 bytes once trimmed');
 });
 
 // ------------------------------------------------------------------------------------ fakes (no network)
@@ -552,6 +557,11 @@ test('a second-pass offer is adopted only when the backend accepted THIS asserti
     'another seed': (m) => { m.source.seed_id = 'eps_x'; },
     'a cart for another variant': (m) => { m.execution_spec.variant_id = OTHER; },
     'a total other than the asserted amount': (m) => { m.execution_spec.expected_item_total = 24; },
+    'no variant_id, a cart for another variant': (m) => { m.execution_spec.variant_id = null; m.execution_spec.cart_url = `https://${RB}/cart/${OTHER}:1?country=US`; },
+    'no variant_id, an unreadable cart': (m) => { m.execution_spec.variant_id = null; m.execution_spec.cart_url = `https://${RB}/cart/c/Z2NwLXVzLWVhc3Q?country=US`; },
+    'no variant_id, a two-line cart': (m) => { m.execution_spec.variant_id = null; m.execution_spec.cart_url = `https://${RB}/cart/${BLISS}:1,${OTHER}:1?country=US`; },
+    'a total in another currency': (m) => { m.execution_spec.expected_currency = 'CAD'; },
+    'a total with no currency': (m) => { delete m.execution_spec.expected_currency; },
   };
   for (const [name, change] of Object.entries(variants)) {
     const mint = (o, c) => { const m = mintedOffer(o, c); change(m); return m; };
@@ -584,6 +594,13 @@ test('acceptedSecondPassOffer / adoptLiveCartOffer: pure checks', () => {
   assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: noKeys }], claims));
   assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: undefined }], claims));
   assert.equal(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, expected_item_total: 25.01 } }], claims), null);
+  // No variant_id beside a cart: the cart's own single line names vid, so it is ours.
+  const lineOnly = { ...m, execution_spec: { ...m.execution_spec, variant_id: null } };
+  assert.equal(acceptedSecondPassOffer([lineOnly], claims), lineOnly);
+  assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, variant_id: undefined, cart_url: `https://${RB}/cart/${BLISS}:2/` } }], claims));
+  assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, variant_id: null, cart_url: '  ' } }], claims), 'a blank cart is no cart');
+  assert.equal(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, variant_id: null, cart_url: 'not a url' } }], claims), null, 'not a url: unreadable');
+  assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, expected_currency: 'usd' } }], claims), 'currency case-insensitive');
   const first = { ...flaggedOffer(), live_read: { status: 'verified', checked_at: 'T', expected_total_withheld: 'no_cart' }, variants: [{ variant_id: BLISS, live_verified: true }] };
   const out = adoptLiveCartOffer(first, { ...m, availability: 'out_of_stock' }, { market: 'us' });
   assert.equal(out.availability, undefined);
