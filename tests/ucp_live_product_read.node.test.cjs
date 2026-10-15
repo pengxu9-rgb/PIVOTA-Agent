@@ -433,8 +433,8 @@ test('the PDP shadow line has its own name, the caller fields, and counts shown-
     logFields: { surface: 'get_pdp_v2', own_money_gap: 'CURRENT_OWN_OFFER_UNAVAILABLE', leaked: 'https://x.example/?token=1', Bad: 1 },
   });
   assert.equal(out, null, 'shadow never returns a page');
-  assert.equal(JSON.stringify(page), before, 'the page object is untouched');
   for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(JSON.stringify(page), before, 'the page object is untouched, after the read completed');
   const line = logs[0];
   assert.equal(line.event, 'get_pdp_v2_ucp_live_read');
   assert.equal(line.surface, 'get_pdp_v2');
@@ -442,6 +442,21 @@ test('the PDP shadow line has its own name, the caller fields, and counts shown-
   assert.equal('leaked' in line, false, 'no URL or free text from the caller');
   assert.equal('Bad' in line, false);
   assert.equal(line.own_unavailable_live_in_stock, 1, 'Lemon only: shown unavailable, merchant in stock (Berry was shown in stock)');
+});
+
+test('shown unavailable = the own-money verdict OR stored stock OR a read-only page', async () => {
+  const count = async (variants, ctx = {}) => {
+    const logs = [];
+    const r = createUcpLiveProductReader({ ucpClient: fakeClient(laneigeUS), mode: 'shadow', log: (e, f) => logs.push(f) });
+    await r.readProduct(laneigePdp({ variants }), { market: 'US', ...ctx });
+    for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+    return logs[0].own_unavailable_live_in_stock;
+  };
+  // Lemon and Berry are in stock at the merchant (Vanilla is not).
+  assert.equal(await count([{ variant_id: LEMON, current_own_offer_status: 'unavailable' }, { variant_id: BERRY }]), 1, 'verdict alone');
+  assert.equal(await count([{ variant_id: LEMON, availability: { in_stock: false } }, { variant_id: BERRY }]), 1, 'stored stock alone');
+  assert.equal(await count([{ variant_id: LEMON, availability: { in_stock: true } }, { variant_id: BERRY, availability: { in_stock: true } }],
+    { pageShowsAllUnavailable: true }), 2, 'a read-only page shows every variant unavailable');
 });
 
 test('the agent get_product line keeps its name', async () => {
@@ -483,10 +498,14 @@ test('STRUCTURAL: get_pdp_v2 shadow-reads with the buyer market before its own-m
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
-  const i = src.indexOf('      shadowPdpLiveRead(responsePayload, {');
+  const i = src.indexOf('      const shadowPdpRead = (pageState) => shadowPdpLiveRead(responsePayload, {');
   assert.ok(i > 0);
-  assert.match(src.slice(i, i + 200), /market: offersGateBuyerMarket\(payload, metadata\),\s+ownMoneyGap: canonicalOwnMoneyGap \|\| null,/);
-  assert.ok(i < src.indexOf('if (canonicalReadOnlyReason) {', i), 'before the read-only / verified projections');
+  assert.match(src.slice(i, i + 260), /market: offersGateBuyerMarket\(payload, metadata\),\s+ownMoneyGap: canonicalOwnMoneyGap \|\| null,\s+pageState,/);
+  const block = src.slice(i, src.indexOf('} catch (err) {', i));
+  // EVERY success return logs what it shows.
+  assert.match(block, /shadowPdpRead\('read_only'\);\s+return res\.json\(projectReadOnlyPdpResponse/);
+  assert.match(block, /shadowPdpRead\(verifiedReady \? 'verified' : 'read_only'\);/);
+  assert.match(block, /shadowPdpRead\(canonicalOwnMoneyGap \? 'own_money_gap' : 'served'\);\s+return res\.json\(canonicalOwnMoneyGap/);
   const g = src.indexOf('function getUcpLivePdpReader()');
   assert.match(src.slice(g, g + 700), /mode: MODES\.SHADOW,/);
 });

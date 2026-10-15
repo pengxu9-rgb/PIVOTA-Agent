@@ -779,7 +779,8 @@ function createUcpLiveProductReader(deps = {}) {
       // stock marks unavailable that the merchant answered available (the Laneige 15-flavour case).
       stats.own_unavailable_live_in_stock = (preview.variants || []).filter((v) => {
         const before = byId.get(numericVariantId(v && v.variant_id));
-        const shownUnavailable = before && (before.current_own_offer_status === 'unavailable'
+        const shownUnavailable = before && (ctx.pageShowsAllUnavailable === true
+          || before.current_own_offer_status === 'unavailable'
           || (before.availability || {}).in_stock === false);
         return shownUnavailable && v && v.live_read && (v.availability || {}).in_stock === true;
       }).length;

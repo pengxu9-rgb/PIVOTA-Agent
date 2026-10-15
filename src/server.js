@@ -30890,7 +30890,7 @@ function ucpLivePdpSample(env = process.env) {
  * changes the page: the comparison (incl. variants the page shows unavailable that the merchant has in
  * stock, against the page's own-money verdict) goes to the log only.
  */
-function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, random = Math.random } = {}) {
+function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, random = Math.random } = {}) {
   try {
     const reader = getUcpLivePdpReader();
     if (!reader || !(random() < ucpLivePdpSample())) return false;
@@ -30898,7 +30898,9 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, random = Math
     if (!detail || !detail.product) return false;
     Promise.resolve(reader.readProduct(detail, {
       market,
-      logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null },
+      // A read-only page shows EVERY variant unavailable, whatever the stored variants say.
+      pageShowsAllUnavailable: pageState === 'read_only',
+      logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null, page_state: pageState || null },
     })).catch(() => {});
     return true;
   } catch {
@@ -46936,10 +46938,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'get_pdp_v2 completed',
       );
       // The merchant's own live variants, SHADOW ONLY (UCP_LIVE_PDP_READ): read after the page is built,
-      // unawaited, logged against the page's own-money verdict. The page below is unchanged.
-      shadowPdpLiveRead(responsePayload, {
+      // unawaited, logged against what the page SHOWS (`pageState`, set at each return below). The page
+      // is unchanged.
+      const shadowPdpRead = (pageState) => shadowPdpLiveRead(responsePayload, {
         market: offersGateBuyerMarket(payload, metadata),
         ownMoneyGap: canonicalOwnMoneyGap || null,
+        pageState,
       });
       // Only these existing, identified legacy lanes retain their pre-contract
       // commerce gates. An unknown canonical producer is evidence, not proof.
@@ -46957,6 +46961,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       if (canonicalReadOnlyReason) {
         res.set('Cache-Control', 'private, no-store');
+        shadowPdpRead('read_only');
         return res.json(projectReadOnlyPdpResponse(responsePayload, canonicalReadOnlyReason));
       }
       if (options.allow_read_only === true && canonicalOwnMoney) {
@@ -46970,10 +46975,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           verifiedAt: canonicalOwnMoneyVerifiedAt,
           verifiedOffers: verifiedSellerOffers,
         });
-        return res.json(verifiedResponse.metadata?.commerce?.state === 'ready'
+        const verifiedReady = verifiedResponse.metadata?.commerce?.state === 'ready';
+        shadowPdpRead(verifiedReady ? 'verified' : 'read_only');
+        return res.json(verifiedReady
           ? verifiedResponse
           : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
       }
+      shadowPdpRead(canonicalOwnMoneyGap ? 'own_money_gap' : 'served');
       return res.json(canonicalOwnMoneyGap ? withoutCanonicalPurchaseActions(responsePayload) : responsePayload);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
