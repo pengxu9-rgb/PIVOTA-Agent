@@ -30822,7 +30822,7 @@ function getUcpLiveShared() {
   _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
   return _ucpLiveShared;
 }
-function ucpLiveReaderDeps(maxConcurrent) {
+function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
   const { createLookupCore } = require('./services/ucpLiveOfferRead');
   const shared = getUcpLiveShared();
   return {
@@ -30830,6 +30830,7 @@ function ucpLiveReaderDeps(maxConcurrent) {
     core: createLookupCore({
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+      ...(maxPerHost ? { maxPerHost } : {}),
     }),
   };
 }
@@ -30860,6 +30861,54 @@ function getUcpLiveProductReader() {
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveProductReader;
+}
+
+// UCP live read for the FRONTEND PDP (get_pdp_v2). SHADOW ONLY in this release: UCP_LIVE_PDP_READ=off
+// (default) | shadow (enforce is read as shadow until it is designed with the own-money projections the
+// page applies). A sampled share of pages (UCP_LIVE_PDP_READ_SAMPLE, default 0.1) is read after the page
+// is built, unawaited, and logged as get_pdp_v2_ucp_live_read; the page is never changed.
+let _ucpLivePdpReader;
+function getUcpLivePdpReader() {
+  if (_ucpLivePdpReader !== undefined) return _ucpLivePdpReader;
+  const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode(process.env, 'UCP_LIVE_PDP_READ') === MODES.OFF) return null;
+  _ucpLivePdpReader = createUcpLiveProductReader({
+    // The frontend PDP is the highest-volume surface: at most 3 lookups to one store in flight -- one
+    // product's full read (up to 30 variants = 3 chunks of 10), never a stack of several products.
+    ...ucpLiveReaderDeps(8, { maxPerHost: 3 }),
+    mode: MODES.SHADOW,
+    event: 'get_pdp_v2_ucp_live_read',
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLivePdpReader;
+}
+
+function ucpLivePdpSample(env = process.env) {
+  const raw = Number(String(env.UCP_LIVE_PDP_READ_SAMPLE ?? '').trim());
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 && String(env.UCP_LIVE_PDP_READ_SAMPLE ?? '').trim() !== '' ? raw : 0.1;
+}
+
+/**
+ * Shadow-read the merchant's live variants for a get_pdp_v2 page. Never awaited, never throws, never
+ * changes the page: the comparison (incl. variants the page shows unavailable that the merchant has in
+ * stock, against the page's own-money verdict) goes to the log only.
+ */
+function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, random = Math.random } = {}) {
+  try {
+    const reader = getUcpLivePdpReader();
+    if (!reader || !(random() < ucpLivePdpSample())) return false;
+    const detail = normalizePdpV2ToProductDetail(responsePayload);
+    if (!detail || !detail.product) return false;
+    Promise.resolve(reader.readProduct(detail, {
+      market,
+      // A read-only page shows EVERY variant unavailable, whatever the stored variants say.
+      pageShowsAllUnavailable: pageState === 'read_only',
+      logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null, page_state: pageState || null },
+    })).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // UCP live offer read (get_offers). Built on first use, and only when the mode is not off, so an unset
@@ -46897,6 +46946,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
         'get_pdp_v2 completed',
       );
+      // The merchant's own live variants, SHADOW ONLY (UCP_LIVE_PDP_READ): read after the page is built,
+      // unawaited, logged against what the page SHOWS (`pageState`, set at each return below). The page
+      // is unchanged.
+      const shadowPdpRead = (pageState) => shadowPdpLiveRead(responsePayload, {
+        market: offersGateBuyerMarket(payload, metadata),
+        ownMoneyGap: canonicalOwnMoneyGap || null,
+        pageState,
+      });
       // Only these existing, identified legacy lanes retain their pre-contract
       // commerce gates. An unknown canonical producer is evidence, not proof.
       // shopify_products_sync is an established producer documented by
@@ -46913,6 +46970,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       if (canonicalReadOnlyReason) {
         res.set('Cache-Control', 'private, no-store');
+        shadowPdpRead('read_only');
         return res.json(projectReadOnlyPdpResponse(responsePayload, canonicalReadOnlyReason));
       }
       if (options.allow_read_only === true && canonicalOwnMoney) {
@@ -46926,10 +46984,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           verifiedAt: canonicalOwnMoneyVerifiedAt,
           verifiedOffers: verifiedSellerOffers,
         });
-        return res.json(verifiedResponse.metadata?.commerce?.state === 'ready'
+        const verifiedReady = verifiedResponse.metadata?.commerce?.state === 'ready';
+        shadowPdpRead(verifiedReady ? 'verified' : 'read_only');
+        return res.json(verifiedReady
           ? verifiedResponse
           : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
       }
+      shadowPdpRead(canonicalOwnMoneyGap ? 'own_money_gap' : 'served');
       return res.json(canonicalOwnMoneyGap ? withoutCanonicalPurchaseActions(responsePayload) : responsePayload);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
@@ -53074,6 +53135,8 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
+  shadowPdpLiveRead,
+  ucpLivePdpSample,
   resolveBeautyMainlineBudgetConstraint,
   queryBeautyExternalSeedRowsFast,
   countNonCanonicalChainProducts,

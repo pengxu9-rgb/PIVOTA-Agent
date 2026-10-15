@@ -415,3 +415,207 @@ test('flags off, the tool surface is what it was: get_product `market` and the g
   assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'enforce', UCP_LIVE_OFFER_READ: 'enforce' }), { market: true, liveRead: true });
   assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'bogus' }), { market: false, liveRead: false });
 });
+
+// ------------------------------------------------------------- frontend PDP (get_pdp_v2) shadow read
+
+test('the PDP shadow line has its own name, the caller fields, and counts shown-unavailable-but-in-stock', async () => {
+  const logs = [];
+  const r = createUcpLiveProductReader({
+    ucpClient: fakeClient(laneigeUS), mode: 'shadow', event: 'get_pdp_v2_ucp_live_read',
+    log: (e, f) => logs.push({ event: e, ...f }),
+  });
+  const page = laneigePdp();
+  // Berry is already shown in stock: it is not a "shown unavailable" variant, whatever the merchant says.
+  page.product.variants[1] = { variant_id: BERRY, title: 'Berry', availability: { in_stock: true } };
+  const before = JSON.stringify(page);
+  const out = await r.readProduct(page, {
+    market: 'US',
+    logFields: { surface: 'get_pdp_v2', own_money_gap: 'CURRENT_OWN_OFFER_UNAVAILABLE', leaked: 'https://x.example/?token=1', Bad: 1 },
+  });
+  assert.equal(out, null, 'shadow never returns a page');
+  for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(JSON.stringify(page), before, 'the page object is untouched, after the read completed');
+  const line = logs[0];
+  assert.equal(line.event, 'get_pdp_v2_ucp_live_read');
+  assert.equal(line.surface, 'get_pdp_v2');
+  assert.equal(line.own_money_gap, 'CURRENT_OWN_OFFER_UNAVAILABLE');
+  assert.equal('leaked' in line, false, 'no URL or free text from the caller');
+  assert.equal('Bad' in line, false);
+  assert.equal(line.own_unavailable_live_in_stock, 1, 'Lemon only: shown unavailable, merchant in stock (Berry was shown in stock)');
+});
+
+test('shown unavailable = the own-money verdict OR stored stock OR a read-only page', async () => {
+  const count = async (variants, ctx = {}) => {
+    const logs = [];
+    const r = createUcpLiveProductReader({ ucpClient: fakeClient(laneigeUS), mode: 'shadow', log: (e, f) => logs.push(f) });
+    await r.readProduct(laneigePdp({ variants }), { market: 'US', ...ctx });
+    for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+    return logs[0].own_unavailable_live_in_stock;
+  };
+  // Lemon and Berry are in stock at the merchant (Vanilla is not).
+  assert.equal(await count([{ variant_id: LEMON, current_own_offer_status: 'unavailable' }, { variant_id: BERRY }]), 1, 'verdict alone');
+  assert.equal(await count([{ variant_id: LEMON, availability: { in_stock: false } }, { variant_id: BERRY }]), 1, 'stored stock alone');
+  assert.equal(await count([{ variant_id: LEMON, availability: { in_stock: true } }, { variant_id: BERRY, availability: { in_stock: true } }],
+    { pageShowsAllUnavailable: true }), 2, 'a read-only page shows every variant unavailable');
+});
+
+test('the agent get_product line keeps its name', async () => {
+  const { r, logs } = reader(laneigeUS, { mode: 'shadow' });
+  await r.readProduct(laneigePdp(), { market: 'US' });
+  for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(logs[0].event, 'get_product_ucp_live_read');
+});
+
+test('get_pdp_v2 hook: off by default, sampled when on, never changes the page (server)', () => {
+  const { spawnSync } = require('node:child_process');
+  const path = require('node:path');
+  const server = path.join(__dirname, '..', 'src', 'server.js');
+  const run = (env) => {
+    const code = `
+      const { shadowPdpLiveRead, ucpLivePdpSample } = require(${JSON.stringify(server)})._debug;
+      // A page with no merchant host: the read skips before any network call.
+      const page = { modules: [{ type: 'canonical', data: { pdp_payload: { product: {
+        product_id: 'sig_x', price: { current: { amount: 24, currency: 'USD' } },
+        variants: [{ variant_id: '31760703160372', availability: { in_stock: false }, current_own_offer_status: 'unavailable' }] } } } }] };
+      const before = JSON.stringify(page);
+      const hit = shadowPdpLiveRead(page, { market: 'US', ownMoneyGap: 'X', random: () => 0 });
+      const miss = shadowPdpLiveRead(page, { market: 'US', random: () => 0.99 });
+      console.log(JSON.stringify({ hit, miss, sample: ucpLivePdpSample(), same: JSON.stringify(page) === before }));
+      setTimeout(() => process.exit(0), 50);`;
+    const childEnv = { ...process.env };
+    for (const k of ['UCP_LIVE_PDP_READ', 'UCP_LIVE_PDP_READ_SAMPLE', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) delete childEnv[k];
+    Object.assign(childEnv, env);
+    const r = spawnSync(process.execPath, ['-e', code], { env: childEnv, encoding: 'utf8', timeout: 120000 });
+    assert.equal(r.status, 0, r.stderr.slice(-2000));
+    return JSON.parse(r.stdout.trim().split('\n').find((l) => l.includes('"hit"')));
+  };
+  assert.deepEqual(run({}), { hit: false, miss: false, sample: 0.1, same: true });
+  assert.deepEqual(run({ UCP_LIVE_PDP_READ: 'shadow' }), { hit: true, miss: false, sample: 0.1, same: true });
+  assert.deepEqual(run({ UCP_LIVE_PDP_READ: 'enforce', UCP_LIVE_PDP_READ_SAMPLE: '1' }), { hit: true, miss: true, sample: 1, same: true });
+});
+
+test('STRUCTURAL: get_pdp_v2 shadow-reads with the buyer market before its own-money projections', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const i = src.indexOf('      const shadowPdpRead = (pageState) => shadowPdpLiveRead(responsePayload, {');
+  assert.ok(i > 0);
+  assert.match(src.slice(i, i + 260), /market: offersGateBuyerMarket\(payload, metadata\),\s+ownMoneyGap: canonicalOwnMoneyGap \|\| null,\s+pageState,/);
+  const block = src.slice(i, src.indexOf('} catch (err) {', i));
+  // EVERY success return logs what it shows.
+  assert.match(block, /shadowPdpRead\('read_only'\);\s+return res\.json\(projectReadOnlyPdpResponse/);
+  assert.match(block, /shadowPdpRead\(verifiedReady \? 'verified' : 'read_only'\);/);
+  assert.match(block, /shadowPdpRead\(canonicalOwnMoneyGap \? 'own_money_gap' : 'served'\);\s+return res\.json\(canonicalOwnMoneyGap/);
+  const g = src.indexOf('function getUcpLivePdpReader()');
+  assert.match(src.slice(g, g + 700), /mode: MODES\.SHADOW,/);
+});
+
+// ------------------------------------------------------------- per-store in-flight cap
+
+test('a core with maxPerHost refuses (never queues) a lookup over the cap for that store only', { timeout: 10000 }, async () => {
+  const { createLookupCore } = require('../src/services/ucpLiveOfferRead');
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const client = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() { await gate; return { ok: true, status: 200, response: { jsonrpc: '2.0', result: { content: [{ type: 'text', text: '{"products":[]}' }] } } }; },
+  };
+  const core = createLookupCore({ ucpClient: client, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 5000, maxPerHost: 3 });
+  const ep = 'https://a.example/api/ucp/mcp';
+  try {
+    const held = [1, 2, 3].map((i) => core.lookup('a.example', ep, [String(100000 + i)], 'US'));
+    assert.equal(core.hostHasRoom('a.example', 1), false);
+    await assert.rejects(core.lookup('a.example', ep, ['100009'], 'US'), (e) => e.code === 'host_busy');
+    // A coalesced repeat of an in-flight lookup sends nothing, so the cap does not refuse it.
+    const repeat = core.lookup('a.example', ep, ['100001'], 'US');
+    const other = core.lookup('b.example', 'https://b.example/api/ucp/mcp', ['100001'], 'US');
+    open();
+    await Promise.all([...held, repeat, other]);
+    await new Promise((res) => setImmediate(res));
+    assert.equal(core.stats().hostsInFlight, 0, 'slots are released when lookups settle');
+    assert.equal(core.hostHasRoom('a.example', 3), true);
+  } finally {
+    open();
+  }
+});
+
+test('a lookup that FAILS releases its per-store slot', { timeout: 10000 }, async () => {
+  const { createLookupCore } = require('../src/services/ucpLiveOfferRead');
+  const client = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() { return { ok: false, status: 503 }; },
+  };
+  const core = createLookupCore({ ucpClient: client, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 1, maxPerHost: 1 });
+  await assert.rejects(core.lookup('a.example', 'https://a.example/api/ucp/mcp', ['100001'], 'US'));
+  await new Promise((res) => setImmediate(res));
+  assert.equal(core.stats().hostsInFlight, 0);
+  assert.equal(core.hostHasRoom('a.example', 1), true);
+});
+
+test('a capped product read that does not fit sends nothing and is logged skipped host_busy', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => String(600000000 + i));
+  const calls = [];
+  const client = fakeClient({ US: many.map((id) => variant(id, 2400, 'USD', true)) }, calls);
+  const core = require('../src/services/ucpLiveOfferRead').createLookupCore({
+    ucpClient: client, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 1000, maxPerHost: 2,
+  });
+  const logs = [];
+  const r = createUcpLiveProductReader({ ucpClient: client, mode: 'enforce', core, log: (e, f) => logs.push(f) });
+  const out = await r.readProduct(laneigePdp({ currency: 'USD', default_variant_id: many[0], variants: many.map((id) => storedVariant(id, id)) }), { market: 'US' });
+  assert.equal(out.product.live_read.status, STATUS.SKIPPED);
+  assert.equal(out.product.live_read.reason, 'host_busy');
+  assert.equal(calls.filter((c) => c[0] === 'lookup').length, 0, 'no half read: no chunk was sent');
+});
+
+test('a full 30-variant product read fits under the PDP cap of 3 (3 chunks of 10)', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => String(500000000 + i));
+  const r = createUcpLiveProductReader({
+    ucpClient: fakeClient({ US: many.map((id) => variant(id, 2400, 'USD', true)) }),
+    mode: 'enforce',
+    core: require('../src/services/ucpLiveOfferRead').createLookupCore({
+      ucpClient: fakeClient({ US: many.map((id) => variant(id, 2400, 'USD', true)) }), now: () => Date.now(),
+      endpointTtlMs: 60000, memoTtlMs: 1000, maxPerHost: 3,
+    }),
+  });
+  const out = await r.readProduct(laneigePdp({ currency: 'USD', default_variant_id: many[0], variants: many.map((id) => storedVariant(id, id)) }), { market: 'US' });
+  assert.equal(out.product.live_read.status, STATUS.VERIFIED);
+  assert.equal(out.product.live_read.verified, 30);
+});
+
+test('STRUCTURAL: only the frontend PDP reader is capped per store (3)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const g = src.indexOf('function getUcpLivePdpReader()');
+  assert.match(src.slice(g, g + 900), /\.\.\.ucpLiveReaderDeps\(8, \{ maxPerHost: 3 \}\),/);
+  for (const getter of ['getUcpLiveProductReader', 'getUcpLiveOfferReader', 'getUcpLiveSearchReader']) {
+    const i = src.indexOf(`function ${getter}()`);
+    assert.doesNotMatch(src.slice(i, i + 900), /maxPerHost/, getter);
+  }
+});
+
+test('a second viewer of a product being read shares its lookups and is not refused', { timeout: 10000 }, async () => {
+  const many = Array.from({ length: 30 }, (_, i) => String(700000000 + i));
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const calls = [];
+  const base = fakeClient({ US: many.map((id) => variant(id, 2400, 'USD', true)) }, calls);
+  const client = { ...base, async lookupCatalog(...a) { await gate; return base.lookupCatalog(...a); } };
+  const core = require('../src/services/ucpLiveOfferRead').createLookupCore({
+    ucpClient: client, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 5000, maxPerHost: 3,
+  });
+  const r = createUcpLiveProductReader({ ucpClient: client, mode: 'enforce', core });
+  const pdp = () => laneigePdp({ currency: 'USD', default_variant_id: many[0], variants: many.map((id) => storedVariant(id, id)) });
+  try {
+    const first = r.readProduct(pdp(), { market: 'US' });
+    for (let i = 0; i < 20 && calls.filter((c) => c[0] === 'lookup').length < 3; i += 1) await new Promise((res) => setImmediate(res));
+    const second = r.readProduct(pdp(), { market: 'US' });
+    open();
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a.product.live_read.status, STATUS.VERIFIED);
+    assert.equal(b.product.live_read.status, STATUS.VERIFIED, 'not host_busy');
+    assert.equal(calls.filter((c) => c[0] === 'lookup').length, 3, 'three lookups for both viewers');
+  } finally {
+    open();
+  }
+});

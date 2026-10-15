@@ -187,7 +187,13 @@ function roundTo(amount, currency) {
 // wait their turn (each still bounded by its caller's deadline).
 const MAX_CONCURRENT_LOOKUPS = 16;
 
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight }) {
+function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight, maxPerHost }) {
+  // PER-STORE cap (optional): at most `maxPerHost` lookups to one merchant host in flight from this core.
+  // One over it is REFUSED at once (code `host_busy`), never queued: a burst of pages for one store
+  // (a bot sweeping its catalogue) must not stack on it, and a read that does not happen is only
+  // "not checked".
+  const perHostCap = Number.isInteger(maxPerHost) && maxPerHost > 0 ? maxPerHost : null;
+  const hostInFlight = new Map(); // host -> count
   const negativeEndpointTtlMs = 10 * 60 * 1000;
   let inFlight = 0;
   const waiting = []; // { resolve, reject, at }
@@ -285,6 +291,10 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
         throw e;
       });
     }
+    if (perHostCap !== null && (hostInFlight.get(host) || 0) >= perHostCap) {
+      return Promise.reject(Object.assign(new Error('host_busy'), { code: 'host_busy' }));
+    }
+    if (perHostCap !== null) hostInFlight.set(host, (hostInFlight.get(host) || 0) + 1);
     const promise = withSlot(async () => {
       const res = await ucpClient.lookupCatalog(endpoint, {
         ids: ids.map(variantGid),
@@ -297,6 +307,14 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
       }
       return unwrapToolPayload(res);
     }, deadline);
+    if (perHostCap !== null) {
+      const done = () => {
+        const n = (hostInFlight.get(host) || 1) - 1;
+        if (n > 0) hostInFlight.set(host, n);
+        else hostInFlight.delete(host);
+      };
+      promise.then(done, done);
+    }
     memo.set(key, { promise, until: now() + memoTtlMs });
     promise.catch(() => {
       if (memo.get(key) && memo.get(key).promise === promise) memo.delete(key);
@@ -305,7 +323,18 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     return promise;
   }
 
-  return { endpointFor, lookup, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length }) };
+  /** True when a lookup for exactly these ids is memoized and live: asking again sends nothing. */
+  function isInFlight(host, ids, country) {
+    const hit = memo.get(`${host}|${country}|${ids.join(',')}`);
+    return Boolean(hit && hit.until > now());
+  }
+
+  /** Room for `n` more lookups to `host` under the per-store cap (always, when uncapped). */
+  function hostHasRoom(host, n = 1) {
+    return perHostCap === null || (hostInFlight.get(host) || 0) + n <= perHostCap;
+  }
+
+  return { endpointFor, lookup, hostHasRoom, isInFlight, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
 }
 
 function withDeadline(promise, deadline, now) {
@@ -549,6 +578,18 @@ function commerceBlocked(result, product) {
   return false;
 }
 
+/** Caller-supplied log fields (scalars only, short keys): never objects, URLs or free text. */
+function logFieldsOf(ctx) {
+  const fields = ctx && ctx.logFields && typeof ctx.logFields === 'object' ? ctx.logFields : {};
+  const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (!/^[a-z_]{1,40}$/.test(k)) continue;
+    if (v === null || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v;
+    else if (typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(v)) out[k] = v;
+  }
+  return out;
+}
+
 function productTarget(result) {
   if (!result || typeof result !== 'object') return null;
   return result.product && typeof result.product === 'object' ? result.product : result;
@@ -599,6 +640,8 @@ function createUcpLiveProductReader(deps = {}) {
     throw new Error('createUcpLiveProductReader requires a ucp client with discoverEndpoint() and lookupCatalog()');
   }
   const mode = deps.mode || readMode(process.env, 'UCP_LIVE_PRODUCT_READ');
+  // The log line's name: the agent get_product read by default; the frontend PDP shadow names its own.
+  const event = typeof deps.event === 'string' && deps.event ? deps.event : 'get_product_ucp_live_read';
   const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 3000;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
@@ -639,6 +682,15 @@ function createUcpLiveProductReader(deps = {}) {
       if (!endpoint) return { status: STATUS.NOT_UCP, host, country, currency, basis };
       const chunks = [];
       for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
+      // A capped core: the whole product's NEW sends fit, or none is sent (half a read is a wasted
+      // request). A chunk already in flight (a second viewer of the same product) shares that lookup
+      // and sends nothing, so it does not count (review round 2 of #2446).
+      const sends = typeof core.isInFlight === 'function'
+        ? chunks.filter((chunk) => !core.isInFlight(host, chunk, country)).length
+        : chunks.length;
+      if (sends > 0 && typeof core.hostHasRoom === 'function' && !core.hostHasRoom(host, sends)) {
+        return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
+      }
       const payloads = await withDeadline(
         Promise.all(chunks.map((chunk) => core.lookup(host, endpoint, chunk, country))),
         deadline,
@@ -671,6 +723,7 @@ function createUcpLiveProductReader(deps = {}) {
       }
       return { status: STATUS.VERIFIED, host, country, currency, basis, live, notFound, askedIds: ids };
     } catch (e) {
+      if (e && e.code === 'host_busy') return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
       return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) };
     }
   }
@@ -754,7 +807,7 @@ function createUcpLiveProductReader(deps = {}) {
     const product = productTarget(result);
     if (!product) return null;
     if (commerceBlocked(result, product)) {
-      log('get_product_ucp_live_read', { mode, product_id: product.product_id || null, status: STATUS.SKIPPED, reason: 'commerce_blocked' });
+      log(event, { mode, ...logFieldsOf(ctx), product_id: product.product_id || null, status: STATUS.SKIPPED, reason: 'commerce_blocked' });
       return null;
     }
     if (mode === MODES.SHADOW) {
@@ -769,6 +822,7 @@ function createUcpLiveProductReader(deps = {}) {
     const read = await readLive(product, ctx);
     const stats = {
       mode,
+      ...logFieldsOf(ctx),
       product_id: product.product_id || null,
       host: read.host || null,
       market: read.country || null,
@@ -791,10 +845,19 @@ function createUcpLiveProductReader(deps = {}) {
         const a = v && v.live_read && v.price && v.price.current && v.price.current.amount;
         return a != null && Number(b) !== Number(a);
       }).length;
-      log('get_product_ucp_live_read', stats);
+      // THE PAGE SAYS UNAVAILABLE, THE MERCHANT SAYS IN STOCK: a variant our own-money verdict or stored
+      // stock marks unavailable that the merchant answered available (the Laneige 15-flavour case).
+      stats.own_unavailable_live_in_stock = (preview.variants || []).filter((v) => {
+        const before = byId.get(numericVariantId(v && v.variant_id));
+        const shownUnavailable = before && (ctx.pageShowsAllUnavailable === true
+          || before.current_own_offer_status === 'unavailable'
+          || (before.availability || {}).in_stock === false);
+        return shownUnavailable && v && v.live_read && (v.availability || {}).in_stock === true;
+      }).length;
+      log(event, stats);
       return result.product && typeof result.product === 'object' ? { ...result, product: preview } : preview;
     }
-    log('get_product_ucp_live_read', stats);
+    log(event, stats);
     const annotated = applyProductRead(product, read);
     return result.product && typeof result.product === 'object' ? { ...result, product: annotated } : annotated;
   }
