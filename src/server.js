@@ -30888,10 +30888,24 @@ function ucpLivePdpSample(env = process.env) {
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 && String(env.UCP_LIVE_PDP_READ_SAMPLE ?? '').trim() !== '' ? raw : 0.1;
 }
 
+let _ucpLivePdpCache;
+function ucpLivePdpCache() {
+  if (!_ucpLivePdpCache) _ucpLivePdpCache = require('./services/pdpLiveOverlay').createPdpLiveCache();
+  return _ucpLivePdpCache;
+}
+
+function ucpLivePdpEnforced(env = process.env) {
+  const { readMode, MODES } = require('./services/ucpLiveOfferRead');
+  return readMode(env, 'UCP_LIVE_PDP_READ') === MODES.ENFORCE;
+}
+
 /**
- * Shadow-read the merchant's live variants for a get_pdp_v2 page. Never awaited, never throws, never
- * changes the page: the comparison (incl. variants the page shows unavailable that the merchant has in
- * stock, against the page's own-money verdict) goes to the log only.
+ * Read the merchant's live variants for a get_pdp_v2 page in the background. Never awaited, never throws,
+ * never changes THIS page: the comparison (incl. variants the page shows unavailable that the merchant has
+ * in stock, against the page's own-money verdict) goes to the log, and the merchant's per-variant answers
+ * go to this process's PDP cache, which `livePdpOverlay` serves to the NEXT view under
+ * UCP_LIVE_PDP_READ=enforce. One read per product x market per ten minutes per process, whatever its
+ * outcome (a store too busy to take it does not count).
  */
 function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, random = Math.random } = {}) {
   try {
@@ -30899,15 +30913,55 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     if (!reader || !(random() < ucpLivePdpSample())) return false;
     const detail = normalizePdpV2ToProductDetail(responsePayload);
     if (!detail || !detail.product) return false;
+    const { productHost, productVariantIds, STATUS } = require('./services/ucpLiveOfferRead');
+    const cache = ucpLivePdpCache();
+    const host = productHost(detail.product);
+    const ids = productVariantIds(detail.product);
+    const country = String(market || '').trim().toUpperCase();
+    const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
+    if (keyed && !cache.claimRead(host, country, ids)) return false;
     Promise.resolve(reader.readProduct(detail, {
       market,
       // A read-only page shows EVERY variant unavailable, whatever the stored variants say.
       pageShowsAllUnavailable: pageState === 'read_only',
       logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null, page_state: pageState || null },
+      onRead: (read) => {
+        if (!keyed || !read) return;
+        if (read.status === STATUS.SKIPPED && read.reason === 'host_busy') {
+          cache.releaseRead(host, country, ids);
+          return;
+        }
+        // A read the merchant did not answer (timeout, error, no endpoint) may be tried again sooner.
+        if (!cache.record(read) && read.status !== STATUS.SKIPPED) cache.retryReadSoon(host, country, ids);
+      },
     })).catch(() => {});
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * UCP_LIVE_PDP_READ=enforce, phase 1: a page served normally shows the merchant's cached live price and stock
+ * (src/services/pdpLiveOverlay.js), in the page's own currency, for every variant the merchant answered in
+ * the last ten minutes. The page as built otherwise; never throws.
+ */
+function livePdpOverlay(responsePayload, { market, cardListingId = '' } = {}) {
+  try {
+    if (!ucpLivePdpEnforced() || !getUcpLivePdpReader()) return responsePayload;
+    const { applyPdpLiveOverlay } = require('./services/pdpLiveOverlay');
+    const out = applyPdpLiveOverlay(responsePayload, {
+      market,
+      cache: ucpLivePdpCache(),
+      isCardOffer: (card, offer) => offerSellsCardListing(card, offer, cardListingId),
+      // Savings copy computed against a stored price is dropped wherever the live price differs.
+      presentationFields: SAVINGS_PRESENTATION_FIELDS,
+    });
+    if (!out) return responsePayload;
+    logger.info({ event: 'get_pdp_v2_ucp_live_overlay', ...out.stats }, 'get_pdp_v2_ucp_live_overlay');
+    return out.payload;
+  } catch {
+    return responsePayload;
   }
 }
 
@@ -46990,8 +47044,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? verifiedResponse
           : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
       }
+      // Phase 1 of the live PDP: only a page served normally takes the merchant's cached live answer.
       shadowPdpRead(canonicalOwnMoneyGap ? 'own_money_gap' : 'served');
-      return res.json(canonicalOwnMoneyGap ? withoutCanonicalPurchaseActions(responsePayload) : responsePayload);
+      return res.json(canonicalOwnMoneyGap
+        ? withoutCanonicalPurchaseActions(responsePayload)
+        : livePdpOverlay(responsePayload, {
+          market: offersGateBuyerMarket(payload, metadata),
+          // The card's listing id as the offers hydration named it (a sig_ card may carry none of its own).
+          cardListingId: [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]
+            .map((value) => String(value || '').trim())
+            .find((value) => value && !isPivotaSignatureProductId(value)) || '',
+        }));
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
       const upstreamRequestId =
@@ -53136,6 +53199,13 @@ module.exports._debug = {
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
   shadowPdpLiveRead,
+  livePdpOverlay,
+  // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
+  useUcpLiveClientForTest(ucpClient) {
+    if (_ucpLiveShared) throw new Error('the UCP live client is already built');
+    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+  },
+  ucpLivePdpCache,
   ucpLivePdpSample,
   resolveBeautyMainlineBudgetConstraint,
   queryBeautyExternalSeedRowsFast,
