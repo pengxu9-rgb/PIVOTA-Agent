@@ -229,6 +229,13 @@ function getOffers(offers, { mode = 'on', secret = SECRET, readOffersLive = real
 }
 
 const signalFor = (res, merchantId) => res.signals.find((s) => s.value.merchant_id === merchantId);
+// Shadow logs when its unawaited second call settles: let it.
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
 
 // ------------------------------------------------------------------------------------- the offer reader
 
@@ -262,12 +269,15 @@ test('off: no second call, and the answer is exactly today\'s', async () => {
   assert.deepEqual(strip(res), strip(today));
 });
 
-test('shadow: the second call is made with the same arguments plus the tokens, the first pass is served, and the log says what would change', async () => {
+test('shadow: the second call is made with the same arguments plus the tokens (a dry run), the first pass is served, and the log says what would change', async () => {
   const { run, calls, logs } = getOffers([flaggedOffer(), freshOffer()], { mode: 'shadow' });
   const res = await run();
+  await settle();
   assert.equal(calls.length, 2);
-  const { live_verifications: tokens, ...rest } = calls[1];
+  const { live_verifications: tokens, live_verifications_dry_run: dryRun, signal, ...rest } = calls[1];
   assert.deepEqual(rest, calls[0], 'the same arguments');
+  assert.equal(dryRun, true, 'the backend records no issued clicks for a dry run');
+  assert.ok(signal instanceof AbortSignal);
   assert.equal(calls[0].include_live_verification, true);
   assert.equal(tokens.length, 1);
   const claims = verifyToken(tokens[0]);
@@ -289,11 +299,39 @@ test('shadow: the second call is made with the same arguments plus the tokens, t
   assert.deepEqual(logs[0].backend, { received: 1, accepted: 1, rejected: {} });
 });
 
+test('shadow never waits for the second call: the answer returns at once, the log comes when it settles', { timeout: 5000 }, async () => {
+  const gate = deferred();
+  let seen = null;
+  const { run, calls, logs } = getOffers([flaggedOffer()], {
+    mode: 'shadow',
+    backend: { secondPass: async (args) => { seen = args; await gate.promise; return { offers: [mintedOffer(flaggedOffer(), verifyToken(args.live_verifications[0]))] }; } },
+  });
+  const res = await run();
+  assert.equal(calls.length, 2, 'fired');
+  assert.equal(logs.length, 0, 'not awaited');
+  assert.equal(res.best_offer.value.execution_spec.cart_url, null);
+  assert.equal(seen.signal.aborted, false);
+  gate.resolve();
+  await settle();
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].accepted, 1);
+  // A shadow call that never answers is aborted at the deadline, and logged as a timeout.
+  const hung = getOffers([flaggedOffer()], { mode: 'shadow', liveCartTimeoutMs: 300, backend: { secondPass: (args) => { seen = args; return new Promise(() => {}); } } });
+  const t0 = Date.now();
+  await hung.run();
+  assert.ok(Date.now() - t0 < 250, 'returned before the deadline');
+  assert.equal(seen.signal.aborted, false);
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(seen.signal.aborted, true);
+  assert.equal(hung.logs[0].error, 'timeout');
+});
+
 test('on: the verified flagged offer is replaced by the backend\'s minted one, keeping the first pass\'s live read', async () => {
   const { run, calls, logs } = getOffers([flaggedOffer(), freshOffer()], { mode: 'on' });
   const first = (await realReader()([flaggedOffer()], { market: 'US', currency: 'USD' })).offers[0];
   const res = await run();
   assert.equal(calls.length, 2);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls[1], 'live_verifications_dry_run'), false, 'on is not a dry run');
   const rb = signalFor(res, RB);
   assert.equal(rb.value.execution_spec.cart_url, `https://${RB}/cart/${BLISS}:1?country=US`);
   assert.equal(rb.value.execution_spec.variant_id, BLISS);
@@ -323,6 +361,24 @@ test('on: the verified flagged offer is replaced by the backend\'s minted one, k
   assert.equal(logs[0].cart_minted, 1);
 });
 
+test('on: an accepted offer the backend still mints no cart for (its own gates) is served live, and counted as no cart', async () => {
+  const gated = (o, c) => ({ ...mintedOffer(o, c), execution_spec: { merchant_domain: RB, variant_id: null, cart_url: null } });
+  for (const mode of ['on', 'shadow']) {
+    const { run, logs } = getOffers([flaggedOffer()], { mode, backend: { mint: gated } });
+    const res = await run();
+    await settle();
+    assert.equal(logs[0].accepted, 1, mode);
+    assert.equal(logs[0].cart_minted, 0, mode);
+    assert.equal(res.best_offer.value.execution_spec.cart_url, null, mode);
+    if (mode === 'on') {
+      assert.equal(res.best_offer.value.affiliate_url, 'https://api.pivota.cc/r?token=minted');
+      assert.equal(res.best_offer.value.live_read.expected_total_withheld, 'no_cart');
+    } else {
+      assert.deepEqual(logs[0].would_replace.map((w) => w.cart_minted), [false]);
+    }
+  }
+});
+
 test('on: a cart the backend did not pin to the market carries no total, and says why', async () => {
   const unpinned = (o, c) => {
     const m = mintedOffer(o, c);
@@ -336,15 +392,19 @@ test('on: a cart the backend did not pin to the market carries no total, and say
   assert.equal(v.live_read.expected_total_withheld, 'cart_not_pinned_to_market');
 });
 
-test('on: a merchant out of stock is asserted (av false); the backend mints no cart and none is claimed', async () => {
+test('a merchant out of stock is NOT asserted (it can never mint a cart): no second call, the first pass as it is', async () => {
   const sold = { ...rareBeauty, US: [liveVariant(BLISS, 2500, 'USD', false)] };
-  const { run, calls, logs } = getOffers([flaggedOffer()], { readOffersLive: realReader(sold) });
-  const res = await run();
-  assert.equal(verifyToken(calls[1].live_verifications[0]).av, false);
-  assert.equal(res.best_offer.value.in_stock, false);
-  assert.equal(res.best_offer.value.execution_spec.cart_url, null);
-  assert.equal(res.best_offer.value.live_read.expected_total_withheld, 'no_cart');
-  assert.equal(logs[0].cart_minted, 0);
+  for (const mode of ['shadow', 'on']) {
+    const { run, calls, logs } = getOffers([flaggedOffer()], { mode, readOffersLive: realReader(sold) });
+    const res = await run();
+    await settle();
+    assert.equal(calls.length, 1, mode);
+    assert.equal(logs.length, 0, mode);
+    assert.equal(res.best_offer.value.in_stock, false);
+    assert.equal(res.best_offer.value.stock_verified, true);
+    assert.equal(res.best_offer.value.execution_spec.cart_url, null);
+    assert.equal(res.best_offer.value.live_read.expected_total_withheld, 'no_cart');
+  }
 });
 
 // ---------------------------------------------------------------------------------- what is not asserted
@@ -383,7 +443,11 @@ test('nothing is asserted for an unflagged offer, an unverified flagged one, or 
     { name: 'no live read at all', offers: [flaggedOffer(), freshOffer()], readOffersLive: null },
     { name: 'no seed id', offers: [flaggedOffer({ source: { type: 'external_seed', canonical_url: `https://${RB}/products/soft-pinch-liquid-blush` } })] },
     // The reader reads the offer's own cart variant first; the backend compares against lookup_variant_id.
-    { name: 'the read looked up another id than lookup_variant_id', offers: [flaggedOffer({ execution_spec: { merchant_domain: RB, variant_id: OTHER, cart_url: null } })] },
+    {
+      name: 'the read looked up another id than lookup_variant_id',
+      offers: [flaggedOffer({ execution_spec: { merchant_domain: RB, variant_id: OTHER, cart_url: null } })],
+      readOffersLive: realReader({ ...rareBeauty, US: [liveVariant(BLISS, 2500, 'USD', true), liveVariant(OTHER, 2500, 'USD', true)] }),
+    },
   ];
   for (const c of cases) {
     const { run, calls, logs } = getOffers(c.offers, { mode: 'on', ...('readOffersLive' in c ? { readOffersLive: c.readOffersLive } : {}) });
@@ -418,18 +482,30 @@ test('an agent cannot hand get_offers its own live_verifications: they are never
 
 // ----------------------------------------------------------------------------- the second pass's answer
 
-test('a second call that fails or times out serves the first pass', { timeout: 5000 }, async () => {
-  const failing = getOffers([flaggedOffer(), freshOffer()], { backend: { secondPass: async () => { throw new Error('upstream 502'); } } });
+test('a second call that fails or times out serves the first pass, and a slow one is ABORTED', { timeout: 5000 }, async () => {
+  let failingArgs = null;
+  const failing = getOffers([flaggedOffer(), freshOffer()], { backend: { secondPass: async (args) => { failingArgs = args; throw new Error('upstream 502'); } } });
   const a = await failing.run();
   assert.equal(signalFor(a, RB).value.execution_spec.cart_url, null);
   assert.equal(signalFor(a, RB).value.affiliate_url, 'https://api.pivota.cc/r?token=first');
   assert.equal(a.signals.length, 2);
   assert.equal(failing.logs[0].error, 'fetch_failed');
+  assert.equal(failingArgs.signal.aborted, false, 'an answered call is not aborted');
+  // A fetchOffers that throws synchronously is a failed call too.
+  const syncFetch = (args) => {
+    if (args.live_verifications) throw new Error('sync');
+    return Promise.resolve({ offers: [flaggedOffer()] });
+  };
+  const sync = getOffers([flaggedOffer()], { fetchOffers: syncFetch });
+  assert.equal((await sync.run()).best_offer.value.execution_spec.cart_url, null);
+  assert.equal(sync.logs[0].error, 'fetch_failed');
 
-  const slow = getOffers([flaggedOffer(), freshOffer()], { liveCartTimeoutMs: 20, backend: { secondPass: () => new Promise(() => {}) } });
+  let slowArgs = null;
+  const slow = getOffers([flaggedOffer(), freshOffer()], { liveCartTimeoutMs: 20, backend: { secondPass: (args) => { slowArgs = args; return new Promise(() => {}); } } });
   const t0 = Date.now();
   const b = await slow.run();
   assert.ok(Date.now() - t0 < 1000);
+  assert.equal(slowArgs.signal.aborted, true, 'the request itself is cancelled, not merely abandoned');
   assert.equal(signalFor(b, RB).value.execution_spec.cart_url, null);
   assert.equal(slow.logs[0].error, 'timeout');
 
@@ -445,6 +521,16 @@ test('a log sink that throws never costs the answer', async () => {
     const res = await getOffers([flaggedOffer()], { mode, log: () => { throw new Error('log down'); } }).run();
     assert.equal(res.signals.length, 1, mode);
     assert.equal(res.best_offer.value.execution_spec.cart_url, mode === 'on' ? `https://${RB}/cart/${BLISS}:1?country=US` : null, mode);
+  }
+});
+
+test('a second answer that breaks the comparison serves the first pass (and never rejects in shadow)', async () => {
+  const hostile = { get source() { throw new Error('boom'); } };
+  for (const mode of ['on', 'shadow']) {
+    const g = getOffers([flaggedOffer()], { mode, backend: { secondPass: async () => ({ offers: [hostile] }) } });
+    const res = await g.run();
+    await settle();
+    assert.equal(res.best_offer.value.execution_spec.cart_url, null, mode);
   }
 });
 
@@ -464,6 +550,8 @@ test('a second-pass offer is adopted only when the backend accepted THIS asserti
     'another currency': (m) => { m.currency = 'CAD'; },
     'another stock': (m) => { m.in_stock = false; },
     'another seed': (m) => { m.source.seed_id = 'eps_x'; },
+    'a cart for another variant': (m) => { m.execution_spec.variant_id = OTHER; },
+    'a total other than the asserted amount': (m) => { m.execution_spec.expected_item_total = 24; },
   };
   for (const [name, change] of Object.entries(variants)) {
     const mint = (o, c) => { const m = mintedOffer(o, c); change(m); return m; };
@@ -489,6 +577,13 @@ test('acceptedSecondPassOffer / adoptLiveCartOffer: pure checks', () => {
   assert.equal(acceptedSecondPassOffer([{ ...m, requires_live_verification: { reasons: ['stale_snapshot'] } }], claims), null);
   assert.equal(acceptedSecondPassOffer(null, claims), null);
   assert.equal(acceptedSecondPassOffer([null, { offer_id: 'no-source' }, m], claims), m, 'junk entries are skipped');
+  // A cart that names no variant and no total is still the backend's; one that names them must name ours.
+  const bare = { ...m, execution_spec: { ...m.execution_spec, variant_id: null, expected_item_total: null } };
+  assert.equal(acceptedSecondPassOffer([bare], claims), bare);
+  const { variant_id: _v, expected_item_total: _t, ...noKeys } = m.execution_spec;
+  assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: noKeys }], claims));
+  assert.ok(acceptedSecondPassOffer([{ ...m, execution_spec: undefined }], claims));
+  assert.equal(acceptedSecondPassOffer([{ ...m, execution_spec: { ...m.execution_spec, expected_item_total: 25.01 } }], claims), null);
   const first = { ...flaggedOffer(), live_read: { status: 'verified', checked_at: 'T', expected_total_withheld: 'no_cart' }, variants: [{ variant_id: BLISS, live_verified: true }] };
   const out = adoptLiveCartOffer(first, { ...m, availability: 'out_of_stock' }, { market: 'us' });
   assert.equal(out.availability, undefined);
@@ -508,6 +603,7 @@ test('offerLiveVerificationClaims reads only the live answer, in the market curr
   assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, status: 'currency_mismatch' } }, { market: 'US', currency: 'USD' }), null);
   assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, amount: 0 } }, { market: 'US', currency: 'USD' }), null);
   assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, available: null } }, { market: 'US', currency: 'USD' }), null);
+  assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, available: false } }, { market: 'US', currency: 'USD' }), null, 'out of stock');
   assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, host: null } }, { market: 'US', currency: 'USD' }), null);
   assert.equal(offerLiveVerificationClaims({ ...o, live_read: { ...o.live_read, currency: 'CAD' } }, { market: 'US', currency: 'USD' }), null);
   assert.equal(offerLiveVerificationClaims({ ...o, currency: 'CAD' }, { market: 'US', currency: 'USD' }), null);
@@ -543,7 +639,13 @@ test('STRUCTURAL: the server sends liveVerifications only when makeGetOffers bui
   const block = src.slice(start, start + 5000);
   assert.match(block, /liveCartMode: \(\) => require\('\.\/services\/offerLiveVerification'\)\.liveCartMode\(\),/);
   assert.match(block, /liveVerificationSecret: \(\) => require\('\.\/services\/offerLiveVerification'\)\.readOfferLiveVerificationSecret\(\),/);
-  assert.match(block, /\.\.\.\(Array\.isArray\(live_verifications\) && live_verifications\.length \? \{ liveVerifications: live_verifications \} : \{\}\),/);
+  assert.match(block, /\.\.\.\(Array\.isArray\(live_verifications\) && live_verifications\.length\s*\?\s*\{\s*liveVerifications: live_verifications,/);
+  // The dry-run marker rides only with assertions, and only when makeGetOffers asked for it (shadow).
+  assert.match(block, /liveVerifications: live_verifications,[\s\S]{0,200}\.\.\.\(live_verifications_dry_run \? \{ liveVerificationsDryRun: true \} : \{\}\),\s*\}\s*: \{\}\),/);
+  // The abort signal reaches the upstream request (axios `signal`).
+  assert.match(block, /\}, \{\}, signal \? \{ signal \} : \{\}\),/);
+  const inv = src.slice(src.indexOf('async function invokeCommerceKernelRawUpstream('));
+  assert.match(inv.slice(0, 20000), /timeout: selfInvoked \? resolveSelfInvokeBudget\(timeout\) : timeout,\s*\.\.\.\(options && options\.signal \? \{ signal: options\.signal \} : \{\}\),/);
 });
 
 test('the get_offers tool input schemas never accept live_verifications from an agent', async () => {

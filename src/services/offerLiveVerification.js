@@ -117,7 +117,9 @@ function offerLiveVerificationClaims(offer, { market, currency } = {}) {
   if (!sid || !expected || vid !== expected) return null;
   if (lr.currency !== c || offer.currency !== c) return null;
   if (typeof lr.amount !== 'number' || !Number.isFinite(lr.amount) || lr.amount <= 0) return null;
-  if (typeof lr.available !== 'boolean') return null;
+  // Only an IN-STOCK answer is asserted: an out-of-stock one can never mint a cart, so asserting it would
+  // only cost a second offers.resolve call. The first pass serves that offer as it is.
+  if (lr.available !== true) return null;
   const h = text(lr.host);
   if (!h || !/^[A-Z]{2}$/.test(m)) return null;
   return { a: lr.amount, av: lr.available, c, h, m, sid, v: 1, vid };
@@ -126,7 +128,7 @@ function offerLiveVerificationClaims(offer, { market, currency } = {}) {
 /**
  * The second pass's offer for one asserted seed, or null: exactly one offer for that seed came back
  * UNflagged, saying the backend accepted THIS assertion (`live_verification` verified for `vid`), at the
- * asserted price, currency and stock.
+ * asserted price, currency and stock -- and its cart, if it names a variant or a total, names `vid` and `a`.
  */
 function acceptedSecondPassOffer(secondOffers, claims) {
   const list = Array.isArray(secondOffers) ? secondOffers : [];
@@ -138,6 +140,10 @@ function acceptedSecondPassOffer(secondOffers, claims) {
   if (!lv || lv.status !== 'verified' || String(lv.variant_id) !== claims.vid) return null;
   if (Number(o.price) !== claims.a || String(o.currency || '').toUpperCase() !== claims.c) return null;
   if (o.in_stock !== claims.av) return null;
+  // Defence in depth: a cart for another variant, or a total other than the asserted amount, is not ours.
+  const spec = o.execution_spec && typeof o.execution_spec === 'object' ? o.execution_spec : {};
+  if (spec.variant_id != null && String(spec.variant_id) !== claims.vid) return null;
+  if (spec.expected_item_total != null && Number(spec.expected_item_total) !== claims.a) return null;
   return o;
 }
 

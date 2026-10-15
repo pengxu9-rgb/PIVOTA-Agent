@@ -432,15 +432,20 @@ function makeGetOffers(deps = {}) {
   };
 
   /**
-   * The served offers, with each flagged offer the live read verified (exactly those #2445 serves) replaced,
-   * under `on`, by the backend's own offer for it once it has accepted a signed assertion of the merchant's
-   * answer. ONE more offers.resolve call with the same arguments plus `live_verifications`; at most
-   * `liveCartTimeoutMs`. Anything else -- off, no secret, nothing to assert, a failed or slow second call, an
-   * offer the backend still flags -- serves `offers` unchanged.
+   * The served offers, with each flagged offer the live read verified in stock (exactly those #2445 serves,
+   * less the out-of-stock ones, which can never get a cart) replaced, under `on`, by the backend's own offer
+   * for it once it has accepted a signed assertion of the merchant's answer. ONE more offers.resolve call with
+   * the same arguments plus `live_verifications`, ABORTED after `liveCartTimeoutMs`. Anything else -- off, no
+   * secret, nothing to assert, a failed or slow second call, an offer the backend still flags -- serves
+   * `offers` unchanged.
+   *
+   * SHADOW never waits: the second call (a dry run, so the backend records no issued clicks) is fired and
+   * logged when it settles, and the first pass is returned at once.
    */
   async function mintLiveCarts(offers, { fetchArgs, market, currency, mode, secret }) {
     // No secret: the signer signs nothing, so nothing is asserted and no second call is made.
     if (mode !== liveVerification.MODES.SHADOW && mode !== liveVerification.MODES.ON) return offers;
+    const shadow = mode === liveVerification.MODES.SHADOW;
     const asserted = [];
     const t0 = now();
     // At most 10 (offers.resolve's cap): a declared market's answer is cut to 10 before the live read.
@@ -450,58 +455,81 @@ function makeGetOffers(deps = {}) {
       if (token) asserted.push({ index, claims, token });
     });
     if (!asserted.length) return offers;
-    let second = null;
-    let failure = null;
-    let timer = null;
-    try {
-      second = await Promise.race([
-        Promise.resolve().then(() => fetchOffers({ ...fetchArgs, live_verifications: asserted.map((x) => x.token) })),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'timeout' })), liveCartTimeoutMs);
-        }),
-      ]);
-    } catch (e) {
-      failure = e && e.code === 'timeout' ? 'timeout' : 'fetch_failed';
-    } finally {
-      clearTimeout(timer);
-    }
-    const ms = now() - t0;
-    if (!second || !Array.isArray(second.offers)) {
-      log('get_offers_live_cart', { mode, asserted: asserted.length, accepted: 0, cart_minted: 0, ms, error: failure || 'no_offers' });
-      return offers;
-    }
-    const replacements = [];
-    for (const x of asserted) {
-      const accepted = liveVerification.acceptedSecondPassOffer(second.offers, x.claims);
-      if (!accepted) continue;
-      replacements.push({ index: x.index, offer: liveVerification.adoptLiveCartOffer(offers[x.index], accepted, { market }) });
-    }
-    const cartMinted = replacements.filter((r) => liveVerification.hasCart(r.offer)).length;
-    log('get_offers_live_cart', {
-      mode,
-      asserted: asserted.length,
-      accepted: replacements.length,
-      cart_minted: cartMinted,
-      ms,
-      ...(second.live_verification_assertions ? { backend: second.live_verification_assertions } : {}),
-      ...(mode === liveVerification.MODES.SHADOW
-        ? {
-            would_replace: replacements.map((r) => {
-              const spec = r.offer.execution_spec || {};
-              return {
-                seed_id: r.offer.source && r.offer.source.seed_id,
-                cart_minted: liveVerification.hasCart(r.offer),
-                expected_item_total: spec.expected_item_total ?? null,
-                expected_currency: spec.expected_currency ?? null,
-              };
-            }),
-          }
-        : {}),
+    const settled = secondPass({
+      ...fetchArgs,
+      live_verifications: asserted.map((x) => x.token),
+      ...(shadow ? { live_verifications_dry_run: true } : {}),
+    }).then(({ second, failure }) => {
+      const ms = now() - t0;
+      if (!second || !Array.isArray(second.offers)) {
+        log('get_offers_live_cart', { mode, asserted: asserted.length, accepted: 0, cart_minted: 0, ms, error: failure || 'no_offers' });
+        return offers;
+      }
+      const replacements = [];
+      for (const x of asserted) {
+        const accepted = liveVerification.acceptedSecondPassOffer(second.offers, x.claims);
+        if (!accepted) continue;
+        replacements.push({ index: x.index, offer: liveVerification.adoptLiveCartOffer(offers[x.index], accepted, { market }) });
+      }
+      log('get_offers_live_cart', {
+        mode,
+        asserted: asserted.length,
+        accepted: replacements.length,
+        cart_minted: replacements.filter((r) => liveVerification.hasCart(r.offer)).length,
+        ms,
+        ...(second.live_verification_assertions ? { backend: second.live_verification_assertions } : {}),
+        ...(shadow
+          ? {
+              would_replace: replacements.map((r) => {
+                const spec = r.offer.execution_spec || {};
+                return {
+                  seed_id: r.offer.source && r.offer.source.seed_id,
+                  cart_minted: liveVerification.hasCart(r.offer),
+                  expected_item_total: spec.expected_item_total ?? null,
+                  expected_currency: spec.expected_currency ?? null,
+                };
+              }),
+            }
+          : {}),
+      });
+      // (Shadow never serves this: its caller has already returned the first pass.)
+      if (!replacements.length) return offers;
+      const out = offers.slice();
+      for (const r of replacements) out[r.index] = r.offer;
+      return out;
+    }).catch(() => offers);
+    if (shadow) return offers;
+    return settled;
+  }
+
+  /**
+   * The second offers.resolve call: `{ second }`, or `{ failure }` ('timeout' | 'fetch_failed'). Never rejects.
+   * At the timeout the request itself is ABORTED (its `signal`), not merely abandoned.
+   */
+  function secondPass(args) {
+    const controller = new AbortController();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        controller.abort();
+        resolve({ failure: 'timeout' });
+      }, liveCartTimeoutMs);
+      let call;
+      try {
+        call = Promise.resolve(fetchOffers({ ...args, signal: controller.signal }));
+      } catch (e) {
+        call = Promise.reject(e);
+      }
+      call.then(
+        (second) => {
+          clearTimeout(timer);
+          resolve({ second });
+        },
+        () => {
+          clearTimeout(timer);
+          resolve({ failure: 'fetch_failed' });
+        },
+      );
     });
-    if (mode !== liveVerification.MODES.ON || !replacements.length) return offers;
-    const out = offers.slice();
-    for (const r of replacements) out[r.index] = r.offer;
-    return out;
   }
 
   return async function getOffers(params = {}) {
