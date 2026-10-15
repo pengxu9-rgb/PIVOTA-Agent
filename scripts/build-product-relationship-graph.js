@@ -766,6 +766,14 @@ function listingIdentity(product) {
   return `product_ref:${product.product_ref}`;
 }
 
+// One stderr line for the evidence-readiness diagnostic: its exact-listing count, or its error.
+function evidenceReadinessStatusLine(evidence) {
+  if (!evidence || typeof evidence !== 'object') return '';
+  const status = evidence.error ? `error ${evidence.error}` : `unique_exact_listings ${evidence.unique_exact_listings ?? 'unknown'}`;
+  return `relgraph evidence readiness: ${status} (sampled anchors ${evidence.sampled_anchor_count ?? 0}, `
+    + `pairs ${evidence.sampled_pair_count ?? 0}, products limit ${evidence.product_limit ?? 'n/a'})`;
+}
+
 const EVIDENCE_SAMPLE_ANCHOR_LIMIT = 100;
 const EVIDENCE_SAMPLE_PRODUCT_LIMIT = 500;
 const EVIDENCE_SAMPLE_PAIR_LIMIT = 1000;
@@ -1283,6 +1291,10 @@ async function main() {
     fs.writeFileSync(outPath, `${JSON.stringify(finalReport, null, 2)}\n`, 'utf8');
   }
   process.stdout.write(`${JSON.stringify(finalReport.summary, null, 2)}\n`);
+  // The summary above carries evidence_readiness, but a routine keeps only the tail of each step's
+  // output, so the readiness status gets one line of its own on stderr, last (stderr_tail).
+  const evidenceLine = evidenceReadinessStatusLine(finalReport.summary.source_diagnostics?.evidence_readiness);
+  if (evidenceLine) process.stderr.write(`${evidenceLine}\n`);
 }
 
 // Write path for one build. Non-capped relations (related_product, niche_specialist) upsert
@@ -1403,7 +1415,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  __internal: { sampleEvidenceReadiness, listingIdentity },
+  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine },
   affectedScopeProvided,
   persistEdgesWithGlobalFanInCap,
   buildInputsFromDb,
