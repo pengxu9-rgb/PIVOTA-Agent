@@ -241,7 +241,10 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     const status = Number(d && d.status);
     const endpoint = (d && d.mcpEndpoint) || null;
     if (!endpoint && (status === 429 || status >= 500 || !Number.isFinite(status))) {
-      throw Object.assign(new Error(`discovery_${Number.isFinite(status) ? status : 'unanswered'}`), { code: 'discovery_transient' });
+      throw Object.assign(new Error(`discovery_${Number.isFinite(status) ? status : 'unanswered'}`), {
+        code: 'discovery_transient',
+        ...(Number.isFinite(status) ? { status } : {}),
+      });
     }
     endpoints.set(host, { endpoint, until: now() + (endpoint ? endpointTtlMs : negativeEndpointTtlMs) });
     if (endpoints.size > 5000) endpoints.delete(endpoints.keys().next().value);
@@ -842,6 +845,17 @@ function cardHost(card) {
  * @param {{ ucpClient, mode?, budgetMs?, maxCards?, now?, log?, core? }} deps
  *   mode defaults to env UCP_LIVE_SEARCH_READ (off | shadow | enforce).
  */
+// Log-only: the per-read diagnostics (`readAll`'s host / HTTP status) for `summarize`, keyed by the reads Map.
+const diagnostics = new WeakMap();
+const MAX_LOGGED_HOSTS = 8;
+
+/** A reason as a log label: a short code only (an exception message could carry a URL). */
+function logReason(reason) {
+  const r = str(reason).toLowerCase();
+  if (!r) return null;
+  return /^[a-z0-9_]{1,40}$/.test(r) ? r : 'exception';
+}
+
 function createUcpLiveSearchReader(deps = {}) {
   const { ucpClient } = deps;
   if (!ucpClient || typeof ucpClient.discoverEndpoint !== 'function' || typeof ucpClient.lookupCatalog !== 'function') {
@@ -898,8 +912,12 @@ function createUcpLiveSearchReader(deps = {}) {
   /** @returns {Promise<Map<number, object>>} index -> read, for planned cards. Never throws. */
   async function readAll(planned) {
     const reads = new Map();
+    // LOG-ONLY diagnostics, beside `reads` and never in them: what builds an answer is unchanged.
+    const meta = new Map(); // index -> { host, httpStatus }
+    diagnostics.set(reads, meta);
     const groups = new Map();
     for (const [index, p] of planned) {
+      meta.set(index, { host: p.host, httpStatus: null });
       const key = `${p.host}|${p.country}`;
       if (!groups.has(key)) groups.set(key, { host: p.host, country: p.country, items: [] });
       groups.get(key).items.push({ index, ...p });
@@ -945,20 +963,53 @@ function createUcpLiveSearchReader(deps = {}) {
         }
       } catch (e) {
         const status = e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR;
-        for (const it of g.items) reads.set(it.index, { status, reason: str(e && e.message).slice(0, 80) });
+        const httpStatus = e && Number.isFinite(Number(e.status)) && Number(e.status) > 0 ? Number(e.status) : null;
+        for (const it of g.items) {
+          reads.set(it.index, { status, reason: str(e && e.message).slice(0, 80) });
+          if (httpStatus !== null) meta.get(it.index).httpStatus = httpStatus;
+        }
       }
     }));
     return reads;
   }
 
+  /**
+   * The `search_ucp_live_read` line. Besides the totals: `by_reason` (why reads were not verified) and,
+   * per merchant HOST (a hostname, never a URL), its status counts and the HTTP status of failed lookups
+   * -- so 429s can be read per store. At most MAX_LOGGED_HOSTS hosts by volume; the rest are summed
+   * into `other_hosts`, so one page cannot blow up the line.
+   */
   function summarize(cards, reads) {
-    const stats = { mode, read: reads.size, by_status: {}, price_changed: 0, stock_raised: 0 };
+    const stats = { mode, read: reads.size, by_status: {}, by_reason: {}, price_changed: 0, stock_raised: 0 };
+    const meta = diagnostics.get(reads) || new Map();
+    const perHost = new Map();
     for (const [index, r] of reads) {
       stats.by_status[r.status] = (stats.by_status[r.status] || 0) + 1;
+      const reason = logReason(r.reason);
+      if (reason) stats.by_reason[reason] = (stats.by_reason[reason] || 0) + 1;
+      const m = meta.get(index) || {};
+      const host = str(m.host) || 'unknown';
+      if (!perHost.has(host)) perHost.set(host, { host, read: 0, by_status: {}, http_status: {} });
+      const h = perHost.get(host);
+      h.read += 1;
+      h.by_status[r.status] = (h.by_status[r.status] || 0) + 1;
+      if (m.httpStatus) h.http_status[m.httpStatus] = (h.http_status[m.httpStatus] || 0) + 1;
       if (r.status !== STATUS.VERIFIED) continue;
       const card = cards[index] || {};
       if (Math.abs(Number(card.price) - r.amount) > 0.01) stats.price_changed += 1;
       if (r.available === true && card.in_stock !== true) stats.stock_raised += 1;
+    }
+    const ranked = [...perHost.values()].sort((a, b) => b.read - a.read || a.host.localeCompare(b.host));
+    stats.hosts = ranked.slice(0, MAX_LOGGED_HOSTS);
+    const rest = ranked.slice(MAX_LOGGED_HOSTS);
+    if (rest.length) {
+      const other = { hosts: rest.length, read: 0, by_status: {}, http_status: {} };
+      for (const h of rest) {
+        other.read += h.read;
+        for (const [k, v] of Object.entries(h.by_status)) other.by_status[k] = (other.by_status[k] || 0) + v;
+        for (const [k, v] of Object.entries(h.http_status)) other.http_status[k] = (other.http_status[k] || 0) + v;
+      }
+      stats.other_hosts = other;
     }
     return stats;
   }

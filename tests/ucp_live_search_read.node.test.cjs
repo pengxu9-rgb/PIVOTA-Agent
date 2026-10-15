@@ -582,3 +582,59 @@ test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the searc
   const d = src.indexOf('function ucpLiveReaderDeps(');
   assert.match(src.slice(d, d + 700), /maxConcurrent, endpointCache: shared\.endpoints, discoveryInFlight: shared\.discovering/);
 });
+
+// ------------------------------------------------------------- shadow observability (log line only)
+
+function logged(r, cards, ctx = { market: 'US' }) {
+  const logs = [];
+  const rr = createUcpLiveSearchReader({ ...r, log: (e, f) => logs.push({ event: e, ...f }) });
+  return rr.readCards(cards, ctx).then((reads) => ({ reads, line: logs[0] }));
+}
+
+test('the search line names why reads failed and, per host, the HTTP status of a failed lookup (429)', async () => {
+  const h = uniq('limited');
+  const limited = {
+    ...fakeClient(storesFor(h)),
+    async lookupCatalog() { return { ok: false, status: 429, error: 'rate_limited' }; },
+  };
+  const { line } = await logged({ ucpClient: limited, mode: 'enforce' }, [card(rbUrl(h), BLISS)]);
+  assert.deepEqual(line.by_reason, { lookup_failed: 1 });
+  assert.equal(line.hosts.length, 1);
+  assert.equal(line.hosts[0].host, 'www.rarebeauty.com');
+  assert.deepEqual(line.hosts[0].http_status, { 429: 1 });
+  assert.deepEqual(line.hosts[0].by_status, { error: 1 });
+});
+
+test('the search line carries at most 8 hosts; the rest are summed, never listed', async () => {
+  const cards = Array.from({ length: 12 }, (_, i) => card(`https://s${i}.example.com/products/${uniq('x')}`, BLISS));
+  const { line } = await logged({ ucpClient: fakeClient({}), mode: 'enforce' }, cards);
+  assert.equal(line.hosts.length, 8);
+  assert.equal(line.other_hosts.hosts, 4);
+  assert.equal(line.other_hosts.read, 4);
+  assert.equal(line.read, 12);
+});
+
+test('the search line holds host names and short reason codes only -- never a URL', async () => {
+  const h = uniq('boom');
+  const thrower = {
+    ...fakeClient(storesFor(h)),
+    async lookupCatalog() { throw new Error('fetch failed: https://www.rarebeauty.com/api/ucp/mcp?token=abc'); },
+  };
+  const { line } = await logged({ ucpClient: thrower, mode: 'enforce' }, [card(rbUrl(h), BLISS)]);
+  const text = JSON.stringify(line);
+  assert.equal(/https?:|token=|\?/.test(text), false, text);
+  assert.deepEqual(line.by_reason, { exception: 1 });
+});
+
+test('ANSWERS UNCHANGED: the reads that build answers carry no diagnostics, in enforce or shadow', async () => {
+  const h = uniq('same');
+  const { reads } = await logged({ ucpClient: fakeClient(storesFor(h)), mode: 'enforce' }, [card(rbUrl(h), BLISS)]);
+  assert.deepEqual(Object.keys(reads.get(0)).sort(), ['amount', 'available', 'currency', 'market', 'market_basis', 'status']);
+  const out = await overlayLiveMerchantSearchPrices(
+    { products: [card(rbUrl(h), BLISS)] },
+    { ucpSearchReader: reader(storesFor(h)), market: 'US', fetchImpl: jsonFetch() },
+  );
+  assert.deepEqual(Object.keys(out.products[0].live_read).sort(),
+    ['checked_at', 'market', 'market_basis', 'source', 'status', 'variant_in_stock']);
+  assert.equal('hosts' in out.metadata.live_merchant_price.ucp, false);
+});
