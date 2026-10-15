@@ -30926,11 +30926,13 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
       pageShowsAllUnavailable: pageState === 'read_only',
       logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null, page_state: pageState || null },
       onRead: (read) => {
-        if (read && read.status === STATUS.SKIPPED && read.reason === 'host_busy') {
-          if (keyed) cache.releaseRead(host, country, ids);
+        if (!keyed || !read) return;
+        if (read.status === STATUS.SKIPPED && read.reason === 'host_busy') {
+          cache.releaseRead(host, country, ids);
           return;
         }
-        cache.record(read);
+        // A read the merchant did not answer (timeout, error, no endpoint) may be tried again sooner.
+        if (!cache.record(read) && read.status !== STATUS.SKIPPED) cache.retryReadSoon(host, country, ids);
       },
     })).catch(() => {});
     return true;
@@ -30952,6 +30954,8 @@ function livePdpOverlay(responsePayload, { market, cardListingId = '' } = {}) {
       market,
       cache: ucpLivePdpCache(),
       isCardOffer: (card, offer) => offerSellsCardListing(card, offer, cardListingId),
+      // Savings copy computed against a stored price is dropped wherever the live price differs.
+      presentationFields: SAVINGS_PRESENTATION_FIELDS,
     });
     if (!out) return responsePayload;
     logger.info({ event: 'get_pdp_v2_ucp_live_overlay', ...out.stats }, 'get_pdp_v2_ucp_live_overlay');
@@ -53190,6 +53194,11 @@ module.exports._debug = {
   maybeOverlayLiveSearchPrice,
   shadowPdpLiveRead,
   livePdpOverlay,
+  // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
+  useUcpLiveClientForTest(ucpClient) {
+    if (_ucpLiveShared) throw new Error('the UCP live client is already built');
+    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+  },
   ucpLivePdpCache,
   ucpLivePdpSample,
   resolveBeautyMainlineBudgetConstraint,
