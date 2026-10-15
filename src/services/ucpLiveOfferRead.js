@@ -98,7 +98,35 @@ function productHandleFromUrl(url) {
 function numericVariantId(v) {
   const s = str(v);
   const m = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{6,20})$/.exec(s);
-  return m ? m[1] : null;
+  if (m) return m[1];
+  return urlNamedVariantId(s);
+}
+
+/**
+ * The Shopify variant a URL-SHAPED id names through `variant=N`, or null. Stored seed entries routinely
+ * carry the JSON-LD offer `@id` as their `variant_id` (`/products/<handle>?variant=45253610242298#offer`),
+ * so a reader that took only a gid or bare digits never saw those variants: the offer's options came
+ * back unread (price null after a live-verified swap, gw#2451's golden cross-test) and a named variant
+ * never matched its offer. The rules are pivota-backend's `url_named_variant_id`
+ * (services/handover_variant_identity.py, #2627), so both sides name the same variant:
+ *   - every `variant=` value is ASCII digits (here also 6-20 of them, as the bare form), and exactly one
+ *     distinct value, or the URL names nothing;
+ *   - a `selling_plan` makes it a SUBSCRIPTION offer of the variant, priced at the plan: nothing.
+ */
+function urlNamedVariantId(raw) {
+  const s = str(raw);
+  if (!s.includes('variant=')) return null;
+  let params;
+  try {
+    params = new URL(s, 'https://variant.invalid').searchParams;
+  } catch {
+    return null;
+  }
+  if (params.has('selling_plan')) return null;
+  const values = params.getAll('variant');
+  if (!values.length || values.some((v) => !/^[0-9]+$/.test(v))) return null;
+  const distinct = [...new Set(values)];
+  return distinct.length === 1 && /^\d{6,20}$/.test(distinct[0]) ? distinct[0] : null;
 }
 
 function variantGid(numericId) {
@@ -1186,6 +1214,7 @@ module.exports = {
   lookupIdsFor,
   liveVariantsFrom,
   numericVariantId,
+  urlNamedVariantId,
   hostOf,
   productCurrency,
   roundTo,

@@ -10,6 +10,7 @@ const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
 const { intelToSignal } = require('./intelToSignal');
 const { normalizeBuyerRegion, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
+const { numericVariantId } = require('../services/ucpLiveOfferRead');
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -388,19 +389,33 @@ function offerCartVariant(offer) {
   return m ? m[1] : UNREADABLE_CART;
 }
 
+/**
+ * One variant, however it is spelled: the same string, or the same Shopify variant number through a gid, bare
+ * digits or a URL-shaped id (`/products/x?variant=N#offer`, the JSON-LD offer @id stored entries carry; the
+ * backend's `source.variant_id` is often that form while an agent names the bare number).
+ */
+function sameVariant(a, b) {
+  const x = String(a == null ? '' : a).trim();
+  const y = String(b == null ? '' : b).trim();
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const nx = numericVariantId(x);
+  return Boolean(nx) && nx === numericVariantId(y);
+}
+
 function offerIsVariant(offer, vid) {
   if (!offer || typeof offer !== 'object') return false;
   const cart = offerCartVariant(offer);
   // WHEN THERE IS A CART, THE CART DECIDES: it is what the buyer would buy. An attached seed can build its
   // cart from the operator's attached variant whatever shade was asked for, while the backend still calls
   // the offer an `exact` match -- so a different cart is never this variant (review round 4 of #2438).
-  if (cart) return cart === vid;
+  if (cart) return cart !== UNREADABLE_CART && sameVariant(cart, vid);
   // No cart (sold out, a non-Shopify store, a referral-only downgrade): the backend's own statement that
   // the offer IS the named variant, `source.variant_match: 'exact'` (pivota-backend #2622). Its fallback
   // offer for an unmatched sku_id says 'fallback' and is withheld (review round 3 of #2438).
-  if (offer.source && offer.source.variant_match === 'exact' && String(offer.source.variant_id || '').trim() === vid) return true;
+  if (offer.source && offer.source.variant_match === 'exact' && sameVariant(offer.source.variant_id, vid)) return true;
   const items = Array.isArray(offer.internal_checkout_items) ? offer.internal_checkout_items : [];
-  return items.length > 0 && items.every((it) => it && String(it.variant_id || '').trim() === vid);
+  return items.length > 0 && items.every((it) => it && sameVariant(it.variant_id, vid));
 }
 
 function makeGetOffers(deps = {}) {
