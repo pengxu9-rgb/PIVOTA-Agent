@@ -30862,6 +30862,50 @@ function getUcpLiveProductReader() {
   return _ucpLiveProductReader;
 }
 
+// UCP live read for the FRONTEND PDP (get_pdp_v2). SHADOW ONLY in this release: UCP_LIVE_PDP_READ=off
+// (default) | shadow (enforce is read as shadow until it is designed with the own-money projections the
+// page applies). A sampled share of pages (UCP_LIVE_PDP_READ_SAMPLE, default 0.1) is read after the page
+// is built, unawaited, and logged as get_pdp_v2_ucp_live_read; the page is never changed.
+let _ucpLivePdpReader;
+function getUcpLivePdpReader() {
+  if (_ucpLivePdpReader !== undefined) return _ucpLivePdpReader;
+  const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode(process.env, 'UCP_LIVE_PDP_READ') === MODES.OFF) return null;
+  _ucpLivePdpReader = createUcpLiveProductReader({
+    ...ucpLiveReaderDeps(8),
+    mode: MODES.SHADOW,
+    event: 'get_pdp_v2_ucp_live_read',
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLivePdpReader;
+}
+
+function ucpLivePdpSample(env = process.env) {
+  const raw = Number(String(env.UCP_LIVE_PDP_READ_SAMPLE ?? '').trim());
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 && String(env.UCP_LIVE_PDP_READ_SAMPLE ?? '').trim() !== '' ? raw : 0.1;
+}
+
+/**
+ * Shadow-read the merchant's live variants for a get_pdp_v2 page. Never awaited, never throws, never
+ * changes the page: the comparison (incl. variants the page shows unavailable that the merchant has in
+ * stock, against the page's own-money verdict) goes to the log only.
+ */
+function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, random = Math.random } = {}) {
+  try {
+    const reader = getUcpLivePdpReader();
+    if (!reader || !(random() < ucpLivePdpSample())) return false;
+    const detail = normalizePdpV2ToProductDetail(responsePayload);
+    if (!detail || !detail.product) return false;
+    Promise.resolve(reader.readProduct(detail, {
+      market,
+      logFields: { surface: 'get_pdp_v2', own_money_gap: ownMoneyGap || null },
+    })).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // UCP live offer read (get_offers). Built on first use, and only when the mode is not off, so an unset
 // UCP_LIVE_OFFER_READ costs nothing and makes no outbound connection. One reader per process: its
 // discovery memo is per host.
@@ -46891,6 +46935,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
         'get_pdp_v2 completed',
       );
+      // The merchant's own live variants, SHADOW ONLY (UCP_LIVE_PDP_READ): read after the page is built,
+      // unawaited, logged against the page's own-money verdict. The page below is unchanged.
+      shadowPdpLiveRead(responsePayload, {
+        market: offersGateBuyerMarket(payload, metadata),
+        ownMoneyGap: canonicalOwnMoneyGap || null,
+      });
       // Only these existing, identified legacy lanes retain their pre-contract
       // commerce gates. An unknown canonical producer is evidence, not proof.
       // shopify_products_sync is an established producer documented by
@@ -53068,6 +53118,8 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
+  shadowPdpLiveRead,
+  ucpLivePdpSample,
   resolveBeautyMainlineBudgetConstraint,
   queryBeautyExternalSeedRowsFast,
   countNonCanonicalChainProducts,

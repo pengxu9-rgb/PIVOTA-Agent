@@ -415,3 +415,78 @@ test('flags off, the tool surface is what it was: get_product `market` and the g
   assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'enforce', UCP_LIVE_OFFER_READ: 'enforce' }), { market: true, liveRead: true });
   assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'bogus' }), { market: false, liveRead: false });
 });
+
+// ------------------------------------------------------------- frontend PDP (get_pdp_v2) shadow read
+
+test('the PDP shadow line has its own name, the caller fields, and counts shown-unavailable-but-in-stock', async () => {
+  const logs = [];
+  const r = createUcpLiveProductReader({
+    ucpClient: fakeClient(laneigeUS), mode: 'shadow', event: 'get_pdp_v2_ucp_live_read',
+    log: (e, f) => logs.push({ event: e, ...f }),
+  });
+  const page = laneigePdp();
+  // Berry is already shown in stock: it is not a "shown unavailable" variant, whatever the merchant says.
+  page.product.variants[1] = { variant_id: BERRY, title: 'Berry', availability: { in_stock: true } };
+  const before = JSON.stringify(page);
+  const out = await r.readProduct(page, {
+    market: 'US',
+    logFields: { surface: 'get_pdp_v2', own_money_gap: 'CURRENT_OWN_OFFER_UNAVAILABLE', leaked: 'https://x.example/?token=1', Bad: 1 },
+  });
+  assert.equal(out, null, 'shadow never returns a page');
+  assert.equal(JSON.stringify(page), before, 'the page object is untouched');
+  for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+  const line = logs[0];
+  assert.equal(line.event, 'get_pdp_v2_ucp_live_read');
+  assert.equal(line.surface, 'get_pdp_v2');
+  assert.equal(line.own_money_gap, 'CURRENT_OWN_OFFER_UNAVAILABLE');
+  assert.equal('leaked' in line, false, 'no URL or free text from the caller');
+  assert.equal('Bad' in line, false);
+  assert.equal(line.own_unavailable_live_in_stock, 1, 'Lemon only: shown unavailable, merchant in stock (Berry was shown in stock)');
+});
+
+test('the agent get_product line keeps its name', async () => {
+  const { r, logs } = reader(laneigeUS, { mode: 'shadow' });
+  await r.readProduct(laneigePdp(), { market: 'US' });
+  for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(logs[0].event, 'get_product_ucp_live_read');
+});
+
+test('get_pdp_v2 hook: off by default, sampled when on, never changes the page (server)', () => {
+  const { spawnSync } = require('node:child_process');
+  const path = require('node:path');
+  const server = path.join(__dirname, '..', 'src', 'server.js');
+  const run = (env) => {
+    const code = `
+      const { shadowPdpLiveRead, ucpLivePdpSample } = require(${JSON.stringify(server)})._debug;
+      // A page with no merchant host: the read skips before any network call.
+      const page = { modules: [{ type: 'canonical', data: { pdp_payload: { product: {
+        product_id: 'sig_x', price: { current: { amount: 24, currency: 'USD' } },
+        variants: [{ variant_id: '31760703160372', availability: { in_stock: false }, current_own_offer_status: 'unavailable' }] } } } }] };
+      const before = JSON.stringify(page);
+      const hit = shadowPdpLiveRead(page, { market: 'US', ownMoneyGap: 'X', random: () => 0 });
+      const miss = shadowPdpLiveRead(page, { market: 'US', random: () => 0.99 });
+      console.log(JSON.stringify({ hit, miss, sample: ucpLivePdpSample(), same: JSON.stringify(page) === before }));
+      setTimeout(() => process.exit(0), 50);`;
+    const childEnv = { ...process.env };
+    for (const k of ['UCP_LIVE_PDP_READ', 'UCP_LIVE_PDP_READ_SAMPLE', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) delete childEnv[k];
+    Object.assign(childEnv, env);
+    const r = spawnSync(process.execPath, ['-e', code], { env: childEnv, encoding: 'utf8', timeout: 120000 });
+    assert.equal(r.status, 0, r.stderr.slice(-2000));
+    return JSON.parse(r.stdout.trim().split('\n').find((l) => l.includes('"hit"')));
+  };
+  assert.deepEqual(run({}), { hit: false, miss: false, sample: 0.1, same: true });
+  assert.deepEqual(run({ UCP_LIVE_PDP_READ: 'shadow' }), { hit: true, miss: false, sample: 0.1, same: true });
+  assert.deepEqual(run({ UCP_LIVE_PDP_READ: 'enforce', UCP_LIVE_PDP_READ_SAMPLE: '1' }), { hit: true, miss: true, sample: 1, same: true });
+});
+
+test('STRUCTURAL: get_pdp_v2 shadow-reads with the buyer market before its own-money projections', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const i = src.indexOf('      shadowPdpLiveRead(responsePayload, {');
+  assert.ok(i > 0);
+  assert.match(src.slice(i, i + 200), /market: offersGateBuyerMarket\(payload, metadata\),\s+ownMoneyGap: canonicalOwnMoneyGap \|\| null,/);
+  assert.ok(i < src.indexOf('if (canonicalReadOnlyReason) {', i), 'before the read-only / verified projections');
+  const g = src.indexOf('function getUcpLivePdpReader()');
+  assert.match(src.slice(g, g + 700), /mode: MODES\.SHADOW,/);
+});
