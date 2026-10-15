@@ -167,7 +167,13 @@ function roundTo(amount, currency) {
 // wait their turn (each still bounded by its caller's deadline).
 const MAX_CONCURRENT_LOOKUPS = 16;
 
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight }) {
+function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight, maxPerHost }) {
+  // PER-STORE cap (optional): at most `maxPerHost` lookups to one merchant host in flight from this core.
+  // One over it is REFUSED at once (code `host_busy`), never queued: a burst of pages for one store
+  // (a bot sweeping its catalogue) must not stack on it, and a read that does not happen is only
+  // "not checked".
+  const perHostCap = Number.isInteger(maxPerHost) && maxPerHost > 0 ? maxPerHost : null;
+  const hostInFlight = new Map(); // host -> count
   const negativeEndpointTtlMs = 10 * 60 * 1000;
   let inFlight = 0;
   const waiting = []; // { resolve, reject, at }
@@ -265,6 +271,10 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
         throw e;
       });
     }
+    if (perHostCap !== null && (hostInFlight.get(host) || 0) >= perHostCap) {
+      return Promise.reject(Object.assign(new Error('host_busy'), { code: 'host_busy' }));
+    }
+    if (perHostCap !== null) hostInFlight.set(host, (hostInFlight.get(host) || 0) + 1);
     const promise = withSlot(async () => {
       const res = await ucpClient.lookupCatalog(endpoint, {
         ids: ids.map(variantGid),
@@ -277,6 +287,14 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
       }
       return unwrapToolPayload(res);
     }, deadline);
+    if (perHostCap !== null) {
+      const done = () => {
+        const n = (hostInFlight.get(host) || 1) - 1;
+        if (n > 0) hostInFlight.set(host, n);
+        else hostInFlight.delete(host);
+      };
+      promise.then(done, done);
+    }
     memo.set(key, { promise, until: now() + memoTtlMs });
     promise.catch(() => {
       if (memo.get(key) && memo.get(key).promise === promise) memo.delete(key);
@@ -285,7 +303,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     return promise;
   }
 
-  return { endpointFor, lookup, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length }) };
+  return { endpointFor, lookup, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
 }
 
 function withDeadline(promise, deadline, now) {
