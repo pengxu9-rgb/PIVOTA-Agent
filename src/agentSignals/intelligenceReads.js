@@ -409,6 +409,10 @@ function makeGetOffers(deps = {}) {
   // `variantIdEnabled`: honour `variant_id` (GET_OFFERS_VARIANT_ID; needs pivota-backend #2622 live). Off,
   // the argument is ignored entirely: not forwarded, not filtered on.
   const { fetchOffers, readOffersLive, variantIdEnabled = false } = deps;
+  // `liveVerificationOptIn` (optional, () => boolean): ask offers.resolve for FRESHNESS-GATED seed offers,
+  // flagged `requires_live_verification` (pivota-backend #2629) -- true only while the live read
+  // ENFORCES, because only a live `verified` read may serve one. Absent or false: today's fetch.
+  const liveVerificationOptIn = typeof deps.liveVerificationOptIn === 'function' ? deps.liveVerificationOptIn : () => false;
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
@@ -449,6 +453,8 @@ function makeGetOffers(deps = {}) {
       limit,
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
+      // Only when a live read will run and enforce (a declared market and the reader in enforce).
+      ...(market && liveVerificationOptIn() ? { include_live_verification: true } : {}),
     });
     const fetchedAll = res && Array.isArray(res.offers) ? res.offers : [];
     // A NAMED VARIANT gets only offers that ARE that variant. offers.resolve does not guarantee it: a seed
@@ -481,6 +487,11 @@ function makeGetOffers(deps = {}) {
         liveRead = { error: 'live_read_failed' };
       }
     }
+    // A FLAGGED offer (its stored facts are stale; pivota-backend #2629) is served only when the merchant's
+    // live read just verified it; otherwise it is withheld exactly as offers.resolve used to drop it.
+    const beforeUnverified = offers.length;
+    offers = offers.filter((o) => !(o && o.requires_live_verification) || (o.live_read && o.live_read.status === 'verified'));
+    const withheldUnverified = beforeUnverified - offers.length;
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
     // ONE reason for an empty answer, in filter order: the variant filter runs first, so when it left
     // nothing the currency filter had nothing to judge.
@@ -488,6 +499,7 @@ function makeGetOffers(deps = {}) {
     if (offers.length === 0) {
       if (namedVariant && fetched.length === 0 && withheldOtherVariant > 0) emptyReason = 'variant_not_offered';
       else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
+      else if (withheldUnverified > 0) emptyReason = 'offer_needs_live_verification';
     }
     return {
       subject,
@@ -507,6 +519,7 @@ function makeGetOffers(deps = {}) {
               market,
               market_currency: marketCurrency,
               withheld_other_currency_count: withheld,
+              ...(withheldUnverified > 0 ? { withheld_unverified_count: withheldUnverified } : {}),
               ...(liveRead ? { live_read: liveRead } : {}),
             }
           : {}),

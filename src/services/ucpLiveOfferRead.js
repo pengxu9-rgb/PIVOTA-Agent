@@ -85,13 +85,18 @@ function hostOf(offer) {
  */
 function lookupIdsFor(offer) {
   const spec = (offer && offer.execution_spec) || {};
-  if (!numericVariantId(spec.variant_id)) return [];
+  // An offer returned FLAGGED `requires_live_verification` (pivota-backend #2629) has no cart, so no
+  // `execution_spec.variant_id`; the backend names the variant its stored entry is instead.
+  const flag = offer && offer.requires_live_verification;
+  const own = numericVariantId(spec.variant_id)
+    || (flag && typeof flag === 'object' ? numericVariantId(flag.lookup_variant_id) : null);
+  if (!own) return [];
   const ids = [];
   const add = (v) => {
     const n = numericVariantId(v);
     if (n && !ids.includes(n) && ids.length < MAX_IDS_PER_LOOKUP) ids.push(n);
   };
-  add(spec.variant_id);
+  add(own);
   for (const v of Array.isArray(offer && offer.variants) ? offer.variants : []) add(v && v.variant_id);
   return ids;
 }

@@ -571,3 +571,76 @@ test('get_offers variant_id: a cart permalink with no variant_id still decides (
   }));
   assert.equal(same.signals.length, 1);
 });
+
+// ------------------------------------------------------------- freshness-gated offers (pivota-backend #2629)
+
+function flaggedOffer(extra = {}) {
+  // As offers.resolve returns it to an opted-in caller: no cart, no stock claim, a stale price.
+  return backendOffer({
+    price: 22,
+    in_stock: undefined,
+    availability: 'unknown',
+    execution_spec: { merchant_domain: RB, variant_id: null, cart_url: null },
+    requires_live_verification: { reasons: ['stale_snapshot'], price_stale: true, lookup_variant_id: BLISS },
+    ...extra,
+  });
+}
+
+test('a flagged offer with no cart is looked up by the variant the backend names', () => {
+  assert.deepEqual(lookupIdsFor(flaggedOffer()), [BLISS]);
+  assert.deepEqual(lookupIdsFor(flaggedOffer({ requires_live_verification: { reasons: ['stale_snapshot'] } })), []);
+});
+
+test('get_offers serves a flagged offer ONLY when the merchant just verified it, at the merchant price', async () => {
+  const { r } = reader(rareBeauty);
+  const res = await makeGetOffers({
+    fetchOffers: async () => ({ offers: [flaggedOffer()] }),
+    readOffersLive: (offers, ctx) => r.readOffers(offers, ctx),
+    liveVerificationOptIn: () => true,
+  })({ payload: { product_id: 'sig_rb', market: 'US' } });
+  assert.equal(res.signals.length, 1);
+  const v = res.best_offer.value;
+  assert.equal(v.price, 25, 'the live price, never the stale 22');
+  assert.equal(v.stock_verified, true);
+  assert.equal(v.merchant_price_verified, true);
+  assert.equal(res.metadata.withheld_unverified_count, undefined);
+});
+
+test('get_offers withholds a flagged offer the live read did not verify (shadow, off, failure, no market)', async () => {
+  const cases = [
+    { name: 'no live read at all', deps: {} },
+    { name: 'shadow', deps: { readOffersLive: (o, ctx) => reader(rareBeauty, { mode: 'shadow' }).r.readOffers(o, ctx) } },
+    { name: 'merchant has no such variant', deps: { readOffersLive: (o, ctx) => reader({ US: [] }).r.readOffers(o, ctx) } },
+  ];
+  for (const c of cases) {
+    const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [flaggedOffer(), backendOffer({ merchant_id: 'other' })] }), ...c.deps })(
+      { payload: { product_id: 'sig_rb', market: 'US' } },
+    );
+    assert.equal(res.signals.length, 1, c.name);
+    assert.equal(res.best_offer.value.merchant_id, 'other', c.name);
+    assert.equal(res.metadata.withheld_unverified_count, 1, c.name);
+  }
+  const only = await makeGetOffers({ fetchOffers: async () => ({ offers: [flaggedOffer()] }) })({ payload: { product_id: 'sig_rb', market: 'US' } });
+  assert.equal(only.signals.length, 0);
+  assert.equal(only.metadata.reason, 'offer_needs_live_verification');
+});
+
+test('get_offers asks for flagged offers only with a declared market and the read enforcing', async () => {
+  const seen = [];
+  const mk = (optIn) => makeGetOffers({ fetchOffers: async (a) => { seen.push(a); return { offers: [] }; }, liveVerificationOptIn: () => optIn });
+  await mk(true)({ payload: { product_id: 'p', market: 'US' } });
+  await mk(true)({ payload: { product_id: 'p' } });
+  await mk(false)({ payload: { product_id: 'p', market: 'US' } });
+  await makeGetOffers({ fetchOffers: async (a) => { seen.push(a); return { offers: [] }; } })({ payload: { product_id: 'p', market: 'US' } });
+  assert.deepEqual(seen.map((a) => a.include_live_verification === true), [true, false, false, false]);
+});
+
+test('STRUCTURAL: the server opts in only while the offer reader enforces, as includeLiveVerificationOffers', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const i = src.indexOf('liveVerificationOptIn: () => {');
+  assert.ok(i > 0);
+  assert.match(src.slice(i, i + 200), /const reader = getUcpLiveOfferReader\(\);\s+return Boolean\(reader && reader\.mode === 'enforce'\);/);
+  assert.match(src, /\.\.\.\(include_live_verification \? \{ includeLiveVerificationOffers: true \} : \{\}\),/);
+});
