@@ -138,7 +138,6 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   let expirePage;
   const pageExpired = new Promise((resolve) => { expirePage = resolve; });
   const pageTimer = setTimeout(() => { pageController.abort(); expirePage(); }, pageDeadlineMs);
-  const perHost = new Map();
   const pageFetches = new Map();
   const eligible = new Set();
   const processed = new Set();
@@ -166,21 +165,71 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // Limit both page size and per-domain concurrency. All jobs are awaited before the response
   // leaves unless the whole-page deadline expires. A failed read keeps stored-price provenance.
   const cards = [...response.products];
+  const jsonTargets = new Map(); // index -> { card, target } for cards the `.json` read can check
   for (let index = 0; index < Math.min(20, cards.length); index += 1) {
     const card = cards[index];
     if (!card || typeof card !== 'object') continue;
     const target = targetOf(card);
     if (!target || !(Number(card.price) > 0) || !/^[A-Z]{3}$/.test(String(card.currency || ''))) continue;
-    eligible.add(index);
-    const host = new URL(target.url).hostname;
-    if (!perHost.has(host)) perHost.set(host, []);
-    perHost.get(host).push({ index, card, target });
+    jsonTargets.set(index, { card, target });
   }
-  await Promise.race([Promise.all([...perHost.values()].map(async (queue) => {
-    let cursor = 0;
-    async function worker() {
-      while (cursor < queue.length && !closed && !pageController.signal.aborted) {
-        const { index, card, target } = queue[cursor++];
+  // THE MERCHANT'S OWN UCP CATALOG (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ). It CONFIRMS or
+  // CORRECTS the card's variant price in the card's own currency and may RAISE a card to in stock; it never
+  // lowers or drops a card (review of #2439). `plan` names the cards it will try, synchronously, so every
+  // other card's `.json` read starts NOW, alongside it; a planned card it does not settle takes its `.json`
+  // read afterwards. Shadow and off settle nothing.
+  const given = options.ucpSearchReader && typeof options.ucpSearchReader.plan === 'function' ? options.ucpSearchReader : null;
+  // SHADOW IS PURE: the page is built exactly as with the read off (every card's `.json` read starts now,
+  // no `ucp` metadata), and the merchant read runs beside it, unawaited, only to log what it would have
+  // changed (PR controller review of #2439). `readCards` snapshots the cards before it returns.
+  if (given && given.mode === 'shadow') {
+    try {
+      Promise.resolve(given.readCards(cards, { market: options.market })).catch(() => {});
+    } catch {
+      /* a reader that throws costs the measurement, never the page */
+    }
+  }
+  const reader = given && given.mode !== 'shadow' ? given : null;
+  let planned = new Map();
+  try {
+    if (reader) planned = reader.plan(cards, { market: options.market }) || new Map();
+  } catch {
+    planned = new Map();
+  }
+  const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0, byStatus: {} };
+  const settled = new Set();
+  // ONE queue per host for the page, fed by both phases (unplanned cards now, unsettled planned cards after
+  // the UCP read), drained by at most 4 workers: the per-domain cap holds across phases (review round 2).
+  // `active` counts workers still in their loop and drops in the SAME tick a worker sees the queue empty, so
+  // a later enqueue never counts an exiting worker as alive (lost wakeup, review round 3 of #2439).
+  const hostQueues = new Map(); // host -> { queue, cursor, active, workers: Set<Promise> }
+  const enqueueJson = (entries) => {
+    const hosts = new Set();
+    for (const [index, { target }] of entries) {
+      eligible.add(index);
+      const host = new URL(target.url).hostname;
+      if (!hostQueues.has(host)) hostQueues.set(host, { queue: [], cursor: 0, active: 0, workers: new Set() });
+      hostQueues.get(host).queue.push({ index, target });
+      hosts.add(host);
+    }
+    const waits = [];
+    for (const host of hosts) {
+      const q = hostQueues.get(host);
+      while (q.active < 4 && q.active < q.queue.length - q.cursor) {
+        q.active += 1;
+        const w = jsonWorker(q).finally(() => q.workers.delete(w));
+        q.workers.add(w);
+      }
+      waits.push(...q.workers);
+    }
+    return Promise.all(waits);
+  };
+  async function jsonWorker(q) {
+    // The decrement runs in the same tick the loop sees the queue empty (no await between them).
+    try {
+      while (q.cursor < q.queue.length && !closed && !pageController.signal.aborted) {
+        const { index, target } = q.queue[q.cursor++];
+        const card = cards[index];
         const fetched = await getProductJson(target);
         if (closed || pageController.signal.aborted) return;
         processed.add(index);
@@ -200,12 +249,69 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
           price_source: 'merchant_live', price_as_of: fetched.asOf,
         };
       }
+    } finally {
+      q.active -= 1;
     }
-    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
-  })), pageExpired]);
+  }
+  const ucpThenJson = async () => {
+    if (!planned.size) return;
+    let reads = null;
+    try {
+      reads = await reader.readCards(cards, { market: options.market }, planned);
+    } catch {
+      reads = null;
+    }
+    if (closed || pageController.signal.aborted) return;
+    const asOf = new Date().toISOString();
+    for (const [index, read] of reads instanceof Map ? reads : []) {
+      const card = cards[index];
+      // A page the storefront already said is gone (this or another read's 404/410, shared memo) is never
+      // confirmed by the catalog: it takes the `.json` read, which marks it gone (and DROP_GONE drops it).
+      const json = jsonTargets.get(index);
+      const status = read.status === 'verified' && json && storefrontProductPage.knownGone(json.target.url)
+        ? 'known_gone' : read.status;
+      ucp.byStatus[status] = (ucp.byStatus[status] || 0) + 1;
+      if (!card || typeof card !== 'object' || status !== 'verified') continue;
+      ucp.verified += 1;
+      if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
+      const raise = read.available === true && card.in_stock !== true;
+      if (raise) ucp.stockRaised += 1;
+      const next = {
+        ...card, price: read.amount, price_amount: read.amount,
+        price_source: 'merchant_live', price_as_of: asOf,
+        // variant_in_stock is the merchant's answer for THIS variant only; the card speaks for the product
+        // (any shade), so a false answer is reported here and never written over the card.
+        live_read: {
+          status: read.status, market: read.market || null, market_basis: read.market_basis || null,
+          variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: asOf,
+        },
+      };
+      if (raise) {
+        // Every stock field the availability contract reads must agree, not only the first one it checks.
+        next.in_stock = true;
+        next.availability = 'in_stock';
+        if (typeof card.available === 'boolean') next.available = true;
+        for (const k of ['inventory_quantity', 'inventoryQuantity', 'quantity']) {
+          if (k in next && !(Number(next[k]) > 0)) delete next[k];
+        }
+      }
+      cards[index] = next;
+      settled.add(index);
+    }
+    await enqueueJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
+  };
+  await Promise.race([
+    Promise.all([
+      enqueueJson([...jsonTargets].filter(([i]) => !planned.has(i))),
+      ucpThenJson(),
+    ]),
+    pageExpired,
+  ]);
   closed = true;
   clearTimeout(pageTimer);
   if (pageController.signal.aborted) {
+    // A planned card still waiting on the UCP read when the page expired is as unchecked as a queued one.
+    for (const index of planned.keys()) if (!settled.has(index) && jsonTargets.has(index)) eligible.add(index);
     for (const index of eligible) {
       if (processed.has(index)) continue;
       const card = cards[index];
@@ -220,10 +326,19 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     metadata: {
       ...(response.metadata || {}),
       live_merchant_price: {
-        attempted: eligible.size > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
+        attempted: eligible.size > 0 || ucp.planned > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
         gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
+        ...(reader
+          ? {
+            ucp: {
+              mode: reader.mode || null, planned_count: ucp.planned, settled_count: settled.size,
+              verified_count: ucp.verified, drift_count: ucp.drifted, stock_raised_count: ucp.stockRaised,
+              by_status: ucp.byStatus,
+            },
+          }
+          : {}),
       },
     },
   };

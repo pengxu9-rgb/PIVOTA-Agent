@@ -13962,7 +13962,7 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
   );
 }
 
-function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null } = {}) {
+function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
   if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
   // The mainline has already applied this constraint to stored prices. Repricing now
@@ -13980,7 +13980,12 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
       },
     };
   }
-  return overlayLiveMerchantSearchPrices(response);
+  return overlayLiveMerchantSearchPrices(response, {
+    // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
+    ucpSearchReader: getUcpLiveSearchReader(),
+    // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
+    market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
+  });
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -23366,7 +23371,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  }, search, { intent, budgetConstraint });
+  }, search, { intent, budgetConstraint, buyerMarket: search.market || metadata.market });
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -30806,6 +30811,43 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
+// ONE UCP client and ONE discovery (endpoint memo + in-flight discoveries) for every UCP live read in this
+// process; each reader -- get_offers, get_product, search -- has its OWN lookup pool and lookup memo, so a
+// burst on one cannot starve the others (review round 2 of #2439). Built only when a reader is first needed.
+let _ucpLiveShared;
+function getUcpLiveShared() {
+  if (_ucpLiveShared) return _ucpLiveShared;
+  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
+  const ucpClient = createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false });
+  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+  return _ucpLiveShared;
+}
+function ucpLiveReaderDeps(maxConcurrent) {
+  const { createLookupCore } = require('./services/ucpLiveOfferRead');
+  const shared = getUcpLiveShared();
+  return {
+    ucpClient: shared.ucpClient,
+    core: createLookupCore({
+      ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
+      maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+    }),
+  };
+}
+
+// UCP live search-card read (search_catalog). Same lazy, off-by-default construction; its own flag.
+let _ucpLiveSearchReader;
+function getUcpLiveSearchReader() {
+  if (_ucpLiveSearchReader !== undefined) return _ucpLiveSearchReader;
+  const { createUcpLiveSearchReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
+  if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
+  _ucpLiveSearchReader = createUcpLiveSearchReader({
+    // Search fans out per page: the smallest pool (8).
+    ...ucpLiveReaderDeps(8),
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+  });
+  return _ucpLiveSearchReader;
+}
+
 // UCP live product read (get_product variants). Same lazy, off-by-default construction as the offer reader
 // below, with its own flag so the two roll out independently.
 let _ucpLiveProductReader;
@@ -30813,9 +30855,8 @@ function getUcpLiveProductReader() {
   if (_ucpLiveProductReader !== undefined) return _ucpLiveProductReader;
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
-  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   _ucpLiveProductReader = createUcpLiveProductReader({
-    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
+    ...ucpLiveReaderDeps(16),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveProductReader;
@@ -30829,9 +30870,8 @@ function getUcpLiveOfferReader() {
   if (_ucpLiveOfferReader !== undefined) return _ucpLiveOfferReader;
   const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode() === MODES.OFF) return null;
-  const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false }),
+    ...ucpLiveReaderDeps(16),
     log: (event, fields) => logger.info({ event, ...fields }, event),
   });
   return _ucpLiveOfferReader;
@@ -42821,7 +42861,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
         return res.status(200).json(await maybeOverlayLiveSearchPrice(
-          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget },
+          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: publicBeautySearch.market || metadata.market },
         ));
       } catch (err) {
         logger.warn(
