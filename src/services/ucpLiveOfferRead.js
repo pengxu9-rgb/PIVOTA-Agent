@@ -83,15 +83,35 @@ function hostOf(offer) {
  * only. NONE when the offer names no numeric variant of its own: the first listed option is another
  * shade, and pricing the offer from it would stamp a different variant's price and stock as verified.
  */
+/** The product handle of the store page a FLAGGED offer points at (its seed's canonical/destination url). */
+function flaggedOfferHandle(offer) {
+  const src = (offer && offer.source) || {};
+  for (const raw of [src.canonical_url, src.destination_url, offer && offer.url]) {
+    try {
+      const m = new URL(str(raw)).pathname
+        .match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
+      if (m) return m[1].toLowerCase();
+    } catch {
+      /* not a url */
+    }
+  }
+  return null;
+}
+
 function lookupIdsFor(offer) {
   const spec = (offer && offer.execution_spec) || {};
-  if (!numericVariantId(spec.variant_id)) return [];
+  // An offer returned FLAGGED `requires_live_verification` (pivota-backend #2629) has no cart, so no
+  // `execution_spec.variant_id`; the backend names the variant its stored entry is instead.
+  const flag = offer && offer.requires_live_verification;
+  const own = numericVariantId(spec.variant_id)
+    || (flag && typeof flag === 'object' ? numericVariantId(flag.lookup_variant_id) : null);
+  if (!own) return [];
   const ids = [];
   const add = (v) => {
     const n = numericVariantId(v);
     if (n && !ids.includes(n) && ids.length < MAX_IDS_PER_LOOKUP) ids.push(n);
   };
-  add(spec.variant_id);
+  add(own);
   for (const v of Array.isArray(offer && offer.variants) ? offer.variants : []) add(v && v.variant_id);
   return ids;
 }
@@ -384,6 +404,13 @@ function createUcpLiveOfferReader(deps = {}) {
         if (parsed.notFound.has(ids[0])) return { status: STATUS.VARIANT_GONE, host, liveVariants };
         return { status: STATUS.ERROR, host, reason: 'variant_not_answered' };
       }
+      if (offer && offer.requires_live_verification) {
+        // A FLAGGED offer's link was not re-checked either (destination_stale / never_verified): the
+        // variant must belong to the product the offer's page names, or it is another product's.
+        const want = flaggedOfferHandle(offer);
+        if (!want || !own.handle) return { status: STATUS.ERROR, host, reason: 'handle_unknown' };
+        if (own.handle !== want) return { status: STATUS.ERROR, host, reason: 'other_product' };
+      }
       if (own.currency && own.currency !== currency) {
         return { status: STATUS.CURRENCY_MISMATCH, host, live: own, liveVariants };
       }
@@ -451,6 +478,10 @@ function createUcpLiveOfferReader(deps = {}) {
         if (!live || live.currency !== currency || live.amount === null || live.available === null) return v;
         return { ...v, price: roundTo(live.amount, currency), currency, in_stock: live.available, live_verified: true };
       });
+    }
+    if (offer.requires_live_verification && Array.isArray(out.variants)) {
+      // A flagged offer's options are the stale read: only what the merchant just answered keeps a price.
+      out.variants = out.variants.map((v) => (v && v.live_verified ? v : { ...v, price: null, currency: null, in_stock: null }));
     }
     return out;
   }
