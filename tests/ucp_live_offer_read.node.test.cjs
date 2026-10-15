@@ -10,6 +10,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+// The readers' budget/deadline timers are unref'd (right in prod: they must never hold the process open).
+// A test whose only pending work is such a timer would let this file's node:test child exit with the
+// promise unresolved, cancelling every later test (cancelledByParent; CI's Node 20). Keep the loop alive
+// for the file's duration.
+const keepAlive = setInterval(() => {}, 60 * 60 * 1000);
+require('node:test').after(() => clearInterval(keepAlive));
+
 const {
   createUcpLiveOfferReader,
   lookupIdsFor,
