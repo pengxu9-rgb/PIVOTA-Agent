@@ -16,7 +16,7 @@ const assert = require('node:assert/strict');
 const keepAlive = setInterval(() => {}, 60 * 60 * 1000);
 require('node:test').after(() => clearInterval(keepAlive));
 
-const { createUcpLiveSearchReader, createLookupCore, searchCardVariantId, searchCardHandle, STATUS } = require('../src/services/ucpLiveOfferRead');
+const { createUcpLiveSearchReader, createLookupCore, searchCardVariantId, searchCardHandle, productHandleFromUrl, STATUS } = require('../src/services/ucpLiveOfferRead');
 const storefrontProductPage = require('../src/services/storefrontProductPage');
 const { overlayLiveMerchantSearchPrices } = require('../src/services/liveMerchantSearchPrice');
 
@@ -409,6 +409,59 @@ test('a page the storefront already said is gone is never confirmed by the catal
   assert.equal(out.products.length, 0);
   assert.equal(out.metadata.live_merchant_price.ucp.verified_count, 0);
   assert.equal(out.metadata.live_merchant_price.gone_count, 1);
+});
+
+test('productHandleFromUrl: one reading of a store page URL for all three live readers', () => {
+  const KO = '한국-립밤';
+  const enc = encodeURIComponent(KO);
+  const ok = {
+    'https://s.example/products/full-size': 'full-size',
+    'https://s.example/products/Full-Size/': 'full-size',
+    'https://s.example/ko/products/full-size': 'full-size',
+    'https://s.example/en-us/products/full-size': 'full-size',
+    'https://s.example/zh-hant/products/full-size': 'full-size',
+    'https://s.example/zh-hant/collections/lips/products/full-size': 'full-size',
+    [`https://s.example/products/${enc}`]: KO,
+    [`https://s.example/products/${enc.toLowerCase()}`]: KO,
+    [`https://s.example/products/${KO}`]: KO,
+    'https://s.example/products/%E3%83%AA%E3%83%83%E3%83%97': 'リップ',
+    'https://s.example/products/full_size_01': 'full_size_01',
+    'https://s.example/products/full-size.json': 'full-size',
+    'https://s.example/products/full-size.js': 'full-size',
+    'https://s.example/products/full-size?variant=1&x=/y': 'full-size',
+  };
+  for (const [url, want] of Object.entries(ok)) assert.equal(productHandleFromUrl(url), want, url);
+  // A decomposed (NFD) spelling of the same kana is the same handle: ガ = カ + U+3099.
+  assert.equal(productHandleFromUrl(`https://s.example/products/${encodeURIComponent('ガイド'.normalize('NFD'))}`), 'ガイド'.normalize('NFC'));
+  for (const url of [
+    'https://s.example/pages/full-size',
+    'https://s.example/products/',
+    'https://s.example/products/a/b',
+    'https://s.example/products/a.b',
+    'https://s.example/products/a%2Fb',
+    'https://s.example/products/%E0%A4',
+    'https://s.example/products/-x',
+    'https://s.example/products/x.html',
+    'https://s.example/zh-hant-tw/products/x',
+    'https://s.example/e/products/x',
+    'https://s.example/zh-hantx/products/x',
+    'https://s.example/x/y/products/x',
+    'not a url',
+    null,
+  ]) assert.equal(productHandleFromUrl(url), null, String(url));
+});
+
+test('a search card on a KR store (encoded handle) or a zh-hant page verifies; another product does not', async () => {
+  const KO = '한국-립밤';
+  const enc = encodeURIComponent(KO);
+  for (const answered of [KO, enc]) {
+    const reads = await reader(storesFor(answered)).readCards([card(`https://www.rarebeauty.com/ko/products/${enc}`, BLISS)], { market: 'US' });
+    assert.equal(reads.get(0).status, STATUS.VERIFIED, `answered as ${answered}`);
+  }
+  const zh = await reader(storesFor('full-size')).readCards([card('https://www.rarebeauty.com/zh-hant/products/full-size', BLISS)], { market: 'US' });
+  assert.equal(zh.get(0).status, STATUS.VERIFIED);
+  const other = await reader(storesFor('한국-립스틱')).readCards([card(`https://www.rarebeauty.com/products/${enc}`, BLISS)], { market: 'US' });
+  assert.equal(other.get(0).reason, 'other_product');
 });
 
 test('the handle is read from Markets subfolder and collection URLs; no handle on either side is refused', async () => {

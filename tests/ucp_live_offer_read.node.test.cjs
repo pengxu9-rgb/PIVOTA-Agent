@@ -670,6 +670,37 @@ test('a flagged offer verifies only if the merchant answers under the product it
   assert.equal(quiet.logs[0].hosts[0].reason, 'handle_unknown', 'and it says why');
 });
 
+test('KR/JP and Markets URLs name the page the merchant answers for: encoded non-Latin, zh-hant, underscore, .json', async () => {
+  // A Korean store's page URL carries its Hangul handle percent-encoded. No captured lookup_catalog answer
+  // shows which form its `handle` takes, so both forms must match, and another product must not.
+  const KO = '라네즈-립-슬리핑-마스크';
+  const run = async (src, handle) => {
+    const { r, logs } = reader({ ...rareBeauty, handle });
+    const res = await makeGetOffers({
+      fetchOffers: async () => ({ offers: [flaggedOffer({ source: { type: 'external_seed', canonical_url: src } })] }),
+      readOffersLive: (offers, ctx) => r.readOffers(offers, ctx),
+      liveVerificationOptIn: () => true,
+    })({ payload: { product_id: 'sig_rb', market: 'US' } });
+    return { served: res.signals.length, reason: logs[0] && logs[0].hosts[0] && logs[0].hosts[0].reason };
+  };
+  const enc = encodeURIComponent(KO);
+  assert.equal((await run(`https://${RB}/products/${enc}`, KO)).served, 1, 'encoded page, Unicode answer');
+  assert.equal((await run(`https://${RB}/products/${enc}`, enc)).served, 1, 'encoded page, encoded answer');
+  assert.equal((await run(`https://${RB}/products/${enc}`, enc.toLowerCase())).served, 1, 'escapes in lowercase hex');
+  assert.equal((await run(`https://${RB}/ko/collections/lips/products/${enc}?variant=${BLISS}`, KO)).served, 1, 'locale + collection + query');
+  assert.equal((await run(`https://${RB}/zh-hant/products/soft-pinch-liquid-blush`, 'soft-pinch-liquid-blush')).served, 1, 'zh-hant locale');
+  assert.equal((await run(`https://${RB}/products/soft_pinch_blush`, 'soft_pinch_blush')).served, 1, 'underscore handle');
+  assert.equal((await run(`https://${RB}/products/soft-pinch-liquid-blush.json`, 'soft-pinch-liquid-blush')).served, 1, '.json suffix');
+  // Still refused: another product, in either script, or an underscore spelling of a hyphen handle.
+  const otherKo = await run(`https://${RB}/products/${encodeURIComponent('라네즈-립-밤')}`, KO);
+  assert.deepEqual(otherKo, { served: 0, reason: 'other_product' });
+  assert.deepEqual(await run(`https://${RB}/products/soft_pinch_liquid_blush`, 'soft-pinch-liquid-blush'), { served: 0, reason: 'other_product' });
+  assert.deepEqual(await run(`https://${RB}/products/${enc}`, 'lip-sleeping-mask'), { served: 0, reason: 'other_product' });
+  // A malformed escape or a non-product path names no handle: withheld, never matched.
+  assert.deepEqual(await run(`https://${RB}/products/%E0%A4`, 'soft-pinch-liquid-blush'), { served: 0, reason: 'handle_unknown' });
+  assert.deepEqual(await run(`https://${RB}/products/a.b`, 'a.b'), { served: 0, reason: 'handle_unknown' });
+});
+
 test('a verified flagged offer shows a price only for the options the merchant just answered', async () => {
   const res = await makeGetOffers({
     fetchOffers: async () => ({ offers: [flaggedOffer()] }),

@@ -61,6 +61,40 @@ function str(v) {
   return v == null ? '' : String(v).trim();
 }
 
+/**
+ * A Shopify product handle in the one form both sides of a "same product" check are compared in:
+ * percent-decoded, NFC, lowercased; letters, marks and digits of any script, `-` and `_`. KR/JP stores
+ * name products in Hangul/kana, and their page URLs carry the handle percent-encoded. No captured
+ * lookup_catalog answer shows which form its `handle` takes, so the URL's handle and the merchant's
+ * answer both pass through here and either form compares equal. Anything else is null (no handle).
+ */
+function normalizeProductHandle(raw) {
+  let h = str(raw);
+  try {
+    h = decodeURIComponent(h);
+  } catch {
+    return null; // a malformed escape names no handle
+  }
+  h = h.normalize('NFC').toLowerCase();
+  return /^[\p{L}\p{N}][\p{L}\p{M}\p{N}_-]*$/u.test(h) ? h : null;
+}
+
+/**
+ * The product handle a store page URL names: /products/<handle>, under an optional Markets locale
+ * (/ko, /en-us, /zh-hant) and an optional /collections/<c>, with a `.json`/`.js` suffix dropped. Only
+ * the path is read (a query string never matters). Any other path names no product: null.
+ */
+function productHandleFromUrl(url) {
+  let path;
+  try {
+    path = new URL(str(url)).pathname;
+  } catch {
+    return null; // not a url
+  }
+  const m = path.match(/^(?:\/[a-z]{2}(?:-(?:[a-z]{2}|[a-z]{4}))?)?(?:\/collections\/[^/]+)?\/products\/([^/]+?)(?:\.json|\.js)?\/?$/i);
+  return m ? normalizeProductHandle(m[1]) : null;
+}
+
 function numericVariantId(v) {
   const s = str(v);
   const m = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{6,20})$/.exec(s);
@@ -87,13 +121,8 @@ function hostOf(offer) {
 function flaggedOfferHandle(offer) {
   const src = (offer && offer.source) || {};
   for (const raw of [src.canonical_url, src.destination_url, offer && offer.url]) {
-    try {
-      const m = new URL(str(raw)).pathname
-        .match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
-      if (m) return m[1].toLowerCase();
-    } catch {
-      /* not a url */
-    }
+    const handle = productHandleFromUrl(raw);
+    if (handle) return handle;
   }
   return null;
 }
@@ -144,7 +173,7 @@ function parseLookup(payload) {
 function liveVariantsFrom(payload) {
   const out = new Map();
   for (const product of Array.isArray(payload && payload.products) ? payload.products : []) {
-    const handle = str(product && product.handle).toLowerCase() || null;
+    const handle = normalizeProductHandle(product && product.handle); // the form the page URL's handle is read in
     for (const v of Array.isArray(product && product.variants) ? product.variants : []) {
       const id = numericVariantId(v && v.id);
       if (!id) continue;
@@ -909,14 +938,9 @@ function searchCardVariantId(card) {
 
 function searchCardHandle(card) {
   for (const key of ['destination_url', 'merchant_canonical_url', 'source_url']) {
-    try {
-      // Markets subfolders and collection paths carry the same handle: /en-us/products/x, /collections/c/products/x.
-      const m = new URL(str(card && card[key])).pathname
-        .match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
-      if (m) return m[1].toLowerCase();
-    } catch {
-      /* not a url */
-    }
+    // Markets subfolders and collection paths carry the same handle: /en-us/products/x, /collections/c/products/x.
+    const handle = productHandleFromUrl(card && card[key]);
+    if (handle) return handle;
   }
   return null;
 }
@@ -1143,6 +1167,8 @@ function createUcpLiveSearchReader(deps = {}) {
 }
 
 module.exports = {
+  normalizeProductHandle,
+  productHandleFromUrl,
   createUcpLiveSearchReader,
   searchCardVariantId,
   searchCardHandle,

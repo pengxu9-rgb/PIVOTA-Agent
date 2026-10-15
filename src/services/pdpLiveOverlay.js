@@ -29,6 +29,7 @@ const {
   commerceBlocked,
   numericVariantId,
   productCurrency,
+  productHandleFromUrl,
   productHost,
   productVariantIds,
   roundTo,
@@ -551,8 +552,8 @@ function cardHandle(card, host) {
     try {
       const u = new URL(str(card && card[key]));
       if (bareHost(u.hostname) !== bareHost(host)) continue;
-      const m = u.pathname.match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
-      if (m) return m[1].toLowerCase();
+      const handle = productHandleFromUrl(u.href);
+      if (handle) return handle;
     } catch {
       /* not a url */
     }
