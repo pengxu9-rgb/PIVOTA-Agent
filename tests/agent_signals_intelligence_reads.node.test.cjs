@@ -1100,8 +1100,8 @@ test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offe
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   const start = src.indexOf('get_offers: makeGetOffers({');
   assert.ok(start > 0, 'the get_offers wiring moved');
-  const block = src.slice(start, start + 2500);
-  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, variant_id \}\)/);
+  const block = src.slice(start, start + 3200);
+  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification \}\)/);
   // variant_id is honoured only with GET_OFFERS_VARIANT_ID on (it needs pivota-backend #2622 live).
   assert.match(block, /variantIdEnabled: \/\^\(1\|true\|yes\|on\|enabled\)\$\/i\.test\(String\(process\.env\.GET_OFFERS_VARIANT_ID \|\| ''\)\.trim\(\)\),/);
   // A named variant rides as the product's sku_id, and only when named.

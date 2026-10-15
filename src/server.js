@@ -32244,7 +32244,12 @@ async function getCommerceRemoteMcpAdapter() {
             const reader = getUcpLiveOfferReader();
             return reader ? reader.readOffers(offers, ctx) : null;
           },
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id }) =>
+          // Freshness-gated seed offers (pivota-backend #2629) only while the live offer read ENFORCES.
+          liveVerificationOptIn: () => {
+            const reader = getUcpLiveOfferReader();
+            return Boolean(reader && reader.mode === 'enforce');
+          },
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -32256,6 +32261,7 @@ async function getCommerceRemoteMcpAdapter() {
                 // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
+                ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
               }),
               product_group_id || null,
             ),
