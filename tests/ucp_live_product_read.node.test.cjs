@@ -42,7 +42,8 @@ function fakeClient(byCountry, calls = [], { quiet = false } = {}) {
       // Shopify names each id it does not have; `quiet` is a merchant that answers nothing about them.
       const missing = quiet ? [] : ids.filter((id) => !vs.some((v) => v.id === id));
       return toolResult({
-        products: vs.length ? [{ id: 'gid://shopify/Product/1', variants: vs }] : [],
+        // A real store answers with the product page the variant is on (lookup_catalog `handle`).
+        products: vs.length ? [{ id: 'gid://shopify/Product/1', handle: 'lip-sleeping-mask', variants: vs }] : [],
         messages: missing.map((id) => ({ type: 'info', code: 'not_found', content: id })),
       });
     },
