@@ -178,7 +178,18 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // lowers or drops a card (review of #2439). `plan` names the cards it will try, synchronously, so every
   // other card's `.json` read starts NOW, alongside it; a planned card it does not settle takes its `.json`
   // read afterwards. Shadow and off settle nothing.
-  const reader = options.ucpSearchReader && typeof options.ucpSearchReader.plan === 'function' ? options.ucpSearchReader : null;
+  const given = options.ucpSearchReader && typeof options.ucpSearchReader.plan === 'function' ? options.ucpSearchReader : null;
+  // SHADOW IS PURE: the page is built exactly as with the read off (every card's `.json` read starts now,
+  // no `ucp` metadata), and the merchant read runs beside it, unawaited, only to log what it would have
+  // changed (PR controller review of #2439). `readCards` snapshots the cards before it returns.
+  if (given && given.mode === 'shadow') {
+    try {
+      Promise.resolve(given.readCards(cards, { market: options.market })).catch(() => {});
+    } catch {
+      /* a reader that throws costs the measurement, never the page */
+    }
+  }
+  const reader = given && given.mode !== 'shadow' ? given : null;
   let planned = new Map();
   try {
     if (reader) planned = reader.plan(cards, { market: options.market }) || new Map();

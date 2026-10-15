@@ -280,7 +280,36 @@ test('shadow changes nothing on the page and logs against the card as it was ser
   for (let i = 0; i < 20 && !logs.length; i += 1) await new Promise((res) => setImmediate(res));
   assert.equal(logs[0].event, 'search_ucp_live_read');
   assert.equal(logs[0].price_changed, 1);
-  assert.equal(out.metadata.live_merchant_price.ucp.verified_count, 0);
+  assert.equal(out.metadata.live_merchant_price.ucp, undefined, 'shadow adds no metadata');
+});
+
+test('SHADOW IS PURE: the same cards get a live price before the deadline as with the read off', async () => {
+  // PR controller repro: 14 cards on one store, 7 of them plannable, a page deadline that cuts the
+  // `.json` reads short. Shadow must not hold the planned cards back, which would let lower-ranked
+  // cards take their slots.
+  const run = async (ucpSearchReader) => {
+    const products = [];
+    for (let i = 0; i < 14; i += 1) {
+      const h = uniq('pure');
+      products.push(card(rbUrl(h), i % 2 === 0 ? BLISS : ''));
+    }
+    const fetchImpl = async () => {
+      await new Promise((res) => setTimeout(res, 25));
+      return { ok: true, status: 200, headers: new Map(), async json() { return { product: { variants: JSON_IDS.map((id) => ({ id: Number(id), price: '30.00', price_currency: 'USD' })) } }; } };
+    };
+    const out = await overlayLiveMerchantSearchPrices({ products }, { ucpSearchReader, market: 'US', fetchImpl, pageDeadlineMs: 70 });
+    return { sources: out.products.map((c) => c.price_source || null), meta: out.metadata.live_merchant_price };
+  };
+  const off = await run(undefined);
+  const shadowReader = reader(storesFor('x'), { mode: 'shadow' });
+  const shadow = await run(shadowReader);
+  assert.ok(off.sources.includes('catalog_offer'), 'the deadline really cut the reads short');
+  assert.deepEqual(shadow.sources, off.sources);
+  const strip = ({ ucp, ...rest }) => rest;
+  assert.deepEqual(Object.keys(strip(shadow.meta)), Object.keys(off.meta));
+  assert.equal(shadow.meta.attempted, off.meta.attempted);
+  assert.equal(shadow.meta.eligible_count, off.meta.eligible_count);
+  assert.equal('ucp' in shadow.meta, false);
 });
 
 test('without a reader the overlay is exactly as before (no ucp metadata)', async () => {
