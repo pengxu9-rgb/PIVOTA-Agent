@@ -46,6 +46,12 @@ function parseArgs(argv) {
     agentApiKey: process.env.SEARCH_MATRIX_AGENT_API_KEY || '',
     failOnGateFailures:
       String(process.env.SEARCH_MATRIX_FAIL_ON_GATE_FAILURES || '').trim().toLowerCase() === 'true',
+    // PAUSE BETWEEN CALLS, NOT BEFORE THE FIRST. Every case is a real find_products_multi against
+    // production, and each one costs the backend a 2-4 s canonical search on the 2-vCPU primary.
+    // Sent back to back, a ~20-case run held pivota-pg at 0.42-0.46 CPU for a minute or two after
+    // every gateway merge (2026-10-15: 01:54, 02:15, 06:49, 07:46 UTC). Spacing the same calls out
+    // spreads the same work over a few minutes. 0 (the default) keeps local and test runs instant.
+    delayMs: Math.max(0, Number(process.env.SEARCH_MATRIX_DELAY_MS || 0) || 0),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -65,6 +71,7 @@ function parseArgs(argv) {
     if (token === '--auth-token' && next) args.authToken = String(next);
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--fail-on-gate-failures') args.failOnGateFailures = true;
+    if (token === '--delay-ms' && next) args.delayMs = Math.max(0, Number(next) || 0);
   }
   args.baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
   args.endpoint = normalizeEndpoint(args.endpoint, args.railMode);
@@ -929,8 +936,13 @@ async function main() {
         ? 'x-agent-api-key'
         : 'none';
 
+  let sentAny = false;
   for (let round = 1; round <= args.rounds; round += 1) {
     for (const caseSpec of cases) {
+      if (sentAny && args.delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, args.delayMs));
+      }
+      sentAny = true;
       const started = Date.now();
       let row = {
         round,
@@ -1110,6 +1122,7 @@ async function main() {
     auth_mode: authMode,
     eval_mode: Boolean(args.evalMode),
     rounds: args.rounds,
+    delay_ms: args.delayMs,
     total_requests: total,
     total_duration_ms: Math.max(0, Date.now() - startedAt),
     timeout_rate: total ? timeoutCount / total : 0,

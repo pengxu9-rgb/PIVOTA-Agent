@@ -84,6 +84,7 @@ on:
       - "scripts/generate_celestial_commerce_core_stabilization_report.js"
       - "scripts/smoke_celestial_commerce_core_prod.sh"
       - "scripts/search_stability_matrix.js"
+      - "scripts/wait_for_prod_probe_window.sh"
       - "scripts/extract_gateway_governance_shadow_sample.js"
       - "scripts/extract_celestial_commerce_gateway_governance_shadow_from_search_matrix.js"
       - "scripts/fetch_celestial_commerce_gateway_governance_logs.js"
@@ -143,6 +144,7 @@ on:
       - "tests/celestial_commerce_core_beauty_cross_agent_matrix_script.test.js"
       - "tests/celestial_commerce_core_stabilization_report_script.test.js"
       - "tests/celestial_commerce_core_prod_canary_script.test.js"
+      - "tests/prod_probe_pacing.node.test.cjs"
       - "tests/aurora_chat_rollout_headers.node.test.cjs"
       - "tests/commerce_invoke_rail_inventory.test.js"
       - "tests/commerce_primary_path_contract.test.js"
@@ -204,6 +206,7 @@ jobs:
           bash -n scripts/probe_celestial_commerce_core_prod_canary.sh
           bash -n scripts/run_celestial_commerce_core_readiness_audit.sh
           bash -n scripts/run_celestial_commerce_core_stabilization_acceptance.sh
+          bash -n scripts/wait_for_prod_probe_window.sh
 
       - name: Commerce core gates
         run: |
@@ -244,13 +247,27 @@ jobs:
             tests/integration/invoke.find_products_multi_strict_surface.test.js
           node --test tests/aurora_bff_beauty_mainline_handoff.node.test.cjs
           node --test tests/aurora_bff_reco_final_selection.node.test.cjs
+          node --test tests/prod_probe_pacing.node.test.cjs
 
   readiness_audit:
     name: Celestial Commerce Core Readiness Audit
     runs-on: ubuntu-latest
     needs: [local_contracts]
-    timeout-minutes: 30
+    # PRODUCTION PROBES TAKE TURNS. This job and the two runtime smokes in
+    # shopping-search-release-gate.yml all send real searches to production, and one gateway merge
+    # starts all three. Run together they stacked on the 2-vCPU pivota-pg primary (0.42-0.46 CPU,
+    # 2026-10-15), so they share one group and run one at a time. Never cancel a running probe
+    # midway. GitHub keeps one waiting job per group, so a newer merge's probe replaces an older
+    # one still waiting. Production does not change on merge, so the newer probe measures the same
+    # thing.
+    concurrency:
+      group: prod-probe
+      cancel-in-progress: false
+    # 30 for the audit, plus up to 50 waiting out the 10:30-11:20 UTC quiet window.
+    timeout-minutes: 80
     env:
+      # Space the stability matrix's production searches out (scripts/search_stability_matrix.js).
+      SEARCH_MATRIX_DELAY_MS: "6000"
       # Gateway caller auth (#2038); absent -> header omitted, today's behaviour.
       AURORA_SURFACE_INTERNAL_KEY: ${{ secrets.AURORA_SURFACE_INTERNAL_KEY }}
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
@@ -276,6 +293,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Wait out the pivota-pg quiet window
+        shell: bash
+        run: bash scripts/wait_for_prod_probe_window.sh
 
       - name: Setup Node
         uses: actions/setup-node@v6
