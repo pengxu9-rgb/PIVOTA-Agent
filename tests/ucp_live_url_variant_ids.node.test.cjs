@@ -152,3 +152,109 @@ test('PDP overlay: a card variant stored as a JSON-LD offer id gets the merchant
   assert.equal(card.price.current.amount, 31);
   assert.equal(card.live_read.status, STATUS.VERIFIED);
 });
+
+// ------------------------------------------------------------- controller review of #2453
+
+function storeAnswering(byHandle, calls = []) {
+  // A merchant answers EVERY variant number it has, under the product page that variant is on.
+  return {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp` }; },
+    async lookupCatalog(endpoint, { ids }) {
+      calls.push(ids);
+      const products = Object.entries(byHandle).map(([handle, variants]) => ({
+        id: `gid://shopify/Product/${handle}`, handle, variants: variants.filter((v) => ids.includes(v.id)),
+      })).filter((p) => p.variants.length);
+      return toolResult({ products, messages: [] });
+    },
+  };
+}
+const OTHER = '45253610249999';
+
+test('BLOCKING: an option stored as ANOTHER product\'s offer id is never priced from that product', async () => {
+  const store = storeAnswering({
+    'sweet-violet-grapefruit-hydrating-mist-1': [gidVariant(VID, 3100, true)],
+    'other-product': [gidVariant(OTHER, 999, true)],
+  });
+  const base = {
+    offer_id: `of:external_seed:eps_j:${jsonldId(VID)}`, merchant_id: HOST, price: 31, currency: 'USD', in_stock: true,
+    execution_spec: { merchant_domain: HOST, variant_id: VID, cart_url: `https://${HOST}/cart/${VID}:1?country=US` },
+    variants: [
+      { variant_id: jsonldId(VID), title: '100ml', price: 30, currency: 'USD' },
+      { variant_id: `/products/other-product?variant=${OTHER}#offer`, title: 'other', price: 40, currency: 'USD' },
+      // A bare id the merchant answers under another product's page: refused by the answer's handle too.
+      { variant_id: OTHER, title: 'other (bare)', price: 40, currency: 'USD' },
+    ],
+  };
+  const reader = createUcpLiveOfferReader({ ucpClient: store, mode: 'enforce' });
+  const [unflagged] = (await reader.readOffers([base], { market: 'US', currency: 'USD' })).offers;
+  assert.deepEqual(unflagged.variants.map((v) => [v.price, v.live_verified || false]), [[31, true], [40, false], [40, false]],
+    'the stored $40 stays; never $9.99 from other-product');
+  const flagged = {
+    ...base,
+    source: { seed_id: 'eps_j', canonical_url: `https://${HOST}/products/sweet-violet-grapefruit-hydrating-mist-1` },
+    requires_live_verification: { reasons: ['stale_snapshot'], price_stale: true, lookup_variant_id: VID },
+    execution_spec: { merchant_domain: HOST, variant_id: null, cart_url: null },
+  };
+  const reader2 = createUcpLiveOfferReader({ ucpClient: store, mode: 'enforce' });
+  const [f] = (await reader2.readOffers([flagged], { market: 'US', currency: 'USD' })).offers;
+  assert.equal(f.live_read.status, STATUS.VERIFIED);
+  assert.deepEqual(f.variants.map((v) => [v.price, v.live_verified || false]), [[31, true], [null, false], [null, false]],
+    'a flagged offer\'s other-product options are blanked, never live-priced');
+});
+
+test('the product reader prices only variants the merchant answered on the product\'s own page', async () => {
+  const { createUcpLiveProductReader } = require('../src/services/ucpLiveOfferRead');
+  const store = storeAnswering({
+    'sweet-violet-grapefruit-hydrating-mist-1': [gidVariant(VID, 3100, true)],
+    'other-product': [gidVariant(OTHER, 999, true)],
+  });
+  const r = createUcpLiveProductReader({ ucpClient: store, mode: 'enforce' });
+  const out = await r.readProduct({ product: {
+    product_id: 'sig_j', currency: 'USD', destination_url: `https://${HOST}/products/sweet-violet-grapefruit-hydrating-mist-1`,
+    default_variant_id: OTHER,
+    variants: [
+      { variant_id: VID, price: { current: { amount: 30, currency: 'USD' } } },
+      { variant_id: OTHER, price: { current: { amount: 40, currency: 'USD' } } },
+    ],
+  } }, { market: 'US' });
+  const byId = new Map(out.product.variants.map((v) => [String(v.variant_id), v]));
+  assert.equal(byId.get(VID).price.current.amount, 31);
+  assert.equal(byId.get(OTHER).price.current.amount, 40, 'another product\'s answer prices nothing');
+  assert.equal(byId.get(OTHER).live_read, undefined);
+  assert.notEqual(out.product.price, 9.99, 'nor the product, through its default variant');
+});
+
+test('LOW: a control character in a URL id names nothing (JS would strip it, Python does not)', () => {
+  assert.equal(urlNamedVariantId('/products/x?variant=4525\n3610242298'), null);
+  assert.equal(urlNamedVariantId('/products/x?variant=4525\t3610242298'), null);
+  assert.equal(numericVariantId('/products/x?variant=45253610242298\u0000'), null);
+});
+
+test('LOW: a cart variant id and a cart link that disagree name no readable cart', async () => {
+  const backendOffer = (spec) => ({
+    offer_id: 'of:x', merchant_id: HOST, price: 31, currency: 'USD', in_stock: true,
+    source: { type: 'external_seed', seed_id: 'eps_j', variant_id: jsonldId(VID), variant_match: 'exact' },
+    execution_spec: spec,
+  });
+  const run = async (spec, named) => makeGetOffers({ variantIdEnabled: true, fetchOffers: async () => ({ offers: [backendOffer(spec)] }) })(
+    { product_id: 'sig_x', merchant_id: 'external_seed', variant_id: named, market: 'US' });
+  assert.equal((await run({ variant_id: VID, cart_url: `https://${HOST}/cart/${VID_B}:1` }, VID)).metadata.offer_count, 0,
+    'variant_id A beside a cart for B is not offered as A');
+  assert.equal((await run({ variant_id: VID, cart_url: `https://${HOST}/cart/${VID}:1?country=US` }, VID)).metadata.offer_count, 1);
+  assert.equal((await run({ variant_id: VID }, VID)).metadata.offer_count, 1, 'a variant_id without a link still decides');
+});
+
+test('a URL id whose own page names another product is refused even when the merchant answers it on this page', async () => {
+  // The stored id contradicts the merchant about which page the variant is on: nothing is claimed from it.
+  const store = storeAnswering({ 'sweet-violet-grapefruit-hydrating-mist-1': [gidVariant(VID, 3100, true), gidVariant(OTHER, 999, true)] });
+  const reader = createUcpLiveOfferReader({ ucpClient: store, mode: 'enforce' });
+  const [o] = (await reader.readOffers([{
+    offer_id: 'of:x', merchant_id: HOST, price: 31, currency: 'USD', in_stock: true,
+    execution_spec: { merchant_domain: HOST, variant_id: VID, cart_url: `https://${HOST}/cart/${VID}:1?country=US` },
+    variants: [
+      { variant_id: `/products/other-product?variant=${OTHER}#offer`, title: 'mislabelled', price: 40, currency: 'USD' },
+      { variant_id: jsonldId(OTHER), title: 'same page', price: 40, currency: 'USD' },
+    ],
+  }], { market: 'US', currency: 'USD' })).offers;
+  assert.deepEqual(o.variants.map((v) => [v.price, v.live_verified || false]), [[40, false], [9.99, true]]);
+});

@@ -376,9 +376,21 @@ const UNREADABLE_CART = '\u0000unreadable-cart';
 
 function offerCartVariant(offer) {
   const spec = (offer && offer.execution_spec) || {};
-  if (spec.variant_id != null && String(spec.variant_id).trim()) return String(spec.variant_id).trim();
+  const named = spec.variant_id != null ? String(spec.variant_id).trim() : '';
   const raw = String(spec.cart_url || '').trim();
+  if (named) {
+    // BOTH SAY WHICH VARIANT: they must agree, or the offer names no readable cart (a cart on B beside
+    // `variant_id: A` would otherwise match a request for A; controller review of #2453).
+    if (!raw) return named;
+    const inCart = cartUrlVariant(raw);
+    return inCart !== UNREADABLE_CART && sameVariant(inCart, named) ? named : UNREADABLE_CART;
+  }
   if (!raw) return '';
+  return cartUrlVariant(raw);
+}
+
+/** The variant a one-line cart permalink (`/cart/<id>:<qty>`) carries, or UNREADABLE_CART. */
+function cartUrlVariant(raw) {
   let path = '';
   try {
     path = new URL(raw).pathname;

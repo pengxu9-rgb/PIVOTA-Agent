@@ -116,6 +116,9 @@ function numericVariantId(v) {
 function urlNamedVariantId(raw) {
   const s = str(raw);
   if (!s.includes('variant=')) return null;
+  // The WHATWG parser silently strips tab/newline inside a URL (`?variant=4525\n3610242298` would parse
+  // here and not in Python's urlparse): a control character names nothing, on both sides.
+  if (/[\u0000-\u001f\u007f]/.test(s)) return null;
   let params;
   try {
     params = new URL(s, 'https://variant.invalid').searchParams;
@@ -145,6 +148,42 @@ function hostOf(offer) {
  * only. NONE when the offer names no numeric variant of its own: the first listed option is another
  * shade, and pricing the offer from it would stamp a different variant's price and stock as verified.
  */
+/**
+ * The product page a URL-SHAPED variant id itself names (`/products/<h>?variant=N#offer`), or null for a
+ * bare or gid id. A relative id is read against a placeholder origin: only its path matters.
+ */
+function variantIdProductHandle(id) {
+  const s = str(id);
+  if (!s.includes('/products/')) return null;
+  try {
+    return productHandleFromUrl(new URL(s, 'https://variant.invalid').href);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * May this live answer price a variant stored under `id`? Only an answer for the SAME product page the
+ * read's own variant was answered under (`ownHandle`), and never for an id whose own URL names another
+ * product's page. A merchant answers any variant number it has, whichever product it belongs to: matched by
+ * number alone, an option stored as another product's offer @id took that product's price (controller
+ * review of #2453). No handle on either side: not this product's, by default.
+ */
+function liveAnswerIsSameProduct(live, id, ownHandle) {
+  if (!live || !ownHandle || live.handle !== ownHandle) return false;
+  const named = variantIdProductHandle(id);
+  return !named || named === ownHandle;
+}
+
+/** The product handle of a product's own store page (the URLs `productHost` reads), or null. */
+function productPageHandle(product) {
+  for (const key of ['destination_url', 'external_redirect_url', 'source_url', 'merchant_canonical_url', 'canonical_url']) {
+    const handle = productHandleFromUrl(product && product[key]);
+    if (handle) return handle;
+  }
+  return null;
+}
+
 /** The product handle of the store page a FLAGGED offer points at (its seed's canonical/destination url). */
 function flaggedOfferHandle(offer) {
   const src = (offer && offer.source) || {};
@@ -530,9 +569,12 @@ function createUcpLiveOfferReader(deps = {}) {
       clearExpected();
     }
     if (read.liveVariants && Array.isArray(offer.variants) && read.status !== STATUS.CURRENCY_MISMATCH) {
+      // An option is priced only from an answer on the product page the offer's own variant was answered on.
+      const ownHandle = read.live && read.live.handle ? read.live.handle : null;
       out.variants = offer.variants.map((v) => {
         const live = read.liveVariants.get(numericVariantId(v && v.variant_id));
         if (!live || live.currency !== currency || live.amount === null || live.available === null) return v;
+        if (!liveAnswerIsSameProduct(live, v && v.variant_id, ownHandle)) return v;
         return { ...v, price: roundTo(live.amount, currency), currency, in_stock: live.available, live_verified: true };
       });
     }
@@ -807,12 +849,17 @@ function createUcpLiveProductReader(deps = {}) {
       return out;
     }
     const asked = new Set(read.askedIds || []);
+    // THE PRODUCT'S OWN PAGE: an answer the merchant gave under another product's handle prices nothing here
+    // (the same binding the PDP overlay and the search read apply; controller review of #2453).
+    const pageHandle = productPageHandle(product);
+    const sameProduct = (v, live) => liveAnswerIsSameProduct(live, v && v.variant_id, pageHandle);
     let verified = 0;
     let gone = 0;
     out.variants = product.variants.map((v) => {
       const id = numericVariantId(v && v.variant_id);
       if (!id || !asked.has(id)) return v;
       const live = read.live.get(id);
+      if (live && !sameProduct(v, live)) return v;
       if (!live) {
         // Gone only when the merchant SAID so (a `not_found` naming this id); silence is not evidence.
         if (!read.notFound || !read.notFound.has(id)) return v;
@@ -841,7 +888,8 @@ function createUcpLiveProductReader(deps = {}) {
     });
     const defaultId = numericVariantId(product.default_variant_id) || (out.variants[0] && numericVariantId(out.variants[0].variant_id));
     const defaultLive = defaultId ? read.live.get(defaultId) : null;
-    if (defaultLive && defaultLive.amount !== null) {
+    const defaultVariant = (out.variants || []).find((v) => numericVariantId(v && v.variant_id) === defaultId);
+    if (defaultLive && defaultLive.amount !== null && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
       out.price = roundTo(defaultLive.amount, read.currency);
       out.currency = read.currency;
       out.price_source = 'merchant_live';
