@@ -362,8 +362,53 @@ function offersInMarketCurrency(offers, marketCurrency) {
   return { kept, withheld };
 }
 
+/**
+ * Does this offer sell exactly variant `vid`? What the offer would BUY decides: the variant its cart is built
+ * for (execution_spec.variant_id, else the cart permalink's own /cart/<id>:<qty>). With no cart, the
+ * backend's `source.variant_match: 'exact'` statement, or every internal checkout item naming it.
+ * `source.variant_id` alone never counts: the seed lane's fallback offer for an unmatched sku_id copies the
+ * requested id there while selling no particular variant.
+ */
+// A cart that names no single variant we can read (several lines, a token cart, an add-to-cart form) is
+// still a cart: it decides, and it is not the named variant.
+const UNREADABLE_CART = '\u0000unreadable-cart';
+
+function offerCartVariant(offer) {
+  const spec = (offer && offer.execution_spec) || {};
+  if (spec.variant_id != null && String(spec.variant_id).trim()) return String(spec.variant_id).trim();
+  const raw = String(spec.cart_url || '').trim();
+  if (!raw) return '';
+  let path = '';
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    return UNREADABLE_CART;
+  }
+  const m = path.match(/^\/cart\/(\d{1,20}):\d+\/?$/); // exactly ONE line: /cart/<id>:<qty>
+  return m ? m[1] : UNREADABLE_CART;
+}
+
+function offerIsVariant(offer, vid) {
+  if (!offer || typeof offer !== 'object') return false;
+  const cart = offerCartVariant(offer);
+  // WHEN THERE IS A CART, THE CART DECIDES: it is what the buyer would buy. An attached seed can build its
+  // cart from the operator's attached variant whatever shade was asked for, while the backend still calls
+  // the offer an `exact` match -- so a different cart is never this variant (review round 4 of #2438).
+  if (cart) return cart === vid;
+  // No cart (sold out, a non-Shopify store, a referral-only downgrade): the backend's own statement that
+  // the offer IS the named variant, `source.variant_match: 'exact'` (pivota-backend #2622). Its fallback
+  // offer for an unmatched sku_id says 'fallback' and is withheld (review round 3 of #2438).
+  if (offer.source && offer.source.variant_match === 'exact' && String(offer.source.variant_id || '').trim() === vid) return true;
+  const items = Array.isArray(offer.internal_checkout_items) ? offer.internal_checkout_items : [];
+  return items.length > 0 && items.every((it) => it && String(it.variant_id || '').trim() === vid);
+}
+
 function makeGetOffers(deps = {}) {
-  const { fetchOffers } = deps;
+  // `readOffersLive` (optional): the merchant's own live read of the offers this answer returns, for a
+  // DECLARED market (services/ucpLiveOfferRead). Absent, or answering nothing, the answer is unchanged.
+  // `variantIdEnabled`: honour `variant_id` (GET_OFFERS_VARIANT_ID; needs pivota-backend #2622 live). Off,
+  // the argument is ignored entirely: not forwarded, not filtered on.
+  const { fetchOffers, readOffersLive, variantIdEnabled = false } = deps;
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
@@ -393,6 +438,8 @@ function makeGetOffers(deps = {}) {
     const res = await fetchOffers({
       merchant_id: p.merchant_id,
       product_id: p.product_id,
+      // A listing's option named for its own cart (one offer per listing lists them in `variants`).
+      ...(variantIdEnabled && nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
       product_group_id: p.product_group_id,
       currency: p.currency,
       // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
@@ -403,7 +450,14 @@ function makeGetOffers(deps = {}) {
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
     });
-    const fetched = res && Array.isArray(res.offers) ? res.offers : [];
+    const fetchedAll = res && Array.isArray(res.offers) ? res.offers : [];
+    // A NAMED VARIANT gets only offers that ARE that variant. offers.resolve does not guarantee it: a seed
+    // with no matching variant falls back to a variant-less offer at the row price, and the internal lane
+    // picks its own first eligible variant -- either would hand the agent another shade's cart (review of
+    // #2438). Matched on the offer's own variant (execution_spec / source) or its checkout items.
+    const namedVariant = variantIdEnabled && nonEmpty(p.variant_id) ? String(p.variant_id).trim() : '';
+    const fetched = namedVariant ? fetchedAll.filter((o) => offerIsVariant(o, namedVariant)) : fetchedAll;
+    const withheldOtherVariant = fetchedAll.length - fetched.length;
     // No market declared: today's referral-only answer, every offer the backend returned.
     const { kept, withheld } = market
       ? offersInMarketCurrency(fetched, marketCurrency)
@@ -412,8 +466,29 @@ function makeGetOffers(deps = {}) {
     // best_offer from every offer it is handed and only then caps signals, so an uncut list can name a
     // best_offer that is not among the signals returned. offer_count is then the count returned. (No
     // market: the list is passed as it always was.)
-    const offers = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
+    const cut = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
+    // THE MERCHANT'S OWN ANSWER, at decision time. After the cut (only what this answer returns is read)
+    // and before projection (so best_offer ranks on what the merchant said). Fail-open: a reader that
+    // throws costs the live read, never the answer.
+    let offers = cut;
+    let liveRead = null;
+    if (market && typeof readOffersLive === 'function' && cut.length) {
+      try {
+        const res = await readOffersLive(cut, { market, currency: marketCurrency });
+        if (res && Array.isArray(res.offers) && res.offers.length === cut.length) offers = res.offers;
+        liveRead = (res && res.stats) || null;
+      } catch {
+        liveRead = { error: 'live_read_failed' };
+      }
+    }
     const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
+    // ONE reason for an empty answer, in filter order: the variant filter runs first, so when it left
+    // nothing the currency filter had nothing to judge.
+    let emptyReason = null;
+    if (offers.length === 0) {
+      if (namedVariant && fetched.length === 0 && withheldOtherVariant > 0) emptyReason = 'variant_not_offered';
+      else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
+    }
     return {
       subject,
       best_offer,
@@ -421,14 +496,21 @@ function makeGetOffers(deps = {}) {
       metadata: {
         offer_count: offers.length,
         product_group_id: (res && res.product_group_id) || p.product_group_id || null,
+        ...(namedVariant
+          ? {
+              variant_id: namedVariant,
+              withheld_other_variant_count: withheldOtherVariant,
+            }
+          : {}),
         ...(market
           ? {
               market,
               market_currency: marketCurrency,
               withheld_other_currency_count: withheld,
-              ...(offers.length === 0 && withheld > 0 ? { reason: 'no_offer_in_market_currency' } : {}),
+              ...(liveRead ? { live_read: liveRead } : {}),
             }
           : {}),
+        ...(emptyReason ? { reason: emptyReason } : {}),
       },
     };
   };

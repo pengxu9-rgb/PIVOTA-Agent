@@ -223,7 +223,11 @@ export function createCanonicalExecutor({
         return read(merchantScoped ? 'find_products' : 'find_products_multi', searchPayload);
       }
       case 'get_product': {
-        const result = await read('get_product_detail', params.payload ?? params);
+        // `market` is the live read's (below), not the upstream read's: the detail request stays byte-identical.
+        const detailParams = params.payload ?? params;
+        const { market: _liveReadMarket, ...detailPayload } =
+          detailParams && typeof detailParams === 'object' ? detailParams : {};
+        let result = await read('get_product_detail', detailParams && typeof detailParams === 'object' ? detailPayload : detailParams);
         // Optional inline decision substrate (why/fit/evidence) attached when the caller asks for it via
         // include:['decision']. Double-gated: the get_intel localRead is itself flag-gated (returns no
         // signal when the intel surface is off), and the caller must opt in. Read-only + best-effort — a
@@ -256,6 +260,26 @@ export function createCanonicalExecutor({
           }
         } catch {
           /* decision block is best-effort; the base product result is unaffected */
+        }
+        // Optional LIVE READ of the variants from the merchant's own catalog (UCP lookup_catalog), for the
+        // caller's declared market or the listing's home market. Injected as localReads.live_product_read
+        // (services/ucpLiveOfferRead); null means "serve the result unchanged". Best-effort like the
+        // decision block: a failure never affects the product result.
+        try {
+          // OPT-IN per call (`params.live_read === true`, set by the agent's own get_product tool call). Never
+          // for internal reads through this executor -- checkout's default-variant resolver
+          // (buyerIntake.createDefaultVariantResolver) runs get_product under a 3s deadline, and a merchant
+          // round trip inside it would refuse creates with `resolution_unavailable` (review of #2438).
+          const liveRead = params && params.live_read === true && localReads && typeof localReads.live_product_read === 'function'
+            ? localReads.live_product_read
+            : null;
+          if (liveRead && result && typeof result === 'object') {
+            const market = typeof _liveReadMarket === 'string' ? _liveReadMarket : undefined;
+            const served = await liveRead(result, { market });
+            if (served && typeof served === 'object') result = served;
+          }
+        } catch {
+          /* live read is best-effort; the base product result is unaffected */
         }
         return result;
       }

@@ -113,3 +113,61 @@ test('get_product: no decision block when intel returns no signal (flag-off / no
   const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1' }, include: ['decision'] } }, {});
   assert.equal(out.product.decision, undefined);
 });
+
+// ---- get_product live read (localReads.live_product_read) --------------------------------------------
+
+test('get_product: live_product_read serves the result it returns, and gets the caller market', async () => {
+  let upstreamPayload;
+  let liveCtx;
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async (op, payload) => {
+      upstreamPayload = payload;
+      return { product: { product_id: 'p1', title: 'Serum', price: 20 } };
+    },
+    localReads: {
+      live_product_read: async (result, ctx) => {
+        liveCtx = ctx;
+        return { ...result, product: { ...result.product, price: 24, live_read: { status: 'verified' } } };
+      },
+    },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1', merchant_id: 'm1' }, market: 'US' }, live_read: true }, {});
+  assert.equal(out.product.price, 24);
+  assert.deepEqual(liveCtx, { market: 'US' });
+  assert.equal(upstreamPayload.market, undefined, 'the upstream detail read never sees the live read market');
+  assert.equal(upstreamPayload.product.product_id, 'p1');
+});
+
+test('get_product: live_product_read answering null leaves the result unchanged', async () => {
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', price: 20 } }),
+    localReads: { live_product_read: async () => null },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1', merchant_id: 'm1' } } }, {});
+  assert.equal(out.product.price, 20);
+});
+
+test('get_product: a live_product_read that throws never costs the product', async () => {
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', price: 20 } }),
+    localReads: { live_product_read: async () => { throw new Error('merchant down'); } },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1', merchant_id: 'm1' } }, live_read: true }, {});
+  assert.equal(out.product.price, 20);
+});
+
+test('get_product: an internal read (no live_read flag) never waits on the merchant (review of #2438)', async () => {
+  // Checkout's default-variant resolver reads get_product through this executor under a 3s deadline.
+  let asked = 0;
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', price: 20 } }),
+    localReads: { live_product_read: async () => { asked += 1; return null; } },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1' } } }, {});
+  assert.equal(asked, 0);
+  assert.equal(out.product.price, 20);
+});
