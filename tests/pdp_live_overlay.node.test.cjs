@@ -10,7 +10,7 @@ const keepAlive = setInterval(() => {}, 60 * 60 * 1000);
 require('node:test').after(() => clearInterval(keepAlive));
 
 const { applyPdpLiveOverlay, createPdpLiveCache } = require('../src/services/pdpLiveOverlay');
-const { STATUS } = require('../src/services/ucpLiveOfferRead');
+const { parseLookup, STATUS } = require('../src/services/ucpLiveOfferRead');
 const { buildPdpPayload } = require('../src/pdpBuilder');
 
 const LEMON = '48087970185268';
@@ -428,6 +428,31 @@ test('round 2 #2: an answer for another product page (its handle) is never this 
   const sub = sellerProduct({ destination_url: `https://${HOST}/en-us/products/${HANDLE}` });
   const out = applyPdpLiveOverlay(page(sub), { market: 'US', cache: lemonAt(24) });
   assert.equal(cardOf(out.payload).price.current.amount, 24);
+});
+
+test('a KR store page (percent-encoded Hangul handle) takes the answer the merchant gave for that page only', () => {
+  // The answer as the real reader parses a lookup_catalog payload; its `handle` in either form.
+  const KO = '라네즈-립-슬리핑-마스크';
+  const enc = encodeURIComponent(KO);
+  const answeredAs = (handle) => cacheWith({
+    status: STATUS.VERIFIED, host: HOST, country: 'US', currency: 'USD', notFound: new Set(), askedIds: [LEMON],
+    live: parseLookup({ products: [{ id: 'gid://shopify/Product/1', handle,
+      variants: [{ id: `gid://shopify/ProductVariant/${LEMON}`, price: { amount: 2400, currency: 'USD' }, availability: { available: true } }] }] }).variants,
+  });
+  const kr = sellerProduct({ destination_url: `https://${HOST}/ko/products/${enc}` });
+  for (const handle of [KO, enc]) {
+    const out = applyPdpLiveOverlay(page(kr), { market: 'US', cache: answeredAs(handle) });
+    assert.ok(out, `answered as ${handle}`);
+    assert.equal(cardOf(out.payload).price.current.amount, 24);
+  }
+  // zh-hant, an underscore handle and a .json link are the same page too.
+  for (const [url, handle] of [[`https://${HOST}/zh-hant/products/${HANDLE}`, HANDLE], [`https://${HOST}/products/lip_mask`, 'lip_mask'],
+    [`https://${HOST}/products/${HANDLE}.json`, HANDLE]]) {
+    const out = applyPdpLiveOverlay(page(sellerProduct({ destination_url: url })), { market: 'US', cache: answeredAs(handle) });
+    assert.ok(out, url);
+  }
+  // Another Korean product's answer is never this page's.
+  assert.equal(applyPdpLiveOverlay(page(kr), { market: 'US', cache: answeredAs('라네즈-립-밤') }), null);
 });
 
 test('round 2 #3: agent-safe facts price and every promotion follow a changed price', () => {
