@@ -396,4 +396,33 @@ postgresDescribe('full-catalog target recall on isolated Postgres', () => {
       .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
     expect(perSession).toHaveBeenCalledTimes(2);
   });
+
+  test('RELGRAPH_DB_DUTY_CYCLE paces each recall query without changing the result', async () => {
+    const pacing = require('../../src/auroraBff/relationshipGraphDbPacing');
+    const anchors = await mixedCatalog();
+    const options = { anchors, existingProducts: anchors.slice(0, 5), market: 'US', perAnchor: 6 };
+    const off = await loadProductRelationshipGraphTargetRecall({ queryFn, withClientFn, ...options });
+    const sleeps = [];
+    pacing.__setSleepForTests((ms) => { sleeps.push(ms); return new Promise((resolve) => setTimeout(resolve, ms)); });
+    process.env.RELGRAPH_DB_DUTY_CYCLE = '1';
+    try {
+      const startedAt = Date.now();
+      const on = await loadProductRelationshipGraphTargetRecall({ queryFn, withClientFn, ...options });
+      const onMs = Date.now() - startedAt;
+      expect(on.products).toEqual(off.products);
+      expect(on.candidatesByAnchor).toEqual(off.candidatesByAnchor);
+      expect(on.diagnostics).toEqual(off.diagnostics);
+      // At most one sleep per recall query (the first also covers the eligible build). A query that
+      // finishes within the clock's millisecond earns a 0 ms sleep, which is skipped.
+      expect(sleeps.length).toBeGreaterThan(0);
+      expect(sleeps.length).toBeLessThanOrEqual(on.diagnostics.query_count);
+      const slept = sleeps.reduce((sum, ms) => sum + ms, 0);
+      expect(slept).toBeGreaterThan(0);
+      // The sleeps are real: the paced run lasts at least as long as they do.
+      expect(onMs).toBeGreaterThanOrEqual(slept);
+    } finally {
+      delete process.env.RELGRAPH_DB_DUTY_CYCLE;
+      pacing.__setSleepForTests(null);
+    }
+  });
 });
