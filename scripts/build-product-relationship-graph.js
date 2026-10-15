@@ -753,6 +753,49 @@ function listingHydrationInput(product) {
   return result;
 }
 
+// Listing identity used to dedupe hydration inputs and evidence. Platform IDs are unique within a
+// store, not across the catalog: a shared raw ID never replaces another merchant's identity.
+function listingIdentity(product) {
+  for (const field of ['product_key', 'pivota_signature_id']) {
+    if (product[field]) return `${field}:${product[field]}`;
+  }
+  if (/^product:sig_/i.test(product.product_ref || '')) return `pivota_signature_id:${product.product_ref.slice('product:'.length)}`;
+  const id = product.source_product_id || product.product_id || product.sku_key;
+  if (product.merchant_id && id) return `merchant:${product.merchant_id}:platform:${product.platform || ''}:id:${id}`;
+  if (/^ext_/i.test(id || '')) return `external_id:${id}`;
+  return `product_ref:${product.product_ref}`;
+}
+
+const EVIDENCE_SAMPLE_ANCHOR_LIMIT = 100;
+const EVIDENCE_SAMPLE_PRODUCT_LIMIT = 500;
+const EVIDENCE_SAMPLE_PAIR_LIMIT = 1000;
+
+// The evidence-readiness diagnostic sample. It is keyed by the exact identity readiness counts
+// (relationshipEvidenceReadiness exactIdentity: listing key plus market, merchant, platform and
+// variant), and a pair is kept only when both of its products are in the sample, so the sample
+// can never exceed the readiness bound. Keying by listing identity let aliased candidates (one
+// listing, another variant title or market) enter through pairs: the 2026-10-15 nightly failed
+// twice on evidence_unique_products_exceed_bound. Products without an exact identity keep their
+// listing key, as before. Where listing and exact identity agree, the sample is unchanged.
+function sampleEvidenceReadiness({ anchors = [], candidatesByAnchor = {} } = {}) {
+  const diagnosticAnchors = anchors.slice(0, EVIDENCE_SAMPLE_ANCHOR_LIMIT);
+  try {
+    const { exactIdentity } = require('../src/services/relationshipEvidenceReadiness');
+    const sampleKey = (product) => exactIdentity(product).exact_key || `listing:${listingIdentity(product)}`;
+    const sampled = new Map();
+    for (const product of [...diagnosticAnchors, ...interleaveCandidateHydrationTargets(diagnosticAnchors, [candidatesByAnchor])]) {
+      const key = sampleKey(product);
+      if (!sampled.has(key) && sampled.size < EVIDENCE_SAMPLE_PRODUCT_LIMIT) sampled.set(key, product);
+    }
+    const pairs = diagnosticAnchors.flatMap((anchor) => (candidatesByAnchor[anchor.product_ref] || [])
+      .filter((candidate) => sampled.has(sampleKey(candidate)) && sampled.has(sampleKey(anchor)))
+      .map((candidate) => ({ anchor, candidate, score: candidate.score_total }))).slice(0, EVIDENCE_SAMPLE_PAIR_LIMIT);
+    return { anchors: diagnosticAnchors, products: [...sampled.values()], pairs };
+  } catch (error) {
+    return { anchors: diagnosticAnchors, products: [], pairs: [], error: String(error?.message || error) };
+  }
+}
+
 async function buildInputsFromDb({
   limit,
   sourceLimit = limit,
@@ -883,18 +926,6 @@ async function buildInputsFromDb({
   // Need targets follow the existing affected-products scope and bounded selector.
   const needCandidatePool = affectedScoped ? affectedScopedProducts : products;
   const initialNeedCandidates = includeNeedNodes ? buildNeedCandidateMap(needCandidatePool) : {};
-  const listingIdentity = (product) => {
-    for (const field of ['product_key', 'pivota_signature_id']) {
-      if (product[field]) return `${field}:${product[field]}`;
-    }
-    if (/^product:sig_/i.test(product.product_ref || '')) return `pivota_signature_id:${product.product_ref.slice('product:'.length)}`;
-    const id = product.source_product_id || product.product_id || product.sku_key;
-    // Platform IDs are unique within a store, not across the catalog. A shared
-    // raw ID must never replace another merchant's identity or hydrated facts.
-    if (product.merchant_id && id) return `merchant:${product.merchant_id}:platform:${product.platform || ''}:id:${id}`;
-    if (/^ext_/i.test(id || '')) return `external_id:${id}`;
-    return `product_ref:${product.product_ref}`;
-  };
   let hydrationFor = (product) => product;
   if (anchors.length || Object.values(initialNeedCandidates).some((candidates) => candidates.length)) {
     const { enrichProductRelationshipGraphProducts } = require('../src/auroraBff/productRelationshipGraphSources');
@@ -967,24 +998,25 @@ async function buildInputsFromDb({
     const { summarizeRelationshipEvidenceReadiness } = require('../src/services/relationshipEvidenceReadiness');
     // Diagnostic samples never widen inference or export a product worklist.
     // Explicit sample counts prevent a bounded view being mistaken for a census.
-    const diagnosticAnchors = anchors.slice(0, 100);
-    const diagnosticProducts = new Map();
-    for (const product of [...diagnosticAnchors, ...interleaveCandidateHydrationTargets(diagnosticAnchors, [candidatesByAnchor])]) {
-      const key = listingIdentity(product);
-      if (!diagnosticProducts.has(key) && diagnosticProducts.size < 500) diagnosticProducts.set(key, product);
+    const sample = sampleEvidenceReadiness({ anchors, candidatesByAnchor });
+    let summary;
+    try {
+      if (sample.error) throw new Error(sample.error);
+      summary = summarizeRelationshipEvidenceReadiness({ products: sample.products, pairs: sample.pairs });
+    } catch (error) {
+      // Planning-only: a bound or validation failure is reported, never fatal to the build.
+      summary = { error: String(error?.message || error) };
     }
-    const diagnosticPairs = diagnosticAnchors.flatMap((anchor) => (candidatesByAnchor[anchor.product_ref] || [])
-      .filter((candidate) => diagnosticProducts.has(listingIdentity(candidate)))
-      .map((candidate) => ({ anchor, candidate, score: candidate.score_total }))).slice(0, 1000);
+    const memberships = Object.values(candidatesByAnchor).reduce((sum, rows) => sum + rows.length, 0);
     evidenceReadiness = {
-      ...summarizeRelationshipEvidenceReadiness({ products: [...diagnosticProducts.values()], pairs: diagnosticPairs }),
+      ...summary,
       diagnostic_sample: true,
       requested_anchor_count: anchors.length,
-      sampled_anchor_count: diagnosticAnchors.length,
-      requested_candidate_memberships: Object.values(candidatesByAnchor).reduce((sum, rows) => sum + rows.length, 0),
-      sampled_pair_count: diagnosticPairs.length,
-      product_limit: 500, pair_limit: 1000,
-      selection_complete: diagnosticAnchors.length === anchors.length && diagnosticPairs.length === Object.values(candidatesByAnchor).reduce((sum, rows) => sum + rows.length, 0),
+      sampled_anchor_count: sample.anchors.length,
+      requested_candidate_memberships: memberships,
+      sampled_pair_count: sample.pairs.length,
+      product_limit: EVIDENCE_SAMPLE_PRODUCT_LIMIT, pair_limit: EVIDENCE_SAMPLE_PAIR_LIMIT,
+      selection_complete: sample.anchors.length === anchors.length && sample.pairs.length === memberships,
     };
   }
   return {
@@ -1371,6 +1403,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  __internal: { sampleEvidenceReadiness, listingIdentity },
   affectedScopeProvided,
   persistEdgesWithGlobalFanInCap,
   buildInputsFromDb,
