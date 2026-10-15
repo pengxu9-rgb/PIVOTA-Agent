@@ -789,6 +789,15 @@ function createUcpLiveProductReader(deps = {}) {
 
   async function readAndLog(result, product, ctx) {
     const read = await readLive(product, ctx);
+    // The caller's own record of the merchant's answer (the frontend PDP's cache): the raw read, never
+    // the page. A throwing recorder costs the record, not the read.
+    if (typeof ctx.onRead === 'function') {
+      try {
+        ctx.onRead(read);
+      } catch {
+        /* the record is optional */
+      }
+    }
     const stats = {
       mode,
       ...logFieldsOf(ctx),
@@ -1121,6 +1130,9 @@ module.exports = {
   liveVariantsFrom,
   numericVariantId,
   hostOf,
+  productCurrency,
+  roundTo,
+  withLiveStock,
   MODES,
   STATUS,
 };
