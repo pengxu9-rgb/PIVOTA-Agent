@@ -18,13 +18,15 @@ const BERRY = '31760703160372';
 const VANILLA = '31760703258676';
 const HOST = 'us.laneige.com';
 
-function verifiedRead(answers, { notFound = [], silent = [], country = 'US', currency = 'USD', status = STATUS.VERIFIED } = {}) {
+// The merchant's answers name the product page they came from (lookup_catalog's `handle`).
+const HANDLE = 'lip-sleeping-mask';
+function verifiedRead(answers, { notFound = [], silent = [], country = 'US', currency = 'USD', status = STATUS.VERIFIED, handle = HANDLE } = {}) {
   return {
     status,
     host: HOST,
     country,
     currency,
-    live: new Map(Object.entries(answers)),
+    live: new Map(Object.entries(answers).map(([id, a]) => [id, { handle, ...a }])),
     notFound: new Set(notFound),
     askedIds: [...Object.keys(answers), ...notFound, ...silent],
   };
@@ -369,6 +371,162 @@ test('review 6: the card\'s own row in another currency is left whole (no two-cu
   assert.equal(top(out.payload, 'offers').data.offers[0], offers.offers[0]);
 });
 
+// ------------------------------------------------------------- PR controller review of #2448, round 2
+
+const rowOf = (out, id) => top(out.payload, 'offers').data.offers.find((x) => x.offer_id === id);
+const lemonAt = (amount, extra = {}) => cacheWith(verifiedRead({ [LEMON]: { amount, currency: 'USD', available: true } }, extra));
+
+test('round 2 #1: a row whose variant the CARD shows unavailable is left whole (the row lost the marker)', () => {
+  const product = sellerProduct();
+  product.variants[0] = { ...product.variants[0], current_own_offer_status: 'unavailable' };
+  const offers = {
+    best_price_offer_id: 'of_other',
+    offers: [
+      { offer_id: 'of_other', merchant_id: 'n', product_id: 'x', price: { amount: 22, currency: 'USD' }, inventory: { in_stock: true } },
+      // What the offer projection emits: no current_own_offer_status on the row or its variants.
+      { offer_id: 'of_card', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: LEMON,
+        price: { amount: 26, currency: 'USD' }, inventory: { in_stock: false },
+        variants: [{ variant_id: LEMON, price: { current: { amount: 26, currency: 'USD' } }, availability: { in_stock: false } }] },
+    ],
+  };
+  const isCardOffer = (card, offer) => offer.offer_id === 'of_card';
+  const cache = cacheWith(verifiedRead({
+    [LEMON]: { amount: 19, currency: 'USD', available: true },
+    [BERRY]: { amount: 26, currency: 'USD', available: true },
+  }));
+  const out = applyPdpLiveOverlay(page(product, { offers }), { market: 'US', cache, isCardOffer });
+  assert.equal(rowOf(out, 'of_card'), offers.offers[1], 'the row is the same object');
+  assert.equal(top(out.payload, 'offers').data.best_price_offer_id, 'of_other');
+  assert.equal(byId(cardOf(out.payload).variants).get(LEMON).current_own_offer_status, 'unavailable');
+  // And a row that carries the marker itself is left whole too.
+  const marked = { offers: [{ ...offers.offers[1], current_own_offer_status: 'unavailable' }] };
+  const out2 = applyPdpLiveOverlay(page(sellerProduct(), { offers: marked }), { market: 'US', cache, isCardOffer });
+  assert.equal(rowOf(out2, 'of_card'), marked.offers[0]);
+  // A row selling another variant keeps its copy of the withheld one as it is, and takes its own.
+  const berryRow = { offers: [{ ...offers.offers[1], selected_variant_id: BERRY,
+    variants: [...offers.offers[1].variants, { variant_id: BERRY, price: { current: { amount: 26, currency: 'USD' } }, availability: { in_stock: true } }] }] };
+  const out3 = applyPdpLiveOverlay(page(product, { offers: berryRow }), { market: 'US', cache, isCardOffer });
+  const r3 = byId(rowOf(out3, 'of_card').variants);
+  assert.equal(r3.get(LEMON), berryRow.offers[0].variants[0], 'the withheld variant\'s copy is untouched');
+  assert.equal(r3.get(BERRY).live_read.status, STATUS.VERIFIED);
+});
+
+test('round 2 #2: an answer for another product page (its handle) is never this card\'s', () => {
+  const other = cacheWith(verifiedRead({ [LEMON]: { amount: 99, currency: 'USD', available: true } }, { handle: 'some-other-product' }));
+  assert.equal(applyPdpLiveOverlay(page(), { market: 'US', cache: other }), null);
+  // Nor is a "gone" read beside another page's answers.
+  const goneElsewhere = cacheWith(verifiedRead({ [BERRY]: { amount: 5, currency: 'USD', available: true } },
+    { notFound: [LEMON], handle: 'some-other-product' }));
+  assert.equal(applyPdpLiveOverlay(page(), { market: 'US', cache: goneElsewhere }), null);
+  // A card with no product page on the merchant's store has nothing to match: unchanged.
+  const noPage = sellerProduct({ destination_url: `https://${HOST}/pages/landing` });
+  assert.equal(applyPdpLiveOverlay(page(noPage), { market: 'US', cache: lemonAt(24) }), null);
+  // A product page on ANOTHER store names no page of this one.
+  const elsewhere = sellerProduct({ destination_url: `https://${HOST}/pages/landing`, source_url: `https://other-store.example/products/${HANDLE}` });
+  assert.equal(applyPdpLiveOverlay(page(elsewhere), { market: 'US', cache: lemonAt(24) }), null);
+  // A Markets subfolder is the same page.
+  const sub = sellerProduct({ destination_url: `https://${HOST}/en-us/products/${HANDLE}` });
+  const out = applyPdpLiveOverlay(page(sub), { market: 'US', cache: lemonAt(24) });
+  assert.equal(cardOf(out.payload).price.current.amount, 24);
+});
+
+test('round 2 #3: agent-safe facts price and every promotion follow a changed price', () => {
+  const facts = {
+    regional_price: { amount: 26, currency: 'USD', display_raw: '$26.00' },
+    availability: { status: 'in_stock' },
+    promotions: [{ label: '10% off', confidence: 'high' }],
+  };
+  const offers = {
+    offers: [{
+      offer_id: 'of_card', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: LEMON,
+      price: { amount: 26, currency: 'USD' }, inventory: { in_stock: true }, promotions: [{ label: '10% off' }],
+      commerce_facts_v1: facts,
+      agent_safe_commerce_facts: { price: { amount: 26, currency: 'USD', display_raw: '$26.00' }, availability: { status: 'in_stock' }, promotions: [{ label: '10% off' }] },
+    }],
+  };
+  const out = applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', isCardOffer: () => true, cache: lemonAt(20) });
+  const row = rowOf(out, 'of_card');
+  assert.equal(row.agent_safe_commerce_facts.price.amount, 20);
+  assert.equal(row.agent_safe_commerce_facts.price.display_raw, null);
+  assert.deepEqual(row.agent_safe_commerce_facts.promotions, []);
+  assert.deepEqual(row.commerce_facts_v1.promotions, []);
+  assert.deepEqual(row.promotions, []);
+  // Confirmed: promotions stay.
+  const same = rowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', isCardOffer: () => true, cache: lemonAt(26) }), 'of_card');
+  assert.equal(same.promotions.length, 1);
+  assert.equal(same.agent_safe_commerce_facts.promotions.length, 1);
+});
+
+test('round 2 #4: order and best price key on the rows whose total changed, by the producer\'s comparator', () => {
+  const offers = {
+    best_price_offer_id: 'of_other',
+    offers: [
+      { offer_id: 'of_other', merchant_id: 'n', product_id: 'x', price: { amount: 22, currency: 'USD' }, inventory: { in_stock: true } },
+      { offer_id: 'of_lemon', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: LEMON,
+        price: { amount: 26, currency: 'USD' }, inventory: { in_stock: true } },
+      { offer_id: 'of_berry', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: BERRY,
+        price: { amount: 26, currency: 'USD' }, inventory: { in_stock: true } },
+    ],
+  };
+  const isCardOffer = (card, offer) => offer.merchant_id === 'merch_obs_laneige';
+  const cache = cacheWith(verifiedRead({
+    [LEMON]: { amount: 26, currency: 'USD', available: true }, // confirmed: changes nothing
+    [BERRY]: { amount: 10, currency: 'USD', available: true },
+  }));
+  const out = applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', cache, isCardOffer });
+  const data = top(out.payload, 'offers').data;
+  assert.equal(data.best_price_offer_id, 'of_berry');
+  assert.deepEqual(data.offers.map((x) => x.offer_id), ['of_berry', 'of_other', 'of_lemon']);
+});
+
+test('round 2 #5: the card claims `verified` only when its default variant was re-read', () => {
+  const onlyBerry = applyPdpLiveOverlay(page(), { market: 'US',
+    cache: cacheWith(verifiedRead({ [BERRY]: { amount: 20, currency: 'USD', available: true } })) });
+  const card = cardOf(onlyBerry.payload);
+  assert.equal(card.live_read.status, 'variants_only');
+  assert.equal(card.price.current.amount, 26, 'the default variant\'s stored price, not re-read');
+  assert.notEqual(card.price_source, 'merchant_live');
+  const defaultGone = applyPdpLiveOverlay(page(), { market: 'US',
+    cache: cacheWith(verifiedRead({ [BERRY]: { amount: 20, currency: 'USD', available: true } }, { notFound: [LEMON] })) });
+  assert.equal(cardOf(defaultGone.payload).live_read.status, STATUS.VARIANT_GONE);
+  assert.equal(cardOf(applyPdpLiveOverlay(page(), { market: 'US', cache: lemonAt(24) }).payload).live_read.status, STATUS.VERIFIED);
+});
+
+test('round 2 #6 + host guard: www. is the same store on the row; another store is not', () => {
+  const row = (url) => ({ offers: [{ offer_id: 'of_card', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: LEMON,
+    price: { amount: 26, currency: 'USD' }, inventory: { in_stock: true }, destination_url: url }] });
+  const www = row(`https://www.${HOST}/products/${HANDLE}`);
+  assert.equal(rowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: www }), { market: 'US', isCardOffer: () => true, cache: lemonAt(24) }), 'of_card').price.amount, 24);
+  const elsewhere = row(`https://other-store.example/products/${HANDLE}`);
+  const out = applyPdpLiveOverlay(page(sellerProduct(), { offers: elsewhere }), { market: 'US', isCardOffer: () => true, cache: lemonAt(24) });
+  assert.equal(rowOf(out, 'of_card'), elsewhere.offers[0]);
+});
+
+test('round 2 #7: product_intel offer pointers move with the best-price mark', () => {
+  const offers = {
+    best_price_offer_id: 'of_card',
+    offers: [
+      { offer_id: 'of_card', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm', selected_variant_id: LEMON, price: { amount: 22, currency: 'USD' }, inventory: { in_stock: true } },
+      { offer_id: 'of_other', merchant_id: 'n', product_id: 'x', price: { amount: 23, currency: 'USD' }, inventory: { in_stock: true } },
+    ],
+  };
+  const p = page(sellerProduct(), { offers });
+  p.modules.push({ type: 'product_intel', data: { offer_pointers: { default_offer_id: 'of_card', best_price_offer_id: 'of_card' } } });
+  const out = applyPdpLiveOverlay(p, { market: 'US', isCardOffer: (c, o) => o.offer_id === 'of_card', cache: lemonAt(24) });
+  assert.equal(top(out.payload, 'offers').data.best_price_offer_id, 'of_other');
+  assert.equal(top(out.payload, 'product_intel').data.offer_pointers.best_price_offer_id, 'of_other');
+  assert.equal(top(out.payload, 'product_intel').data.offer_pointers.default_offer_id, 'of_card');
+});
+
+test('one variant gone and the rest unanswered never marks the whole card sold out', () => {
+  const out = applyPdpLiveOverlay(page(sellerProduct({ in_stock: true })), { market: 'US',
+    cache: cacheWith(verifiedRead({ [BERRY]: { amount: 26, currency: 'USD', available: false } }, { notFound: [LEMON] })) });
+  const card = cardOf(out.payload);
+  assert.equal(byId(card.variants).get(LEMON).availability.in_stock, false);
+  assert.equal(card.availability.in_stock, cardOf(page(sellerProduct({ in_stock: true }))).availability.in_stock,
+    'Vanilla was not answered: the card keeps its stored stock');
+});
+
 // ------------------------------------------------------------- server wiring
 
 test('server: the overlay is enforce-only, and the background read is claimed once per product x market', () => {
@@ -387,7 +545,7 @@ test('server: the overlay is enforce-only, and the background read is claimed on
       const page = { modules: [{ type: 'canonical', data: { pdp_payload: pdp } }] };
       const cache = ucpLivePdpCache();
       cache.record({ status: 'verified', host: 'lsm.invalid', country: 'US', currency: 'USD', askedIds: ['${LEMON}'],
-        live: new Map([['${LEMON}', { amount: 24, currency: 'USD', available: true }]]), notFound: new Set() });
+        live: new Map([['${LEMON}', { amount: 24, currency: 'USD', available: true, handle: 'lsm' }]]), notFound: new Set() });
       const served = livePdpOverlay(page, { market: 'US' });
       const price = served.modules[0].data.pdp_payload.product.price.current.amount;
       // An .invalid host never resolves: no store is contacted from a test; only the claim is under test.
@@ -425,7 +583,7 @@ test('THROUGH THE SERVER: the real reader fills the cache, the next view is serv
         if (endpoint.includes('busy.example')) await gate;
         const vs = ids.filter((id) => id.endsWith('/' + LEMON))
           .map((id) => ({ id, price: { amount: 2400, currency: 'USD' }, availability: { available: true } }));
-        return wrap({ products: vs.length ? [{ id: 'gid://shopify/Product/1', variants: vs }] : [],
+        return wrap({ products: vs.length ? [{ id: 'gid://shopify/Product/1', handle: 'lsm', variants: vs }] : [],
           messages: ids.filter((id) => !id.endsWith('/' + LEMON)).map((id) => ({ type: 'info', code: 'not_found', content: id })) });
       },
     });

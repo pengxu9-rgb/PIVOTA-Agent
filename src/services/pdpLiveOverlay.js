@@ -36,7 +36,7 @@ const {
   STATUS,
 } = require('./ucpLiveOfferRead');
 const { isRestatedProductId } = require('./merchantVariantSource');
-const { compareOffersForPresentation, computeOfferTotal } = require('../offers/offersPriority');
+const { compareOffersForPresentation, computeOfferTotal, prioritizeOffers } = require('../offers/offersPriority');
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 // A read that got no answer (timeout, error, no endpoint) may be tried again sooner: a cold store's first
@@ -96,24 +96,29 @@ function createPdpLiveCache({
       // not a variant id (a restated page id, a barcode sku) answers not_found too. No answer, not "gone".
       if (!read.live || read.live.size === 0) return 0;
       const at = now();
+      // The product pages the merchant answered for: a gone id is only evidence about a product whose
+      // other variants the merchant recognised on THAT page (review of #2448: the handle check).
+      const handles = [...new Set([...read.live.values()].map((v) => str(v && v.handle).toLowerCase()).filter(Boolean))];
       let kept = 0;
       for (const id of read.askedIds || []) {
         const v = read.live && read.live.get(id);
         if (v && v.amount !== null && v.available !== null && str(v.currency).toUpperCase() === currency) {
           answers.delete(answerKey(host, country, id));
-          answers.set(answerKey(host, country, id), { gone: false, amount: v.amount, available: v.available, currency, at });
+          answers.set(answerKey(host, country, id), {
+            gone: false, amount: v.amount, available: v.available, currency, at, handles: v.handle ? [str(v.handle).toLowerCase()] : [],
+          });
           kept += 1;
         } else if (!v && read.notFound && read.notFound.has(id)) {
           // Gone only when the merchant SAID so; silence is not evidence.
           answers.delete(answerKey(host, country, id));
-          answers.set(answerKey(host, country, id), { gone: true, currency, at });
+          answers.set(answerKey(host, country, id), { gone: true, currency, at, handles });
           kept += 1;
         }
       }
       bound(answers, maxAnswers);
       return kept;
     },
-    /** Fresh answers for these ids: Map id -> { gone, amount, available, currency, at }. */
+    /** Fresh answers for these ids: Map id -> { gone, amount, available, currency, at, handles }. */
     answersFor(host, country, ids) {
       const out = new Map();
       for (const id of ids) {
@@ -229,6 +234,8 @@ function liveAvailability(stored, inStock) {
 function patchVariant(v, owner, o) {
   if (!isObj(v) || v.current_own_offer_status === 'unavailable' || notAVariantId(v, owner)) return v;
   const id = numericVariantId(v.variant_id);
+  // The card withheld this id's money: a row's copy of it (which lost the marker) stays as it is too.
+  if (id && o.withheldIds && o.withheldIds.has(id)) return v;
   const hit = id ? o.answers.get(id) : null;
   if (!hit) return v;
   if (hit.gone) {
@@ -298,45 +305,60 @@ function patchModules(modules, patchedById, defaultPrice, o) {
   return changed ? out : modules;
 }
 
+/** A facts price block (regional_price, or agent-safe `price`) restated with the merchant's amount. */
+function patchFactsPrice(block, amount, confirmed, checkedAt) {
+  if (!isObj(block) || !('amount' in block)) return block;
+  return {
+    ...block,
+    amount,
+    captured_at: checkedAt,
+    ...(confirmed ? {} : {
+      display_raw: null,
+      compare_at_amount: null,
+      compare_at_currency: null,
+      compare_at_display_raw: null,
+    }),
+  };
+}
+
 /** commerce facts on an offer row restated with the merchant's answer (or dropped where they would contradict). */
 function patchFacts(facts, { amount, inStock, confirmed, checkedAt }) {
   if (!isObj(facts)) return facts;
   const next = { ...facts };
-  if (amount !== null && isObj(facts.regional_price)) {
-    next.regional_price = {
-      ...facts.regional_price,
-      amount,
-      captured_at: checkedAt,
-      ...(confirmed ? {} : {
-        display_raw: null,
-        compare_at_amount: null,
-        compare_at_currency: null,
-        compare_at_display_raw: null,
-      }),
-    };
+  if (amount !== null) {
+    if (isObj(facts.regional_price)) next.regional_price = patchFactsPrice(facts.regional_price, amount, confirmed, checkedAt);
+    // agent_safe_commerce_facts carries the regional price as `price` (buildAgentSafeCommerceFacts).
+    if (isObj(facts.price)) next.price = patchFactsPrice(facts.price, amount, confirmed, checkedAt);
   }
-  if (isObj(facts.availability)) {
+  if (isObj(facts.availability) && 'status' in facts.availability) {
     next.availability = { ...facts.availability, status: inStock ? 'in_stock' : 'out_of_stock', captured_at: checkedAt };
   }
+  // A promotion was read beside the stored price; it does not describe a different one.
+  if (!confirmed && Array.isArray(facts.promotions)) next.promotions = [];
   return next;
 }
 
 const FACT_KEYS = ['commerce_facts_v1', 'commerce_facts', 'agent_safe_commerce_facts'];
 
+const bareHost = (h) => str(h).toLowerCase().replace(/^www\./, '');
+
 /**
  * The offer row that sells the card's own listing, with the merchant's answer. The whole row is left as it
- * is unless it is priced in the page's currency on the card's store, and the own-money logic did not
- * withhold it: half a row re-priced would carry two currencies.
+ * is unless it is priced in the page's currency on the card's store (www. or not), and the own-money logic
+ * did not withhold it -- on the row, or on the CARD's variant of the same id (the offer projection drops
+ * `current_own_offer_status` from row variants; review of #2448 round 2): half a row re-priced would carry
+ * two currencies, and a row the card shows unavailable must not read as buyable beside it.
  */
 function patchOffer(offer, o) {
   if (offer.current_own_offer_status === 'unavailable') return offer;
   if (priceCurrencyOf(offer.price, offer.currency) !== o.currency) return offer;
   const offerHost = productHost(offer);
-  if (offerHost && offerHost !== o.host) return offer;
-  const variants = Array.isArray(offer.variants) ? offer.variants.map((v) => patchVariant(v, offer, o)) : offer.variants;
-  const variantsChanged = Array.isArray(offer.variants) && variants.some((v, i) => v !== offer.variants[i]);
+  if (offerHost && bareHost(offerHost) !== bareHost(o.host)) return offer;
   const selectedRaw = { variant_id: offer.selected_variant_id || offer.variant_id || offer.default_variant_id };
   const selectedId = notAVariantId(selectedRaw, offer) ? null : numericVariantId(selectedRaw.variant_id);
+  if (selectedId && o.withheldIds.has(selectedId)) return offer;
+  const variants = Array.isArray(offer.variants) ? offer.variants.map((v) => patchVariant(v, offer, o)) : offer.variants;
+  const variantsChanged = Array.isArray(offer.variants) && variants.some((v, i) => v !== offer.variants[i]);
   const hit = selectedId ? o.answers.get(selectedId) : null;
   if (!variantsChanged && !hit) return offer;
   let next = { ...offer, ...(variantsChanged ? { variants } : {}) };
@@ -354,7 +376,10 @@ function patchOffer(offer, o) {
     for (const key of FACT_KEYS) {
       if (isObj(offer[key])) next[key] = patchFacts(offer[key], { amount, inStock, confirmed, checkedAt: o.checkedAt });
     }
-    if (!confirmed) next = withoutFields(next, o.presentationFields);
+    if (!confirmed) {
+      next = withoutFields(next, o.presentationFields);
+      if (Array.isArray(offer.promotions)) next.promotions = [];
+    }
     next.live_read = { status: hit.gone ? STATUS.VARIANT_GONE : STATUS.VERIFIED, checked_at: o.checkedAt };
   }
   return next;
@@ -368,32 +393,21 @@ function inPresentationOrder(offers) {
 }
 
 /**
- * The offers module after the card's own row moved. Its producer's rules, not new ones:
- *   - order: the row is re-placed by `compareOffersForPresentation` (in stock first, then total), others
- *     keep their order -- only when the list was in that order to begin with;
- *   - best price: the lowest `computeOfferTotal` (price + shipping) among the offers in the page currency,
- *     re-checked only when the row's total changed.
+ * The offers module after the card's own row(s) moved. Its producer's rules, not new ones, keyed on the rows
+ * whose total (price + shipping) or stock ACTUALLY changed -- a confirmed price changes nothing:
+ *   - order: the producer's comparator (`prioritizeOffers`: in stock first, then total) re-run, only when
+ *     the list was in that order to begin with;
+ *   - best price: the lowest `computeOfferTotal` among the offers in the page currency, re-checked only when
+ *     a row's total changed.
  */
 function patchOffersModule(data, isCardOffer, card, o) {
   const before = data.offers;
-  let rowIndex = -1;
-  const patched = before.map((offer, j) => {
-    if (!isObj(offer) || !isCardOffer(card, offer)) return offer;
-    const next = patchOffer(offer, o);
-    if (next !== offer && rowIndex < 0) rowIndex = j;
-    return next;
-  });
-  if (rowIndex < 0) return { data, moved: false };
-  const row = patched[rowIndex];
-  const old = before[rowIndex];
-  const totalChanged = computeOfferTotal(row) !== computeOfferTotal(old);
-  const stockChanged = offerInStock(row) !== offerInStock(old);
+  const patched = before.map((offer) => (isObj(offer) && isCardOffer(card, offer) ? patchOffer(offer, o) : offer));
+  if (patched.every((x, j) => x === before[j])) return { data, moved: false };
+  const totalChanged = patched.some((x, j) => x !== before[j] && computeOfferTotal(x) !== computeOfferTotal(before[j]));
+  const stockChanged = patched.some((x, j) => x !== before[j] && offerInStock(x) !== offerInStock(before[j]));
   let offers = patched;
-  if ((totalChanged || stockChanged) && offers.length > 1 && inPresentationOrder(before)) {
-    const others = offers.filter((_, j) => j !== rowIndex);
-    const at = others.findIndex((other) => compareOffersForPresentation(row, other) < 0);
-    offers = at < 0 ? [...others, row] : [...others.slice(0, at), row, ...others.slice(at)];
-  }
+  if ((totalChanged || stockChanged) && offers.length > 1 && inPresentationOrder(before)) offers = prioritizeOffers(patched);
   const next = { ...data, offers };
   let moved = false;
   if (totalChanged && data.best_price_offer_id) {
@@ -433,13 +447,23 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
   const ids = productVariantIds(card);
   // The page's currency as the PDP normalizer reads it: the card's own, then its price's, then a variant's.
   const currency = str(card.currency).toUpperCase() || priceCurrencyOf(card.price, '') || productCurrency(card);
-  if (!host || !ids.length || !currency) return null;
-  const answers = new Map([...cache.answersFor(host, country, ids)].filter(([, a]) => a.currency === currency));
+  const handle = cardHandle(card, host);
+  if (!host || !ids.length || !currency || !handle) return null;
+  // Only answers in the page's currency, for THIS product page: the merchant's answer names the page it
+  // came from (its handle), and an answer for another product is never this card's (review of #2448
+  // round 2; the search and offer reads refuse the same way).
+  const answers = new Map([...cache.answersFor(host, country, ids)]
+    .filter(([, a]) => a.currency === currency && Array.isArray(a.handles) && a.handles.includes(handle)));
   if (!answers.size) return null;
 
   const checkedAt = new Date(Math.min(...[...answers.values()].map((a) => a.at))).toISOString();
-  const o = { answers, currency, checkedAt, host, presentationFields: Array.isArray(presentationFields) ? presentationFields : [] };
   const stored = Array.isArray(card.variants) ? card.variants : [];
+  // Ids whose money the card withholds: their copies on the offer row lost the marker, not the verdict.
+  const withheldIds = new Set(stored
+    .filter((v) => isObj(v) && v.current_own_offer_status === 'unavailable')
+    .map((v) => numericVariantId(v.variant_id))
+    .filter(Boolean));
+  const o = { answers, currency, checkedAt, host, withheldIds, presentationFields: Array.isArray(presentationFields) ? presentationFields : [] };
   const variants = stored.map((v) => patchVariant(v, card, o));
   const patchedById = new Map();
   variants.forEach((v, i) => {
@@ -480,8 +504,11 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
     nextCard.availability = liveAvailability(card.availability, anyInStock);
     if (typeof card.in_stock === 'boolean') nextCard.in_stock = anyInStock;
   }
+  // The card's own claim is its DEFAULT variant's: `verified` only when that variant was re-read (the own-money
+  // freshness rule), `variant_gone` when the merchant says it is gone, else only some variants were.
+  const cardStatus = !defaultPatched ? 'variants_only' : defaultPatched.live_read.status;
   nextCard.live_read = {
-    status: STATUS.VERIFIED,
+    status: cardStatus,
     market: country,
     source: 'merchant_ucp_lookup_catalog',
     checked_at: checkedAt,
@@ -506,10 +533,31 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
   if (bestPriceMoved) {
     stats.best_price_moved = true;
     if (nextCard.best_price_offer_id) nextCard.best_price_offer_id = bestPriceMoved;
+    // product_intel restates the producer's pointers (pdpProductIntel offer_pointers): they move together.
+    modules.forEach((m, i) => {
+      if (i === index || !isObj(m) || m.type !== 'product_intel' || !isObj(m.data) || !isObj(m.data.offer_pointers)) return;
+      if (!m.data.offer_pointers.best_price_offer_id) return;
+      modules[i] = { ...m, data: { ...m.data, offer_pointers: { ...m.data.offer_pointers, best_price_offer_id: bestPriceMoved } } };
+    });
   }
   const nextPdp = { ...pdp, product: nextCard, modules: patchModules(pdp.modules, patchedById, defaultPrice, o) };
   modules[index] = { ...payload.modules[index], data: { ...payload.modules[index].data, pdp_payload: nextPdp } };
   return { payload: { ...payload, modules }, stats: { ...stats, host, market: country, age_ms: now() - Date.parse(checkedAt) } };
+}
+
+/** The card's product page handle (/products/<handle>, Markets and collection paths included) on its store. */
+function cardHandle(card, host) {
+  for (const key of ['destination_url', 'external_redirect_url', 'source_url', 'merchant_canonical_url', 'canonical_url']) {
+    try {
+      const u = new URL(str(card && card[key]));
+      if (bareHost(u.hostname) !== bareHost(host)) continue;
+      const m = u.pathname.match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/collections\/[^/]+)?\/products\/([a-z0-9][a-z0-9-]*)\/?$/i);
+      if (m) return m[1].toLowerCase();
+    } catch {
+      /* not a url */
+    }
+  }
+  return null;
 }
 
 function stockOf(availability) {
