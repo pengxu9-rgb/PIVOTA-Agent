@@ -178,6 +178,18 @@ function envValue(name) {
 // backend is live: the argument is then neither declared, described nor forwarded. Read once at load.
 const GET_OFFERS_VARIANT_ID = /^(1|true|yes|on|enabled)$/i.test(envValue("GET_OFFERS_VARIANT_ID").trim());
 
+// The UCP live reads (src/services/ucpLiveOfferRead; off | shadow | enforce, as its readMode parses them).
+// With a read off, the tool surface is exactly what it was without it. get_product's `market` is
+// declared while UCP_LIVE_PRODUCT_READ is on at all (shadow needs a declared market to measure anything,
+// ADR-026); get_offers names `live_read` only under UCP_LIVE_OFFER_READ=enforce, the one mode that can
+// put it on an offer. Read once at load.
+function liveReadMode(name) {
+  const v = envValue(name).trim().toLowerCase();
+  return v === "shadow" || v === "enforce" ? v : "off";
+}
+const UCP_LIVE_PRODUCT_READ_ON = liveReadMode("UCP_LIVE_PRODUCT_READ") !== "off";
+const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "enforce";
+
 function positiveIntEnv(name, fallback) {
   const n = Number(envValue(name));
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -880,7 +892,10 @@ function describe(op) {
       (GET_OFFERS_VARIANT_ID
         ? " One offer per seller listing: its shades/sizes are in `variants` (each with price and stock); pass one as `variant_id` to get only offers that sell exactly that variant (a cart built for it); metadata.withheld_other_variant_count counts the rest, and reason variant_not_offered means no seller offers it."
         : "") +
-      " With a market stated, an offer may carry `live_read`: `verified` means its price and stock were just read from the merchant's own catalog for that market (replacing our stored ones), `currency_mismatch` that the merchant does not price for that market, `variant_gone` that the merchant no longer has it. Read-only; surfaces real cross-merchant competition only when it exists.",
+      (UCP_LIVE_OFFER_READ_ENFORCED
+        ? " With a market stated, an offer may carry `live_read`: `verified` means its price and stock were just read from the merchant's own catalog for that market (replacing our stored ones), `currency_mismatch` that the merchant does not price for that market, `variant_gone` that the merchant no longer has it."
+        : "") +
+      " Read-only; surfaces real cross-merchant competition only when it exists.",
     recommend_products:
       "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Read `lane_confidence` for per-item certainty: it is the lane's own confidence in the product, NOT a measure of how well the product answers your need — nothing on that path reads your need, so an off-vertical need that slips the gate below can still come back at `lane_confidence: high`. Judge relevance yourself. Read `lane_confidence.basis` (and `metadata.confidence_basis`) before trusting the band at all: `lane_confidence.basis` is PER ITEM, and a single shortlist can mix them: `model_self_report` means that item's number is the model's own estimate of it; `positional` means the lane has NO certainty estimate for that item — the underlying score was the item's POSITION in the list, not a judgement about it — and its band is null. `metadata.confidence_basis` describes the ANSWER as a whole and `metadata.confidence_overall` is null when that is `positional`. A null band usually means unmeasured rather than low — with one exception: a row that breaches a `price_max` you set is downgraded to `low` even on a positional answer, because that IS a measurement, and it carries `constraint_violations`. `catalog_rebound` means grounding selected a different catalog product; the original product’s confidence and evidence were discarded, so the new product’s band is null unless a price violation independently downgrades it. `basis` also takes `ungrounded` (the lane named a product it could not resolve) and `none`/`unknown`. (`fit` is a DEPRECATED alias carrying the identical value and will be removed; migrate to `lane_confidence`.) THIS DOOR SERVES SKINCARE (INCLUDING BODY CARE), MAKEUP AND FRAGRANCE: the prompt it loads allows all three, and the request the model reads is framed as a beauty request to match. If a makeup or fragrance need ever comes back empty with a reason citing skincare, that framing is off: route it to `search_catalog`. Measured against the live door on 2026-10-14: bronzer, foundation, blush, lipstick and eau-de-toilette needs each came back with products. A MAKEUP OR FRAGRANCE ITEM IS NEVER A `catalog_rebound`. Those needs turn on shade, finish or scent, and a substituted product was never checked against any of them. So a makeup or fragrance item from the model is the catalog product the model itself picked, by its catalog id. When the catalog does not carry the product the model chose, the item is withheld, and its name appears in `metadata.unresolved_archetypes`. Earlier probes on 2026-10-14 returned a lip balm for a bronzer need, a perfume named 'Blush' for a blush need, a heavy parfum for a light floral one and a nude lipstick for a red one, all as rebound rows. A makeup or fragrance shortlist can therefore be shorter than a skincare one. A `catalog_rebound` row is always face or body skincare. Grounding substitutes only when the catalog files the product under a skincare kind compatible with the one asked for. Where the catalog's filing is missing or too coarse to name a kind, the product's own category, type and title must name a compatible kind and contradict none. Nothing is substituted when your need asks for a makeup, fragrance, lash or brow product (a setting spray, body mist or lash serum counts), or when the model's item or the candidate names makeup, fragrance, hair, lips, lashes, brows, nails or self-tan. Grounding does not copy the requested type onto the row's `product_type` or `category`. It is still not the product the model chose, and nothing assessed it against the rest of the need, so read its title before presenting it. When the buyer needs a specific shade, use `search_catalog`. Haircare, beauty tools, brushes, sponges, devices and anything outside beauty are not covered, and answer empty with a stated reason. Two further limits on what an empty answer means: the category rules bind the MODEL-AUTHORED path only, and this lane can also answer straight from the catalog, which reads no prompt at all — read `metadata.confidence_basis`, where `positional` means the catalog path answered and nothing consulted those rules; and an empty answer is returned only where the model STATES a reason, since a bare empty answer is treated as a gap the catalog may fill. Detection of off-vertical needs is best-effort, not exhaustive: a RECOGNISED off-vertical need answers with an empty shortlist and `metadata.products_empty_reason: 'off_vertical'`, but an unrecognised one may still come back with beauty products — so check that the shortlist actually matches the need before presenting it. Every returned item IS a catalog product with a non-null `product_id`: that one holds unconditionally, and products the lane named but could not resolve are never returned as items — they appear only as plain text in `metadata.unresolved_archetypes`, and are not buyable. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
     get_intel:
@@ -970,10 +985,14 @@ const INPUT_SCHEMAS = Object.freeze({
         items: { type: "string", enum: ["decision"] },
         description: "Optional add-ons. 'decision' attaches the inline why/fit/evidence decision block when reviewed intelligence exists.",
       },
-      market: {
-        type: "string",
-        description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, GB, ...). State it only when you know it: variant prices and stock may then be read live from the merchant for that market. Without it nothing is read live (`product.live_read.reason: no_market`); a market is never inferred from a listing's currency, and a market Pivota does not price is not read at all.",
-      },
+      ...(UCP_LIVE_PRODUCT_READ_ON
+        ? {
+            market: {
+              type: "string",
+              description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, GB, ...). State it only when you know it: variant prices and stock may then be read live from the merchant for that market. Without it nothing is read live (`product.live_read.reason: no_market`); a market is never inferred from a listing's currency, and a market Pivota does not price is not read at all.",
+            },
+          }
+        : {}),
     },
   },
   get_alternatives: {

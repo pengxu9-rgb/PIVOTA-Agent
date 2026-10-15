@@ -384,3 +384,27 @@ test('the lookup queue refuses a waiter that outlived every budget, and refuses 
   assert.equal(outcome, 'timeout');
   assert.equal(pending.length, 0, 'the stale lookup was never sent');
 });
+
+// ------------------------------------------------------------- PR controller review of #2438, round 2
+
+test('flags off, the tool surface is what it was: get_product `market` and the get_offers live_read text are gated', () => {
+  const { spawnSync } = require('node:child_process');
+  const path = require('node:path');
+  const url = require('node:url').pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href;
+  const probe = (extra) => {
+    const env = { ...process.env };
+    for (const k of ['UCP_LIVE_OFFER_READ', 'UCP_LIVE_PRODUCT_READ', 'UCP_LIVE_SEARCH_READ', 'GET_OFFERS_VARIANT_ID']) delete env[k];
+    Object.assign(env, extra);
+    const code = `const m = await import(${JSON.stringify(url)});
+      const p = m.commerceToolDefinitions.find((d) => d.name === 'get_product');
+      const o = m.commerceToolDefinitions.find((d) => d.name === 'get_offers');
+      console.log(JSON.stringify({ market: 'market' in p.inputSchema.properties, liveRead: /live_read/.test(o.description) }));`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout.trim().split('\n').pop());
+  };
+  assert.deepEqual(probe({}), { market: false, liveRead: false });
+  assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'shadow', UCP_LIVE_OFFER_READ: 'shadow' }), { market: true, liveRead: false });
+  assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'enforce', UCP_LIVE_OFFER_READ: 'enforce' }), { market: true, liveRead: true });
+  assert.deepEqual(probe({ UCP_LIVE_PRODUCT_READ: 'bogus' }), { market: false, liveRead: false });
+});
