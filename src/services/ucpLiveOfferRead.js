@@ -518,6 +518,18 @@ function commerceBlocked(result, product) {
   return false;
 }
 
+/** Caller-supplied log fields (scalars only, short keys): never objects, URLs or free text. */
+function logFieldsOf(ctx) {
+  const fields = ctx && ctx.logFields && typeof ctx.logFields === 'object' ? ctx.logFields : {};
+  const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (!/^[a-z_]{1,40}$/.test(k)) continue;
+    if (v === null || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v;
+    else if (typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(v)) out[k] = v;
+  }
+  return out;
+}
+
 function productTarget(result) {
   if (!result || typeof result !== 'object') return null;
   return result.product && typeof result.product === 'object' ? result.product : result;
@@ -568,6 +580,8 @@ function createUcpLiveProductReader(deps = {}) {
     throw new Error('createUcpLiveProductReader requires a ucp client with discoverEndpoint() and lookupCatalog()');
   }
   const mode = deps.mode || readMode(process.env, 'UCP_LIVE_PRODUCT_READ');
+  // The log line's name: the agent get_product read by default; the frontend PDP shadow names its own.
+  const event = typeof deps.event === 'string' && deps.event ? deps.event : 'get_product_ucp_live_read';
   const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : 3000;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
@@ -723,7 +737,7 @@ function createUcpLiveProductReader(deps = {}) {
     const product = productTarget(result);
     if (!product) return null;
     if (commerceBlocked(result, product)) {
-      log('get_product_ucp_live_read', { mode, product_id: product.product_id || null, status: STATUS.SKIPPED, reason: 'commerce_blocked' });
+      log(event, { mode, ...logFieldsOf(ctx), product_id: product.product_id || null, status: STATUS.SKIPPED, reason: 'commerce_blocked' });
       return null;
     }
     if (mode === MODES.SHADOW) {
@@ -738,6 +752,7 @@ function createUcpLiveProductReader(deps = {}) {
     const read = await readLive(product, ctx);
     const stats = {
       mode,
+      ...logFieldsOf(ctx),
       product_id: product.product_id || null,
       host: read.host || null,
       market: read.country || null,
@@ -760,10 +775,19 @@ function createUcpLiveProductReader(deps = {}) {
         const a = v && v.live_read && v.price && v.price.current && v.price.current.amount;
         return a != null && Number(b) !== Number(a);
       }).length;
-      log('get_product_ucp_live_read', stats);
+      // THE PAGE SAYS UNAVAILABLE, THE MERCHANT SAYS IN STOCK: a variant our own-money verdict or stored
+      // stock marks unavailable that the merchant answered available (the Laneige 15-flavour case).
+      stats.own_unavailable_live_in_stock = (preview.variants || []).filter((v) => {
+        const before = byId.get(numericVariantId(v && v.variant_id));
+        const shownUnavailable = before && (ctx.pageShowsAllUnavailable === true
+          || before.current_own_offer_status === 'unavailable'
+          || (before.availability || {}).in_stock === false);
+        return shownUnavailable && v && v.live_read && (v.availability || {}).in_stock === true;
+      }).length;
+      log(event, stats);
       return result.product && typeof result.product === 'object' ? { ...result, product: preview } : preview;
     }
-    log('get_product_ucp_live_read', stats);
+    log(event, stats);
     const annotated = applyProductRead(product, read);
     return result.product && typeof result.product === 'object' ? { ...result, product: annotated } : annotated;
   }
