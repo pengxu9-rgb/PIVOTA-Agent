@@ -1,4 +1,5 @@
 const { runScopedTable, runScopedTablesDisabled, configuredDbPoolMax, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
+const { pacedDbCall } = require('./relationshipGraphDbPacing');
 const { brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const {
   isSameProductOrVariant,
@@ -2499,10 +2500,11 @@ async function enrichProductsInBatches({ queryFn, products = [], limit = DEFAULT
   for (let offset = 0; offset < products.length; offset += batchSize) {
     const targetProducts = products.slice(offset, offset + batchSize);
     batches += 1;
-    const [intel, ingredients] = await Promise.all([
+    // Off unless RELGRAPH_DB_DUTY_CYCLE: a sleep after each batch frees the core.
+    const [intel, ingredients] = await pacedDbCall(() => Promise.all([
       loadProductIntelKbRows({ queryFn, targetProducts, market, documentIdentity }),
       loadIngredientKbCandidates({ queryFn, targetProducts, market }),
-    ]);
+    ]));
     intelRows.push(...intel); ingredientRows.push(...ingredients);
   }
   const enriched = enrichProductsWithEvidence(products, { intelRows, ingredientRows });

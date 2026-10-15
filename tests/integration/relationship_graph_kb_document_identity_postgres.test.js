@@ -299,4 +299,28 @@ postgresDescribe('KB document identity built once per run on isolated Postgres',
       .rejects.toMatchObject({ code: 'RELGRAPH_RUN_SCOPED_TABLE_LOST' });
     expect(perSession).toHaveBeenCalledTimes(2);
   });
+
+  test('RELGRAPH_DB_DUTY_CYCLE paces each KB batch without changing the enrichment', async () => {
+    const pacing = require('../../src/auroraBff/relationshipGraphDbPacing');
+    const products = await fixture();
+    const options = { products, market: 'US', limit: 500 };
+    const off = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn, ...options });
+    const sleeps = [];
+    pacing.__setSleepForTests((ms) => { sleeps.push(ms); return new Promise((resolve) => setTimeout(resolve, ms)); });
+    process.env.RELGRAPH_DB_DUTY_CYCLE = '1';
+    try {
+      const on = await enrichProductRelationshipGraphProducts({ queryFn, withClientFn, ...options });
+      expect(on.products).toEqual(off.products);
+      expect(on.intelRows).toEqual(off.intelRows);
+      expect(on.ingredientRows).toEqual(off.ingredientRows);
+      expect(on.diagnostics).toEqual(off.diagnostics);
+      // At most one per 200-product batch (a sub-millisecond batch earns no sleep).
+      expect(sleeps.length).toBeGreaterThan(0);
+      expect(sleeps.length).toBeLessThanOrEqual(3);
+      expect(sleeps.every((ms) => ms > 0)).toBe(true);
+    } finally {
+      delete process.env.RELGRAPH_DB_DUTY_CYCLE;
+      pacing.__setSleepForTests(null);
+    }
+  });
 });
