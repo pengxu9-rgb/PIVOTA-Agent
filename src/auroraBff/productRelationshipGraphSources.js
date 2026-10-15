@@ -1,3 +1,4 @@
+const { runScopedTable, runScopedTablesDisabled, configuredDbPoolMax, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
 const { brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
 const {
   isSameProductOrVariant,
@@ -1519,14 +1520,9 @@ function intelCanonicalAliasGuardSql() {
   }).join('\n      ');
 }
 
-function targetedIntelSql(sql, targets) {
-  if (!targets.length) return sql;
-  const projection = sql.replace(/WHERE analysis IS NOT NULL[\s\S]*$/, 'WHERE kb_key IN (SELECT kb_key FROM selected_evidence)');
-  // Materialize only compact identity fields once, then rank exact matches per target. A
-  // LATERAL OR over analysis would repeatedly scan/deTOAST every bundle for every product.
-  return `WITH evidence_targets AS (
-    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text)
-  ), document_identity AS MATERIALIZED (
+// Compact identity fields of every usable KB document: the expensive part of a targeted intel
+// load (it detoasts every bundle), and the same for every batch of one run.
+const KB_DOCUMENT_IDENTITY_SELECT = `
     SELECT kb_key, last_success_at, updated_at, lower(btrim(COALESCE(source_meta->>'brand', ''))) AS brand,
       COALESCE(analysis#>'{product_intel_v1,canonical_product_ref}', analysis#>'{product_intel,canonical_product_ref}', analysis->'canonical_product_ref') AS canonical,
       COALESCE(analysis#>>'{product_intel_v1,source_coverage,canonical_url}', analysis#>>'{product_intel,source_coverage,canonical_url}', analysis#>>'{source_coverage,canonical_url}',
@@ -1539,10 +1535,61 @@ function targetedIntelSql(sql, targets) {
         analysis#>>'{product_intel_v1,quality_state}', analysis#>>'{product_intel,quality_state}',
         analysis->>'quality_state', source_meta->>'quality_state']) state(value)
         WHERE lower(btrim(state.value)) IN ('reject', 'reject_external', 'rejected', 'blocked', 'failed', 'fail', 'suppressed', 'needs_review'))
-  ), evidence_matches AS (
+`;
+const KB_DOCUMENT_IDENTITY_TABLE = 'relgraph_kb_document_identity';
+
+// Exact-key prefilter for the identity join. Every match branch below is an equality between a
+// document identity value and a target value, so each side emits those values as namespaced keys
+// and only pairs sharing a key are tested; the full match predicate then runs unchanged on them.
+// The keys are a superset of every branch (pk: product_key; sig: signature, product_id/ref and
+// kb_key with or without 'product:'; url: source_url; id: product_id and kb_key against target ids
+// and refs), so the matched rows are identical. Testing the predicate on every document x target
+// pair cost ~12 s per 200-product batch on 9.5k documents (staging, 2026-10-14) - the KB half of the
+// relgraph CPU bursts. RELGRAPH_KB_KEY_PREFILTER_DISABLED restores the full pair scan.
+const KB_CANDIDATE_PAIRS_CTES = `), doc_keys AS (
+    SELECT DISTINCT doc.kb_key, k.key FROM document_identity doc CROSS JOIN LATERAL unnest(ARRAY[
+      'pk:' || (doc.canonical->>'product_key'), 'pk:' || (doc.canonical->>'productKey'),
+      'sig:' || (doc.canonical->>'pivota_signature_id'), 'sig:' || (doc.canonical->>'pivotaSignatureId'),
+      'sig:' || (doc.canonical->>'product_id'), 'sig:' || (doc.canonical->>'productId'),
+      'sig:' || CASE WHEN doc.canonical->>'product_id' LIKE 'product:%' THEN substr(doc.canonical->>'product_id', 9) END,
+      'sig:' || CASE WHEN doc.canonical->>'productId' LIKE 'product:%' THEN substr(doc.canonical->>'productId', 9) END,
+      'sig:' || CASE WHEN doc.canonical->>'product_ref' LIKE 'product:%' THEN substr(doc.canonical->>'product_ref', 9) END,
+      'sig:' || CASE WHEN doc.canonical->>'productRef' LIKE 'product:%' THEN substr(doc.canonical->>'productRef', 9) END,
+      'sig:' || CASE WHEN doc.kb_key LIKE 'product:%' THEN substr(doc.kb_key, 9) END,
+      'url:' || doc.source_url, 'id:' || (doc.canonical->>'product_id'), 'id:' || doc.kb_key]) k(key)
+    WHERE k.key IS NOT NULL
+  ), target_keys AS (
+    SELECT DISTINCT t.target_key, k.key FROM evidence_targets t CROSS JOIN LATERAL unnest(
+      ARRAY[CASE WHEN t.product_key <> '' THEN 'pk:' || t.product_key END,
+        CASE WHEN t.signature <> '' THEN 'sig:' || t.signature END]
+      || ARRAY(SELECT 'url:' || u FROM unnest(t.urls) u)
+      || ARRAY(SELECT 'id:' || i FROM unnest(t.ids || t.refs) i)) k(key)
+    WHERE k.key IS NOT NULL
+  ), candidate_pairs AS (
+    SELECT DISTINCT d.kb_key, t.target_key FROM doc_keys d JOIN target_keys t USING (key)
+  `;
+
+function kbKeyPrefilterDisabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.RELGRAPH_KB_KEY_PREFILTER_DISABLED || '').trim());
+}
+
+// documentIdentityTable: a run-scoped table holding KB_DOCUMENT_IDENTITY_SELECT (build-once mode),
+// in place of re-materializing it inside every batch query.
+function targetedIntelSql(sql, targets, { documentIdentityTable = null, legacyPairScan = kbKeyPrefilterDisabled() } = {}) {
+  if (!targets.length) return sql;
+  const projection = sql.replace(/WHERE analysis IS NOT NULL[\s\S]*$/, 'WHERE kb_key IN (SELECT kb_key FROM selected_evidence)');
+  // Materialize only compact identity fields once, then rank exact matches per target. A
+  // LATERAL OR over analysis would repeatedly scan/deTOAST every bundle for every product.
+  return `WITH evidence_targets AS (
+    SELECT * FROM jsonb_to_recordset($2::jsonb) AS t(target_key text, product_key text, signature text, ids text[], refs text[], urls text[], merchant_id text, platform text, brand text, market text, variant_title text, variant_detail_label text)
+  ), ${documentIdentityTable
+    ? `document_identity AS (\n    SELECT * FROM ${documentIdentityTable}\n`
+    : `document_identity AS MATERIALIZED (${KB_DOCUMENT_IDENTITY_SELECT}`}  ${legacyPairScan ? '' : KB_CANDIDATE_PAIRS_CTES}), evidence_matches AS (
     SELECT doc.kb_key, target.target_key,
       row_number() OVER (PARTITION BY target.target_key ORDER BY doc.last_success_at DESC NULLS LAST, doc.updated_at DESC NULLS LAST, doc.kb_key ASC) AS evidence_rank
-    FROM document_identity doc JOIN evidence_targets target ON (
+    FROM ${legacyPairScan ? 'document_identity doc JOIN evidence_targets target ON (' : `candidate_pairs cand
+      JOIN document_identity doc ON doc.kb_key = cand.kb_key
+      JOIN evidence_targets target ON target.target_key = cand.target_key AND (`}
       (target.product_key <> '' AND (doc.canonical->>'product_key' = target.product_key OR doc.canonical->>'productKey' = target.product_key))
       OR (target.signature <> '' AND (doc.canonical->>'pivota_signature_id' = target.signature
         OR doc.canonical->>'pivotaSignatureId' = target.signature
@@ -1605,10 +1652,15 @@ function targetedIntelSql(sql, targets) {
   WHERE matched.evidence_rank <= $1 ORDER BY matched.target_key, matched.evidence_rank`;
 }
 
-async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, targetProducts = [], market = DEFAULT_MARKET } = {}) {
+// documentIdentity ({ table, queryFn }): build-once mode. The targeted intel query reads the
+// run-scoped identity table through documentIdentity.queryFn (the connection that holds it);
+// every other query here still uses queryFn.
+async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, targetProducts = [], market = DEFAULT_MARKET,
+  documentIdentity = null } = {}) {
   const targets = evidenceTargets(targetProducts, market);
+  const shared = Boolean(documentIdentity && targets.length);
   const rows = await guardedRows(
-    queryFn,
+    shared ? documentIdentity.queryFn : queryFn,
     targetedIntelSql(`
       SELECT
         kb_key,
@@ -1650,7 +1702,7 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, t
       WHERE analysis IS NOT NULL
       ORDER BY last_success_at DESC NULLS LAST, updated_at DESC NULLS LAST, kb_key ASC
       LIMIT $1
-    `, targets),
+    `, targets, shared ? { documentIdentityTable: documentIdentity.table } : {}),
     targets.length ? [5, JSON.stringify(targets)] : [normalizeLimit(limit)],
   );
   const publicRows = boundedEvidenceRows(rows, targets.length).map((row) => {
@@ -2413,14 +2465,42 @@ function enrichProductsWithEvidence(products = [], { intelRows = [], ingredientR
   }).filter(Boolean);
 }
 
-async function enrichProductRelationshipGraphProducts({ queryFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET } = {}) {
+// withClientFn(fn) runs fn(client) on one dedicated connection (src/db withClient). Given one, the
+// KB document identity set is built once per call of this function into a run-scoped temp table on
+// that connection, and every batch's targeted intel query reads it; without one (or with
+// RELGRAPH_RUN_SCOPED_TABLES_DISABLED) every batch re-materializes it, as before. Both modes return
+// the same rows (tests/integration/relationship_graph_kb_document_identity_postgres.test.js).
+async function enrichProductRelationshipGraphProducts({ queryFn, withClientFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET } = {}) {
+  // The stage holds its connection while the ingredient loads and seller lane query the pool
+  // alongside it, so a one-connection pool would wait on itself: such a pool keeps per-call.
+  const shared = typeof withClientFn === 'function' && typeof queryFn === 'function' &&
+    !runScopedTablesDisabled() && products.length > 0 && configuredDbPoolMax() >= 2;
+  if (!shared) return enrichProductsInBatches({ queryFn, products, limit, market, documentIdentity: null });
+  return withRunScopedConnection(withClientFn, async (client) => {
+    const identity = runScopedTable(client, { name: KB_DOCUMENT_IDENTITY_TABLE, populateSql: KB_DOCUMENT_IDENTITY_SELECT });
+    try {
+      const result = await enrichProductsInBatches({ queryFn, products, limit, market, documentIdentity: {
+        table: identity.table,
+        queryFn: (sql, params) => identity.query(sql, params),
+      } });
+      result.diagnostics.kb_document_identity_scan_count = identity.scanCount();
+      return result;
+    } finally {
+      await identity.drop().catch(() => {});
+    }
+  }, { label: 'relgraph_kb_enrichment' });
+}
+
+async function enrichProductsInBatches({ queryFn, products = [], limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET, documentIdentity }) {
   const batchSize = Math.min(200, normalizeLimit(limit));
   const intelRows = [];
   const ingredientRows = [];
+  let batches = 0;
   for (let offset = 0; offset < products.length; offset += batchSize) {
     const targetProducts = products.slice(offset, offset + batchSize);
+    batches += 1;
     const [intel, ingredients] = await Promise.all([
-      loadProductIntelKbRows({ queryFn, targetProducts, market }),
+      loadProductIntelKbRows({ queryFn, targetProducts, market, documentIdentity }),
       loadIngredientKbCandidates({ queryFn, targetProducts, market }),
     ]);
     intelRows.push(...intel); ingredientRows.push(...ingredients);
@@ -2434,6 +2514,8 @@ async function enrichProductRelationshipGraphProducts({ queryFn, products = [], 
     evidence_records_per_product_per_source_limit: 4,
     ingredient_loads_incomplete: enriched.filter((row) => row.ingredient_evidence_incomplete).length,
     intel_loads_incomplete: enriched.filter((row) => row.product_intel_evidence_incomplete).length,
+    // Identity scans: one per batch per-call; overwritten with 0 or 1 in build-once mode.
+    kb_document_identity_scan_count: batches,
   } };
 }
 
