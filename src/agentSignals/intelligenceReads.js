@@ -498,8 +498,9 @@ function makeGetOffers(deps = {}) {
     let emptyReason = null;
     if (offers.length === 0) {
       if (namedVariant && fetched.length === 0 && withheldOtherVariant > 0) emptyReason = 'variant_not_offered';
-      else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
+      // The LAST filter that emptied the answer names it: the live-verification one runs after currency.
       else if (withheldUnverified > 0) emptyReason = 'offer_needs_live_verification';
+      else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
     }
     return {
       subject,

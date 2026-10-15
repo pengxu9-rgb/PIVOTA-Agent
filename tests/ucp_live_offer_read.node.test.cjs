@@ -55,7 +55,7 @@ function fakeClient(store, { discover = true, calls = [] } = {}) {
       const missing = ids.filter((id) => !variants.some((v) => v.id === id));
       return toolResult({
         ucp: { version: '2026-08-25' },
-        products: variants.length ? [{ id: 'gid://shopify/Product/1', variants }] : [],
+        products: variants.length ? [{ id: 'gid://shopify/Product/1', ...(store.handle ? { handle: store.handle } : {}), variants }] : [],
         messages: missing.map((id) => ({ type: 'info', code: 'not_found', content: id })),
       });
     },
@@ -67,6 +67,7 @@ const rareBeauty = {
   SG: [variant(BLISS, 3700, 'SGD', true, 'Bliss'), variant(HOPE, 3700, 'SGD', true, 'Hope')],
   // A store that does not price for GB answers its own currency, silently (fentybeauty.com, live).
   GB: [variant(BLISS, 2500, 'USD', true, 'Bliss')],
+  handle: 'soft-pinch-liquid-blush',
 };
 
 function offer(extra = {}) {
@@ -582,12 +583,14 @@ function flaggedOffer(extra = {}) {
     availability: 'unknown',
     execution_spec: { merchant_domain: RB, variant_id: null, cart_url: null },
     requires_live_verification: { reasons: ['stale_snapshot'], price_stale: true, lookup_variant_id: BLISS },
+    source: { type: 'external_seed', seed_id: 'eps_rb', canonical_url: `https://${RB}/products/soft-pinch-liquid-blush` },
+    variants: [{ variant_id: BLISS, title: 'Bliss', price: 22, currency: 'USD' }, { variant_id: '99999999999', title: 'Other', price: 22, currency: 'USD' }],
     ...extra,
   });
 }
 
 test('a flagged offer with no cart is looked up by the variant the backend names', () => {
-  assert.deepEqual(lookupIdsFor(flaggedOffer()), [BLISS]);
+  assert.deepEqual(lookupIdsFor(flaggedOffer()), [BLISS, '99999999999'], 'its own variant first, then its listed options');
   assert.deepEqual(lookupIdsFor(flaggedOffer({ requires_live_verification: { reasons: ['stale_snapshot'] } })), []);
 });
 
@@ -643,4 +646,52 @@ test('STRUCTURAL: the server opts in only while the offer reader enforces, as in
   assert.ok(i > 0);
   assert.match(src.slice(i, i + 200), /const reader = getUcpLiveOfferReader\(\);\s+return Boolean\(reader && reader\.mode === 'enforce'\);/);
   assert.match(src, /\.\.\.\(include_live_verification \? \{ includeLiveVerificationOffers: true \} : \{\}\),/);
+});
+
+test('a flagged offer verifies only if the merchant answers under the product its page names', async () => {
+  const run = (src) => makeGetOffers({
+    fetchOffers: async () => ({ offers: [flaggedOffer({ source: { type: 'external_seed', canonical_url: src } })] }),
+    readOffersLive: (offers, ctx) => reader(rareBeauty).r.readOffers(offers, ctx),
+    liveVerificationOptIn: () => true,
+  })({ payload: { product_id: 'sig_rb', market: 'US' } });
+  assert.equal((await run(`https://${RB}/en-us/products/soft-pinch-liquid-blush`)).signals.length, 1, 'same handle (subfolder ok)');
+  const other = await run(`https://${RB}/products/soft-pinch-liquid-blush-mini`);
+  assert.equal(other.signals.length, 0);
+  assert.equal(other.metadata.reason, 'offer_needs_live_verification');
+  assert.equal((await run(`https://${RB}/pages/whatever`)).signals.length, 0, 'no handle, no verification');
+  const { handle: _h, ...noHandleStore } = rareBeauty;
+  const quiet = reader(noHandleStore);
+  const silent = await makeGetOffers({
+    fetchOffers: async () => ({ offers: [flaggedOffer()] }),
+    readOffersLive: (offers, ctx) => quiet.r.readOffers(offers, ctx),
+    liveVerificationOptIn: () => true,
+  })({ payload: { product_id: 'sig_rb', market: 'US' } });
+  assert.equal(silent.signals.length, 0, 'a merchant answer that names no product handle verifies nothing');
+  assert.equal(quiet.logs[0].hosts[0].reason, 'handle_unknown', 'and it says why');
+});
+
+test('a verified flagged offer shows a price only for the options the merchant just answered', async () => {
+  const res = await makeGetOffers({
+    fetchOffers: async () => ({ offers: [flaggedOffer()] }),
+    readOffersLive: (offers, ctx) => reader(rareBeauty).r.readOffers(offers, ctx),
+    liveVerificationOptIn: () => true,
+  })({ payload: { product_id: 'sig_rb', market: 'US' } });
+  const opts = res.best_offer.value.variants;
+  const bliss = opts.find((o) => o.variant_id === BLISS);
+  const other = opts.find((o) => o.variant_id === '99999999999');
+  assert.equal(bliss.price, 25);
+  assert.equal(bliss.live_verified, true);
+  assert.equal(other.price, undefined, 'a stale option shows no price');
+  assert.equal(other.in_stock, null);
+});
+
+test('the empty-answer reason names the LAST filter that emptied it (live verification after currency)', async () => {
+  const gbp = backendOffer({ merchant_id: 'gbp', currency: 'GBP' });
+  const res = await makeGetOffers({ fetchOffers: async () => ({ offers: [gbp, flaggedOffer()] }) })(
+    { payload: { product_id: 'sig_rb', market: 'US' } },
+  );
+  assert.equal(res.signals.length, 0);
+  assert.equal(res.metadata.withheld_other_currency_count, 1);
+  assert.equal(res.metadata.withheld_unverified_count, 1);
+  assert.equal(res.metadata.reason, 'offer_needs_live_verification');
 });
