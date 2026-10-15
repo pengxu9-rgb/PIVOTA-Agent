@@ -303,7 +303,12 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     return promise;
   }
 
-  return { endpointFor, lookup, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
+  /** Room for `n` more lookups to `host` under the per-store cap (always, when uncapped). */
+  function hostHasRoom(host, n = 1) {
+    return perHostCap === null || (hostInFlight.get(host) || 0) + n <= perHostCap;
+  }
+
+  return { endpointFor, lookup, hostHasRoom, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
 }
 
 function withDeadline(promise, deadline, now) {
@@ -640,6 +645,10 @@ function createUcpLiveProductReader(deps = {}) {
       if (!endpoint) return { status: STATUS.NOT_UCP, host, country, currency, basis };
       const chunks = [];
       for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
+      // A capped core: the whole product's chunks fit, or none is sent (half a read is a wasted request).
+      if (typeof core.hostHasRoom === 'function' && !core.hostHasRoom(host, chunks.length)) {
+        return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
+      }
       const payloads = await withDeadline(
         Promise.all(chunks.map((chunk) => core.lookup(host, endpoint, chunk, country))),
         deadline,
@@ -672,6 +681,7 @@ function createUcpLiveProductReader(deps = {}) {
       }
       return { status: STATUS.VERIFIED, host, country, currency, basis, live, notFound, askedIds: ids };
     } catch (e) {
+      if (e && e.code === 'host_busy') return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
       return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) };
     }
   }
