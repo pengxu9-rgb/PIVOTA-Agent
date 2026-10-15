@@ -30822,7 +30822,7 @@ function getUcpLiveShared() {
   _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
   return _ucpLiveShared;
 }
-function ucpLiveReaderDeps(maxConcurrent) {
+function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
   const { createLookupCore } = require('./services/ucpLiveOfferRead');
   const shared = getUcpLiveShared();
   return {
@@ -30830,6 +30830,7 @@ function ucpLiveReaderDeps(maxConcurrent) {
     core: createLookupCore({
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+      ...(maxPerHost ? { maxPerHost } : {}),
     }),
   };
 }
@@ -30872,7 +30873,9 @@ function getUcpLivePdpReader() {
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PDP_READ') === MODES.OFF) return null;
   _ucpLivePdpReader = createUcpLiveProductReader({
-    ...ucpLiveReaderDeps(8),
+    // The frontend PDP is the highest-volume surface: at most 3 lookups to one store in flight -- one
+    // product's full read (up to 30 variants = 3 chunks of 10), never a stack of several products.
+    ...ucpLiveReaderDeps(8, { maxPerHost: 3 }),
     mode: MODES.SHADOW,
     event: 'get_pdp_v2_ucp_live_read',
     log: (event, fields) => logger.info({ event, ...fields }, event),
