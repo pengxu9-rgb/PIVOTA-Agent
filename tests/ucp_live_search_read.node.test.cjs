@@ -638,3 +638,33 @@ test('ANSWERS UNCHANGED: the reads that build answers carry no diagnostics, in e
     ['checked_at', 'market', 'market_basis', 'source', 'status', 'variant_in_stock']);
   assert.equal('hosts' in out.metadata.live_merchant_price.ucp, false);
 });
+
+test('a store whose DISCOVERY answers 429 is counted under its host with http_status 429', async () => {
+  const h = uniq('disc429');
+  const client = { ...fakeClient(storesFor(h)), async discoverEndpoint() { return { status: 429 }; } };
+  const { line } = await logged({ ucpClient: client, mode: 'enforce' }, [card(rbUrl(h), BLISS)]);
+  assert.deepEqual(line.hosts[0].http_status, { 429: 1 });
+  assert.deepEqual(line.by_reason, { discovery_429: 1 });
+});
+
+test('ANSWERS UNCHANGED on the error path and in shadow: reads carry no diagnostics, the page is as with the read off', async () => {
+  const h = uniq('err');
+  const limited = { ...fakeClient(storesFor(h)), async lookupCatalog() { return { ok: false, status: 429 }; } };
+  const { reads } = await logged({ ucpClient: limited, mode: 'enforce' }, [card(rbUrl(h), BLISS)]);
+  assert.deepEqual(Object.keys(reads.get(0)).sort(), ['reason', 'status']);
+  const page = () => ({ products: [card(rbUrl(uniq('sh')), BLISS)] });
+  const off = await overlayLiveMerchantSearchPrices(page(), { market: 'US', fetchImpl: jsonFetch('30.00') });
+  const shadow = await overlayLiveMerchantSearchPrices(page(), {
+    ucpSearchReader: createUcpLiveSearchReader({ ucpClient: limited, mode: 'shadow' }), market: 'US', fetchImpl: jsonFetch('30.00'),
+  });
+  const strip = (o) => o.products.map((c) => ({ price: c.price, price_source: c.price_source, in_stock: c.in_stock }));
+  assert.deepEqual(strip(shadow), strip(off));
+  assert.equal('ucp' in shadow.metadata.live_merchant_price, false);
+});
+
+test('a log line that throws never costs the enforce answer', async () => {
+  const h = uniq('logthrow');
+  const r = createUcpLiveSearchReader({ ucpClient: fakeClient(storesFor(h)), mode: 'enforce', log: () => { throw new Error('logger down'); } });
+  const reads = await r.readCards([card(rbUrl(h), BLISS)], { market: 'US' });
+  assert.equal(reads.get(0).status, STATUS.VERIFIED);
+});

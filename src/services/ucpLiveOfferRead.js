@@ -966,7 +966,8 @@ function createUcpLiveSearchReader(deps = {}) {
         const httpStatus = e && Number.isFinite(Number(e.status)) && Number(e.status) > 0 ? Number(e.status) : null;
         for (const it of g.items) {
           reads.set(it.index, { status, reason: str(e && e.message).slice(0, 80) });
-          if (httpStatus !== null) meta.get(it.index).httpStatus = httpStatus;
+          const m = meta.get(it.index);
+          if (httpStatus !== null && m) m.httpStatus = httpStatus;
         }
       }
     }));
@@ -1027,7 +1028,11 @@ function createUcpLiveSearchReader(deps = {}) {
     }
     const before = cards.slice();
     const reads = await readAll(planned);
-    log('search_ucp_live_read', summarize(before, reads));
+    try {
+      log('search_ucp_live_read', summarize(before, reads));
+    } catch {
+      /* the log line never costs the answer */
+    }
     return reads;
   }
 
