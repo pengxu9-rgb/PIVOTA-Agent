@@ -5,6 +5,7 @@ const { externalSeedCatalogBindingSql } = require('../services/externalSeedCatal
 const { PDP_RENDER_FRESHNESS_DAYS } = require('./relationshipGraphCoverage');
 const { brand, optionRole, isSameFamilyVariant } = require('./relationshipPairPolicy');
 const { runScopedTable, runScopedTablesDisabled, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
+const { pacedDbCall } = require('./relationshipGraphDbPacing');
 
 const DEFAULT_TARGET_RECALL_OPTIONS = Object.freeze({
   maxAnchors: 200,
@@ -240,8 +241,9 @@ async function runTargetRecall({ anchors, existingProducts, market, caps, recall
       try {
         diagnostics.query_count += 1;
         for (const { anchor } of pending) queriedRefs.add(anchor.product_ref);
-        rows = (await recallQuery([JSON.stringify(pending.map(({ profile }) => profile)),
-          String(market || 'US').trim().toUpperCase(), page * perAnchor, (page + 1) * perAnchor])).rows || [];
+        // Off unless RELGRAPH_DB_DUTY_CYCLE: a sleep after each batch query frees the core.
+        rows = (await pacedDbCall(() => recallQuery([JSON.stringify(pending.map(({ profile }) => profile)),
+          String(market || 'US').trim().toUpperCase(), page * perAnchor, (page + 1) * perAnchor]))).rows || [];
       } catch (error) {
         if (!isSourceMissingError(error)) throw error;
         // Missing trust/catalog support must fail closed, including after an
