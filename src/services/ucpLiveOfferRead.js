@@ -303,12 +303,18 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     return promise;
   }
 
+  /** True when a lookup for exactly these ids is memoized and live: asking again sends nothing. */
+  function isInFlight(host, ids, country) {
+    const hit = memo.get(`${host}|${country}|${ids.join(',')}`);
+    return Boolean(hit && hit.until > now());
+  }
+
   /** Room for `n` more lookups to `host` under the per-store cap (always, when uncapped). */
   function hostHasRoom(host, n = 1) {
     return perHostCap === null || (hostInFlight.get(host) || 0) + n <= perHostCap;
   }
 
-  return { endpointFor, lookup, hostHasRoom, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
+  return { endpointFor, lookup, hostHasRoom, isInFlight, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
 }
 
 function withDeadline(promise, deadline, now) {
@@ -645,8 +651,13 @@ function createUcpLiveProductReader(deps = {}) {
       if (!endpoint) return { status: STATUS.NOT_UCP, host, country, currency, basis };
       const chunks = [];
       for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
-      // A capped core: the whole product's chunks fit, or none is sent (half a read is a wasted request).
-      if (typeof core.hostHasRoom === 'function' && !core.hostHasRoom(host, chunks.length)) {
+      // A capped core: the whole product's NEW sends fit, or none is sent (half a read is a wasted
+      // request). A chunk already in flight (a second viewer of the same product) shares that lookup
+      // and sends nothing, so it does not count (review round 2 of #2446).
+      const sends = typeof core.isInFlight === 'function'
+        ? chunks.filter((chunk) => !core.isInFlight(host, chunk, country)).length
+        : chunks.length;
+      if (sends > 0 && typeof core.hostHasRoom === 'function' && !core.hostHasRoom(host, sends)) {
         return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
       }
       const payloads = await withDeadline(

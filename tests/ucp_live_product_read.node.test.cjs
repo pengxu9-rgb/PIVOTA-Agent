@@ -593,3 +593,29 @@ test('STRUCTURAL: only the frontend PDP reader is capped per store (3)', () => {
     assert.doesNotMatch(src.slice(i, i + 900), /maxPerHost/, getter);
   }
 });
+
+test('a second viewer of a product being read shares its lookups and is not refused', { timeout: 10000 }, async () => {
+  const many = Array.from({ length: 30 }, (_, i) => String(700000000 + i));
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  const calls = [];
+  const base = fakeClient({ US: many.map((id) => variant(id, 2400, 'USD', true)) }, calls);
+  const client = { ...base, async lookupCatalog(...a) { await gate; return base.lookupCatalog(...a); } };
+  const core = require('../src/services/ucpLiveOfferRead').createLookupCore({
+    ucpClient: client, now: () => Date.now(), endpointTtlMs: 60000, memoTtlMs: 5000, maxPerHost: 3,
+  });
+  const r = createUcpLiveProductReader({ ucpClient: client, mode: 'enforce', core });
+  const pdp = () => laneigePdp({ currency: 'USD', default_variant_id: many[0], variants: many.map((id) => storedVariant(id, id)) });
+  try {
+    const first = r.readProduct(pdp(), { market: 'US' });
+    for (let i = 0; i < 20 && calls.filter((c) => c[0] === 'lookup').length < 3; i += 1) await new Promise((res) => setImmediate(res));
+    const second = r.readProduct(pdp(), { market: 'US' });
+    open();
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a.product.live_read.status, STATUS.VERIFIED);
+    assert.equal(b.product.live_read.status, STATUS.VERIFIED, 'not host_busy');
+    assert.equal(calls.filter((c) => c[0] === 'lookup').length, 3, 'three lookups for both viewers');
+  } finally {
+    open();
+  }
+});
