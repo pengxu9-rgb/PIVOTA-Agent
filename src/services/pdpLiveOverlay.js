@@ -349,6 +349,23 @@ const FACT_KEYS = ['commerce_facts_v1', 'commerce_facts', 'agent_safe_commerce_f
 const bareHost = (h) => str(h).toLowerCase().replace(/^www\./, '');
 
 /**
+ * The variant a row that NAMES none stands for, so its own price and stock move with the merchant's answer
+ * (a row restocked only inside `variants[]` still reads in stock at the row level, which the storefront
+ * checks first; pivota-agent-ui#434, the native226 row): its one real variant, else the card's default
+ * variant when the row carries it, else none. A variant the row itself marks unavailable is never implied.
+ */
+function impliedSelectedId(offer, o) {
+  const rows = (Array.isArray(offer.variants) ? offer.variants : []).filter((v) => isObj(v) && !notAVariantId(v, offer));
+  const ids = [...new Set(rows.map((v) => numericVariantId(v.variant_id)).filter(Boolean))];
+  let id = null;
+  if (ids.length === 1) id = ids[0];
+  else if (o.cardDefaultId && ids.includes(o.cardDefaultId)) id = o.cardDefaultId;
+  if (!id) return null;
+  const marked = rows.some((v) => numericVariantId(v.variant_id) === id && v.current_own_offer_status === 'unavailable');
+  return marked ? null : id;
+}
+
+/**
  * The offer row that sells the card's own listing, with the merchant's answer. The whole row is left as it
  * is unless it is priced in the page's currency on the card's store (www. or not), and the own-money logic
  * did not withhold it -- on the row, or on the CARD's variant of the same id (the offer projection drops
@@ -360,8 +377,14 @@ function patchOffer(offer, o) {
   if (priceCurrencyOf(offer.price, offer.currency) !== o.currency) return offer;
   const offerHost = productHost(offer);
   if (offerHost && bareHost(offerHost) !== bareHost(o.host)) return offer;
-  const selectedRaw = { variant_id: offer.selected_variant_id || offer.variant_id || offer.default_variant_id };
-  const selectedId = notAVariantId(selectedRaw, offer) ? null : numericVariantId(selectedRaw.variant_id);
+  const named = offer.selected_variant_id || offer.variant_id || offer.default_variant_id;
+  let selectedId = null;
+  if (named) {
+    const selectedRaw = { variant_id: named };
+    selectedId = notAVariantId(selectedRaw, offer) ? null : numericVariantId(selectedRaw.variant_id);
+  } else {
+    selectedId = impliedSelectedId(offer, o);
+  }
   if (selectedId && o.withheldIds.has(selectedId)) return offer;
   const variants = Array.isArray(offer.variants) ? offer.variants.map((v) => patchVariant(v, offer, o)) : offer.variants;
   const variantsChanged = Array.isArray(offer.variants) && variants.some((v, i) => v !== offer.variants[i]);
@@ -468,7 +491,14 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
     .filter((v) => isObj(v) && v.current_own_offer_status === 'unavailable')
     .map((v) => numericVariantId(v.variant_id))
     .filter(Boolean));
-  const o = { answers, currency, checkedAt, host, withheldIds, presentationFields: Array.isArray(presentationFields) ? presentationFields : [] };
+  // The card shows its DEFAULT variant's money. Only a card that names no default falls back to its first
+  // variant (pdpBuilder's rule).
+  const defaultRaw = str(card.default_variant_id) || (stored[0] ? str(stored[0].variant_id) : '');
+  const o = {
+    answers, currency, checkedAt, host, withheldIds,
+    cardDefaultId: numericVariantId(defaultRaw),
+    presentationFields: Array.isArray(presentationFields) ? presentationFields : [],
+  };
   const variants = stored.map((v) => patchVariant(v, card, o));
   const patchedById = new Map();
   variants.forEach((v, i) => {
@@ -487,9 +517,7 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
   });
 
   let nextCard = { ...card, variants };
-  // The card shows its DEFAULT variant's money. Only a card that names no default falls back to its first
-  // variant (pdpBuilder's rule); a default the merchant was not asked about leaves the card's price as is.
-  const defaultRaw = str(card.default_variant_id) || (stored[0] ? str(stored[0].variant_id) : '');
+  // A default the merchant was not asked about leaves the card's price as is.
   const defaultPatched = patchedById.get(numericVariantId(defaultRaw)) || null;
   let defaultPrice = null;
   if (defaultPatched && defaultPatched.live_read.status === STATUS.VERIFIED) {
