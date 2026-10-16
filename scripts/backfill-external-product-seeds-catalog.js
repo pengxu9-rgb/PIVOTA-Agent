@@ -787,23 +787,42 @@ function isUnsafeNestedVariantImageUrl(url) {
   return !normalized || isDecorativeSeedImageUrl(normalized);
 }
 
-// Drops unsafe image URLs from one variant entry. Every other field (id, price, stock,
-// options) is left exactly as stored.
+// The URL of one image entry: a string, or an object such as {url, alt} / {src}.
+function nestedVariantImageEntryUrl(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    return normalizeNonEmptyString(entry.url || entry.src || entry.image_url || entry.imageUrl);
+  }
+  return typeof entry === 'string' ? normalizeNonEmptyString(entry) : '';
+}
+
+function isSafeNestedVariantImageEntry(entry) {
+  const url = nestedVariantImageEntryUrl(entry);
+  return Boolean(url) && !isUnsafeNestedVariantImageUrl(url);
+}
+
+// Drops unsafe image entries from one variant entry. Array entries keep their shape (string or
+// object) and are filtered by their URL; every other field (id, price, stock, options) is left
+// exactly as stored.
 function sanitizeNestedVariantImageFields(variant) {
   if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return variant;
-  if (!collectRawVariantImageUrls(variant).some(isUnsafeNestedVariantImageUrl)) return variant;
+  const arrayEntries = [
+    ...(Array.isArray(variant.image_urls) ? variant.image_urls : []),
+    ...(Array.isArray(variant.images) ? variant.images : []),
+  ];
+  const scalarEntries = ['image_url', 'image']
+    .filter((key) => normalizeNonEmptyString(nestedVariantImageEntryUrl(variant[key])))
+    .map((key) => variant[key]);
+  if ([...arrayEntries, ...scalarEntries].every(isSafeNestedVariantImageEntry)) return variant;
   const next = { ...variant };
-  const keepUrl = (value) => {
-    const url = normalizeNonEmptyString(value);
-    return Boolean(url) && !isUnsafeNestedVariantImageUrl(url);
-  };
   for (const key of ['image_urls', 'images']) {
-    if (Array.isArray(next[key])) next[key] = next[key].filter(keepUrl);
+    if (Array.isArray(next[key])) next[key] = next[key].filter(isSafeNestedVariantImageEntry);
   }
-  const fallbackUrl = [...(next.image_urls || []), ...(next.images || [])].find(keepUrl) || '';
+  const fallbackUrl = nestedVariantImageEntryUrl(
+    [...(next.image_urls || []), ...(next.images || [])].find(isSafeNestedVariantImageEntry),
+  );
   for (const key of ['image_url', 'image']) {
     if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
-    if (!normalizeNonEmptyString(next[key]) || keepUrl(next[key])) continue;
+    if (!nestedVariantImageEntryUrl(next[key]) || isSafeNestedVariantImageEntry(next[key])) continue;
     if (fallbackUrl) next[key] = fallbackUrl;
     else delete next[key];
   }

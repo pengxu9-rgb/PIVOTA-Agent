@@ -198,6 +198,20 @@ describe('processRow main write (fix 1): main list only from a fresh extraction'
     expect(JSON.stringify(persisted.variants)).toBe(JSON.stringify(before.variants));
   });
 
+  test('preserveCommerce: a stored empty main list stays an empty list (not dropped)', async () => {
+    const row = buildRow({ variants: [], snapshot: { variants: staleSnapshotList() } });
+    mockExtraction([
+      { id: '111', sku: 'FS-30', url: `${TARGET_URL}?variant=111`, option_name: 'Size', option_value: '30 ml', price: '31.00', currency: 'USD', stock: 'In Stock' },
+    ]);
+
+    await processRow(row, { ...RUN_OPTIONS, preserveCommerce: true });
+
+    const [persisted] = capturedSeedUpdates();
+    expect(persisted).toBeTruthy();
+    expect(hasOwn(persisted, 'variants')).toBe(true);
+    expect(persisted.variants).toEqual([]);
+  });
+
   test('fresh variants: the main list is written from the extraction, not from the snapshot', async () => {
     const row = buildRow({ variants: refreshedMainList(), snapshot: { variants: staleSnapshotList() } });
     mockExtraction([
@@ -249,6 +263,37 @@ describe('applySanitizedNestedVariantImages (fix 2): each list sanitized on its 
     expect(JSON.stringify(persisted.variants)).toBe(JSON.stringify(expectedMain));
     // The snapshot list keeps its own (stale) entries, not the main list's.
     expect(persisted.snapshot.variants.map((variant) => variant.price)).toEqual(['25.00', '40.00']);
+  });
+
+  test('an unsafe image_url falls back to the entry\'s first safe URL instead of being dropped', async () => {
+    const main = refreshedMainList();
+    main[0].image_url = SVG_ICON;
+    main[0].image_urls = [IMG_A];
+    const row = buildRow({ variants: main, snapshot: { variants: staleSnapshotList() } });
+    const before = clone(row.seed_data);
+    mockExtraction([]);
+
+    await processRow(row, { ...RUN_OPTIONS, validateImageHealth: true });
+
+    const [persisted] = capturedSeedUpdates();
+    const expectedMain = clone(before.variants);
+    expectedMain[0].image_url = IMG_A;
+    expect(JSON.stringify(persisted.variants)).toBe(JSON.stringify(expectedMain));
+  });
+
+  test('object image entries keep their shape and are filtered by their url', async () => {
+    const main = refreshedMainList();
+    main[0].images = [{ url: IMG_A, alt: 'front' }, { url: SVG_ICON, alt: 'icon' }, IMG_A];
+    const row = buildRow({ variants: main, snapshot: { variants: staleSnapshotList() } });
+    const before = clone(row.seed_data);
+    mockExtraction([]);
+
+    await processRow(row, { ...RUN_OPTIONS, validateImageHealth: true });
+
+    const [persisted] = capturedSeedUpdates();
+    const expectedMain = clone(before.variants);
+    expectedMain[0].images = [{ url: IMG_A, alt: 'front' }, IMG_A];
+    expect(JSON.stringify(persisted.variants)).toBe(JSON.stringify(expectedMain));
   });
 
   test('a main list absent before sanitization stays absent', async () => {
