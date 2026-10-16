@@ -239,6 +239,157 @@ test('the offer row selling the card\'s listing moves with it; another seller\'s
   assert.equal(top(applyPdpLiveOverlay(p, { market: 'US', cache: cheap, isCardOffer }).payload, 'offers').data.best_price_offer_id, 'of_card');
 });
 
+// ------------------------------------------------------------- a row that names no selected variant
+
+// pivota-agent-ui#434 (the native226 row): a card offer row with no selected_variant_id / variant_id /
+// default_variant_id was re-priced and restocked only inside its variants[]; the row's own inventory and
+// facts kept saying in stock, and the storefront reads those first.
+function unnamedRow(variants, extra = {}) {
+  return {
+    offer_id: 'of_card', merchant_id: 'merch_obs_laneige', product_id: 'ext_lsm',
+    price: { amount: 26, currency: 'USD' }, inventory: { in_stock: true },
+    commerce_facts_v1: { regional_price: { amount: 26, currency: 'USD' }, availability: { status: 'in_stock' } },
+    variants,
+    ...extra,
+  };
+}
+const rowVariant = (id) => ({ variant_id: id, price: { current: { amount: 26, currency: 'USD' } }, availability: { in_stock: true } });
+const ownRow = (card, offer) => offer.merchant_id === card.merchant_id && offer.product_id === 'ext_lsm';
+const unnamedRowOf = (out) => top(out.payload, 'offers').data.offers[0];
+
+test('a row naming no variant stands for its ONE variant: gone or out of stock at the merchant reads so at the row level', () => {
+  // Berry is NOT the card's default (Lemon is): the row's one variant is what it stands for.
+  for (const [label, read] of [
+    ['gone', verifiedRead({ [LEMON]: { amount: 26, currency: 'USD', available: true } }, { notFound: [BERRY] })],
+    ['out of stock', verifiedRead({ [BERRY]: { amount: 26, currency: 'USD', available: false } })],
+  ]) {
+    const offers = { default_offer_id: 'of_card', best_price_offer_id: 'of_card', offers: [unnamedRow([rowVariant(BERRY)])] };
+    const out = applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', cache: cacheWith(read), isCardOffer: ownRow });
+    const row = unnamedRowOf(out);
+    assert.equal(row.inventory.in_stock, false, label);
+    assert.equal(row.commerce_facts_v1.availability.status, 'out_of_stock', label);
+    assert.equal(row.variants[0].availability.in_stock, false, label);
+    assert.equal(row.live_read.status, label === 'gone' ? STATUS.VARIANT_GONE : STATUS.VERIFIED, label);
+  }
+});
+
+test('THE NATIVE226 REPRO: a row with several variants and none selected carries the PRODUCT\'s stock, never one variant\'s price', () => {
+  // The default (Lemon, "50 mL") is sold out, another size (Berry, "100 mL") is in stock: the row stays in
+  // stock (Buy must not be disabled on the in-stock size) and is not re-priced from either answer.
+  const offers = { default_offer_id: 'of_card', best_price_offer_id: 'of_card', offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)])] };
+  const mixed = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false }, [BERRY]: { amount: 30, currency: 'USD', available: true } });
+  const out = applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', cache: cacheWith(mixed), isCardOffer: ownRow });
+  const row = unnamedRowOf(out);
+  assert.equal(row.inventory.in_stock, true);
+  assert.equal(row.commerce_facts_v1.availability.status, 'in_stock');
+  assert.deepEqual(row.price, { amount: 26, currency: 'USD' }, 'no re-price');
+  assert.equal(row.commerce_facts_v1.regional_price.amount, 26, 'no facts re-price');
+  assert.equal(new Map(row.variants.map((v) => [v.variant_id, v])).get(LEMON).availability.in_stock, false, 'its variants still move');
+  assert.equal(out.stats.best_price_moved, undefined, 'no total change');
+  // A row that said out of stock: one size in stock at the merchant raises it.
+  const stale = { offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)], { inventory: { in_stock: false },
+    commerce_facts_v1: { regional_price: { amount: 26, currency: 'USD' }, availability: { status: 'out_of_stock' } } })] };
+  const raised = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: stale }), { market: 'US', cache: cacheWith(mixed), isCardOffer: ownRow }));
+  assert.equal(raised.inventory.in_stock, true);
+  assert.equal(raised.commerce_facts_v1.availability.status, 'in_stock');
+  assert.equal(raised.price.amount, 26);
+  // Every size sold out: the row reads out of stock, still at its own price.
+  const allOut = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false }, [BERRY]: { amount: 30, currency: 'USD', available: false } });
+  const gone = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(gone.inventory.in_stock, false);
+  assert.equal(gone.commerce_facts_v1.availability.status, 'out_of_stock');
+  assert.equal(gone.price.amount, 26);
+  assert.equal(gone.live_read.status, 'variants_only');
+  // One size answered out of stock, the other unanswered with no stock flag: unknown, the row is left as it is.
+  const quiet = { default_offer_id: 'of_card', offers: [unnamedRow([rowVariant(LEMON), { variant_id: VANILLA }])] };
+  const partial = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: quiet }), {
+    market: 'US', cache: cacheWith(verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false } })), isCardOffer: ownRow }));
+  assert.equal(partial.inventory.in_stock, true);
+  assert.equal(partial.live_read, undefined);
+});
+
+test('a product-level row is judged ONLY on what the merchant answered this read, never a stored flag nobody re-read', () => {
+  const answeredOut = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false } }); // Berry unanswered
+  const oosRow = (variants) => unnamedRow(variants, { inventory: { in_stock: false },
+    commerce_facts_v1: { regional_price: { amount: 26, currency: 'USD' }, availability: { status: 'out_of_stock' } } });
+  // Probe 1 (no false in-stock): row stored out of stock, A answered out, B unanswered but STORED in stock.
+  const p1 = page(sellerProduct(), { offers: { offers: [oosRow([rowVariant(LEMON), rowVariant(BERRY)])] } });
+  const r1 = unnamedRowOf(applyPdpLiveOverlay(p1, { market: 'US', cache: cacheWith(answeredOut), isCardOffer: ownRow }));
+  const sent1 = p1.modules[2].data.offers[0];
+  assert.equal(r1.inventory, sent1.inventory, 'row stock left exactly as stored');
+  assert.equal(r1.commerce_facts_v1, sent1.commerce_facts_v1);
+  assert.equal(r1.live_read, undefined, 'no live stamp on what nobody re-read');
+  // Probe 2 (no false sold-out): row stored in stock, A answered out, B unanswered and STORED out of stock.
+  const p2 = page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON),
+    { ...rowVariant(BERRY), availability: { in_stock: false } }])] } });
+  const r2 = unnamedRowOf(applyPdpLiveOverlay(p2, { market: 'US', cache: cacheWith(answeredOut), isCardOffer: ownRow }));
+  const sent2 = p2.modules[2].data.offers[0];
+  assert.equal(r2.inventory, sent2.inventory);
+  assert.equal(r2.inventory.in_stock, true);
+  assert.equal(r2.commerce_facts_v1, sent2.commerce_facts_v1);
+  assert.equal(r2.live_read, undefined);
+  // All answered, mixed: in stock (the stored row said out).
+  const mixed = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false }, [BERRY]: { amount: 26, currency: 'USD', available: true } });
+  const r3 = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [oosRow([rowVariant(LEMON), rowVariant(BERRY)])] } }),
+    { market: 'US', cache: cacheWith(mixed), isCardOffer: ownRow }));
+  assert.equal(r3.inventory.in_stock, true);
+  assert.equal(r3.commerce_facts_v1.availability.status, 'in_stock');
+  // All answered out of stock or gone: out of stock.
+  const outOrGone = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false } }, { notFound: [BERRY] });
+  const r4 = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)])] } }),
+    { market: 'US', cache: cacheWith(outOrGone), isCardOffer: ownRow }));
+  assert.equal(r4.inventory.in_stock, false);
+  assert.equal(r4.commerce_facts_v1.availability.status, 'out_of_stock');
+  assert.equal(r4.live_read.status, 'variants_only');
+  assert.equal(r4.price.amount, 26, 'never re-priced');
+});
+
+test('a several-entry row is product-level by its RAW count: one real variant beside a sku stand-in is not re-priced', () => {
+  const offers = { offers: [unnamedRow([rowVariant(LEMON), { ...rowVariant(BERRY), sku: BERRY }])] };
+  const read = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: true } });
+  const row = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers }), { market: 'US', cache: cacheWith(read), isCardOffer: ownRow }));
+  assert.equal(row.price.amount, 26, 'Lemon is not the row: no re-price');
+  assert.equal(row.inventory.in_stock, true);
+});
+
+test('a row nobody answered for is left as it is; a withheld or marked sole variant is not implied', () => {
+  const read = verifiedRead({ [VANILLA]: { amount: 20, currency: 'USD', available: false } });
+  const offers = { offers: [unnamedRow([rowVariant(BERRY), rowVariant(LEMON)])] };
+  const p = page(sellerProduct(), { offers });
+  const out = applyPdpLiveOverlay(p, { market: 'US', cache: cacheWith(read), isCardOffer: ownRow });
+  assert.equal(unnamedRowOf(out), p.modules[2].data.offers[0], 'no variant of the row answered: the same object');
+  const allOut = verifiedRead({
+    [LEMON]: { amount: 24, currency: 'USD', available: false },
+    [BERRY]: { amount: 20, currency: 'USD', available: false },
+    [VANILLA]: { amount: 20, currency: 'USD', available: false },
+  });
+  // A withheld variant does not hold a row in stock.
+  const withheldCard = sellerProduct();
+  withheldCard.variants[1] = { ...withheldCard.variants[1], current_own_offer_status: 'unavailable' };
+  const heldRow = unnamedRowOf(applyPdpLiveOverlay(page(withheldCard, { offers: { offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)])] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(heldRow.inventory.in_stock, false, 'Berry is withheld (stored in stock): the answered Lemon decides');
+  // The ONE variant, withheld on the card, marked on the row, or only a sku stand-in: not implied.
+  const withheld = sellerProduct();
+  withheld.variants[0] = { ...withheld.variants[0], current_own_offer_status: 'unavailable' };
+  const w = unnamedRowOf(applyPdpLiveOverlay(page(withheld, { offers: { offers: [unnamedRow([rowVariant(LEMON)])] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(w.inventory.in_stock, true);
+  const marked = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([{ ...rowVariant(LEMON), current_own_offer_status: 'unavailable' }])] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(marked.inventory.in_stock, true);
+  const skuOnly = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([{ ...rowVariant(LEMON), sku: LEMON }])] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(skuOnly.inventory.in_stock, true);
+  // Another currency or another store: untouched, as for a named row.
+  const sgd = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON)], { price: { amount: 35, currency: 'SGD' } })] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(sgd.inventory.in_stock, true);
+  const elsewhere = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)], { destination_url: 'https://www.sephora.com/products/x' })] } }),
+    { market: 'US', cache: cacheWith(allOut), isCardOffer: ownRow }));
+  assert.equal(elsewhere.inventory.in_stock, true);
+});
+
 // ------------------------------------------------------------- review of #2448
 
 test('review 2: best price follows the producer (price + shipping), and a confirmed price never moves it', () => {
@@ -665,7 +816,9 @@ test('STRUCTURAL: only the normally served get_pdp_v2 return takes the overlay',
   assert.ok(i > 0);
   const block = src.slice(i, src.indexOf('} catch (err) {', i));
   assert.equal((block.match(/livePdpOverlay\(/g) || []).length, 1);
-  assert.match(block, /return res\.json\(canonicalOwnMoneyGap\s+\? withoutCanonicalPurchaseActions\(responsePayload\)\s+: livePdpOverlay\(responsePayload, \{\s+market: offersGateBuyerMarket\(payload, metadata\),/);
+  // The served arm: the overlay, inside the first-view refresh descriptor (pdpLiveRefresh.js), which adds a
+  // top-level `live_refresh` and changes nothing else.
+  assert.match(block, /return res\.json\(canonicalOwnMoneyGap\s+\? withoutCanonicalPurchaseActions\(responsePayload\)\s+: withPdpLiveRefreshDescriptor\(livePdpOverlay\(responsePayload, \{\s+market: offersGateBuyerMarket\(payload, metadata\),/);
   const g = src.indexOf('function getUcpLivePdpReader()');
   assert.match(src.slice(g, g + 700), /mode: MODES\.SHADOW,/, 'the reader itself never touches the page');
 });

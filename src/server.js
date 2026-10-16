@@ -30819,7 +30819,7 @@ function getUcpLiveShared() {
   if (_ucpLiveShared) return _ucpLiveShared;
   const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   const ucpClient = createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false });
-  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   return _ucpLiveShared;
 }
 function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
@@ -30830,6 +30830,9 @@ function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
     core: createLookupCore({
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+      discoveryFailures: shared.discoveryFailures,
+      // A store's transient discovery failure, remembered for a minute (at most two lines per store per minute).
+      log: (event, fields) => logger.info({ event, ...fields }, event),
       ...(maxPerHost ? { maxPerHost } : {}),
     }),
   };
@@ -30863,10 +30866,13 @@ function getUcpLiveProductReader() {
   return _ucpLiveProductReader;
 }
 
-// UCP live read for the FRONTEND PDP (get_pdp_v2). SHADOW ONLY in this release: UCP_LIVE_PDP_READ=off
-// (default) | shadow (enforce is read as shadow until it is designed with the own-money projections the
-// page applies). A sampled share of pages (UCP_LIVE_PDP_READ_SAMPLE, default 0.1) is read after the page
-// is built, unawaited, and logged as get_pdp_v2_ucp_live_read; the page is never changed.
+// UCP live read for the FRONTEND PDP (get_pdp_v2): UCP_LIVE_PDP_READ=off (default) | shadow | enforce.
+// A sampled share of pages (UCP_LIVE_PDP_READ_SAMPLE, default 0.1) is read after the page is built, unawaited,
+// and logged as get_pdp_v2_ucp_live_read; the merchant's answers go to this process's PDP cache. Under
+// enforce, a normally served page shows those cached answers (`livePdpOverlay`), and the browser's
+// first-view refresh (`pdp_live_read`, UCP_LIVE_PDP_REFRESH) reads through this same reader and cache. The
+// reader itself is built in SHADOW mode on purpose: `readProduct` never changes a page here; the overlay
+// (src/services/pdpLiveOverlay.js) is the one place that applies an answer.
 let _ucpLivePdpReader;
 function getUcpLivePdpReader() {
   if (_ucpLivePdpReader !== undefined) return _ucpLivePdpReader;
@@ -30892,6 +30898,13 @@ let _ucpLivePdpCache;
 function ucpLivePdpCache() {
   if (!_ucpLivePdpCache) _ucpLivePdpCache = require('./services/pdpLiveOverlay').createPdpLiveCache();
   return _ucpLivePdpCache;
+}
+
+// The per-store read budget both PDP live reads spend (src/services/hostReadBudget.js).
+let _ucpLivePdpHostBudget;
+function ucpLivePdpHostBudget() {
+  if (!_ucpLivePdpHostBudget) _ucpLivePdpHostBudget = require('./services/hostReadBudget').createHostReadBudget();
+  return _ucpLivePdpHostBudget;
 }
 
 function ucpLivePdpEnforced(env = process.env) {
@@ -30920,6 +30933,11 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     const country = String(market || '').trim().toUpperCase();
     const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
     if (keyed && !cache.claimRead(host, country, ids)) return false;
+    // Over this store's per-minute read budget (shared with pdp_live_read): no read, the claim released.
+    if (keyed && !ucpLivePdpHostBudget().take(host)) {
+      cache.releaseRead(host, country, ids);
+      return false;
+    }
     Promise.resolve(reader.readProduct(detail, {
       market,
       // A read-only page shows EVERY variant unavailable, whatever the stored variants say.
@@ -30960,6 +30978,44 @@ function livePdpOverlay(responsePayload, { market, cardListingId = '' } = {}) {
     if (!out) return responsePayload;
     logger.info({ event: 'get_pdp_v2_ucp_live_overlay', ...out.stats }, 'get_pdp_v2_ucp_live_overlay');
     return out.payload;
+  } catch {
+    return responsePayload;
+  }
+}
+
+/**
+ * The browser's first-view live refresh (src/services/pdpLiveRefresh.js): get_pdp_v2 issues a token-bound
+ * descriptor on a normally served page that opted in, and `pdp_live_read` answers it through the same PDP
+ * reader, cache and overlay as above. UCP_LIVE_PDP_REFRESH=off (default) | shadow | on; it needs
+ * UCP_LIVE_PDP_REFRESH_SECRET (>= 32 bytes) and the PDP reader (UCP_LIVE_PDP_READ not off).
+ */
+let _pdpLiveRefresh;
+function pdpLiveRefresh() {
+  if (_pdpLiveRefresh) return _pdpLiveRefresh;
+  const { createPdpLiveRefresh, refreshMode } = require('./services/pdpLiveRefresh');
+  const { readRefreshSecrets, tokenTtlSeconds } = require('./services/pdpLiveRefreshToken');
+  _pdpLiveRefresh = createPdpLiveRefresh({
+    mode: () => refreshMode(process.env),
+    secrets: () => readRefreshSecrets(process.env),
+    ttlS: () => tokenTtlSeconds(process.env),
+    getReader: getUcpLivePdpReader,
+    cache: ucpLivePdpCache,
+    budget: ucpLivePdpHostBudget,
+    isCardOfferFor: (listingId) => (card, offer) => offerSellsCardListing(card, offer, listingId),
+    // Savings copy computed against a stored price is dropped wherever the live price differs.
+    presentationFields: SAVINGS_PRESENTATION_FIELDS,
+    log: (event, fields) => logger.info({ event, ...fields }, event),
+    warn: (event, fields) => logger.warn({ event, ...fields }, event),
+  });
+  return _pdpLiveRefresh;
+}
+
+/** The served page with its `live_refresh` descriptor when one is issued; the page as given otherwise. */
+function withPdpLiveRefreshDescriptor(responsePayload, { optedIn = false, market, cardListingId = '' } = {}) {
+  try {
+    if (optedIn !== true || !responsePayload || typeof responsePayload !== 'object') return responsePayload;
+    const descriptor = pdpLiveRefresh().descriptor(responsePayload, { optedIn, market, cardListingId });
+    return descriptor ? { ...responsePayload, live_refresh: descriptor } : responsePayload;
   } catch {
     return responsePayload;
   }
@@ -43091,6 +43147,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
   }
 
+  if (operation === 'pdp_live_read') {
+    // The browser's first-view live refresh (src/services/pdpLiveRefresh.js). Only the token is trusted:
+    // the page is checked against it and the merchant is read from it. Expected outcomes answer 200; a
+    // malformed or forged token 400 INVALID_LIVE_REFRESH_TOKEN.
+    try {
+      const refreshed = await pdpLiveRefresh().read({
+        token: payload?.live_refresh_token,
+        page: payload?.page,
+        market: offersGateBuyerMarket(payload, metadata),
+      });
+      return res.status(refreshed.httpStatus).json(refreshed.body);
+    } catch (err) {
+      logger.warn({ err: err?.message || String(err), operation }, 'pdp_live_read failed unexpectedly');
+      return res.status(500).json({ error: 'PDP_LIVE_READ_FAILED', message: 'The live refresh could not run' });
+    }
+  }
+
   if (operation === 'get_product_entity_index_feed') {
     try {
       const indexFeedResponse = await getProductEntityIndexFeed(effectivePayload);
@@ -47062,16 +47135,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? verifiedResponse
           : projectReadOnlyPdpResponse(responsePayload, 'CURRENT_OWN_OFFER_UNAVAILABLE'));
       }
-      // Phase 1 of the live PDP: only a page served normally takes the merchant's cached live answer.
+      // The card's listing id as the offers hydration named it (a sig_ card may carry none of its own).
+      const servedCardListingId = [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]
+        .map((value) => String(value || '').trim())
+        .find((value) => value && !isPivotaSignatureProductId(value)) || '';
+      // Phase 1 of the live PDP: only a page served normally takes the merchant's cached live answer, and
+      // only that page carries the browser's first-view refresh descriptor (UCP_LIVE_PDP_REFRESH).
       shadowPdpRead(canonicalOwnMoneyGap ? 'own_money_gap' : 'served');
       return res.json(canonicalOwnMoneyGap
         ? withoutCanonicalPurchaseActions(responsePayload)
-        : livePdpOverlay(responsePayload, {
+        : withPdpLiveRefreshDescriptor(livePdpOverlay(responsePayload, {
           market: offersGateBuyerMarket(payload, metadata),
-          // The card's listing id as the offers hydration named it (a sig_ card may carry none of its own).
-          cardListingId: [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]
-            .map((value) => String(value || '').trim())
-            .find((value) => value && !isPivotaSignatureProductId(value)) || '',
+          cardListingId: servedCardListingId,
+        }), {
+          optedIn: options.live_refresh === true,
+          market: offersGateBuyerMarket(payload, metadata),
+          cardListingId: servedCardListingId,
         }));
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
@@ -53218,10 +53297,12 @@ module.exports._debug = {
   maybeOverlayLiveSearchPrice,
   shadowPdpLiveRead,
   livePdpOverlay,
+  pdpLiveRefresh,
+  withPdpLiveRefreshDescriptor,
   // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
   useUcpLiveClientForTest(ucpClient) {
     if (_ucpLiveShared) throw new Error('the UCP live client is already built');
-    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   },
   ucpLivePdpCache,
   ucpLivePdpSample,

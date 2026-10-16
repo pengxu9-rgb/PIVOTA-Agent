@@ -298,7 +298,16 @@ function roundTo(amount, currency) {
 // wait their turn (each still bounded by its caller's deadline).
 const MAX_CONCURRENT_LOOKUPS = 16;
 
-function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight, maxPerHost }) {
+// A discovery that failed to get an ANSWER (429, 5xx, unanswered, a thrown network error or timeout) is not
+// cached as `not_ucp`; it is remembered for this long so a struggling store's /.well-known is not asked again
+// by every page meanwhile. It surfaces as the same error it was.
+const DISCOVERY_FAILURE_TTL_MS = 60 * 1000;
+
+function createLookupCore({
+  ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight, maxPerHost,
+  discoveryFailures, discoveryFailureTtlMs = DISCOVERY_FAILURE_TTL_MS, log,
+}) {
+  const logLine = typeof log === 'function' ? (event, fields) => { try { log(event, fields); } catch { /* never costs a read */ } } : () => {};
   // PER-STORE cap (optional): at most `maxPerHost` lookups to one merchant host in flight from this core.
   // One over it is REFUSED at once (code `host_busy`), never queued: a burst of pages for one store
   // (a bot sweeping its catalogue) must not stack on it, and a read that does not happen is only
@@ -361,11 +370,49 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
   // host -> in-flight discovery promise (concurrent callers share it, across cores when shared)
   const discovering = discoveryInFlight instanceof Map ? discoveryInFlight : new Map();
 
+  // host -> { code, message, status, until }: the last transient discovery failure (shared when given)
+  const failures = discoveryFailures instanceof Map ? discoveryFailures : new Map();
+
+  function failureError(f) {
+    return Object.assign(new Error(f.message), { code: f.code, ...(f.status !== undefined ? { status: f.status } : {}), cached: true });
+  }
+
   function endpointFor(host) {
     const hit = endpoints.get(host);
     if (hit && hit.until > now()) return Promise.resolve(hit.endpoint);
     if (discovering.has(host)) return discovering.get(host);
-    const p = discover(host).finally(() => discovering.delete(host));
+    const failed = failures.get(host);
+    if (failed && failed.until > now()) {
+      // Counted on the shared entry: the reads this failure withheld, across every core sharing it.
+      failed.hits = (failed.hits || 0) + 1;
+      return Promise.reject(failureError(failed));
+    }
+    if (failed) {
+      failures.delete(host);
+      // One line per remembered failure, when it lapses: how many reads it withheld from this store.
+      logLine('ucp_live_discovery_failure_lapsed', { host, code: failed.code, status: failed.status ?? null, reads_withheld: failed.hits || 0 });
+    }
+    const p = discover(host)
+      .catch((e) => {
+        if (discoveryFailureTtlMs > 0) {
+          failures.delete(host);
+          failures.set(host, {
+            code: (e && e.code) || 'discovery_error',
+            message: String((e && e.message) || 'discovery_error').slice(0, 80),
+            status: e && Number.isFinite(Number(e.status)) ? Number(e.status) : undefined,
+            until: now() + discoveryFailureTtlMs,
+          });
+          if (failures.size > 5000) failures.delete(failures.keys().next().value);
+          logLine('ucp_live_discovery_failure_cached', {
+            host,
+            code: (e && e.code) || 'discovery_error',
+            status: e && Number.isFinite(Number(e.status)) ? Number(e.status) : null,
+            ttl_s: Math.round(discoveryFailureTtlMs / 1000),
+          });
+        }
+        throw e;
+      })
+      .finally(() => discovering.delete(host));
     discovering.set(host, p);
     return p;
   }
@@ -445,7 +492,7 @@ function createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurr
     return perHostCap === null || (hostInFlight.get(host) || 0) + n <= perHostCap;
   }
 
-  return { endpointFor, lookup, hostHasRoom, isInFlight, endpoints, memo, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
+  return { endpointFor, lookup, hostHasRoom, isInFlight, endpoints, memo, discoveryFailures: failures, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
 }
 
 function withDeadline(promise, deadline, now) {
