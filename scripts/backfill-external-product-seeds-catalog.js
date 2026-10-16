@@ -782,20 +782,51 @@ function hasNestedVariantImageSanitizationDelta(seedData) {
   return false;
 }
 
+function isUnsafeNestedVariantImageUrl(url) {
+  const normalized = normalizePdpImageUrl(url) || normalizeUrlLike(url);
+  return !normalized || isDecorativeSeedImageUrl(normalized);
+}
+
+// Drops unsafe image URLs from one variant entry. Every other field (id, price, stock,
+// options) is left exactly as stored.
+function sanitizeNestedVariantImageFields(variant) {
+  if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return variant;
+  if (!collectRawVariantImageUrls(variant).some(isUnsafeNestedVariantImageUrl)) return variant;
+  const next = { ...variant };
+  const keepUrl = (value) => {
+    const url = normalizeNonEmptyString(value);
+    return Boolean(url) && !isUnsafeNestedVariantImageUrl(url);
+  };
+  for (const key of ['image_urls', 'images']) {
+    if (Array.isArray(next[key])) next[key] = next[key].filter(keepUrl);
+  }
+  const fallbackUrl = [...(next.image_urls || []), ...(next.images || [])].find(keepUrl) || '';
+  for (const key of ['image_url', 'image']) {
+    if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+    if (!normalizeNonEmptyString(next[key]) || keepUrl(next[key])) continue;
+    if (fallbackUrl) next[key] = fallbackUrl;
+    else delete next[key];
+  }
+  return next;
+}
+
+// Sanitizes each variant list (main seed_data.variants and snapshot.variants) on its own
+// entries. It never rebuilds one list from another: the main list is the list production
+// serves and must not be overwritten from a snapshot-first read.
 function applySanitizedNestedVariantImages(nextRow) {
   const seedData = ensureJsonObject(nextRow?.seed_data);
   if (!hasNestedVariantImageSanitizationDelta(seedData)) return nextRow;
   const snapshot = ensureJsonObject(seedData.snapshot);
-  const variants = normalizeSeedVariants(seedData, nextRow);
-  if (!variants.length) return nextRow;
-  const nextSeedData = {
-    ...seedData,
-    variants,
-    snapshot: {
+  const nextSeedData = { ...seedData };
+  if (Array.isArray(seedData.variants)) {
+    nextSeedData.variants = seedData.variants.map(sanitizeNestedVariantImageFields);
+  }
+  if (Array.isArray(snapshot.variants)) {
+    nextSeedData.snapshot = {
       ...snapshot,
-      variants: cloneJsonValue(variants),
-    },
-  };
+      variants: snapshot.variants.map(sanitizeNestedVariantImageFields),
+    };
+  }
   return {
     ...nextRow,
     seed_data: nextSeedData,
@@ -4819,6 +4850,13 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
     snapshot,
   });
   const persistedSnapshotVariants = alignVariantCurrencies(effectiveSnapshotVariants, currency);
+  // The main list (seed_data.variants) is written only from this extraction's own variants.
+  // With no fresh variants it stays exactly as stored (absent if absent); it is never filled
+  // from the snapshot-first fallback (normalizeSeedVariants) or any snapshot-derived list.
+  const freshMainListVariants =
+    !preserveCommerce && !(fallbackPollutedRow && !representativeProduct) && freshSnapshotVariants.length > 0
+      ? persistedSnapshotVariants
+      : [];
   const destinationUrl =
     (selectedSnapshotVariant ? normalizeUrlLike(selectedSnapshotVariant.url) : '') ||
     representativeProductUrl ||
@@ -5074,7 +5112,7 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),
-    ...(persistedSnapshotVariants.length > 0 ? { variants: persistedSnapshotVariants } : {}),
+    ...(freshMainListVariants.length > 0 ? { variants: freshMainListVariants } : {}),
     snapshot: nextSnapshot,
   };
   if (!nextPdpIngredientsRaw) {
@@ -5343,11 +5381,14 @@ function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
     } else {
       delete nextSnapshot.availability;
     }
-    if (existingRawSeedVariants.length > 0) {
-      nextSeedData.variants = existingRawSeedVariants;
-      nextSeedData.variant_skus = uniqueStrings(existingSeedVariants.map((variant) => variant.sku));
+    if (seedData.variants !== undefined) {
+      nextSeedData.variants = JSON.parse(JSON.stringify(seedData.variants));
     } else {
       delete nextSeedData.variants;
+    }
+    if (existingRawSeedVariants.length > 0) {
+      nextSeedData.variant_skus = uniqueStrings(existingSeedVariants.map((variant) => variant.sku));
+    } else {
       delete nextSeedData.variant_skus;
     }
     if (existingRawSnapshotVariants.length > 0) {
@@ -5503,6 +5544,7 @@ function buildVariantSeedRows(row, payload) {
   const parentSeedId = normalizeNonEmptyString(row?.id);
   const baseCanonicalUrl = normalizeUrlLike(nextRow.canonical_url || snapshot.canonical_url || row?.canonical_url);
   const baseDestinationUrl = normalizeUrlLike(nextRow.destination_url || snapshot.destination_url || row?.destination_url);
+  const parentMainVariants = Array.isArray(seedData.variants) ? seedData.variants : [];
   const rows = [];
 
   for (const variant of variants) {
@@ -5526,6 +5568,24 @@ function buildVariantSeedRows(row, payload) {
       title: variantTitle,
       ...(imageUrls.length > 0 ? { image_url: imageUrls[0], image_urls: imageUrls, images: imageUrls } : {}),
     };
+    // The child's main list comes only from the parent's matching MAIN-list entry; the
+    // snapshot-derived variantSeed goes into the child's snapshot only.
+    const parentMainVariant = parentMainVariants.find(
+      (candidate) => candidate && typeof candidate === 'object' && getVariantId(candidate) === variantId,
+    );
+    const mainImageUrls = parentMainVariant ? collectVariantImageUrls(parentMainVariant) : [];
+    const childMainVariant = parentMainVariant
+      ? {
+          ...cloneJsonValue(parentMainVariant),
+          url: normalizeUrlLike(parentMainVariant.deep_link || parentMainVariant.url) || variantUrl,
+          variant_id: variantId,
+          id: variantId,
+          title: getVariantTitle(parentMainVariant) || variantTitle,
+          ...(mainImageUrls.length > 0
+            ? { image_url: mainImageUrls[0], image_urls: mainImageUrls, images: mainImageUrls }
+            : {}),
+        }
+      : null;
     const childSeedData = {
       ...cloneJsonValue(seedData),
       external_product_id: externalProductId,
@@ -5542,7 +5602,7 @@ function buildVariantSeedRows(row, payload) {
       price_currency: priceCurrency,
       ...(availability ? { availability } : {}),
       ...(imageUrls.length > 0 ? { image_url: imageUrls[0], image_urls: imageUrls, images: imageUrls } : {}),
-      variants: [variantSeed],
+      variants: childMainVariant ? [childMainVariant] : [],
       snapshot: {
         ...cloneJsonValue(snapshot),
         destination_url: variantUrl,
@@ -5558,6 +5618,7 @@ function buildVariantSeedRows(row, payload) {
       },
     };
 
+    if (!childMainVariant) delete childSeedData.variants;
     const childRow = {
       id: seedId,
       market: normalizeNonEmptyString(row?.market) || 'US',
@@ -5959,6 +6020,8 @@ function buildMinimalFailureSeedData(row, targetUrl, error) {
   const normalizedTargetUrl = normalizeUrlLike(targetUrl);
   const variants = normalizeSeedVariants(seedData, row);
   return {
+    // A failed extraction never drops the stored main list: carry it through unchanged.
+    ...(seedData.variants !== undefined ? { variants: JSON.parse(JSON.stringify(seedData.variants)) } : {}),
     brand: sanitizeTextForPostgres(seedData.brand || snapshot.brand || row?.brand || ''),
     title: sanitizeTextForPostgres(seedData.title || snapshot.title || row?.title || ''),
     canonical_url:
