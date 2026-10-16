@@ -258,3 +258,47 @@ test('a URL id whose own page names another product is refused even when the mer
   }], { market: 'US', currency: 'USD' })).offers;
   assert.deepEqual(o.variants.map((v) => [v.price, v.live_verified || false]), [[40, false], [9.99, true]]);
 });
+
+// ------------------------------------------------------------- review of #2453 (LOW follow-ups)
+
+test('the product page is the store\'s, never Pivota\'s own product URL', async () => {
+  const { createUcpLiveProductReader } = require('../src/services/ucpLiveOfferRead');
+  const store = storeAnswering({ 'sweet-violet-grapefruit-hydrating-mist-1': [gidVariant(VID, 3100, true)] });
+  const r = createUcpLiveProductReader({ ucpClient: store, mode: 'enforce' });
+  // canonical_url is Pivota's page; the store page comes from destination_url (www. on one side only).
+  const out = await r.readProduct({ product: {
+    product_id: 'sig_j', currency: 'USD',
+    canonical_url: 'https://agent.pivota.cc/products/sig_j',
+    destination_url: `https://${HOST.replace(/^www\./, '')}/products/sweet-violet-grapefruit-hydrating-mist-1`,
+    variants: [{ variant_id: VID, price: { current: { amount: 30, currency: 'USD' } } }],
+  } }, { market: 'US' });
+  assert.equal(out.product.variants[0].price.current.amount, 31, 'priced: the store page handle matched');
+  // Only Pivota's URL and a store host: no store page handle, so nothing is priced (fail closed).
+  const r2 = createUcpLiveProductReader({ ucpClient: store, mode: 'enforce' });
+  const out2 = await r2.readProduct({ product: {
+    product_id: 'sig_j', currency: 'USD',
+    destination_url: `https://${HOST}/pages/landing`,
+    canonical_url: 'https://agent.pivota.cc/products/sweet-violet-grapefruit-hydrating-mist-1',
+    variants: [{ variant_id: VID, price: { current: { amount: 30, currency: 'USD' } } }],
+  } }, { market: 'US' });
+  assert.equal(out2.product.variants[0].price.current.amount, 30, 'a Pivota URL never stands in for the store page');
+});
+
+test('an own variant the merchant answered without a handle prices no option (fail closed)', async () => {
+  const noHandle = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp` }; },
+    async lookupCatalog(endpoint, { ids }) {
+      const vs = [gidVariant(VID, 3100, true), gidVariant(VID_B, 4500, true)].filter((v) => ids.includes(v.id));
+      return toolResult({ products: vs.length ? [{ id: 'gid://shopify/Product/1', variants: vs }] : [], messages: [] });
+    },
+  };
+  const reader = createUcpLiveOfferReader({ ucpClient: noHandle, mode: 'enforce' });
+  const [o] = (await reader.readOffers([{
+    offer_id: 'of:x', merchant_id: HOST, price: 31, currency: 'USD', in_stock: true,
+    execution_spec: { merchant_domain: HOST, variant_id: VID, cart_url: `https://${HOST}/cart/${VID}:1?country=US` },
+    // A BARE option id: nothing but the answer's handle could tie it to this product.
+    variants: [{ variant_id: VID_B, title: '200ml', price: 44, currency: 'USD' }],
+  }], { market: 'US', currency: 'USD' })).offers;
+  assert.equal(o.live_read.status, STATUS.VERIFIED, 'the offer itself is still read');
+  assert.deepEqual(o.variants.map((v) => [v.price, v.live_verified || false]), [[44, false]], 'no handle, no option claim');
+});
