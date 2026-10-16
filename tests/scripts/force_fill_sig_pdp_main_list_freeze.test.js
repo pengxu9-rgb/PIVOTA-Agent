@@ -3,6 +3,7 @@
 // back, it is written as full entries, and the main list is never fabricated. Runs the real
 // buildPlan -> applyPlans with a stub client and replays the captured UPDATE on the stored row.
 const { buildPlan, applyPlans } = require('../../scripts/force-fill-sig-pdp-content.cjs');
+const { buildExternalSeedProduct } = require('../../src/services/externalSeedProducts');
 
 const EPID = 'ext_freeze_force_fill';
 const URL_BASE = 'https://shop.example.com/products/glow-tint-30ml';
@@ -309,9 +310,10 @@ describe('force-fill main-list freeze', () => {
       }
     });
 
-    test('root quality summary is not cross-merged from the snapshot on the full-write path', async () => {
+    test('an existing root quality summary is not cross-merged from the snapshot on the full-write path', async () => {
       const row = buildRow(
         {
+          pdp_field_quality_summary: { ingredients_raw: { source_quality_status: 'high' } },
           variants: repairedMainList(),
           snapshot: {
             pdp_field_quality_summary: { variants: { source_quality_status: 'snapshot_only' } },
@@ -324,7 +326,83 @@ describe('force-fill main-list freeze', () => {
       const { after, path } = await runPlan(row, new Set());
 
       expect(path).toBe('full');
+      expect(after.pdp_field_quality_summary.how_to_use_raw).toBeTruthy();
       expect(hasOwn(asObjectOrEmpty(after.pdp_field_quality_summary), 'variants')).toBe(false);
+    });
+  });
+
+  describe('display-gate fallback: never create a root quality summary', () => {
+    // PDP readers take the FIRST summary object (root, then snapshot) without merging. A new root
+    // summary would hide the snapshot's blocked statuses and surface a gated field.
+    const GATED = 'Gated description that the snapshot quality summary blocks.';
+    const gatedRow = (variants) => ({
+      ...buildRow(
+        {
+          pdp_description_raw: GATED,
+          ...(variants ? { variants } : {}),
+          snapshot: {
+            pdp_description_raw: GATED,
+            pdp_field_quality_summary: { description_raw: { source_quality_status: 'blocked' } },
+            ...(variants ? { variants: clone(variants) } : {}),
+          },
+        },
+        { complete: false, title: 'Glow Tint', url: 'https://shop.example.com/products/glow-tint' },
+      ),
+      id: 'eps_display_gate',
+      market: 'US',
+    });
+
+    test('a force-filled how-to on a row with no root summary keeps pdp_description_raw gated', async () => {
+      const row = gatedRow();
+      expect(buildExternalSeedProduct(row).pdp_description_raw).toBeUndefined();
+
+      const { after, path } = await runPlan(row, new Set());
+
+      expect(path).toBe('full');
+      expect(buildExternalSeedProduct({ ...row, seed_data: after }).pdp_description_raw).toBeUndefined();
+      expect(hasOwn(after, 'pdp_field_quality_summary')).toBe(false);
+      expect(after.snapshot.pdp_field_quality_summary.description_raw.source_quality_status).toBe('blocked');
+      expect(after.snapshot.pdp_field_quality_summary.how_to_use_raw).toBeTruthy();
+    });
+
+    test('a root-side variant change on a row with no root summary keeps it gated (variant-only path)', async () => {
+      const flatMain = repairedMainList().map((variant) => {
+        const { options, ...rest } = variant;
+        return { ...rest, option_name: 'Shade', option_value: variant.title };
+      });
+      const row = gatedRow(flatMain);
+      row.seed_data.pdp_how_to_use_raw = 'Apply to lips.';
+      row.seed_data.pdp_ingredients_raw = 'Water, Glycerin.';
+      row.seed_data.snapshot.variants = repairedMainList();
+
+      const { after, path, plan } = await runPlan(row);
+
+      expect(path).toBe('variant_only');
+      expect(plan.variant_lists_changed).toEqual({ root: true, snapshot: false });
+      expect(buildExternalSeedProduct({ ...row, seed_data: after }).pdp_description_raw).toBeUndefined();
+      expect(hasOwn(after, 'pdp_field_quality_summary')).toBe(false);
+      expect(after.snapshot.pdp_field_quality_summary.variants).toBeTruthy();
+    });
+
+    test('an existing root summary is still extended', async () => {
+      const row = gatedRow();
+      row.seed_data.pdp_field_quality_summary = { description_raw: { source_quality_status: 'blocked' } };
+
+      const { after } = await runPlan(row, new Set());
+
+      expect(after.pdp_field_quality_summary.how_to_use_raw).toBeTruthy();
+      expect(after.pdp_field_quality_summary.description_raw.source_quality_status).toBe('blocked');
+      expect(buildExternalSeedProduct({ ...row, seed_data: after }).pdp_description_raw).toBeUndefined();
+    });
+
+    test('H8: root force-fill meta is not taken from the snapshot meta', async () => {
+      const row = gatedRow();
+      row.seed_data.snapshot.pdp_force_fill_v1 = { fields: { snapshot_only_field: { source: 'snapshot' } } };
+
+      const { after } = await runPlan(row, new Set());
+
+      expect(hasOwn(after.pdp_force_fill_v1.fields, 'snapshot_only_field')).toBe(false);
+      expect(hasOwn(after.snapshot.pdp_force_fill_v1.fields, 'snapshot_only_field')).toBe(true);
     });
   });
 

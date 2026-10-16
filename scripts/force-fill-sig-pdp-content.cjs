@@ -808,9 +808,23 @@ async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) 
   return inferSingleSkuSpecFromTitle(row, seedData, snapshot);
 }
 
-// Writes each side from its own stored summary: snapshot-only keys never reach the root.
+// Display-gate fallback rule: PDP readers take the FIRST quality summary object (root, then
+// snapshot) and do not merge them (externalSeedProducts buildExternalSeedProduct,
+// catalogPdpContentFields readFirstObject, server.js, pdpBuilder). Creating a root summary
+// would hide the snapshot's blocked statuses and surface gated fields. So a root summary is
+// only extended when it already exists; otherwise the entry goes to the snapshot summary.
+function hasQualitySummaryObject(target) {
+  const summary = target?.pdp_field_quality_summary;
+  return Boolean(summary) && typeof summary === 'object' && !Array.isArray(summary);
+}
+
+function mergeRootQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode) {
+  mergeQualityOn(hasQualitySummaryObject(seedData) ? seedData : snapshot, key, sourceQualityStatus, reasonCode);
+}
+
+// Each side is written from its own stored summary: snapshot-only keys never reach the root.
 function mergeQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode) {
-  mergeQualityOn(seedData, key, sourceQualityStatus, reasonCode);
+  if (hasQualitySummaryObject(seedData)) mergeQualityOn(seedData, key, sourceQualityStatus, reasonCode);
   mergeQualityOn(snapshot, key, sourceQualityStatus, reasonCode);
 }
 
@@ -956,6 +970,10 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     ['root', seedData],
     ['snapshot', snapshot],
   ];
+  const mergeSideQuality = (side, key, sourceQualityStatus, reasonCode) =>
+    side === 'root'
+      ? mergeRootQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode)
+      : mergeQualityOn(snapshot, key, sourceQualityStatus, reasonCode);
   // Snapshot-side inference may use every stored field; root-side inference gets no snapshot.
   const inferForSide = (side) =>
     side === 'root'
@@ -971,7 +989,7 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
       if (!hydration[side].changed) continue;
       target.variants = hydration[side].variants;
       variantListsChanged[side] = true;
-      mergeQualityOn(target, 'variants', 'force_filled_reviewed_pattern', 'flat_variant_options_hydrated');
+      mergeSideQuality(side, 'variants', 'force_filled_reviewed_pattern', 'flat_variant_options_hydrated');
       mergeForceFillMetaOn(target, 'variant_options_hydrated', {
         source: 'deterministic_flat_option_hydration',
         root_changed: hydration.root.changed,
@@ -991,7 +1009,7 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
       if (!(cleanup[side].removed > 0)) continue;
       target.variants = cleanup[side].variants;
       variantListsChanged[side] = true;
-      mergeQualityOn(target, 'variants', 'force_filled_reviewed_pattern', 'placeholder_variant_removed');
+      mergeSideQuality(side, 'variants', 'force_filled_reviewed_pattern', 'placeholder_variant_removed');
       mergeForceFillMetaOn(target, 'variant_sanitized', {
         source: 'deterministic_placeholder_filter',
         root_removed: cleanup.root.removed,
@@ -1053,8 +1071,8 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
       applyVariantSpecLabelsOn(target, { ...inferred, optionName, axisKind, value });
       target.variants = patchSingleVariantSpecList(target.variants, { value, optionName, axisKind });
       variantListsChanged[side] = true;
-      mergeQualityOn(
-        target,
+      mergeSideQuality(
+        side,
         'variants',
         inferred.source === 'official_source_page' ? 'high' : 'force_filled_reviewed_pattern',
         'single_locale_variant_axis_corrected',
@@ -1095,8 +1113,8 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
       target.variants = patchSingleVariantSpecList(target.variants, { value, optionName, axisKind });
       variantListsChanged[side] = true;
       const sourceQuality = inferredSourceQuality(inferred);
-      mergeQualityOn(target, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'single_sku_variant_clarity_inferred');
-      mergeQualityOn(target, 'variants', sourceQuality, 'single_sku_variant_clarity_inferred');
+      mergeSideQuality(side, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'single_sku_variant_clarity_inferred');
+      mergeSideQuality(side, 'variants', sourceQuality, 'single_sku_variant_clarity_inferred');
       mergeForceFillMetaOn(target, 'variant_size', {
         source: inferred.source,
         evidence: inferred.evidence,
@@ -1399,9 +1417,16 @@ function buildVariantOnlySeedPatch(seedData, variantListsChanged = { root: true,
   ];
   // Variant blocks write labels, quality and meta only on the side whose list changed, so an
   // unchanged side contributes nothing (and nothing is mirrored from it).
+  // A root change whose quality entry went to the snapshot summary (root had none, see the
+  // display-gate fallback rule) carries that snapshot summary along.
+  const snapshotPatch = variantListsChanged?.snapshot
+    ? pickDefined(snapshot, patchKeys)
+    : variantListsChanged?.root && !hasQualitySummaryObject(seedData)
+      ? pickDefined(snapshot, ['pdp_field_quality_summary'])
+      : {};
   return {
     rootPatch: variantListsChanged?.root ? pickDefined(seedData, patchKeys) : {},
-    snapshotPatch: variantListsChanged?.snapshot ? pickDefined(snapshot, patchKeys) : {},
+    snapshotPatch,
   };
 }
 
