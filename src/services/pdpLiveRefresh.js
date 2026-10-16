@@ -229,7 +229,8 @@ function createPdpLiveRefresh(deps = {}) {
       return token ? { v: 1, token, market: country } : null;
     };
     try {
-      if (modeOf() === MODES.OFF) return out('disabled');
+      // Off: no descriptor and no line (every storefront PDP build opts in; off is the default).
+      if (modeOf() === MODES.OFF) return null;
       const { current } = secretsOf() || {};
       if (!current) {
         if (!warnedNoSecret) {

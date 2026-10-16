@@ -195,7 +195,6 @@ test('descriptor: none for a blocked page, no handle, another currency, no opt-i
     no_handle: none(page(sellerProduct({ destination_url: `https://${HOST}/lip-sleeping-mask` }))),
     // A page priced in USD for a buyer in SG: the overlay never re-prices into another currency.
     currency_mismatch: none(page(), {}, { market: 'SG' }),
-    disabled: none(page(), { mode: 'off' }),
     no_secret: none(page(), { secrets: { current: '', previous: SECRET } }),
     no_reader: none(page(), { reader: null }),
     no_market: none(page(), {}, { market: undefined }),
@@ -209,6 +208,10 @@ test('descriptor: none for a blocked page, no handle, another currency, no opt-i
     assert.equal(line.issued, false, reason);
     assert.equal(line.reason, reason, reason);
   }
+  // Flag off: no descriptor and no line.
+  const { svc: offSvc, logs: offLogs } = setup({ mode: 'off' });
+  assert.equal(issue(offSvc, page()), null);
+  assert.equal(offLogs.length, 0);
   // Not opted in: no descriptor and no line (agents never ask).
   const { svc, logs } = setup();
   assert.equal(svc.descriptor(page(), { optedIn: false, market: 'US' }), null);

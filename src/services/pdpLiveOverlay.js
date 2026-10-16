@@ -372,16 +372,25 @@ function variantInStock(v) {
 
 /**
  * The product-level stock of a row with SEVERAL variants and none selected (the offers builder's row when no
- * variant matched the axes): in stock when any of its variants the own-money logic did not withhold is in
- * stock, out of stock when all of them are known out, else unknown (null: left as it is).
+ * variant matched the axes), from what the merchant answered THIS read only -- never a stored flag nobody
+ * re-read: in stock when an answered variant (not withheld) is in stock; out of stock only when EVERY
+ * variant not withheld was answered out of stock or gone; otherwise null (the row is left as stored).
  */
-function rowStockFromVariants(variants, offer, o) {
-  const eligible = variants.filter((v) => isObj(v) && v.current_own_offer_status !== 'unavailable'
-    && !o.withheldIds.has(numericVariantId(v.variant_id)));
-  if (!eligible.length) return null;
-  const flags = eligible.map(variantInStock);
-  if (flags.some((f) => f === true)) return true;
-  return flags.every((f) => f === false) ? false : null;
+function rowStockFromVariants(before, after, o) {
+  const answered = [];
+  let everyAnswered = true;
+  before.forEach((v, i) => {
+    if (!isObj(v) || v.current_own_offer_status === 'unavailable' || o.withheldIds.has(numericVariantId(v.variant_id))) return;
+    const p = after[i];
+    if (p === v || !isObj(p) || !isObj(p.live_read)) {
+      everyAnswered = false;
+      return;
+    }
+    answered.push(p);
+  });
+  if (!answered.length) return null;
+  if (answered.some((p) => variantInStock(p) === true)) return true;
+  return everyAnswered && answered.every((p) => variantInStock(p) === false) ? false : null;
 }
 
 /** The row's own stock fields (inventory, availability, in_stock) set to the merchant's flag, in their shapes. */
@@ -440,7 +449,7 @@ function patchOffer(offer, o) {
   } else if (productLevelRow && variantsChanged) {
     // A row with several variants and none selected carries the PRODUCT's stock and price: its stock follows
     // its variants (any in stock), and it is never re-priced from one variant's answer.
-    const inStock = rowStockFromVariants(variants, offer, o);
+    const inStock = rowStockFromVariants(offer.variants, variants, o);
     if (inStock !== null) {
       withRowStock(next, offer, inStock);
       for (const key of FACT_KEYS) {

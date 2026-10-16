@@ -308,6 +308,42 @@ test('THE NATIVE226 REPRO: a row with several variants and none selected carries
   assert.equal(partial.live_read, undefined);
 });
 
+test('a product-level row is judged ONLY on what the merchant answered this read, never a stored flag nobody re-read', () => {
+  const answeredOut = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false } }); // Berry unanswered
+  const oosRow = (variants) => unnamedRow(variants, { inventory: { in_stock: false },
+    commerce_facts_v1: { regional_price: { amount: 26, currency: 'USD' }, availability: { status: 'out_of_stock' } } });
+  // Probe 1 (no false in-stock): row stored out of stock, A answered out, B unanswered but STORED in stock.
+  const p1 = page(sellerProduct(), { offers: { offers: [oosRow([rowVariant(LEMON), rowVariant(BERRY)])] } });
+  const r1 = unnamedRowOf(applyPdpLiveOverlay(p1, { market: 'US', cache: cacheWith(answeredOut), isCardOffer: ownRow }));
+  const sent1 = p1.modules[2].data.offers[0];
+  assert.equal(r1.inventory, sent1.inventory, 'row stock left exactly as stored');
+  assert.equal(r1.commerce_facts_v1, sent1.commerce_facts_v1);
+  assert.equal(r1.live_read, undefined, 'no live stamp on what nobody re-read');
+  // Probe 2 (no false sold-out): row stored in stock, A answered out, B unanswered and STORED out of stock.
+  const p2 = page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON),
+    { ...rowVariant(BERRY), availability: { in_stock: false } }])] } });
+  const r2 = unnamedRowOf(applyPdpLiveOverlay(p2, { market: 'US', cache: cacheWith(answeredOut), isCardOffer: ownRow }));
+  const sent2 = p2.modules[2].data.offers[0];
+  assert.equal(r2.inventory, sent2.inventory);
+  assert.equal(r2.inventory.in_stock, true);
+  assert.equal(r2.commerce_facts_v1, sent2.commerce_facts_v1);
+  assert.equal(r2.live_read, undefined);
+  // All answered, mixed: in stock (the stored row said out).
+  const mixed = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false }, [BERRY]: { amount: 26, currency: 'USD', available: true } });
+  const r3 = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [oosRow([rowVariant(LEMON), rowVariant(BERRY)])] } }),
+    { market: 'US', cache: cacheWith(mixed), isCardOffer: ownRow }));
+  assert.equal(r3.inventory.in_stock, true);
+  assert.equal(r3.commerce_facts_v1.availability.status, 'in_stock');
+  // All answered out of stock or gone: out of stock.
+  const outOrGone = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: false } }, { notFound: [BERRY] });
+  const r4 = unnamedRowOf(applyPdpLiveOverlay(page(sellerProduct(), { offers: { offers: [unnamedRow([rowVariant(LEMON), rowVariant(BERRY)])] } }),
+    { market: 'US', cache: cacheWith(outOrGone), isCardOffer: ownRow }));
+  assert.equal(r4.inventory.in_stock, false);
+  assert.equal(r4.commerce_facts_v1.availability.status, 'out_of_stock');
+  assert.equal(r4.live_read.status, 'variants_only');
+  assert.equal(r4.price.amount, 26, 'never re-priced');
+});
+
 test('a several-entry row is product-level by its RAW count: one real variant beside a sku stand-in is not re-priced', () => {
   const offers = { offers: [unnamedRow([rowVariant(LEMON), { ...rowVariant(BERRY), sku: BERRY }])] };
   const read = verifiedRead({ [LEMON]: { amount: 24, currency: 'USD', available: true } });

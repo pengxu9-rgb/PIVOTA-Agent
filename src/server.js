@@ -30831,6 +30831,8 @@ function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
       discoveryFailures: shared.discoveryFailures,
+      // A store's transient discovery failure, remembered for a minute (at most two lines per store per minute).
+      log: (event, fields) => logger.info({ event, ...fields }, event),
       ...(maxPerHost ? { maxPerHost } : {}),
     }),
   };

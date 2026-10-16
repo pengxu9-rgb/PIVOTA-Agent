@@ -177,3 +177,24 @@ test('STRUCTURAL: the server\'s live readers share one discovery-failure memo', 
   assert.match(src.slice(i, i + 800), /discoveryInFlight: shared\.discovering,\s+discoveryFailures: shared\.discoveryFailures,/);
   assert.match(src, /_ucpLiveShared = \{ ucpClient, endpoints: new Map\(\), discovering: new Map\(\), discoveryFailures: new Map\(\) \};\n  return _ucpLiveShared;/);
 });
+
+test('the negative cache is visible: one line when a failure is remembered, one when it lapses with the reads it withheld', async () => {
+  const t = { now: 1_000_000 };
+  const lines = [];
+  const shared = { endpointCache: new Map(), discoveryInFlight: new Map(), discoveryFailures: new Map() };
+  const client = clientAnswering([status(429), ok]);
+  const a = core(client, t, { ...shared, log: (event, fields) => lines.push({ event, ...fields }) });
+  const b = core(client, t, { ...shared, log: (event, fields) => lines.push({ event, ...fields }) });
+  await assert.rejects(a.endpointFor('h.example'));
+  assert.deepEqual(lines, [{ event: 'ucp_live_discovery_failure_cached', host: 'h.example', code: 'discovery_transient', status: 429, ttl_s: 60 }]);
+  await assert.rejects(a.endpointFor('h.example'));
+  await assert.rejects(b.endpointFor('h.example'));
+  await assert.rejects(a.endpointFor('h.example'));
+  assert.equal(lines.length, 1, 'no line per withheld read');
+  t.now += 60_001;
+  await a.endpointFor('h.example');
+  assert.deepEqual(lines[1], { event: 'ucp_live_discovery_failure_lapsed', host: 'h.example', code: 'discovery_transient', status: 429, reads_withheld: 3 });
+  // A throwing logger never costs the read.
+  const c = core(clientAnswering([status(503), ok]), t, { log: () => { throw new Error('logger down'); } });
+  await assert.rejects(c.endpointFor('i.example'), (e) => e.status === 503);
+});
