@@ -644,9 +644,10 @@ function makeGetOffers(deps = {}) {
     offers = await mintLiveCarts(offers, {
       fetchArgs, market, currency: marketCurrency, mode: liveCartMode(), secret: liveVerificationSecret(),
     });
-    const { best_offer, signals } = offersToSignals(offers, {
+    const { best_offer, signals, best_price } = offersToSignals(offers, {
       productId: p.product_id,
       limit,
+      now,
       // FRESH BEST PRICE (pivota-backend #2635): the backend's pick, passed only when it sent one (null
       // included), so an answer without it is byte-identical.
       ...(res && Object.prototype.hasOwnProperty.call(res, 'best_price_offer_id')
@@ -685,6 +686,9 @@ function makeGetOffers(deps = {}) {
             }
           : {}),
         ...(emptyReason ? { reason: emptyReason } : {}),
+        // Under the fresh-price contract only: which offer is the best price, and who said so (offerToSignal
+        // bestFreshComparable). `offer_id: null` + `reason` when no served offer is a fresh comparable price.
+        ...(best_price ? { best_price } : {}),
       },
     };
   };

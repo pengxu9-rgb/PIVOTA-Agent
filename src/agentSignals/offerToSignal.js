@@ -111,44 +111,67 @@ function toVariantOption(v) {
   return out;
 }
 
-// PRICE FRESHNESS (pivota-backend #2635). offers.resolve marks an offer whose price is not fresh
-// `price_stale: true` (a catalog price never read, or read over 7 days ago) and, beside it, the last read as
-// `price_checked_at`; a freshness-gated seed offer says the same inside `requires_live_verification`. The
-// gateway's OWN live read of this request (services/ucpLiveOfferRead: `live_read.status === 'verified'`)
-// replaces the stored price with the merchant's answer, so a verified offer is FRESH whatever the backend
-// flagged: its stale flag describes a price the answer no longer carries.
-function liveVerifiedThisRequest(offer) {
-  return Boolean(offer && offer.live_read && offer.live_read.status === 'verified');
+// THE FRESH-PRICE CONTRACT (pivota-backend #2635). offers.resolve, in a resolved content_key group, sends:
+//   price_comparable: true   on exactly the offers eligible for a best price (an exact or same-size member,
+//                            a fresh price, a stated ISO currency); absent on every other offer
+//   best_price_offer_id      the cheapest of those (id or null), and only for a resolved group
+//   price_stale: true        on an offer whose price is not fresh (a catalog price never read, or read over
+//                            7 days ago); absent otherwise
+//   price_checked_at         the last price read (ISO, or null: none on record)
+// The contract is ON for an answer when `best_price_offer_id` is present (null included) or any offer carries
+// `price_comparable` or `price_stale`. Off -- what offers.resolve sends with OFFERS_RESOLVE_GROUP_SEED_SIBLINGS
+// off -- every signal and the best_offer pick are byte-identical to before.
+function freshPriceContractOn(offers, bestPriceOfferId) {
+  if (bestPriceOfferId !== undefined) return true;
+  return (Array.isArray(offers) ? offers : []).some(
+    (o) => o && typeof o === 'object' && ('price_comparable' in o || 'price_stale' in o),
+  );
 }
 
+// THE GATEWAY'S OWN LIVE READ of this request (services/ucpLiveOfferRead) decides over the stored facts:
+// `verified` replaced the stored price with the merchant's answer, so the offer is FRESH whatever the backend
+// flagged; `currency_mismatch` means the merchant does not price this market at all, so the stored amount is
+// not a price the buyer can be quoted and the offer is STALE whatever the backend said.
+const liveReadStatus = (offer) => (offer && offer.live_read && offer.live_read.status) || null;
+
 function offerPriceIsStale(offer) {
-  if (!offer || typeof offer !== 'object' || liveVerifiedThisRequest(offer)) return false;
+  if (!offer || typeof offer !== 'object') return false;
+  const live = liveReadStatus(offer);
+  if (live === 'verified') return false;
+  if (live === 'currency_mismatch') return true;
   return offer.price_stale === true || Boolean(offer.requires_live_verification);
 }
 
-// Only when the backend sent the freshness fields: `price_stale` (true, never false: "no warning" is the
-// ordinary state) and `price_as_of`, when the price was last READ -- the merchant's live answer on a verified
-// offer, else the backend's `price_checked_at` (null: no read on record). `freshness.observed_at` follows it:
-// `updated_at` is a row write, not a price read, and a stale price must not be dated as if it were current.
-// Absent both, the signal is byte-identical to before.
-function priceFreshnessFields(offer) {
+// `price_checked_at` is relayed only when it is an ISO timestamp that is not in the future; anything else is
+// "no read on record" (null), never a date the agent would repeat.
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+function validPriceCheckedAt(v, nowMs) {
+  if (!nonEmptyString(v)) return null;
+  const t = v.trim();
+  if (!ISO_TIMESTAMP.test(t)) return null;
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) && ms <= nowMs ? t : null;
+}
+
+// Under the contract only: `price_stale` (true, never false: "no warning" is the ordinary state) and
+// `price_as_of`, when the price was last READ -- the merchant's live answer on a verified offer, else the
+// backend's `price_checked_at` (null: no valid read on record). `freshness.observed_at` follows it: `updated_at`
+// is a row write, not a price read, and a stale price must not be dated as if it were current.
+function priceFreshnessFields(offer, nowMs) {
   const out = {};
   if (offerPriceIsStale(offer)) out.price_stale = true;
-  if (Object.prototype.hasOwnProperty.call(offer, 'price_checked_at')) {
-    out.price_as_of = liveVerifiedThisRequest(offer)
+  out.price_as_of =
+    liveReadStatus(offer) === 'verified'
       ? offer.live_read.checked_at || null
-      : nonEmptyString(offer.price_checked_at)
-        ? offer.price_checked_at
-        : null;
-  }
+      : validPriceCheckedAt(offer.price_checked_at, nowMs);
   return out;
 }
 
-function offerToSignal(offer, { productId = null } = {}) {
+function offerToSignal(offer, { productId = null, freshPriceContract = false, now = Date.now } = {}) {
   if (!offer || typeof offer !== 'object') return null;
   const merchantId = nonEmptyString(offer.merchant_id) ? offer.merchant_id : null;
   const price = offer.price != null && Number.isFinite(Number(offer.price)) ? Number(offer.price) : null;
-  const priceFreshness = priceFreshnessFields(offer);
+  const priceFreshness = freshPriceContract ? priceFreshnessFields(offer, now()) : {};
   return {
     signal_type: 'offer',
     subject: { kind: 'offer', id: merchantId ? `${merchantId}:${productId || ''}` : null },
@@ -274,54 +297,63 @@ function isKnownUnavailable(signal) {
   return isUnavailableAvailabilityText(signal.value.availability);
 }
 
-const upperCurrency = (v) => (typeof v === 'string' ? v.trim().toUpperCase() : '');
+const ISO_CURRENCY = /^[A-Z]{3}$/;
 
-// A gateway live read that CHANGED an offer's facts this request (a merchant price/stock answer, or "gone"):
-// the backend's `best_price_offer_id` was picked before it, on the stored facts, so it no longer decides.
+// A gateway live read that CHANGED an offer's facts this request: the merchant's price/stock answer, "gone",
+// or "not priced in this market". The backend picked `best_price_offer_id` before it, on the stored facts.
 function liveReadChangedFacts(offer) {
-  const status = offer && offer.live_read && offer.live_read.status;
-  return status === 'verified' || status === 'variant_gone';
+  const status = liveReadStatus(offer);
+  return status === 'verified' || status === 'variant_gone' || status === 'currency_mismatch';
 }
 
 /**
- * best_offer under the FRESH-PRICE contract (pivota-backend #2635), or undefined when the backend sent
- * neither `best_price_offer_id` nor any `price_stale` offer (then today's pick stands, byte for byte).
+ * THE BEST PRICE under the contract: ONE ranking, the gateway's `compare` (sellable, primary, stock tier,
+ * price), over ONE set -- the SERVED offers (the signals this answer returns) that are `price_comparable`,
+ * FRESH after this request's live reads (offerPriceIsStale), priced, and in ONE stated ISO currency (that of
+ * the first such offer in the backend's rank order; a declared market has already cut the list to its own).
+ * Nothing outside that set can be best: not another size, not a variant-less offer, not a stale price, not
+ * another currency. An empty set is NO best price (best_offer null), never a fallback to the cheapest offer.
  *
- * 1. The backend's `best_price_offer_id` -- the cheapest FRESH offer in ONE currency -- when it names an offer
- *    this answer serves, that offer's price is fresh here, and no gateway live read changed the list's facts
- *    after the backend picked.
- * 2. Otherwise the gateway's own pick (`compare`, today's order), restricted to ONE currency -- that of the
- *    first fresh priced offer in the backend's rank order, as the backend chooses when no buyer currency is
- *    known (a declared market has already cut the list to its own currency: intelligenceReads
- *    offersInMarketCurrency) -- and to fresh prices whenever one exists. A stale price is never best over a
- *    fresh one, and amounts in two currencies are never compared.
+ * `best_price_offer_id` does not rank. It names the claim's source: `offers_resolve` when the gateway's pick
+ * IS the backend's and no live read changed the served offers' facts since the backend picked, else
+ * `gateway`. The backend's id is reported beside it, so a pick outside the set is visible.
  */
-function freshBestOffer(pairs, priced, compare, { bestPriceOfferId }) {
-  const contract = bestPriceOfferId !== undefined || pairs.some((p) => p.offer.price_stale === true);
-  if (!contract) return undefined;
-  if (!priced.length) return null;
-  const offerOf = new Map(pairs.map((p) => [p.signal, p.offer]));
-  const named = nonEmptyString(bestPriceOfferId)
-    ? priced.find((s) => String(offerOf.get(s).offer_id) === bestPriceOfferId)
-    : null;
-  if (named && !offerPriceIsStale(offerOf.get(named)) && !pairs.some((p) => liveReadChangedFacts(p.offer))) {
-    return named;
+function bestFreshComparable(served, compare, bestPriceOfferId) {
+  const offerOf = new Map(served.map((p) => [p.signal, p.offer]));
+  const eligible = served
+    .filter((p) => p.offer.price_comparable === true && !offerPriceIsStale(p.offer))
+    .map((p) => p.signal)
+    .filter((s) => typeof s.value.price === 'number' && ISO_CURRENCY.test(String(s.value.currency || '').trim().toUpperCase()));
+  const backendId = nonEmptyString(bestPriceOfferId) ? bestPriceOfferId : null;
+  const reportBackend = bestPriceOfferId !== undefined ? { offers_resolve_offer_id: backendId } : {};
+  if (!eligible.length) {
+    return { best: null, best_price: { offer_id: null, reason: 'no_fresh_comparable_price', ...reportBackend } };
   }
-  const fresh = priced.filter((s) => !offerPriceIsStale(offerOf.get(s)));
-  const basis = [...fresh, ...priced].map((s) => upperCurrency(s.value.currency)).find(Boolean) || '';
-  const inBasis = priced.filter((s) => upperCurrency(s.value.currency) === basis);
-  const freshInBasis = inBasis.filter((s) => !offerPriceIsStale(offerOf.get(s)));
-  const pool = (freshInBasis.length ? freshInBasis : inBasis).slice().sort(compare);
-  return pool[0] || null;
+  const basis = String(eligible[0].value.currency).trim().toUpperCase();
+  const pool = eligible.filter((s) => String(s.value.currency).trim().toUpperCase() === basis).sort(compare);
+  const best = pool[0];
+  const offerId = offerOf.get(best).offer_id == null ? null : String(offerOf.get(best).offer_id);
+  const fromBackend = backendId !== null && offerId === backendId && !served.some((p) => liveReadChangedFacts(p.offer));
+  return {
+    best,
+    best_price: {
+      offer_id: offerId,
+      price: best.value.price,
+      currency: basis,
+      source: fromBackend ? 'offers_resolve' : 'gateway',
+      ...reportBackend,
+    },
+  };
 }
 
 function offersToSignals(offers, opts = {}) {
-  const { productId = null, limit = 10, bestPriceOfferId } = opts;
+  const { productId = null, limit = 10, bestPriceOfferId, now = Date.now } = opts;
   if (!Array.isArray(offers)) return { best_offer: null, signals: [] };
+  const freshPriceContract = freshPriceContractOn(offers, bestPriceOfferId);
   const signals = [];
   const pairs = [];
   for (const o of offers) {
-    const s = offerToSignal(o, { productId });
+    const s = offerToSignal(o, { productId, freshPriceContract, now });
     if (s) {
       signals.push(s);
       pairs.push({ offer: o, signal: s });
@@ -362,12 +394,15 @@ function offersToSignals(offers, opts = {}) {
     if (tier !== 0) return tier;
     return a.value.price - b.value.price;
   };
-  const priced = signals.filter((s) => typeof s.value.price === 'number');
-  // Picked over the backend's rank order (the first fresh offer's currency is the basis), so before sorting.
-  const fresh = freshBestOffer(pairs, priced, compare, { bestPriceOfferId });
-  priced.sort(compare);
-  const best_offer = fresh !== undefined && fresh !== null ? fresh : priced.length ? priced[0] : signals[0] || null;
   const cap = Math.max(1, Math.min(Number.isFinite(limit) ? limit : 10, 10));
+  if (freshPriceContract) {
+    // Only what this answer serves can be best: the backend's pick may sit beyond the cap.
+    const { best, best_price } = bestFreshComparable(pairs.slice(0, cap), compare, bestPriceOfferId);
+    return { best_offer: best, signals: signals.slice(0, cap), best_price };
+  }
+  const priced = signals.filter((s) => typeof s.value.price === 'number');
+  priced.sort(compare);
+  const best_offer = priced.length ? priced[0] : signals[0] || null;
   return { best_offer, signals: signals.slice(0, cap) };
 }
 

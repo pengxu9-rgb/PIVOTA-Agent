@@ -76,6 +76,7 @@ async function runScenario(scn) {
     fetchOffers: async () => mapOffersResolveResponse(JSON.parse(JSON.stringify(scn.backend)), 'grp_fallback'),
     ...(scn.stores ? { readOffersLive: realReader(scn.stores) } : {}),
     ...(scn.liveVerificationOptIn ? { liveVerificationOptIn: () => true } : {}),
+    ...(scn.now ? { now: () => scn.now } : {}),
   });
   return handler({ payload: { product_id: 'sig_cream', ...(scn.payload || {}) } });
 }
