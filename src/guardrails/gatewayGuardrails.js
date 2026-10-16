@@ -148,6 +148,8 @@ function operationRateLimit(operation, client) {
     if (op === 'find_products_multi') return { capacity: 60, refill_per_sec: 1 };
     if (op === 'find_products') return { capacity: 120, refill_per_sec: 2 };
     if (op === 'get_pdp_v2' || op === 'resolve_product_candidates') return { capacity: 180, refill_per_sec: 3 };
+    // One call per PDP view, after the page renders: get_pdp_v2's bucket, counted on its own.
+    if (op === 'pdp_live_read') return { capacity: 180, refill_per_sec: 3 };
     return base;
   })();
 

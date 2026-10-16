@@ -152,6 +152,11 @@ function createPdpLiveCache({
   };
 }
 
+/** The page's currency as the PDP normalizer reads it: the card's own, then its price's, then a variant's. */
+function pageCurrency(card) {
+  return str(card && card.currency).toUpperCase() || priceCurrencyOf(card && card.price, '') || productCurrency(card);
+}
+
 /** The card the canonical module serves, and where it sits. */
 function canonicalCard(payload) {
   const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
@@ -446,8 +451,7 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
   if (commerceBlocked(pdp, card)) return null;
   const host = productHost(card);
   const ids = productVariantIds(card);
-  // The page's currency as the PDP normalizer reads it: the card's own, then its price's, then a variant's.
-  const currency = str(card.currency).toUpperCase() || priceCurrencyOf(card.price, '') || productCurrency(card);
+  const currency = pageCurrency(card);
   const handle = cardHandle(card, host);
   if (!host || !ids.length || !currency || !handle) return null;
   // Only answers in the page's currency, for THIS product page: the merchant's answer names the page it
@@ -567,4 +571,6 @@ function stockOf(availability) {
   return null;
 }
 
-module.exports = { applyPdpLiveOverlay, createPdpLiveCache, DEFAULT_TTL_MS };
+// canonicalCard, cardHandle and pageCurrency are the overlay's own readers, shared with the browser's
+// first-view refresh (pdpLiveRefresh.js) so the page it binds a token to is read by the same rules.
+module.exports = { applyPdpLiveOverlay, createPdpLiveCache, canonicalCard, cardHandle, pageCurrency, DEFAULT_TTL_MS };

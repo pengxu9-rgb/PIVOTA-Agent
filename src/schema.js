@@ -24,6 +24,9 @@ const OperationEnum = z.enum([
   // Settled existence check for a PDP route id (src/services/pdpRouteIdExistence.js): lets the storefront
   // 404 an id no table holds, instead of 500ing it as a possibly-transient read failure.
   'pdp_route_id_exists',
+  // The browser's first-view live price/stock refresh for a served PDP (src/services/pdpLiveRefresh.js):
+  // token-bound, issued by get_pdp_v2 as `live_refresh`.
+  'pdp_live_read',
   'checkout_handoff',
   'get_product_intel_v1',
   'get_product_feedback_v1',

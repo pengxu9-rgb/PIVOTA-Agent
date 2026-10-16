@@ -665,7 +665,9 @@ test('STRUCTURAL: only the normally served get_pdp_v2 return takes the overlay',
   assert.ok(i > 0);
   const block = src.slice(i, src.indexOf('} catch (err) {', i));
   assert.equal((block.match(/livePdpOverlay\(/g) || []).length, 1);
-  assert.match(block, /return res\.json\(canonicalOwnMoneyGap\s+\? withoutCanonicalPurchaseActions\(responsePayload\)\s+: livePdpOverlay\(responsePayload, \{\s+market: offersGateBuyerMarket\(payload, metadata\),/);
+  // The served arm: the overlay, inside the first-view refresh descriptor (pdpLiveRefresh.js), which adds a
+  // top-level `live_refresh` and changes nothing else.
+  assert.match(block, /return res\.json\(canonicalOwnMoneyGap\s+\? withoutCanonicalPurchaseActions\(responsePayload\)\s+: withPdpLiveRefreshDescriptor\(livePdpOverlay\(responsePayload, \{\s+market: offersGateBuyerMarket\(payload, metadata\),/);
   const g = src.indexOf('function getUcpLivePdpReader()');
   assert.match(src.slice(g, g + 700), /mode: MODES\.SHADOW,/, 'the reader itself never touches the page');
 });
