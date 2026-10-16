@@ -129,6 +129,7 @@ const {
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
+  buildPdpPurchaseActions,
   buildBundleCompositionModuleData,
   buildVariantSelectorModuleData,
   isExternalSeedLikeProduct,
@@ -4883,7 +4884,7 @@ function buildPdpSimilarFetchArgs({
         similarBaseProduct.currency ||
         canonicalProductForPdp?.currency ||
         canonicalProduct?.currency ||
-        'USD',
+        null,
       serving_currency:
         servingCurrency === undefined ? servingCurrencyFor({ payload, metadata }) : servingCurrency,
       options: {
@@ -5095,7 +5096,6 @@ function normalizeProductDetailVariantPrice(variant, productContext = {}) {
     variant.price?.currency,
     variant.price?.current?.currency,
     productContext.currency,
-    'USD',
   );
   const context = {
     ...productContext,
@@ -5124,12 +5124,12 @@ function normalizeProductDetailVariantPrice(variant, productContext = {}) {
       amount: next.price.amount !== undefined ? normalizedAmount : next.price.amount,
       current:
         next.price.current && typeof next.price.current === 'object'
-          ? { ...next.price.current, amount: normalizedAmount, currency }
+          ? { ...next.price.current, amount: normalizedAmount, ...(currency ? { currency } : {}) }
           : next.price.current,
     };
     if (next.price.amount === undefined && !next.price.current) {
       next.price.amount = normalizedAmount;
-      next.price.currency = currency;
+      if (currency) next.price.currency = currency;
     }
   } else if (next.price !== undefined) {
     next.price = normalizedAmount;
@@ -5154,6 +5154,7 @@ function normalizeProductDetailPrice(product) {
   }
 
   let resolvedPrice = normalizeNullableProductDetailPrice(normalized.price, priceContext);
+  let resolvedCurrency = resolvedPrice !== null ? priceContext.currency : null;
   if (resolvedPrice === null && Array.isArray(normalized.variants)) {
     for (const variant of normalized.variants) {
       if (!variant || typeof variant !== 'object') continue;
@@ -5182,12 +5183,20 @@ function normalizeProductDetailPrice(product) {
         normalizeNullableProductDetailPrice(variant.value, variantContext);
       if (candidate !== null) {
         resolvedPrice = candidate;
+        resolvedCurrency = variantContext.currency;
         break;
       }
     }
   }
 
   normalized.price = resolvedPrice;
+  // The price is flattened to a bare number here, so its currency would be lost with the
+  // object (gw#2458 review: a group offer's `source_payload.price {amount, currency}` lost its
+  // currency and the offer was dropped). Keep the one it was observed in — never a default.
+  if (resolvedPrice !== null && !String(normalized.currency || '').trim()) {
+    const observed = String(resolvedCurrency || '').trim().toUpperCase();
+    if (observed) normalized.currency = observed;
+  }
   return normalized;
 }
 
@@ -5730,8 +5739,9 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
   if (!row || typeof row !== 'object') return null;
   const sourcePayload = { ...(isPlainObject(row.source_payload) ? row.source_payload : {}) };
   const catalogOfferPrice = Number(row.catalog_offer_price);
-  const catalogOfferCurrency = firstNonEmptyString(row.catalog_offer_currency, sourcePayload.currency, 'USD');
-  if (Number.isFinite(catalogOfferPrice) && catalogOfferPrice > 0) {
+  const catalogOfferCurrency = firstNonEmptyString(row.catalog_offer_currency, sourcePayload.currency) || null;
+  // An offer row priced with no currency is not a priced member (gw#2458): no 'USD' default.
+  if (Number.isFinite(catalogOfferPrice) && catalogOfferPrice > 0 && catalogOfferCurrency) {
     sourcePayload.price = { amount: catalogOfferPrice, currency: catalogOfferCurrency };
     sourcePayload.price_amount = catalogOfferPrice;
     sourcePayload.currency = catalogOfferCurrency;
@@ -10291,6 +10301,16 @@ function hydrateCanonicalPdpPayloadFromOffers(
   return hydrateCanonicalPdpMediaFromOfferImages({
     ...pdpPayload,
     ...(modules ? { modules } : {}),
+    // The payload's actions were decided before this added the price (gw#2458 review): a page the
+    // offers just priced offers Buy / Add to Cart again, unless commerce is suppressed.
+    ...(projectedOfferPrice
+      ? {
+          actions: buildPdpPurchaseActions({
+            commerceSuppressed: product.commerce_suppressed === true,
+            priced: true,
+          }),
+        }
+      : {}),
     product,
   }, product, selectedOfferImageUrls);
 }

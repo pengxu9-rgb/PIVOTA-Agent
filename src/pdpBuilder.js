@@ -65,7 +65,28 @@ function normalizeAmount(value) {
 // (`toVariantPrice`, the price module, recommendations). A product whose currency is unknown shows
 // no price rather than a dollar one — the same rule offerToSignal applies to expected totals.
 function normalizeCurrency(value, fallback = null) {
-  return value?.currency || value?.currency_code || fallback || null;
+  return value?.currency || value?.currency_code || value?.current?.currency || fallback || null;
+}
+
+// The product's OBSERVED currency, wherever the payload states it: top level, or on the price
+// object itself (gw#2458 review: a Shopify product carrying only `price: {amount, currency}` lost
+// its price and its buy buttons when this read `product.currency` alone).
+function resolveProductCurrency(product) {
+  const p = product && typeof product === 'object' ? product : {};
+  const candidates = [
+    p.currency,
+    p.price_currency,
+    p.priceCurrency,
+    p.currency_code,
+    p.price?.current?.currency,
+    p.price?.currency,
+    p.price?.currency_code,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate == null ? '' : candidate).trim().toUpperCase();
+    if (value) return value;
+  }
+  return null;
 }
 
 function asSafePlainObject(value) {
@@ -106,6 +127,18 @@ function suppressCommerceForPdpProduct(product = {}) {
       hasTransactionHoldContract(seedData.source_unavailable_v1) ||
       hasTransactionHoldContract(snapshot.source_unavailable_v1)
   );
+}
+
+// The purchase actions a PDP offers: none when commerce is suppressed, and none beside no visible
+// price (gw#2458: a currency-less product shows no price, so it must not invite a purchase). ONE
+// rule, read by buildPdpPayload and again by the server's offers hydration, which can add the
+// price after the payload was built.
+function buildPdpPurchaseActions({ commerceSuppressed = false, priced = false } = {}) {
+  if (commerceSuppressed || !priced) return [];
+  return [
+    { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+    { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+  ];
 }
 
 function suppressFormulaContentForPdpProduct(product = {}) {
@@ -1944,7 +1977,7 @@ function toVariantPrice(input, currency) {
 }
 
 function buildVariants(product) {
-  const currency = product.currency || null;
+  const currency = resolveProductCurrency(product);
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   const singleSkuSizeOption = buildSingleSkuSizeOption(product);
   if (!rawVariants.length) {
@@ -4894,7 +4927,7 @@ function buildPdpPayload(args) {
   const commerceSuppressed = suppressCommerceForPdpProduct(product);
   const formulaContentSuppressed = suppressFormulaContentForPdpProduct(product);
   const brandLabel = resolveProductBrandLabel(product);
-  const currency = product.currency || null;
+  const currency = resolveProductCurrency(product);
   const variants = buildVariants(product);
   // The same emptiness test buildVariants applies (its fabricated single variant exists iff this is 0).
   const rawVariantCount = Array.isArray(product.variants) ? product.variants.length : 0;
@@ -5318,14 +5351,7 @@ function buildPdpPayload(args) {
         : {}),
     },
     modules,
-    // No price the buyer can see -> no Buy / Add to Cart offered beside it (gw#2458 review): a
-    // currency-less product shows no price, so it must not invite a purchase either.
-    actions: commerceSuppressed || !pagePriced
-      ? []
-      : [
-          { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
-          { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
-        ],
+    actions: buildPdpPurchaseActions({ commerceSuppressed, priced: pagePriced }),
   };
 
   const compiledPayload = compilePdpPayload(payload, { debug: args.debug });
@@ -5334,6 +5360,7 @@ function buildPdpPayload(args) {
 }
 
 module.exports = {
+  buildPdpPurchaseActions,
   buildVariants,
   pickDefaultVariant,
   buildPdpPayload,

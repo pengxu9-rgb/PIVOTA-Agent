@@ -3092,3 +3092,32 @@ describe('pdpBuilder publishes no price without an observed currency', () => {
   });
 });
 
+describe('pdpBuilder reads the currency wherever the product states it (gw#2458 review)', () => {
+  test('a currency stated only on the price object keeps the price and the buy buttons', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'shopify_price_obj', merchant_id: 'm1', platform: 'shopify', title: 'Bronzer',
+        price: { amount: 36, currency: 'USD' },
+        variants: [{ variant_id: 'v1', price: { current: { amount: 36, currency: 'USD' } } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.modules.find((m) => m.type === 'price_promo')?.data?.price).toEqual({ amount: 36, currency: 'USD' });
+    expect(payload.actions.map((a) => a.action_type)).toEqual(['add_to_cart', 'buy_now']);
+  });
+
+  test('a price_currency-only product is priced in that currency, not USD', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'gbp_only', merchant_id: 'm1', title: 'Serum', price: 36, price_currency: 'GBP',
+        variants: [{ variant_id: 'v1', price: { amount: 36 } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.modules.find((m) => m.type === 'price_promo')?.data?.price).toEqual({ amount: 36, currency: 'GBP' });
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+  });
+});
+
