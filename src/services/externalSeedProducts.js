@@ -3835,6 +3835,32 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
   return nextSeedData;
 }
 
+function restoreStoredVariantList(target, source, key) {
+  if (source[key] === undefined) {
+    delete target[key];
+  } else {
+    target[key] = JSON.parse(JSON.stringify(source[key]));
+  }
+}
+
+// Persisting writers only. canonicalizeExternalSeedSnapshot builds one list from a
+// snapshot-first read (getRawSeedVariants) and writes it into every container, so
+// persisting its output would overwrite the main list (seed_data.variants, the list
+// production serves and the nightly refresh reconciles) with the stale snapshot copy.
+// This form normalizes the snapshot copy only and leaves seed_data.variants and
+// seed_data.product.variants exactly as stored, including absent when absent.
+function canonicalizeExternalSeedSnapshotForPersistence(seedData, row, options = {}) {
+  const stored = ensureJsonObject(seedData);
+  const nextSeedData = canonicalizeExternalSeedSnapshot(stored, row, options);
+  restoreStoredVariantList(nextSeedData, stored, 'variants');
+  if (nextSeedData.product && typeof nextSeedData.product === 'object') {
+    const storedProduct = stored.product && typeof stored.product === 'object' ? stored.product : {};
+    nextSeedData.product = { ...nextSeedData.product };
+    restoreStoredVariantList(nextSeedData.product, storedProduct, 'variants');
+  }
+  return nextSeedData;
+}
+
 function resolveExternalSeedTransactionHold(seedData = {}, snapshot = {}) {
   const reviewedPricePatch = [
     seedData.reviewed_price_offer_patch_v1,
@@ -4912,6 +4938,7 @@ module.exports = {
   normalizeExternalSeedPrice,
   sanitizeSeedVariantDisplayFields,
   canonicalizeExternalSeedSnapshot,
+  canonicalizeExternalSeedSnapshotForPersistence,
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
 };

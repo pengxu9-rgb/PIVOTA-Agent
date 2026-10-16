@@ -8,7 +8,9 @@ function parseArgs(argv) {
   const out = {
     manifestPath: '',
     outPath: '',
-    pivotaAgentRoot: '/Users/pengchydan/dev/PIVOTA-Agent',
+    // No default: --run-correction persists seed rows through that checkout's correction tool,
+    // so it must be named explicitly and must carry the main-list freeze (see below).
+    pivotaAgentRoot: '',
     apply: false,
     runCorrection: false,
     correctionDryRun: false,
@@ -42,6 +44,60 @@ function normalizePath(value) {
 function resolvePathMaybeRelative(targetPath) {
   if (!targetPath) return '';
   return path.isAbsolute(targetPath) ? targetPath : path.join(process.cwd(), targetPath);
+}
+
+// Files and markers that show a checkout carries the seed main-list freeze: persisting writers
+// never write seed_data.variants from snapshot-derived data. Checked as text so the other
+// checkout's code is never loaded.
+const MAIN_LIST_FREEZE_MARKERS = Object.freeze([
+  {
+    file: 'src/services/externalSeedProducts.js',
+    pattern: /canonicalizeExternalSeedSnapshotForPersistence,/,
+    why: 'exports canonicalizeExternalSeedSnapshotForPersistence',
+  },
+  {
+    file: 'src/services/externalSeedCorrection.js',
+    pattern: /nextRow\.seed_data = canonicalizeExternalSeedSnapshotForPersistence\(/,
+    why: 'variant display correction uses the persistence canonicalizer',
+  },
+  {
+    file: 'scripts/backfill-external-product-seeds-catalog.js',
+    pattern: /const freshMainListVariants =/,
+    why: 'catalog backfill writes the main list only from a fresh extraction',
+  },
+]);
+
+function checkCorrectionRootHasMainListFreeze(root) {
+  const missing = [];
+  for (const marker of MAIN_LIST_FREEZE_MARKERS) {
+    const filePath = path.join(root, marker.file);
+    let source = '';
+    try {
+      source = fs.readFileSync(filePath, 'utf8');
+    } catch {
+      source = '';
+    }
+    if (!marker.pattern.test(source)) missing.push(`${marker.file}: ${marker.why}`);
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+function resolveCorrectionRoot(args, repoRoot) {
+  const explicitRoot = normalizePath(args.pivotaAgentRoot);
+  if (args.runCorrection) {
+    if (!explicitRoot) {
+      throw new Error('--run-correction requires --pivota-agent-root <checkout> (no default)');
+    }
+    const root = resolvePathMaybeRelative(explicitRoot);
+    const check = checkCorrectionRootHasMainListFreeze(root);
+    if (!check.ok) {
+      throw new Error(
+        `Refusing --run-correction: ${root} lacks the seed main-list freeze (${check.missing.join('; ')})`,
+      );
+    }
+    return root;
+  }
+  return explicitRoot ? resolvePathMaybeRelative(explicitRoot) : repoRoot;
 }
 
 function parseJsonCommandOutput(raw) {
@@ -90,8 +146,9 @@ async function main() {
   if (!manifestPath) throw new Error('Missing required --manifest <seed-creation-manifest.json>');
 
   const repoRoot = process.cwd();
+  const correctionRoot = resolveCorrectionRoot(args, repoRoot);
   const applyScriptPath = path.join(repoRoot, 'scripts', 'apply_aurora_external_seed_creation_manifest.cjs');
-  const correctionScriptPath = path.join(resolvePathMaybeRelative(args.pivotaAgentRoot), 'scripts', 'correct-external-product-seeds.js');
+  const correctionScriptPath = path.join(correctionRoot, 'scripts', 'correct-external-product-seeds.js');
   const manifestDoc = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const mode = args.apply ? 'apply' : 'dry_run';
 
@@ -152,7 +209,15 @@ async function main() {
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  checkCorrectionRootHasMainListFreeze,
+  resolveCorrectionRoot,
+};
