@@ -49,15 +49,15 @@ const staleDefaultSnapshotList = () => [
   { variant_id: 'v-coral', title: 'Default Title', option_name: 'Title', option_value: 'Default Title', price: '20.00' },
 ];
 
-function buildRow(seedData, { complete = true } = {}) {
+function buildRow(seedData, { complete = true, title = 'Glow Tint 30 ml', url = URL_BASE } = {}) {
   return {
     external_product_id: EPID,
     pivota_signature_id: 'sig_freeze',
-    title: 'Glow Tint 30 ml',
-    canonical_url: URL_BASE,
-    destination_url: URL_BASE,
+    title,
+    canonical_url: url,
+    destination_url: url,
     seed_data: {
-      title: 'Glow Tint 30 ml',
+      title,
       ...(complete
         ? { pdp_how_to_use_raw: 'Apply to lips.', pdp_ingredients_raw: 'Water, Glycerin.' }
         : {}),
@@ -218,4 +218,163 @@ describe('force-fill main-list freeze', () => {
     expect(after.snapshot.variants).toHaveLength(1);
     expect(after.snapshot.variants[0].force_filled).toBe(true);
   });
+
+  describe('no snapshot information reaches main-list or root data', () => {
+    const NEUTRAL = { title: 'Glow Tint', url: 'https://shop.example.com/products/glow-tint' };
+    const ROOT_LABEL_KEYS = ['variant_detail_label', 'size_detail_label', 'net_size', 'shade_detail_label', 'format_detail_label'];
+    const mirrorPayloads = (client) =>
+      client.calls
+        .filter((call) => /catalog_products|pdp_identity_listing/.test(call.sql))
+        .map((call) => JSON.parse(call.params[1]));
+
+    test('one-entry main list is not relabelled from snapshot evidence (controller case 1)', async () => {
+      const row = buildRow(
+        {
+          variants: [{ variant_id: 'v1', title: 'Default Title', price: '30.00', availability: 'out_of_stock', in_stock: false }],
+          snapshot: { variants: [{ variant_id: 'v1', title: '50 ml' }] },
+        },
+        NEUTRAL,
+      );
+
+      const { before, plan, after, client } = await runPlan(row);
+
+      expect(plan.variant_lists_changed.root).toBe(false);
+      expect(JSON.stringify(after.variants)).toBe(JSON.stringify(before.variants));
+      for (const key of ROOT_LABEL_KEYS) expect(hasOwn(after, key)).toBe(false);
+      expect(after.snapshot.variants[0].options).toEqual([expect.objectContaining({ value: '50 mL' })]);
+      for (const payload of mirrorPayloads(client)) {
+        expect(hasOwn(payload, 'variants')).toBe(false);
+        for (const key of ROOT_LABEL_KEYS) expect(hasOwn(payload, key)).toBe(false);
+      }
+    });
+
+    test('snapshot-only collapse writes no root labels, quality or mirror labels (controller case 2)', async () => {
+      const row = buildRow(
+        {
+          variants: [
+            { variant_id: 'A1', title: 'A1', price: '10.00' },
+            { variant_id: 'B1', title: 'B1', price: '12.00' },
+          ],
+          snapshot: {
+            size_detail_label: '15 ml',
+            variants: [
+              { variant_id: 'A1', title: 'Default Title' },
+              { variant_id: 'B1', title: 'Default Title' },
+            ],
+          },
+        },
+        NEUTRAL,
+      );
+
+      const { before, plan, after, client, path, rootPatch } = await runPlan(row);
+
+      expect(plan.root_variant_collapse_skipped).toBe(true);
+      expect(path).toBe('variant_only');
+      expect(rootPatch).toEqual({});
+      expect(JSON.stringify(after.variants)).toBe(JSON.stringify(before.variants));
+      for (const key of ROOT_LABEL_KEYS) expect(hasOwn(after, key)).toBe(false);
+      expect(hasOwn(after, 'pdp_field_quality_summary')).toBe(false);
+      expect(hasOwn(after, 'pdp_force_fill_v1')).toBe(false);
+      expect(after.snapshot.size_detail_label).toBe('15 mL');
+      expect(after.snapshot.variants).toHaveLength(1);
+      expect(mirrorPayloads(client)).toEqual([]);
+    });
+
+    test('controller case 2 on the full-write path: no root labels persisted', async () => {
+      const row = buildRow(
+        {
+          variants: [
+            { variant_id: 'A1', title: 'A1', price: '10.00' },
+            { variant_id: 'B1', title: 'B1', price: '12.00' },
+          ],
+          snapshot: {
+            size_detail_label: '15 ml',
+            variants: [
+              { variant_id: 'A1', title: 'Default Title' },
+              { variant_id: 'B1', title: 'Default Title' },
+            ],
+          },
+        },
+        { ...NEUTRAL, complete: false },
+      );
+
+      const { before, after, path, client } = await runPlan(row, new Set());
+
+      expect(path).toBe('full');
+      expect(JSON.stringify(after.variants)).toBe(JSON.stringify(before.variants));
+      for (const key of ROOT_LABEL_KEYS) expect(hasOwn(after, key)).toBe(false);
+      expect(after.snapshot.size_detail_label).toBe('15 mL');
+      for (const payload of mirrorPayloads(client)) {
+        for (const key of ROOT_LABEL_KEYS) expect(hasOwn(payload, key)).toBe(false);
+      }
+    });
+
+    test('root quality summary is not cross-merged from the snapshot on the full-write path', async () => {
+      const row = buildRow(
+        {
+          variants: repairedMainList(),
+          snapshot: {
+            pdp_field_quality_summary: { variants: { source_quality_status: 'snapshot_only' } },
+            variants: staleDefaultSnapshotList(),
+          },
+        },
+        { complete: false },
+      );
+
+      const { after, path } = await runPlan(row, new Set());
+
+      expect(path).toBe('full');
+      expect(hasOwn(asObjectOrEmpty(after.pdp_field_quality_summary), 'variants')).toBe(false);
+    });
+  });
+
+  describe('test gaps', () => {
+    test('G2: both lists empty on the full-write path: the main list is not fabricated', async () => {
+      const row = buildRow({ snapshot: {} }, { complete: false });
+
+      const { after, path } = await runPlan(row, new Set());
+
+      expect(path).toBe('full');
+      expect(hasOwn(after, 'variants')).toBe(false);
+      expect(after.snapshot.variants).toHaveLength(1);
+      for (const key of ['variant_detail_label', 'size_detail_label', 'net_size']) expect(hasOwn(after, key)).toBe(false);
+    });
+
+    test('G7: hydrating the main list is persisted (root flag set) with every other field kept', async () => {
+      const flatMain = repairedMainList().map((variant) => {
+        const { options, ...rest } = variant;
+        return { ...rest, option_name: 'Shade', option_value: variant.title };
+      });
+      const row = buildRow({ variants: flatMain, snapshot: { variants: repairedMainList() } });
+
+      const { plan, after } = await runPlan(row);
+
+      expect(plan.variant_lists_changed).toEqual({ root: true, snapshot: false });
+      expect(after.variants).toHaveLength(2);
+      after.variants.forEach((variant, index) => {
+        expect(variant).toEqual(expect.objectContaining({
+          ...flatMain[index],
+          option_name: 'Shade',
+          options: [expect.objectContaining({ name: 'Shade', value: flatMain[index].option_value })],
+        }));
+      });
+    });
+
+    test('G4: a plan without list flags writes neither variant list', async () => {
+      const row = buildRow({ variants: repairedMainList(), snapshot: { variants: staleDefaultSnapshotList() } });
+      const plan = await buildPlan(row, kbWithIntel(), { fetchSource: false });
+      delete plan.variant_lists_changed;
+      const client = makeClient();
+
+      await applyPlans(client, [plan]);
+
+      const { rootPatch, snapshotPatch } = replaySeedUpdate(clone(row.seed_data), client);
+      expect(rootPatch).toEqual({});
+      expect(snapshotPatch).toEqual({});
+    });
+  });
 });
+
+function asObjectOrEmpty(value) {
+  return value && typeof value === 'object' ? value : {};
+}

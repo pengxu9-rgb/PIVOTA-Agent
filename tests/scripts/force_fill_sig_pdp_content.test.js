@@ -225,14 +225,15 @@ describe('force-fill SIG PDP content script', () => {
     expect(patch.rootPatch.variants).toEqual([variant]);
   });
 
-  test('variant-only DB patch carries only the variant lists that changed', () => {
+  test('variant-only DB patch carries only the side whose variant list changed', () => {
     const seedData = {
       variants: [{ title: 'Main' }],
       variant_detail_label: 'Format: Mini',
       snapshot: { variants: [{ title: 'Snap' }], variant_detail_label: 'Format: Mini' },
     };
     const patch = buildVariantOnlySeedPatch(seedData, { root: false, snapshot: true });
-    expect(patch.rootPatch).toEqual({ variant_detail_label: 'Format: Mini' });
+    // The unchanged root contributes nothing: no variants, labels, quality or meta.
+    expect(patch.rootPatch).toEqual({});
     expect(patch.snapshotPatch).toEqual({ variants: [{ title: 'Snap' }], variant_detail_label: 'Format: Mini' });
   });
 
