@@ -1,0 +1,746 @@
+{
+  "no_market_mixed_currencies": {
+    "subject": {
+      "kind": "product",
+      "id": "sig_cream"
+    },
+    "best_offer": {
+      "signal_type": "offer",
+      "subject": {
+        "kind": "offer",
+        "id": "b.example.co.uk:sig_cream"
+      },
+      "value": {
+        "merchant_id": "b.example.co.uk",
+        "merchant_name": "b.example.co.uk",
+        "price": 20,
+        "currency": "GBP",
+        "availability": "in_stock",
+        "in_stock": true,
+        "is_primary": false,
+        "url": "https://b.example.co.uk/products/cream",
+        "affiliate_url": "https://api.pivota.cc/r?token=of%3Ab",
+        "purchase_route": "affiliate_outbound",
+        "cart_prefilled": null,
+        "stock_verified": null,
+        "merchant_price_verified": null,
+        "rank_one_unverified": null,
+        "execution_spec": null
+      },
+      "evidence": {
+        "grade": null,
+        "confidence": null,
+        "method": "merchant_reported",
+        "sources": []
+      },
+      "freshness": {
+        "observed_at": "2026-10-16T09:00:00+00:00",
+        "fresh_until": null
+      },
+      "seller_trust": null,
+      "visibility": "buyer_safe"
+    },
+    "signals": [
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "a.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "a.example.com",
+          "merchant_name": "a.example.com",
+          "price": 30,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://a.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Aa",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "b.example.co.uk:sig_cream"
+        },
+        "value": {
+          "merchant_id": "b.example.co.uk",
+          "merchant_name": "b.example.co.uk",
+          "price": 20,
+          "currency": "GBP",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://b.example.co.uk/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ab",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "c.example.jp:sig_cream"
+        },
+        "value": {
+          "merchant_id": "c.example.jp",
+          "merchant_name": "c.example.jp",
+          "price": 2000,
+          "currency": "JPY",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://c.example.jp/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ac",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      }
+    ],
+    "metadata": {
+      "offer_count": 3,
+      "product_group_id": "grp1"
+    }
+  },
+  "no_market_sellable_and_verification_tiers": {
+    "subject": {
+      "kind": "product",
+      "id": "sig_cream"
+    },
+    "best_offer": {
+      "signal_type": "offer",
+      "subject": {
+        "kind": "offer",
+        "id": "c.example.com:sig_cream"
+      },
+      "value": {
+        "merchant_id": "c.example.com",
+        "merchant_name": "c.example.com",
+        "price": 21,
+        "currency": "USD",
+        "availability": "in_stock",
+        "in_stock": true,
+        "is_primary": false,
+        "url": "https://c.example.com/products/cream",
+        "affiliate_url": "https://api.pivota.cc/r?token=of%3Ac",
+        "purchase_route": "affiliate_outbound",
+        "cart_prefilled": null,
+        "stock_verified": true,
+        "merchant_price_verified": true,
+        "rank_one_unverified": null,
+        "execution_spec": null
+      },
+      "evidence": {
+        "grade": null,
+        "confidence": null,
+        "method": "merchant_reported",
+        "sources": []
+      },
+      "freshness": {
+        "observed_at": "2026-10-16T09:00:00+00:00",
+        "fresh_until": null
+      },
+      "seller_trust": null,
+      "visibility": "buyer_safe"
+    },
+    "signals": [
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "a.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "a.example.com",
+          "merchant_name": "a.example.com",
+          "price": 13,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "in_stock": false,
+          "is_primary": false,
+          "url": "https://a.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Aa",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "b.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "b.example.com",
+          "merchant_name": "b.example.com",
+          "price": 19.5,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://b.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ab",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": false,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "c.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "c.example.com",
+          "merchant_name": "c.example.com",
+          "price": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://c.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ac",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": true,
+          "merchant_price_verified": true,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "d.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "d.example.com",
+          "merchant_name": "d.example.com",
+          "price": 18,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://d.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ad",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "e.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "e.example.com",
+          "merchant_name": "e.example.com",
+          "price": null,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://e.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ae",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      }
+    ],
+    "metadata": {
+      "offer_count": 5,
+      "product_group_id": "grp_fallback"
+    }
+  },
+  "market_us_with_live_reads": {
+    "subject": {
+      "kind": "product",
+      "id": "sig_cream"
+    },
+    "best_offer": {
+      "signal_type": "offer",
+      "subject": {
+        "kind": "offer",
+        "id": "flag.example.com:sig_cream"
+      },
+      "value": {
+        "merchant_id": "flag.example.com",
+        "merchant_name": "flag.example.com",
+        "price": 17,
+        "currency": "USD",
+        "availability": null,
+        "in_stock": true,
+        "is_primary": false,
+        "url": "https://flag.example.com/products/cream",
+        "affiliate_url": "https://api.pivota.cc/r?token=of%3Aflag",
+        "purchase_route": "affiliate_outbound",
+        "cart_prefilled": null,
+        "stock_verified": true,
+        "merchant_price_verified": true,
+        "rank_one_unverified": null,
+        "execution_spec": {
+          "merchant_domain": "flag.example.com",
+          "pdp_url": null,
+          "cart_url": null,
+          "variant_id": null,
+          "rail": null,
+          "expires_at": null,
+          "expected_item_total": null,
+          "expected_currency": null,
+          "expected_quantity": null,
+          "expected_total_expires_at": null,
+          "tracking": {
+            "click_id": null,
+            "param": null,
+            "join_mode": null
+          }
+        },
+        "live_read": {
+          "status": "verified",
+          "checked_at": "2026-10-16T12:00:00.000Z",
+          "expected_total_withheld": "no_cart",
+          "stored_price": 15
+        }
+      },
+      "evidence": {
+        "grade": null,
+        "confidence": null,
+        "method": "merchant_reported",
+        "sources": []
+      },
+      "freshness": {
+        "observed_at": "2026-10-16T12:00:00.000Z",
+        "fresh_until": null
+      },
+      "seller_trust": null,
+      "visibility": "buyer_safe"
+    },
+    "signals": [
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "live.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "live.example.com",
+          "merchant_name": "live.example.com",
+          "price": 26,
+          "currency": "USD",
+          "availability": null,
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://live.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Alive",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": true,
+          "merchant_price_verified": true,
+          "rank_one_unverified": null,
+          "execution_spec": {
+            "merchant_domain": "live.example.com",
+            "pdp_url": null,
+            "cart_url": "https://live.example.com/cart/41111111:1?country=US",
+            "variant_id": "41111111",
+            "rail": null,
+            "expires_at": null,
+            "expected_item_total": 26,
+            "expected_currency": "USD",
+            "expected_quantity": 1,
+            "expected_total_expires_at": "2026-10-16T12:10:00.000Z",
+            "tracking": {
+              "click_id": null,
+              "param": null,
+              "join_mode": null
+            }
+          },
+          "live_read": {
+            "status": "verified",
+            "checked_at": "2026-10-16T12:00:00.000Z",
+            "stored_price": 24
+          }
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T12:00:00.000Z",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "flag.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "flag.example.com",
+          "merchant_name": "flag.example.com",
+          "price": 17,
+          "currency": "USD",
+          "availability": null,
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://flag.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Aflag",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": true,
+          "merchant_price_verified": true,
+          "rank_one_unverified": null,
+          "execution_spec": {
+            "merchant_domain": "flag.example.com",
+            "pdp_url": null,
+            "cart_url": null,
+            "variant_id": null,
+            "rail": null,
+            "expires_at": null,
+            "expected_item_total": null,
+            "expected_currency": null,
+            "expected_quantity": null,
+            "expected_total_expires_at": null,
+            "tracking": {
+              "click_id": null,
+              "param": null,
+              "join_mode": null
+            }
+          },
+          "live_read": {
+            "status": "verified",
+            "checked_at": "2026-10-16T12:00:00.000Z",
+            "expected_total_withheld": "no_cart",
+            "stored_price": 15
+          }
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T12:00:00.000Z",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "plain.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "plain.example.com",
+          "merchant_name": "plain.example.com",
+          "price": 22,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://plain.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Aplain",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null,
+          "live_read": {
+            "status": "skipped",
+            "checked_at": "2026-10-16T12:00:00.000Z"
+          }
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      }
+    ],
+    "metadata": {
+      "offer_count": 3,
+      "product_group_id": "grp_fallback",
+      "market": "US",
+      "market_currency": "USD",
+      "withheld_other_currency_count": 1,
+      "live_read": {
+        "mode": "enforce",
+        "market": "US",
+        "currency": "USD",
+        "read": 3,
+        "by_status": {
+          "verified": 2,
+          "skipped": 1
+        },
+        "price_changed": 2,
+        "stock_changed": 1
+      }
+    }
+  },
+  "all_unpriced": {
+    "subject": {
+      "kind": "product",
+      "id": "sig_cream"
+    },
+    "best_offer": {
+      "signal_type": "offer",
+      "subject": {
+        "kind": "offer",
+        "id": "a.example.com:sig_cream"
+      },
+      "value": {
+        "merchant_id": "a.example.com",
+        "merchant_name": "a.example.com",
+        "price": null,
+        "currency": "USD",
+        "availability": "in_stock",
+        "in_stock": true,
+        "is_primary": false,
+        "url": "https://a.example.com/products/cream",
+        "affiliate_url": "https://api.pivota.cc/r?token=of%3Aa",
+        "purchase_route": "affiliate_outbound",
+        "cart_prefilled": null,
+        "stock_verified": null,
+        "merchant_price_verified": null,
+        "rank_one_unverified": null,
+        "execution_spec": null
+      },
+      "evidence": {
+        "grade": null,
+        "confidence": null,
+        "method": "merchant_reported",
+        "sources": []
+      },
+      "freshness": {
+        "observed_at": "2026-10-16T09:00:00+00:00",
+        "fresh_until": null
+      },
+      "seller_trust": null,
+      "visibility": "buyer_safe"
+    },
+    "signals": [
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "a.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "a.example.com",
+          "merchant_name": "a.example.com",
+          "price": null,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://a.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Aa",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      },
+      {
+        "signal_type": "offer",
+        "subject": {
+          "kind": "offer",
+          "id": "b.example.com:sig_cream"
+        },
+        "value": {
+          "merchant_id": "b.example.com",
+          "merchant_name": "b.example.com",
+          "price": null,
+          "currency": "USD",
+          "availability": "in_stock",
+          "in_stock": true,
+          "is_primary": false,
+          "url": "https://b.example.com/products/cream",
+          "affiliate_url": "https://api.pivota.cc/r?token=of%3Ab",
+          "purchase_route": "affiliate_outbound",
+          "cart_prefilled": null,
+          "stock_verified": null,
+          "merchant_price_verified": null,
+          "rank_one_unverified": null,
+          "execution_spec": null
+        },
+        "evidence": {
+          "grade": null,
+          "confidence": null,
+          "method": "merchant_reported",
+          "sources": []
+        },
+        "freshness": {
+          "observed_at": "2026-10-16T09:00:00+00:00",
+          "fresh_until": null
+        },
+        "seller_trust": null,
+        "visibility": "buyer_safe"
+      }
+    ],
+    "metadata": {
+      "offer_count": 2,
+      "product_group_id": "grp_fallback"
+    }
+  }
+}

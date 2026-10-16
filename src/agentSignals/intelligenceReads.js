@@ -644,7 +644,15 @@ function makeGetOffers(deps = {}) {
     offers = await mintLiveCarts(offers, {
       fetchArgs, market, currency: marketCurrency, mode: liveCartMode(), secret: liveVerificationSecret(),
     });
-    const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
+    const { best_offer, signals } = offersToSignals(offers, {
+      productId: p.product_id,
+      limit,
+      // FRESH BEST PRICE (pivota-backend #2635): the backend's pick, passed only when it sent one (null
+      // included), so an answer without it is byte-identical.
+      ...(res && Object.prototype.hasOwnProperty.call(res, 'best_price_offer_id')
+        ? { bestPriceOfferId: res.best_price_offer_id }
+        : {}),
+    });
     // ONE reason for an empty answer, in filter order: the variant filter runs first, so when it left
     // nothing the currency filter had nothing to judge.
     let emptyReason = null;
@@ -839,7 +847,18 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
     null;
   // What the backend made of get_offers' signed live verifications (logged only; GET_OFFERS_LIVE_CART).
   const assertions = res && res.metadata && res.metadata.live_verification_assertions;
-  return { offers, product_group_id: groupId, ...(assertions ? { live_verification_assertions: assertions } : {}) };
+  // The cheapest FRESH offer in one currency (pivota-backend #2635), relayed only when the backend sent the
+  // key (its value may be null: no fresh priced offer). Absent, the result is the shape it always was.
+  const bestPrice =
+    res && Object.prototype.hasOwnProperty.call(res, 'best_price_offer_id')
+      ? { best_price_offer_id: res.best_price_offer_id == null ? null : String(res.best_price_offer_id) }
+      : {};
+  return {
+    offers,
+    product_group_id: groupId,
+    ...bestPrice,
+    ...(assertions ? { live_verification_assertions: assertions } : {}),
+  };
 }
 
 module.exports = {
