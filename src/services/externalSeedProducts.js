@@ -58,6 +58,10 @@ const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const EXTERNAL_SEED_PLATFORM = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
   /\b(sunscreen|sun\s*screen|broad\s+spectrum|spf\s*\d{2,3}\+?|pa\s*\+{2,4}|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock))\b/i;
+// The backend classifier's "Setting Spray" phrases (pivota-backend services/pdp_category_classifier.py),
+// declining any text that names hair ("Hair Fixing Spray").
+const SETTING_SPRAY_CATEGORY_RE =
+  /^(?![\s\S]*\bhair)[\s\S]*\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b/i;
 const BEAUTY_CATEGORY_PATTERNS = [
   ['Brush', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki)\b/i],
   ['Shampoo', /\b(shampoo|dry shampoo|clarifying shampoo)\b/i],
@@ -67,6 +71,10 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Sunscreen', SUNSCREEN_CATEGORY_RE],
   ['Fragrance', /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|scent|fragarances?|fragances?|fragrences?|fragrancee)\b|\bfragrances?\b(?![-\s]?free)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
+  // Setting spray (2026-10-10, pivota-backend#2547), ABOVE Toner: every loop over this list is
+  // first-match, so a "Makeup Fixing Mist" is labelled a setting spray instead of a toner. Toner's own
+  // pattern is unchanged, so a query loop that skips this label (below) routes exactly as before.
+  ['Setting Spray', SETTING_SPRAY_CATEGORY_RE],
   ['Toner', /\b(toner|mist|pad)\b/i],
   [
     'Treatment',
@@ -114,6 +122,7 @@ const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
   Sunscreen: BEAUTY_TAXONOMY.sunscreen,
   Fragrance: BEAUTY_TAXONOMY.fragrance,
   Cleanser: BEAUTY_TAXONOMY.cleanser,
+  'Setting Spray': BEAUTY_TAXONOMY.setting_spray,
   Toner: BEAUTY_TAXONOMY.toner,
   Treatment: BEAUTY_TAXONOMY.treatment,
   Serum: BEAUTY_TAXONOMY.serum,
@@ -978,6 +987,9 @@ function resolveBeautyCategoryPathPrefixForQuery(queryText) {
     if (pattern.test(text)) return categoryPathParentPrefix(path);
   }
   for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+    // A setting-spray QUERY routes only through queryUnderstanding's flagged rule above
+    // (SEARCH_SETTING_SPRAY_CATEGORY_ROUTE); with it off, such a query falls through as it always did.
+    if (label === 'Setting Spray') continue;
     if (!pattern.test(text)) continue;
     const path = BEAUTY_CATEGORY_PATH_BY_LABEL[label];
     if (path) return categoryPathParentPrefix(path);

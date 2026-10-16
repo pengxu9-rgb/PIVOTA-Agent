@@ -55,9 +55,11 @@ test('the vendored leaf set matches production BY MEMBERSHIP, not by count', () 
   // 27 entries to 99 while leaving categoryPathHasDoor bit-identical (a leaf always startsWith its
   // own parent). The next consumer asking "is this a branch node?" would then diverge silently.
   assert.deepEqual([...ANCESTOR_NODES].sort(), LEAVES_FIXTURE.ancestor_nodes, 'ANCESTOR_NODES drifted');
-  assert.equal(ANCESTOR_NODES.length, 27);
+  // 27 at the 2026-09-11 capture; 28 since the 2026-10-10 regeneration added `beauty/makeup/nails`.
+  assert.equal(ANCESTOR_NODES.length, 28);
   assert.equal(TAXONOMY_LEAVES.length, VERDICTS.leaf_count, 'leaf COUNT drifted from the captured backend set');
-  assert.equal(TAXONOMY_LEAVES.length, 72);
+  // 72 at the 2026-09-11 capture; 78 since 2026-10-10 (#2364's five nail/lash leaves + setting-spray).
+  assert.equal(TAXONOMY_LEAVES.length, 78);
   assert.deepEqual([...TAXONOMY_ROOTS].sort(), ['beauty', 'electronics', 'fashion']);
   // Every entry is a real multi-segment path, sorted, unique — a hand-edit that breaks any of these
   // is far more likely than a deliberate taxonomy change.
@@ -203,7 +205,8 @@ test('browse prefixes are unchanged — this change is read-side only', () => {
 
 test('the canonical map is untouched by this change', () => {
   // The cheapest possible guard on the above: if nobody adds a key here, no prefix can move.
-  assert.equal(Object.keys(CANONICAL_CATEGORY_PATHS).length, 25);
+  // 26 since 2026-10-10: `setting_spray`. The browse-prefix golden above is what proves no prefix moved.
+  assert.equal(Object.keys(CANONICAL_CATEGORY_PATHS).length, 26);
   assert.equal(
     Object.values(CANONICAL_CATEGORY_PATHS).every((p) => p.startsWith('beauty/')),
     true,
