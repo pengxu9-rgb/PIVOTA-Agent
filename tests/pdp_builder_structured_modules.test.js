@@ -3057,3 +3057,38 @@ test.each(['relationship_graph', 'catalog'])('PDP retains graph explanation afte
   expect(item.tradeoffs).toEqual(tradeoffs); expect(item.watchouts).toEqual(watchouts); expect(item.evidence_refs).toEqual(evidence);
   expect(item.product_id).toBe('candidate');
 });
+
+// ── An amount is published only with the currency it was observed in (no USD default) ──────────
+describe('pdpBuilder publishes no price without an observed currency', () => {
+  const base = (over = {}) => ({
+    product: {
+      product_id: 'ext_cur_1',
+      merchant_id: 'external_seed',
+      title: 'Serum',
+      price: 24,
+      variants: [{ variant_id: 'v1', sku_id: 'v1', price: { amount: 24 }, in_stock: true }],
+      ...over,
+    },
+    relatedProducts: [],
+    entryPoint: 'agent',
+  });
+
+  test('unknown currency: no variant price and no price module, never USD', () => {
+    const payload = buildPdpPayload(base());
+    expect(payload.modules.find((m) => m.type === 'price_promo')).toBeFalsy();
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+  });
+
+  test('a known product currency prices the variant in that currency', () => {
+    const payload = buildPdpPayload(base({ currency: 'GBP' }));
+    const priceModule = payload.modules.find((m) => m.type === 'price_promo');
+    expect(priceModule?.data?.price).toEqual({ amount: 24, currency: 'GBP' });
+  });
+
+  test('a single implicit variant with no currency carries no price', () => {
+    const payload = buildPdpPayload(base({ variants: [] }));
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+    expect(payload.modules.find((m) => m.type === 'price_promo')).toBeFalsy();
+  });
+});
+

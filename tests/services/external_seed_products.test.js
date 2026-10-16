@@ -4432,3 +4432,43 @@ describe('honestInventoryQuantity — never surface the 999 in-stock sentinel', 
     expect(honestInventoryQuantity(undefined, null)).toBeNull();
   });
 });
+
+// ── A seed's currency is what it observed, never a USD default ─────────────────────────────────
+describe('seed currency is observed or unknown, never defaulted to USD', () => {
+  const row = (over = {}) => ({
+    id: 'eps_cur_1',
+    canonical_url: 'https://example.co.uk/products/serum',
+    destination_url: 'https://example.co.uk/products/serum',
+    price_amount: 24,
+    ...over,
+    seed_data: {
+      title: 'Serum',
+      snapshot: {
+        canonical_url: 'https://example.co.uk/products/serum',
+        variants: [{ variant_id: 'v1', price: 24, availability: 'in_stock' }],
+      },
+      ...(over.seed_data || {}),
+    },
+  });
+
+  test('no currency anywhere: the variants and the product say unknown, not USD', () => {
+    const r = row();
+    expect(normalizeSeedVariants(r.seed_data, r).map((v) => v.currency)).toEqual([null]);
+    const product = buildExternalSeedProduct(r);
+    expect(product.currency).toBeNull();
+    expect(JSON.stringify(product)).not.toContain('"USD"');
+  });
+
+  test("a variant without its own currency takes the row's declared one", () => {
+    const r = row({ price_currency: 'gbp' });
+    expect(normalizeSeedVariants(r.seed_data, r)[0].currency).toBe('GBP');
+    expect(buildExternalSeedProduct(r).currency).toBe('GBP');
+  });
+
+  test("a variant's own currency still wins over the row's", () => {
+    const r = row({ price_currency: 'GBP' });
+    r.seed_data.snapshot.variants[0].currency = 'EUR';
+    expect(normalizeSeedVariants(r.seed_data, r)[0].currency).toBe('EUR');
+  });
+});
+

@@ -61,8 +61,11 @@ function normalizeAmount(value) {
   return 0;
 }
 
-function normalizeCurrency(value, fallback = 'USD') {
-  return value?.currency || value?.currency_code || fallback;
+// No 'USD' default: an amount is published only with the currency it was observed in
+// (`toVariantPrice`, the price module, recommendations). A product whose currency is unknown shows
+// no price rather than a dollar one — the same rule offerToSignal applies to expected totals.
+function normalizeCurrency(value, fallback = null) {
+  return value?.currency || value?.currency_code || fallback || null;
 }
 
 function asSafePlainObject(value) {
@@ -1919,6 +1922,8 @@ function toVariantPrice(input, currency) {
   if (amount == null || amount === '') return undefined;
   const normalizedAmount = normalizeAmount(amount);
   if (!Number.isFinite(Number(normalizedAmount)) || Number(normalizedAmount) <= 0) return undefined;
+  // AMOUNT AND CURRENCY MOVE TOGETHER: no observed currency, no price.
+  if (!normalizeCurrency(input, currency)) return undefined;
   const compareAt =
     input.compare_at ??
     input.compareAt ??
@@ -1939,7 +1944,7 @@ function toVariantPrice(input, currency) {
 }
 
 function buildVariants(product) {
-  const currency = product.currency || 'USD';
+  const currency = product.currency || null;
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   const singleSkuSizeOption = buildSingleSkuSizeOption(product);
   if (!rawVariants.length) {
@@ -1973,7 +1978,9 @@ function buildVariants(product) {
               source_quality_status: 'captured',
             }
           : {}),
-        ...(moneyUnavailable ? {} : { price: { current: { amount: normalizeAmount(product.price), currency } } }),
+        ...(moneyUnavailable || !currency
+          ? {}
+          : { price: { current: { amount: normalizeAmount(product.price), currency } } }),
         availability,
         image_url: normalizePdpDisplayImageUrl(product.image_url) || undefined,
         ...pickSavingsPresentationFields(product),
@@ -4674,10 +4681,9 @@ function buildRecommendations(items, currencyFallback) {
         category: asNonEmptyString(p.category) || undefined,
         product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
         image_url: imageUrl,
-        price: {
-          amount: normalizeAmount(p.price),
-          currency: normalizeCurrency(p, currencyFallback),
-        },
+        ...(normalizeCurrency(p, currencyFallback)
+          ? { price: { amount: normalizeAmount(p.price), currency: normalizeCurrency(p, currencyFallback) } }
+          : {}),
         card_title:
           asNonEmptyString(
             p.card_title || p.cardTitle || shoppingCard?.title || searchCard?.title_candidate,
@@ -4782,7 +4788,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
       { currency: enriched.price_currency || enriched.currency },
       currencyFallback,
     );
-    const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0;
+    const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0 && Boolean(priceCurrency);
     const priceState = buildPriceState(ref, enriched, hasPrice);
     return {
       product_id: ref.product_id,
@@ -4888,7 +4894,7 @@ function buildPdpPayload(args) {
   const commerceSuppressed = suppressCommerceForPdpProduct(product);
   const formulaContentSuppressed = suppressFormulaContentForPdpProduct(product);
   const brandLabel = resolveProductBrandLabel(product);
-  const currency = product.currency || 'USD';
+  const currency = product.currency || null;
   const variants = buildVariants(product);
   // The same emptiness test buildVariants applies (its fabricated single variant exists iff this is 0).
   const rawVariantCount = Array.isArray(product.variants) ? product.variants.length : 0;
@@ -5056,7 +5062,7 @@ function buildPdpPayload(args) {
   );
   const pricePromoCurrent =
     defaultVariant?.price?.current ||
-    (Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
+    (currency && Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
       ? { amount: productPriceAmount, currency }
       : null);
   if (!commerceSuppressed && pricePromoCurrent) {
