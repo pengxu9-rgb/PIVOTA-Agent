@@ -90,6 +90,18 @@ test('expiry: a signed token past exp is `expired` (with its claims); one second
   assert.equal(verify(forged, [SECRET], NOW + 999999).error, 'bad_mac');
 });
 
+test('a token issued under a LONGER lifetime than the current TTL is expired: lowering the TTL shortens old tokens', () => {
+  const token = signRefreshToken(claims({ exp: NOW + 86400 }), SECRET); // a day, issued under the old default
+  assert.equal(verifyRefreshToken(token, { secrets: [SECRET], nowSec: NOW + 10, maxTtlS: 86400 }).ok, true);
+  const r = verifyRefreshToken(token, { secrets: [SECRET], nowSec: NOW + 10, maxTtlS: 21600 });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'expired');
+  const sixHours = signRefreshToken(claims({ exp: NOW + 21600 }), SECRET);
+  assert.equal(verifyRefreshToken(sixHours, { secrets: [SECRET], nowSec: NOW + 10, maxTtlS: 21600 }).ok, true, 'exactly the TTL is fine');
+  // A forged long token is still bad_mac, not expired.
+  assert.equal(verifyRefreshToken(signRefreshToken(claims(), OTHER), { secrets: [SECRET], nowSec: NOW, maxTtlS: 3600 }).error, 'bad_mac');
+});
+
 test('malformed tokens are rejected before anything inside them is read', () => {
   const good = signRefreshToken(claims(), SECRET);
   const [, part1, part2] = good.split('.');
@@ -120,9 +132,10 @@ test('no secret means no token; secrets and TTL read from env with their bounds'
     readRefreshSecrets({ UCP_LIVE_PDP_REFRESH_SECRET: ` ${SECRET} `, UCP_LIVE_PDP_REFRESH_SECRET_PREVIOUS: 'short' }),
     { current: SECRET, previous: '' },
   );
-  assert.equal(tokenTtlSeconds({}), 86400);
+  assert.equal(tokenTtlSeconds({}), 21600, 'default 6 h');
   assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: '60' }), 3600);
   assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: '99999999' }), 604800);
   assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: '7200' }), 7200);
-  assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: 'soon' }), 86400);
+  assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: 'soon' }), 21600);
+  assert.equal(tokenTtlSeconds({ UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S: '86400' }), 86400);
 });

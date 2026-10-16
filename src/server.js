@@ -30819,7 +30819,7 @@ function getUcpLiveShared() {
   if (_ucpLiveShared) return _ucpLiveShared;
   const { createUcpBuyerAgentClient } = require('./services/ucpBuyerAgentClient');
   const ucpClient = createUcpBuyerAgentClient({ timeoutMs: 2500, retryAttempts: 0, allowTokenTier: false });
-  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+  _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   return _ucpLiveShared;
 }
 function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
@@ -30830,6 +30830,7 @@ function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
     core: createLookupCore({
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
+      discoveryFailures: shared.discoveryFailures,
       ...(maxPerHost ? { maxPerHost } : {}),
     }),
   };
@@ -30897,6 +30898,13 @@ function ucpLivePdpCache() {
   return _ucpLivePdpCache;
 }
 
+// The per-store read budget both PDP live reads spend (src/services/hostReadBudget.js).
+let _ucpLivePdpHostBudget;
+function ucpLivePdpHostBudget() {
+  if (!_ucpLivePdpHostBudget) _ucpLivePdpHostBudget = require('./services/hostReadBudget').createHostReadBudget();
+  return _ucpLivePdpHostBudget;
+}
+
 function ucpLivePdpEnforced(env = process.env) {
   const { readMode, MODES } = require('./services/ucpLiveOfferRead');
   return readMode(env, 'UCP_LIVE_PDP_READ') === MODES.ENFORCE;
@@ -30923,6 +30931,11 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     const country = String(market || '').trim().toUpperCase();
     const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
     if (keyed && !cache.claimRead(host, country, ids)) return false;
+    // Over this store's per-minute read budget (shared with pdp_live_read): no read, the claim released.
+    if (keyed && !ucpLivePdpHostBudget().take(host)) {
+      cache.releaseRead(host, country, ids);
+      return false;
+    }
     Promise.resolve(reader.readProduct(detail, {
       market,
       // A read-only page shows EVERY variant unavailable, whatever the stored variants say.
@@ -30985,6 +30998,7 @@ function pdpLiveRefresh() {
     ttlS: () => tokenTtlSeconds(process.env),
     getReader: getUcpLivePdpReader,
     cache: ucpLivePdpCache,
+    budget: ucpLivePdpHostBudget,
     isCardOfferFor: (listingId) => (card, offer) => offerSellsCardListing(card, offer, listingId),
     // Savings copy computed against a stored price is dropped wherever the live price differs.
     presentationFields: SAVINGS_PRESENTATION_FIELDS,
@@ -53268,7 +53282,7 @@ module.exports._debug = {
   // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
   useUcpLiveClientForTest(ucpClient) {
     if (_ucpLiveShared) throw new Error('the UCP live client is already built');
-    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map() };
+    _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   },
   ucpLivePdpCache,
   ucpLivePdpSample,

@@ -130,7 +130,7 @@ function countingReader(client, opts = {}) {
   return r;
 }
 
-function setup({ mode = 'on', client = fakeClient(LIVE), reader, cache = createPdpLiveCache(), secrets, now, readerOpts } = {}) {
+function setup({ mode = 'on', client = fakeClient(LIVE), reader, cache = createPdpLiveCache(), secrets, now, readerOpts, budget, ttlS } = {}) {
   const logs = [];
   const warns = [];
   const r = reader === undefined ? countingReader(client, readerOpts) : reader;
@@ -139,6 +139,8 @@ function setup({ mode = 'on', client = fakeClient(LIVE), reader, cache = createP
     secrets: () => secrets || { current: SECRET, previous: '' },
     getReader: () => r,
     cache: () => cache,
+    ...(budget ? { budget: () => budget } : {}),
+    ...(ttlS ? { ttlS: () => ttlS } : {}),
     isCardOfferFor: (lid) => (card, offer) => offer.merchant_id === card.merchant_id && offer.product_id === lid,
     presentationFields: SAVINGS,
     log: (event, fields) => logs.push({ event, ...fields }),
@@ -178,7 +180,7 @@ test('descriptor: issued on an eligible served page, its token binding the card 
     v: 1, op: 'pdp_live_read', pid: 'ext_lsm', mid: 'merch_obs_laneige', lid: 'ext_lsm', h: HOST, hd: HANDLE,
     m: 'US', c: 'USD', ids: [LEMON, BERRY, VANILLA],
   });
-  assert.equal(exp - iat, 86400);
+  assert.equal(exp - iat, 21600, 'default 6 h');
   assert.deepEqual(logs.at(-1), { event: 'get_pdp_v2_live_refresh_issued', issued: true, reason: null, host: HOST, market: 'US' });
 });
 
@@ -534,6 +536,64 @@ test('the patch\'s variant_selector is the response\'s own when the page has one
   const { svc: s2 } = setup({ cache: recordedCache() });
   const r2 = await s2.read({ token: issue(s2, bare).token, page: browserSlice(bare), market: 'US' });
   assert.ok(Array.isArray(r2.body.patch.modules.variant_selector.variants));
+});
+
+test('the per-store read budget: over it, no read, the claim released, no_answer/host_busy', async () => {
+  const { createHostReadBudget } = require('../src/services/hostReadBudget');
+  const budget = createHostReadBudget({ limit: () => 1 });
+  assert.equal(budget.take(HOST), true, 'another read (the server-side PDP read, say) spent the minute');
+  const { svc, reader, cache } = setup({ budget });
+  const p = page();
+  const res = await svc.read({ token: issue(svc, p).token, page: browserSlice(p), market: 'US' });
+  assert.deepEqual([res.body.live_refresh.outcome, res.body.live_refresh.reason], ['no_answer', 'host_busy']);
+  assert.equal(reader.calls, 0);
+  assert.equal(cache.claimRead(HOST, 'US', [LEMON, BERRY, VANILLA]), true, 'the claim was released');
+  // A cache hit spends nothing.
+  const { svc: s2, reader: r2 } = setup({ budget, cache: recordedCache() });
+  const hit = await s2.read({ token: issue(s2, p).token, page: browserSlice(p), market: 'US' });
+  assert.equal(hit.body.live_refresh.source, 'cache');
+  assert.equal(r2.calls, 0);
+  // Room again: one read spends one.
+  const roomy = createHostReadBudget({ limit: () => 1 });
+  const { svc: s3, reader: r3 } = setup({ budget: roomy });
+  assert.equal((await s3.read({ token: issue(s3, p).token, page: browserSlice(p), market: 'US' })).body.live_refresh.source, 'read');
+  assert.equal(r3.calls, 1);
+  assert.equal(roomy.take(HOST), false);
+});
+
+test('the card\'s own offer row moving is visible even when no card variant or card price moved', async () => {
+  const product = sellerProduct({
+    variants: sellerProduct().variants.map((v) => ({ ...v, price: { amount: 26, currency: 'USD' }, in_stock: true, inventory_quantity: 5 })),
+  });
+  const same = [lv(LEMON, 2600, true), lv(BERRY, 2600, true), lv(VANILLA, 2600, true)];
+  // The row was stale at $22; the merchant confirms $26 (what the card already shows).
+  const offers = { default_offer_id: 'of_card', best_price_offer_id: 'of_card', offers: [cardOffers().offers[0]] };
+  const p = page(product, { offers });
+  const { svc } = setup({ client: fakeClient(same) });
+  const res = await svc.read({ token: issue(svc, p).token, page: browserSlice(p), market: 'US' });
+  assert.equal(res.body.live_refresh.stats.price_changed, 0);
+  assert.equal(res.body.live_refresh.outcome, 'applied');
+  assert.equal(res.body.patch.offers.offers[0].price.amount, 26);
+  // Its stock only: the row said out of stock, the merchant says in stock at the same price.
+  const stockOnly = { offers: [{ ...cardOffers().offers[0], price: { amount: 26, currency: 'USD' }, inventory: { in_stock: false },
+    variants: [{ variant_id: LEMON, price: { current: { amount: 26, currency: 'USD' } }, availability: { in_stock: true } }] }] };
+  const p2 = page(product, { offers: stockOnly });
+  const { svc: s2 } = setup({ client: fakeClient(same) });
+  const r2 = await s2.read({ token: issue(s2, p2).token, page: browserSlice(p2), market: 'US' });
+  assert.equal(r2.body.live_refresh.outcome, 'applied');
+  assert.equal(r2.body.patch.offers.offers[0].inventory.in_stock, true);
+});
+
+test('lowering the TTL shortens tokens already issued: a token older-lived than the current TTL is token_expired', async () => {
+  const { svc: issuer } = setup({ ttlS: 86400 });
+  const p = page();
+  const token = issue(issuer, p).token;
+  const { svc, reader } = setup({ ttlS: 21600, cache: recordedCache() });
+  const res = await svc.read({ token, page: browserSlice(p), market: 'US' });
+  assert.deepEqual([res.httpStatus, res.body.live_refresh.reason], [200, 'token_expired']);
+  assert.equal(reader.calls, 0);
+  const { svc: same } = setup({ ttlS: 86400, cache: recordedCache() });
+  assert.equal((await same.read({ token, page: browserSlice(p), market: 'US' })).body.live_refresh.outcome, 'applied');
 });
 
 // ------------------------------------------------------------- property: the patch IS the overlay

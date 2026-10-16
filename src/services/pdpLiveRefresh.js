@@ -20,7 +20,8 @@
  * Shadow: tokens are issued, reads happen and are logged, no patch is returned.
  */
 
-const { applyPdpLiveOverlay, canonicalCard, cardHandle, pageCurrency } = require('./pdpLiveOverlay');
+const { applyPdpLiveOverlay, canonicalCard, cardHandle, pageCurrency, offerInStock } = require('./pdpLiveOverlay');
+const { computeOfferTotal } = require('../offers/offersPriority');
 const { commerceBlocked, productHost, productVariantIds, STATUS } = require('./ucpLiveOfferRead');
 const { signRefreshToken, verifyRefreshToken, DEFAULT_TTL_S } = require('./pdpLiveRefreshToken');
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
@@ -129,6 +130,23 @@ function replacedData(beforeList, afterList, type) {
   return undefined;
 }
 
+/**
+ * An offer row the overlay replaced whose total (price + shipping) or stock now reads differently: the card's
+ * own row can move while no card variant's price or stock does (a product-level row, a stale row).
+ */
+function offerRowMoved(before, after) {
+  const was = (before.modules || []).find((m) => isObj(m) && m.type === 'offers');
+  const now = (after.modules || []).find((m) => isObj(m) && m.type === 'offers');
+  if (!was || !now || was === now || !isObj(was.data) || !isObj(now.data)) return false;
+  const prior = new Map((Array.isArray(was.data.offers) ? was.data.offers : []).filter(isObj).map((x) => [str(x.offer_id), x]));
+  return (Array.isArray(now.data.offers) ? now.data.offers : []).some((x) => {
+    if (!isObj(x)) return false;
+    const b = prior.get(str(x.offer_id));
+    if (!b || b === x) return false;
+    return computeOfferTotal(b) !== computeOfferTotal(x) || offerInStock(b) !== offerInStock(x);
+  });
+}
+
 function hasModule(list, type) {
   return Array.isArray(list) && list.some((m) => isObj(m) && m.type === type);
 }
@@ -169,7 +187,7 @@ function buildPatch(before, after) {
 /**
  * @param {{
  *   mode?: () => string, secrets: () => { current: string, previous: string }, ttlS?: () => number,
- *   getReader: () => ({ readLive: Function } | null), cache: () => object,
+ *   getReader: () => ({ readLive: Function } | null), cache: () => object, budget?: () => ({ take(host): boolean } | null),
  *   isCardOfferFor?: (listingId: string) => (card, offer) => boolean, presentationFields?: string[],
  *   now?: () => number, log?: (event, fields) => void, warn?: (event, fields) => void,
  * }} deps
@@ -182,6 +200,8 @@ function createPdpLiveRefresh(deps = {}) {
   const cacheOf = typeof deps.cache === 'function' ? deps.cache : () => null;
   const isCardOfferFor = typeof deps.isCardOfferFor === 'function' ? deps.isCardOfferFor : () => () => false;
   const presentationFields = Array.isArray(deps.presentationFields) ? deps.presentationFields : [];
+  // The per-store read budget shared with the server-side PDP read (hostReadBudget.js); none: unbounded.
+  const budgetOf = typeof deps.budget === 'function' ? deps.budget : () => null;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const log = typeof deps.log === 'function' ? deps.log : () => {};
   const warn = typeof deps.warn === 'function' ? deps.warn : log;
@@ -330,7 +350,7 @@ function createPdpLiveRefresh(deps = {}) {
       const cache = cacheOf();
       if (!current || !reader || !cache) return respond('skipped', 'disabled');
 
-      const verified = verifyRefreshToken(token, { secrets: [current, previous], nowSec: Math.floor(now() / 1000) });
+      const verified = verifyRefreshToken(token, { secrets: [current, previous], nowSec: Math.floor(now() / 1000), maxTtlS: ttlOf() });
       if (!verified.ok && verified.error === 'expired') {
         ctx.claims = verified.claims;
         return respond('skipped', 'token_expired');
@@ -377,6 +397,12 @@ function createPdpLiveRefresh(deps = {}) {
           result = await pending;
           ctx.readMs = now() - waitedFrom;
         } else if (cache.claimRead(claims.h, claims.m, claims.ids)) {
+          const budget = budgetOf();
+          if (budget && !budget.take(claims.h)) {
+            // Over this store's read budget: no read, and the claim is not spent on one.
+            cache.releaseRead(claims.h, claims.m, claims.ids);
+            return respond('no_answer', 'host_busy');
+          }
           ctx.source = 'read';
           const p = runRead(reader, cache, claims);
           inFlight.set(key, p);
@@ -410,14 +436,16 @@ function createPdpLiveRefresh(deps = {}) {
       };
       const before = match.found.card;
       const after = canonicalCard(out.payload).card;
-      // Visible: a variant's price or stock, a variant gone, the best price moved -- or the card's OWN shown
-      // price or stock flipping (a card that disagreed with its variants). A card flag the page never showed
+      // Visible: a variant's price or stock, a variant gone, the best price moved, the card's OWN shown
+      // price or stock flipping (a card that disagreed with its variants), or the card's own offer row's
+      // total or stock changing. A card flag the page never showed
       // (unknown -> known) is not a change the merchant made.
       const cardPriceBefore = amountOf(before.price);
       const cardStockBefore = inStockOf(before.availability);
       const visible = stats.price_changed > 0 || stats.stock_changed > 0 || stats.gone > 0 || stats.best_price_moved
         || (cardPriceBefore !== null && cardPriceBefore !== amountOf(after.price))
-        || (cardStockBefore !== null && cardStockBefore !== inStockOf(after.availability));
+        || (cardStockBefore !== null && cardStockBefore !== inStockOf(after.availability))
+        || offerRowMoved(page, out.payload);
       const checkedAt = isObj(after.live_read) ? after.live_read.checked_at || null : null;
       if (!visible) return respond('confirmed', null, { stats, checkedAt });
       const patch = mode === MODES.ON ? buildPatch(page, out.payload) : null;

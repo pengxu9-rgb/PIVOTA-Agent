@@ -349,20 +349,50 @@ const FACT_KEYS = ['commerce_facts_v1', 'commerce_facts', 'agent_safe_commerce_f
 const bareHost = (h) => str(h).toLowerCase().replace(/^www\./, '');
 
 /**
- * The variant a row that NAMES none stands for, so its own price and stock move with the merchant's answer
- * (a row restocked only inside `variants[]` still reads in stock at the row level, which the storefront
- * checks first; pivota-agent-ui#434, the native226 row): its one real variant, else the card's default
- * variant when the row carries it, else none. A variant the row itself marks unavailable is never implied.
+ * The variant a row that NAMES none stands for: only a row with exactly ONE variant (counted raw, before any
+ * filter: a row with several entries carries the product's money and stock, not one variant's), and only
+ * when that one is a real variant id the row does not mark unavailable (a card-withheld id is refused by
+ * patchOffer's own withheld check, as for a named row).
  */
-function impliedSelectedId(offer, o) {
-  const rows = (Array.isArray(offer.variants) ? offer.variants : []).filter((v) => isObj(v) && !notAVariantId(v, offer));
-  const ids = [...new Set(rows.map((v) => numericVariantId(v.variant_id)).filter(Boolean))];
-  let id = null;
-  if (ids.length === 1) id = ids[0];
-  else if (o.cardDefaultId && ids.includes(o.cardDefaultId)) id = o.cardDefaultId;
-  if (!id) return null;
-  const marked = rows.some((v) => numericVariantId(v.variant_id) === id && v.current_own_offer_status === 'unavailable');
-  return marked ? null : id;
+function soleVariantId(offer) {
+  const rows = (Array.isArray(offer.variants) ? offer.variants : []).filter(isObj);
+  if (rows.length !== 1) return null;
+  const [v] = rows;
+  if (notAVariantId(v, offer) || v.current_own_offer_status === 'unavailable') return null;
+  const id = numericVariantId(v.variant_id);
+  return id || null;
+}
+
+/** A variant's stock flag after the overlay: its availability, else its own boolean. */
+function variantInStock(v) {
+  const s = stockOf(v && v.availability);
+  if (s !== null) return s;
+  return typeof (v && v.in_stock) === 'boolean' ? v.in_stock : null;
+}
+
+/**
+ * The product-level stock of a row with SEVERAL variants and none selected (the offers builder's row when no
+ * variant matched the axes): in stock when any of its variants the own-money logic did not withhold is in
+ * stock, out of stock when all of them are known out, else unknown (null: left as it is).
+ */
+function rowStockFromVariants(variants, offer, o) {
+  const eligible = variants.filter((v) => isObj(v) && v.current_own_offer_status !== 'unavailable'
+    && !o.withheldIds.has(numericVariantId(v.variant_id)));
+  if (!eligible.length) return null;
+  const flags = eligible.map(variantInStock);
+  if (flags.some((f) => f === true)) return true;
+  return flags.every((f) => f === false) ? false : null;
+}
+
+/** The row's own stock fields (inventory, availability, in_stock) set to the merchant's flag, in their shapes. */
+function withRowStock(next, offer, inStock) {
+  if (isObj(offer.inventory) || offer.availability === undefined) {
+    const { available_quantity: _q, quantity: _qq, ...inv } = isObj(offer.inventory) ? offer.inventory : {};
+    next.inventory = { ...inv, in_stock: inStock };
+  }
+  if (offer.availability !== undefined && offer.availability !== null) next.availability = liveAvailability(offer.availability, inStock);
+  if (typeof offer.in_stock === 'boolean') next.in_stock = inStock;
+  return next;
 }
 
 /**
@@ -383,8 +413,10 @@ function patchOffer(offer, o) {
     const selectedRaw = { variant_id: named };
     selectedId = notAVariantId(selectedRaw, offer) ? null : numericVariantId(selectedRaw.variant_id);
   } else {
-    selectedId = impliedSelectedId(offer, o);
+    // A row naming no variant (pivota-agent-ui#434, the native226 row): its one variant, if it has one.
+    selectedId = soleVariantId(offer);
   }
+  const productLevelRow = !named && Array.isArray(offer.variants) && offer.variants.filter(isObj).length > 1;
   if (selectedId && o.withheldIds.has(selectedId)) return offer;
   const variants = Array.isArray(offer.variants) ? offer.variants.map((v) => patchVariant(v, offer, o)) : offer.variants;
   const variantsChanged = Array.isArray(offer.variants) && variants.some((v, i) => v !== offer.variants[i]);
@@ -396,12 +428,7 @@ function patchOffer(offer, o) {
     const amount = hit.gone ? null : roundTo(hit.amount, o.currency);
     const confirmed = amount === null || priceAmountOf(offer.price) === amount;
     if (amount !== null) next.price = livePrice(offer.price, amount, o.currency);
-    if (isObj(offer.inventory) || offer.availability === undefined) {
-      const { available_quantity: _q, quantity: _qq, ...inv } = isObj(offer.inventory) ? offer.inventory : {};
-      next.inventory = { ...inv, in_stock: inStock };
-    }
-    if (offer.availability !== undefined && offer.availability !== null) next.availability = liveAvailability(offer.availability, inStock);
-    if (typeof offer.in_stock === 'boolean') next.in_stock = inStock;
+    withRowStock(next, offer, inStock);
     for (const key of FACT_KEYS) {
       if (isObj(offer[key])) next[key] = patchFacts(offer[key], { amount, inStock, confirmed, checkedAt: o.checkedAt });
     }
@@ -410,6 +437,17 @@ function patchOffer(offer, o) {
       if (Array.isArray(offer.promotions)) next.promotions = [];
     }
     next.live_read = { status: hit.gone ? STATUS.VARIANT_GONE : STATUS.VERIFIED, checked_at: o.checkedAt };
+  } else if (productLevelRow && variantsChanged) {
+    // A row with several variants and none selected carries the PRODUCT's stock and price: its stock follows
+    // its variants (any in stock), and it is never re-priced from one variant's answer.
+    const inStock = rowStockFromVariants(variants, offer, o);
+    if (inStock !== null) {
+      withRowStock(next, offer, inStock);
+      for (const key of FACT_KEYS) {
+        if (isObj(offer[key])) next[key] = patchFacts(offer[key], { amount: null, inStock, confirmed: true, checkedAt: o.checkedAt });
+      }
+      next.live_read = { status: 'variants_only', checked_at: o.checkedAt };
+    }
   }
   return next;
 }
@@ -491,14 +529,7 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
     .filter((v) => isObj(v) && v.current_own_offer_status === 'unavailable')
     .map((v) => numericVariantId(v.variant_id))
     .filter(Boolean));
-  // The card shows its DEFAULT variant's money. Only a card that names no default falls back to its first
-  // variant (pdpBuilder's rule).
-  const defaultRaw = str(card.default_variant_id) || (stored[0] ? str(stored[0].variant_id) : '');
-  const o = {
-    answers, currency, checkedAt, host, withheldIds,
-    cardDefaultId: numericVariantId(defaultRaw),
-    presentationFields: Array.isArray(presentationFields) ? presentationFields : [],
-  };
+  const o = { answers, currency, checkedAt, host, withheldIds, presentationFields: Array.isArray(presentationFields) ? presentationFields : [] };
   const variants = stored.map((v) => patchVariant(v, card, o));
   const patchedById = new Map();
   variants.forEach((v, i) => {
@@ -517,7 +548,9 @@ function applyPdpLiveOverlay(payload, { market, cache, isCardOffer, presentation
   });
 
   let nextCard = { ...card, variants };
-  // A default the merchant was not asked about leaves the card's price as is.
+  // The card shows its DEFAULT variant's money. Only a card that names no default falls back to its first
+  // variant (pdpBuilder's rule); a default the merchant was not asked about leaves the card's price as is.
+  const defaultRaw = str(card.default_variant_id) || (stored[0] ? str(stored[0].variant_id) : '');
   const defaultPatched = patchedById.get(numericVariantId(defaultRaw)) || null;
   let defaultPrice = null;
   if (defaultPatched && defaultPatched.live_read.status === STATUS.VERIFIED) {
@@ -599,6 +632,6 @@ function stockOf(availability) {
   return null;
 }
 
-// canonicalCard, cardHandle and pageCurrency are the overlay's own readers, shared with the browser's
+// canonicalCard, cardHandle, pageCurrency and offerInStock are the overlay's own readers, shared with the browser's
 // first-view refresh (pdpLiveRefresh.js) so the page it binds a token to is read by the same rules.
-module.exports = { applyPdpLiveOverlay, createPdpLiveCache, canonicalCard, cardHandle, pageCurrency, DEFAULT_TTL_MS };
+module.exports = { applyPdpLiveOverlay, createPdpLiveCache, canonicalCard, cardHandle, pageCurrency, offerInStock, DEFAULT_TTL_MS };

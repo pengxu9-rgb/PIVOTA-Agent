@@ -246,11 +246,19 @@ test('a failure to ASK the store is not remembered as "not a UCP store" (review 
     },
     lookupCatalog: fakeClient(rareBeauty).lookupCatalog,
   };
-  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  let t = 1_000_000;
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce', now: () => t });
   const first = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
   assert.equal(first.offers[0].live_read.status, STATUS.ERROR);
+  // For a minute the failure is remembered AS a failure (the store is not asked again), never as non-UCP.
+  t += 59_000;
+  const held = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
+  assert.equal(held.offers[0].live_read.status, STATUS.ERROR);
+  assert.equal(attempts, 1);
+  t += 2_000;
   const second = await r.readOffers([offer()], { market: 'US', currency: 'USD' });
   assert.equal(second.offers[0].live_read.status, STATUS.VERIFIED);
+  assert.equal(attempts, 2);
 });
 
 test('a store answering discovery 429 or 5xx is asked again next time, not remembered as non-UCP', async () => {
@@ -262,9 +270,15 @@ test('a store answering discovery 429 or 5xx is asked again next time, not remem
     },
     lookupCatalog: fakeClient(rareBeauty).lookupCatalog,
   };
-  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce' });
+  let t = 1_000_000;
+  const r = createUcpLiveOfferReader({ ucpClient: client, mode: 'enforce', now: () => t });
   assert.equal((await r.readOffers([offer()], { market: 'US', currency: 'USD' })).offers[0].live_read.status, STATUS.ERROR);
+  // Asked again after the minute's negative cache, and only then: a 503 store is not hammered.
+  assert.equal((await r.readOffers([offer()], { market: 'US', currency: 'USD' })).offers[0].live_read.status, STATUS.ERROR);
+  assert.equal(attempts, 1);
+  t += 60_001;
   assert.equal((await r.readOffers([offer()], { market: 'US', currency: 'USD' })).offers[0].live_read.status, STATUS.VERIFIED);
+  assert.equal(attempts, 2);
 });
 
 test('a store that ANSWERED with no UCP endpoint is remembered as non-UCP', async () => {

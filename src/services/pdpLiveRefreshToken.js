@@ -10,7 +10,8 @@
  * the browser sends back is checked against it and never picks the read target.
  *
  * It is baked into an ISR page (cached up to an hour, rebuilt from a cache that may hold it longer), so it
- * lives long: UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S, default a day, clamped to 1 h .. 7 days.
+ * outlives a page: UCP_LIVE_PDP_REFRESH_TOKEN_TTL_S, default 6 h, clamped to 1 h .. 7 days. A token whose
+ * lifetime (exp - iat) is longer than the CURRENT setting is refused, so lowering it shortens old tokens too.
  *
  * Secrets: UCP_LIVE_PDP_REFRESH_SECRET signs and verifies; UCP_LIVE_PDP_REFRESH_SECRET_PREVIOUS verifies only
  * (rotation). A secret shorter than 32 bytes after trim is no secret: no token is issued.
@@ -22,7 +23,7 @@ const TOKEN_VERSION = 'v1';
 const MAC_CONTEXT = 'pdp_live_refresh.v1.';
 const TOKEN_OP = 'pdp_live_read';
 const MIN_SECRET_BYTES = 32;
-const DEFAULT_TTL_S = 86400;
+const DEFAULT_TTL_S = 6 * 3600;
 const MIN_TTL_S = 3600;
 const MAX_TTL_S = 604800;
 const MAX_TOKEN_CHARS = 4096;
@@ -83,11 +84,12 @@ function claimsAreWellFormed(c) {
 }
 
 /**
+ * @param {{ secrets?: string[], nowSec?: number, maxTtlS?: number|null }} opts  maxTtlS: the current TTL setting
  * @returns {{ ok: true, claims } | { ok: false, error: 'malformed' | 'bad_mac' | 'expired', claims? }}
  *   The MAC is checked (constant time, over the RECEIVED part1) before anything inside the token is read;
  *   `expired` is only said of a token this gateway signed.
  */
-function verifyRefreshToken(token, { secrets = [], nowSec = Math.floor(Date.now() / 1000) } = {}) {
+function verifyRefreshToken(token, { secrets = [], nowSec = Math.floor(Date.now() / 1000), maxTtlS = null } = {}) {
   if (typeof token !== 'string' || token.length > MAX_TOKEN_CHARS) return { ok: false, error: 'malformed' };
   const m = TOKEN_SHAPE.exec(token);
   if (!m) return { ok: false, error: 'malformed' };
@@ -113,6 +115,8 @@ function verifyRefreshToken(token, { secrets = [], nowSec = Math.floor(Date.now(
   }
   if (!claimsAreWellFormed(claims)) return { ok: false, error: 'malformed' };
   if (nowSec >= claims.exp) return { ok: false, error: 'expired', claims };
+  // Issued under a longer lifetime than the gateway now allows: expired, as if issued under today's.
+  if (Number.isFinite(maxTtlS) && maxTtlS > 0 && claims.exp - claims.iat > maxTtlS) return { ok: false, error: 'expired', claims };
   return { ok: true, claims };
 }
 
