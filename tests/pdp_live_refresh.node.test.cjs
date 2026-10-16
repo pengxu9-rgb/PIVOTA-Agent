@@ -452,6 +452,34 @@ test('shadow reads and logs but returns no patch; a merchant that only confirmed
   assert.equal(r2.body.patch, undefined);
 });
 
+test('visible: the card\'s OWN shown price flipping counts; a card flag it never showed (unknown -> known) does not', async () => {
+  const product = sellerProduct({
+    variants: sellerProduct().variants.map((v) => ({ ...v, price: { amount: 26, currency: 'USD' }, in_stock: true, inventory_quantity: 5 })),
+  });
+  const same = [lv(LEMON, 2600, true), lv(BERRY, 2600, true), lv(VANILLA, 2600, true)];
+  // The card disagreed with its variants (30 vs 26); the merchant confirms 26: the card's price moves.
+  const stale = page(product);
+  const card = stale.modules[0].data.pdp_payload.product;
+  card.price = { current: { amount: 30, currency: 'USD' } };
+  const { svc } = setup({ client: fakeClient(same) });
+  const res = await svc.read({ token: issue(svc, stale).token, page: browserSlice(stale), market: 'US' });
+  assert.equal(res.body.live_refresh.stats.price_changed, 0, 'no variant price changed');
+  assert.equal(res.body.live_refresh.outcome, 'applied');
+  assert.equal(res.body.patch.product.set.price.current.amount, 26);
+  // The same page with a consistent card: its availability goes {} -> { in_stock: true }, which is not a change.
+  const consistent = page(product);
+  assert.deepEqual(canonicalCard(consistent).card.availability, {});
+  const { svc: s2 } = setup({ client: fakeClient(same) });
+  const r2 = await s2.read({ token: issue(s2, consistent).token, page: browserSlice(consistent), market: 'US' });
+  assert.equal(r2.body.live_refresh.outcome, 'confirmed');
+  // A card that showed no price of its own, its variants confirmed: not a change either.
+  const unpriced = page(product);
+  delete unpriced.modules[0].data.pdp_payload.product.price;
+  const { svc: s3 } = setup({ client: fakeClient(same) });
+  const r3 = await s3.read({ token: issue(s3, unpriced).token, page: browserSlice(unpriced), market: 'US' });
+  assert.equal(r3.body.live_refresh.outcome, 'confirmed');
+});
+
 test('a withheld variant is untouched by the patch; savings copy beside a changed price is unset', async () => {
   const product = sellerProduct();
   product.variants[1] = { ...product.variants[1], current_own_offer_status: 'unavailable' };
@@ -621,5 +649,6 @@ test('STRUCTURAL: only the normally served get_pdp_v2 arm carries the descriptor
   const { OperationEnum } = require('../src/schema');
   assert.ok(OperationEnum.options.includes('pdp_live_read'));
   const { __test__: { operationRateLimit } } = require('../src/guardrails/gatewayGuardrails');
-  assert.deepEqual(operationRateLimit('pdp_live_read', {}), operationRateLimit('get_pdp_v2', {}));
+  // Its own, wider bucket than get_pdp_v2's (one storefront key carries every shopper).
+  assert.ok(operationRateLimit('pdp_live_read', {}).capacity > operationRateLimit('get_pdp_v2', {}).capacity);
 });

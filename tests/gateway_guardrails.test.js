@@ -67,6 +67,45 @@ describe('gateway guardrails', () => {
     expect(payload.similar.limit).toBe(24);
   });
 
+  test('pdp_live_read has its own wide bucket (one storefront key carries every shopper), env-tunable', () => {
+    delete process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY;
+    delete process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_REFILL_PER_SEC;
+    const { __test__: { operationRateLimit } } = require('../src/guardrails/gatewayGuardrails');
+    expect(operationRateLimit('pdp_live_read', { tier: 'api_key' })).toEqual({ capacity: 1200, refill_per_sec: 20 });
+    expect(operationRateLimit('get_pdp_v2', { tier: 'api_key' })).toEqual({ capacity: 180, refill_per_sec: 3 });
+    process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY = '3000';
+    process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_REFILL_PER_SEC = '50';
+    expect(operationRateLimit('pdp_live_read', { tier: 'api_key' })).toEqual({ capacity: 3000, refill_per_sec: 50 });
+    process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY = '1';
+    process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_REFILL_PER_SEC = 'fast';
+    expect(operationRateLimit('pdp_live_read', { tier: 'api_key' })).toEqual({ capacity: 10, refill_per_sec: 20 });
+    process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY = '';
+    expect(operationRateLimit('pdp_live_read', { tier: 'api_key' }).capacity).toBe(1200);
+  });
+
+  test('a burst of pdp_live_read under one storefront key passes 1200 calls, then 429s', () => {
+    process.env.GATEWAY_RATE_LIMIT_ENABLED = 'true';
+    delete process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY;
+    delete process.env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_REFILL_PER_SEC;
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    try {
+      const { applyGatewayGuardrails } = require('../src/guardrails/gatewayGuardrails');
+      const req = {
+        headers: { 'x-agent-api-key': 'k' },
+        ip: '1.1.1.1',
+        invokeAuth: { auth_mode: 'api_key', agent_id: 'storefront', key_fingerprint: 'fp_storefront' },
+      };
+      const base = { req, operation: 'pdp_live_read', payload: {}, effectivePayload: {} };
+      for (let i = 0; i < 1200; i += 1) expect(applyGatewayGuardrails(base).blocked).toBe(null);
+      expect(applyGatewayGuardrails(base).blocked?.status).toBe(429);
+      // get_pdp_v2 under the same key is a separate bucket.
+      expect(applyGatewayGuardrails({ ...base, operation: 'get_pdp_v2' }).blocked).toBe(null);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('applyGatewayGuardrails can block on rate limit', () => {
     process.env.GATEWAY_RATE_LIMIT_ENABLED = 'true';
     process.env.GATEWAY_RATE_LIMIT_CAPACITY = '10';
