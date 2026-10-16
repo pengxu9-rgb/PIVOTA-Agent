@@ -1144,14 +1144,28 @@ async function runRoutineJob(
   }
 }
 
-async function main(argv = process.argv.slice(2)) {
+// The build writes its evidence-readiness status as its last stderr line, but a step's output is
+// kept only in this job's summary file (in the container's /tmp). The sync routine that spawns
+// this job logs only our own stderr tail, so the line is re-emitted here, or it never reaches the
+// logs or the run ledger (2026-10-16: absent from both on the first build that printed it).
+const EVIDENCE_READINESS_LINE = /^relgraph evidence readiness: .*$/gm;
+function evidenceReadinessRelayLine(summary) {
+  const build = Array.isArray(summary?.steps) ? summary.steps.find((step) => step && step.id === 'build') : null;
+  const lines = String(build?.stderr_tail || '').match(EVIDENCE_READINESS_LINE);
+  return lines ? lines[lines.length - 1] : '';
+}
+
+async function main(argv = process.argv.slice(2), deps = {}) {
   const options = parseArgs(argv);
   if (options.help) {
     process.stdout.write(`${usage()}\n`);
     return null;
   }
-  const summary = await runRoutineJob(options);
+  const summary = await runRoutineJob(options, deps);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  // Last on stderr, so it ends the tail the sync routine keeps.
+  const readiness = evidenceReadinessRelayLine(summary);
+  if (readiness) process.stderr.write(`${readiness}\n`);
   return summary;
 }
 
@@ -1163,6 +1177,10 @@ if (require.main === module) {
       // here or they die with the container along with the /tmp summary. Before
       // this, a cron failure reported "failed at step: pba_sig_refresh" and
       // nothing about why that step exited non-zero.
+      // A later step can fail after the build reported readiness: relay it first, so the failure
+      // report stays at the end of the tail.
+      const readiness = evidenceReadinessRelayLine(err && err.summary);
+      if (readiness) process.stderr.write(`${readiness}\n`);
       process.stderr.write(`${formatRoutineFailure(err)}\n`);
       process.exitCode = 1;
     })
@@ -1173,6 +1191,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  evidenceReadinessRelayLine,
+  main,
   APPLY_CONFIRM_TOKEN,
   RUN_SCOPE_CLOCK_SKEW_MS,
   acquireRoutineLock,
