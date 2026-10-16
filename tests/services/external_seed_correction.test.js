@@ -28,6 +28,7 @@ const {
   runSeedCorrectionCycle,
 } = require('../../src/services/externalSeedCorrection');
 const { query } = require('../../src/db');
+const { lookupExternalSeedImageOverride } = require('../../src/services/externalSeedImageOverrides');
 const { processRow } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('externalSeedCorrection', () => {
@@ -223,15 +224,8 @@ describe('externalSeedCorrection', () => {
     );
     expect(result.row.seed_data.snapshot.variants[0].option_name).toBeUndefined();
     expect(result.row.seed_data.snapshot.variants[0].option_value).toBeUndefined();
-    expect(result.row.seed_data.variants[0]).toEqual(
-      expect.objectContaining({
-        title: 'Default',
-        options: [],
-        source_quality_status: 'blocked',
-      }),
-    );
-    expect(result.row.seed_data.variants[0].option_name).toBeUndefined();
-    expect(result.row.seed_data.variants[0].option_value).toBeUndefined();
+    // The main list (seed_data.variants) is never rewritten by this persisting action.
+    expect(result.row.seed_data.variants).toEqual(row.seed_data.variants);
   });
 
   test('dry-run rerun extraction previews the refreshed price without persisting', async () => {
@@ -678,5 +672,154 @@ describe('externalSeedCorrection', () => {
         }),
       ]),
     );
+  });
+
+  describe('variant display contract never rewrites the main list (seed_data.variants)', () => {
+    // Refreshed main list (nightly refresh reconciles price/stock here) vs a stale
+    // snapshot copy that carries a polluted display axis, so the action is planned.
+    const refreshedMainList = () => [
+      {
+        variant_id: 'v1',
+        sku: 'SKU-1',
+        title: 'Default Title',
+        option_name: 'Title',
+        option_value: 'Default Title',
+        price: '30.00',
+        currency: 'USD',
+        availability: 'out_of_stock',
+        in_stock: false,
+        inventory_quantity: 0,
+      },
+    ];
+    const staleSnapshotList = () => [
+      {
+        variant_id: 'v1',
+        sku: 'SKU-1',
+        title: 'Default Title',
+        option_name: 'Title',
+        option_value: 'Default Title',
+        price: '25.00',
+        currency: 'USD',
+        availability: 'in_stock',
+        in_stock: true,
+        inventory_quantity: 12,
+      },
+    ];
+    const buildRow = (seedData) => ({
+      id: 'eps_main_list_freeze',
+      market: 'US',
+      domain: 'example.com',
+      canonical_url: 'https://example.com/products/serum',
+      title: 'Freeze Serum',
+      seed_data: seedData,
+    });
+    const persistedSeedData = () => {
+      const updates = query.mock.calls.filter((call) => String(call[0]).includes('UPDATE external_product_seeds'));
+      return updates.map((call) => JSON.parse(call[1][8]));
+    };
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] });
+      // The file-wide override mock returns images for every URL; keep this block about variants.
+      lookupExternalSeedImageOverride.mockReturnValue(null);
+    });
+
+    afterEach(() => {
+      lookupExternalSeedImageOverride.mockReset();
+      lookupExternalSeedImageOverride.mockImplementation(() => ({
+        image_url: 'https://cdn.example.com/manual.jpg',
+        image_urls: ['https://cdn.example.com/manual.jpg', 'https://cdn.example.com/manual-2.jpg'],
+        source: 'test_override',
+      }));
+    });
+
+    test('applySeedCorrectionAction persists the stored main list unchanged and normalizes the snapshot copy', async () => {
+      const row = buildRow({
+        variants: refreshedMainList(),
+        product: { variants: refreshedMainList() },
+        snapshot: { variants: staleSnapshotList() },
+      });
+      const before = JSON.parse(JSON.stringify(row));
+
+      const result = await applySeedCorrectionAction(
+        row,
+        { correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract },
+        { skipIngredientEnrichment: true },
+      );
+
+      expect(result.changed).toBe(true);
+      const persisted = persistedSeedData();
+      expect(persisted).toHaveLength(1);
+      expect(JSON.stringify(persisted[0].variants)).toBe(JSON.stringify(before.seed_data.variants));
+      expect(JSON.stringify(persisted[0].product.variants)).toBe(JSON.stringify(before.seed_data.product.variants));
+      expect(persisted[0].variants[0]).toEqual(
+        expect.objectContaining({ price: '30.00', availability: 'out_of_stock', in_stock: false }),
+      );
+      // Snapshot copy is still normalized from itself (the stale copy), not from the main list.
+      expect(persisted[0].snapshot.variants[0].option_name).toBeUndefined();
+      expect(persisted[0].snapshot.variants[0].price).toBe(25);
+      // Caller's row is not mutated.
+      expect(row).toEqual(before);
+    });
+
+    test('runSeedCorrectionCycle persists the stored main list unchanged', async () => {
+      const row = buildRow({
+        variants: refreshedMainList(),
+        snapshot: { variants: staleSnapshotList() },
+      });
+      const beforeMain = JSON.stringify(row.seed_data.variants);
+
+      const cycle = await runSeedCorrectionCycle(row, {
+        skipIngredientEnrichment: true,
+        correctionTypes: [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract],
+      });
+
+      expect(cycle.actions.map((action) => action.correction_type)).toEqual([
+        SEED_CORRECTION_TYPE.normalizeVariantDisplayContract,
+      ]);
+      const persisted = persistedSeedData();
+      expect(persisted).toHaveLength(1);
+      expect(JSON.stringify(persisted[0].variants)).toBe(beforeMain);
+      expect(JSON.stringify(cycle.row.seed_data.variants)).toBe(beforeMain);
+    });
+
+    test('a row with no main list still has no main list after the persisted correction', async () => {
+      const row = buildRow({
+        product: { title: 'Freeze Serum' },
+        snapshot: { variants: staleSnapshotList() },
+      });
+
+      await runSeedCorrectionCycle(row, {
+        skipIngredientEnrichment: true,
+        correctionTypes: [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract],
+      });
+
+      const persisted = persistedSeedData();
+      expect(persisted).toHaveLength(1);
+      expect(Object.prototype.hasOwnProperty.call(persisted[0], 'variants')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(persisted[0].product, 'variants')).toBe(false);
+      expect(persisted[0].snapshot.variants).toHaveLength(1);
+    });
+
+    test('a second correction cycle on the persisted row reports no change and writes nothing', async () => {
+      const row = buildRow({
+        variants: refreshedMainList(),
+        snapshot: { variants: staleSnapshotList() },
+      });
+      await runSeedCorrectionCycle(row, {
+        skipIngredientEnrichment: true,
+        correctionTypes: [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract],
+      });
+      const [firstPersisted] = persistedSeedData();
+      query.mockClear();
+
+      const second = await runSeedCorrectionCycle(buildRow(firstPersisted), {
+        skipIngredientEnrichment: true,
+        correctionTypes: [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract],
+      });
+
+      expect(second.actions.every((action) => action.changed === false)).toBe(true);
+      expect(persistedSeedData()).toHaveLength(0);
+    });
   });
 });

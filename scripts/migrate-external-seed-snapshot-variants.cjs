@@ -3,7 +3,7 @@
 const { withClient } = require('../src/db');
 const {
   ensureJsonObject,
-  canonicalizeExternalSeedSnapshot,
+  canonicalizeExternalSeedSnapshotForPersistence,
 } = require('../src/services/externalSeedProducts');
 
 function argValue(name) {
@@ -32,6 +32,15 @@ function hasLegacyVariantContainers(seedData) {
     Array.isArray(snapshot?.skus) && snapshot.skus.length > 0,
   ];
   return checks.some(Boolean);
+}
+
+// Persisting transform: normalizes snapshot.variants only. seed_data.variants (the main
+// list production serves) and seed_data.product.variants stay exactly as stored, even
+// under --strip-legacy.
+function migrateSeedDataSnapshotVariants(seedData, row, options = {}) {
+  return canonicalizeExternalSeedSnapshotForPersistence(seedData, row, {
+    stripLegacy: Boolean(options.stripLegacy),
+  });
 }
 
 async function fetchRows(client, options) {
@@ -106,9 +115,7 @@ async function main() {
       }
 
       summary.candidates += 1;
-      const nextSeedData = canonicalizeExternalSeedSnapshot(currentSeedData, row, {
-        stripLegacy: options.stripLegacy,
-      });
+      const nextSeedData = migrateSeedDataSnapshotVariants(currentSeedData, row, options);
       const changed = stableJson(nextSeedData) !== stableJson(currentSeedData);
 
       if (!changed) {
@@ -146,16 +153,23 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch((error) => {
-  console.error(
-    JSON.stringify(
-      {
-        error: error?.message || String(error),
-        stack: error?.stack || null,
-      },
-      null,
-      2,
-    ),
-  );
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(
+      JSON.stringify(
+        {
+          error: error?.message || String(error),
+          stack: error?.stack || null,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  hasLegacyVariantContainers,
+  migrateSeedDataSnapshotVariants,
+};
