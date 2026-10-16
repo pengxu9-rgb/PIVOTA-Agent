@@ -563,6 +563,19 @@ function normalizeCurrency(value, fallback = 'USD') {
   return String(value || fallback).trim().toUpperCase() || fallback;
 }
 
+// A seed's currency is what it OBSERVED — the variant's own, then the row's declared
+// price_currency, then seed_data / snapshot — or null. Never a default: the builders used to fall
+// back to 'USD', which priced a currency-less seed in dollars for any buyer and made it pass the
+// declared-market currency filter (gw#2435) as a USD offer. Unknown stays unknown; a consumer
+// that needs a currency to show a price shows no price.
+function observedSeedCurrency(...candidates) {
+  for (const candidate of candidates) {
+    const normalized = String(candidate == null ? '' : candidate).trim().toUpperCase();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function isZeroDecimalPriceCurrency(value) {
   return ZERO_DECIMAL_PRICE_CURRENCIES.has(normalizeCurrency(value, ''));
 }
@@ -3620,9 +3633,10 @@ function normalizeSeedVariants(seedData, row) {
   const productImageUrls = normalizeSeedImageUrls(parsedSeedData, row);
   const variantCachedFallbackImageUrls = collectCachedSeedImageUrls(parsedSeedData);
   const imageCacheUrlMap = buildSeedImageCacheUrlMap(parsedSeedData);
-  const fallbackCurrency = normalizeCurrency(
-    row?.price_currency || parsedSeedData.price_currency || parsedSeedData.snapshot?.price_currency,
-    'USD',
+  const fallbackCurrency = observedSeedCurrency(
+    row?.price_currency,
+    parsedSeedData.price_currency,
+    parsedSeedData.snapshot?.price_currency,
   );
 
   return rawVariants
@@ -3635,8 +3649,10 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.sku || rawVariant.sku_id || rawVariant.variant_sku || rawVariant.variant_id || rawVariant.id || '',
       ).trim();
       const variantId = String(rawVariant.variant_id || rawVariant.id || sku || `seed-variant-${idx + 1}`).trim();
-      const currency = normalizeCurrency(
-        rawVariant.currency || rawVariant.price_currency || rawVariant.pricing?.current?.currency,
+      const currency = observedSeedCurrency(
+        rawVariant.currency,
+        rawVariant.price_currency,
+        rawVariant.pricing?.current?.currency,
         fallbackCurrency,
       );
       const price = normalizeAmount(
@@ -3889,7 +3905,7 @@ function resolveExternalSeedSourceUnavailableContract(seedData = {}, snapshot = 
     .find((contract) => Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version))) || null;
 }
 
-function applyTransactionHoldToVariant(variant = {}, currency = 'USD') {
+function applyTransactionHoldToVariant(variant = {}, currency = null) {
   const next = {
     ...variant,
     price: 0,
@@ -4286,9 +4302,11 @@ function buildExternalSeedProduct(row, options = {}) {
     destinationUrl,
   };
   variants = variants.map((variant) => {
-    const variantCurrency = normalizeCurrency(
-      variant.currency || row.price_currency || seedData.price_currency || snapshot.price_currency,
-      'USD',
+    const variantCurrency = observedSeedCurrency(
+      variant.currency,
+      row.price_currency,
+      seedData.price_currency,
+      snapshot.price_currency,
     );
     const normalizedPrice = normalizeExternalSeedPrice(variant.price, {
       ...priceContext,
@@ -4375,9 +4393,11 @@ function buildExternalSeedProduct(row, options = {}) {
   }
   const imageUrl = imageUrls[0] || undefined;
 
-  const currency = normalizeCurrency(
-    row.price_currency || seedData.price_currency || snapshot.price_currency || variants[0]?.currency,
-    'USD',
+  const currency = observedSeedCurrency(
+    row.price_currency,
+    seedData.price_currency,
+    snapshot.price_currency,
+    variants[0]?.currency,
   );
   if (transactionHold) {
     variants = variants.map((variant) => applyTransactionHoldToVariant(variant, currency));
@@ -4800,9 +4820,10 @@ function buildExternalSeedBrandSearchProduct(row) {
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
   const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);
-  const currency = normalizeCurrency(
-    row.price_currency || effectiveSeedData.price_currency || snapshot.price_currency,
-    'USD',
+  const currency = observedSeedCurrency(
+    row.price_currency,
+    effectiveSeedData.price_currency,
+    snapshot.price_currency,
   );
   const availability = normalizeSeedAvailability(
     row.availability || effectiveSeedData.availability || snapshot.availability,

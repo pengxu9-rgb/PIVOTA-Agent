@@ -3057,3 +3057,67 @@ test.each(['relationship_graph', 'catalog'])('PDP retains graph explanation afte
   expect(item.tradeoffs).toEqual(tradeoffs); expect(item.watchouts).toEqual(watchouts); expect(item.evidence_refs).toEqual(evidence);
   expect(item.product_id).toBe('candidate');
 });
+
+// ── An amount is published only with the currency it was observed in (no USD default) ──────────
+describe('pdpBuilder publishes no price without an observed currency', () => {
+  const base = (over = {}) => ({
+    product: {
+      product_id: 'ext_cur_1',
+      merchant_id: 'external_seed',
+      title: 'Serum',
+      price: 24,
+      variants: [{ variant_id: 'v1', sku_id: 'v1', price: { amount: 24 }, in_stock: true }],
+      ...over,
+    },
+    relatedProducts: [],
+    entryPoint: 'agent',
+  });
+
+  test('unknown currency: no variant price and no price module, never USD', () => {
+    const payload = buildPdpPayload(base());
+    expect(payload.modules.find((m) => m.type === 'price_promo')).toBeFalsy();
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+  });
+
+  test('a known product currency prices the variant in that currency', () => {
+    const payload = buildPdpPayload(base({ currency: 'GBP' }));
+    const priceModule = payload.modules.find((m) => m.type === 'price_promo');
+    expect(priceModule?.data?.price).toEqual({ amount: 24, currency: 'GBP' });
+  });
+
+  test('a single implicit variant with no currency carries no price', () => {
+    const payload = buildPdpPayload(base({ variants: [] }));
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+    expect(payload.modules.find((m) => m.type === 'price_promo')).toBeFalsy();
+  });
+});
+
+describe('pdpBuilder reads the currency wherever the product states it (gw#2458 review)', () => {
+  test('a currency stated only on the price object keeps the price and the buy buttons', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'shopify_price_obj', merchant_id: 'm1', platform: 'shopify', title: 'Bronzer',
+        price: { amount: 36, currency: 'USD' },
+        variants: [{ variant_id: 'v1', price: { current: { amount: 36, currency: 'USD' } } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.modules.find((m) => m.type === 'price_promo')?.data?.price).toEqual({ amount: 36, currency: 'USD' });
+    expect(payload.actions.map((a) => a.action_type)).toEqual(['add_to_cart', 'buy_now']);
+  });
+
+  test('a price_currency-only product is priced in that currency, not USD', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'gbp_only', merchant_id: 'm1', title: 'Serum', price: 36, price_currency: 'GBP',
+        variants: [{ variant_id: 'v1', price: { amount: 36 } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.modules.find((m) => m.type === 'price_promo')?.data?.price).toEqual({ amount: 36, currency: 'GBP' });
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+  });
+});
+
