@@ -4318,3 +4318,82 @@ describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO
     expect(none?.synthetic_product?.electronics_meta).toBeUndefined();
   });
 });
+
+describe('get_pdp_v2 seed currency (gw#2458)', () => {
+  afterEach(() => {
+    nock.cleanAll();
+  });
+
+  // gw#2458 review: the main PDP door (include ['offers'], the default) rehydrated the page price
+  // from offers minted with USD defaults, so a currency-less seed still showed $ in 6 places.
+  const pdpForSeed = async ({ priceCurrency }) => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+    const statusRow = { id: 'eps_seed_cur_1', external_product_id: 'ext_seed_cur_1', status: 'active' };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://shop.example.co.uk/products/oil-serum',
+      destination_url: 'https://shop.example.co.uk/products/oil-serum',
+      title: 'Oil Serum 100ml',
+      image_url: 'https://cdn.example.com/oil-serum.jpg',
+      price_amount: '24.00',
+      ...(priceCurrency ? { price_currency: priceCurrency } : {}),
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Example',
+        description: 'A serum.',
+        snapshot: {
+          canonical_url: 'https://shop.example.co.uk/products/oil-serum',
+          product_id: 'ext_seed_cur_1',
+          variants: [{ variant_id: 'oil-serum-default', price: '24.00', stock: 'In Stock' }],
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [eligibleServingRow({
+            content_key: 'ck_ext_seed_cur_1',
+            product_key: 'prod::external_seed::external_seed::ext_seed_cur_1',
+          })],
+        });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query(true)
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_seed_cur_1' } } })
+      .expect(200);
+    return res.body;
+  };
+
+  test('get_pdp_v2 never invents USD for a seed with no observed currency, and offers no Buy', async () => {
+    const body = await pdpForSeed({ priceCurrency: null });
+    const pdp = body.modules?.find((m) => m?.type === 'canonical')?.data?.pdp_payload;
+    expect(pdp?.product?.product_id).toBe('ext_seed_cur_1');
+    expect(JSON.stringify(body)).not.toContain('"USD"');
+    expect(pdp.modules.find((m) => m.type === 'price_promo')).toBeFalsy();
+    expect(pdp.actions).toEqual([]);
+  });
+
+  test('get_pdp_v2 still prices a seed in the currency it declares', async () => {
+    const body = await pdpForSeed({ priceCurrency: 'GBP' });
+    const pdp = body.modules?.find((m) => m?.type === 'canonical')?.data?.pdp_payload;
+    expect(JSON.stringify(body)).toContain('"GBP"');
+    expect(JSON.stringify(body)).not.toContain('"USD"');
+    expect(pdp.actions.length).toBeGreaterThan(0);
+  });
+});

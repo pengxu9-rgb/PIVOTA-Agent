@@ -61,8 +61,32 @@ function normalizeAmount(value) {
   return 0;
 }
 
-function normalizeCurrency(value, fallback = 'USD') {
-  return value?.currency || value?.currency_code || fallback;
+// No 'USD' default: an amount is published only with the currency it was observed in
+// (`toVariantPrice`, the price module, recommendations). A product whose currency is unknown shows
+// no price rather than a dollar one — the same rule offerToSignal applies to expected totals.
+function normalizeCurrency(value, fallback = null) {
+  return value?.currency || value?.currency_code || value?.current?.currency || fallback || null;
+}
+
+// The product's OBSERVED currency, wherever the payload states it: top level, or on the price
+// object itself (gw#2458 review: a Shopify product carrying only `price: {amount, currency}` lost
+// its price and its buy buttons when this read `product.currency` alone).
+function resolveProductCurrency(product) {
+  const p = product && typeof product === 'object' ? product : {};
+  const candidates = [
+    p.currency,
+    p.price_currency,
+    p.priceCurrency,
+    p.currency_code,
+    p.price?.current?.currency,
+    p.price?.currency,
+    p.price?.currency_code,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate == null ? '' : candidate).trim().toUpperCase();
+    if (value) return value;
+  }
+  return null;
 }
 
 function asSafePlainObject(value) {
@@ -103,6 +127,18 @@ function suppressCommerceForPdpProduct(product = {}) {
       hasTransactionHoldContract(seedData.source_unavailable_v1) ||
       hasTransactionHoldContract(snapshot.source_unavailable_v1)
   );
+}
+
+// The purchase actions a PDP offers: none when commerce is suppressed, and none beside no visible
+// price (gw#2458: a currency-less product shows no price, so it must not invite a purchase). ONE
+// rule, read by buildPdpPayload and again by the server's offers hydration, which can add the
+// price after the payload was built.
+function buildPdpPurchaseActions({ commerceSuppressed = false, priced = false } = {}) {
+  if (commerceSuppressed || !priced) return [];
+  return [
+    { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+    { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+  ];
 }
 
 function suppressFormulaContentForPdpProduct(product = {}) {
@@ -1919,6 +1955,8 @@ function toVariantPrice(input, currency) {
   if (amount == null || amount === '') return undefined;
   const normalizedAmount = normalizeAmount(amount);
   if (!Number.isFinite(Number(normalizedAmount)) || Number(normalizedAmount) <= 0) return undefined;
+  // AMOUNT AND CURRENCY MOVE TOGETHER: no observed currency, no price.
+  if (!normalizeCurrency(input, currency)) return undefined;
   const compareAt =
     input.compare_at ??
     input.compareAt ??
@@ -1939,7 +1977,7 @@ function toVariantPrice(input, currency) {
 }
 
 function buildVariants(product) {
-  const currency = product.currency || 'USD';
+  const currency = resolveProductCurrency(product);
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   const singleSkuSizeOption = buildSingleSkuSizeOption(product);
   if (!rawVariants.length) {
@@ -1973,7 +2011,9 @@ function buildVariants(product) {
               source_quality_status: 'captured',
             }
           : {}),
-        ...(moneyUnavailable ? {} : { price: { current: { amount: normalizeAmount(product.price), currency } } }),
+        ...(moneyUnavailable || !currency
+          ? {}
+          : { price: { current: { amount: normalizeAmount(product.price), currency } } }),
         availability,
         image_url: normalizePdpDisplayImageUrl(product.image_url) || undefined,
         ...pickSavingsPresentationFields(product),
@@ -4674,10 +4714,9 @@ function buildRecommendations(items, currencyFallback) {
         category: asNonEmptyString(p.category) || undefined,
         product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
         image_url: imageUrl,
-        price: {
-          amount: normalizeAmount(p.price),
-          currency: normalizeCurrency(p, currencyFallback),
-        },
+        ...(normalizeCurrency(p, currencyFallback)
+          ? { price: { amount: normalizeAmount(p.price), currency: normalizeCurrency(p, currencyFallback) } }
+          : {}),
         card_title:
           asNonEmptyString(
             p.card_title || p.cardTitle || shoppingCard?.title || searchCard?.title_candidate,
@@ -4722,7 +4761,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
   if (!refs.length) return null;
   const enrichmentMap =
     options.enrichmentMap instanceof Map ? options.enrichmentMap : new Map();
-  const currencyFallback = asNonEmptyString(options.currencyFallback) || 'USD';
+  const currencyFallback = asNonEmptyString(options.currencyFallback) || null;
   const buildPriceState = (ref, enriched, hasPrice) => {
     if (hasPrice) return null;
     const explicitStatus = asNonEmptyString(
@@ -4782,7 +4821,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
       { currency: enriched.price_currency || enriched.currency },
       currencyFallback,
     );
-    const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0;
+    const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0 && Boolean(priceCurrency);
     const priceState = buildPriceState(ref, enriched, hasPrice);
     return {
       product_id: ref.product_id,
@@ -4888,7 +4927,7 @@ function buildPdpPayload(args) {
   const commerceSuppressed = suppressCommerceForPdpProduct(product);
   const formulaContentSuppressed = suppressFormulaContentForPdpProduct(product);
   const brandLabel = resolveProductBrandLabel(product);
-  const currency = product.currency || 'USD';
+  const currency = resolveProductCurrency(product);
   const variants = buildVariants(product);
   // The same emptiness test buildVariants applies (its fabricated single variant exists iff this is 0).
   const rawVariantCount = Array.isArray(product.variants) ? product.variants.length : 0;
@@ -5056,9 +5095,13 @@ function buildPdpPayload(args) {
   );
   const pricePromoCurrent =
     defaultVariant?.price?.current ||
-    (Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
+    (currency && Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
       ? { amount: productPriceAmount, currency }
       : null);
+  // A price the buyer can see: the price module's, or any variant's with its currency.
+  const pagePriced =
+    Boolean(pricePromoCurrent) ||
+    variants.some((variant) => Boolean(variant?.price?.current?.currency));
   if (!commerceSuppressed && pricePromoCurrent) {
     modules.push({
       module_id: 'm_price',
@@ -5308,12 +5351,7 @@ function buildPdpPayload(args) {
         : {}),
     },
     modules,
-    actions: commerceSuppressed
-      ? []
-      : [
-          { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
-          { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
-        ],
+    actions: buildPdpPurchaseActions({ commerceSuppressed, priced: pagePriced }),
   };
 
   const compiledPayload = compilePdpPayload(payload, { debug: args.debug });
@@ -5322,6 +5360,7 @@ function buildPdpPayload(args) {
 }
 
 module.exports = {
+  buildPdpPurchaseActions,
   buildVariants,
   pickDefaultVariant,
   buildPdpPayload,
