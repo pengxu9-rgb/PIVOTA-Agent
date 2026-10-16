@@ -4432,3 +4432,108 @@ describe('honestInventoryQuantity — never surface the 999 in-stock sentinel', 
     expect(honestInventoryQuantity(undefined, null)).toBeNull();
   });
 });
+
+// ── A snapshot list shown beside a refreshed top-level list: stock follows the refreshed facts ──
+//
+// Prod 2026-10-16: tangleangel_gb_6826386948176 served `in_stock: true` from a July
+// snapshot entry while the column, the top-level variant (both refreshed nightly) and the store
+// itself (products.js country=GB and US: available false) all said sold out.
+describe('shown snapshot variants take their stock from the refreshed list', () => {
+  const seedRow = ({ column, topLevel, snapshotVariants }) => ({
+    id: 'eps_stock_1',
+    availability: column,
+    canonical_url: 'https://tangleangel.com/products/tangle-angel-oil-serum-100ml',
+    destination_url: 'https://tangleangel.com/products/tangle-angel-oil-serum-100ml',
+    price_amount: 24,
+    price_currency: 'GBP',
+    seed_data: {
+      title: 'Tangle Angel Oil Serum 100ml',
+      ...(topLevel ? { variants: topLevel } : {}),
+      snapshot: {
+        canonical_url: 'https://tangleangel.com/products/tangle-angel-oil-serum-100ml',
+        variants: snapshotVariants,
+      },
+    },
+  });
+
+  test('tangleangel: the stale in-stock snapshot entry is served sold out, its id unchanged', () => {
+    const row = seedRow({
+      column: 'out_of_stock',
+      topLevel: [{ variant_id: '32318', availability: 'out_of_stock', price_amount: 24 }],
+      snapshotVariants: [{ id: 'tangleangel-default', variant_id: 'tangleangel-default', price: 24, availability: 'in_stock' }],
+    });
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants.map((v) => v.variant_id)).toEqual(['tangleangel-default']);
+    expect(variants[0].in_stock).toBe(false);
+    expect(variants[0].inventory_quantity).toBe(0);
+    const product = buildExternalSeedProduct(row);
+    expect(product.in_stock).toBe(false);
+    expect(product.variants.map((v) => v.variant_id)).toEqual(['tangleangel-default']);
+  });
+
+  test('with no refreshed list beside it the snapshot entry keeps speaking for itself', () => {
+    const row = seedRow({
+      column: 'in_stock',
+      topLevel: null,
+      snapshotVariants: [{ variant_id: 'only', price: 24, availability: 'in_stock' }],
+    });
+    expect(normalizeSeedVariants(row.seed_data, row)[0].in_stock).toBe(true);
+  });
+
+  test('each shown size takes the stock of the refreshed entry it is, read through a JSON-LD @id', () => {
+    const row = seedRow({
+      column: 'in_stock',
+      topLevel: [
+        { variant_id: '/products/x?variant=41000000000001#offer', availability: 'out_of_stock' },
+        { variant_id: '/products/x?variant=41000000000002#offer', availability: 'in_stock' },
+      ],
+      snapshotVariants: [
+        { variant_id: '30ml', shopify_variant_id: '41000000000001', price: 19, in_stock: true },
+        { variant_id: '50ml', shopify_variant_id: 'gid://shopify/ProductVariant/41000000000002', price: 29, in_stock: false },
+      ],
+    });
+    const byId = Object.fromEntries(normalizeSeedVariants(row.seed_data, row).map((v) => [v.variant_id, v.in_stock]));
+    expect(byId).toEqual({ '30ml': false, '50ml': true });
+  });
+
+  test('a shown size no refreshed entry matches is unknown on an in-stock product, never in stock', () => {
+    const row = seedRow({
+      column: 'in_stock',
+      topLevel: [{ variant_id: 'SKU-A', availability: 'in_stock' }],
+      snapshotVariants: [
+        { variant_id: 'snap-1', price: 19, availability: 'in_stock' },
+        { variant_id: 'snap-2', price: 29, availability: 'in_stock' },
+      ],
+    });
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants.map((v) => v.in_stock)).toEqual([null, null]);
+    // The PRODUCT is in stock (fresh column and the refreshed entry agree); only which shown size
+    // is the in-stock one is unknown.
+    expect(buildExternalSeedProduct(row).in_stock).toBe(true);
+  });
+
+  test('a refreshed variant contradicting the column withholds every boolean, as the backend does', () => {
+    const row = seedRow({
+      column: 'out_of_stock',
+      topLevel: [{ variant_id: 'SKU-A', availability: 'in_stock' }],
+      snapshotVariants: [{ variant_id: 'SKU-A', price: 19, availability: 'in_stock' }],
+    });
+    expect(normalizeSeedVariants(row.seed_data, row)[0].in_stock).toBeNull();
+  });
+
+  test('a subscription offer @id names no variant, so it cannot lend a size its stock', () => {
+    const row = seedRow({
+      column: 'in_stock',
+      topLevel: [
+        { variant_id: '/products/x?variant=41000000000001&selling_plan=7#offer', availability: 'in_stock' },
+        { variant_id: 'SKU-B', availability: 'in_stock' },
+      ],
+      snapshotVariants: [
+        { variant_id: '30ml', shopify_variant_id: '41000000000001', price: 19, in_stock: false },
+        { variant_id: '50ml', price: 29, in_stock: true },
+      ],
+    });
+    expect(normalizeSeedVariants(row.seed_data, row)[0].in_stock).toBeNull();
+  });
+});
+

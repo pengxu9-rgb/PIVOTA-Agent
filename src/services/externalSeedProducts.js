@@ -3606,6 +3606,116 @@ function sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames = [], f
   };
 }
 
+// ── Stock for a variant shown from a list the refresh does not maintain ──────────────────────────
+//
+// getRawSeedVariants prefers `snapshot.variants`, which keeps the shown variant ids, images and
+// Shopify stamps stable — but the nightly backend refresh (routes/employee_products
+// _refresh_external_seed_by_id) re-reads stock into the `availability` column and the TOP-LEVEL
+// `seed_data.variants` list only. When both lists exist, a snapshot entry's own stock is whatever
+// it was at ingest. Prod 2026-10-16: tangleangel_gb_6826386948176 served `in_stock: true` from a
+// July snapshot entry while the column, the top-level variant and the store itself (country=GB and
+// US, products.js `available: false`) all said sold out. The backend's serving rule
+// (services/external_seed_stock.seed_stock) reads the column and the top-level list; this mirrors
+// it for the shown entries without changing which entries are shown.
+
+const SEED_VARIANT_ID_KEYS = ['variant_id', 'variantId', 'id', 'sku', 'sku_id', 'shopify_variant_id', 'source_variant_id'];
+
+function canonicalSeedVariantId(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  const gid = raw.match(/^gid:\/\/shopify\/ProductVariant\/(\d+)$/i);
+  if (gid) return gid[1];
+  return raw;
+}
+
+// The Shopify variant a URL-shaped id names (a JSON-LD offer `@id` such as
+// `/products/<h>?variant=N#offer`), or ''. Strict, as the backend's url_named_variant_id: one
+// distinct all-digit `variant=` value, and never a subscription (`selling_plan`) offer.
+function urlNamedSeedVariantId(value) {
+  const raw = String(value == null ? '' : value).trim();
+  const q = raw.indexOf('?');
+  if (q < 0 || !raw.includes('variant=')) return '';
+  const query = raw.slice(q + 1).split('#')[0];
+  let params;
+  try {
+    params = new URLSearchParams(query);
+  } catch (_err) {
+    return '';
+  }
+  if (params.has('selling_plan')) return '';
+  const values = params.getAll('variant');
+  if (!values.length || values.some((v) => !/^\d+$/.test(v))) return '';
+  const distinct = new Set(values);
+  return distinct.size === 1 ? values[0] : '';
+}
+
+function seedVariantIds(entry) {
+  const out = new Set();
+  if (!entry || typeof entry !== 'object') return out;
+  for (const key of SEED_VARIANT_ID_KEYS) {
+    const canonical = canonicalSeedVariantId(entry[key]);
+    if (canonical) out.add(canonical);
+    const named = urlNamedSeedVariantId(entry[key]);
+    if (named) out.add(named);
+  }
+  return out;
+}
+
+// The entry's OWN stock statement: true / false / null (none). Same precedence as the shown
+// variants below, minus the product-level fallbacks.
+function seedEntryStockState(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (typeof entry.in_stock === 'boolean') return entry.in_stock;
+  if (typeof entry.available === 'boolean') return entry.available;
+  for (const key of ['inventory_quantity', 'available_quantity']) {
+    const raw = entry[key];
+    if (raw != null && raw !== '' && Number.isFinite(Number(raw)) && Number(raw) !== IN_STOCK_QTY_SENTINEL) {
+      return Number(raw) > 0;
+    }
+  }
+  return availabilityToInStock(entry.availability ?? entry.stock_status ?? entry.stock);
+}
+
+// The seed's own claim, as services/external_seed_stock.seed_stock serves it: the column is the
+// fresh fact; refreshed variants that CONTRADICT it make the product unknown AND withhold every
+// variant's boolean (`variantsTrusted: false`); with no usable column the refreshed variants
+// decide (any in -> in, every one out -> out), then seed_data / snapshot availability.
+function seedStockClaim(row, parsedSeedData, refreshedVariants) {
+  const states = refreshedVariants.map(seedEntryStockState).filter((value) => value !== null);
+  let variantState = null;
+  if (states.includes(true)) variantState = true;
+  else if (states.length && states.length === refreshedVariants.length) variantState = false;
+  const columnState = availabilityToInStock(row?.availability);
+  if (columnState !== null) {
+    if (variantState !== null && variantState !== columnState) {
+      return { product: null, variantsTrusted: false };
+    }
+    return { product: columnState, variantsTrusted: true };
+  }
+  if (variantState !== null) return { product: variantState, variantsTrusted: true };
+  return {
+    product: availabilityToInStock(parsedSeedData.availability ?? parsedSeedData.snapshot?.availability),
+    variantsTrusted: true,
+  };
+}
+
+// Stock for a SHOWN snapshot entry when a refreshed top-level list exists beside it: the one
+// refreshed entry it is (by any shared id, gid and JSON-LD `?variant=` read) speaks for it;
+// otherwise only a sold-out seed speaks (an unmatched size of an in-stock product is unknown,
+// never in stock on a stale claim).
+function refreshedStockForShownEntry(shownEntry, refreshedVariants, claim) {
+  if (!claim.variantsTrusted) return null;
+  const ids = seedVariantIds(shownEntry);
+  const matches = ids.size
+    ? refreshedVariants.filter((entry) => [...seedVariantIds(entry)].some((id) => ids.has(id)))
+    : [];
+  if (matches.length === 1) {
+    const own = seedEntryStockState(matches[0]);
+    if (own !== null) return own;
+  }
+  return claim.product === false ? false : null;
+}
+
 function normalizeSeedVariants(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
   const rawVariants = getRawSeedVariants(parsedSeedData);
@@ -3616,6 +3726,17 @@ function normalizeSeedVariants(seedData, row) {
   const variantContext = buildVariantContext(parsedSeedData, row);
 
   if (!rawVariants.length) return [];
+
+  // A snapshot list shown while the refresh maintains a top-level one beside it: its entries'
+  // own stock is stale (see refreshedStockForShownEntry).
+  const refreshedVariants = Array.isArray(parsedSeedData.variants)
+    ? parsedSeedData.variants.filter((entry) => entry && typeof entry === 'object')
+    : [];
+  const showsStaleSnapshotList =
+    rawVariants === parsedSeedData.snapshot?.variants && refreshedVariants.length > 0;
+  const refreshedClaim = showsStaleSnapshotList
+    ? seedStockClaim(row, parsedSeedData, refreshedVariants)
+    : null;
 
   const productImageUrls = normalizeSeedImageUrls(parsedSeedData, row);
   const variantCachedFallbackImageUrls = collectCachedSeedImageUrls(parsedSeedData);
@@ -3668,14 +3789,20 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.quantity ??
         rawVariant.stock_quantity ??
         rawVariant.stock;
-      const availableQuantity =
-        rawQty == null || rawQty === '' || Number(rawQty) === IN_STOCK_QTY_SENTINEL
+      // A stale snapshot entry's count is as stale as its stock flag: never let it override the
+      // refreshed claim below.
+      const availableQuantity = showsStaleSnapshotList
+        ? undefined
+        : rawQty == null || rawQty === '' || Number(rawQty) === IN_STOCK_QTY_SENTINEL
           ? undefined
           : Number.isFinite(Number(rawQty))
             ? Math.max(0, Math.floor(Number(rawQty)))
             : undefined;
       if (availableQuantity != null) {
         inStock = availableQuantity > 0;
+      }
+      if (showsStaleSnapshotList) {
+        inStock = refreshedStockForShownEntry(rawVariant, refreshedVariants, refreshedClaim);
       }
 
       const imageUrls = normalizeSeedImageUrls(
