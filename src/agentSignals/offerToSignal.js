@@ -309,28 +309,34 @@ function liveReadChangedFacts(offer) {
 /**
  * THE BEST PRICE under the contract: ONE ranking, the gateway's `compare` (sellable, primary, stock tier,
  * price), over ONE set -- the SERVED offers (the signals this answer returns) that are `price_comparable`,
- * FRESH after this request's live reads (offerPriceIsStale), priced, and in ONE stated ISO currency (that of
- * the first such offer in the backend's rank order; a declared market has already cut the list to its own).
- * Nothing outside that set can be best: not another size, not a variant-less offer, not a stale price, not
- * another currency. An empty set is NO best price (best_offer null), never a fallback to the cheapest offer.
+ * FRESH after this request's live reads (offerPriceIsStale), not gone and not KNOWN out of stock (in-stock or
+ * unknown stock only), priced, and in ONE exact uppercase ISO 4217 currency (that of the first such offer in
+ * the backend's rank order; a declared market has already cut the list to its own). Nothing outside that set
+ * can be best: not another size, not a variant-less offer, not a stale price, not a seller that cannot sell,
+ * not another currency. An empty set is NO best price (best_offer null), never a fallback to the cheapest.
  *
  * `best_price_offer_id` does not rank. It names the claim's source: `offers_resolve` when the gateway's pick
  * IS the backend's and no live read changed the served offers' facts since the backend picked, else
- * `gateway`. The backend's id is reported beside it, so a pick outside the set is visible.
+ * `gateway`. The backend's id is reported beside it as `offers_resolve_offer_id`, DIAGNOSTIC ONLY: it is
+ * what the backend named, not a recommendation, and an agent must act on `offer_id`.
  */
 function bestFreshComparable(served, compare, bestPriceOfferId) {
   const offerOf = new Map(served.map((p) => [p.signal, p.offer]));
   const eligible = served
     .filter((p) => p.offer.price_comparable === true && !offerPriceIsStale(p.offer))
     .map((p) => p.signal)
-    .filter((s) => typeof s.value.price === 'number' && ISO_CURRENCY.test(String(s.value.currency || '').trim().toUpperCase()));
+    // A seller KNOWN not to have it (stock false, or an unavailability statement) is never a best price: the
+    // pool is in-stock or unknown-stock only. That covers `variant_gone`: the live reader stamps that offer
+    // `in_stock: false` (ucpLiveOfferRead applyRead), and this check reads the stamp. The currency must be stated as an exact ISO 4217 code -- not
+    // normalized here, so the code the claim names is the one the signal carries.
+    .filter((s) => typeof s.value.price === 'number' && !isKnownUnavailable(s) && typeof s.value.currency === 'string' && ISO_CURRENCY.test(s.value.currency));
   const backendId = nonEmptyString(bestPriceOfferId) ? bestPriceOfferId : null;
   const reportBackend = bestPriceOfferId !== undefined ? { offers_resolve_offer_id: backendId } : {};
   if (!eligible.length) {
     return { best: null, best_price: { offer_id: null, reason: 'no_fresh_comparable_price', ...reportBackend } };
   }
-  const basis = String(eligible[0].value.currency).trim().toUpperCase();
-  const pool = eligible.filter((s) => String(s.value.currency).trim().toUpperCase() === basis).sort(compare);
+  const basis = eligible[0].value.currency;
+  const pool = eligible.filter((s) => s.value.currency === basis).sort(compare);
   const best = pool[0];
   const offerId = offerOf.get(best).offer_id == null ? null : String(offerOf.get(best).offer_id);
   const fromBackend = backendId !== null && offerId === backendId && !served.some((p) => liveReadChangedFacts(p.offer));

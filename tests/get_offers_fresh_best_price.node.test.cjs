@@ -427,3 +427,85 @@ test('a `price_stale` key alone switches the contract on: the stale price is fla
   assert.equal(res.metadata.best_price.reason, 'no_fresh_comparable_price');
   assert.equal('offers_resolve_offer_id' in res.metadata.best_price, false, 'the backend sent no id');
 });
+
+// ------------------------------------------------------------------- stock, currency spelling, the marker
+
+test('a variant_gone offer is never the best price, even when it is the only comparable one', async () => {
+  const res = await runScenario({
+    payload: { market: 'US' },
+    stores: { 'gone.example.com': { handle: 'cream', US: [] } },
+    backend: {
+      offers: [liveReadable('gone.example.com', '43333333', 16, COMPARABLE), offer('of:size', 'size.example.com', 9, 'USD', FRESH_ONLY)],
+      best_price_offer_id: 'of:gone',
+    },
+  });
+  assert.equal(signalOf(res, 'gone.example.com').value.live_read.status, 'variant_gone');
+  assert.equal(res.best_offer, null);
+  assert.equal(res.metadata.best_price.reason, 'no_fresh_comparable_price');
+});
+
+test('a comparable offer KNOWN out of stock is not eligible: in-stock or unknown stock only', async () => {
+  const res = await runScenario({
+    backend: {
+      offers: [
+        offer('of:oos', 'oos.example.com', 10, 'USD', { ...COMPARABLE, in_stock: false, availability: 'out_of_stock' }),
+        offer('of:oos-text', 'oostext.example.com', 11, 'USD', { ...COMPARABLE, in_stock: undefined, availability: 'out_of_stock' }),
+        offer('of:unknown', 'unknown.example.com', 21, 'USD', { ...COMPARABLE, in_stock: undefined, availability: 'unknown' }),
+        offer('of:in', 'in.example.com', 24, 'USD', COMPARABLE),
+      ],
+      best_price_offer_id: 'of:oos',
+    },
+  });
+  // Unknown stock competes with in-stock on the one ranking; the two known-OOS sellers are out.
+  assert.deepEqual(best(res), { merchant: 'unknown.example.com', price: 21 });
+  const only = await runScenario({
+    backend: {
+      offers: [offer('of:oos', 'oos.example.com', 10, 'USD', { ...COMPARABLE, in_stock: false, availability: 'out_of_stock' })],
+      best_price_offer_id: 'of:oos',
+    },
+  });
+  assert.equal(only.best_offer, null);
+  assert.equal(only.metadata.best_price.offers_resolve_offer_id, 'of:oos', 'reported, diagnostic only');
+});
+
+test('the ONE ranking is not price alone: a verified primary seller at $25 beats a retailer at $20', async () => {
+  const res = await runScenario({
+    backend: {
+      offers: [
+        offer('of:retail', 'retail.example.com', 20, 'USD', COMPARABLE),
+        offer('of:brand', 'brand.example.com', 25, 'USD', { ...COMPARABLE, is_primary: true, stock_verified: true }),
+      ],
+      best_price_offer_id: 'of:retail',
+    },
+  });
+  assert.deepEqual(best(res), { merchant: 'brand.example.com', price: 25 });
+  assert.equal(res.metadata.best_price.source, 'gateway');
+});
+
+test('the currency must be an exact uppercase ISO code: "usd" or " USD " is not eligible', async () => {
+  for (const currency of ['usd', ' USD ', 'Usd']) {
+    const res = await runScenario({
+      backend: {
+        offers: [offer('of:lower', 'lower.example.com', 5, currency, COMPARABLE), offer('of:usd', 'us.example.com', 22, 'USD', COMPARABLE)],
+        best_price_offer_id: 'of:usd',
+      },
+    });
+    assert.deepEqual(best(res), { merchant: 'us.example.com', price: 22 }, JSON.stringify(currency));
+    assert.equal(res.metadata.best_price.currency, res.best_offer.value.currency, 'the claim names the signal\'s own code');
+  }
+});
+
+test('only boolean true marks an offer comparable: "true", 1 and "yes" do not', async () => {
+  for (const marker of ['true', 1, 'yes']) {
+    const res = await runScenario({
+      backend: {
+        offers: [
+          offer('of:fake', 'fake.example.com', 5, 'USD', { price_comparable: marker, price_checked_at: READ_AT }),
+          offer('of:real', 'real.example.com', 22, 'USD', COMPARABLE),
+        ],
+        best_price_offer_id: 'of:real',
+      },
+    });
+    assert.deepEqual(best(res), { merchant: 'real.example.com', price: 22 }, JSON.stringify(marker));
+  }
+});

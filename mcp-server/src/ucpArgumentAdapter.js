@@ -1421,7 +1421,13 @@ const GET_OFFERS_DESCRIPTION = [
   "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
   "`insights.market` (the buyer's market, ISO-3166-1 alpha-2, only when known: offers and their cart links are",
   "then decided for that market, and only offers priced in its currency are returned; absent, no market is",
-  "claimed), `insights.limit` (1..10).",
+  "claimed), `insights.limit` (1..10). An offer carrying `price_stale: true` has a price not read recently:",
+  "relay it only as last seen, never as current; `price_as_of` is when it was last read (null = no read on",
+  "record). When `metadata.best_price` is present, best_offer is the top-ranked fresh comparable offer (same",
+  "item and size, one currency, not known out of stock), ranked by sellability, then primary seller, stock",
+  "confidence, then price -- not necessarily the lowest number; `best_price.offer_id: null` (best_offer null)",
+  "means no offer has a fresh comparable price, so name no best price. `best_price.offers_resolve_offer_id` is",
+  "diagnostic only; act on `best_price.offer_id`.",
 ].join(" ");
 
 const GET_INTEL_DESCRIPTION = [
