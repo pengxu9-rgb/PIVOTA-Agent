@@ -31273,7 +31273,9 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
 // and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
 const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
 
-async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
+// `options.signal` (an AbortSignal) cancels the upstream request itself: get_offers' second offers.resolve
+// call aborts at its own deadline instead of abandoning a request that keeps running.
+async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}, options = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
   const invokeContext = getInvokeAuthContext() || {};
@@ -31498,6 +31500,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
     },
     data: requestBody,
     timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
+    ...(options && options.signal ? { signal: options.signal } : {}),
   };
 
   let resp;
@@ -32303,7 +32306,14 @@ async function getCommerceRemoteMcpAdapter() {
             const reader = getUcpLiveOfferReader();
             return Boolean(reader && reader.mode === 'enforce');
           },
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification }) =>
+          // A flagged offer the live read just verified is asked for again with a signed assertion of the
+          // merchant's answer, so offers.resolve mints its cart (services/offerLiveVerification).
+          // GET_OFFERS_LIVE_CART=off (default) | shadow | on; nothing is signed without
+          // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
+          liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
+          liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
+          log: (event, fields) => logger.info({ event, ...fields }, event),
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -32316,7 +32326,15 @@ async function getCommerceRemoteMcpAdapter() {
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
-              }),
+                // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
+                ...(Array.isArray(live_verifications) && live_verifications.length
+                  ? {
+                      liveVerifications: live_verifications,
+                      // GET_OFFERS_LIVE_CART=shadow: the backend records no issued clicks for a dry run.
+                      ...(live_verifications_dry_run ? { liveVerificationsDryRun: true } : {}),
+                    }
+                  : {}),
+              }, {}, signal ? { signal } : {}),
               product_group_id || null,
             ),
         }),
