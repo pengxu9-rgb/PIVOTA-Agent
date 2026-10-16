@@ -29,8 +29,11 @@ const liveRead = (row) => {
   const current = p.price && typeof p.price === 'object' && p.price.current && typeof p.price.current === 'object' ? p.price.current : null;
   return { ...p, price: current ? current.amount : (typeof p.price === 'number' ? p.price : null), currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null) };
 };
-const seed = (id, { url, variants, external_product_id = `ext_${id.padEnd(24, 'x')}` } = {}) => ({
+// The row DECLARES its currency, as a live seed does: since gw#2458 the builders never default one, and a row with
+// no currency is not priced at the merchant door (see the catalog_currency_unknown test below).
+const seed = (id, { url, variants, external_product_id = `ext_${id.padEnd(24, 'x')}`, price_currency = 'USD' } = {}) => ({
   id, external_product_id, destination_url: url, canonical_url: url,
+  ...(price_currency ? { price_currency } : {}),
   seed_data: { title: `P ${id}`, ...(variants ? { snapshot: { variants } } : { price_amount: 10 }) },
 });
 
@@ -105,6 +108,26 @@ test('end to end on a real-built row: create_cart is sent the sole variant gid, 
   });
   assert.deepEqual(calls[0].lineItems, [{ item: { id: GID('44012345678971') }, quantity: 1 }]);
   assert.ok(out, 'priced');
+});
+
+test('a real-built row with NO stated currency falls back catalog_currency_unknown and calls no seller (gw#2458)', async () => {
+  const p = { ...liveRead(seed('n', { url: 'https://brand-n.com/products/cream', variants: [{ id: '44012345678981', price: '20.00' }], price_currency: null })), product_key: 'prod::merch_obs_n::external_seed::n' };
+  assert.equal(p.currency, null, 'the builder states no currency it did not observe');
+  const calls = [];
+  const logs = [];
+  const merchantDoor = {
+    endpointFor: async () => { calls.push('endpointFor'); return 'https://brand-n.com/api/ucp/mcp'; },
+    createCart: async () => { calls.push('createCart'); return { ok: false, status: 500 }; },
+    getCart: async () => { calls.push('getCart'); return null; },
+    catalogShopifyVariantCount: async () => 1,
+  };
+  const out = await priceOnMerchantDoor({
+    items: [{ product_id: p.product_id, quantity: 1 }], rows: new Map([[p.product_id, p]]), sellerHost: 'brand-n.com', market: 'US',
+    env: { [MERCHANT_PRICING_FLAG]: '1' }, merchantDoor, log: { info: (o) => logs.push(o), warn: (o) => logs.push(o) },
+  });
+  assert.equal(out, null, 'not priced');
+  assert.ok(!calls.includes('createCart'), 'no seller cart is created for a row we cannot price');
+  assert.ok(logs.some((o) => o.reason === 'catalog_currency_unknown'), `falls back as catalog_currency_unknown: ${JSON.stringify(logs)}`);
 });
 
 test('two storefront links naming DIFFERENT variants: neither is guessed, even when the read agrees with one', () => {
@@ -195,6 +218,7 @@ test('only a DERIVED id is checked: a link naming the variant, or a choice among
   // A product the PDP builder EXPOSES as two real variants (an option axis with values) — built by the real producers.
   const multi = { ...liveRead({
     id: 's11', external_product_id: 'ext_kkkkkkkkkkkkkkkkkkkkkkkk', destination_url: 'https://brand-k.com/products/serum',
+    price_currency: 'USD',
     seed_data: { title: 'Serum', options: [{ name: 'Size', values: ['30 ml', '50 ml'] }], snapshot: { variants: [
       { id: '44012345678961', title: '30 ml', option_name: 'Size', option_value: '30 ml', option1: '30 ml', price: '20.00' },
       { id: '44012345678962', title: '50 ml', option_name: 'Size', option_value: '50 ml', option1: '50 ml', price: '30.00' },

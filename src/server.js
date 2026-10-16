@@ -129,6 +129,7 @@ const {
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
+  buildPdpPurchaseActions,
   buildBundleCompositionModuleData,
   buildVariantSelectorModuleData,
   isExternalSeedLikeProduct,
@@ -4883,7 +4884,7 @@ function buildPdpSimilarFetchArgs({
         similarBaseProduct.currency ||
         canonicalProductForPdp?.currency ||
         canonicalProduct?.currency ||
-        'USD',
+        null,
       serving_currency:
         servingCurrency === undefined ? servingCurrencyFor({ payload, metadata }) : servingCurrency,
       options: {
@@ -5049,7 +5050,6 @@ function buildProductDetailPriceContext(product, currencyOverride = '') {
       productRecord.priceCurrency,
       productRecord.price?.currency,
       productRecord.price?.current?.currency,
-      'USD',
     ),
     title: firstNonEmptyString(productRecord.title, productRecord.name),
     description: firstNonEmptyString(
@@ -5096,7 +5096,6 @@ function normalizeProductDetailVariantPrice(variant, productContext = {}) {
     variant.price?.currency,
     variant.price?.current?.currency,
     productContext.currency,
-    'USD',
   );
   const context = {
     ...productContext,
@@ -5125,12 +5124,12 @@ function normalizeProductDetailVariantPrice(variant, productContext = {}) {
       amount: next.price.amount !== undefined ? normalizedAmount : next.price.amount,
       current:
         next.price.current && typeof next.price.current === 'object'
-          ? { ...next.price.current, amount: normalizedAmount, currency }
+          ? { ...next.price.current, amount: normalizedAmount, ...(currency ? { currency } : {}) }
           : next.price.current,
     };
     if (next.price.amount === undefined && !next.price.current) {
       next.price.amount = normalizedAmount;
-      next.price.currency = currency;
+      if (currency) next.price.currency = currency;
     }
   } else if (next.price !== undefined) {
     next.price = normalizedAmount;
@@ -5155,6 +5154,7 @@ function normalizeProductDetailPrice(product) {
   }
 
   let resolvedPrice = normalizeNullableProductDetailPrice(normalized.price, priceContext);
+  let resolvedCurrency = resolvedPrice !== null ? priceContext.currency : null;
   if (resolvedPrice === null && Array.isArray(normalized.variants)) {
     for (const variant of normalized.variants) {
       if (!variant || typeof variant !== 'object') continue;
@@ -5183,12 +5183,20 @@ function normalizeProductDetailPrice(product) {
         normalizeNullableProductDetailPrice(variant.value, variantContext);
       if (candidate !== null) {
         resolvedPrice = candidate;
+        resolvedCurrency = variantContext.currency;
         break;
       }
     }
   }
 
   normalized.price = resolvedPrice;
+  // The price is flattened to a bare number here, so its currency would be lost with the
+  // object (gw#2458 review: a group offer's `source_payload.price {amount, currency}` lost its
+  // currency and the offer was dropped). Keep the one it was observed in — never a default.
+  if (resolvedPrice !== null && !String(normalized.currency || '').trim()) {
+    const observed = String(resolvedCurrency || '').trim().toUpperCase();
+    if (observed) normalized.currency = observed;
+  }
   return normalized;
 }
 
@@ -5731,8 +5739,9 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
   if (!row || typeof row !== 'object') return null;
   const sourcePayload = { ...(isPlainObject(row.source_payload) ? row.source_payload : {}) };
   const catalogOfferPrice = Number(row.catalog_offer_price);
-  const catalogOfferCurrency = firstNonEmptyString(row.catalog_offer_currency, sourcePayload.currency, 'USD');
-  if (Number.isFinite(catalogOfferPrice) && catalogOfferPrice > 0) {
+  const catalogOfferCurrency = firstNonEmptyString(row.catalog_offer_currency, sourcePayload.currency) || null;
+  // An offer row priced with no currency is not a priced member (gw#2458): no 'USD' default.
+  if (Number.isFinite(catalogOfferPrice) && catalogOfferPrice > 0 && catalogOfferCurrency) {
     sourcePayload.price = { amount: catalogOfferPrice, currency: catalogOfferCurrency };
     sourcePayload.price_amount = catalogOfferPrice;
     sourcePayload.currency = catalogOfferCurrency;
@@ -9663,10 +9672,13 @@ async function resolveProductGroupCached(args) {
     : result;
 }
 
+// NO 'USD' DEFAULT (gw#2458): the currency is the one the money was observed in, else null. A
+// publisher that needs a currency to show the amount shows nothing — amount and currency move
+// together (see readPositiveOfferMoney, normalizeOfferMoneyForProduct).
 function normalizeOfferMoney(amount, currency) {
   const raw = amount;
   let normalizedAmount = 0;
-  let normalizedCurrency = String(currency || 'USD').toUpperCase() || 'USD';
+  let normalizedCurrency = String(currency || '').trim().toUpperCase() || null;
 
   if (typeof raw === 'number') {
     normalizedAmount = raw;
@@ -9711,7 +9723,6 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
       variant?.price?.currency,
       variant?.price?.current?.currency,
       productContext.currency,
-      'USD',
     ),
     title: [
       productContext.title,
@@ -9742,6 +9753,8 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
     normalizedAmount = productAmount;
   }
   if (!Number.isFinite(Number(normalizedAmount)) || Number(normalizedAmount) <= 0) return null;
+  // No observed currency, no money: every caller already treats null as "no price".
+  if (!String(context.currency || '').trim()) return null;
   return normalizeOfferMoney(normalizedAmount, context.currency);
 }
 
@@ -9756,10 +9769,10 @@ function readPositiveOfferMoney(offer) {
   if (!offer || typeof offer !== 'object') return null;
   const amount = readPriceAmountForNormalization(offer.price);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  return {
-    amount,
-    currency: readOfferCurrency(offer) || 'USD',
-  };
+  const currency = readOfferCurrency(offer);
+  // An offer priced with no currency cannot price the page (hydrateCanonicalPdpPayloadFromOffers).
+  if (!currency) return null;
+  return { amount, currency };
 }
 
 function readOfferCurrency(offer) {
@@ -10288,6 +10301,16 @@ function hydrateCanonicalPdpPayloadFromOffers(
   return hydrateCanonicalPdpMediaFromOfferImages({
     ...pdpPayload,
     ...(modules ? { modules } : {}),
+    // The payload's actions were decided before this added the price (gw#2458 review): a page the
+    // offers just priced offers Buy / Add to Cart again, unless commerce is suppressed.
+    ...(projectedOfferPrice
+      ? {
+          actions: buildPdpPurchaseActions({
+            commerceSuppressed: product.commerce_suppressed === true,
+            priced: true,
+          }),
+        }
+      : {}),
     product,
   }, product, selectedOfferImageUrls);
 }
@@ -10467,8 +10490,7 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
           variant?.price?.currency,
           variant?.price?.current?.currency,
           fallbackCurrency,
-          'USD',
-        ) || 'USD';
+        ) || null;
       const rawVariantPrice =
         variant?.price?.current?.amount ??
         variant?.price?.amount ??
@@ -11235,8 +11257,7 @@ async function buildOffersFromGroupMembers(args) {
         p.currency,
         p.price?.currency,
         p.price?.current?.currency,
-        'USD',
-      ) || 'USD';
+      ) || null;
     const shipCost = p.shipping?.cost || p.shipping_cost || null;
     const shipCostAmount =
       shipCost == null
@@ -11244,7 +11265,7 @@ async function buildOffersFromGroupMembers(args) {
         : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
     const shipCostCurrency =
       shipCost && typeof shipCost === 'object'
-        ? String(shipCost.currency || currency)
+        ? String(shipCost.currency || currency || '').trim() || null
         : currency;
     const etaRaw = p.shipping?.eta_days_range || p.shipping?.etaDaysRange || null;
     const etaRange =
@@ -11308,6 +11329,7 @@ async function buildOffersFromGroupMembers(args) {
               method_label: p.shipping?.method_label || p.shipping?.methodLabel || undefined,
               eta_days_range: etaRange,
               ...(shipCostAmount != null && Number.isFinite(shipCostAmount)
+                && shipCostCurrency
                 ? { cost: normalizeOfferMoney(shipCostAmount, shipCostCurrency) }
                 : {}),
             }
@@ -39126,7 +39148,7 @@ async function buildProductIntelOffersDataForContext({
       `of:v1:${context.canonicalProductRef.merchant_id}:${productGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
     const fallbackOfferPrice = normalizeOfferMoneyForProduct(
       context.product.price,
-      context.product.currency || 'USD',
+      context.product.currency || null,
       context.product,
     );
 
@@ -39624,7 +39646,7 @@ async function resolveProductIntelInvokeContext({
         pdp_product: product,
         k: relatedProductsCandidateLimit,
         locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-        currency: product.currency || 'USD',
+        currency: product.currency || null,
         options: {
           no_cache: similarCacheBypass,
           cache_bypass: similarCacheBypass,
@@ -46387,7 +46409,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 (await fetchMerchantDisplayNameById(fallbackOfferMerchantId));
               const fallbackOfferVariants = buildOfferVariantsForPayload(
                 canonicalProductForPdp,
-                canonicalProductForPdp.currency || 'USD',
+                canonicalProductForPdp.currency || null,
               );
               offersData = {
                 status: 'success',
@@ -46415,7 +46437,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ...(() => {
                       const fallbackOfferPrice = normalizeOfferMoneyForProduct(
                         canonicalProductForPdp.price,
-                        canonicalProductForPdp.currency || 'USD',
+                        canonicalProductForPdp.currency || null,
                         canonicalProductForPdp,
                       );
                       return fallbackOfferPrice ? { price: fallbackOfferPrice } : {};
@@ -46871,7 +46893,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
           bundleData = buildBundleCompositionModuleData(canonicalProductForPdp, {
             enrichmentMap,
-            currencyFallback: canonicalProductForPdp.currency || 'USD',
+            currencyFallback: canonicalProductForPdp.currency || null,
           });
           if (!bundleData) bundleReason = 'no_components';
         }
@@ -47456,7 +47478,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             pdp_product: product,
             k: payload.recommendations?.limit || 6,
             locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-            currency: product.currency || 'USD',
+            currency: product.currency || null,
             options: {
               debug: pdpOptions.debug,
               no_cache: bypassCache,
@@ -47818,7 +47840,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 		      const toMoney = (amount, currency) => ({
 		        amount: Number(amount) || 0,
-		        currency: String(currency || 'USD').toUpperCase() || 'USD',
+		        currency: String(currency || '').trim().toUpperCase() || null,
 		      });
 
 			      // When callers omit merchant_id (common for shareable PDP links), the upstream
@@ -48094,13 +48116,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      const offers = offerProducts.map((p) => {
 		        const mid = String(p.merchant_id || '').trim();
 		        const offerProductId = String(p.product_id || '').trim() || undefined;
-		        const currency = p.currency || 'USD';
+		        // Observed or null — never a 'USD' default (gw#2458); no currency, no price below.
+		        const currency = p.currency || null;
 		        const shipCost = p.shipping?.cost || p.shipping_cost || null;
 		        const shipCostAmount =
 		          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
         const shipCostCurrency =
           shipCost && typeof shipCost === 'object'
-            ? String(shipCost.currency || currency)
+            ? String(shipCost.currency || currency || '').trim() || null
             : currency;
         const etaRaw = p.shipping?.eta_days_range || p.shipping?.etaDaysRange || null;
 	        const etaRange =
@@ -48124,13 +48147,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		            p.store_name ||
 	            merchantNameById.get(mid) ||
 	            undefined,
-	          price: toMoney(p.price, currency),
+	          ...(currency ? { price: toMoney(p.price, currency) } : {}),
           shipping:
             p.shipping || etaRange || shipCostAmount != null
               ? {
                   method_label: p.shipping?.method_label || p.shipping?.methodLabel || undefined,
                   eta_days_range: etaRange,
                   ...(shipCostAmount != null && Number.isFinite(shipCostAmount)
+                    && shipCostCurrency
                     ? { cost: toMoney(shipCostAmount, shipCostCurrency) }
                     : {}),
                 }
@@ -49693,7 +49717,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 pdp_product: baseProduct,
                 k: directCandidateLimit,
                 locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-                currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+                currency: baseProduct.currency || baseProduct.price?.currency || null,
                 serving_currency: similarServingCurrency,
                 options: {
                   debug: debugEnabled,

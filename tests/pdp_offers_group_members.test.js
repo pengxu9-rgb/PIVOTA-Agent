@@ -1763,6 +1763,50 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price.current).toEqual({ amount: 90, currency: 'USD' });
   });
 
+  test('a catalog offer row with no currency is not priced in USD (gw#2458 review)', () => {
+    const app = require('../src/server');
+    const build = app._debug.buildCatalogSignatureGroupMemberFromIdentityRow;
+    const noCurrency = build({ merchant_id: 'm1', product_id: 'p1', catalog_offer_price: 12, source_payload: {} });
+    expect(JSON.stringify(noCurrency)).not.toContain('"USD"');
+    const gbp = build({
+      merchant_id: 'm1', product_id: 'p1', catalog_offer_price: 12, catalog_offer_currency: 'GBP', source_payload: {},
+    });
+    expect(JSON.stringify(gbp)).toContain('"GBP"');
+  });
+
+  test('a page the offers price gets its Buy / Add to Cart back (gw#2458 review)', () => {
+    const app = require('../src/server');
+    const offerId = 'of:v1:external_seed:sig_tf_lost_cherry:merchant:default__ext_official';
+    const offers = {
+      default_offer_id: offerId,
+      best_price_offer_id: offerId,
+      offers: [{ offer_id: offerId, merchant_name: 'Tom Ford Beauty', price: { amount: 90, currency: 'USD' }, inventory: { in_stock: true } }],
+    };
+    // Built unpriced (content listing at $0), so buildPdpPayload withheld the actions.
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      { product: { product_id: 'sig_tf_lost_cherry', title: 'Lost Cherry', price_amount: 0, currency: 'USD' }, actions: [] },
+      offers,
+    );
+    expect(payload.product.price.current).toEqual({ amount: 90, currency: 'USD' });
+    expect(payload.actions.map((a) => a.action_type)).toEqual(['add_to_cart', 'buy_now']);
+
+    const suppressed = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      { product: { product_id: 'sig_tf_lost_cherry', title: 'Lost Cherry', price_amount: 0, currency: 'USD', commerce_suppressed: true }, actions: [] },
+      offers,
+    );
+    expect(suppressed.actions).toEqual([]);
+  });
+
+  test('an offer with no currency cannot price the page, and the page offers no purchase', () => {
+    const app = require('../src/server');
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      { product: { product_id: 'sig_no_cur', title: 'No Currency', price_amount: 0 }, actions: [] },
+      { default_offer_id: 'o1', offers: [{ offer_id: 'o1', price: { amount: 24 }, inventory: { in_stock: true } }] },
+    );
+    expect(JSON.stringify(payload)).not.toContain('"USD"');
+    expect(payload.actions).toEqual([]);
+  });
+
   test('adds a price module when offer hydration supplies the first positive PDP price', () => {
     const app = require('../src/server');
 
