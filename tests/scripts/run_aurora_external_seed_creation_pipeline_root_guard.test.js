@@ -74,4 +74,58 @@ describe('seed creation pipeline: correction root guard', () => {
     expect(result.stderr).toMatch(/lacks the seed main-list freeze/);
     expect(result.stdout).toBe('');
   });
+
+  describe('each freeze marker is required on its own', () => {
+    const MARKER_FILES = [
+      ['src/services/externalSeedProducts.js', 'canonicalizeExternalSeedSnapshotForPersistence,', 'canonicalizeExternalSeedSnapshot,'],
+      ['src/services/externalSeedCorrection.js', 'nextRow.seed_data = canonicalizeExternalSeedSnapshotForPersistence(', 'nextRow.seed_data = canonicalizeExternalSeedSnapshot('],
+      ['scripts/backfill-external-product-seeds-catalog.js', 'const freshMainListVariants =', 'const unusedMainListVariants ='],
+    ];
+
+    // A copy of this checkout's three marker files, with one marker removed.
+    function writeCheckoutMissing(brokenFile) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-marker-checkout-'));
+      for (const [rel, marker, replacement] of MARKER_FILES) {
+        let body = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+        expect(body.includes(marker)).toBe(true);
+        if (rel === brokenFile) body = body.split(marker).join(replacement);
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), body);
+      }
+      return root;
+    }
+
+    test('an intact copy of the three files passes', () => {
+      expect(checkCorrectionRootHasMainListFreeze(writeCheckoutMissing(null))).toEqual({ ok: true, missing: [] });
+    });
+
+    test.each(MARKER_FILES.map(([rel]) => [rel]))('missing only the marker in %s is refused', (rel) => {
+      const check = checkCorrectionRootHasMainListFreeze(writeCheckoutMissing(rel));
+      expect(check.ok).toBe(false);
+      expect(check.missing).toHaveLength(1);
+      expect(check.missing[0]).toMatch(new RegExp(`^${rel.replace(/[.]/g, '\\.')}:`));
+    });
+
+    test('a root that does not exist is refused', () => {
+      const missingRoot = path.join(os.tmpdir(), `gw-no-such-checkout-${process.pid}-${Date.now()}`);
+      expect(checkCorrectionRootHasMainListFreeze(missingRoot).ok).toBe(false);
+      expect(() =>
+        resolveCorrectionRoot(parseArgs(['--run-correction', '--pivota-agent-root', missingRoot]), REPO_ROOT),
+      ).toThrow(/lacks the seed main-list freeze/);
+    });
+
+    const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+    (runningAsRoot ? test.skip : test)('an unreadable marker file is refused (fails closed)', () => {
+      const root = writeCheckoutMissing(null);
+      const target = path.join(root, 'src/services/externalSeedCorrection.js');
+      fs.chmodSync(target, 0o000);
+      try {
+        const check = checkCorrectionRootHasMainListFreeze(root);
+        expect(check.ok).toBe(false);
+        expect(check.missing).toEqual([expect.stringMatching(/^src\/services\/externalSeedCorrection\.js:/)]);
+      } finally {
+        fs.chmodSync(target, 0o644);
+      }
+    });
+  });
 });
