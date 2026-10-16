@@ -175,10 +175,25 @@ function liveAnswerIsSameProduct(live, id, ownHandle) {
   return !named || named === ownHandle;
 }
 
-/** The product handle of a product's own store page (the URLs `productHost` reads), or null. */
+/**
+ * The product handle of a product's own STORE page, or null: only a URL on the merchant host `productHost`
+ * reads (www.-insensitive). Pivota's own product URL (`agent.pivota.cc/products/sig_x`) names a Pivota id,
+ * not the store's handle; read as the page it would refuse every merchant answer (review of #2453).
+ */
 function productPageHandle(product) {
+  const host = productHost(product);
+  if (!host) return null;
+  const bare = (h) => String(h || '').toLowerCase().replace(/^www\./, '');
   for (const key of ['destination_url', 'external_redirect_url', 'source_url', 'merchant_canonical_url', 'canonical_url']) {
-    const handle = productHandleFromUrl(product && product[key]);
+    const raw = str(product && product[key]);
+    let urlHost = '';
+    try {
+      urlHost = new URL(raw).hostname;
+    } catch {
+      continue;
+    }
+    if (bare(urlHost) !== bare(host)) continue;
+    const handle = productHandleFromUrl(raw);
     if (handle) return handle;
   }
   return null;
