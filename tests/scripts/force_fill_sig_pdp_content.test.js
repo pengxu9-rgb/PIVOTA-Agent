@@ -208,22 +208,32 @@ describe('force-fill SIG PDP content script', () => {
     });
   });
 
-  test('variant-only DB patch strips legacy long-form variant fields', () => {
-    const patch = buildVariantOnlySeedPatch({
-      variants: [{
-        title: 'Mini',
-        option_name: 'Format',
-        option_value: 'Mini',
-        image_urls: ['https://example.com/legacy.jpg'],
-        description: 'legacy long text',
-      }],
-      snapshot: {},
-    });
-    expect(patch.rootPatch.variants).toEqual([{
+  test('variant-only DB patch writes full variant entries, never a whitelisted subset', () => {
+    // `seed_data || patch` replaces the whole array, so a subset would drop stock/url/images.
+    const variant = {
       title: 'Mini',
       option_name: 'Format',
       option_value: 'Mini',
-    }]);
+      in_stock: false,
+      inventory_quantity: 0,
+      url: 'https://example.com/p?variant=1',
+      deep_link: 'https://example.com/p?variant=1',
+      image_urls: ['https://example.com/mini.jpg'],
+      refreshed_at: '2026-10-15T00:00:00.000Z',
+    };
+    const patch = buildVariantOnlySeedPatch({ variants: [variant], snapshot: {} });
+    expect(patch.rootPatch.variants).toEqual([variant]);
+  });
+
+  test('variant-only DB patch carries only the variant lists that changed', () => {
+    const seedData = {
+      variants: [{ title: 'Main' }],
+      variant_detail_label: 'Format: Mini',
+      snapshot: { variants: [{ title: 'Snap' }], variant_detail_label: 'Format: Mini' },
+    };
+    const patch = buildVariantOnlySeedPatch(seedData, { root: false, snapshot: true });
+    expect(patch.rootPatch).toEqual({ variant_detail_label: 'Format: Mini' });
+    expect(patch.snapshotPatch).toEqual({ variants: [{ title: 'Snap' }], variant_detail_label: 'Format: Mini' });
   });
 
   test('drops blocked default variants only when real displayable variants exist', () => {
