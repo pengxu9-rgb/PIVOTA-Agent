@@ -4728,7 +4728,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
   if (!refs.length) return null;
   const enrichmentMap =
     options.enrichmentMap instanceof Map ? options.enrichmentMap : new Map();
-  const currencyFallback = asNonEmptyString(options.currencyFallback) || 'USD';
+  const currencyFallback = asNonEmptyString(options.currencyFallback) || null;
   const buildPriceState = (ref, enriched, hasPrice) => {
     if (hasPrice) return null;
     const explicitStatus = asNonEmptyString(
@@ -5065,6 +5065,10 @@ function buildPdpPayload(args) {
     (currency && Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
       ? { amount: productPriceAmount, currency }
       : null);
+  // A price the buyer can see: the price module's, or any variant's with its currency.
+  const pagePriced =
+    Boolean(pricePromoCurrent) ||
+    variants.some((variant) => Boolean(variant?.price?.current?.currency));
   if (!commerceSuppressed && pricePromoCurrent) {
     modules.push({
       module_id: 'm_price',
@@ -5314,7 +5318,9 @@ function buildPdpPayload(args) {
         : {}),
     },
     modules,
-    actions: commerceSuppressed
+    // No price the buyer can see -> no Buy / Add to Cart offered beside it (gw#2458 review): a
+    // currency-less product shows no price, so it must not invite a purchase either.
+    actions: commerceSuppressed || !pagePriced
       ? []
       : [
           { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
