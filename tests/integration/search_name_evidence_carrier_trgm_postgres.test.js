@@ -14,7 +14,8 @@
 //      the same keys, and the uncapped carrier sets (no LIMIT) are equal too;
 //   2. THE INDEX: with seq scans disabled, the built CTE scans catalog_products through the trigram
 //      index, and the CASE-only form cannot (it has no indexable qual) -- so this suite can see the
-//      difference it guards.
+//      difference it guards; and at DEFAULT planner costs, over a prod-sized table, the planner
+//      chooses the index for distinctive queries.
 //
 // Dedicated disposable DB only, same opt-in as the other *_postgres suites.
 
@@ -121,6 +122,11 @@ suite('name-evidence carriers: hoisted LIKEs use the trigram index and find the 
     // An unstamped row carries NULL: invisible to the carrier CTE either way.
     await db.query(`INSERT INTO catalog_products (product_key, title, product_type, name_norm)
       VALUES ('unstamped_metal_serum_gloss', 'LIP-PRESSION Metal Serum Gloss', 'Lip Gloss', NULL)`);
+    // Prod's table size (32.5k rows), so the planner's DEFAULT costs can be asked about the index. The
+    // filler names are single 32-letter words: no query token can match one as a whole word.
+    await db.query(`INSERT INTO catalog_products (product_key, title, product_type, name_norm)
+      SELECT 'filler_' || g, 'Filler', 'Filler', translate(md5(g::text), '0123456789', 'ghijklmnop')
+      FROM generate_series(1, 32000) g`);
     await db.query(`CREATE INDEX ${TRGM_INDEX} ON catalog_products USING gin (name_norm gin_trgm_ops)`);
     await db.query('ANALYZE catalog_products');
     for (const q of QUERIES) {
@@ -171,6 +177,17 @@ suite('name-evidence carriers: hoisted LIKEs use the trigram index and find the 
       expect(rows.map((r) => r.product_key)).not.toContain('unstamped_metal_serum_gloss');
       expect(rows.length).toBeGreaterThan(0);
     }
+  });
+
+  test.each([
+    'long lasting matte red lipstick for dry lips',
+    'Metal Serum Gloss',
+  ])('"%s": at default planner costs over a prod-sized table, the carrier scan takes the trigram index', async (q) => {
+    const { body, params } = built.get(q);
+    const { rows } = await run(db, `EXPLAIN (FORMAT JSON) WITH name_evidence_carriers AS MATERIALIZED (${body}) SELECT keys FROM name_evidence_carriers`, params);
+    const scan = nodes(rows[0]['QUERY PLAN'][0].Plan);
+    expect(scan.map((n) => n['Index Name']).filter(Boolean)).toContain(TRGM_INDEX);
+    expect(scan.filter((n) => n['Node Type'] === 'Seq Scan' && n.Alias === 'np')).toEqual([]);
   });
 
   test.each([

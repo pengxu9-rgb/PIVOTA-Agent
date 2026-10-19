@@ -186,9 +186,10 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       // the CASE alone they were never index conditions: PostgreSQL takes an index qual only from a
       // top-level AND of the WHERE, so migration 261's trigram index sat unused and the carrier CTE
       // was a Seq Scan of catalog_products (prod EXPLAIN 2026-10-19: 43-93 ms, 32.5k rows removed,
-      // on every armed query). Same rows either way: `P AND (CASE WHEN P THEN R ELSE FALSE END)` is
-      // true exactly when the CASE is; it can be NULL where the CASE was FALSE (a NULL name), and a
-      // WHERE drops both. The CASE stays so the regex still runs only behind the prefilter. Both
+      // on every armed query). Same value either way, under three-valued logic too:
+      // `P AND (CASE WHEN P THEN R ELSE FALSE END)` IS NOT DISTINCT FROM the CASE for every P and R
+      // (a NULL P gives FALSE in both, since NULL AND FALSE is FALSE). The CASE stays so the regex
+      // still runs only behind the prefilter. Both
       // branches take the same shape, so the stored read differs from today's only in the fold source.
       const carriesAll = (alias) => {
         if (stored) {
