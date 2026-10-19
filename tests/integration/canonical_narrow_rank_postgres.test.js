@@ -237,6 +237,33 @@ suite('narrow rank returns exactly the wide statement\'s rows, in order (Postgre
     expect(JSON.stringify(row.product_payload).length).toBeGreaterThan(8192);
   });
 
+  test('at prod flags and default costs: flag on, no sort over more rows than the cut carries product_payload', async () => {
+    // Review of #2465: with the scoring CTE inlined, the set-quota window's CASE dragged its inputs --
+    // the decompressed pp.product_payload -- through the sort of EVERY admitted row, so the spill
+    // survived the narrow projection. The cut here is page 3 -> 25 candidates (+ up to MAX_CARRIERS
+    // name-evidence rows); "lip gloss" admits ~160 fixture rows, so the window's sort is far above it.
+    setFlags({ CANONICAL_CATALOG_SET_DIVERSITY: 'enabled', SEARCH_NAME_EVIDENCE_ADMISSION: 'on' });
+    const CUT_BOUND = 40;
+    const sortsOf = async (narrow) => {
+      process.env.CANONICAL_CATALOG_NARROW_RANK = narrow;
+      let cap = null;
+      await fetchCanonicalChainRows({ ...args('lip gloss', 3), deps: { query: async (sql, params) => { if (!cap) cap = { sql, params }; return { rows: [] }; } } });
+      const { rows } = await db.query(`EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON) ${cap.sql}`, cap.params);
+      const all = [];
+      (function walk(n) { all.push(n); (n.Plans || []).forEach(walk); }(rows[0]['QUERY PLAN'][0].Plan));
+      return all.filter((n) => /Sort$/.test(n['Node Type'])).map((n) => ({
+        rows: n['Actual Rows'], payload: (n.Output || []).some((o) => /product_payload/.test(o)),
+      }));
+    };
+    const on = await sortsOf('on');
+    const big = on.filter((n) => n.rows > CUT_BOUND);
+    expect(big.length).toBeGreaterThan(0);              // premise: the window's sort over every admitted row
+    expect(big.filter((n) => n.payload)).toEqual([]);  // ...carries no payload
+    // And the assertion can see the defect: flag off, that sort carries the payload.
+    const off = await sortsOf('off');
+    expect(off.filter((n) => n.rows > CUT_BOUND && n.payload).length).toBeGreaterThan(0);
+  });
+
   test('flag on, the statement ranks narrow and re-reads wide; flag off, no trace of it', async () => {
     const statements = {};
     for (const nr of ['off', 'on']) {

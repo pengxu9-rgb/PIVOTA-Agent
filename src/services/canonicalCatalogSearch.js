@@ -2202,6 +2202,16 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
     // The cut moves to `candidate_keys` (narrow rows); `candidate_products` keeps its name and its
     // columns, so candidate_slots and the outer SELECT read it unchanged.
     setDiversityCteSql = setDiversityCteSql.replace('\n    candidate_products AS (', '\n    candidate_keys AS (');
+    // THE FENCE. Narrow columns alone did not narrow the set-quota sort: `matched_products` is inlined,
+    // and the window's CASE over `m.is_multi_product_set` is evaluated ABOVE the sort, so the planner
+    // carried that expression's inputs -- pp.product_payload, already decompressed by the single read,
+    // plus title/product_type/category_path for the name-evidence mark -- through the sort of every
+    // admitted row. Review of #2465 measured it at prod's flags on a 32k-row catalog (6.4KB payloads,
+    // work_mem 4MB): 71MB / 17,781 temp blocks with the flag on against 80MB off. `OFFSET 0` keeps the
+    // scoring CTE from being pulled up, so its marks reach the window as plain columns: 0 temp blocks,
+    // and no tuplestore write (which MATERIALIZED would add). Only the set-quota form needs it: without
+    // set diversity the cut is the scoring CTE's own ORDER BY / LIMIT, a bounded top-N.
+    if (setDiversityEnabled) innerOrderLimitSql = '\n      OFFSET 0';
     setDiversityCteSql += `,
     candidate_products AS (
       -- Display columns for the survivors only, by primary key (1:1). See isNarrowRankEnabled.
