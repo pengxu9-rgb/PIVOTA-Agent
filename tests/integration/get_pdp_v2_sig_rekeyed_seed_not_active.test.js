@@ -1,6 +1,10 @@
 const request = require('supertest');
 const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../../src/services/catalogEntityResolutionSqlTag');
-const { readSignatureSeedNotActive } = require('../../src/services/signatureSeedNotActive');
+const {
+  readSignatureSeedNotActive,
+  settleSignatureSeedNotActive,
+  __internal: { ACTIVE_SEED_MATCH_SQL },
+} = require('../../src/services/signatureSeedNotActive');
 
 jest.setTimeout(60000);
 
@@ -13,7 +17,9 @@ jest.setTimeout(60000);
 // The ext_ seed-status precheck that names `external_seed_not_active` never ran
 // (it is keyed on an `ext_`-shaped id), and a reason-less 404 is
 // indistinguishable from a swallowed DB error, so the frontend kept it a 500.
-// The exact-signature row already carried the seed's status; this names it.
+// The exact-signature row already carried the seed's status; this names it, but
+// only after clean misses and a fresh check of the content lookup's whole match
+// set. A DB blip must never become a cached 404 (review on #2461).
 
 jest.mock('../../src/db', () => ({
   query: jest.fn(),
@@ -53,6 +59,40 @@ const isBareSigQuery = (sql) =>
     'SELECT merchant_id, platform, source_product_id, product_key FROM catalog_products WHERE pivota_signature_id = $1',
   );
 const isExactSigQuery = (sql) => norm(sql).includes('cp.pivota_signature_id = $1');
+const isActiveSeedCheck = (sql) => norm(sql).includes('AS seed_snapshot_product_id');
+// fetchExternalSeedProductDetailFromDb's statements (exact matches + seed_data fallback).
+const isSeedDetailQuery = (sql) =>
+  String(sql || '').includes('FROM external_product_seeds') &&
+  String(sql || '').includes('destination_url');
+const isSeedJsonFallback = (sql) => isSeedDetailQuery(sql) && norm(sql).includes("seed_data->>'product_id' = $1");
+
+const NO_ACTIVE_SEED = {
+  external_product_id: false,
+  seed_id: false,
+  seed_data_external_product_id: false,
+  seed_data_product_id: false,
+  seed_snapshot_product_id: false,
+};
+
+// A DIFFERENT seed row, active, that names the re-keyed id in seed_data.product_id.
+// The sig resolver's join (external_product_id = source_product_id) cannot see
+// it; the content lookup's seed_data fallback can, and renders the product.
+function otherActiveSeedRow() {
+  return {
+    id: 'eps_other_active',
+    external_product_id: 'coscorea-com:other',
+    status: 'active',
+    canonical_url: 'https://coscorea.example/products/live',
+    destination_url: 'https://coscorea.example/products/live',
+    domain: 'coscorea.example',
+    title: 'Live Cream',
+    image_url: 'https://cdn.example.test/live.png',
+    price_amount: '20.00',
+    price_currency: 'USD',
+    availability: 'In Stock',
+    seed_data: { brand: 'Probe Labs', description: 'live', product_id: SEED_ID },
+  };
+}
 
 function exactSigRow(overrides = {}) {
   return {
@@ -76,13 +116,27 @@ function exactSigRow(overrides = {}) {
 
 // Every content store misses: no active seed answers the re-keyed id, nothing is
 // cached, the identity graph has nothing. Exactly what the prod trace shows.
-function install(db, row) {
+//   seedDetail: 'miss' (healthy, no active seed) | 'throw' (DB blip) | 'other_active'
+//   activeSeedCheck: the fresh confirmation statement's answer, or 'throw'
+function install(db, row, { seedDetail = 'miss', activeSeedCheck = NO_ACTIVE_SEED } = {}) {
+  const seen = [];
   db.query.mockImplementation(async (sql) => {
+    seen.push(norm(sql).slice(0, 80));
     if (isCanonicalGroupQuery(sql)) return { rows: [] };
     if (isBareSigQuery(sql)) return { rows: [] };
     if (isExactSigQuery(sql)) return { rows: row ? [row] : [] };
+    if (isActiveSeedCheck(sql)) {
+      if (activeSeedCheck === 'throw') throw new Error('connection terminated unexpectedly');
+      return { rows: [activeSeedCheck] };
+    }
+    if (isSeedDetailQuery(sql)) {
+      if (seedDetail === 'throw') throw new Error('connection terminated unexpectedly');
+      if (seedDetail === 'other_active' && isSeedJsonFallback(sql)) return { rows: [otherActiveSeedRow()] };
+      return { rows: [] };
+    }
     return { rows: [] };
   });
+  return seen;
 }
 
 async function pdp(app, productRef) {
@@ -153,6 +207,56 @@ describe('get_pdp_v2: a re-keyed sig_ row whose seed is retired', () => {
     expect(res.status).toBe(404);
     expect(res.body?.details).toBeNull();
   });
+
+  describe('a DB blip can never become a settled 404', () => {
+    test('reviewer case: another active seed + throwing seed-detail queries stays reason-less', async () => {
+      // The sig row's own seed is inactive, but a DIFFERENT active seed names this
+      // id in seed_data.product_id. Healthy, that renders (next test). Here the
+      // seed-detail reads throw and are swallowed, so the miss is the read path's
+      // fault. Even with the confirmation check answering "no active seed" (as if
+      // asked at another moment), the swallowed failure must withhold the reason.
+      const { app, db } = loadServer();
+      install(db, exactSigRow(), { seedDetail: 'throw', activeSeedCheck: NO_ACTIVE_SEED });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(404);
+      expect(res.body?.details).toBeNull();
+    });
+
+    test('CONTROL: the same rows on a healthy DB render the product', async () => {
+      const { app, db } = loadServer();
+      install(db, exactSigRow(), { seedDetail: 'other_active' });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(200);
+    });
+
+    test('a clean miss whose fresh check FINDS an active seed stays reason-less', async () => {
+      // What a ledger cannot see: the content lookup answered from another
+      // request's in-flight promise or a cache. The fresh check is the authority.
+      const { app, db } = loadServer();
+      install(db, exactSigRow(), {
+        activeSeedCheck: { ...NO_ACTIVE_SEED, seed_data_product_id: true },
+      });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(404);
+      expect(res.body?.details).toBeNull();
+    });
+
+    test('a clean miss whose fresh check fails stays reason-less', async () => {
+      const { app, db } = loadServer();
+      install(db, exactSigRow(), { activeSeedCheck: 'throw' });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(404);
+      expect(res.body?.details).toBeNull();
+    });
+  });
 });
 
 describe('readSignatureSeedNotActive', () => {
@@ -187,3 +291,60 @@ describe('readSignatureSeedNotActive', () => {
     expect(readSignatureSeedNotActive(signatureRef, context)).toBeNull();
   });
 });
+
+describe('settleSignatureSeedNotActive', () => {
+  const candidate = {
+    reason: 'external_seed_not_active',
+    external_seed_status: 'inactive',
+    external_seed_id: 'eps_1',
+    external_product_id: SEED_ID,
+  };
+  const answering = (row) => async () => ({ rows: [row] });
+
+  test('settles only with a clean ledger and an all-false fresh check', async () => {
+    await expect(
+      settleSignatureSeedNotActive(candidate, { queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => true }),
+    ).resolves.toEqual(candidate);
+  });
+
+  test.each([
+    ['a dirty ledger', { queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => false }],
+    ['no ledger function', { queryFn: answering(NO_ACTIVE_SEED) }],
+    ['no database', { queryFn: null, isLedgerClean: () => true }],
+    ['an active match', { queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: true }), isLedgerClean: () => true }],
+    ['a null column', { queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: null }), isLedgerClean: () => true }],
+    ['no row', { queryFn: async () => ({ rows: [] }), isLedgerClean: () => true }],
+    ['a throwing check', { queryFn: async () => { throw new Error('boom'); }, isLedgerClean: () => true }],
+    ['the legacy detail fallback on', {
+      queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => true, legacyDetailFallbackEnabled: true,
+    }],
+  ])('withholds on %s', async (_name, deps) => {
+    await expect(settleSignatureSeedNotActive(candidate, deps)).resolves.toBeNull();
+  });
+
+  test('withholds when something fails WHILE the check runs', async () => {
+    let clean = true;
+    const queryFn = async () => {
+      clean = false;
+      return { rows: [NO_ACTIVE_SEED] };
+    };
+    await expect(settleSignatureSeedNotActive(candidate, { queryFn, isLedgerClean: () => clean })).resolves.toBeNull();
+  });
+
+  test("the fresh check covers the content lookup's whole match set, active seeds only", () => {
+    const sql = norm(ACTIVE_SEED_MATCH_SQL);
+    for (const clause of [
+      'external_product_id = $1',
+      'id::text = $1',
+      "seed_data->>'external_product_id' = $1",
+      "seed_data->>'product_id' = $1",
+      "seed_data->'snapshot'->>'product_id' = $1",
+    ]) {
+      expect(sql).toContain(clause);
+    }
+    expect(sql.match(/status = 'active'/g)).toHaveLength(5);
+    // No OR: each branch keeps its own (partial) index.
+    expect(sql).not.toMatch(/\bOR\b/);
+  });
+});
+
