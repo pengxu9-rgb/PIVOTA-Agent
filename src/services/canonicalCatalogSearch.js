@@ -62,6 +62,7 @@ const { buildCanonicalSearchQualitySql, storedNameNormEnabled } = require('./can
 const { storedFoldVerified } = require('./storedNameNormProbe');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
+const { seedProjectedOfferInSeedCurrencySql } = require('./seedSearchOfferScope');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 const logger = require('../logger');
 
@@ -1793,6 +1794,11 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
     }
   }
   const scopedOfferWhere = offerScopeClauses.length ? `AND ${offerScopeClauses.join('\n        AND ')}` : '';
+  // On EVERY surface, scoped or not, and in the candidate EXISTS as well as both offer picks: an
+  // offer copied off a seed is a price only in the currency that seed states (seedSearchOfferScope.
+  // seedProjectedOfferInSeedCurrencySql). Not an offer-scope clause, because it is not a buyer
+  // constraint: it says which rows are prices at all. `p` is the listing the offer prices in all three.
+  const seedCurrencyOfferWhere = `AND ${seedProjectedOfferInSeedCurrencySql('o', 'p.product_key')}`;
   const candidateOfferWhere = offerScope ? `
         AND EXISTS (
           SELECT 1 FROM catalog_offers o
@@ -1801,6 +1807,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
             AND o.suppressed_at IS NULL
             AND COALESCE(o.merchant_effective_price, o.list_price) > 0
             ${scopedOfferWhere}
+            ${seedCurrencyOfferWhere}
         )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
@@ -1962,6 +1969,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
         ${scopedOfferWhere}
+        ${seedCurrencyOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
@@ -1987,6 +1995,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
         ${scopedOfferWhere}
+        ${seedCurrencyOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,

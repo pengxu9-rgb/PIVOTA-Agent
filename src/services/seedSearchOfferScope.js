@@ -30,6 +30,53 @@ function seedHasColumnPriceCurrencySql(alias = '') {
   return `nullif(trim(${a}price_currency), '') IS NOT NULL`;
 }
 
+// The offer writers that COPY a seed's money onto catalog_offers (pivota-backend: the seed mirror,
+// the variant-identity backfill, the variant-offer projection). Their row is a projection of the
+// seed, not a read of its own. A Shopify-Markets capture (shopify_markets_us_localization,
+// us_market_capture) reads the store's own US price and is deliberately not on this list.
+const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
+  'external_product_seeds_mirror_v1',
+  'variant_identity_backfill_v1',
+  'variant_offer_projection_v1',
+]);
+
+// A SEED-PROJECTED OFFER IS A PRICE ONLY IN THE CURRENCY ITS SEED'S PAGE READ STATES (Peng
+// 2026-10-19: a price's currency is the buyer market's, never defaulted, never relabelled).
+//
+// Live 2026-10-19, US search_catalog "skintific glow cushion peptide lip serum set": the card read
+// USD 23.56 off one of 20 offers the variant backfill wrote on 09-10 from seed_data.variants. The
+// seed has since been re-read (snapshot AUD 57, price_currency AUD 56, mirror offer AUD 56, and the
+// store's live read answers AUD); nothing retired the 20 USD rows, so an older read of the listing
+// kept answering as a US price.
+//
+// WHICH of the seed's currencies is its currency, measured on prod 2026-10-19 (read-only censuses
+// spccy-1019 / spccy2-1019, active seeds with a live projected offer):
+//   - the SNAPSHOT is the page as read. Where the column disagrees with it, the column is the
+//     writers' old `or 'USD'` default (column USD, snapshot GBP 483 / QAR 367 / EUR 166 / INR 108 /
+//     ZAR 64 seeds), and a USD offer copied off such a column is an amount read in another currency;
+//   - the COLUMN stands in when the seed kept no snapshot currency;
+//   - seed_data.price_currency is NOT evidence: it is a copy the writers default to 'USD' too (16
+//     serving SGD offers, column SGD, snapshot SGD, amount equal to both, seed_data 'USD').
+// So the seed's currency is snapshot, else column. A projected offer in any other currency is
+// refused, and so is one off a seed that states neither. Wherever an offer is picked such a row is
+// not a candidate, and the card is priced by another offer or not at all. Sized on prod the same
+// day (spccy3-1019): see the PR that added this.
+//
+// `productKeyExpr` is the listing the offer prices (SQL, not a value); the seeds are the active ones
+// attached to it (idx on external_product_seeds(attached_product_key, attached_variant_id)). An
+// offer from any other writer, or on a listing with no active attached seed, is not judged here.
+function seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr) {
+  const systems = SEED_PROJECTED_OFFER_SOURCE_SYSTEMS.map((value) => `'${value}'`).join(', ');
+  const seedCurrency = "coalesce(nullif(upper(trim(eps_own.seed_data#>>'{snapshot,price_currency}')), ''), nullif(upper(trim(eps_own.price_currency)), ''))";
+  return `(coalesce(${offerAlias}.source_system, '') NOT IN (${systems})
+          OR NOT EXISTS (
+            SELECT 1 FROM external_product_seeds eps_own
+            WHERE eps_own.attached_product_key = ${productKeyExpr}
+              AND eps_own.status = 'active'
+              AND ${seedCurrency} IS DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, '')))
+          ))`;
+}
+
 // A catalog product may be recommended to a buyer priced in `currencyParam` (a bound placeholder)
 // only when nothing that can price its card says otherwise: not the seed it mirrors (source id),
 // not a seed attached to it (minted lane), not one of its offers. A blank currency on any of them
@@ -110,4 +157,7 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   }
   return clauses.length ? `AND ${clauses.join(' AND ')}` : '';
 }
-module.exports = { buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };
+module.exports = {
+  buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql,
+  seedNativeCurrencySql, seedProjectedOfferInSeedCurrencySql, SEED_OWN_BRAND_SQL, SEED_PROJECTED_OFFER_SOURCE_SYSTEMS,
+};
