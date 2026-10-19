@@ -27,15 +27,18 @@ const { isExternalSeedSupplyMerchantId } = require('./externalSeedLane');
 //    null ref, which never reaches here at all. So the candidate alone proves
 //    nothing about the content lookup that actually failed.
 //
-// 2. settleSignatureSeedNotActive (async) — SETTLED, only if BOTH hold:
-//    - the request's swallowed-failure ledger is clean: no DB error, stage
-//      timeout or swallowed lookup anywhere on this request
-//      (pdpSwallowedFailureLedger). This covers the identity rescue and the
-//      content lookup's own catch-all.
-//    - a FRESH, UNCAUGHT statement over the content lookup's FULL match set finds
-//      no active seed for the id (activeSeedMatchSql below). This covers what a
-//      ledger cannot see: a content lookup answered from another request's
-//      in-flight promise, or from a cache.
+// 2. settleSignatureSeedNotActive (async) — SETTLED. THE GUARANTEE is the fresh
+//    check: a FRESH, UNCAUGHT statement over the content lookup's FULL match set
+//    (ACTIVE_SEED_MATCH_SQL below) must complete and find no active seed for the
+//    id. It cannot be fooled by a swallowed error, a shared in-flight promise, a
+//    stage timeout or a cached negative, because it asks the database itself,
+//    now, and any failure withholds.
+//    The swallowed-failure ledger (pdpSwallowedFailureLedger) is DEFENCE IN
+//    DEPTH, not the guarantee: it also withholds when this request saw a failure
+//    (and skips the fresh check then), but it does not see failures inside
+//    another request's shared in-flight promise, the identity rescue's own
+//    budget timeout, or the 10-minute negative cache.
+//    The canonical ref must also still be the one the signature resolved to.
 //    Any failure, any doubt, or any active match → null, and the 404 stays
 //    reason-less exactly as before.
 //
@@ -92,6 +95,13 @@ const ACTIVE_SEED_MATCH_BRANCHES = Object.freeze([
   ['seed_snapshot_product_id', `seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1`],
 ]);
 
+// The exact half of that match set, in the order the content lookup tries it.
+// fetchExternalSeedProductDetailFromDb iterates THIS list (its `matched_via`
+// labels are these names), so the lookup and the fresh check cannot drift.
+const SEED_EXACT_MATCHES = Object.freeze(
+  ACTIVE_SEED_MATCH_BRANCHES.filter(([name]) => name === 'external_product_id' || name === 'seed_id'),
+);
+
 // The seed_data half of that match set, as ONE guarded disjunction, for
 // fetchExternalSeedProductDetailFromDb's fallback lookup. Each arm carries its
 // `seed_data ? 'k'` guard, so the planner can prove every arm implies its
@@ -142,6 +152,7 @@ async function settleSignatureSeedNotActive(candidate, {
   queryFn,
   isLedgerClean,
   legacyDetailFallbackEnabled = false,
+  canonicalRefUnchanged = false,
   onWithheld = null,
 } = {}) {
   if (!candidate) return null;
@@ -157,6 +168,10 @@ async function settleSignatureSeedNotActive(candidate, {
   // lookup with its own match rules; with it on, the twin above is not the whole
   // match set. Default off in prod; when on, stay reason-less.
   if (legacyDetailFallbackEnabled) return withhold('legacy_detail_fallback_enabled');
+  // The candidate describes the ref the SIGNATURE resolved to. Later stages
+  // (identity reconciliation's refPatch) may move canonicalProductRef; if they
+  // did, the product that failed to build is not the one the candidate is about.
+  if (canonicalRefUnchanged !== true) return withhold('canonical_ref_changed');
   if (typeof isLedgerClean !== 'function' || !isLedgerClean()) return withhold('swallowed_failure_on_request');
   let noActiveSeed = false;
   try {
@@ -172,6 +187,7 @@ async function settleSignatureSeedNotActive(candidate, {
 
 module.exports = {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
+  SEED_EXACT_MATCHES,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
   __internal: { ACTIVE_SEED_MATCH_BRANCHES, ACTIVE_SEED_MATCH_SQL, confirmNoActiveSeedMatches },

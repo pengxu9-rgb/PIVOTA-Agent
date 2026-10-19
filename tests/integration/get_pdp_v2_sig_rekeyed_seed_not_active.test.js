@@ -4,6 +4,7 @@ const {
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
+  SEED_EXACT_MATCHES,
   __internal: { ACTIVE_SEED_MATCH_SQL },
 } = require('../../src/services/signatureSeedNotActive');
 
@@ -304,21 +305,28 @@ describe('settleSignatureSeedNotActive', () => {
 
   test('settles only with a clean ledger and an all-false fresh check', async () => {
     await expect(
-      settleSignatureSeedNotActive(candidate, { queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => true }),
+      settleSignatureSeedNotActive(candidate, {
+        queryFn: answering(NO_ACTIVE_SEED),
+        isLedgerClean: () => true,
+        canonicalRefUnchanged: true,
+      }),
     ).resolves.toEqual(candidate);
   });
 
+  const ok = { isLedgerClean: () => true, canonicalRefUnchanged: true };
   test.each([
-    ['a dirty ledger', { queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => false }],
-    ['no ledger function', { queryFn: answering(NO_ACTIVE_SEED) }],
-    ['no database', { queryFn: null, isLedgerClean: () => true }],
-    ['an active match', { queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: true }), isLedgerClean: () => true }],
-    ['a null column', { queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: null }), isLedgerClean: () => true }],
-    ['no row', { queryFn: async () => ({ rows: [] }), isLedgerClean: () => true }],
-    ['a throwing check', { queryFn: async () => { throw new Error('boom'); }, isLedgerClean: () => true }],
-    ['the legacy detail fallback on', {
-      queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => true, legacyDetailFallbackEnabled: true,
+    ['a dirty ledger', { ...ok, queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => false }],
+    ['no ledger function', { ...ok, queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: undefined }],
+    ['no database', { ...ok, queryFn: null }],
+    ['an active match', { ...ok, queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: true }) }],
+    ['a null column', { ...ok, queryFn: answering({ ...NO_ACTIVE_SEED, seed_id: null }) }],
+    ['no row', { ...ok, queryFn: async () => ({ rows: [] }) }],
+    ['a throwing check', { ...ok, queryFn: async () => { throw new Error('boom'); } }],
+    ['the legacy detail fallback on', { ...ok, queryFn: answering(NO_ACTIVE_SEED), legacyDetailFallbackEnabled: true }],
+    ['a canonical ref that moved after the signature resolved', {
+      ...ok, queryFn: answering(NO_ACTIVE_SEED), canonicalRefUnchanged: false,
     }],
+    ['no canonical-ref answer at all', { queryFn: answering(NO_ACTIVE_SEED), isLedgerClean: () => true }],
   ])('withholds on %s', async (_name, deps) => {
     await expect(settleSignatureSeedNotActive(candidate, deps)).resolves.toBeNull();
   });
@@ -329,7 +337,9 @@ describe('settleSignatureSeedNotActive', () => {
       clean = false;
       return { rows: [NO_ACTIVE_SEED] };
     };
-    await expect(settleSignatureSeedNotActive(candidate, { queryFn, isLedgerClean: () => clean })).resolves.toBeNull();
+    await expect(
+      settleSignatureSeedNotActive(candidate, { queryFn, isLedgerClean: () => clean, canonicalRefUnchanged: true }),
+    ).resolves.toBeNull();
   });
 
   test("the fresh check covers the content lookup's whole match set, active seeds only", () => {
@@ -380,6 +390,26 @@ describe('the seed-detail fallback lookup can use its indexes', () => {
       expect(sql).toContain("seed_data ? 'product_id' AND seed_data->>'product_id' = $1");
       expect(sql).toContain("seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1");
     }
+  });
+
+  test('the exact lookups the server sends are the fresh check\'s exact branches', async () => {
+    const { app, db } = loadServer();
+    install(db, exactSigRow());
+    const sent = [];
+    const base = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params) => {
+      sent.push(norm(sql));
+      return base(sql, params);
+    });
+
+    await pdp(app, { product_id: SIG_ID });
+
+    const detail = sent.filter((sql) => sql.includes('destination_url'));
+    for (const [, clause] of SEED_EXACT_MATCHES) {
+      expect(detail.some((sql) => sql.includes(`AND ${clause} ORDER BY`))).toBe(true);
+      expect(norm(ACTIVE_SEED_MATCH_SQL)).toContain(clause);
+    }
+    expect(SEED_EXACT_MATCHES.map(([name]) => name)).toEqual(['external_product_id', 'seed_id']);
   });
 
   test('the fallback and the fresh check are one match set', () => {
