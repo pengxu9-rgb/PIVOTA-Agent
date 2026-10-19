@@ -5660,7 +5660,7 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
           FROM external_product_seeds
           WHERE status = 'active'
             AND external_product_id = ANY($1::text[])
-          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id
           LIMIT 1
         `,
         [externalProductIds],
@@ -5673,7 +5673,13 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
     for (const externalProductId of externalProductIds) {
       params.push(externalProductId);
       const bind = `$${params.length}`;
-      clauses.push(`(seed_data->>'external_product_id' = ${bind} OR seed_data->>'product_id' = ${bind})`);
+      // Guarded arms: migration 040's expression indexes are partial on
+      // `seed_data ? 'k'`; without the guard the planner cannot use them and
+      // seq-scans every active seed (detoasting seed_data) on a miss.
+      clauses.push(
+        `((seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = ${bind})` +
+          ` OR (seed_data ? 'product_id' AND seed_data->>'product_id' = ${bind}))`,
+      );
     }
     if (!clauses.length) return null;
 
@@ -5684,7 +5690,7 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
         FROM external_product_seeds
         WHERE status = 'active'
           AND (${clauses.join(' OR ')})
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id
         LIMIT 1
       `,
       params,
@@ -6545,6 +6551,7 @@ module.exports = {
       PDP_RECS_CACHE_METRICS.rejected_unavailable_hits = 0;
       PDP_RECS_CACHE_METRICS.skipped_unavailable_sets = 0;
     },
+    loadExternalSeedSemanticRecord,
     normalizeText,
     tokenize,
     jaccard,

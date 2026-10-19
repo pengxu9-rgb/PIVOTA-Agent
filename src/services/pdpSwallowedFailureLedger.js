@@ -23,6 +23,13 @@ const { AsyncLocalStorage } = require('async_hooks');
 //
 // Fail closed: with no ledger active (a caller outside get_pdp_v2, or a context
 // that was lost), `isClean()` is false. "I cannot tell" is never "nothing failed".
+//
+// NOT THE GUARANTEE. A clean ledger does not prove every lookup was clean: a
+// failure inside another request's shared in-flight promise is recorded on THAT
+// request, the identity rescue's own budget timeout is not a db error, and a
+// negative cached for 10 minutes carries no record of how it was produced. The
+// guarantee is settleSignatureSeedNotActive's fresh, uncaught check; this ledger
+// only withholds earlier and cheaper when this request already saw a failure.
 
 const LEDGER = new AsyncLocalStorage();
 
