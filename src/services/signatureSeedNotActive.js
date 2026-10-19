@@ -92,6 +92,23 @@ const ACTIVE_SEED_MATCH_BRANCHES = Object.freeze([
   ['seed_snapshot_product_id', `seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1`],
 ]);
 
+// The seed_data half of that match set, as ONE guarded disjunction, for
+// fetchExternalSeedProductDetailFromDb's fallback lookup. Each arm carries its
+// `seed_data ? 'k'` guard, so the planner can prove every arm implies its
+// partial index's predicate and answers with a BitmapOr over the three indexes.
+// The unguarded `->> = $1 OR …` form it replaces could not use them, and
+// seq-scanned external_product_seeds on every miss: ~2.1s (5.6s under load) per
+// lookup, twice per not-found PDP. That was enough to push the retired-seed 404
+// past agent.pivota.cc's 9s+3s budget (PIVOTA-Agent#2461 follow-up). Local
+// EXPLAIN on a 200k-row copy with migration 040's indexes: 75 ms seq scan →
+// 0.02 ms, the same row chosen, under a forced generic plan too. Built from
+// ACTIVE_SEED_MATCH_BRANCHES so the two cannot drift.
+const SEED_DATA_FALLBACK_MATCH_CLAUSE = `(${ACTIVE_SEED_MATCH_BRANCHES.filter(([name]) =>
+  name.startsWith('seed_data_') || name.startsWith('seed_snapshot_'),
+)
+  .map(([, clause]) => `(${clause})`)
+  .join(' OR ')})`;
+
 const ACTIVE_SEED_MATCH_SQL = `
   SELECT
     ${ACTIVE_SEED_MATCH_BRANCHES.map(
@@ -154,6 +171,7 @@ async function settleSignatureSeedNotActive(candidate, {
 }
 
 module.exports = {
+  SEED_DATA_FALLBACK_MATCH_CLAUSE,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
   __internal: { ACTIVE_SEED_MATCH_BRANCHES, ACTIVE_SEED_MATCH_SQL, confirmNoActiveSeedMatches },
