@@ -182,18 +182,26 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       const likeEscape = (token) => token.replace(/[\\%_]/g, '\\$&');
       const likeBinds = nameTokens.map((token) => bind(`%${likeEscape(token)}%`));
       const regexBind = bind(`^${nameTokens.map((token) => `(?=.*(^| )${reEscape(token)}($| ))`).join('')}`);
+      // THE LIKES ARE ALSO TOP-LEVEL CONJUNCTS, ahead of the CASE that still guards the regex. Inside
+      // the CASE alone they were never index conditions: PostgreSQL takes an index qual only from a
+      // top-level AND of the WHERE, so migration 261's trigram index sat unused and the carrier CTE
+      // was a Seq Scan of catalog_products (prod EXPLAIN 2026-10-19: 43-93 ms, 32.5k rows removed,
+      // on every armed query). Same rows either way: `P AND (CASE WHEN P THEN R ELSE FALSE END)` is
+      // true exactly when the CASE is; it can be NULL where the CASE was FALSE (a NULL name), and a
+      // WHERE drops both. The CASE stays so the regex still runs only behind the prefilter. Both
+      // branches take the same shape, so the stored read differs from today's only in the fold source.
       const carriesAll = (alias) => {
         if (stored) {
-          // The stored fold, read directly: both LIKEs are index conditions on migration 261's
-          // trigram index, and the regex runs on the rows they leave. (A coalesce here would be
-          // correct for NULL rows and would cost the index; see STORED_NAME_NORM_FLAG above.)
+          // The stored fold, read directly, so the hoisted LIKEs are index conditions on migration
+          // 261's trigram index. (A coalesce here would be correct for NULL rows and would cost the
+          // index; see STORED_NAME_NORM_FLAG above.)
           const prefilter = likeBinds.map((b) => `${alias}.name_norm LIKE ${b}`).join(' AND ');
-          return `(CASE WHEN ${prefilter} THEN ${alias}.name_norm ~ ${regexBind} ELSE FALSE END)`;
+          return `(${prefilter} AND (CASE WHEN ${prefilter} THEN ${alias}.name_norm ~ ${regexBind} ELSE FALSE END))`;
         }
         const columns = `concat_ws(' ', ${alias}.title, ${alias}.product_type)`;
         const rawName = `lower(translate(replace(replace(${columns}, '·', ''), '•', ''), '${IDENTITY_ACCENTED}', '${IDENTITY_FOLDED}'))`;
         const prefilter = likeBinds.map((b) => `${rawName} LIKE ${b}`).join(' AND ');
-        return `(CASE WHEN ${prefilter} THEN ${identitySql(columns)} ~ ${regexBind} ELSE FALSE END)`;
+        return `(${prefilter} AND (CASE WHEN ${prefilter} THEN ${identitySql(columns)} ~ ${regexBind} ELSE FALSE END))`;
       };
       const categoryWhere = where;
       // THE CARRIERS ARE KEYS, NOT A COUNT. Found ONCE per statement (a materialised CTE), over every
