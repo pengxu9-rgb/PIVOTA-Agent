@@ -232,6 +232,57 @@ suite('seed-projected offers are prices only in their seed currency, real Postgr
     }
   });
 
+  // PR controller review of #2467: with no active seed behind it, a projected offer is an orphan of a
+  // read nobody holds any more, and is refused like a disagreeing one. Each case starts from the
+  // skintific seed made to AGREE (USD everywhere), so a refusal is the case's doing, not the AUD read.
+  const SKIN_SEED = 'eps_e49ba92834d24bac922e80cf';
+  const AGREEING = { price_amount: '23.56', price_currency: 'USD', snapshot: { price_amount: '23.56', price_currency: 'USD' } };
+  const resetSkintificSeed = async ({ agree }) => {
+    await db.query("DELETE FROM external_product_seeds WHERE id LIKE 'eps_extra_%'");
+    await db.query(`UPDATE external_product_seeds SET status='active', attached_product_key=$1, price_amount=$2, price_currency=$3,
+      seed_data=$4::jsonb WHERE id=$5`, agree
+      ? [SKIN_PK, 23.56, 'USD', JSON.stringify(AGREEING), SKIN_SEED]
+      : [SKIN_PK, 56, 'AUD', JSON.stringify({ price_amount: '23.56', price_currency: 'USD',
+        snapshot: { price_amount: '57.0', price_currency: 'AUD' },
+        variants: [{ variant_id: '42706501599337', price: '23.56', currency: 'USD' }, { variant_id: '42706501632105', price: '23.56', currency: 'USD' }] }), SKIN_SEED]);
+  };
+  const extraSeed = (id, currency) => db.query(
+    `INSERT INTO external_product_seeds(id,external_product_id,attached_product_key,status,market,price_amount,price_currency,seed_data)
+     VALUES ($1,$1,$2,'active','US',23.56,$3,$4::jsonb)`,
+    [id, SKIN_PK, currency, JSON.stringify({ snapshot: { price_currency: currency } })]);
+  test.each([
+    ['its seed retired (status inactive)', false, () => db.query("UPDATE external_product_seeds SET status='inactive' WHERE id=$1", [SKIN_SEED])],
+    ['its seed detached to another listing', false, () => db.query("UPDATE external_product_seeds SET attached_product_key='prod::elsewhere' WHERE id=$1", [SKIN_SEED])],
+    ["its seed's status spelled 'ACTIVE '", true, () => db.query("UPDATE external_product_seeds SET status='ACTIVE ' WHERE id=$1", [SKIN_SEED])],
+    ['a second active seed that reads AUD', false, () => extraSeed('eps_extra_aud', 'AUD')],
+    ['a second active seed that also reads USD', true, () => extraSeed('eps_extra_usd', 'USD')],
+    ['its snapshot stored as a JSON string', false, () => db.query(
+      "UPDATE external_product_seeds SET seed_data = jsonb_set(seed_data, '{snapshot}', to_jsonb($1::text)) WHERE id=$2",
+      [JSON.stringify(AGREEING.snapshot), SKIN_SEED])],
+    ['its seed_data stored as a JSON string', false, () => db.query(
+      'UPDATE external_product_seeds SET seed_data = to_jsonb($1::text) WHERE id=$2', [JSON.stringify(AGREEING), SKIN_SEED])],
+  ])('an agreeing skintific set with %s: served=%s', async (_label, served, mutate) => {
+    try {
+      await resetSkintificSeed({ agree: true });
+      await mutate();
+      const res = await skintificAlone(() => invoke('skintific glow cushion peptide lip serum set'));
+      expect(res.status).toBe(200);
+      const card = (res.body.products || []).find((p) => p.product_key === SKIN_PK);
+      expect(card ? [Number(card.price), card.currency] : null).toEqual(served ? [23.56, 'USD'] : null);
+    } finally {
+      await resetSkintificSeed({ agree: false });
+    }
+  });
+
+  test('the kill switch off restores the pre-guard statement (and with it the incident card)', async () => {
+    process.env.CANONICAL_SEED_PROJECTED_OFFER_CURRENCY_GUARD = 'off';
+    const res = await skintificAlone(() => invoke('skintific glow cushion peptide lip serum set'));
+    expect(sqlCalls).toHaveLength(1);
+    expect(sqlCalls[0].sql).not.toContain('eps_own');
+    const card = (res.body.products || []).find((p) => p.product_key === SKIN_PK);
+    expect(card && [Number(card.price), card.currency]).toEqual([23.56, 'USD']);
+  });
+
   test('a seed that states no currency refuses the offer stamped from it', async () => {
     try {
       await db.query(`UPDATE external_product_seeds SET price_currency=NULL, seed_data='{}'::jsonb WHERE id='eps_ctl_usd'`);

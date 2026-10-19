@@ -38,9 +38,12 @@ const DDL = `
     platform text, source_system text, source_ref text, source_domain text,
     sync_status text, title text, brand text, canonical_url text, image_url text,
     updated_at timestamptz DEFAULT now()
-  );
+  ,
+    category text,
+    product_payload jsonb);
   CREATE TABLE catalog_merchants (merchant_id text, merchant_name text, status text);
-  CREATE TABLE external_product_seeds (external_product_id text, status text, attached_product_key text);
+  CREATE TABLE external_product_seeds (external_product_id text, status text, attached_product_key text,
+    price_currency text, seed_data jsonb);
   CREATE TABLE index_pipeline_state (content_key text, serving_eligible boolean);
   CREATE TABLE catalog_skus (sku_key text, product_key text);
   CREATE TABLE catalog_offers (
@@ -76,9 +79,14 @@ function fixtureSql() {
       ('merch_obs_C:seed_C', 'merch_obs_C', 'seed_C', 'external_seed', 'brand', 'sig_C', 'approved', 0.95, TRUE, FALSE);
 
     INSERT INTO external_product_seeds VALUES
-      ('seed_A', 'active', 'pk_A_minted'),
-      ('seed_B', 'active', 'pk_B_minted'),
-      ('seed_C', 'active', 'pk_C_minted');
+      ('seed_A', 'active', 'pk_A_minted', 'USD', NULL),
+      ('seed_B', 'active', 'pk_B_minted', 'USD', NULL),
+      ('seed_C', 'active', 'pk_C_minted', 'USD', NULL),
+      -- prod's shape (census spccy5-1019b: 7 live projected offers of 26k sit on a listing with no
+      -- active attached seed): each mirror listing carries the active seed its offers were copied off.
+      ('seed_A', 'active', 'pk_A_mirror', 'USD', '{"snapshot": {"price_currency": "USD"}}'),
+      ('seed_B', 'active', 'pk_B_mirror', 'USD', '{"snapshot": {"price_currency": "USD"}}'),
+      ('seed_C', 'active', 'pk_C_mirror', 'USD', '{"snapshot": {"price_currency": "USD"}}');
 
     -- Scenario A (finding #1): mirror live+ELIGIBLE, minted live+NOT-eligible.
     -- Admission is satisfied by the mirror arm; the pick MUST be the mirror.
@@ -183,6 +191,22 @@ describeMaybe('group-member offer join — executed SQL against real Postgres', 
     expect(m.source_payload.canonical_url).toBe('https://branda.com/mirror');
     expect(m.source_payload.price).toEqual({ amount: 15, currency: 'USD' });
     expect(m.source_payload.catalog_offer_v1.source_ref).toBe('mirror_A');
+  });
+
+  // 2026-10-19 (#2467): the mirror's USD offer is a price only in its seed's own currency. Re-read in
+  // AUD, the seed leaves the member with no offer to price it by, never "USD 15" (skintific's shape).
+  test('a mirror offer copied off a seed since re-read in AUD does not price the member', async () => {
+    await client.query(`UPDATE external_product_seeds SET price_currency = 'AUD',
+      seed_data = '{"snapshot": {"price_currency": "AUD"}}' WHERE attached_product_key = 'pk_A_mirror'`);
+    try {
+      const members = await fetchMember('sig_A');
+      const prices = members.map((m) => m.source_payload && m.source_payload.price).filter(Boolean);
+      expect(prices).not.toContainEqual({ amount: 15, currency: 'USD' });
+      expect(members.map((m) => m.source_payload?.catalog_offer_v1?.offer_id)).not.toContain('off_A_mirror');
+    } finally {
+      await client.query(`UPDATE external_product_seeds SET price_currency = 'USD',
+        seed_data = '{"snapshot": {"price_currency": "USD"}}' WHERE attached_product_key = 'pk_A_mirror'`);
+    }
   });
 
   test('verified base case: live+eligible minted beats a newer-but-retired mirror', async () => {

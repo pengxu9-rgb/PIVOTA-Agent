@@ -50,31 +50,68 @@ const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
 // kept answering as a US price.
 //
 // WHICH of the seed's currencies is its currency, measured on prod 2026-10-19 (read-only censuses
-// spccy-1019 / spccy2-1019, active seeds with a live projected offer):
+// spccy-1019 .. spccy3-1019, active seeds with a live projected offer):
 //   - the SNAPSHOT is the page as read. Where the column disagrees with it, the column is the
 //     writers' old `or 'USD'` default (column USD, snapshot GBP 483 / QAR 367 / EUR 166 / INR 108 /
 //     ZAR 64 seeds), and a USD offer copied off such a column is an amount read in another currency;
-//   - the COLUMN stands in when the seed kept no snapshot currency;
+//   - the COLUMN stands in when the seed kept no snapshot (absent or JSON null) or a snapshot with no
+//     currency;
+//   - a seed_data or snapshot stored as anything but an object (a JSON string) hides the page read,
+//     so it states NO currency; it is not parsed here, where one malformed string would abort recall;
 //   - seed_data.price_currency is NOT evidence: it is a copy the writers default to 'USD' too (16
 //     serving SGD offers, column SGD, snapshot SGD, amount equal to both, seed_data 'USD').
-// So the seed's currency is snapshot, else column. A projected offer in any other currency is
-// refused, and so is one off a seed that states neither. Wherever an offer is picked such a row is
-// not a candidate, and the card is priced by another offer or not at all. Sized on prod the same
-// day (spccy3-1019): see the PR that added this.
 //
-// `productKeyExpr` is the listing the offer prices (SQL, not a value); the seeds are the active ones
-// attached to it (idx on external_product_seeds(attached_product_key, attached_variant_id)). An
-// offer from any other writer, or on a listing with no active attached seed, is not judged here.
+// So a projected offer is a price only when an ACTIVE seed (status compared case-insensitively) is
+// attached to its listing AND every active attached seed states the offer's currency. An orphan --
+// its seed retired, detached, or superseded (a superseded seed keeps its attached key as a
+// tombstone, but not its status) -- has no read behind it and is refused too (PR controller review
+// of #2467). Wherever an offer is picked such a row is not a candidate, and the card is priced by
+// another offer or not at all.
+//
+// `productKeyExpr` is the listing the offer prices (SQL, not a value); the seeds are probed through
+// idx on external_product_seeds(attached_product_key, attached_variant_id). An offer from any other
+// writer is not judged here.
+function seedCurrencySql(alias) {
+  const column = `nullif(upper(trim(${alias}.price_currency)), '')`;
+  const snapshot = `${alias}.seed_data->'snapshot'`;
+  return `(CASE
+              WHEN ${alias}.seed_data IS NOT NULL AND jsonb_typeof(${alias}.seed_data) NOT IN ('object', 'null') THEN NULL
+              WHEN jsonb_typeof(${snapshot}) = 'object'
+                THEN coalesce(nullif(upper(trim(${alias}.seed_data#>>'{snapshot,price_currency}')), ''), ${column})
+              WHEN ${snapshot} IS NULL OR jsonb_typeof(${snapshot}) = 'null' THEN ${column}
+            END)`;
+}
+
 function seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr) {
   const systems = SEED_PROJECTED_OFFER_SOURCE_SYSTEMS.map((value) => `'${value}'`).join(', ');
-  const seedCurrency = "coalesce(nullif(upper(trim(eps_own.seed_data#>>'{snapshot,price_currency}')), ''), nullif(upper(trim(eps_own.price_currency)), ''))";
+  const activeSeed = `eps_own.attached_product_key = ${productKeyExpr}
+              AND lower(trim(coalesce(eps_own.status, ''))) = 'active'`;
   return `(coalesce(${offerAlias}.source_system, '') NOT IN (${systems})
-          OR NOT EXISTS (
+          OR (EXISTS (
             SELECT 1 FROM external_product_seeds eps_own
-            WHERE eps_own.attached_product_key = ${productKeyExpr}
-              AND eps_own.status = 'active'
-              AND ${seedCurrency} IS DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, '')))
-          ))`;
+            WHERE ${activeSeed}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM external_product_seeds eps_own
+            WHERE ${activeSeed}
+              AND ${seedCurrencySql('eps_own')} IS DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, '')))
+          )))`;
+}
+
+// KILL SWITCH, default ON (a currency-correctness rule: silence keeps it). Any of 0/false/off/no/
+// disabled in CANONICAL_SEED_PROJECTED_OFFER_CURRENCY_GUARD turns the guard off at every site, read
+// per call, and each site's statement is then byte-identical to the one before the guard existed.
+const SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG = 'CANONICAL_SEED_PROJECTED_OFFER_CURRENCY_GUARD';
+const GUARD_OFF_VALUES = new Set(['0', 'false', 'off', 'no', 'disabled']);
+function isSeedProjectedOfferCurrencyGuardEnabled(env = process.env) {
+  return !GUARD_OFF_VALUES.has(String(env[SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG] ?? '').trim().toLowerCase());
+}
+
+// The guard as a WHERE conjunct for a site: `${prefix}AND (...)`, or '' with the kill switch off.
+// `prefix` is what precedes the AND (a newline and the site's indent), so a site interpolates it at
+// the END of its previous line and "off" adds not even a blank line.
+function seedProjectedOfferCurrencyGuardSql(offerAlias, productKeyExpr, { prefix = '\n        ', env = process.env } = {}) {
+  if (!isSeedProjectedOfferCurrencyGuardEnabled(env)) return '';
+  return `${prefix}AND ${seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr)}`;
 }
 
 // A catalog product may be recommended to a buyer priced in `currencyParam` (a bound placeholder)
@@ -159,5 +196,7 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
 }
 module.exports = {
   buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql,
-  seedNativeCurrencySql, seedProjectedOfferInSeedCurrencySql, SEED_OWN_BRAND_SQL, SEED_PROJECTED_OFFER_SOURCE_SYSTEMS,
+  seedNativeCurrencySql, seedProjectedOfferInSeedCurrencySql, seedProjectedOfferCurrencyGuardSql,
+  isSeedProjectedOfferCurrencyGuardEnabled, SEED_OWN_BRAND_SQL, SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG,
+  SEED_PROJECTED_OFFER_SOURCE_SYSTEMS,
 };

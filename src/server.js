@@ -4,7 +4,7 @@ if (process.env.GATEWAY_STORED_CATALOG_REHEARSAL != null) {
   require('dotenv').config();
   require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
 }
-const { buildSeedSearchOfferScope, seedHasPriceCurrencySql } = require('./services/seedSearchOfferScope');
+const { buildSeedSearchOfferScope, seedHasPriceCurrencySql, seedProjectedOfferCurrencyGuardSql } = require('./services/seedSearchOfferScope');
 const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
@@ -5959,7 +5959,7 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
           o.source_ref
         FROM catalog_skus s
         JOIN catalog_offers o ON o.sku_key = s.sku_key
-        WHERE s.product_key = cp_offer.product_key
+        WHERE s.product_key = cp_offer.product_key${seedProjectedOfferCurrencyGuardSql('o', 'cp_offer.product_key')}
         ORDER BY
           CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
           o.updated_at DESC NULLS LAST,
@@ -6011,7 +6011,10 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
 // no query is sent at all), members with no catalog offer ref, members whose payload carries
 // variants (their per-variant prices are the payload's own and are not re-priced here), and
 // members with no live, priced offer in the buyer's currency (the existing filter decides them).
-const GROUP_MEMBER_CURRENCY_OFFER_SQL = `
+// A function, not a constant, so the seed-currency guard's kill switch is read per call; the guard
+// itself (seedSearchOfferScope.seedProjectedOfferInSeedCurrencySql) keeps a refused USD projected row
+// from winning the re-pick for a nourwish-shaped member (PR controller review of #2467).
+const groupMemberCurrencyOfferSql = () => `
   SELECT DISTINCT ON (picked.sku_key)
     picked.sku_key AS picked_sku_key,
     o.offer_id,
@@ -6026,7 +6029,7 @@ const GROUP_MEMBER_CURRENCY_OFFER_SQL = `
   WHERE picked.sku_key = ANY($1::text[])
     AND o.suppressed_at IS NULL
     AND upper(trim(coalesce(o.currency, ''))) = $2
-    AND COALESCE(o.merchant_effective_price, o.estimated_best_price, o.list_price) > 0
+    AND COALESCE(o.merchant_effective_price, o.estimated_best_price, o.list_price) > 0${seedProjectedOfferCurrencyGuardSql('o', 's.product_key', { prefix: '\n    ' })}
   ORDER BY
     picked.sku_key,
     CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
@@ -6067,7 +6070,7 @@ async function rescopeGroupMemberOffersToCurrency(members, servingCurrency, { qu
   if (!skuKeys.size) return members;
   let rows = [];
   try {
-    const result = await queryFn(GROUP_MEMBER_CURRENCY_OFFER_SQL, [[...skuKeys], currency]);
+    const result = await queryFn(groupMemberCurrencyOfferSql(), [[...skuKeys], currency]);
     rows = Array.isArray(result?.rows) ? result.rows : [];
   } catch (err) {
     logger.debug?.({ err: err?.message || String(err) }, 'group member currency offer re-pick failed');
@@ -6682,7 +6685,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                   o.source_ref
                 FROM catalog_skus s
                 JOIN catalog_offers o ON o.sku_key = s.sku_key
-                WHERE s.product_key = cp_offer.product_key
+                WHERE s.product_key = cp_offer.product_key${seedProjectedOfferCurrencyGuardSql('o', 'cp_offer.product_key', { prefix: '\n                ' })}
                 ORDER BY
                   CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
                   o.updated_at DESC NULLS LAST,

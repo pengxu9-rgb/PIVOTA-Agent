@@ -8,6 +8,7 @@ const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
 const { refKeyMatchSql, productGroupRefKeyMatchSql } = require('../services/relationshipGraphRefKeySql');
+const { seedProjectedOfferCurrencyGuardSql } = require('../services/seedSearchOfferScope');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
 const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
 const { EXTERNAL_SEED_PLATFORM } = require('../services/pdpRenderability');
@@ -1657,7 +1658,7 @@ async function listCatalogOfferPricesForRefs(refs = [], { queryFn = query } = {}
         FROM matched m
         JOIN catalog_offers o ON o.product_key = m.product_key
         WHERE o.suppressed_at IS NULL
-          AND o.currency IS NOT NULL
+          AND o.currency IS NOT NULL${seedProjectedOfferCurrencyGuardSql('o', 'o.product_key', { prefix: '\n          ' })}
         LIMIT 5000
       `,
       [inputs],
