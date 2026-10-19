@@ -173,6 +173,7 @@ const {
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
 const {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
+  SEED_DATA_UNGUARDED_MATCH_CLAUSE,
   SEED_EXACT_MATCHES,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
@@ -7870,8 +7871,10 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
   // unguarded `->> = $1 OR …` detoasts every row's seed_data on a miss.
   //   1. ACTIVE rows, guarded arms → BitmapOr over the partial indexes.
   //   2. Only if none: NON-active rows. No index covers them, but the cheap
-  //      status filter runs before any detoast, so only the (few) non-active
-  //      rows pay for seed_data.
+  //      status filter runs before any detoast, so only the non-active rows pay
+  //      for seed_data. UNGUARDED arms here: with no index to enable, the
+  //      `? 'k'` guard only adds a second pass over each detoasted value
+  //      (SEED_DATA_UNGUARDED_MATCH_CLAUSE).
   // Clause precedence is unchanged (the first clause with ANY row wins), and
   // within a clause an active row still beats a non-active one, then recency,
   // then id (a deterministic tiebreak the single statement lacked).
@@ -7891,17 +7894,20 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
       id
     LIMIT 1
   `;
-  const statusClauses = [`status = 'active'`, `status IS DISTINCT FROM 'active'`];
-
   try {
     let row = null;
+    // [active-step clause, non-active-step clause] per match, in precedence
+    // order. Only the seed_data match differs between the two steps.
     const matchClauses = [
-      ...SEED_EXACT_MATCHES.map(([, clause]) => clause),
-      SEED_DATA_FALLBACK_MATCH_CLAUSE,
+      ...SEED_EXACT_MATCHES.map(([, clause]) => [clause, clause]),
+      [SEED_DATA_FALLBACK_MATCH_CLAUSE, SEED_DATA_UNGUARDED_MATCH_CLAUSE],
     ];
 
-    for (const matchClause of matchClauses) {
-      for (const statusClause of statusClauses) {
+    for (const [activeClause, nonActiveClause] of matchClauses) {
+      for (const [statusClause, matchClause] of [
+        [`status = 'active'`, activeClause],
+        [`status IS DISTINCT FROM 'active'`, nonActiveClause],
+      ]) {
         const res = await query(
           selectSql.replace('%%STATUS_CLAUSE%%', statusClause).replace('%%MATCH_CLAUSE%%', matchClause),
           [productId],
