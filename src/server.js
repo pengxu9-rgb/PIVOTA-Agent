@@ -173,6 +173,8 @@ const {
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
 const {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
+  SEED_DATA_UNGUARDED_MATCH_CLAUSE,
+  SEED_EXACT_MATCHES,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
 } = require('./services/signatureSeedNotActive');
@@ -5455,17 +5457,16 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     FROM external_product_seeds
     WHERE status = 'active'
       AND %%MATCH_CLAUSE%%
-    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id
     LIMIT 1
   `;
 
   try {
     let matchedVia = 'external_product_id';
     let row = null;
-    const exactMatches = [
-      ['external_product_id', 'external_product_id = $1'],
-      ['seed_id', 'id::text = $1'],
-    ];
+    // Built from the fresh check's match set (signatureSeedNotActive.js), so the
+    // two cannot drift.
+    const exactMatches = SEED_EXACT_MATCHES;
 
     for (const [label, matchClause] of exactMatches) {
       const res = await query(selectColumns.replace('%%MATCH_CLAUSE%%', matchClause), [productId]);
@@ -7863,6 +7864,20 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
   const productId = String(args?.productId || '').trim();
   if (!productId) return null;
 
+  // Two statements per match clause instead of one, same answer. The original
+  // single statement (no status filter, active ranked first) could not use any
+  // index for the seed_data paths: migration 040's expression indexes are
+  // partial on `status = 'active' AND seed_data ? 'k'`, and an unfiltered,
+  // unguarded `->> = $1 OR …` detoasts every row's seed_data on a miss.
+  //   1. ACTIVE rows, guarded arms → BitmapOr over the partial indexes.
+  //   2. Only if none: NON-active rows. No index covers them, but the cheap
+  //      status filter runs before any detoast, so only the non-active rows pay
+  //      for seed_data. UNGUARDED arms here: with no index to enable, the
+  //      `? 'k'` guard only adds a second pass over each detoasted value
+  //      (SEED_DATA_UNGUARDED_MATCH_CLAUSE).
+  // Clause precedence is unchanged (the first clause with ANY row wins), and
+  // within a clause an active row still beats a non-active one, then recency,
+  // then id (a deterministic tiebreak the single statement lacked).
   const selectSql = `
     SELECT
       id,
@@ -7871,32 +7886,35 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
       updated_at,
       created_at
     FROM external_product_seeds
-    WHERE %%MATCH_CLAUSE%%
+    WHERE %%STATUS_CLAUSE%%
+      AND %%MATCH_CLAUSE%%
     ORDER BY
-      CASE WHEN status = 'active' THEN 0 ELSE 1 END,
       updated_at DESC NULLS LAST,
-      created_at DESC NULLS LAST
+      created_at DESC NULLS LAST,
+      id
     LIMIT 1
   `;
-
   try {
     let row = null;
+    // [active-step clause, non-active-step clause] per match, in precedence
+    // order. Only the seed_data match differs between the two steps.
     const matchClauses = [
-      'external_product_id = $1',
-      'id::text = $1',
-      `(
-        seed_data->>'external_product_id' = $1
-        OR seed_data->>'product_id' = $1
-        OR seed_data->'snapshot'->>'product_id' = $1
-      )`,
+      ...SEED_EXACT_MATCHES.map(([, clause]) => [clause, clause]),
+      [SEED_DATA_FALLBACK_MATCH_CLAUSE, SEED_DATA_UNGUARDED_MATCH_CLAUSE],
     ];
 
-    for (const matchClause of matchClauses) {
-      const res = await query(
-        selectSql.replace('%%MATCH_CLAUSE%%', matchClause),
-        [productId],
-      );
-      row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    for (const [activeClause, nonActiveClause] of matchClauses) {
+      for (const [statusClause, matchClause] of [
+        [`status = 'active'`, activeClause],
+        [`status IS DISTINCT FROM 'active'`, nonActiveClause],
+      ]) {
+        const res = await query(
+          selectSql.replace('%%STATUS_CLAUSE%%', statusClause).replace('%%MATCH_CLAUSE%%', matchClause),
+          [productId],
+        );
+        row = Array.isArray(res?.rows) ? res.rows[0] : null;
+        if (row) break;
+      }
       if (row) break;
     }
 
@@ -43620,6 +43638,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Set only when the exact sig row's own seed is settled non-active; read
           // ONLY by the final not-found exit (see readSignatureSeedNotActive).
           let signatureSeedNotActiveDetails = null;
+          // The ref that candidate is about, to check it is still the canonical one at the exit.
+          let signatureSeedNotActiveRef = null;
           let signatureExternalSeedPrecheckProduct = null;
           let signaturePrefetchedServingEligibility = null;
           let pdpServingEligibility = null;
@@ -43751,6 +43771,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   resolvedMerchantId: signatureResolvedMerchantId,
                   resolvedProductId: signatureResolvedProductId,
                 });
+                signatureSeedNotActiveRef = signatureSeedNotActiveDetails
+                  ? {
+                      merchant_id: String(signatureResolvedMerchantId || '').trim(),
+                      product_id: String(signatureResolvedProductId || '').trim(),
+                    }
+                  : null;
                 if (
                   signatureResolvedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
                   isExternalSeedProductId(signatureResolvedProductId) &&
@@ -44860,6 +44886,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryFn: process.env.DATABASE_URL ? query : null,
               isLedgerClean: pdpFailureLedgerIsClean,
               legacyDetailFallbackEnabled: PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED,
+              canonicalRefUnchanged:
+                Boolean(signatureSeedNotActiveRef) &&
+                String(canonicalProductRef?.merchant_id || '').trim() === signatureSeedNotActiveRef.merchant_id &&
+                String(canonicalProductRef?.product_id || '').trim() === signatureSeedNotActiveRef.product_id,
               onWithheld: (why) =>
                 logger.info(
                   {
@@ -53264,6 +53294,7 @@ module.exports._debug = {
   fetchProductDetailForOffers,
   PRODUCT_DETAIL_INFLIGHT,
   fetchExternalSeedProductDetailFromDb,
+  fetchExternalSeedRouteStatusFromDb,
   fetchExternalSeedSimilarCardSourcesFromDb,
   collectCatalogPdpContentSourceProductIds,
   classifyPdpV2ModuleHealth,
