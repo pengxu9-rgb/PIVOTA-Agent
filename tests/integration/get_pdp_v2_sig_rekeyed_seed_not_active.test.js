@@ -3,6 +3,7 @@ const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../../src/services/catalogEn
 const {
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
+  SEED_DATA_FALLBACK_MATCH_CLAUSE,
   __internal: { ACTIVE_SEED_MATCH_SQL },
 } = require('../../src/services/signatureSeedNotActive');
 
@@ -345,6 +346,47 @@ describe('settleSignatureSeedNotActive', () => {
     expect(sql.match(/status = 'active'/g)).toHaveLength(5);
     // No OR: each branch keeps its own (partial) index.
     expect(sql).not.toMatch(/\bOR\b/);
+  });
+});
+
+describe('the seed-detail fallback lookup can use its indexes', () => {
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  // Prod 2026-10-19 on gateway-00735-koh: the retired-seed 404 spent 5.6s in
+  // precheck_entry_product and again in fetch_canonical_product, the same
+  // unguarded `seed_data->>… = $1 OR …` lookup seq-scanning each time, so the
+  // 404 took 11-13s and agent.pivota.cc gave up at 9s+3s with a 500.
+  test('every seed_data arm the server sends carries its `seed_data ? k` guard', async () => {
+    const { app, db } = loadServer();
+    install(db, exactSigRow());
+    const sent = [];
+    const base = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params) => {
+      sent.push(norm(sql));
+      return base(sql, params);
+    });
+
+    const res = await pdp(app, { product_id: SIG_ID });
+
+    expect(res.status).toBe(404);
+    const fallbacks = sent.filter((sql) => sql.includes('destination_url') && sql.includes("seed_data->>'product_id' = $1"));
+    // The precheck and fetch_canonical_product both miss through it.
+    expect(fallbacks.length).toBeGreaterThanOrEqual(1);
+    for (const sql of fallbacks) {
+      expect(sql).toContain(norm(SEED_DATA_FALLBACK_MATCH_CLAUSE));
+      expect(sql).toContain("seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = $1");
+      expect(sql).toContain("seed_data ? 'product_id' AND seed_data->>'product_id' = $1");
+      expect(sql).toContain("seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1");
+    }
+  });
+
+  test('the fallback and the fresh check are one match set', () => {
+    const check = norm(ACTIVE_SEED_MATCH_SQL);
+    for (const arm of norm(SEED_DATA_FALLBACK_MATCH_CLAUSE).slice(2, -2).split(') OR (')) {
+      expect(check).toContain(arm);
+    }
   });
 });
 

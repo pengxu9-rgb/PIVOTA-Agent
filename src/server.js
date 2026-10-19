@@ -172,6 +172,7 @@ const {
 } = require('./services/pdpRenderability');
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
 const {
+  SEED_DATA_FALLBACK_MATCH_CLAUSE,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
 } = require('./services/signatureSeedNotActive');
@@ -5476,19 +5477,15 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     }
 
     // TWIN: signatureSeedNotActive.js ACTIVE_SEED_MATCH_BRANCHES restates this
-    // lookup's whole match set (both exact matches and these three paths). Change
-    // one, change both.
+    // lookup's whole match set. The seed_data fallback below is BUILT from it; the
+    // two exact matches above are restated there. Change one, change both.
     if (!row) {
       matchedVia = 'seed_json_product_id';
+      // Guarded arms, so this can use migration 040's partial indexes instead of
+      // seq-scanning the table on every miss. Same match set, same row. See
+      // SEED_DATA_FALLBACK_MATCH_CLAUSE.
       const res = await query(
-        selectColumns.replace(
-          '%%MATCH_CLAUSE%%',
-          `(
-            seed_data->>'external_product_id' = $1
-            OR seed_data->>'product_id' = $1
-            OR seed_data->'snapshot'->>'product_id' = $1
-          )`,
-        ),
+        selectColumns.replace('%%MATCH_CLAUSE%%', SEED_DATA_FALLBACK_MATCH_CLAUSE),
         [productId],
       );
       row = Array.isArray(res?.rows) ? res.rows[0] : null;
