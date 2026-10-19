@@ -171,6 +171,16 @@ const {
   pdpRouteResolvableFromRow,
 } = require('./services/pdpRenderability');
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
+const {
+  readSignatureSeedNotActive,
+  settleSignatureSeedNotActive,
+} = require('./services/signatureSeedNotActive');
+const {
+  beginPdpFailureLedger,
+  noteSwallowedPdpFailure,
+  pdpFailureLedgerIsClean,
+  swallowPdpFailure,
+} = require('./services/pdpSwallowedFailureLedger');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -5465,6 +5475,9 @@ async function fetchExternalSeedProductDetailFromDb(args) {
       }
     }
 
+    // TWIN: signatureSeedNotActive.js ACTIVE_SEED_MATCH_BRANCHES restates this
+    // lookup's whole match set (both exact matches and these three paths). Change
+    // one, change both.
     if (!row) {
       matchedVia = 'seed_json_product_id';
       const res = await query(
@@ -5504,6 +5517,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     ) {
       return null;
     }
+    noteSwallowedPdpFailure('external_seed_detail_db');
     logger.warn(
       { err: err?.message || String(err), productId },
       'Failed to hydrate external seed product detail from DB',
@@ -9357,7 +9371,9 @@ async function fetchProductDetailForOffers(args) {
         return seedProduct;
       }
       if (PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED) {
-        const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
+        const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(
+          swallowPdpFailure('external_seed_legacy_detail'),
+        );
         if (fromExternalSeeds) {
           const normalizedExternalSeed = attachProductDetailSource(
             normalizeProductDetailPrice(
@@ -15985,6 +16001,7 @@ async function withStageBudget(promise, timeoutMs, timeoutLabel) {
           const err = new Error(`Stage budget exceeded (${timeoutLabel || 'stage'}): ${budgetMs}ms`);
           err.code = 'STAGE_TIMEOUT';
           err.stage = timeoutLabel || 'stage';
+          noteSwallowedPdpFailure(`stage_timeout:${err.stage}`);
           reject(err);
         }, budgetMs);
       }),
@@ -43250,6 +43267,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 
 	  if (operation === 'get_pdp_v2') {
+      // Fresh per request: records every failure this request swallows, so a
+      // settled not-found reason is only ever given after CLEAN misses.
+      beginPdpFailureLedger();
 	    const pdpV2StartedAt = Date.now();
 	    // The currency every similar product and every sibling offer on this page must be priced in:
 	    // the invoke door's own read of the buyer's market (silence = the default market, USD).
@@ -43554,6 +43574,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 productGroupId: subjectGroupId,
                 queryFn: query,
               }).catch((err) => {
+                noteSwallowedPdpFailure('get_pdp_v2');
                 logger.warn(
                   { err: err?.message || String(err), product_group_id: subjectGroupId },
                   'get_pdp_v2 product_group subject signature lookup failed; keeping the group lane',
@@ -43599,6 +43620,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let requestedSigDedupeKeeperSigId = '';
           let signatureCatalogIdentity = null;
           let signatureExternalSeedRouteStatus = null;
+          // Set only when the exact sig row's own seed is settled non-active; read
+          // ONLY by the final not-found exit (see readSignatureSeedNotActive).
+          let signatureSeedNotActiveDetails = null;
           let signatureExternalSeedPrecheckProduct = null;
           let signaturePrefetchedServingEligibility = null;
           let pdpServingEligibility = null;
@@ -43618,6 +43642,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypassCache,
             });
         } catch (err) {
+          noteSwallowedPdpFailure('get_pdp_v2');
           if (
             err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
             err?.code !== 'STAGE_TIMEOUT'
@@ -43722,6 +43747,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               if (signatureProductRef.source === 'catalog_products_signature_exact') {
                 signatureCatalogIdentity = buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
                   requestedSigId: requestedPivotaSignatureId,
+                  resolvedMerchantId: signatureResolvedMerchantId,
+                  resolvedProductId: signatureResolvedProductId,
+                });
+                signatureSeedNotActiveDetails = readSignatureSeedNotActive(signatureProductRef, {
                   resolvedMerchantId: signatureResolvedMerchantId,
                   resolvedProductId: signatureResolvedProductId,
                 });
@@ -43837,6 +43866,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          bypassCache: false,
 	          servingCurrency: pdpServingCurrency,
 	        }).catch((err) => {
+	          noteSwallowedPdpFailure('get_pdp_v2');
 	          logger.debug?.(
 	            {
 	              err: err?.message || String(err),
@@ -44000,6 +44030,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let identityGroupAlias = await resolveLivePdpIdentityGroupForPdp({
             productGroupId: entryProductId,
           }).catch((err) => {
+            noteSwallowedPdpFailure('get_pdp_v2');
             logger.warn(
               {
                 err: err?.message || String(err),
@@ -44014,6 +44045,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               productId: entryProductId,
               queryFn: query,
             }).catch((err) => {
+              noteSwallowedPdpFailure('get_pdp_v2');
               logger.warn(
                 {
                   err: err?.message || String(err),
@@ -44058,6 +44090,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            );
 	          }
 	        } catch (err) {
+	          noteSwallowedPdpFailure('get_pdp_v2');
 	          if (err?.code === 'STAGE_TIMEOUT') {
 	            logger.warn(
 	              {
@@ -44145,7 +44178,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            merchantId: requestedMerchantId,
 	            variantId,
 	            checkoutToken,
-	          }).catch(() => null);
+	          }).catch(swallowPdpFailure('get_pdp_v2'));
 	          const normalizedVariant = normalizeAgentProductDetailResponse(rawVariant);
 	          const variantProduct =
 	            normalizedVariant && typeof normalizedVariant === 'object' ? normalizedVariant.product : null;
@@ -44154,6 +44187,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : '';
 	          if (resolvedProductId) productId = resolvedProductId;
 	        } catch {
+	          noteSwallowedPdpFailure('get_pdp_v2');
 	          // Ignore and fall back to product_id/offer_id flow.
 	        }
 	      }
@@ -44195,6 +44229,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            productGroupId: subjectId,
 	            queryFn: query,
 	          }).catch((err) => {
+	            noteSwallowedPdpFailure('get_pdp_v2');
 	            logger.warn(
 	              {
 	                err: err?.message || String(err),
@@ -44208,7 +44243,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            fetchedGroup = await fetchProductGroupMembersFromUpstream({
 	              productGroupId: subjectId,
               checkoutToken,
-            }).catch(() => null);
+            }).catch(swallowPdpFailure('get_pdp_v2'));
 	          }
           const membersRaw = Array.isArray(fetchedGroup?.members)
             ? fetchedGroup.members
@@ -44241,6 +44276,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : 'subject_product_group';
           }
         } catch {
+          noteSwallowedPdpFailure('get_pdp_v2');
           // Ignore and fall back to resolve-by-product-id.
 	        }
 	      }
@@ -44252,7 +44288,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
 	            productGroupId: offerProductGroupId,
 	            checkoutToken,
-	          }).catch(() => null);
+	          }).catch(swallowPdpFailure('get_pdp_v2'));
 	          const membersRaw = Array.isArray(fetchedGroup?.members)
 	            ? fetchedGroup.members
 	            : Array.isArray(fetchedGroup?.items)
@@ -44282,6 +44318,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               identityResolutionSource = 'offer_product_group';
 	          }
 	        } catch {
+	          noteSwallowedPdpFailure('get_pdp_v2');
 	          // Ignore and fall back to resolve-by-product-id.
 	        }
 	      }
@@ -44294,6 +44331,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          merchantId: requestedMerchantId || null,
 	          queryFn: query,
 	        }).catch((err) => {
+	          noteSwallowedPdpFailure('get_pdp_v2');
 	          logger.warn(
 	            {
 	              err: err?.message || String(err),
@@ -44390,7 +44428,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              productId,
 	              checkoutToken,
 	              bypassCache,
-	            }).catch(() => null)
+	            }).catch(swallowPdpFailure('get_pdp_v2'))
 	        : Promise.resolve(null);
 
 	      const canSkipExternalSeedUpstreamGroupResolve =
@@ -44415,7 +44453,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          checkoutToken,
 	          bypassCache,
 	          debug: false,
-	        }).catch(() => null);
+	        }).catch(swallowPdpFailure('get_pdp_v2'));
 	        if (
 	          attemptUnscopedExternalSeedResolve &&
 	          externalSeedRouteProductId &&
@@ -44428,6 +44466,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
 	            'pdp_external_seed_unscoped_group',
 	          ).catch((err) => {
+	            noteSwallowedPdpFailure('get_pdp_v2');
 	            if (err?.code === 'STAGE_TIMEOUT') {
 	              pdpV2ProductGroupResolveBudgetExceeded = true;
 	              pdpV2ProductGroupResolveMode = 'timeout_unscoped_external_seed';
@@ -44687,6 +44726,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   );
                 }
               } catch (_) {
+                noteSwallowedPdpFailure('get_pdp_v2');
                 // fail-closed: keep the original (blocked) decision.
               }
             }
@@ -44776,7 +44816,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          productId: rescueProductId,
 	          canonicalProduct: null,
 	          bypassCache,
-	        }).catch(() => null);
+	        }).catch(swallowPdpFailure('get_pdp_v2'));
 	        // The requested ref may name a lane with no identity listing of its own
 	        // (e.g. a url_audit lane member) while identity resolution already
 	        // canonicalized onto a sibling lane that IS live-read enabled. Retry the
@@ -44796,7 +44836,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              productId: canonicalRescueProductId,
 	              canonicalProduct: null,
 	              bypassCache,
-	            }).catch(() => null);
+	            }).catch(swallowPdpFailure('get_pdp_v2'));
 	          }
 	        }
 	        markPdpV2Phase('identity_graph_rescue', identityRescueStartedAt);
@@ -44811,11 +44851,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          }
 	          identityResolutionSource = 'identity_graph_live';
 	        } else {
+          // A re-keyed (merch_obs_) sig row whose seed is retired lands here with
+          // nothing to say why, which agent.pivota.cc must treat as transient (500).
+          // Name the settled reason the ext_ seed precheck would have given it, but
+          // ONLY after clean misses and a fresh check of the whole content match
+          // set (see settleSignatureSeedNotActive). Annotation only: this exit
+          // already 404s.
+          const settledSeedNotActiveDetails = await settleSignatureSeedNotActive(
+            signatureSeedNotActiveDetails,
+            {
+              queryFn: process.env.DATABASE_URL ? query : null,
+              isLedgerClean: pdpFailureLedgerIsClean,
+              legacyDetailFallbackEnabled: PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED,
+              onWithheld: (why) =>
+                logger.info(
+                  {
+                    requested_product_id: requestedProductIdForDiagnostics || null,
+                    resolved_product_id: canonicalProductRef?.product_id || null,
+                    why,
+                  },
+                  'get_pdp_v2 seed-not-active reason withheld; not-found stays reason-less',
+                ),
+            },
+          );
 	          return res.status(404).json({
               ...buildPdpV2ErrorBody({
                 error: 'PRODUCT_NOT_FOUND',
                 message: 'Product not found',
                 reasonCode: 'PRODUCT_NOT_FOUND',
+                ...(settledSeedNotActiveDetails ? { details: settledSeedNotActiveDetails } : {}),
                 requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
                 requestedMerchantId: requestedMerchantIdForDiagnostics,
                 resolvedProductId: canonicalProductRef?.product_id || null,

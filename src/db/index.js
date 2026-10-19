@@ -631,14 +631,35 @@ async function closePool() {
   await resetPool(existingPool, 'manual_close', null);
 }
 
+// Every exported read/write entry point records its failures on the current
+// get_pdp_v2 request's swallowed-failure ledger (a no-op outside one), then
+// rethrows unchanged. The PDP route swallows many lookup failures; this is how it
+// knows one happened anywhere, in any module, before it calls a miss settled
+// (see src/services/pdpSwallowedFailureLedger.js). Required lazily so the ledger
+// module never participates in db's own load order.
+function recordingFailures(label, fn) {
+  return async function recordedDbCall(...args) {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      try {
+        require('../services/pdpSwallowedFailureLedger').noteSwallowedPdpFailure(label);
+      } catch {
+        // bookkeeping must never mask the real error
+      }
+      throw err;
+    }
+  };
+}
+
 module.exports = {
   DB_BUDGET_ACQUIRE_TIMEOUT,
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
   isTransientDbError,
-  query,
-  queryWithBudget,
-  queryWithStatementTimeout,
-  withClient,
+  query: recordingFailures('db_query', query),
+  queryWithBudget: recordingFailures('db_query_with_budget', queryWithBudget),
+  queryWithStatementTimeout: recordingFailures('db_query_with_statement_timeout', queryWithStatementTimeout),
+  withClient: recordingFailures('db_with_client', withClient),
 };
