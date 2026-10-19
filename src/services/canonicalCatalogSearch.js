@@ -277,6 +277,25 @@ function readPayloadOnce(fragment) {
   return String(fragment ?? '').replace(/\bp\.product_payload\b/g, 'pp.product_payload');
 }
 
+// RANK NARROW, FETCH WIDE (CANONICAL_CATALOG_NARROW_RANK, default off).
+// The candidate CTE used to project every display column -- product_payload, description,
+// freshness_json, the fashion fields -- for EVERY row the WHERE admitted, and carry them through the
+// rank sort, the set-quota window and the cut. Prod EXPLAIN ANALYZE (2026-10-19, gateway-00735-koh's
+// exact statements): a generic beauty query admits ~1,800-2,300 rows to keep 210, and that sort ran as
+// an external merge spilling ~20MB to disk (1,422-3,469 temp blocks per statement), about 130 ms of a
+// 900 ms statement on an otherwise idle primary.
+// Flag on, the scoring CTE projects only what ranking and cutting read (product_key, the legacy
+// updated_at tie-break, the set and name-evidence marks, rank_score); the cut happens on those narrow
+// rows; and `candidate_products` re-reads the display columns for the survivors only, by primary key
+// (catalog_products.product_key, catalog_merchants.merchant_id -- both unique, so the re-read is 1:1
+// and adds or drops no row). Same rows, same order, same columns for everything downstream.
+const NARROW_RANK_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isNarrowRankEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_NARROW_RANK ?? '').trim().toLowerCase();
+  return NARROW_RANK_ON_VALUES.has(raw);
+}
+
 // WHEN THE SERVED PRICE WAS LAST READ, taken off the served offer row as
 // `catalog_offers.price_checked_at`, a column the backend has yet to add.
 //
@@ -2132,18 +2151,9 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
       LIMIT $3
     )`;
   }
-  const candidateCteName = setDiversityEnabled ? 'matched_products' : 'candidate_products';
-
-  // Rank score weights mirror pivot_query_service.py exactly so canonical
-  // recall ranks identically across the backend's HTTP API and this gateway
-  // helper. Drift here would surface as inconsistent top-N between the two.
-  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
-  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
-  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
-  // the gateway intentionally diverges from the backend's legacy weights.
-  const sql = `
-    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
-      SELECT
+  // See isNarrowRankEnabled. Flag off, every string below is exactly what this statement always carried.
+  const narrowRank = isNarrowRankEnabled();
+  const wideColumnsSql = `
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
         m.primary_platform      AS merchant_primary_platform,
@@ -2182,7 +2192,38 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
+        p.updated_at            AS product_updated_at,`;
+  const rankColumnsSql = narrowRank
+    ? `
+        p.product_key,
+        p.updated_at            AS product_updated_at,`
+    : wideColumnsSql;
+  if (narrowRank) {
+    // The cut moves to `candidate_keys` (narrow rows); `candidate_products` keeps its name and its
+    // columns, so candidate_slots and the outer SELECT read it unchanged.
+    setDiversityCteSql = setDiversityCteSql.replace('\n    candidate_products AS (', '\n    candidate_keys AS (');
+    setDiversityCteSql += `,
+    candidate_products AS (
+      -- Display columns for the survivors only, by primary key (1:1). See isNarrowRankEnabled.
+      SELECT${wideColumnsSql}${setDiversityEnabled ? '\n        k.is_multi_product_set,' : ''}${nameEvidence ? '\n        k.name_evidence_admitted,' : ''}
+        k.rank_score${setDiversityEnabled ? ',\n        k.set_quota_demoted' : ''}
+      FROM candidate_keys k
+      JOIN catalog_products p ON p.product_key = k.product_key
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+    )`;
+  }
+  const candidateCteName = setDiversityEnabled ? 'matched_products' : (narrowRank ? 'candidate_keys' : 'candidate_products');
+
+  // Rank score weights mirror pivot_query_service.py exactly so canonical
+  // recall ranks identically across the backend's HTTP API and this gateway
+  // helper. Drift here would surface as inconsistent top-N between the two.
+  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
+  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
+  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
+  // the gateway intentionally diverges from the backend's legacy weights.
+  const sql = `
+    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
+      SELECT${rankColumnsSql}${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
         (
           ${pl(skuIdentityScore)}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
@@ -2292,6 +2333,7 @@ module.exports = {
   // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
   isCandidateKeyPrefilterEnabled,
   isSinglePayloadReadEnabled,
+  isNarrowRankEnabled,
   // Exported so the card mapper publishes the freshness fields only when the SQL carries them.
   isServedPriceAsOfEnabled,
   // Exported so callers whose lane preserves recall order (the
