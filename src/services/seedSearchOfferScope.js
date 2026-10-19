@@ -84,17 +84,16 @@ function seedCurrencySql(alias) {
 
 function seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr) {
   const systems = SEED_PROJECTED_OFFER_SOURCE_SYSTEMS.map((value) => `'${value}'`).join(', ');
-  const activeSeed = `eps_own.attached_product_key = ${productKeyExpr}
-              AND lower(trim(coalesce(eps_own.status, ''))) = 'active'`;
+  // ONE index probe per offer (PR controller, spccy6-1019: two correlated EXISTS cost +30-35% on scoped
+  // queries). bool_and over the active attached seeds is NULL when there are none -- IS TRUE fails that
+  // orphan closed -- and false as soon as one seed states another currency or none.
   return `(coalesce(${offerAlias}.source_system, '') NOT IN (${systems})
-          OR (EXISTS (
-            SELECT 1 FROM external_product_seeds eps_own
-            WHERE ${activeSeed}
-          ) AND NOT EXISTS (
-            SELECT 1 FROM external_product_seeds eps_own
-            WHERE ${activeSeed}
-              AND ${seedCurrencySql('eps_own')} IS DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, '')))
-          )))`;
+          OR (
+            SELECT bool_and(${seedCurrencySql('eps_own')} IS NOT DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, ''))))
+            FROM external_product_seeds eps_own
+            WHERE eps_own.attached_product_key = ${productKeyExpr}
+              AND lower(trim(coalesce(eps_own.status, ''))) = 'active'
+          ) IS TRUE)`;
 }
 
 // KILL SWITCH, default ON (a currency-correctness rule: silence keeps it). Any of 0/false/off/no/
