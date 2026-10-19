@@ -87,12 +87,18 @@ function readSignatureSeedNotActive(signatureProductRef, { resolvedMerchantId, r
 // equivalent to `seed_data->>'k' = $1` for a non-null $1, so the match set is
 // unchanged. The single OR form the content lookup uses cannot use those indexes
 // (pdpRouteIdExistence.js documents the same trap).
+// The three seed_data paths: [branch name, top-level key the partial index is
+// guarded on, the match predicate itself].
+const SEED_DATA_PATHS = Object.freeze([
+  ['seed_data_external_product_id', 'external_product_id', `seed_data->>'external_product_id' = $1`],
+  ['seed_data_product_id', 'product_id', `seed_data->>'product_id' = $1`],
+  ['seed_snapshot_product_id', 'snapshot', `seed_data->'snapshot'->>'product_id' = $1`],
+]);
+
 const ACTIVE_SEED_MATCH_BRANCHES = Object.freeze([
   ['external_product_id', `external_product_id = $1`],
   ['seed_id', `id::text = $1`],
-  ['seed_data_external_product_id', `seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = $1`],
-  ['seed_data_product_id', `seed_data ? 'product_id' AND seed_data->>'product_id' = $1`],
-  ['seed_snapshot_product_id', `seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1`],
+  ...SEED_DATA_PATHS.map(([name, key, predicate]) => [name, `seed_data ? '${key}' AND ${predicate}`]),
 ]);
 
 // The exact half of that match set, in the order the content lookup tries it.
@@ -118,6 +124,15 @@ const SEED_DATA_FALLBACK_MATCH_CLAUSE = `(${ACTIVE_SEED_MATCH_BRANCHES.filter(([
 )
   .map(([, clause]) => `(${clause})`)
   .join(' OR ')})`;
+
+// The SAME seed_data paths with NO guards, for a statement that no index can
+// serve anyway: fetchExternalSeedRouteStatusFromDb's non-active step (migration
+// 040's indexes are all `status = 'active'` partials). There the `? 'k'` guard
+// buys no index and costs a second pass over each detoasted seed_data: on a
+// 200k-row copy with 20% non-active rows and ~3 KB TOASTed seed_data it took
+// 932k buffers / 237 ms guarded vs 452k / 110 ms unguarded (#2464 review).
+// Same match set: for a non-null $1, `->>'k' = $1` already implies `? 'k'`.
+const SEED_DATA_UNGUARDED_MATCH_CLAUSE = `(${SEED_DATA_PATHS.map(([, , predicate]) => predicate).join(' OR ')})`;
 
 const ACTIVE_SEED_MATCH_SQL = `
   SELECT
@@ -187,6 +202,7 @@ async function settleSignatureSeedNotActive(candidate, {
 
 module.exports = {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
+  SEED_DATA_UNGUARDED_MATCH_CLAUSE,
   SEED_EXACT_MATCHES,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,

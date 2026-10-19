@@ -73,11 +73,17 @@ describe('fetchExternalSeedRouteStatusFromDb', () => {
     const seedSql = sent.filter((sql) => sql.includes('FROM external_product_seeds'));
     expect(seedSql).toHaveLength(6);
     expect(seedSql.map((sql) => sql.includes("WHERE status = 'active'"))).toEqual([true, false, true, false, true, false]);
-    for (const sql of seedSql.slice(4)) {
-      expect(sql).toContain("seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = $1");
-      expect(sql).toContain("seed_data ? 'product_id' AND seed_data->>'product_id' = $1");
-      expect(sql).toContain("seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1");
-    }
+    // Active step: guarded arms, so migration 040's partial indexes apply.
+    const [activeJson, nonActiveJson] = seedSql.slice(4);
+    expect(activeJson).toContain("seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = $1");
+    expect(activeJson).toContain("seed_data ? 'product_id' AND seed_data->>'product_id' = $1");
+    expect(activeJson).toContain("seed_data ? 'snapshot' AND seed_data->'snapshot'->>'product_id' = $1");
+    // Non-active step: no index can serve it, so no guards (they only double the
+    // detoast work), but the very same three paths.
+    expect(nonActiveJson).not.toContain('seed_data ?');
+    expect(nonActiveJson).toContain(
+      "(seed_data->>'external_product_id' = $1 OR seed_data->>'product_id' = $1 OR seed_data->'snapshot'->>'product_id' = $1)",
+    );
     for (const sql of seedSql) expect(sql).toMatch(/ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id LIMIT 1$/);
   });
 
