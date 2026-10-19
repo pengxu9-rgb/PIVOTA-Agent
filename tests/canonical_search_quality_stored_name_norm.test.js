@@ -92,7 +92,9 @@ describe('the no-change invariant over the sample', () => {
   test('the carrier CTE on the ON side reads the stored column directly (an index condition), never a coalesce', async () => {
     const on = await statement('barrier moisturizer', 'on');
     const cte = on.sql.slice(on.sql.indexOf('name_evidence_carriers AS MATERIALIZED'), on.sql.indexOf('), matched_products') > 0 ? on.sql.indexOf('), matched_products') : on.sql.indexOf('candidate_products AS'));
-    expect(cte).toMatch(/np\.name_norm LIKE \$\d+ AND np\.name_norm LIKE \$\d+ THEN np\.name_norm ~ \$\d+/);
+    // The LIKEs open the WHERE as top-level conjuncts (the index conditions), and the CASE behind them
+    // still guards the regex.
+    expect(cte).toMatch(/WHERE \(np\.name_norm LIKE \$\d+ AND np\.name_norm LIKE \$\d+ AND \(CASE WHEN np\.name_norm LIKE \$\d+ AND np\.name_norm LIKE \$\d+ THEN np\.name_norm ~ \$\d+ ELSE FALSE END\)\)/);
     expect(cte).not.toMatch(/coalesce\((np|p)\./); // the keys aggregate's coalesce stays; no column fallback here
     expect(cte).not.toContain('translate(');
     // The admitted arm is still the primary-key index condition from #2314.
