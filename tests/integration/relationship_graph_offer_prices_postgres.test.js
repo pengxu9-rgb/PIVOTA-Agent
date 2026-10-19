@@ -69,6 +69,14 @@ suite('relationship graph offer prices on PostgreSQL', () => {
       ('o7_markets', 'P7', 'USD', 39, 'us_market_capture')`);
     await db.query(`INSERT INTO external_product_seeds VALUES
       ('eps_skin', 'P7', 'active', 'AUD', '{"snapshot": {"price_currency": "AUD"}}')`);
+    // Column USD, page read GBP (483 such seeds on 10-19): either may be the wrong one, so the seed
+    // states no currency and the GBP row copied off it is no price either; the store's own read is.
+    await product('P8', 'ext_gbp', 'sig_gbp');
+    await db.query(`INSERT INTO catalog_offers(offer_id, product_key, currency, list_price, source_system) VALUES
+      ('o8_copied', 'P8', 'GBP', 30, 'external_product_seeds_mirror_v1'),
+      ('o8_markets', 'P8', 'USD', 35, 'us_market_capture')`);
+    await db.query(`INSERT INTO external_product_seeds VALUES
+      ('eps_gbp', 'P8', 'active', 'USD', '{"snapshot": {"price_currency": "GBP"}}')`);
   });
 
   afterAll(async () => {
@@ -116,6 +124,7 @@ suite('relationship graph offer prices on PostgreSQL', () => {
   test('an offer copied off a seed in another currency names no price; the store\'s own read does', async () => {
     const out = await read(['product:sig_skin']);
     expect(out.get('product:sig_skin')).toEqual([{ currency: 'USD', amounts: [39] }]);
+    expect(read(['product:sig_gbp']).then((o) => o.get('product:sig_gbp'))).resolves.toEqual([{ currency: 'USD', amounts: [35] }]);
   });
 
   test('a mixed-case ref reads the same offers, keyed by its lowercased form', async () => {

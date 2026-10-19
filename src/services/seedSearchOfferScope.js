@@ -51,11 +51,10 @@ const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
 //
 // WHICH of the seed's currencies is its currency, measured on prod 2026-10-19 (read-only censuses
 // spccy-1019 .. spccy3-1019, active seeds with a live projected offer):
-//   - the SNAPSHOT is the page as read. Where the column disagrees with it, the column is the
-//     writers' old `or 'USD'` default (column USD, snapshot GBP 483 / QAR 367 / EUR 166 / INR 108 /
-//     ZAR 64 seeds), and a USD offer copied off such a column is an amount read in another currency;
-//   - the COLUMN stands in when the seed kept no snapshot (absent or JSON null) or a snapshot with no
-//     currency;
+//   - the COLUMN and the SNAPSHOT (the page as read) must agree; where they disagree (column USD,
+//     snapshot GBP 483 / QAR 367 / EUR 166 / INR 108 / ZAR 64 seeds) either can be wrong (see
+//     seedCurrencySql), so the seed states none;
+//   - either one stands in alone when the other is absent;
 //   - a seed_data or snapshot stored as anything but an object (a JSON string) hides the page read,
 //     so it states NO currency; it is not parsed here, where one malformed string would abort recall;
 //   - seed_data.price_currency is NOT evidence: it is a copy the writers default to 'USD' too (16
@@ -71,14 +70,31 @@ const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
 // `productKeyExpr` is the listing the offer prices (SQL, not a value); the seeds are probed through
 // idx on external_product_seeds(attached_product_key, attached_variant_id). An offer from any other
 // writer is not judged here.
+// A SEED'S CURRENCY IS KNOWN ONLY WHEN ITS COLUMN AND ITS PAGE READ AGREE (or only one states one).
+// The refresh never redenominates (pivota-backend routes/employee_products: a read in another currency
+// is `skipped_currency_mismatch`, the column kept) and writes the snapshot from every read, so when the
+// two disagree either can be the wrong one: a geo-served misread in the snapshot over a right column
+// (us.oiolab.co: column USD, snapshot EUR, same amount), or the writers' old `or 'USD'` default in the
+// column over a right page read (column USD, snapshot QAR 367 / INR 108 / ZAR 64). Neither is a price
+// anyone can be quoted, so such a seed states no currency and its projections are refused.
+//
+// ONE detoast of seed_data on the common path. seed_data is ~25 KB and TOASTed, and every reference
+// re-detoasts it: the first v2 form referenced it up to four times per seed and cost +30-35% on scoped
+// recall (spccy6/spccy7-1019; local 20k-seed bench: 818k buffer hits against round 1's 258k). A simple
+// CASE evaluates its test once, `#>>` yields NULL through a snapshot or seed_data that is not an object,
+// and only a seed with no snapshot currency pays the type checks.
 function seedCurrencySql(alias) {
   const column = `nullif(upper(trim(${alias}.price_currency)), '')`;
+  const page = `nullif(upper(trim(${alias}.seed_data#>>'{snapshot,price_currency}')), '')`;
   const snapshot = `${alias}.seed_data->'snapshot'`;
-  return `(CASE
-              WHEN ${alias}.seed_data IS NOT NULL AND jsonb_typeof(${alias}.seed_data) NOT IN ('object', 'null') THEN NULL
-              WHEN jsonb_typeof(${snapshot}) = 'object'
-                THEN coalesce(nullif(upper(trim(${alias}.seed_data#>>'{snapshot,price_currency}')), ''), ${column})
-              WHEN ${snapshot} IS NULL OR jsonb_typeof(${snapshot}) = 'null' THEN ${column}
+  return `(CASE WHEN ${column} IS NULL THEN ${page}
+              ELSE (CASE coalesce(${page}, '~')
+                      WHEN ${column} THEN ${column}
+                      WHEN '~' THEN (CASE WHEN ${alias}.seed_data IS NULL
+                                            OR (jsonb_typeof(${alias}.seed_data) IN ('object', 'null')
+                                                AND (${snapshot} IS NULL OR jsonb_typeof(${snapshot}) IN ('object', 'null')))
+                                          THEN ${column} END)
+                    END)
             END)`;
 }
 

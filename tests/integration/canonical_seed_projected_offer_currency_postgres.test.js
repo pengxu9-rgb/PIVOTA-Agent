@@ -163,6 +163,26 @@ suite('seed-projected offers are prices only in their seed currency, real Postgr
       price: 35, sourceSystem: 'external_product_seeds_mirror_v1', sourceRef: 'eps_gr_usd', domain: 'glowrecipe.example' });
     await seed({ id: 'eps_gr_usd', attached: grPk, priceAmount: 35, priceCurrency: 'USD',
       seedData: { price_amount: '35', price_currency: 'EUR', snapshot: { price_amount: '35', price_currency: 'USD' } } });
+
+    // 7. An offer no seed-copying writer wrote (source_system NULL) is not judged, even on a listing
+    // whose seed reads another currency.
+    const nsPk = 'prod::merch_obs_ns::external_seed::ext_null_source';
+    await product({ key: nsPk, title: 'Panthenol Repair Serum', merchant: 'merch_obs_ns', domain: 'ns.skintific.example',
+      seedId: 'eps_ns', contentKey: 'ck_null_source', sig: 'sig_null_source' });
+    await sku(`${nsPk}::canonical`, nsPk, nsPk);
+    await offer({ id: 'offer:ns_usd', skuKey: `${nsPk}::canonical`, productKey: nsPk, merchant: 'merch_obs_ns', currency: 'USD',
+      price: 44, sourceSystem: null, sourceRef: null, domain: 'ns.skintific.example' });
+    await seed({ id: 'eps_ns', attached: nsPk, priceAmount: 60, priceCurrency: 'AUD',
+      seedData: { snapshot: { price_amount: '60', price_currency: 'AUD' } } });
+    // 8. The offer's currency is compared trimmed and upper-cased, as every reader spells it.
+    const lcPk = 'prod::merch_obs_lc::external_seed::ext_lower_currency';
+    await product({ key: lcPk, title: 'Mugwort Calming Serum', merchant: 'merch_obs_lc', domain: 'lc.skintific.example',
+      seedId: 'eps_lc', contentKey: 'ck_lower_currency', sig: 'sig_lower_currency' });
+    await sku(`${lcPk}::canonical`, lcPk, lcPk);
+    await offer({ id: 'offer:lc_usd', skuKey: `${lcPk}::canonical`, productKey: lcPk, merchant: 'merch_obs_lc', currency: 'usd ',
+      price: 41, sourceSystem: 'external_product_seeds_mirror_v1', sourceRef: 'eps_lc', domain: 'lc.skintific.example' });
+    await seed({ id: 'eps_lc', attached: lcPk, priceAmount: 41, priceCurrency: 'USD',
+      seedData: { snapshot: { price_amount: '41', price_currency: 'USD' } } });
   });
   afterAll(async () => { if (db) { await db.query(`DROP SCHEMA ${schema} CASCADE`); await db.end(); } });
   beforeEach(() => {
@@ -210,12 +230,14 @@ suite('seed-projected offers are prices only in their seed currency, real Postgr
     expect(served['prod::merch_obs_ctl::external_seed::ext_ctl_usd']).toEqual([18, 'USD']);
     expect(served['prod::merch_obs_mkt::external_seed::ext_mkt_sgd']).toEqual([30, 'USD']);
     expect(served['prod::merch_obs_gr::external_seed::ext_gr_usd']).toEqual([35, 'USD']);
+    expect(served['prod::merch_obs_ns::external_seed::ext_null_source']).toEqual([44, 'USD']);
+    expect(served['prod::merch_obs_lc::external_seed::ext_lower_currency']?.[0]).toBe(41);
     expect(served).not.toHaveProperty([SKIN_PK]);
     expect(served).not.toHaveProperty(['prod::external_seed::external_seed::ext_nourwish_sgd']);
     expect(served).not.toHaveProperty(['prod::merch_obs_qar::external_seed::ext_qar_page']);
     // Refused BEFORE the candidate LIMIT, not after it: a product whose only USD offers are refused
     // never takes a candidate slot from a priceable one (canonical_raw_count is the SQL's row count).
-    expect(res.body.metadata.canonical_raw_count).toBe(3);
+    expect(res.body.metadata.canonical_raw_count).toBe(5);
   });
 
   test('the same skintific set is served once its seed agrees with the offer it projected', async () => {
