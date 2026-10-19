@@ -171,6 +171,7 @@ const {
   pdpRouteResolvableFromRow,
 } = require('./services/pdpRenderability');
 const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
+const { readSignatureSeedNotActive } = require('./services/signatureSeedNotActive');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -43599,6 +43600,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let requestedSigDedupeKeeperSigId = '';
           let signatureCatalogIdentity = null;
           let signatureExternalSeedRouteStatus = null;
+          // Set only when the exact sig row's own seed is settled non-active; read
+          // ONLY by the final not-found exit (see readSignatureSeedNotActive).
+          let signatureSeedNotActiveDetails = null;
           let signatureExternalSeedPrecheckProduct = null;
           let signaturePrefetchedServingEligibility = null;
           let pdpServingEligibility = null;
@@ -43722,6 +43726,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               if (signatureProductRef.source === 'catalog_products_signature_exact') {
                 signatureCatalogIdentity = buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
                   requestedSigId: requestedPivotaSignatureId,
+                  resolvedMerchantId: signatureResolvedMerchantId,
+                  resolvedProductId: signatureResolvedProductId,
+                });
+                signatureSeedNotActiveDetails = readSignatureSeedNotActive(signatureProductRef, {
                   resolvedMerchantId: signatureResolvedMerchantId,
                   resolvedProductId: signatureResolvedProductId,
                 });
@@ -44816,6 +44824,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 error: 'PRODUCT_NOT_FOUND',
                 message: 'Product not found',
                 reasonCode: 'PRODUCT_NOT_FOUND',
+                // A re-keyed (merch_obs_) sig row whose seed is retired lands here with
+                // nothing to say why, which agent.pivota.cc must treat as transient (500).
+                // Name the settled reason the ext_ seed precheck would have given it.
+                // Annotation only: this exit already 404s.
+                ...(signatureSeedNotActiveDetails ? { details: signatureSeedNotActiveDetails } : {}),
                 requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
                 requestedMerchantId: requestedMerchantIdForDiagnostics,
                 resolvedProductId: canonicalProductRef?.product_id || null,
