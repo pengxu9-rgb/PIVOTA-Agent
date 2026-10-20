@@ -74,11 +74,18 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
   let seedRowsByTool;
   let canonical;
   let canonicalError;
+  let canonicalHangs;
+  let canonicalDeadlineSeen;
   let app;
 
   const load = (env = {}) => {
     Object.assign(process.env, env);
+    // The real lane-deadline context (a passthrough unless DB_LANE_DEADLINES_ENABLED is set).
+    const actualDb = jest.requireActual('../../src/db');
     jest.doMock('../../src/db', () => ({
+      runWithDbDeadline: actualDb.runWithDbDeadline,
+      remainingDbDeadlineMs: actualDb.remainingDbDeadlineMs,
+      isDbUnavailableError: actualDb.isDbUnavailableError,
       query: jest.fn(async (sql, params) => {
         const text = String(sql);
         calls.push({ sql: text, params });
@@ -91,6 +98,18 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
           return { rows: seedRowsByTool[tool] || [] };
         }
         if (text.includes('FROM catalog_products p')) {
+          canonicalDeadlineSeen = actualDb.remainingDbDeadlineMs();
+          if (canonicalHangs) {
+            // Stand-in for src/db query() under a lane deadline: it gives up when the deadline does
+            // (the routing itself is covered against the real module in tests/db_lane_deadline.test.js).
+            if (canonicalDeadlineSeen === null) {
+              // No deadline: the leg is slow but finishes (bounded so a regression fails, never hangs).
+              await new Promise((resolve) => setTimeout(resolve, 6_000));
+              return { rows: canonical() };
+            }
+            await new Promise((resolve) => setTimeout(resolve, Math.max(0, canonicalDeadlineSeen)));
+            throw Object.assign(new Error('Query exceeded its budget'), { code: 'DB_BUDGET_QUERY_TIMEOUT' });
+          }
           if (canonicalError) throw canonicalError();
           return { rows: canonical() };
         }
@@ -110,6 +129,8 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     seedRowsByTool = {};
     canonical = macLipsticks;
     canonicalError = null;
+    canonicalHangs = false;
+    canonicalDeadlineSeen = 'unset';
     Object.assign(process.env, {
       DATABASE_URL: 'postgres://fixture',
       PIVOTA_API_BASE: 'http://primary.test',
@@ -230,6 +251,8 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     ['57014 with an arbitrary message', () => Object.assign(new Error('boom'), { code: '57014' }), 200],
     ['pg-pool acquire timeout (no SQLSTATE)', () => new Error('timeout exceeded when trying to connect'), 200],
     ['pg connection timeout (no SQLSTATE)', () => new Error('Connection terminated due to connection timeout'), 200],
+    ['a lane deadline that ran out mid-statement', () => Object.assign(new Error('x'), { code: 'DB_BUDGET_QUERY_TIMEOUT' }), 200],
+    ['a lane deadline that ran out before checkout', () => Object.assign(new Error('x'), { code: 'DB_BUDGET_ACQUIRE_TIMEOUT' }), 200],
     ['a defect whose message says cancel/timeout', () => Object.assign(new Error('column "cancel_timeout" does not exist'), { code: '42703' }), 503],
     ['a ReferenceError from a refactor', () => new ReferenceError('queryBeautyExternalSeedRowsWithTimeout is not defined'), 503],
     ['an uncoded error that merely mentions a timeout', () => new Error('upstream timeout while hydrating'), 503],
@@ -250,5 +273,29 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     canonicalError = makeError;
     load();
     expectPrimaryFailure(await invoke());
+  });
+  test('with FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS a stuck canonical leg ends at the deadline and the seed rows answer', async () => {
+    canonical = moisturizers;
+    canonicalHangs = true;
+    seedRowsByTool = { '*': [moisturizerSeedRow()] };
+    load({ DB_LANE_DEADLINES_ENABLED: 'true', DB_LANE_DEADLINE_GRACE_MS: '0', FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS: '300' });
+    const startedAt = Date.now();
+    const resp = await invoke('moisturizer');
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(typeof canonicalDeadlineSeen).toBe('number');
+    expect(canonicalDeadlineSeen).toBeLessThanOrEqual(300);
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(expect.objectContaining({
+      primary_recall_degraded: true,
+      canonical_timeout: true,
+      canonical_error: 'DB_BUDGET_QUERY_TIMEOUT',
+    }));
+  });
+
+  test('unset (today): the canonical leg runs with no lane deadline', async () => {
+    load({ DB_LANE_DEADLINES_ENABLED: 'true' });
+    const resp = await invoke();
+    expect(resp.status).toBe(200);
+    expect(canonicalDeadlineSeen).toBeNull();
   });
 });

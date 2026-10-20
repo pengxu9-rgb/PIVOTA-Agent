@@ -4038,6 +4038,11 @@ const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
   500,
   parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
 );
+// 0/unset = no deadline on the beauty mainline's canonical recall leg (today's behaviour); see its call site.
+const FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS = Math.max(
+  0,
+  Math.trunc(Number(process.env.FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS || 0) || 0),
+);
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_CLARIFY_NEVER_EMPTY =
@@ -16920,8 +16925,11 @@ const BEAUTY_RECALL_TIMEOUT_MESSAGES = [
   /^Connection terminated due to connection timeout$/i,
   /^Query read timeout$/i,
 ];
+// src/db's budgeted-query codes (a lane deadline or queryWithBudget ran out) are the same event as a
+// statement timeout, raised client-side.
+const BEAUTY_RECALL_TIMEOUT_CODES = new Set(['57014', 'DB_BUDGET_ACQUIRE_TIMEOUT', 'DB_BUDGET_QUERY_TIMEOUT']);
 function isBeautyRecallQueryTimeout(err) {
-  if (String(err?.code || '').trim() === '57014') return true;
+  if (BEAUTY_RECALL_TIMEOUT_CODES.has(String(err?.code || '').trim())) return true;
   if (err?.code) return false;
   const message = String(err?.message || '').trim();
   return BEAUTY_RECALL_TIMEOUT_MESSAGES.some((pattern) => pattern.test(message));
@@ -23058,7 +23066,7 @@ async function searchBeautyExternalSeedProductsMainline({
   // 2026-09-26).
   const servedOfferCurrency = servingCurrency;
   const primaryOfferScope = { currency: servedOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
-  const canonicalRowsPromise = fetchCanonicalChainRows({
+  const canonicalRowsArgs = {
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
     // Deliberate category-browse: mainline recalls the bucket and then runs
@@ -23124,7 +23132,20 @@ async function searchBeautyExternalSeedProductsMainline({
     brandFilter: canonicalBrandFilter,
     searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
-  })
+  };
+  // Optional DB deadline on this leg (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, needs DB_LANE_DEADLINES_ENABLED).
+  // The leg has no stage budget of its own: only the pool's 30s statement_timeout bounds it, so under load
+  // it keeps a connection (and the primary) busy long after the caller's own deadline has passed. With the
+  // deadline set, an overrun ends like any other timed-out arm -- the seed arm's rows are served, and only
+  // an empty merge is reported as the primary failure -- and its connection is released at the deadline.
+  // Unset keeps today's unbounded leg. Called directly when unset so the canonical call site stays in this
+  // function (the stored-name-norm invariant script identifies the mainline by its stack frame).
+  const canonicalRowsPromise = (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS > 0
+    ? runWithDbDeadline(
+      { budgetMs: FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, label: 'beauty_canonical_recall' },
+      () => fetchCanonicalChainRows(canonicalRowsArgs),
+    )
+    : fetchCanonicalChainRows(canonicalRowsArgs))
     .then((rows) => ({
       rows: Array.isArray(rows) ? rows : [],
       error: null,
@@ -32775,12 +32796,27 @@ function isPublicReadChainFilterEnabled() {
 
 // The decision itself lives in services/publicReadChainResolvability so it is unit-testable without a DB —
 // see that file for the drop-only-what-is-provably-dead rationale and the fail-open lanes.
+// The verdict reads only the exact row's own columns (merchant/product/platform/source_system and the
+// external_seed_* pair) -- never the identity listing or the identity-group members, which the resolver
+// fetches with up to three MORE queries per row when asked for the default 'rich' shape. This filter runs
+// on every cache-miss public search, up to a page of rows at 8-way concurrency, so the rich shape cost up
+// to 3 extra pool checkouts per row for columns nobody here reads. The 'lite' shape returns the same
+// verdict columns from the same exact query. PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE=false restores 'rich'.
+function isPublicReadChainFilterLiteResolveEnabled() {
+  const raw = String(process.env.PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE ?? '').trim().toLowerCase();
+  if (raw === '') return true;
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
 async function publicReadDetailResolves(productId) {
   const pid = String(productId || '').trim();
   if (!pid) return false;
   // Skip the DB round-trip entirely for ids the detail lane cannot resolve by construction.
   if (!isPivotaSignatureProductId(pid)) return false;
-  const ref = await resolveCatalogProductRefFromPivotaSignature(pid);
+  const ref = await resolveCatalogProductRefFromPivotaSignature(
+    pid,
+    isPublicReadChainFilterLiteResolveEnabled() ? { hydrateIdentityListing: false } : {},
+  );
   return chainRowResolvable(pid, ref, isPivotaSignatureProductId);
 }
 
