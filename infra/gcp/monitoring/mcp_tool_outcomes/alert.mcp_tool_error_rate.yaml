@@ -1,0 +1,36 @@
+# Alert: an MCP tool's SERVER-CLASS error rate is above 2% over 30 minutes, sustained for 10 minutes, with at
+# least 15 server errors and 50 answered calls in the window. Every tools/call answers HTTP 200, so this is the
+# only signal that sees a failing tool. Caller and policy errors are not counted (error_class=client).
+# The window, floors and duration are sized against the false-positive math in
+# docs/runbooks/mcp_tool_outcome_monitoring.md: a 10-minute window with no floor fires on 2 errors in 50.
+# Needs the mcp_tool_calls and mcp_tool_call_server_errors log metrics.
+# Create (not applied by this repo; fill notificationChannels first):
+#   gcloud alpha monitoring policies create --project=$PROJECT \
+#     --policy-from-file=infra/gcp/monitoring/mcp_tool_outcomes/alert.mcp_tool_error_rate.yaml
+displayName: MCP tool server-error rate > 2% (30m)
+combiner: OR
+conditions:
+  - displayName: tools/call server-error rate by tool > 2% over 30m (>= 15 errors, >= 50 calls)
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_call_server_errors[30m]))
+            / sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_calls[30m]))
+        ) > 0.02
+        and on (tool)
+        sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_call_server_errors[30m])) >= 15
+        and on (tool)
+        sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_calls[30m])) >= 50
+      duration: 600s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s
+documentation:
+  mimeType: text/markdown
+  content: |
+    An MCP tool is failing on our side for more than 2% of answered calls (caller errors, refusals and
+    first-party traffic excluded). Break down by `error_code` in Logs Explorer:
+    `jsonPayload.msg="mcp tools/call complete" AND jsonPayload.error_class="server" AND jsonPayload.tool="<tool>"`.
+    `upstream_timeout=true` means the upstream deadline fired; `outcome="internal_error"` means the door failed.
+    Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md
+notificationChannels: []

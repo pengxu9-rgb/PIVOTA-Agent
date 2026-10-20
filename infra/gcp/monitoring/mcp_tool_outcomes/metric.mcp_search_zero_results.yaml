@@ -1,0 +1,28 @@
+# Log-based counter: search_catalog answers whose list was EMPTY as the caller received it (after the public
+# tier's sourcing and chain filters). Numerator of the zero-result-rate alert.
+# Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
+# existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create mcp_search_zero_results --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_search_zero_results.yaml
+description: MCP search_catalog answers with zero results, by door / tier
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.tier!="first_party"
+  AND jsonPayload.tool="search_catalog"
+  AND jsonPayload.result_count=0
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: door
+      valueType: STRING
+    - key: tier
+      valueType: STRING
+labelExtractors:
+  door: EXTRACT(jsonPayload.door)
+  tier: EXTRACT(jsonPayload.tier)

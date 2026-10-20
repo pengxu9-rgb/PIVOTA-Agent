@@ -17,6 +17,7 @@ import {
   isFirstPartyOnlyEnabled,
 } from "./publicReadSourcing.js";
 import { createPublicReadCache } from "./publicReadCache.js";
+import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
 
 export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "search_catalog",
@@ -243,13 +244,23 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       })
     : null;
 
-  async function callTool(toolName, toolArgs = {}) {
+  // `options.observe` (optional) receives measurement fields for the gateway's tools/call completion line: the
+  // cache branch that answered and the upstream envelope's lane/degradation markers. The markers are captured
+  // at compute time and travel WITH the cached entry, so a cache hit reports the lane that produced the answer
+  // it replays. The session context is ignored on this tier by construction (see computeTool).
+  async function callTool(toolName, toolArgs = {}, _sessionContext = {}, options = {}) {
     if (!PUBLIC_READ_TOOL_NAMES.includes(toolName)) {
       throw new UnknownToolError(toolName);
     }
+    const observe = options && typeof options.observe === "function" ? options.observe : null;
     const args = canonicalizeToolArgs(toolArgs);
-    if (!cache) return (await computeTool(toolName, args)).value;
-    return (await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args))).value;
+    const computed = cache
+      ? await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args), {
+          onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
+        })
+      : await computeTool(toolName, args);
+    noteToolCall(observe, () => computed.observed);
+    return computed.value;
   }
 
   async function computeTool(toolName, toolArgs) {
@@ -281,6 +292,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const upstreamMatchedCount =
       toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
     const upstreamDegraded = isDegradedUpstream(raw);
+    // Lane + degradation markers for the completion log, read before the projector strips the metadata.
+    const observed = describeUpstreamEnvelope(raw);
 
     // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
     // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
@@ -299,7 +312,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         if (isResellerRow(detail, resellerHostSet(extraHostsCsv))) {
           if (logger) logger.info({ tool: toolName }, "public_read sourcing filter: reseller product withheld");
           // A withheld reseller product is a deterministic policy verdict, not a lane failure: cacheable.
-          return { value: { note: "Product not found." }, cacheable: true };
+          return { value: { note: "Product not found." }, cacheable: true, observed };
         }
       }
     }
@@ -348,7 +361,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded, emptySearchPage, chainFilterFailedOpen };
+    return { value, cacheable: !upstreamDegraded, emptySearchPage, chainFilterFailedOpen, observed };
   }
 
   function isPublicReadTool(name) {
