@@ -61,6 +61,18 @@ const RUBRIC_VERSION = 'v4';
 // hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 // v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
+// A validator change releases only the memos whose rejection it could change. v2 -> v3 changed quote
+// grounding alone, so a v2 memo stays remembered unless it was recommendation_facts_not_supplied: on
+// 2026-10-20 that released 7,310 of 22,074 live v2 memos, not all of them, and kept 14,764 model
+// verdicts out of tonight's queue. A version with no entry here releases every older memo.
+const VALIDATOR_COMPATIBLE_MEMOS = Object.freeze({
+  'relgraph_review_validator.v2': Object.freeze({ releases: new Set(['recommendation_facts_not_supplied']) }),
+});
+function memoValidatorStillApplies(memo) {
+  if (memo.validator_version === REVIEW_VALIDATOR_VERSION) return true;
+  const compatible = VALIDATOR_COMPATIBLE_MEMOS[memo.validator_version];
+  return Boolean(compatible && memo.rationale_code && !compatible.releases.has(memo.rationale_code));
+}
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
@@ -953,7 +965,7 @@ function isRememberedNegative(row, fingerprint, {
   // Another model, validator or rubric may well decide differently; an unknown
   // current model never matches a recorded one.
   if ((memo.model || null) !== (normalizeString(model, 120) || null)) return false;
-  if (memo.validator_version !== REVIEW_VALIDATOR_VERSION || memo.rubric !== RUBRIC_VERSION) return false;
+  if (!memoValidatorStillApplies(memo) || memo.rubric !== RUBRIC_VERSION) return false;
   if (memo.verdict === 'low_confidence' && Number.isFinite(Number(memo.min_approval_confidence))
       && minApprovalConfidence < Number(memo.min_approval_confidence)) {
     return false;
@@ -1163,7 +1175,7 @@ async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } 
 
 // QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (2026-10-20). The evidence reaches the model as
 // JSON, and it often copies a quote with its key and quote marks ('category": "toner', 'best_for": [
-// "lip comfort", "shine finish" ]') or joins two spans with an ellipsis. On 37 approvals the
+// "lip comfort", "shine finish" ]') or joins two spans of one fact with an ellipsis. On 37 approvals the
 // validator overturned (prod dry run, uncovered anchors), 36 failed only on that shape or on spacing
 // around punctuation, not on a fact the products lack. A quote is cut into the spans it quotes:
 // the key and JSON punctuation dropped, array items and ellipsis-joined parts split. Each span must
@@ -1175,20 +1187,33 @@ const GENERIC_QUOTE_SPAN = /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|
 function normalizeQuoteText(value) {
   return String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
-function quoteSpans(value) {
+// The items a quote names (array fragments split at '", "'), each the parts an ellipsis joins.
+function quoteParts(value) {
   const text = normalizeString(value, 350)
     .replace(/^\s*[{\[]?\s*"?[A-Za-z][A-Za-z_]{0,40}"?\s*:\s*/, '')
     .replace(/^[\s\["]+|[\s\]}",]+$/g, '');
-  return text.split(/"\s*,\s*"|\s*(?:\.\.\.|\u2026)\s*/).map((span) => span.replace(/^[\s"]+|[\s"]+$/g, '')).filter(Boolean);
+  const trim = (span) => span.replace(/^[\s"]+|[\s"]+$/g, '');
+  return text.split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|\u2026)\s*/).map(trim).filter(Boolean))
+    .filter((parts) => parts.length);
+}
+function quoteSpans(value) {
+  return quoteParts(value).flat();
 }
 function quoteSpanIsGeneric(span, product) {
   const needle = normalizeQuoteText(span);
   return !needle || needle === normalizeQuoteText(product && product.brand) || GENERIC_QUOTE_SPAN.test(needle);
 }
+// The model's own quotes, as given: grounding parses these. quotedEvidence is the cleaned text stored.
+function rawQuotedEvidence(value) {
+  return asArray(value).slice(0, 6).map((item) => ({
+    anchor_fact: normalizeString(item?.anchor_fact, 350),
+    candidate_fact: normalizeString(item?.candidate_fact, 350),
+  })).filter((item) => quoteParts(item.anchor_fact).length && quoteParts(item.candidate_fact).length);
+}
 function quotedEvidence(value) {
   return asArray(value).slice(0, 6).map((item) => ({
-    anchor_fact: quoteSpans(item?.anchor_fact).join(' … '),
-    candidate_fact: quoteSpans(item?.candidate_fact).join(' … '),
+    anchor_fact: quoteParts(item?.anchor_fact).map((parts) => parts.join(' … ')).join(', '),
+    candidate_fact: quoteParts(item?.candidate_fact).map((parts) => parts.join(' … ')).join(', '),
   })).filter((item) => item.anchor_fact && item.candidate_fact);
 }
 function factGrounded(product, quote) {
@@ -1200,9 +1225,11 @@ function factGrounded(product, quote) {
     else if (value && typeof value === 'object') Object.values(value).forEach(collect);
   };
   collect(product);
-  const spans = quoteSpans(quote).filter((span) => !quoteSpanIsGeneric(span, product));
-  if (!spans.length) return null; // proves nothing either way
-  return spans.every((span) => values.some((value) => value.includes(compact(span))));
+  const items = quoteParts(quote).map((parts) => parts.filter((span) => !quoteSpanIsGeneric(span, product))).filter((parts) => parts.length);
+  if (!items.length) return null; // proves nothing either way
+  // The parts an ellipsis joins must come from ONE fact (one field value), so a title and a description
+  // cannot be stitched into a claim neither makes. Array items are separate facts.
+  return items.every((parts) => values.some((value) => parts.every((span) => value.includes(compact(span)))));
 }
 // Every quote must hold on both sides, and at least one must say something specific about each.
 function quotesGrounded(quotes, evidence) {
@@ -1226,7 +1253,7 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   let reason = '';
   if (!(allowed[row.relation_type] || []).includes(decision.relationship_kind)) reason = 'relation_semantics_mismatch';
   else if (!normalizeString(decision.recommendation_reason, 700) || !quotes.length) reason = 'recommendation_utility_evidence_missing';
-  else if (!quotesGrounded(quotes, evidence)) reason = 'recommendation_facts_not_supplied';
+  else if (!quotesGrounded(rawQuotedEvidence(decision.shared_evidence), evidence)) reason = 'recommendation_facts_not_supplied';
   else if (decision.relationship_kind !== 'complement' && !compactArray(decision.tradeoffs, 6).length) reason = 'substitution_tradeoffs_missing';
   if (!reason && ['dupe', 'competitive_alternative'].includes(row.relation_type)) {
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {

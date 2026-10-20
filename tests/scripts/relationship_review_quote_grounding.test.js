@@ -41,6 +41,18 @@ test('an ellipsis joins spans that must each be the product\'s own text', () => 
     .toBe('recommendation_facts_not_supplied');
 });
 
+test('ellipsis parts must come from one fact, never a title stitched to a description', () => {
+  const b = { ...TONER_B, title: 'Daily Renewing Toner', name: 'Daily Renewing Toner',
+    description: 'Soothes and hydrates. Balances the skin after cleansing.' };
+  // Each part is real, but no single fact says both.
+  expect(verdict(TONER_A, b, [{ anchor_fact: 'Calming Toner', candidate_fact: 'Daily Renewing Toner ... Soothes and hydrates' }]))
+    .toBe('recommendation_facts_not_supplied');
+  expect(verdict(TONER_A, b, [{ anchor_fact: 'Calming Toner', candidate_fact: 'Soothes and hydrates … Balances the skin after cleansing.' }])).toBe('approve');
+  // Array items are separate facts, so they may come from different items of a list.
+  const a = { ...TONER_A, tags: ['alcohol free', 'fragrance free'] };
+  expect(verdict(a, TONER_B, [{ anchor_fact: 'alcohol free", "fragrance free', candidate_fact: 'Soothing Toner' }])).toBe('approve');
+});
+
 test('spacing around punctuation does not decide grounding', () => {
   const a = { ...TONER_A, description: 'keeps curls smooth, hydrated, and naturally bouncy . ideal for permed hair' };
   expect(verdict(a, TONER_B, [{ anchor_fact: 'keeps curls smooth, hydrated, and naturally bouncy.', candidate_fact: 'Soothing Toner' }])).toBe('approve');
@@ -64,15 +76,20 @@ test('what a shopper sees is the cleaned quote, never JSON and never a generic-o
     { anchor_fact: 'category": "cream', candidate_fact: 'category": "cream' },
     { anchor_fact: 'tags": [ "lip comfort", "shine finish" ]', candidate_fact: '"title": "Soothing Toner"' },
   ]));
-  expect(fields.reasons_user_visible).toEqual(['lip comfort … shine finish / Soothing Toner']);
+  expect(fields.reasons_user_visible).toEqual(['lip comfort, shine finish / Soothing Toner']);
   for (const reason of fields.reasons_user_visible) expect(reason).not.toMatch(/[":[\]]/);
 });
 
-test('the validator version moves, so memos written under v2 are reviewed again', () => {
+test('the version moves, and releases only the v2 memos the grounding change could reverse', () => {
   expect(REVIEW_VALIDATOR_VERSION).toBe('relgraph_review_validator.v3');
-  const memo = (validator_version) => ({ provenance: { ai_review_last: { verdict: 'reject', pair_fingerprint: 'fp', validator_version, rubric: 'v4',
-    reviewed_at: '2026-10-19T10:00:00.000Z', model: null } } });
+  const memo = (validator_version, rationale_code) => ({ provenance: { ai_review_last: { verdict: 'reject', rationale_code,
+    pair_fingerprint: 'fp', validator_version, rubric: 'v4', reviewed_at: '2026-10-19T10:00:00.000Z', model: null } } });
   const nowMs = Date.parse('2026-10-20T10:00:00.000Z');
-  expect(isRememberedNegative(memo('relgraph_review_validator.v2'), 'fp', { nowMs })).toBe(false);
-  expect(isRememberedNegative(memo(REVIEW_VALIDATOR_VERSION), 'fp', { nowMs })).toBe(true);
+  const remembered = (m) => isRememberedNegative(m, 'fp', { nowMs });
+  expect(remembered(memo('relgraph_review_validator.v2', 'recommendation_facts_not_supplied'))).toBe(false);
+  expect(remembered(memo('relgraph_review_validator.v2', 'model_reject_none'))).toBe(true);
+  expect(remembered(memo('relgraph_review_validator.v2', 'structural_or_dupe_evidence_mismatch'))).toBe(true);
+  expect(remembered(memo('relgraph_review_validator.v2', undefined))).toBe(false);
+  expect(remembered(memo('relgraph_review_validator.v1', 'model_reject_none'))).toBe(false);
+  expect(remembered(memo(REVIEW_VALIDATOR_VERSION, 'recommendation_facts_not_supplied'))).toBe(true);
 });
