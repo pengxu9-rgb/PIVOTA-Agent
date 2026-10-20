@@ -23,6 +23,10 @@ function asString(value) {
 }
 
 async function main() {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (through the trust
+  // upserter), so it logs the switch it runs with -- the flip must be the same on
+  // every writer (see catalogRowTrustUpserter's CRAWL_FRESH block).
+  require('../src/services/catalogRowTrustUpserter').logCrawlFreshConfig('pdp-identity-coverage-lift', { stream: process.stderr });
   const brand = asString(argValue('brand')) || null;
   const topBrands = Math.max(1, Math.min(50, Number(argValue('top-brands') || 5) || 5));
   const sourceLimitPerBrand = Math.max(

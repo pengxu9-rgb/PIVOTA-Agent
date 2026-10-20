@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"subject\": {\n    \"type\": \"product\",\n    \"id\": \"sig_fx_101\"\n  },\n  \"best_offer\": {\n    \"type\": \"offer\",\n    \"value\": {\n      \"merchant_id\": \"merch_fixture_a\",\n      \"price\": 12.9,\n      \"currency\": \"SGD\",\n      \"in_stock\": true,\n      \"availability\": \"in_stock\",\n      \"affiliate_url\": \"https://api.fixture.example/r?token=fx1\"\n    }\n  },\n  \"signals\": [\n    {\n      \"type\": \"offer\",\n      \"value\": {\n        \"merchant_id\": \"merch_fixture_a\",\n        \"price\": 12.9,\n        \"currency\": \"SGD\",\n        \"in_stock\": true,\n        \"availability\": \"in_stock\",\n        \"affiliate_url\": \"https://api.fixture.example/r?token=fx1\"\n      }\n    },\n    {\n      \"type\": \"offer\",\n      \"value\": {\n        \"merchant_id\": \"merch_fixture_c\",\n        \"price\": 9.5,\n        \"currency\": \"USD\",\n        \"in_stock\": null,\n        \"affiliate_url\": \"https://api.fixture.example/r/undefined\"\n      }\n    }\n  ],\n  \"metadata\": {\n    \"offer_count\": 2,\n    \"market\": \"SG\",\n    \"market_currency\": \"SGD\",\n    \"withheld_other_currency_count\": 0\n  }\n}"
+      }
+    ]
+  }
+}

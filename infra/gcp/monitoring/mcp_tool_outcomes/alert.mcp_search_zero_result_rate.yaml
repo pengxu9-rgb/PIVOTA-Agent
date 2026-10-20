@@ -1,0 +1,28 @@
+# Alert: more than 40% of search_catalog answers returned zero results over 30 minutes, sustained 10 minutes,
+# with at least 50 answers. Counted on what the CALLER received, after the public tier's filters. A tool error
+# is not a zero result. Needs the mcp_search_answers and mcp_search_zero_results log metrics.
+#   gcloud alpha monitoring policies create --project=$PROJECT \
+#     --policy-from-file=infra/gcp/monitoring/mcp_tool_outcomes/alert.mcp_search_zero_result_rate.yaml
+displayName: MCP search zero-result rate > 40% (30m)
+combiner: OR
+conditions:
+  - displayName: search_catalog zero-result rate > 40% over 30m (>= 50 answers)
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum(increase(logging_googleapis_com:user_mcp_search_zero_results[30m]))
+            / sum(increase(logging_googleapis_com:user_mcp_search_answers[30m]))
+        ) > 0.40
+        and
+        sum(increase(logging_googleapis_com:user_mcp_search_answers[30m])) >= 50
+      duration: 600s
+      evaluationInterval: 300s
+alertStrategy:
+  autoClose: 3600s
+documentation:
+  mimeType: text/markdown
+  content: |
+    More than 40% of MCP searches answered with an empty list. Check whether the lane degraded
+    (`jsonPayload.upstream_degraded=true`, `jsonPayload.lane`) or the public tier's filters emptied pages
+    (`door="public_mcp"` only). Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md
+notificationChannels: []

@@ -212,11 +212,16 @@ async function predictServing({ client, plans, now = new Date(), upserter, deriv
   if (!stored.size) return out;
   const rows = (await client.query(`${PRODUCT_JOIN_SQL}  WHERE cp.product_key = ANY($1::text[])\n`, [[...stored.keys()]])).rows;
   const quarantines = (await client.query(QUARANTINE_SQL)).rows;
+  // CRAWL_FRESH: supplied exactly as the trust writers supply it (null, and no
+  // query, while CATALOG_TRUST_CRAWL_FRESH_ENABLED is off).
+  const crawlFreshByKey = (upserter && upserter.crawlFreshByKey)
+    || require('../src/services/catalogRowTrustUpserter').crawlFreshByKey;
+  const crawlFresh = await crawlFreshByKey(client, rows, now);
   for (const row of rows) {
     const plan = planByRef.get(row.pil_source_listing_ref);
     if (!plan) continue;
-    const before = derive(rowToPolicyInputs(row, quarantines, now));
-    const inputs = rowToPolicyInputs(row, quarantines, now);
+    const before = derive(rowToPolicyInputs(row, quarantines, now, { crawlFresh }));
+    const inputs = rowToPolicyInputs(row, quarantines, now, { crawlFresh });
     if (inputs.identity) {
       inputs.identity = { ...inputs.identity, identity_status: plan.fields.identity_status,
         identity_confidence: plan.fields.identity_confidence, review_required: plan.fields.review_required };
@@ -451,6 +456,10 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
 }
 
 async function main() {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (through the trust
+  // upserter), so it logs the switch it runs with -- the flip must be the same on
+  // every writer (see catalogRowTrustUpserter's CRAWL_FRESH block).
+  require('../src/services/catalogRowTrustUpserter').logCrawlFreshConfig('repairRetailerOfficialDomain', { stream: process.stderr });
   const { Client } = require('pg');
   const { upsertCatalogRowTrustForSourceListingRefs } = require('../src/services/catalogRowTrustUpserter');
   const args = parseArgs(process.argv.slice(2));

@@ -68,6 +68,47 @@ Gemini:
 
 Semantic rewrite no longer inherits model config from `PIVOTA_INTENT_MODEL` or `PIVOTA_INTENT_MODEL_GEMINI`.
 
+Rerank models:
+
+- `PIVOTA_RERANK_MODEL_OPENAI` (falls back to the legacy shared `PIVOTA_RERANK_MODEL`, then the built-in default `gpt-5.1-mini`)
+- `PIVOTA_RERANK_MODEL_GEMINI` (default floor: `gemini-3-flash-preview`)
+- `PIVOTA_RERANK_LLM_TIMEOUT_MS` (default 2500, max 15000): ONE deadline for the whole provider chain, not per provider
+
+Provider availability is decided by `llmRuntime.js` from API-key env vars only. A Gemini setup that relies on
+Vertex ADC with no Gemini key set does not count as available there, so the chain can resolve to OpenAI alone.
+
+### Model-unavailable breaker
+
+The built-in OpenAI defaults are not guaranteed to exist on every OpenAI-compatible endpoint.
+`src/findProductsMulti/llmModelBreaker.js` keeps a breaker per (feature, provider, model). Rerank and semantic
+rewrite send different requests, so one feature's breaker never switches off the other.
+
+- **What opens it:** only an HTTP 404 that says the model does not exist. That is OpenAI's
+  `code: 'model_not_found'`, or a Gemini/Vertex `NOT_FOUND` whose message names a model.
+- **What never opens it:** a 400 (request-shape refusals such as an unsupported `temperature` or
+  `response_format`), a bare or unrelated 404 (a wrong base URL, a token-endpoint 404), a timeout, a 429 or a 5xx.
+- **The log:** each opening writes one WARN line (severity WARNING), `event: llm_model_breaker_open`, with `feature`, `provider`,
+  `model`, `reopened` and `env_hint` (the env var to change). The log-based metric is
+  `infra/gcp/monitoring/mcp_tool_outcomes/metric.llm_model_breaker_opens.yaml`.
+- **Cooldown:** `PIVOTA_LLM_MODEL_BREAKER_COOLDOWN_MS`, default 15 min, clamped to 10-30 min. After the cooldown,
+  ONE call goes through as a probe:
+  - a success closes the breaker;
+  - another model-not-found re-opens it and logs again;
+  - any other failure keeps it open for another cooldown without logging.
+  For semantic rewrite, a reply that is not valid JSON or fails the schema still proves the model exists.
+
+While it is open:
+
+- rerank returns `{ applied: false, skipped_reason: 'model_unavailable', breaker_open: true }` without calling
+  the provider. The search keeps its deterministic order, so nothing is dropped or reordered. The `llm_rerank`
+  entry of `fpm_stage_breakdown` records `error: true, breaker_open: true`.
+- semantic rewrite falls back to the rule-based intent, with `llm_error_class: 'model_unavailable'`.
+
+The rerank deadline (`PIVOTA_RERANK_LLM_TIMEOUT_MS`) covers the whole provider chain. When a fallback provider
+is still live, the provider before it gets 60% of the remaining budget, so the fallback is not left with a spent
+budget. When the deadline fires, the chain is cancelled: the in-flight call is aborted and no further provider is
+dialled.
+
 ## `attributes.pivota` Product Tags
 
 When returning product results, the gateway injects (or preserves) the following structure:
