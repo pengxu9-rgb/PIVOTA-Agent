@@ -7,7 +7,7 @@ instead, and the log-based metrics and alerts in `infra/gcp/monitoring/mcp_tool_
 ## The line
 
 `jsonPayload.msg="mcp tools/call complete"`. The line is pino JSON on stdout, so the fields land in `jsonPayload`.
-Filter on the message and fields, not on severity: gateway lines carry only pino's numeric `level`. It is
+It carries severity INFO, which src/logger.js maps from pino's level, but filter on the message and fields. It is
 written once per `tools/call`, on response `finish`, on every door:
 
 | door | route | callers |
