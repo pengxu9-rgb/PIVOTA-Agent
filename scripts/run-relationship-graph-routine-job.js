@@ -212,6 +212,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), DEFAULT_REVIEW_MIN_SCORE, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
+    reviewUncoveredFirst: hasFlag(argv, 'review-uncovered-first'),
     reviewExcludeRelationTypes,
     servingAuditLimit: parseNumber(argValue(argv, 'serving-audit-limit'), 0, { min: 0, max: 250000 }),
     servingAuditExamples: parseNumber(argValue(argv, 'serving-audit-examples'), DEFAULT_SERVING_AUDIT_EXAMPLES, {
@@ -384,6 +385,7 @@ function buildRoutineSteps(options) {
     pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
+    if (options.reviewUncoveredFirst) args.push('--uncovered-first');
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);
     // Single-pass scoping: review only the anchors this run's build produced (its build report).
     // The review step runs AFTER the build, so artifacts.build exists by then.

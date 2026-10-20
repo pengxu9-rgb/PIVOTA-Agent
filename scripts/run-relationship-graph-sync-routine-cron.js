@@ -203,6 +203,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'review-min-score', env.RELGRAPH_SYNC_REVIEW_MIN_SCORE);
   pushArg(args, 'review-relation-types', env.RELGRAPH_SYNC_REVIEW_RELATION_TYPES);
   pushArg(args, 'review-exclude-relation-types', env.RELGRAPH_SYNC_REVIEW_EXCLUDE_RELATION_TYPES);
+  // Review the labels of anchors with no served alternative first (2026-10-20): coverage, not depth.
+  pushFlag(args, 'review-uncovered-first', parseBooleanEnv(env.RELGRAPH_SYNC_REVIEW_UNCOVERED_FIRST, false));
   pushArg(args, 'serving-audit-limit', env.RELGRAPH_SYNC_SERVING_AUDIT_LIMIT);
   pushArg(args, 'serving-audit-examples', env.RELGRAPH_SYNC_SERVING_AUDIT_EXAMPLES);
   pushArg(args, 'max-serving-suppressed-pct', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_PCT);
