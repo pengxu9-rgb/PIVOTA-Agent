@@ -51,10 +51,14 @@ function isLoopbackLiteral(host) {
   return false;
 }
 
-/** The URL's hostname exactly as the WHATWG parser normalizes it (lowercase; brackets stripped). null if unparseable. */
+/**
+ * The URL's hostname exactly as the WHATWG parser normalizes it, brackets stripped; null if unparseable. The
+ * parser already lowercases hosts and canonicalizes numeric IPv4 (0x7f000001 -> 127.0.0.1); it does NOT strip
+ * a trailing dot, and neither does this (a test pins all three).
+ */
 function hostOf(url) {
   try {
-    return new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return new URL(url).hostname.replace(/^\[|\]$/g, '');
   } catch {
     return null;
   }
@@ -73,7 +77,7 @@ function classifyTarget(url, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
   } catch {
     return { ok: false, kind: null, host: null, problem: `target URL "${url}" does not parse` };
   }
-  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const host = u.hostname.replace(/^\[|\]$/g, ''); // already lowercased by the WHATWG parser
   const refuse = (problem) => ({ ok: false, kind: null, host, problem });
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return refuse(`scheme ${u.protocol} is not http(s)`);
   if (u.username || u.password) return refuse('a target URL must not carry credentials (user:pass@)');

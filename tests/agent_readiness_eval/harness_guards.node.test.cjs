@@ -213,13 +213,19 @@ test('S9: secrets are env-only, the breaker window must be >= 1', () => {
 });
 
 test('S10: results are refused inside a git checkout; each run gets its own new directory', async () => {
-  const repoOut = path.join(__dirname, 'should-never-exist');
-  const io = { out: sink(), err: sink() };
-  const f = throwingFetch();
-  assert.equal(await main(['--base-url', 'http://127.0.0.1:1', '--out', repoOut], {}, io, { fetchImpl: f }), 2);
-  assert.match(io.err.text(), /inside a git checkout/);
-  assert.equal(fs.existsSync(repoOut), false);
-  assert.equal(f.calls.length, 0);
+  // A unique path, removed in `finally`: if the refusal were ever broken, this test must not leave results in the
+  // repository (or poison later runs).
+  const repoOut = path.join(__dirname, `should-never-exist-${process.pid}-${Date.now()}`);
+  try {
+    const io = { out: sink(), err: sink() };
+    const f = throwingFetch();
+    assert.equal(await main(['--base-url', 'http://127.0.0.1:1', '--out', repoOut], {}, io, { fetchImpl: f }), 2);
+    assert.match(io.err.text(), /inside a git checkout/);
+    assert.equal(fs.existsSync(repoOut), false);
+    assert.equal(f.calls.length, 0);
+  } finally {
+    fs.rmSync(repoOut, { recursive: true, force: true });
+  }
   const srv = await miniServer();
   try {
     const out = tmp();
