@@ -6262,10 +6262,23 @@ function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
   return err;
 }
 
-// A 200 assembled while some optional read could not reach the database. The
-// body carries `degraded_reads` (what was missing) and the response is
-// `Cache-Control: no-store`, so it is not replayed as a complete answer. Covers
-// every res.json this request sends after the mark.
+// A get_pdp_v2 request whose signature ref is PARTIAL: an optional sub-read
+// (identity listing, identity-group members) could not reach the database.
+//
+// THE RULE, for every JSON body the request sends after the mark:
+//   1. it carries `degraded_reads` (what was missing), error bodies included,
+//      and the response is `Cache-Control: no-store`;
+//   2. it is never a not-found verdict. A 404 (PRODUCT_NOT_FOUND,
+//      PRODUCT_NOT_SERVABLE, ...) is rewritten to the retryable
+//      503 TEMPORARY_UNAVAILABLE / CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE, with the
+//      verdict that was about to be sent kept in `details.withheld_verdict`.
+//
+// Why (2): the database was unreachable during THIS request, so any later read
+// it swallowed (product detail, serving eligibility, identity rescue) may have
+// failed the same way, and the handler cannot tell that from "no such
+// product". A healthy product would otherwise get a 404 that crawlers and the
+// agent-ui ISR cache store as settled. A wrong 503 self-heals on retry; a wrong
+// 404 deindexes. Other 4xx (input errors) and 5xx pass through, marked.
 function markInvokeResponseDegraded(res, reason) {
   if (!res || typeof res.json !== 'function') return;
   if (res.__pivotaDegradedReads instanceof Set) {
@@ -6276,11 +6289,30 @@ function markInvokeResponseDegraded(res, reason) {
   res.__pivotaDegradedReads = reasons;
   if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
   const sendJson = res.json.bind(res);
-  res.json = (body) => sendJson(
-    body && typeof body === 'object' && !Array.isArray(body)
-      ? { ...body, degraded_reads: [...reasons] }
-      : body,
-  );
+  res.json = (body) => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(body);
+    if (Number(res.statusCode) === 404) {
+      res.status(503);
+      return sendJson({
+        error: 'TEMPORARY_UNAVAILABLE',
+        message: 'Product is temporarily unavailable. Please retry shortly.',
+        reason_code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+        ...(body.gateway_request_id ? { gateway_request_id: body.gateway_request_id } : {}),
+        details: {
+          reason: 'catalog_signature_partial_read',
+          withheld_verdict: {
+            status: 404,
+            error: body.error || null,
+            reason_code: body.reason_code || null,
+            reason: (body.details && typeof body.details === 'object' && body.details.reason) || null,
+          },
+        },
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+        degraded_reads: [...reasons],
+      });
+    }
+    return sendJson({ ...body, degraded_reads: [...reasons] });
+  };
 }
 
 // The reason a retryable resolve failure is reported under.
@@ -31519,11 +31551,16 @@ function buildCommerceKernelDb() {
 // get_product_detail callers expect. Flattens brand {name} → string and price {current:{amount,currency}} →
 // price/currency scalars; every other field passes through (the adapters' sanitizer/projection handle it).
 function normalizePdpV2ToProductDetail(body) {
+  // get_pdp_v2's `degraded_reads` (a page built while part of the database could not answer) must survive
+  // the projection: every cache downstream of it decides on the body, and none of them sees headers.
+  const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
+    ? { degraded_reads: body.degraded_reads.map(String) }
+    : {};
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
     const p = canonical?.data?.pdp_payload?.product;
-    if (!p || typeof p !== 'object') return { product: null };
+    if (!p || typeof p !== 'object') return { product: null, ...degraded };
     const current = p.price && typeof p.price === 'object' && p.price.current && typeof p.price.current === 'object'
       ? p.price.current
       : null;
@@ -31538,9 +31575,10 @@ function normalizePdpV2ToProductDetail(body) {
           ? /in.?stock|available/.test(availability)
           : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
       },
+      ...degraded,
     };
   } catch {
-    return { product: null };
+    return { product: null, ...degraded };
   }
 }
 
@@ -53516,6 +53554,9 @@ module.exports._debug = {
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
   RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE,
   filterPublicReadChainResolvableRows,
+  markInvokeResponseDegraded,
+  noteCatalogSignatureUnavailable,
+  normalizePdpV2ToProductDetail,
   queryBeautyExternalSeedRowsWithTimeout,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,

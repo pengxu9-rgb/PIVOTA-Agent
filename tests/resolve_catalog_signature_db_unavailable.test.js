@@ -287,6 +287,23 @@ describe('signature resolver: cooldown after an unavailable database', () => {
     expect(state.untilMs - startedAt).toBeGreaterThan(2_000);
   });
 
+  test('at most 1,000 sigs are remembered: the oldest is evicted first', async () => {
+    const { app } = loadServer(jest.fn(async () => ({ rows: [] })), {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '60000', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '1000',
+    });
+    const state = app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+    for (let n = 1; n <= 1001; n += 1) app._debug.noteCatalogSignatureUnavailable(sigN(n));
+    expect(state.perSig.size).toBe(1000);
+    expect(state.perSig.has(sigN(1))).toBe(false);
+    expect(state.perSig.has(sigN(2))).toBe(true);
+    expect(state.perSig.has(sigN(1001))).toBe(true);
+    // A sig failing again moves to the newest end, so it is not the next one evicted.
+    app._debug.noteCatalogSignatureUnavailable(sigN(2));
+    app._debug.noteCatalogSignatureUnavailable(sigN(1002));
+    expect(state.perSig.has(sigN(2))).toBe(true);
+    expect(state.perSig.has(sigN(3))).toBe(false);
+  });
+
   test('0 disables it', async () => {
     const query = alwaysDown();
     const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '0' });
@@ -384,29 +401,103 @@ describe('signature resolver: lane deadline', () => {
 });
 
 describe('get_pdp_v2 marks a response built from a degraded ref', () => {
-  const exactSeedRow = { merchant_id: 'external_seed', platform: 'external_seed', source_product_id: 'ext_synthetic_1', pivota_signature_id: SIG };
+  // A healthy product: active seed, serving-eligible exact row. Nothing else answers (product detail, rescue),
+  // which is what a database outage looks like to the reads after the signature resolve.
+  const exactSeedRow = {
+    merchant_id: 'external_seed', platform: 'external_seed', source_product_id: 'ext_synthetic_1', pivota_signature_id: SIG,
+    source_system: 'external_product_seeds_mirror_v1', signature_serving_eligible: true, external_seed_id: 101,
+    external_seed_external_product_id: 'ext_synthetic_1', external_seed_status: 'active', external_seed_route_lane: 0,
+  };
   const invoke = (app) => request(app)
     .post('/agent/shop/v1/invoke')
     .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: SIG } } });
+  const serverWith = (identityDown) => loadServer(jest.fn(async (sql) => {
+    const text = String(sql);
+    if (identityDown && /WHERE pil\.source_listing_ref = \$1/.test(text)) throw poolCheckoutTimeout();
+    if (text.includes('cp.pivota_signature_id = $1')) return { rows: [exactSeedRow] };
+    return { rows: [] };
+  }), { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
 
-  test('degraded: degraded_reads in the body and Cache-Control: no-store', async () => {
-    const query = jest.fn(async (sql) => {
-      const text = String(sql);
-      if (/WHERE pil\.source_listing_ref = \$1/.test(text)) throw poolCheckoutTimeout();
-      if (text.includes('cp.pivota_signature_id = $1')) return { rows: [exactSeedRow] };
-      return { rows: [] };
+  test('a degraded ref for a healthy product answers a retryable 503, never a 404', async () => {
+    const res = await invoke(serverWith(true).app);
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      error: 'TEMPORARY_UNAVAILABLE',
+      reason_code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+      details: { reason: 'catalog_signature_partial_read', withheld_verdict: { status: 404 } },
+      degraded_reads: ['catalog_signature_partial'],
     });
-    const { app } = loadServer(query, { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
-    const res = await invoke(app);
     expect(res.headers['cache-control']).toMatch(/no-store/);
-    expect(res.body.degraded_reads).toEqual(['catalog_signature_partial']);
   });
 
-  test('complete: no marker', async () => {
-    const query = jest.fn(async (sql) => (String(sql).includes('cp.pivota_signature_id = $1') ? { rows: [exactSeedRow] } : { rows: [] }));
-    const { app } = loadServer(query, { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
-    const res = await invoke(app);
+  test('control: the same reads with a COMPLETE ref keep their verdict, unmarked', async () => {
+    const res = await invoke(serverWith(false).app);
+    // Whatever the handler concludes from a complete ref is left alone -- including a 404.
+    expect(res.status).toBe(404);
     expect(res.body.degraded_reads).toBeUndefined();
-    expect(String(res.headers['cache-control'] || '')).not.toMatch(/^no-store$/);
+  });
+
+  describe('the rule for every body sent after the mark', () => {
+    let app;
+    beforeAll(() => { ({ app } = loadServer(jest.fn(async () => ({ rows: [] })))); });
+    function fakeRes() {
+      const res = {
+        statusCode: 200, headers: {}, sent: null,
+        status(code) { this.statusCode = code; return this; },
+        set(name, value) { this.headers[name.toLowerCase()] = value; return this; },
+        json(body) { this.sent = body; return this; },
+      };
+      return res;
+    }
+    const send = (status, body) => {
+      const res = fakeRes();
+      app._debug.markInvokeResponseDegraded(res, 'catalog_signature_partial');
+      res.status(status).json(body);
+      return res;
+    };
+
+    test('200: kept, marked, no-store', () => {
+      const res = send(200, { modules: [] });
+      expect(res.statusCode).toBe(200);
+      expect(res.sent).toEqual({ modules: [], degraded_reads: ['catalog_signature_partial'] });
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+    test('404 (any not-found verdict): rewritten to the retryable 503, verdict withheld, marked', () => {
+      const res = send(404, { error: 'PRODUCT_NOT_SERVABLE', reason_code: 'PRODUCT_NOT_SERVABLE', details: { reason: 'low_quality', index_row_found: true, serving_eligible: false } });
+      expect(res.statusCode).toBe(503);
+      expect(res.sent).toMatchObject({
+        error: 'TEMPORARY_UNAVAILABLE',
+        details: { withheld_verdict: { status: 404, error: 'PRODUCT_NOT_SERVABLE', reason: 'low_quality' } },
+        degraded_reads: ['catalog_signature_partial'],
+      });
+      // The settled-ineligibility shape agent-ui would store as a 404 must not survive the rewrite.
+      expect(res.sent.details.index_row_found).toBeUndefined();
+    });
+    test('other 4xx (an input error) and 5xx: status kept, marked', () => {
+      expect(send(400, { error: 'MISSING_PARAMETERS' })).toMatchObject({ statusCode: 400, sent: { error: 'MISSING_PARAMETERS', degraded_reads: ['catalog_signature_partial'] } });
+      expect(send(503, { error: 'TEMPORARY_UNAVAILABLE' })).toMatchObject({ statusCode: 503, sent: { degraded_reads: ['catalog_signature_partial'] } });
+    });
+  });
+});
+
+describe('normalizePdpV2ToProductDetail carries the degraded marker', () => {
+  let app;
+  beforeAll(() => { ({ app } = loadServer(jest.fn(async () => ({ rows: [] })))); });
+  const page = (extra = {}) => ({
+    modules: [{ type: 'canonical', data: { pdp_payload: { product: { product_id: 'sig_x', title: 'T', price: { current: { amount: 10, currency: 'USD' } } } } } }],
+    ...extra,
+  });
+
+  test('a degraded page keeps degraded_reads next to the product', () => {
+    const out = app._debug.normalizePdpV2ToProductDetail(page({ degraded_reads: ['catalog_signature_partial'] }));
+    expect(out.product).toMatchObject({ product_id: 'sig_x', price: 10 });
+    expect(out.degraded_reads).toEqual(['catalog_signature_partial']);
+  });
+  test('...and on a page with no product', () => {
+    expect(app._debug.normalizePdpV2ToProductDetail({ modules: [], degraded_reads: ['catalog_signature_partial'] }))
+      .toEqual({ product: null, degraded_reads: ['catalog_signature_partial'] });
+  });
+  test('a complete page has no marker', () => {
+    expect(app._debug.normalizePdpV2ToProductDetail(page())).not.toHaveProperty('degraded_reads');
   });
 });

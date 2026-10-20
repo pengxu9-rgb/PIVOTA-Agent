@@ -193,6 +193,24 @@ describe('lane deadlines on plain query()', () => {
     ['DATABASE_URL cannot be parsed', () => {
       process.env.DATABASE_URL = 'not a connection string ::: %%%';
     }, 'database_url_unparseable'],
+    ['the parser throws on an out-of-range port', () => {
+      process.env.DATABASE_URL = 'postgres://u:p@h:99999/db';
+    }, 'database_url_unparseable'],
+    ['the parser throws on an unclosed IPv6 host', () => {
+      process.env.DATABASE_URL = 'postgres://[::1/db';
+    }, 'database_url_unparseable'],
+    ['URL options= name the interval in UPPER case, set to 0', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20CLIENT_CONNECTION_CHECK_INTERVAL%3D0';
+    }, 'database_url_options_check_interval_off'],
+    ['URL options= name the interval with dashes, set to 0', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client-connection-check-interval%3D0';
+    }, 'database_url_options_check_interval_off'],
+    ['URL options= set a sub-millisecond interval (the server stores 0)', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D0.4ms';
+    }, 'database_url_options_check_interval_off'],
+    ['URL options= set a sub-millisecond interval in seconds', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D0.0004s';
+    }, 'database_url_options_check_interval_off'],
     ['the Cloud SQL socket-form URL has no interval anywhere', () => {
       process.env.DATABASE_URL = 'postgresql://example:test@/pivota?host=/cloudsql/project:region:instance';
       delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
@@ -222,6 +240,7 @@ describe('lane deadlines on plain query()', () => {
     ['the Cloud SQL socket-form URL with the env interval', 'postgresql://example:test@/pivota?host=/cloudsql/project:region:instance', '1000'],
     ['a URL whose options= set the interval > 0 (with a unit)', 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D2s', ''],
     ['a plain URL with the env interval', 'postgres://example:test@localhost:5432/pivota', '250'],
+    ['URL options= with a mixed-case, dashed name set > 0', 'postgres://example:test@localhost:5432/pivota?options=-c%20Client-Connection-Check-Interval%3D1s', ''],
   ])('accepted: %s', (_label, databaseUrl, interval) => {
     process.env.DATABASE_URL = databaseUrl;
     if (interval) process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS = interval;
@@ -235,6 +254,7 @@ describe('lane deadlines on plain query()', () => {
     ['0', false],
     ['1s', true],
     ['250ms', true],
+    ['0.4ms', false],
   ])('the first pooled connection reporting the interval as %s leaves deadlines enabled=%s', async (shown, enabled) => {
     const pool = buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() }));
     const db = loadDb(pool);
@@ -251,6 +271,43 @@ describe('lane deadlines on plain query()', () => {
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({ reason: 'server_reports_check_interval_off' }), expect.any(String));
     }
+  });
+
+  test('a probe that fails is retried once on the next connection, then refuses as unverified', async () => {
+    const pool = buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() }));
+    const db = loadDb(pool);
+    db.getPool();
+    const onConnect = pool.on.mock.calls.find(([event]) => event === 'connect')[1];
+    const failing = { query: jest.fn(async () => { throw new Error('Connection terminated'); }) };
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+    onConnect(failing);
+    await flush();
+    // One failure proves nothing: still armed, and the next connection asks again.
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
+    onConnect(failing);
+    await flush();
+    expect(failing.query).toHaveBeenCalledTimes(2);
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'server_check_interval_unverified' }), expect.any(String));
+    // Settled: no third probe.
+    onConnect(failing);
+    await flush();
+    expect(failing.query).toHaveBeenCalledTimes(2);
+  });
+
+  test('a failed probe followed by an answer > 0 keeps the deadlines', async () => {
+    const pool = buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() }));
+    const db = loadDb(pool);
+    db.getPool();
+    const onConnect = pool.on.mock.calls.find(([event]) => event === 'connect')[1];
+    onConnect({ query: jest.fn(async () => { throw new Error('Connection terminated'); }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    onConnect({ query: jest.fn(async () => ({ rows: [{ client_connection_check_interval: '1s' }] })) });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   test('the server is not asked when deadlines are not requested', async () => {

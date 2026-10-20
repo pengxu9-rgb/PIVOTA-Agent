@@ -111,6 +111,15 @@ function cacheKeyFor(toolName, toolArgs) {
 //     negative. Closing this properly needs a top-level degradation marker on the search envelope; until
 //     one exists, do not invent a deeper heuristic here — an unvalidated guess about metadata shape is how
 //     a confident-sounding wrong answer gets built a second time.
+// A COMPLETE answer from the lane, but assembled while part of the database could not answer (get_pdp_v2's
+// `degraded_reads`, carried through normalizePdpV2ToProductDetail). It is served, never stored: replaying a
+// partial product for the normal clock is exactly the cached-degraded failure the gateway marks it to prevent.
+// Kept apart from isDegradedUpstream on purpose -- that one also decides the empty-page note, and a partial
+// product is not an empty one.
+function hasDegradedReads(raw) {
+  return Boolean(raw && typeof raw === "object" && Array.isArray(raw.degraded_reads) && raw.degraded_reads.length > 0);
+}
+
 function isDegradedUpstream(raw) {
   if (!raw || typeof raw !== "object") return false;
   if (typeof raw.status === "string" && !["success", "ok"].includes(raw.status.trim().toLowerCase())) return true;
@@ -292,6 +301,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const upstreamMatchedCount =
       toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
     const upstreamDegraded = isDegradedUpstream(raw);
+    const upstreamPartial = hasDegradedReads(raw);
     // Lane + degradation markers for the completion log, read before the projector strips the metadata.
     const observed = describeUpstreamEnvelope(raw);
 
@@ -361,7 +371,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded, emptySearchPage, chainFilterFailedOpen, observed };
+    return { value, cacheable: !upstreamDegraded && !upstreamPartial, emptySearchPage, chainFilterFailedOpen, observed };
   }
 
   function isPublicReadTool(name) {

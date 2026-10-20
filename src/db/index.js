@@ -328,16 +328,20 @@ function isDbLaneDeadlinesRequested() {
 const PG_URL_SCHEME = /^\s*(postgres(?:ql)?:\/\/|socket:)/i;
 const INTERVAL_UNIT_MS = { ms: 1, s: 1_000, min: 60_000, h: 3_600_000 };
 
+// The setting is an integer number of milliseconds on the server: a value under 1ms (`0.4ms`, `0.0004s`)
+// is stored as 0, which is "off". Count it as 0 here too, rather than as the > 0 it looks like.
 function parseIntervalSettingMs(text) {
   const m = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|min|h)?\s*$/i.exec(String(text ?? ''));
   if (!m) return null;
-  return Number(m[1]) * INTERVAL_UNIT_MS[(m[2] || 'ms').toLowerCase()];
+  const ms = Number(m[1]) * INTERVAL_UNIT_MS[(m[2] || 'ms').toLowerCase()];
+  return ms < 1 ? 0 : ms;
 }
 
 // The interval a libpq-style options string sets (last occurrence wins, as on the server), undefined when it
 // does not mention it, null when it mentions it with a value that cannot be read.
 function checkIntervalFromOptionsMs(options) {
-  const re = /(?:-c\s*|--)client_connection_check_interval\s*=\s*(\S+)/g;
+  // GUC names are case-insensitive and `-c` accepts dashes for underscores, as the server does.
+  const re = /(?:-c\s*|--)client[-_]connection[-_]check[-_]interval\s*=\s*(\S+)/gi;
   let last;
   for (let m = re.exec(options); m; m = re.exec(options)) last = m[1];
   return last === undefined ? undefined : parseIntervalSettingMs(last);
@@ -383,7 +387,7 @@ function laneDeadlinesBlockedReason() {
   const key = `${process.env.DATABASE_URL || ''}\u0000${process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS || ''}`;
   if (staticBlockedMemo.key !== key) staticBlockedMemo = { key, reason: staticLaneDeadlineBlockedReason() };
   if (staticBlockedMemo.reason) return staticBlockedMemo.reason;
-  if (serverReportedCheckIntervalOff) return 'server_reports_check_interval_off';
+  if (serverReportedCheckIntervalOff) return serverReportedCheckIntervalOff;
   return null;
 }
 
@@ -407,23 +411,36 @@ function isDbLaneDeadlinesEnabled() {
   return false;
 }
 
-// Asks the server, once per process, on the first pooled connection, and only when deadlines are requested.
-let serverCheckIntervalProbed = false;
+// Asks the server on the first pooled connection, only when deadlines are requested. One answer settles it.
+// A probe that FAILS is retried once, on the next connection; if that fails too the deadlines are refused
+// (server_check_interval_unverified) -- an interval nobody could confirm is not one to rely on.
+const SERVER_CHECK_INTERVAL_PROBE_ATTEMPTS = 2;
+let serverCheckIntervalProbe = { inflight: false, settled: false, failures: 0 };
+function refuseFromServerProbe(reason) {
+  serverReportedCheckIntervalOff = reason;
+  laneDeadlinesRefusalWarned = false; // a new reason deserves its own warning
+  warnLaneDeadlinesRefused(reason);
+}
 function probeServerCheckInterval(client) {
-  if (serverCheckIntervalProbed || !isDbLaneDeadlinesRequested() || !client || typeof client.query !== 'function') return;
-  serverCheckIntervalProbed = true;
+  const probe = serverCheckIntervalProbe;
+  if (probe.settled || probe.inflight || !isDbLaneDeadlinesRequested() || !client || typeof client.query !== 'function') return;
+  probe.inflight = true;
   Promise.resolve()
     .then(() => client.query('SHOW client_connection_check_interval'))
     .then((result) => {
+      probe.settled = true;
       const raw = result?.rows?.[0]?.client_connection_check_interval;
-      if (!(parseIntervalSettingMs(raw) > 0)) {
-        serverReportedCheckIntervalOff = true;
-        laneDeadlinesRefusalWarned = false; // a new reason deserves its own warning
-        warnLaneDeadlinesRefused('server_reports_check_interval_off');
-      }
+      if (!(parseIntervalSettingMs(raw) > 0)) refuseFromServerProbe('server_reports_check_interval_off');
     })
     .catch(() => {
-      // An unanswerable probe proves nothing either way; the static check stands.
+      probe.failures += 1;
+      if (probe.failures >= SERVER_CHECK_INTERVAL_PROBE_ATTEMPTS) {
+        probe.settled = true;
+        refuseFromServerProbe('server_check_interval_unverified');
+      }
+    })
+    .finally(() => {
+      probe.inflight = false;
     });
 }
 
