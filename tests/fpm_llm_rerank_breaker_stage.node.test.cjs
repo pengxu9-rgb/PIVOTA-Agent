@@ -4,9 +4,9 @@
 // entry of fpm_stage_breakdown keeps error:true and says breaker_open:true. Without this, opening the breaker
 // would make the failure baseline vanish from the stage telemetry the moment it started saving round trips.
 //
-// Also pins that the breaker's WARN carries its own `severity: "WARNING"` (a field on that one log call), and that
-// no other gateway line gains a `severity` field: the gateway logger writes only pino's numeric level, and this
-// PR does not change how any other line is classified.
+// Also pins the Cloud Logging severity src/logger.js derives from pino's level: every line's `severity` matches its
+// numeric level, the breaker's WARN is WARNING, and that line carries exactly ONE `severity` key (a call that also
+// passed its own `severity` would emit the key twice — pino does not merge them).
 //
 // Read from a real child process's stdout, as tests/fpm_stage_attribution.node.test.cjs does: pino writes
 // straight to fd 1, so an in-process stdout patch sees nothing.
@@ -68,14 +68,20 @@ test('control: with the breaker closed the same request records no breaker_open'
   assert.equal(stage.breaker_open, undefined);
 });
 
-test('the breaker WARN carries severity WARNING; no other line carries a severity field', async () => {
-  const lines = jsonLines(await runProbe());
+const SEVERITY_BY_LEVEL = Object.freeze({ 10: 'DEBUG', 20: 'DEBUG', 30: 'INFO', 40: 'WARNING', 50: 'ERROR', 60: 'CRITICAL' });
+
+test('every line\'s severity matches its level; the breaker WARN is WARNING with exactly one severity key', async () => {
+  const stdout = await runProbe();
+  const lines = jsonLines(stdout);
+  assert.ok(lines.some((l) => l.level === 30), 'expected info lines');
+  const mismatched = lines.filter((l) => l.severity !== SEVERITY_BY_LEVEL[l.level]);
+  assert.deepEqual(mismatched.map((l) => [l.level, l.severity, l.msg]), []);
+
   const warn = lines.find((l) => l.event === 'llm_model_breaker_open');
   assert.ok(warn, 'expected the breaker-open WARN');
-  assert.equal(warn.severity, 'WARNING');
   assert.equal(warn.level, 40);
-  const others = lines.filter((l) => l.event !== 'llm_model_breaker_open');
-  assert.ok(others.some((l) => l.level === 30), 'expected info lines to compare against');
-  const withSeverity = others.filter((l) => Object.prototype.hasOwnProperty.call(l, 'severity'));
-  assert.deepEqual(withSeverity.map((l) => l.msg), [], 'no other gateway line may carry a severity field');
+  assert.equal(warn.severity, 'WARNING');
+  // JSON.parse keeps the LAST of duplicate keys, so the parsed object cannot show a duplicate: count the raw line.
+  const raw = stdout.split('\n').find((l) => l.includes('"llm_model_breaker_open"'));
+  assert.equal((raw.match(/"severity":/g) || []).length, 1, raw);
 });
