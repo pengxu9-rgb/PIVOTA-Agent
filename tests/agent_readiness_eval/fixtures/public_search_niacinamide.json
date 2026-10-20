@@ -1,0 +1,47 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Found 2 products: Fixture Lab 10% Niacinamide Serum; Fixture Lab Barrier Cream."
+      }
+    ],
+    "structuredContent": {
+      "products": [
+        {
+          "product_id": "sig_fx_101",
+          "brand": "Fixture Lab",
+          "title": "10% Niacinamide Serum",
+          "category": "serum",
+          "price": {
+            "amount": 12.5,
+            "currency": "SGD"
+          },
+          "availability": "in_stock",
+          "key_actives": [
+            "Niacinamide",
+            "Zinc PCA"
+          ],
+          "pivota_url": "https://agent.fixture.example/products/sig_fx_101"
+        },
+        {
+          "product_id": "sig_fx_102",
+          "brand": "Fixture Lab",
+          "title": "Barrier Cream",
+          "category": "moisturizer",
+          "availability": "unknown",
+          "key_actives": [
+            "Ceramide NP"
+          ],
+          "pivota_url": "https://agent.fixture.example/products/sig_fx_102"
+        }
+      ],
+      "page": 1,
+      "page_size": 10,
+      "returned": 2,
+      "total": 2
+    }
+  }
+}
