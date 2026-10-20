@@ -544,9 +544,11 @@ test('the daily salt never appears in any log line, on stdout/stderr, or in any 
   const TAG_KEY = crypto.createHmac('sha256', SALT).update('pivota-mcp-caller-limit-log-tag-v1').digest();
   const forms = (buf) => [buf.toString('hex'), buf.toString('base64'), buf.toString('base64url'), `\\x${buf.toString('hex')}`];
   const needles = [...forms(SALT), ...forms(TAG_KEY)];
-  const store = limits.createMemoryCallerLimitStore();
-  const salts = limits.createSaltProvider({ store, randomBytes: () => Buffer.from(SALT) });
+  // The STORE generates the salt (as Postgres does); make it a known one so the test can look for it.
+  const store = limits.createMemoryCallerLimitStore({ randomBytes: () => Buffer.from(SALT) });
+  const salts = limits.createSaltProvider({ store });
   assert.equal(await salts.ready(), true);
+  assert.equal(store.salts.values().next().value.toString('hex'), SALT.toString('hex'), 'the known salt is the one in use');
 
   const written = [];
   const outbound = [];
