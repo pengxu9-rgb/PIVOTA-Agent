@@ -630,13 +630,29 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query((q) => String(q.url || '') === 'https://blocked.example/product' && String(q.js_render || '') === 'false')
       .reply(200, '<html><body>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate</body></html>');
 
-    const { __internal } = require('../src/auroraBff/routes');
-    const out = await __internal.fetchProductHtmlWithFallback({
-      productUrl: 'https://blocked.example/product',
-      timeoutMs: 3200,
-      allowHostVariant: false,
-      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    // The vendor precheck resolves the host and refuses when the resolver stays SILENT past its budget, so
+    // the real resolver would make this a test of the runner's network. Answer NXDOMAIN at once, as the real
+    // one does for this name: a prompt "no such name" is still escalated. Installed before the require
+    // because the host check captures dns.lookup when the module loads.
+    const nodeDns = require('node:dns');
+    const lookupSpy = jest.spyOn(nodeDns, 'lookup').mockImplementation((hostname, options, callback) => {
+      const cb = typeof options === 'function' ? options : callback;
+      const err = new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+      err.code = 'ENOTFOUND';
+      setImmediate(() => cb(err));
     });
+    let out;
+    try {
+      const { __internal } = require('../src/auroraBff/routes');
+      out = await __internal.fetchProductHtmlWithFallback({
+        productUrl: 'https://blocked.example/product',
+        timeoutMs: 3200,
+        allowHostVariant: false,
+        logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+      });
+    } finally {
+      lookupSpy.mockRestore();
+    }
 
     expect(out.ok).toBe(true);
     expect(out.final_strategy).toBe('zenrows_http');
