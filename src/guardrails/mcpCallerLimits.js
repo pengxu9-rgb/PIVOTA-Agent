@@ -83,6 +83,8 @@ const STORE_DISABLE_MS = 10 * 60 * 1000;
 const STORE_WARN_INTERVAL_MS = 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 1000;
 const REAP_INTERVAL_MS = 1000;
+const STALE_WARN_MS = 30_000;
+const STALE_WARN_INTERVAL_MS = 60_000;
 const CONCURRENCY_RETRY_AFTER_SEC = 2;
 
 // JSON-RPC server-error codes (the -32000..-32099 range is implementation-defined).
@@ -169,7 +171,14 @@ function createSaltProvider({
           try {
             // The error only: never a parameter (the candidate salt is one).
             log?.warn?.(
-              { event: 'mcp_caller_limit_salt', err: err?.code || 'salt_unavailable', retry_in_ms: retryMs },
+              {
+                event: 'mcp_caller_limit_salt',
+                // `code`, the field every store-health line uses (and the log metric labels by); `err` kept
+                // for existing readers. Both are the error CODE only, never a message or a parameter.
+                code: err?.code || 'SALT_UNAVAILABLE',
+                err: err?.code || 'salt_unavailable',
+                retry_in_ms: retryMs,
+              },
               'mcp caller limit shared salt unavailable; anonymous keys use a per-process salt',
             );
           } catch (_) {
@@ -396,7 +405,7 @@ function createCallerLimiter({
   let syncing = null;
   let timer = null;
   let lastPruneAt = 0;
-  const syncState = { failures: 0, nextAt: 0, lastWarnAt: 0, lastOkAt: 0 };
+  const syncState = { failures: 0, nextAt: 0, lastWarnAt: 0, lastOkAt: 0, skips: 0, lastStaleWarnAt: 0, createdAt: now() };
 
   function storeConfig() {
     return readStoreConfig(env);
@@ -702,6 +711,30 @@ function createCallerLimiter({
     }
   }
 
+  // A sync skipped while this instance has callers to sync (pool busy, or backing off) is silent on its own:
+  // a pool held full would leave every key on the per-instance share with nothing in the logs. So once the
+  // shared snapshot is older than STALE_WARN_MS, say so — at most once a minute, fixed tokens only.
+  function noteSkip(t) {
+    syncState.skips += 1;
+    const age = t - (snapshot.at || syncState.createdAt);
+    if (age <= STALE_WARN_MS || t - syncState.lastStaleWarnAt < STALE_WARN_INTERVAL_MS) return;
+    syncState.lastStaleWarnAt = t;
+    try {
+      log?.warn?.(
+        {
+          event: 'mcp_caller_limit_stale',
+          code: 'SNAPSHOT_STALE',
+          snapshot_age_ms: age,
+          skips: syncState.skips,
+          ever_synced: snapshot.at > 0,
+        },
+        'mcp caller limit shared snapshot is stale; limits are per-instance shares until a sync succeeds',
+      );
+    } catch (_) {
+      // ignore
+    }
+  }
+
   // 1st failure: wait one interval; then 2x, 4x, ... up to the cap. A success resets it.
   function backoffMs(failures, cfg) {
     return Math.min(cfg.syncMaxBackoffMs, cfg.syncIntervalMs * 2 ** Math.max(0, failures - 1));
@@ -713,19 +746,7 @@ function createCallerLimiter({
     if (syncing) return syncing;
     syncing = (async () => {
       const t = now();
-      if (t < syncState.nextAt) return false;
       reapExpired(t, readCallerLimitsConfig(env));
-      // Never queue behind real work: no sync while the pool has waiters or no free connection.
-      let stats = null;
-      try {
-        stats = poolStats();
-      } catch (_) {
-        stats = null;
-      }
-      if (Number(stats?.waiting) > 0) return false;
-      if (stats && Number(stats.idle) === 0 && Number(stats.max) > 0 && Number(stats.total) >= Number(stats.max)) {
-        return false;
-      }
       const cfg = storeConfig();
       const win = windowOf(t);
       const active = [];
@@ -733,7 +754,24 @@ function createCallerLimiter({
         roll(entry, win);
         if (entry.cur || entry.prev || entry.inflight) active.push([key, entry]);
       }
+      // Nothing to sync is not a skip: an idle instance needs no shared counts.
       if (!active.length) return false;
+      if (t < syncState.nextAt) {
+        noteSkip(t);
+        return false;
+      }
+      // Never queue behind real work: no sync while the pool has waiters or no free connection.
+      let stats = null;
+      try {
+        stats = poolStats();
+      } catch (_) {
+        stats = null;
+      }
+      if (Number(stats?.waiting) > 0
+        || (stats && Number(stats.idle) === 0 && Number(stats.max) > 0 && Number(stats.total) >= Number(stats.max))) {
+        noteSkip(t);
+        return false;
+      }
       active.sort((a, b) => (b[1].cur + b[1].inflight * 10) - (a[1].cur + a[1].inflight * 10));
       const chosen = active.slice(0, cfg.maxSyncKeys);
       const rows = [];
@@ -760,6 +798,7 @@ function createCallerLimiter({
       }
       snapshot = { at: now(), others: next, synced: new Set(chosen.map(([key]) => key)) };
       syncState.lastOkAt = snapshot.at;
+      syncState.skips = 0;
       // A success that took more than half its budget is the primary saying it is busy: use the snapshot,
       // but back off as for a failure.
       if (snapshot.at - startedAt > cfg.syncTimeoutMs / 2) {
@@ -819,6 +858,7 @@ function createCallerLimiter({
       held: held.size,
       zombies: [...held.values()].filter((h) => h.zombie).length,
       sync: { failures: syncState.failures, nextAt: syncState.nextAt },
+      skips: syncState.skips,
     };
   }
 

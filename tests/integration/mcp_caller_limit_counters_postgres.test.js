@@ -206,6 +206,16 @@ suite('MCP caller limit counters on PostgreSQL', () => {
     }
   });
 
+  test('the server-generated salt draws TWO independent UUIDs: its 16-byte halves always differ', async () => {
+    const store = createPostgresCallerLimitStore({ db, acquireTimeoutMs: 2000 });
+    for (let i = 0; i < 20; i += 1) {
+      const day = `2027-02-${String(i + 1).padStart(2, '0')}`;
+      const salt = await store.getOrCreateSalt({ day, deleteBefore: '2027-01-01', timeoutMs: 2000 });
+      expect(salt.length).toBe(32);
+      expect(salt.subarray(0, 16).equals(salt.subarray(16))).toBe(false);
+    }
+  });
+
   test('the statement text names only the migrated table', () => {
     expect(SYNC_SQL).toMatch(/gateway_caller_limit_counters/);
   });

@@ -910,7 +910,8 @@ test('salted keys: with the database down the salt is a per-process random one (
   assert.equal(calls, 2);
   const line = log.lines.find((l) => l.obj.event === 'mcp_caller_limit_salt');
   assert.ok(line);
-  assert.deepEqual(Object.keys(line.obj).sort(), ['err', 'event', 'retry_in_ms']);
+  assert.deepEqual(Object.keys(line.obj).sort(), ['code', 'err', 'event', 'retry_in_ms']);
+  assert.equal(line.obj.code, 'ECONNREFUSED', 'the field the store log metric labels by is `code`');
 });
 
 test('slow success: a sync that takes more than half its budget is used, but backs off like a failure', async () => {
@@ -1126,4 +1127,90 @@ test('R4: a per-process salt is random: two processes never share it, and it is 
     keys.add(who.key);
   }
   assert.equal(keys.size, 3, 'each process draws its own salt');
+});
+
+// ---------------- review round 5 ----------------
+
+test('a pool held full starves the sync: one WARN a minute once the snapshot is older than 30 s, with its age and skip count', async () => {
+  const c = clock(T0 + 1000);
+  const log = capturingLog();
+  const shared = createMemoryCallerLimitStore({ now: c.now });
+  let full = false;
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '100000', MCP_CALLER_LIMITS_SYNC_MS: '2000' });
+  const lim = createCallerLimiter({
+    env, now: c.now, store: shared, autoSync: false, log,
+    poolStats: () => (full ? { waiting: 0, idle: 0, total: 12, max: 12 } : { waiting: 0, idle: 3, total: 3, max: 12 }),
+  });
+  const who = caller(anonReq('203.0.113.1'), env);
+  lim.admit(who).release();
+  assert.equal(await lim.syncNow(), true);
+  const syncedAt = c.t;
+  full = true;
+  for (let tick = 1; tick <= 300; tick += 1) {
+    c.advance(2000);
+    lim.admit(who).release();
+    assert.equal(await lim.syncNow(), false);
+  }
+  const stale = log.lines.filter((l) => l.obj.event === 'mcp_caller_limit_stale');
+  // Age first exceeds 30 s at tick 16 (32 s); then once per 60 s (30 ticks): ticks 16, 46, ..., 286.
+  assert.equal(stale.length, 10);
+  stale.forEach((l, i) => {
+    const tick = 16 + 30 * i;
+    assert.equal(l.obj.snapshot_age_ms, tick * 2000);
+    assert.equal(l.obj.skips, tick);
+    assert.equal(l.obj.code, 'SNAPSHOT_STALE');
+    assert.equal(l.obj.ever_synced, true);
+    assert.equal(l.msg, 'mcp caller limit shared snapshot is stale; limits are per-instance shares until a sync succeeds');
+    assert.deepEqual(Object.keys(l.obj).sort(), ['code', 'event', 'ever_synced', 'skips', 'snapshot_age_ms']);
+  });
+  assert.equal(lim.inspect('x').skips, 300);
+  assert.equal(c.t - syncedAt, 600_000);
+  // A successful sync resets the count.
+  full = false;
+  assert.equal(await lim.syncNow(), true);
+  assert.equal(lim.inspect('x').skips, 0);
+});
+
+test('an idle instance is not "skipping": no stale WARN when there is nothing to sync', async () => {
+  const c = clock(T0 + 1000);
+  const log = capturingLog();
+  const lim = createCallerLimiter({
+    env: baseEnv(), now: c.now, store: createMemoryCallerLimitStore({ now: c.now }), autoSync: false, log,
+    poolStats: () => ({ waiting: 0, idle: 0, total: 12, max: 12 }),
+  });
+  for (let i = 0; i < 100; i += 1) {
+    c.advance(2000);
+    await lim.syncNow();
+  }
+  assert.equal(log.lines.length, 0);
+});
+
+test('the store log metric matches what is emitted: every store-health event is in its filter and carries `code`', async () => {
+  const YAML = require('yaml');
+  const fs = require('fs');
+  const path = require('path');
+  const metric = YAML.parse(fs.readFileSync(path.join(__dirname, '..', 'monitoring', 'alerts', 'mcp_caller_limits', 'store_metric.yaml'), 'utf8'));
+  assert.equal(metric.labelExtractors.code, 'EXTRACT(jsonPayload.code)');
+  const c = clock(T0 + 1000);
+  const log = capturingLog();
+  // store failure
+  const failing = { kind: 'postgres', async sync() { throw Object.assign(new Error('x'), { code: '57014' }); } };
+  const lim = createCallerLimiter({ env: baseEnv(), now: c.now, store: failing, autoSync: false, log });
+  lim.admit(caller(anonReq('203.0.113.1'), baseEnv())).release();
+  await lim.syncNow();
+  // salt failure
+  const { createSaltProvider: mk } = require('../src/guardrails/mcpCallerLimits');
+  await mk({ store: { async getOrCreateSalt() { throw Object.assign(new Error('x'), { code: 'ECONNREFUSED' }); } }, now: c.now, log }).ready();
+  // stale snapshot
+  for (let i = 0; i < 20; i += 1) {
+    c.advance(2000);
+    lim.admit(caller(anonReq('203.0.113.1'), baseEnv())).release();
+    await lim.syncNow();
+  }
+  const events = new Set(log.lines.map((l) => l.obj.event));
+  for (const event of ['mcp_caller_limit_store', 'mcp_caller_limit_salt', 'mcp_caller_limit_stale']) {
+    assert.ok(events.has(event), `${event} was emitted`);
+    assert.ok(metric.filter.includes(`jsonPayload.event="${event}"`), `${event} is in the metric filter`);
+  }
+  for (const l of log.lines) assert.equal(typeof l.obj.code, 'string', `${l.obj.event} carries code`);
 });

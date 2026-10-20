@@ -7,7 +7,7 @@ Run puts each line's fields under `jsonPayload`; every filter keys on `jsonPaylo
 |---|---|
 | `zombie_metric.yaml` | `mcp_caller_limit_reaped` — an in-flight slot past its max age (flagged, still counted). Any non-zero count at the 600 s default is a bug. |
 | `decisions_metric.yaml` | `mcp_caller_limit` would-reject / reject lines, labelled by action, reason, tier, door, limit_split. |
-| `store_metric.yaml` | `mcp_caller_limit_store` and `mcp_caller_limit_salt` — shared store / salt unavailable (limits fall to per-instance shares). |
+| `store_metric.yaml` | `mcp_caller_limit_store`, `mcp_caller_limit_salt` and `mcp_caller_limit_stale` — shared store / salt unavailable, or the shared snapshot older than 30 s because syncs keep being skipped (limits fall to per-instance shares). Labelled by `code`, which all three lines carry. |
 | `zombie_alert_policy.yaml` | Alert: any zombie in 10 minutes. |
 
 Create them (an operator decision, not part of the deploy):
